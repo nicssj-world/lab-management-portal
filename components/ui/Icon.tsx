@@ -1,0 +1,75 @@
+const ICONS: Record<string, string> = {
+  home:        'M3 11l9-8 9 8M5 9v11a1 1 0 001 1h4v-7h4v7h4a1 1 0 001-1V9',
+  flask:       'M9 3h6M10 3v6l-5.5 9.5A2 2 0 006.2 21h11.6a2 2 0 001.7-2.5L14 9V3',
+  book:        'M4 19.5A2.5 2.5 0 016.5 17H20V3H6.5A2.5 2.5 0 004 5.5v14zM4 19.5V21h16',
+  doc:         'M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9l-6-6zM14 3v6h6',
+  dash:        'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z',
+  users:       'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm13 10v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8',
+  shield:      'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  chart:       'M3 3v18h18M7 14l4-4 4 4 5-6',
+  beaker:      'M4.5 3h15M6 3v7l-3 8a2 2 0 002 3h14a2 2 0 002-3l-3-8V3',
+  bell:        'M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0',
+  search:      'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3',
+  filter:      'M3 4h18l-7 9v6l-4 2v-8L3 4',
+  plus:        'M12 5v14M5 12h14',
+  download:    'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3',
+  upload:      'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
+  eye:         'M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12zM12 15a3 3 0 100-6 3 3 0 000 6z',
+  edit:        'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 113 3L12 15l-4 1 1-4 9.5-9.5z',
+  trash:       'M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6',
+  check:       'M20 6L9 17l-5-5',
+  x:           'M18 6L6 18M6 6l12 12',
+  arrowRight:  'M5 12h14M12 5l7 7-7 7',
+  arrowLeft:   'M19 12H5M12 19l-7-7 7-7',
+  globe:       'M12 22a10 10 0 100-20 10 10 0 000 20zM2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20',
+  lock:        'M5 11h14v10H5V11zm2 0V7a5 5 0 0110 0v4',
+  menu:        'M3 6h18M3 12h18M3 18h18',
+  chevDown:    'M6 9l6 6 6-6',
+  chevRight:   'M9 6l6 6-6 6',
+  alert:       'M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0zM12 9v4M12 17h.01',
+  clock:       'M12 22a10 10 0 100-20 10 10 0 000 20zM12 6v6l4 2',
+  trending:    'M23 6l-9.5 9.5-5-5L1 18M17 6h6v6',
+  settings:    'M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.5 7.5 0 010 .9l2.1 1.6-2 3.5-2.5-1a7.5 7.5 0 01-1.5.9l-.4 2.6h-4l-.4-2.6a7.5 7.5 0 01-1.5-.9l-2.5 1-2-3.5L4.6 13a7.5 7.5 0 010-2L2.5 9.5l2-3.5 2.5 1a7.5 7.5 0 011.5-.9l.4-2.6h4l.4 2.6a7.5 7.5 0 011.5.9l2.5-1 2 3.5-2.1 1.5z',
+  logout:      'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
+  inbox:       'M22 12h-6l-2 3h-4l-2-3H2M5.5 5h13a2 2 0 011.7 1L22 12v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6L3.8 6a2 2 0 011.7-1z',
+  microscope:  'M6 18h8M3 22h18M14 22a7 7 0 100-14h-1M9 14h2M9 12a2 2 0 012-2h0a2 2 0 012 2v2H9v-2zM12 6V3a1 1 0 00-1-1h-1a1 1 0 00-1 1v3',
+  pill:        'M10.5 20.5L20.5 10.5a4.95 4.95 0 10-7-7L3.5 13.5a4.95 4.95 0 007 7zM8.5 8.5l7 7',
+  building:    'M3 21h18M5 21V7l8-4v18M19 21V11l-6-4',
+  blood:       'M12 2s7 8 7 13a7 7 0 11-14 0c0-5 7-13 7-13zM9 14a3 3 0 003 3',
+  petri:       'M3 12a9 9 0 1018 0 9 9 0 00-18 0M2 12h20M7.5 8.5h.01M14.5 8.5h.01M10.5 11.5h.01M16 12h.01M8 15h.01M13.5 15.5h.01',
+  shieldCheck: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4',
+  syringe:     'M18 2l4 4M16.5 3.5L20.5 7.5M21 9l-2-2-9 9-1 4 4-1 9-9-2-2zM12 8l4 4M2 22l4-4',
+  cup:         'M5 8h14l-1.2 12a2 2 0 01-2 1.8H8.2a2 2 0 01-2-1.8L5 8zM8 8V5.5a2.5 2.5 0 015 0V8M10.5 13v4',
+  droplet:     'M12 2s7 8 7 13a7 7 0 11-14 0c0-5 7-13 7-13zM9 14l3-3 3 3',
+  bloodBag:    'M8 2h8v3a2 2 0 01-2 2h-4a2 2 0 01-2-2V2zM7 7h10l-1 13a2 2 0 01-2 2h-4a2 2 0 01-2-2L7 7zM10 12h4M12 10v6',
+  dna:         'M8 3c0 5 8 5 8 10s-8 5-8 10M16 3c0 5-8 5-8 10s8 5 8 10M8.5 6h7M9 10h6M9 14h6M8.5 18h7',
+  cell:        'M12 3a9 9 0 100 18 9 9 0 000-18zM12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM12 12h.01M14 11l.01 0M10 13l.01 0',
+  biohazard:   'M12 11a3 3 0 100 6 3 3 0 000-6zM12 11V5a3.5 3.5 0 013-3.5M12 11V5a3.5 3.5 0 00-3-3.5M9.5 15.5L5 18a3.5 3.5 0 01-3-2.5M14.5 15.5L19 18a3.5 3.5 0 003-2.5',
+}
+
+interface IconProps {
+  name: string
+  size?: number
+  stroke?: number
+  style?: React.CSSProperties
+  className?: string
+}
+
+export function Icon({ name, size = 16, stroke = 1.6, style, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={stroke}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={style}
+    >
+      <path d={ICONS[name] ?? ICONS.doc} />
+    </svg>
+  )
+}
