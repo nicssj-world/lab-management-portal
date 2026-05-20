@@ -25,14 +25,36 @@ export async function updateProfile(
   return data
 }
 
-export async function getAuditLog(supabase: SupabaseClient, limit = 100): Promise<AuditLog[]> {
-  const { data, error } = await supabase
+export type AuditLogWithUser = AuditLog & { user_name: string | null }
+
+export async function getAuditLog(supabase: SupabaseClient, limit = 100): Promise<AuditLogWithUser[]> {
+  // Fetch more rows than needed to account for Admin-filtered entries
+  const { data: logs, error } = await supabase
     .from('audit_log')
     .select('*')
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .limit(limit * 3)
   if (error) throw error
-  return data ?? []
+  if (!logs?.length) return []
+
+  // Resolve user names and roles via a separate query
+  const userIds = [...new Set(logs.map((l) => l.user_id).filter(Boolean))]
+  const { data: profileRows } = await supabase
+    .from('profiles')
+    .select('id, name, role')
+    .in('id', userIds)
+
+  const profileMap = new Map((profileRows ?? []).map((p) => [p.id, p]))
+
+  return logs
+    .map((log) => ({
+      ...log,
+      user_name: profileMap.get(log.user_id)?.name ?? null,
+      _role:     profileMap.get(log.user_id)?.role ?? null,
+    }))
+    .filter((log) => log._role !== 'Admin')
+    .slice(0, limit)
+    .map(({ _role, ...log }) => log)
 }
 
 export async function writeAuditLog(

@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'staff' | 'editor' | 'viewer'
+export type Role = 'Admin' | 'Manager' | 'Medical Technologist' | 'Assistant'
 export type UserStatus = 'active' | 'inactive' | 'pending'
 
 export interface Profile {
@@ -7,6 +7,7 @@ export interface Profile {
   role: Role
   dept: string | null
   status: UserStatus
+  avatar_url: string | null
   created_at: string
 }
 
@@ -44,19 +45,92 @@ export interface Test {
   active: boolean
   created_at: string
   updated_at: string
+  // extended columns (added by migration)
+  lis_code?: string | null
+  short_name?: string | null
+  description?: string | null
+  department?: string | null
+  instrument?: string | null
+  methodology_note?: string | null
+  tat_minutes?: string | null
+  urgent_tat_minutes?: string | null
+  available_24hr?: boolean
+  tube_color?: string | null
+  transport_condition?: string | null
+  specimen_note?: string | null
+  created_by?: string | null
+  updated_by?: string | null
+  contact_name?: string | null
+  contact_phone?: string | null
+  contact_email?: string | null
+  contact_note?: string | null
+  ref_note?: string | null
+}
+
+export interface TestReferenceRange {
+  id: number
+  test_id: number
+  gender: 'M' | 'F' | 'All'
+  min_age: number | null
+  max_age: number | null
+  lower_limit: number | null
+  upper_limit: number | null
+  unit: string | null
+  note: string | null
+  sort_order: number
+}
+
+export interface TestDocument {
+  id: number
+  test_id: number
+  doc_type: 'QP' | 'WI' | 'Form' | 'Other'
+  name: string
+  storage_path: string
+  uploaded_by: string | null
+  created_at: string
+}
+
+export interface TestDetail {
+  test: Test
+  referenceRanges: TestReferenceRange[]
+  documents: TestDocument[]
 }
 
 export interface Document {
-  id: number
-  cat: string
-  name: string
-  code: string
-  rev: string | null
-  date: string | null
-  size_mb: number | null
-  public: boolean
-  owner: string | null
-  storage_path: string | null
+  id: string
+  document_code: string
+  title: string
+  type: 'QP' | 'WI' | 'Form' | 'Policy' | 'Manual' | 'Record' | 'Others'
+  department: string | null
+  revision: string
+  status: 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolete'
+  visibility: 'Public' | 'Internal'
+  owner_id: string | null
+  owner_name: string | null
+  description: string | null
+  tags: string[] | null
+  file_url: string
+  file_name: string
+  file_size: number | null
+  mime_type: string | null
+  effective_date: string | null
+  expiry_date: string | null
+  obsolete_date: string | null
+  obsolete_reason: string | null
+  reviewer_name: string | null
+  approver_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentRevision {
+  id: string
+  document_id: string
+  revision_number: string
+  revision_note: string | null
+  file_url: string
+  file_name: string
+  uploaded_by: string | null
   created_at: string
 }
 

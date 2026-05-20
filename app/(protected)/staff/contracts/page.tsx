@@ -6,6 +6,10 @@ import { ContractsClient } from './ContractsClient'
 
 export default async function ContractsPage() {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: actor } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
+  const canEdit = ['Admin', 'Manager'].includes(actor?.role ?? '')
+
   const contracts = await getContracts(supabase)
 
   return (
@@ -14,9 +18,9 @@ export default async function ContractsPage() {
         eyebrow="สัญญา"
         title="สัญญาและวัสดุ"
         subtitle={`${contracts.length} สัญญา`}
-        actions={<Button variant="primary" icon="plus">เพิ่มสัญญา</Button>}
+        actions={canEdit ? <Button variant="primary" icon="plus">เพิ่มสัญญา</Button> : undefined}
       />
-      <ContractsClient contracts={contracts} />
+      <ContractsClient contracts={contracts} canEdit={canEdit} />
     </div>
   )
 }

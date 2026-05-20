@@ -26,7 +26,7 @@ interface Props {
 }
 
 export function WorkloadInputForm({ departments, userRole }: Props) {
-  const canEdit = userRole === 'editor' || userRole === 'admin'
+  const canEdit = userRole === 'Medical Technologist' || userRole === 'Admin'
 
   const [year, setYear] = useState(getCurrentThaiFiscalYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)

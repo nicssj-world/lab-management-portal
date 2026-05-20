@@ -6,6 +6,10 @@ import { NewsManageClient } from './NewsManageClient'
 
 export default async function NewsManagePage() {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: actor } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
+  const canEdit = ['Admin', 'Manager'].includes(actor?.role ?? '')
+
   const news = await getNews(supabase)
 
   return (
@@ -14,9 +18,9 @@ export default async function NewsManagePage() {
         eyebrow="จัดการ"
         title="จัดการข่าวสาร"
         subtitle={`${news.length} บทความ`}
-        actions={<Button variant="primary" icon="plus">เพิ่มข่าวสาร</Button>}
+        actions={canEdit ? <Button variant="primary" icon="plus">เพิ่มข่าวสาร</Button> : undefined}
       />
-      <NewsManageClient news={news} />
+      <NewsManageClient news={news} canEdit={canEdit} />
     </div>
   )
 }

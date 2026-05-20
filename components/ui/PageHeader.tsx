@@ -3,11 +3,12 @@ interface PageHeaderProps {
   subtitle?: string
   eyebrow?: string
   actions?: React.ReactNode
+  marginBottom?: number
 }
 
-export function PageHeader({ title, subtitle, eyebrow, actions }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, eyebrow, actions, marginBottom = 24 }: PageHeaderProps) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, marginBottom, flexWrap: 'wrap' }}>
       <div>
         {eyebrow && (
           <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500, letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: 6 }}>

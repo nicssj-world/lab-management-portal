@@ -27,13 +27,13 @@ export default async function PublicHome() {
         <div style={{ position: 'absolute', right: 120, bottom: -100, width: 280, height: 280, borderRadius: '50%', background: 'rgba(255,255,255,.05)' }} />
         <div style={{ maxWidth: 1280, margin: '0 auto', position: 'relative' }}>
           <Badge color="blue" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', marginBottom: 16, display: 'inline-flex' }}>
-            ISO 15189 · ISO 15190 Accredited
+            ISO 15189:2022 · ISO 15190:2020 Accredited
           </Badge>
           <h1 style={{ fontSize: 44, fontWeight: 700, margin: '0 0 16px', lineHeight: 1.15, letterSpacing: '-0.02em' }}>
-            ห้องปฏิบัติการ<br />ที่คุณวางใจ ทุกผลการตรวจ
+            คู่มือการส่งตรวจทางห้องปฏิบัติการ<br />Laboratory Services
           </h1>
           <p style={{ fontSize: 16, opacity: 0.9, marginTop: 0, lineHeight: 1.6, maxWidth: 520 }}>
-            ค้นหารายการตรวจวิเคราะห์ คู่มือเก็บตัวอย่าง และเอกสารคุณภาพของกลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรีได้ที่นี่
+            ค้นหารายการตรวจวิเคราะห์ คู่มือการเก็บตัวอย่าง และเอกสารแนบต่างๆ<br />ของกลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรีได้ที่นี่
           </p>
           <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
             <Link href="/catalog">
@@ -66,7 +66,7 @@ export default async function PublicHome() {
 
       {/* Service scope */}
       <section style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 0' }}>
-        <PageHeader eyebrow="ขอบเขตบริการ" title="ขอบเขตการให้บริการ" />
+        <PageHeader eyebrow="Service scope" title="ขอบเขตการให้บริการ" />
         <Card padding={28}>
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 16 }}>
             <div
@@ -78,14 +78,18 @@ export default async function PublicHome() {
               <Icon name="microscope" size={22} />
             </div>
             <div>
-              <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--ink)' }}>ห้องปฏิบัติการเทคนิคการแพทย์</div>
-              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี</div>
+              <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--ink)' }}>กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี</div>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>Department : Medical Technology</div>
             </div>
           </div>
           <p style={{ fontSize: 14, color: 'var(--ink)', lineHeight: 1.85, margin: 0 }}>
-            ห้องปฏิบัติการเทคนิคการแพทย์ กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี มีบทบาทหน้าที่ในการให้บริการตรวจวิเคราะห์ทางห้องปฏิบัติการสำหรับ{' '}
-            <strong>ผู้ป่วยใน ผู้ป่วยนอก และผู้ป่วยฉุกเฉินตลอด 24 ชั่วโมง</strong> รวมถึง
-            <strong>คลินิกนอกเวลาราชการ</strong> ในวันทำการ (วันจันทร์–ศุกร์) เวลา 16.00–24.00 น. และวันหยุดราชการ เวลา 08.00–24.00 น.
+            มีบทบาทหน้าที่ในการให้บริการตรวจวิเคราะห์ทางห้องปฏิบัติการสำหรับ{' '}
+            ผู้ป่วยใน ผู้ป่วยนอก และผู้ป่วยฉุกเฉิน <strong>ตลอด 24 ชั่วโมง</strong> รวมถึง
+            คลินิกนอกเวลาราชการ ในวันทำการ (วันจันทร์–ศุกร์) เวลา 16.00–24.00 น. และวันหยุดราชการ เวลา 08.00–24.00 น.
+            การตรวจสุขภาพประจำปีแบบหมู่คณะ และผู้มารับบริการทั้งหน่วยงานภายในและภายนอก
+            (เฉพาะในเวลาราชการ 08.00-15.30 น.) 
+            <br /><br />ส่วนรายการตรวจตรวจวิเคราะห์บางรายการที่ยังไม่เปิดให้บริการ จะดำเนินการส่งต่อยังห้องปฏิบัติการภายนอกที่มีคุณภาพมาตรฐานทั้งภาครัฐและภาคเอกชน
+            <br />ผู้รับบริการสามารถดูรายละเอียดตามรายการทดสอบที่หมวดหมู่ <strong>ตรวจพิเศษและปฏิบัติการตรวจต่อ (OUT LAB)</strong>
           </p>
         </Card>
       </section>
@@ -93,7 +97,7 @@ export default async function PublicHome() {
       {/* News */}
       <section style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-          <PageHeader eyebrow="ข่าวสาร" title="แจ้งข่าวสารห้องปฏิบัติการ" />
+          <PageHeader eyebrow="News" title="แจ้งข่าวสารห้องปฏิบัติการ" />
           <Link href="/news" style={{ fontSize: 13, color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>
             ดูทั้งหมด →
           </Link>
@@ -123,8 +127,8 @@ export default async function PublicHome() {
       {/* Categories */}
       <section style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 60px' }}>
         <PageHeader
-          eyebrow="หมวดหมู่"
-          title="ค้นหารายการตรวจตามหมวด"
+          eyebrow="Categories"
+          title="ค้นหารายการตรวจวิเคราะห์ตามหมวดหมู่"
           subtitle={`รวม ${categories.length} หมวดหมู่ทางห้องปฏิบัติการ`}
         />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>

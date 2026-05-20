@@ -1,0 +1,451 @@
+'use client'
+
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Badge } from '@/components/ui/Badge'
+import { Card } from '@/components/ui/Card'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { Icon } from '@/components/ui/Icon'
+import { Input } from '@/components/ui/Input'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
+import type { Document } from '@/lib/supabase/types'
+
+// ── Constants ─────────────────────────────────────────────────
+const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Others'] as const
+
+const DEPARTMENTS = [
+  'กลุ่มงานเทคนิคการแพทย์',
+  'งานคลังเลือด',
+  'งานจุลชีววิทยาคลินิก',
+  'งานโลหิตวิทยาคลินิก',
+  'งานภูมิคุ้มกันวิทยาคลินิก',
+  'งานจุลทรรศน์ศาสตร์คลินิก',
+  'งานเคมีคลินิก',
+  'ห้องปฏิบัติการศูนย์สุขภาพชุมชนเมืองชลบุรี',
+  'งานอณูชีววิทยา',
+  'งานตรวจพิเศษและปฏิบัติการตรวจต่อ',
+] as const
+
+const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray'> = {
+  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray', Others: 'gray',
+}
+const TYPE_DOT_FG: Record<string, string> = {
+  QP: '#1E5FAD', WI: '#0D9488', Form: '#9333EA',
+  Policy: '#D97706', Manual: '#16A34A', Record: '#64748B', Others: '#64748B',
+}
+
+type DocStatus = 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolete'
+
+const STATUS_COLOR: Record<DocStatus, 'gray' | 'amber' | 'blue' | 'green' | 'red'> = {
+  Draft: 'gray', Review: 'amber', Approved: 'blue', Published: 'green', Obsolete: 'red',
+}
+const STATUS_LABEL: Record<DocStatus, string> = {
+  Draft: 'Draft', Review: 'Review', Approved: 'Approved', Published: 'Published', Obsolete: 'Obsolete',
+}
+const ALL_DOC_STATUSES: DocStatus[] = ['Draft', 'Review', 'Approved', 'Published', 'Obsolete']
+
+// ── Helpers ───────────────────────────────────────────────────
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+// ── Toast ─────────────────────────────────────────────────────
+interface ToastMsg { id: number; msg: string; ok: boolean }
+function useToast() {
+  const [toasts, setToasts] = useState<ToastMsg[]>([])
+  const counter = useRef(0)
+  const add = useCallback((msg: string, ok = true) => {
+    const id = ++counter.current
+    setToasts((t) => [...t, { id, msg, ok }])
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500)
+  }, [])
+  return { toasts, add }
+}
+
+const PAGE_SIZE = 50
+
+// ── Main Component ─────────────────────────────────────────────
+interface Props { userRole?: string }
+
+export function MasterListClient({ userRole: _userRole }: Props) {
+const { toasts, add: toast } = useToast()
+
+  const [docs, setDocs]         = useState<Document[]>([])
+  const [count, setCount]       = useState(0)
+  const [loading, setLoading]   = useState(true)
+  const [search, setSearch]     = useState('')
+  const [activeType, setActiveType] = useState<string>('All')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [department, setDepartment] = useState('')
+  const [page, setPage]         = useState(0)
+  const [sortBy, setSortBy]     = useState('document_code')
+  const [sortDir, setSortDir]   = useState<'asc' | 'desc'>('asc')
+
+  const [modalOpen, setModalOpen] = useState(false)
+  const [typeCounts, setTypeCounts] = useState<Record<string, number>>({})
+
+  const timer = useRef<NodeJS.Timeout | null>(null)
+
+  // One-time fetch to build type count summary (all docs, no filter)
+  useEffect(() => {
+    fetch('/api/admin/documents?pageSize=9999')
+      .then(r => r.json())
+      .then((j) => {
+        const counts: Record<string, number> = { All: j.count ?? 0 }
+        for (const doc of (j.data ?? []) as Document[]) {
+          counts[doc.type] = (counts[doc.type] ?? 0) + 1
+        }
+        setTypeCounts(counts)
+      })
+      .catch(() => {})
+  }, [])
+
+  const doLoad = useCallback(async (
+    s: string, type: string, status: string, dept: string,
+    pg: number, sb: string, sd: 'asc' | 'desc'
+  ) => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({
+        page: String(pg + 1), pageSize: String(PAGE_SIZE), sortBy: sb, sortDir: sd,
+      })
+      if (s)       params.set('search', s)
+      if (type && type !== 'All') params.set('type', type)
+      if (status)  params.set('status', status)
+      if (dept)    params.set('department', dept)
+      const j = await fetch(`/api/admin/documents?${params}`).then(r => r.json())
+      setDocs(j.data ?? [])
+      setCount(j.count ?? 0)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(
+      () => doLoad(search, activeType, statusFilter, department, 0, sortBy, sortDir),
+      search ? 350 : 0
+    )
+    setPage(0)
+    return () => { if (timer.current) clearTimeout(timer.current) }
+  }, [search, activeType, statusFilter, department, sortBy, sortDir, doLoad])
+
+  function handlePageChange(p: number) {
+    setPage(p)
+    doLoad(search, activeType, statusFilter, department, p, sortBy, sortDir)
+  }
+
+  function handleSort(col: string) {
+    const dir = sortBy === col && sortDir === 'asc' ? 'desc' : 'asc'
+    setSortBy(col); setSortDir(dir); setPage(0)
+  }
+
+  function SortIcon({ col }: { col: string }) {
+    const base: React.CSSProperties = { display: 'inline-block', verticalAlign: 'middle', marginLeft: 3, flexShrink: 0 }
+    if (sortBy !== col) return <Icon name="chevDown" size={11} style={{ ...base, color: 'var(--border)' }} />
+    return <Icon name="chevDown" size={11} style={{ ...base, color: 'var(--primary)', transform: sortDir === 'asc' ? 'rotate(180deg)' : 'none' }} />
+  }
+
+  async function handleDownload(doc: Document) {
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
+      const { url } = await res.json()
+      if (!url) { toast('ไม่สามารถดาวน์โหลดได้', false); return }
+      window.open(url, '_blank')
+    } catch { toast('เกิดข้อผิดพลาด', false) }
+  }
+
+  function handleAdded(added: Document) {
+    setDocs(prev => [added, ...prev])
+    setCount(prev => prev + 1)
+    setModalOpen(false)
+    toast('เพิ่มเอกสารแล้ว')
+  }
+
+  function clearFilters() {
+    setSearch(''); setActiveType('All'); setStatusFilter(''); setDepartment(''); setPage(0)
+  }
+
+  const hasFilter = search || activeType !== 'All' || statusFilter || department
+  const totalPages = Math.ceil(count / PAGE_SIZE)
+
+  const thStyle: React.CSSProperties = {
+    padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+    textTransform: 'uppercase', letterSpacing: '.04em',
+    background: 'var(--surface-2)', borderBottom: '1px solid var(--border)',
+    whiteSpace: 'nowrap', userSelect: 'none',
+  }
+  const tdStyle: React.CSSProperties = {
+    padding: '10px 12px', fontSize: 12.5, color: 'var(--ink)',
+    borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', verticalAlign: 'middle',
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <PageHeader
+          eyebrow="Documents Master List"
+          title="ทะเบียนเอกสารคุณภาพ"
+          actions={undefined}
+          marginBottom={0}
+        />
+        {/* Type count summary */}
+        {typeCounts.All !== undefined && (
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+            <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)', lineHeight: 1 }}>{typeCounts.All}</span>
+            <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>เอกสารทั้งหมด</span>
+          </div>
+          {(Object.entries(typeCounts) as [string, number][])
+            .filter(([k, v]) => k !== 'All' && v > 0)
+            .map(([type, n]) => (
+              <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: TYPE_DOT_FG[type] ?? 'var(--muted)' }} />
+                <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>{type} {n}</span>
+              </div>
+            ))
+          }
+        </div>
+        )}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+          <Input
+            placeholder="ค้นหารหัส / ชื่อเอกสาร..."
+            value={search}
+            onChange={setSearch}
+            icon="search"
+          />
+        </div>
+        <select
+          value={department}
+          onChange={e => { setDepartment(e.target.value); setPage(0) }}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', cursor: 'pointer' }}
+        >
+          <option value="">ทุกแผนก</option>
+          {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select
+          value={statusFilter}
+          onChange={e => { setStatusFilter(e.target.value); setPage(0) }}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', cursor: 'pointer' }}
+        >
+          <option value="">ทุกสถานะ</option>
+          {ALL_DOC_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+        </select>
+        {hasFilter && (
+          <button onClick={clearFilters} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 12.5, color: 'var(--muted)', cursor: 'pointer', fontFamily: 'inherit' }}>
+            ล้างตัวกรอง
+          </button>
+        )}
+      </div>
+
+      {/* Type tabs */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {TYPE_TABS.map(t => (
+          <button key={t} onClick={() => { setActiveType(t); setPage(0) }} style={{
+            padding: '5px 14px', borderRadius: 20, border: '1px solid var(--border)', cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: 13, transition: 'all .15s',
+            background: activeType === t ? 'var(--surface-2)' : 'transparent',
+            color: activeType === t ? 'var(--ink)' : 'var(--muted)',
+            fontWeight: activeType === t ? 700 : 500,
+          }}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <Card padding={0}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1400 }}>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, width: 48, textAlign: 'center' }}>ลำดับ</th>
+                <th style={{ ...thStyle, cursor: 'pointer', textAlign: 'center' }} onClick={() => handleSort('document_code')}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>รหัสเอกสาร <SortIcon col="document_code" /></span>
+                </th>
+                <th style={{ ...thStyle, minWidth: 200 }}>ชื่อเอกสาร</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>ประเภท</th>
+                <th style={{ ...thStyle, minWidth: 140, textAlign: 'center' }}>แผนก</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>Rev.</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>สถานะ</th>
+                <th style={{ ...thStyle, cursor: 'pointer', textAlign: 'center' }} onClick={() => handleSort('effective_date')}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>วันที่บังคับใช้ <SortIcon col="effective_date" /></span>
+                </th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>วันที่ทบทวน</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>ผู้จัดทำ</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>ผู้รับรอง</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>ผู้อนุมัติ</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>วันที่ยกเลิก</th>
+                <th style={{ ...thStyle, minWidth: 160, textAlign: 'center' }}>เหตุผลยกเลิก</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>ไฟล์</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i}>
+                    {Array.from({ length: 15 }).map((_, j) => (
+                      <td key={j} style={tdStyle}>
+                        <div style={{ height: 14, borderRadius: 4, background: 'var(--surface-2)', width: j === 2 ? 180 : j === 0 ? 28 : 70 }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : docs.length === 0 ? (
+                <tr>
+                  <td colSpan={15} style={{ padding: '48px 0' }}>
+                    <EmptyState icon="doc" title="ไม่พบเอกสาร" hint={hasFilter ? 'ลองเปลี่ยนตัวกรอง' : 'ยังไม่มีเอกสารในระบบ'} />
+                  </td>
+                </tr>
+              ) : (
+                docs.map((doc, i) => (
+                  <tr
+                    key={doc.id}
+                    style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    {/* ลำดับ */}
+                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>
+                      {page * PAGE_SIZE + i + 1}
+                    </td>
+
+                    {/* รหัสเอกสาร */}
+                    <td style={{ ...tdStyle, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>
+                      {doc.document_code}
+                    </td>
+
+                    {/* ชื่อเอกสาร */}
+                    <td style={{ ...tdStyle, minWidth: 200, maxWidth: 280 }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={doc.title}>
+                        {doc.title}
+                      </div>
+                    </td>
+
+                    {/* ประเภท */}
+                    <td style={{ ...tdStyle, textAlign: 'center' }}>
+                      <Badge color={TYPE_COLORS[doc.type] ?? 'gray'} size="sm">{doc.type}</Badge>
+                    </td>
+
+                    {/* แผนก */}
+                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)', maxWidth: 160 }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={doc.department ?? ''}>
+                        {doc.department || '—'}
+                      </div>
+                    </td>
+
+                    {/* Rev. */}
+                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)' }}>
+                      {doc.revision}
+                    </td>
+
+                    {/* สถานะ */}
+                    <td style={{ ...tdStyle, textAlign: 'center' }}>
+                      <Badge color={STATUS_COLOR[doc.status as DocStatus] ?? 'gray'} size="sm">
+                        {STATUS_LABEL[doc.status as DocStatus] ?? doc.status}
+                      </Badge>
+                    </td>
+
+                    {/* วันที่บังคับใช้ */}
+                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)' }}>{fmtDate(doc.effective_date)}</td>
+
+                    {/* วันที่ทบทวน */}
+                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)' }}>{fmtDate(doc.expiry_date)}</td>
+
+                    {/* ผู้จัดทำ */}
+                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)' }}>{doc.owner_name || '—'}</td>
+
+                    {/* ผู้รับรอง */}
+                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)' }}>{doc.reviewer_name || '—'}</td>
+
+                    {/* ผู้อนุมัติ */}
+                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)' }}>{doc.approver_name || '—'}</td>
+
+                    {/* วันที่ยกเลิก */}
+                    <td style={{ ...tdStyle, textAlign: 'center', color: doc.obsolete_date ? 'var(--danger)' : 'var(--muted)' }}>
+                      {fmtDate(doc.obsolete_date)}
+                    </td>
+
+                    {/* เหตุผลยกเลิก */}
+                    <td style={{ ...tdStyle, textAlign: 'center', maxWidth: 160, color: 'var(--muted)' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={doc.obsolete_reason ?? ''}>
+                        {doc.obsolete_reason || '—'}
+                      </div>
+                    </td>
+
+                    {/* ไฟล์ */}
+                    <td style={{ ...tdStyle, textAlign: 'center' }}>
+                      <button
+                        onClick={() => handleDownload(doc)}
+                        title={doc.file_name}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <Icon name="download" size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, count)} จาก {count} รายการ
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button disabled={page === 0} onClick={() => handlePageChange(page - 1)}
+                style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: page === 0 ? 'not-allowed' : 'pointer', fontSize: 12.5, fontFamily: 'inherit', color: 'var(--muted)', opacity: page === 0 ? 0.4 : 1 }}>
+                ก่อนหน้า
+              </button>
+              {Array.from({ length: Math.min(totalPages, 7) }).map((_, idx) => {
+                const p = totalPages <= 7 ? idx : page < 4 ? idx : page > totalPages - 4 ? totalPages - 7 + idx : page - 3 + idx
+                return (
+                  <button key={p} onClick={() => handlePageChange(p)}
+                    style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: p === page ? 'var(--primary)' : 'transparent', cursor: 'pointer', fontSize: 12.5, fontFamily: 'inherit', color: p === page ? '#fff' : 'var(--muted)', fontWeight: p === page ? 700 : 400 }}>
+                    {p + 1}
+                  </button>
+                )
+              })}
+              <button disabled={page >= totalPages - 1} onClick={() => handlePageChange(page + 1)}
+                style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer', fontSize: 12.5, fontFamily: 'inherit', color: 'var(--muted)', opacity: page >= totalPages - 1 ? 0.4 : 1 }}>
+                ถัดไป
+              </button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Upload Modal */}
+      {modalOpen && (
+        <DocumentUploadModal
+          onClose={() => setModalOpen(false)}
+          onSaved={handleAdded}
+        />
+      )}
+
+      {/* Toasts */}
+      <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {toasts.map(t => (
+          <div key={t.id} style={{
+            padding: '11px 18px', borderRadius: 10, fontSize: 13, fontWeight: 500,
+            background: t.ok ? 'var(--success)' : 'var(--danger)', color: '#fff',
+            boxShadow: '0 4px 16px rgba(0,0,0,.2)', animation: 'slideIn .2s ease',
+          }}>
+            {t.msg}
+          </div>
+        ))}
+      </div>
+      <style>{`@keyframes slideIn { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }`}</style>
+    </div>
+  )
+}

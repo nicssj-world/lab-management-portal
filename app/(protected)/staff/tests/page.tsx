@@ -1,178 +1,175 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { getTests, deleteTest, upsertTest } from '@/lib/queries/tests'
-import { getCategories } from '@/lib/queries/categories'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import Link from 'next/link'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Card } from '@/components/ui/Card'
-import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
-import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { EmptyState } from '@/components/ui/EmptyState'
-import { Tube } from '@/components/lab/Tube'
+import { TestFilters } from '@/components/tests/TestFilters'
+import { TestTable } from '@/components/tests/TestTable'
+import { createClient } from '@/lib/supabase/client'
+import { getCategories } from '@/lib/queries/categories'
 import type { Test, Category } from '@/lib/supabase/types'
 
-const TUBE_COLORS: Record<string, string> = {
-  EDTA: '#9333EA', SST: '#F59E0B', Citrate: '#3B82F6',
-  Heparin: '#10B981', Plain: '#EF4444', Urine: '#F97316', CSF: '#6B7280', Swab: '#EC4899',
-}
+const PAGE_SIZE = 20
 
 export default function TestsPage() {
   const [tests, setTests] = useState<Test[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
-  const [q, setQ] = useState('')
-  const [cat, setCat] = useState('all')
+  const [search, setSearch] = useState('')
+  const [categoryId, setCategoryId] = useState('')
+  const [tube, setTube] = useState('')
   const [page, setPage] = useState(0)
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [total, setTotal] = useState(0)
+  const [allTotal, setAllTotal] = useState(0)
+  const [canEdit, setCanEdit] = useState(false)
+  const [sortBy, setSortBy] = useState('code')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [deletedCount, setDeletedCount] = useState(0)
+  const [purging, setPurging] = useState(false)
+  const timer = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
 
-  async function load() {
-    const [{ data }, cats] = await Promise.all([
-      getTests(supabase, { pageSize: 500 }),
-      getCategories(supabase),
-    ])
-    setTests(data)
-    setCategories(cats)
-    setLoading(false)
+  useEffect(() => {
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: p } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+        const edit = ['Admin', 'Manager'].includes(p?.role ?? '')
+        setCanEdit(edit)
+        if (edit) {
+          fetch('/api/admin/tests/purge-deleted')
+            .then(r => r.json())
+            .then(d => setDeletedCount(d.count ?? 0))
+            .catch(() => {})
+        }
+      }
+      getCategories(supabase, false).then(setCategories)
+    }
+    init()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const doLoad = useCallback(async (s: string, cat: string, tb: string, pg: number, sb: string, sd: 'asc' | 'desc') => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ page: String(pg), pageSize: String(PAGE_SIZE), active: 'true', sortBy: sb, sortDir: sd })
+      if (s) params.set('search', s)
+      if (cat) params.set('category', cat)
+      if (tb) params.set('tube', tb)
+      const j = await fetch(`/api/admin/tests?${params}`).then(r => r.json())
+      setTests(j.data ?? [])
+      const cnt = j.count ?? 0
+      setTotal(cnt)
+      if (pg === 0 && !s && !cat && !tb) setAllTotal(cnt)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => doLoad(search, categoryId, tube, 0, sortBy, sortDir), search ? 350 : 0)
+    return () => { if (timer.current) clearTimeout(timer.current) }
+  }, [search, categoryId, tube, sortBy, sortDir, doLoad])
+
+  function handlePageChange(p: number) {
+    setPage(p)
+    doLoad(search, categoryId, tube, p, sortBy, sortDir)
   }
 
-  useEffect(() => { load() }, [])
-
-  const filtered = useMemo(() =>
-    tests.filter((t) => {
-      if (cat !== 'all' && t.category_id !== cat) return false
-      if (q) {
-        const ql = q.toLowerCase()
-        return t.code.toLowerCase().includes(ql) || t.th.includes(q) || t.en.toLowerCase().includes(ql)
-      }
-      return true
-    }),
-    [tests, q, cat]
-  )
-
-  const catMap = Object.fromEntries(categories.map((c) => [c.id, c]))
-  const catOptions = [{ value: 'all', label: 'ทุกหมวดหมู่' }, ...categories.map((c) => ({ value: c.id, label: c.th }))]
-
-  async function handleToggleActive(test: Test) {
-    await upsertTest(supabase, { ...test, active: !test.active })
-    setTests((prev) => prev.map((t) => t.id === test.id ? { ...t, active: !t.active } : t))
+  function handleSort(col: string, dir: 'asc' | 'desc') {
+    setSortBy(col)
+    setSortDir(dir)
+    setPage(0)
   }
 
   async function handleDelete(id: number) {
-    if (!confirm('ยืนยันการลบรายการนี้?')) return
-    await deleteTest(supabase, id)
-    setTests((prev) => prev.filter((t) => t.id !== id))
+    if (!confirm('ยืนยันการลบงานรายการนี้?')) return
+    const res = await fetch(`/api/admin/tests/${id}`, { method: 'DELETE' })
+    if (res.ok) {
+      setTests(prev => prev.filter(t => t.id !== id))
+      setTotal(prev => prev - 1)
+      setAllTotal(prev => Math.max(0, prev - 1))
+      setDeletedCount(prev => prev + 1)
+    }
+  }
+
+  async function handlePurge() {
+    if (!confirm(`ยืนยันการลบถาวร ${deletedCount} รายการที่ถูกลบออกจากฐานข้อมูล? การกระทำนี้ไม่สามารถกู้คืนได้`)) return
+    setPurging(true)
+    const res = await fetch('/api/admin/tests/purge-deleted', { method: 'DELETE' })
+    const data = await res.json()
+    setPurging(false)
+    if (res.ok) {
+      setDeletedCount(0)
+      alert(`ลบถาวรแล้ว ${data.purged} รายการ`)
+    }
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <PageHeader
-        eyebrow="จัดการ"
+        eyebrow="ค้นหา"
         title="รายการตรวจวิเคราะห์"
-        subtitle={`ทั้งหมด ${tests.length} รายการ`}
-        actions={
-          <Button variant="primary" icon="plus">เพิ่มรายการตรวจ</Button>
-        }
+        subtitle={`ทั้งหมด ${allTotal} รายการ`}
+        actions={canEdit
+          ? <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {deletedCount > 0 && (
+                <button
+                  onClick={handlePurge}
+                  disabled={purging}
+                  style={{
+                    fontSize: 12, padding: '6px 12px', borderRadius: 7,
+                    border: '1px solid #FECACA', background: 'transparent',
+                    color: '#B91C1C', cursor: purging ? 'not-allowed' : 'pointer',
+                    fontFamily: 'inherit', fontWeight: 500,
+                    opacity: purging ? 0.6 : 1,
+                  }}
+                >
+                  {purging ? 'กำลังลบ...' : `ล้างรายการที่ถูกลบ (${deletedCount})`}
+                </button>
+              )}
+              <Link href="/staff/tests/import" style={{ textDecoration: 'none' }}>
+                <Button variant="secondary" size="sm" icon="download">นำเข้า Excel</Button>
+              </Link>
+              <Link href="/staff/tests/new" style={{ textDecoration: 'none' }}>
+                <Button variant="primary" size="sm" icon="plus">เพิ่มรายการตรวจ</Button>
+              </Link>
+            </div>
+          : undefined}
       />
 
-      <Card padding={14}>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <div style={{ flex: 1 }}>
-            <Input icon="search" value={q} onChange={setQ} placeholder="ค้นหาชื่อ, รหัส, LOINC…" />
-          </div>
-          <Select value={cat} onChange={setCat} options={catOptions} />
-        </div>
-        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
-          {loading ? 'กำลังโหลด...' : `พบ ${filtered.length} รายการ`}
-          {selectedIds.size > 0 && ` · เลือกแล้ว ${selectedIds.size} รายการ`}
-        </div>
-      </Card>
+      <TestFilters
+        search={search}
+        onSearch={(v) => { setSearch(v); setPage(0) }}
+        categoryId={categoryId}
+        onCategoryChange={(v) => { setCategoryId(v); setPage(0) }}
+        tube={tube}
+        onTubeChange={(v) => { setTube(v); setPage(0) }}
+        categories={categories}
+        total={allTotal || total}
+        filtered={total}
+      />
 
-      {!loading && filtered.length === 0 ? (
-        <EmptyState icon="flask" title="ไม่พบรายการ" hint="ลองเปลี่ยนคำค้นหา" />
-      ) : (
-        <Card padding={0}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
-                  {['', 'รหัส', 'ชื่อรายการตรวจ', 'หมวดหมู่', 'Specimen', 'TAT', 'ราคา', 'สถานะ', ''].map((h, i) => (
-                    <th
-                      key={i}
-                      style={{
-                        padding: '11px 14px', fontSize: 11.5, fontWeight: 600,
-                        color: 'var(--muted)', letterSpacing: '.04em', textTransform: 'uppercase',
-                        borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((t) => {
-                  const c = catMap[t.category_id ?? '']
-                  const tubeColor = TUBE_COLORS[t.tube ?? ''] ?? '#94A3B8'
-                  return (
-                    <tr key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 14px' }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(t.id)}
-                          onChange={(e) => {
-                            const next = new Set(selectedIds)
-                            e.target.checked ? next.add(t.id) : next.delete(t.id)
-                            setSelectedIds(next)
-                          }}
-                          style={{ accentColor: 'var(--primary)' }}
-                        />
-                      </td>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>{t.code}</td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{t.th}</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{t.en}</div>
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        {c && <Badge color="gray" size="sm">{c.th}</Badge>}
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <Tube color={tubeColor} label={t.tube ?? ''} />
-                      </td>
-                      <td style={{ padding: '10px 14px', color: 'var(--muted)', fontSize: 12 }}>{t.tat}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--ink)' }}>
-                        {t.price ? `฿${t.price}` : '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <Badge color={t.active ? 'green' : 'gray'} size="sm">{t.active ? 'ใช้งาน' : 'ปิดใช้'}</Badge>
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button
-                            onClick={() => handleToggleActive(t)}
-                            style={{ fontSize: 11.5, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--muted)' }}
-                          >
-                            {t.active ? 'ปิด' : 'เปิด'}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(t.id)}
-                            style={{ fontSize: 11.5, padding: '4px 10px', borderRadius: 6, border: '1px solid #FEE2E2', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: '#DC2626' }}
-                          >
-                            ลบ
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+      <TestTable
+        tests={tests}
+        categories={categories}
+        loading={loading}
+        canEdit={canEdit}
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        onPageChange={handlePageChange}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSort={handleSort}
+        onDelete={handleDelete}
+        onBulkDelete={(ids) => {
+          setTests(prev => prev.filter(t => !ids.includes(t.id)))
+          setTotal(prev => prev - ids.length)
+          setAllTotal(prev => Math.max(0, prev - ids.length))
+        }}
+      />
     </div>
   )
 }

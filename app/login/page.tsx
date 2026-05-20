@@ -7,7 +7,6 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
-
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -21,10 +20,11 @@ export default function LoginPage() {
     setLoading(true)
 
     const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const loginEmail = email.includes('@') ? email : `${email}@cbh.go.th`
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
 
     if (error) {
-      setError('อีเมลหรือรหัสผ่านไม่ถูกต้อง')
+      setError('รหัสผ่านไม่ถูกต้อง')
       setLoading(false)
       return
     }
@@ -53,6 +53,8 @@ export default function LoginPage() {
               alt="โรงพยาบาลชลบุรี"
               width={64}
               height={64}
+              priority
+              quality={100}
               style={{ height: 64, width: 'auto', objectFit: 'contain' }}
             />
             <div>
@@ -71,14 +73,14 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', display: 'block', marginBottom: 6 }}>
-                อีเมล
+                E-Phis
               </label>
               <Input
                 icon="users"
-                type="email"
+                type="text"
                 value={email}
                 onChange={setEmail}
-                placeholder="staff@cbh.go.th"
+                placeholder="xxxxxxx"
                 required
                 name="email"
               />

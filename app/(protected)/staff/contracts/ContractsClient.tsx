@@ -10,9 +10,9 @@ import { ContractBattery } from '@/components/lab/ContractBattery'
 import type { ContractWithUsage } from '@/lib/queries/contracts'
 import type { ContractUsage } from '@/lib/supabase/types'
 
-interface Props { contracts: ContractWithUsage[] }
+interface Props { contracts: ContractWithUsage[]; canEdit?: boolean }
 
-export function ContractsClient({ contracts: initialContracts }: Props) {
+export function ContractsClient({ contracts: initialContracts, canEdit = false }: Props) {
   const [contracts, setContracts] = useState(initialContracts)
   const [usageModal, setUsageModal] = useState<{ contractId: number; contractName: string } | null>(null)
   const [historyModal, setHistoryModal] = useState<{ contractId: number; contractName: string; history: ContractUsage[] } | null>(null)
@@ -82,9 +82,11 @@ export function ContractsClient({ contracts: initialContracts }: Props) {
               )}
 
               <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-                <Button variant="primary" size="sm" onClick={() => setUsageModal({ contractId: c.id, contractName: `${c.vendor} — ${c.product}` })}>
-                  บันทึกการใช้
-                </Button>
+                {canEdit && (
+                  <Button variant="primary" size="sm" onClick={() => setUsageModal({ contractId: c.id, contractName: `${c.vendor} — ${c.product}` })}>
+                    บันทึกการใช้
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => openHistory(c)}>
                   ประวัติ
                 </Button>

@@ -13,15 +13,21 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('name, role')
+    .select('name, role, avatar_url')
     .eq('id', session.user.id)
     .single()
+
+  const LEGACY_ROLES: Record<string, string> = {
+    admin: 'Admin', staff: 'Manager', editor: 'Medical Technologist', viewer: 'Assistant',
+  }
+  const role = profile?.role ? (LEGACY_ROLES[profile.role] ?? profile.role) : undefined
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       <StaffSidebar
-        userRole={profile?.role ?? undefined}
+        userRole={role}
         userName={profile?.name ?? undefined}
+        userAvatar={profile?.avatar_url ?? undefined}
       />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <StaffTopbar />

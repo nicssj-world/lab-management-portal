@@ -1,0 +1,167 @@
+import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { DocumentSchema } from '@/lib/validations/document'
+import { r2, R2_BUCKET } from '@/lib/r2/client'
+import { PutObjectCommand } from '@aws-sdk/client-s3'
+import { NextRequest, NextResponse } from 'next/server'
+
+async function getActor() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data } = await supabaseAdmin
+    .from('profiles').select('id, role').eq('id', user.id).single()
+  return data as { id: string; role: string } | null
+}
+
+function toMsg(err: unknown) {
+  return err instanceof Error ? err.message : String(err)
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const actor = await getActor()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const canEdit = ['Admin', 'Manager', 'Medical Technologist'].includes(actor.role)
+  if (!canEdit) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { id } = await params
+
+  try {
+    const contentType = req.headers.get('content-type') ?? ''
+    let updates: Record<string, unknown> = {}
+    let newFile: File | null = null
+
+    if (contentType.includes('multipart/form-data')) {
+      const form = await req.formData()
+      newFile = form.get('file') as File | null
+
+      const metaRaw = form.get('meta')
+      if (metaRaw) {
+        const parsed = DocumentSchema.partial().safeParse(JSON.parse(metaRaw as string))
+        if (!parsed.success) {
+          return NextResponse.json({ error: parsed.error.errors[0]?.message }, { status: 422 })
+        }
+        updates = parsed.data as Record<string, unknown>
+      }
+    } else {
+      const body = await req.json()
+      const parsed = DocumentSchema.partial().safeParse(body)
+      if (!parsed.success) {
+        return NextResponse.json({ error: parsed.error.errors[0]?.message }, { status: 422 })
+      }
+      updates = parsed.data as Record<string, unknown>
+    }
+
+    // Always fetch current doc (needed for revision history + R2 key)
+    const { data: current } = await supabaseAdmin
+      .from('documents')
+      .select('file_url, file_name, revision, type, description, owner_name, approver_name')
+      .eq('id', id)
+      .single()
+
+    if (newFile) {
+      if (newFile.size > 50 * 1024 * 1024) {
+        return NextResponse.json({ error: 'ไฟล์ใหญ่เกิน 50 MB' }, { status: 422 })
+      }
+
+      const type = (updates.type as string) ?? current?.type ?? 'others'
+      const year = new Date().getFullYear()
+      const safeName = newFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${safeName}`
+
+      const buffer = Buffer.from(await newFile.arrayBuffer())
+      await r2.send(new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: r2Key,
+        Body: buffer,
+        ContentType: newFile.type,
+      }))
+
+      updates.file_url  = r2Key
+      updates.file_name = newFile.name
+      updates.file_size = newFile.size
+      updates.mime_type = newFile.type
+    }
+
+    // Save old revision to history when revision number changes OR file is replaced
+    const revisionChanged = updates.revision !== undefined && updates.revision !== current?.revision
+    if ((revisionChanged || newFile) && current?.file_url) {
+      supabaseAdmin.from('document_revisions').insert({
+        document_id:     id,
+        revision_number: current.revision ?? '1',
+        revision_note:   current.description ?? null,
+        revised_by:      current.owner_name ?? null,
+        approved_by:     current.approver_name ?? null,
+        file_url:        current.file_url,
+        file_name:       current.file_name ?? '',
+        uploaded_by:     actor.id,
+      }).then(undefined, () => {})
+    }
+
+    // Auto-set obsolete_date when transitioning to Obsolete; clear when leaving Obsolete
+    const newStatus = (updates as Record<string, unknown>).status
+    if (newStatus === 'Obsolete') {
+      if (!(updates as Record<string, unknown>).obsolete_date) {
+        (updates as Record<string, unknown>).obsolete_date = new Date().toISOString().split('T')[0]
+      }
+    } else if (newStatus && newStatus !== 'Obsolete') {
+      (updates as Record<string, unknown>).obsolete_date   = null
+      ;(updates as Record<string, unknown>).obsolete_reason = null
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'ไม่มีข้อมูลที่จะอัปเดต' }, { status: 422 })
+    }
+
+    const { data: doc, error: dbErr } = await supabaseAdmin
+      .from('documents')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
+
+    supabaseAdmin.from('document_access_logs')
+      .insert({ document_id: id, user_id: actor.id, action: 'edit' })
+      .then(undefined, () => {})
+
+    return NextResponse.json(doc)
+  } catch (err) {
+    return NextResponse.json({ error: toMsg(err) }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const actor = await getActor()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const canDelete = ['Admin', 'Manager'].includes(actor.role)
+  if (!canDelete) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { id } = await params
+
+  try {
+    const { error: dbErr } = await supabaseAdmin
+      .from('documents')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+
+    if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
+
+    supabaseAdmin.from('document_access_logs')
+      .insert({ document_id: id, user_id: actor.id, action: 'delete' })
+      .then(undefined, () => {})
+
+    return new NextResponse(null, { status: 204 })
+  } catch (err) {
+    return NextResponse.json({ error: toMsg(err) }, { status: 500 })
+  }
+}

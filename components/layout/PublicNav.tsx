@@ -2,9 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { Logo } from '@/components/lab/Logo'
 import { Button } from '@/components/ui/Button'
+import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
+import { createClient } from '@/lib/supabase/client'
 
 const NAV_ITEMS = [
   { href: '/',        th: 'หน้าแรก',              en: 'Home' },
@@ -14,9 +17,21 @@ const NAV_ITEMS = [
   { href: '/contact', th: 'ติดต่อ',                en: 'Contact' },
 ]
 
+interface SessionUser { name: string; role: string; avatar_url: string | null }
+
 export function PublicNav() {
   const pathname = usePathname()
   const { lang, setLang } = useLang()
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase.from('profiles').select('name, role, avatar_url').eq('id', user.id).single()
+      if (data) setSessionUser({ name: data.name, role: data.role, avatar_url: data.avatar_url ?? null })
+    })
+  }, [])
 
   const activeHref = pathname.startsWith('/news') ? '/news' : pathname
 
@@ -69,11 +84,45 @@ export function PublicNav() {
           >
             {lang === 'th' ? 'EN' : 'TH'}
           </button>
-          <Link href="/login">
-            <Button variant="primary" size="md" icon="lock">
-              {lang === 'th' ? 'เข้าสู่ระบบ' : 'Sign in'}
-            </Button>
-          </Link>
+          {sessionUser ? (
+            <Link href="/staff/profile" style={{ textDecoration: 'none' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '6px 12px 6px 6px', borderRadius: 10,
+                border: '1px solid var(--border)', background: 'var(--card)',
+                cursor: 'pointer', transition: 'background .15s',
+              }}>
+                {sessionUser.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={sessionUser.avatar_url} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+                ) : (
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8,
+                    background: 'var(--primary)', color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 12, fontWeight: 700, flexShrink: 0,
+                  }}>
+                    {sessionUser.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div style={{ lineHeight: 1.2 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+                    {sessionUser.name}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, letterSpacing: '.04em' }}>
+                    {sessionUser.role.toUpperCase()}
+                  </div>
+                </div>
+                <Icon name="arrowRight" size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+              </div>
+            </Link>
+          ) : (
+            <Link href="/login">
+              <Button variant="primary" size="md" icon="lock">
+                {lang === 'th' ? 'เข้าสู่ระบบ' : 'Sign in'}
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     </header>

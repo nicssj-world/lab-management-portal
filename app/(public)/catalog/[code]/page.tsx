@@ -3,106 +3,149 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getTestByCode } from '@/lib/queries/tests'
 import { Card } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
-import { Tube } from '@/components/lab/Tube'
-
-const TUBE_COLORS: Record<string, { color: string; label: string }> = {
-  'EDTA':    { color: '#9333EA', label: 'EDTA (ม่วง)' },
-  'SST':     { color: '#F59E0B', label: 'SST (เหลือง)' },
-  'Citrate': { color: '#3B82F6', label: 'Citrate (น้ำเงิน)' },
-  'Heparin': { color: '#10B981', label: 'Heparin (เขียว)' },
-  'Plain':   { color: '#EF4444', label: 'Plain (แดง)' },
-  'Urine':   { color: '#F97316', label: 'ปัสสาวะ' },
-  'CSF':     { color: '#6B7280', label: 'CSF' },
-  'Swab':    { color: '#EC4899', label: 'Swab' },
-}
+import { TestDetailCard } from '@/components/tests/TestDetailCard'
+import { SpecimenSection } from '@/components/tests/SpecimenSection'
+import { RefRangeModal } from '@/components/tests/RefRangeModal'
+import { isJsonTable } from '@/lib/utils/refTable'
+import { DocDownloadButton } from '@/components/tests/DocDownloadButton'
+import type { Category, TestDocument, TestReferenceRange } from '@/lib/supabase/types'
 
 interface Props {
   params: Promise<{ code: string }>
 }
 
-export default async function TestDetailPage({ params }: Props) {
+export default async function CatalogDetailPage({ params }: Props) {
   const { code } = await params
   const supabase = await createClient()
-  const test = await getTestByCode(supabase, code)
 
+  const test = await getTestByCode(supabase, code)
   if (!test) notFound()
 
-  const tubeInfo = TUBE_COLORS[test.tube ?? ''] ?? { color: '#94A3B8', label: test.tube ?? '' }
-  const cat = (test as any).categories
+  const [rangesRes, docsRes] = await Promise.all([
+    supabase.from('test_reference_ranges').select('*').eq('test_id', test.id).order('sort_order'),
+    supabase.from('test_documents').select('*').eq('test_id', test.id).order('created_at'),
+  ])
 
-  const fields = [
-    { label: 'รหัสการทดสอบ', value: test.code },
-    { label: 'รหัสกรมบัญชีกลาง', value: test.cgd },
-    { label: 'LOINC', value: test.loinc },
-    { label: 'วิธีการตรวจ', value: test.method },
-    { label: 'Specimen / ปริมาณ', value: test.volume ? `${test.tube} · ${test.volume}` : test.tube },
-    { label: 'TAT', value: test.tat },
-    { label: 'ราคา', value: test.price ? `฿${test.price}` : undefined },
-    { label: 'Stability', value: test.stability },
-    { label: 'เหตุผลปฏิเสธตัวอย่าง', value: test.reject },
-    { label: 'ค่าอ้างอิง', value: test.ref },
-    { label: 'Priority', value: test.priority },
-    { label: 'ประเภทบริการ', value: test.service },
-  ]
+  const referenceRanges = (rangesRes.data ?? []) as TestReferenceRange[]
+  const documents = (docsRes.data ?? []) as TestDocument[]
+  const category = (test as any).categories as Category | undefined
 
   return (
     <main style={{ background: 'var(--bg)', minHeight: '100vh' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 28px 60px' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '28px 28px 60px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
         {/* Breadcrumb */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--muted)', marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' }}>
           <Link href="/" style={{ color: 'var(--muted)', textDecoration: 'none' }}>หน้าแรก</Link>
-          <Icon name="chevRight" size={12} />
+          <Icon name="chevRight" size={14} />
           <Link href="/catalog" style={{ color: 'var(--muted)', textDecoration: 'none' }}>รายการตรวจ</Link>
-          <Icon name="chevRight" size={12} />
-          <span style={{ color: 'var(--ink)' }}>{test.code}</span>
+          <Icon name="chevRight" size={14} />
+          <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{test.th}</span>
         </div>
 
-        <Card padding={28} style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 24, marginBottom: 20 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-                <Badge color="blue" style={{ fontFamily: 'monospace' }}>{test.code}</Badge>
-                {test.cgd && <Badge color="teal" style={{ fontFamily: 'monospace' }}>CGD {test.cgd}</Badge>}
-                {test.loinc && <Badge color="gray">LOINC {test.loinc}</Badge>}
-                {cat && <Badge color="gray">{cat.th}</Badge>}
-                {test.priority === 'STAT' && <Badge color="red">STAT</Badge>}
-                {test.priority === 'STAT-eligible' && <Badge color="amber">STAT-eligible</Badge>}
-              </div>
-              <h1 style={{ margin: 0, fontSize: 30, fontWeight: 700, color: 'var(--ink)', letterSpacing: '-0.02em' }}>
-                {test.th}
-              </h1>
-              <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: 15 }}>{test.en}</p>
-            </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <Tube color={tubeInfo.color} label={tubeInfo.label} size="lg" />
-              {test.price && (
-                <div style={{ marginTop: 12, fontSize: 24, fontWeight: 700, color: 'var(--ink)' }}>
-                  ฿{test.price}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: 'var(--border)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-            {fields.filter((f) => f.value).map((f) => (
-              <div key={f.label} style={{ background: 'var(--card)', padding: '14px 16px' }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: 4 }}>
-                  {f.label}
-                </div>
-                <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--ink)' }}>{f.value}</div>
-              </div>
-            ))}
-          </div>
+        {/* Header card */}
+        <Card padding={24}>
+          <TestDetailCard test={test} category={category} />
         </Card>
 
-        <div style={{ marginTop: 24 }}>
-          <Link href="/catalog" style={{ fontSize: 13, color: 'var(--muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="arrowLeft" size={14} />
-            กลับไปรายการตรวจ
-          </Link>
+        {/* Body: 2-column layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16, alignItems: 'start' }}>
+          {/* Left column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {(test.method || test.methodology_note || test.service) && (
+              <Card padding={20}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <Icon name="microscope" size={16} style={{ color: 'var(--primary)' }} />
+                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>วิธีการตรวจวิเคราะห์</span>
+                </div>
+                {[
+                  { label: 'หลักการทดสอบ', val: test.method },
+                  { label: 'วัน-เวลาที่ตรวจวิเคราะห์', val: test.available_24hr ? 'ตลอด 24 ชั่วโมง' : test.service },
+                  { label: 'รายละเอียด', val: test.methodology_note },
+                ].filter(r => r.val).map(r => (
+                  <div key={r.label} style={{ display: 'flex', gap: 16, paddingBlock: 10, borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 13, color: 'var(--muted)', minWidth: 130, flexShrink: 0 }}>{r.label}</span>
+                    <span style={{ fontSize: 13, color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>{r.val}</span>
+                  </div>
+                ))}
+              </Card>
+            )}
+
+            <Card padding={20}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <Icon name="chart" size={16} style={{ color: 'var(--primary)' }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>ค่าอ้างอิง (Reference Range)</span>
+              </div>
+              {referenceRanges.length > 0 || isJsonTable(test.ref)
+                ? <RefRangeModal ranges={referenceRanges} tableJson={test.ref} refNote={test.ref_note} />
+                : test.ref
+                  ? <>
+                      <div style={{ fontSize: 15, color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>{test.ref}</div>
+                      {test.ref_note && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'var(--surface-2)', fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+                          <Icon name="alert" size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                          <span style={{ whiteSpace: 'pre-wrap' }}>{test.ref_note}</span>
+                        </div>
+                      )}
+                    </>
+                  : <div style={{ fontSize: 13, color: 'var(--muted)' }}>ไม่มีข้อมูลค่าอ้างอิง</div>
+              }
+            </Card>
+
+            <Card padding={20}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <Icon name="flask" size={16} style={{ color: 'var(--primary)' }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>การเก็บตัวอย่าง</span>
+              </div>
+              <SpecimenSection test={test} />
+            </Card>
+          </div>
+
+          {/* Right sidebar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <Card padding={16}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>เอกสารที่เกี่ยวข้อง</div>
+              {documents.length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>ยังไม่มีเอกสาร</div>
+              ) : (
+                documents.map((doc) => (
+                  <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBlock: 8, borderBottom: '1px solid var(--border)' }}>
+                    <Icon name="doc" size={14} style={{ color: '#2563EB', flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{doc.name}</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)', background: 'var(--surface-2)', padding: '1px 6px', borderRadius: 4 }}>{doc.doc_type}</span>
+                    <DocDownloadButton testId={test.id} docId={doc.id} docName={doc.name} />
+                  </div>
+                ))
+              )}
+            </Card>
+
+            {(test.contact_name || test.contact_phone || test.contact_email || test.contact_note) && (
+              <Card padding={16}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>ติดต่อ</div>
+                {test.contact_name && (
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 2 }}>{test.contact_name}</div>
+                )}
+                {test.contact_note && (
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, lineHeight: 1.5 }}>{test.contact_note}</div>
+                )}
+                {test.contact_phone && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ink)', marginBottom: 4 }}>
+                    <Icon name="phone" size={13} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                    {test.contact_phone}
+                  </div>
+                )}
+                {test.contact_email && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#2563EB' }}>
+                    <Icon name="mail" size={13} style={{ flexShrink: 0 }} />
+                    <a href={`mailto:${test.contact_email}`} style={{ color: '#2563EB', textDecoration: 'none' }}>{test.contact_email}</a>
+                  </div>
+                )}
+              </Card>
+            )}
+          </div>
         </div>
+
       </div>
     </main>
   )

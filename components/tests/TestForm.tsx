@@ -1,0 +1,434 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Select } from '@/components/ui/Select'
+import { ReferenceRangePaste, isJsonTable } from './ReferenceRangePaste'
+import { TestDocuments } from './TestDocuments'
+import type { TestFormData, ReferenceRangeRow } from '@/lib/validations/test-schema' // ReferenceRangeRow used by initialRanges prop
+import type { Category } from '@/lib/supabase/types'
+
+interface Props {
+  categories: Category[]
+  initial?: Partial<TestFormData>
+  initialRanges?: ReferenceRangeRow[]
+  testId?: number
+}
+
+const EMPTY: TestFormData = {
+  code: '', category_id: '', th: '', en: '', active: true, popular: false, available_24hr: false,
+}
+
+const TUBE_OPTIONS: { label: string; color: string }[] = [
+  { label: 'Sodium citrate (ฟ้า)',         color: '#25a6eb' },
+  { label: 'Clotted blood (แดง)',           color: '#EF4444' },
+  { label: 'Lithium heparin (เขียว)',       color: '#10B981' },
+  { label: 'EDTA (ม่วง)',                   color: '#9333EA' },
+  { label: 'NaF (เทา)',                     color: '#94A3B8' },
+  { label: 'Urine',                         color: '#FACC15' },
+  { label: 'Stool',                         color: '#92400E' },
+  { label: 'Hemoculture aerobic (ผู้ใหญ่)', color: '#B91C1C' },
+  { label: 'Hemoculture aerobic (เด็ก)',    color: '#B91C1C' },
+  { label: 'Hemoculture fungi/TB',          color: '#B91C1C' },
+  { label: 'Blood gas syringe',             color: '#B91C1C' },
+  { label: 'Blood gas capillary tube',      color: '#B91C1C' },
+  { label: 'Cowin tube',                    color: '#F59E0B' },
+  { label: 'Random urine',                  color: '#FACC15' },
+  { label: 'อื่นๆ',                         color: '#000000' },
+]
+const TUBE_PRESET_LABELS = TUBE_OPTIONS.filter(o => o.label !== 'อื่นๆ').map(o => o.label)
+
+const CATEGORY_CONTACT: Record<string, { name: string; phone: string }> = {
+  'เคมีคลินิก':                          { name: 'งานเคมีคลินิก',                          phone: '1464' },
+  'ภูมิคุ้มกันวิทยาคลินิก':              { name: 'งานภูมิคุ้มกันวิทยาคลินิก',              phone: '1469' },
+  'โลหิตวิทยาคลินิก':                    { name: 'งานโลหิตวิทยาคลินิก',                    phone: '1466' },
+  'จุลทรรศนศาสตร์คลินิก':               { name: 'งานจุลทรรศนศาสตร์คลินิก',               phone: '1468' },
+  'จุลชีววิทยาคลินิก':                   { name: 'งานจุลชีววิทยาคลินิก',                   phone: '1462, 1463' },
+  'อณูชีววิทยาคลินิก':                   { name: 'งานอณูชีววิทยาคลินิก',                   phone: '1467, 1452' },
+  'คลังเลือด':                           { name: 'งานคลังเลือด',                           phone: '1458' },
+  'ตรวจพิเศษและปฏิบัติการตรวจต่อ':      { name: 'งานตรวจพิเศษและปฏิบัติการตรวจต่อ',      phone: '1461' },
+  'ศูนย์สุขภาพชุมชนเมืองชลบุรี':        { name: 'ศูนย์สุขภาพชุมชนเมืองชลบุรี',           phone: '1633, 1634' },
+}
+
+const inp: React.CSSProperties = {
+  width: '100%', height: 36, padding: '0 10px', borderRadius: 8,
+  border: '1px solid var(--border)', background: 'var(--card)',
+  color: 'var(--ink)', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box',
+}
+const ta: React.CSSProperties = {
+  width: '100%', padding: '8px 10px', borderRadius: 8,
+  border: '1px solid var(--border)', background: 'var(--card)',
+  color: 'var(--ink)', fontSize: 13, fontFamily: 'inherit',
+  resize: 'vertical', minHeight: 80, boxSizing: 'border-box',
+}
+
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: 16, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+      {title}
+    </div>
+  )
+}
+
+function Field({ label, required, error, children }: {
+  label: string; required?: boolean; error?: string; children: React.ReactNode
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>
+        {label}{required && <span style={{ color: '#DC2626', marginLeft: 2 }}>*</span>}
+      </label>
+      {children}
+      {error && <div style={{ fontSize: 11.5, color: '#DC2626' }}>{error}</div>}
+    </div>
+  )
+}
+
+export function TestForm({ categories, initial, initialRanges, testId }: Props) {
+  const router = useRouter()
+  const [form, setForm] = useState<TestFormData>(() => {
+    const merged: Record<string, unknown> = { ...EMPTY }
+    if (initial) {
+      for (const [k, v] of Object.entries(initial)) {
+        merged[k] = v === null ? undefined : v
+      }
+    }
+    // Convert old structured ranges to JSON table in ref
+    if ((initialRanges?.length ?? 0) > 0 && !isJsonTable((initial?.ref) as string)) {
+      const headers = ['เพศ', 'อายุต่ำสุด', 'อายุสูงสุด', 'ค่าต่ำสุด', 'ค่าสูงสุด', 'หน่วย', 'หมายเหตุ']
+      const rows = initialRanges!.map(r => [
+        r.gender ?? 'All',
+        r.min_age?.toString() ?? '',
+        r.max_age?.toString() ?? '',
+        r.lower_limit?.toString() ?? '',
+        r.upper_limit?.toString() ?? '',
+        r.unit ?? '',
+        r.note ?? '',
+      ])
+      merged.ref = JSON.stringify({ h: headers, r: rows })
+    }
+    // If tube is custom (อื่นๆ), ensure color defaults to black
+    if (initial?.tube && !TUBE_PRESET_LABELS.includes(initial.tube)) {
+      if (!merged.tube_color || merged.tube_color === '#94A3B8') {
+        merged.tube_color = '#000000'
+      }
+    }
+    return merged as TestFormData
+  })
+  const [refMode, setRefMode] = useState<'text' | 'table'>(
+    (initialRanges?.length ?? 0) > 0 || isJsonTable((initial?.ref) as string) ? 'table' : 'text'
+  )
+  const [tubeSelect, setTubeSelect] = useState<string>(() => {
+    const t = initial?.tube
+    if (!t) return ''
+    return TUBE_PRESET_LABELS.includes(t) ? t : 'อื่นๆ'
+  })
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+
+  const isEdit = testId != null
+
+  function set<K extends keyof TestFormData>(key: K, value: TestFormData[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }))
+    if (errors[key]) setErrors((prev) => { const next = { ...prev }; delete next[key]; return next })
+  }
+
+  function showToast(msg: string, type: 'success' | 'error' = 'success') {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  function validate(): boolean {
+    const errs: Record<string, string> = {}
+    if (!form.code?.trim()) errs.code = 'กรุณากรอกรหัสรายการตรวจ'
+    if (!form.category_id) errs.category_id = 'กรุณาเลือกหมวดหมู่'
+    if (!form.th?.trim()) errs.th = 'กรุณากรอกชื่อภาษาไทย'
+    setErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  async function handleSubmit() {
+    if (!validate()) return
+    setSaving(true)
+    try {
+      const url = isEdit ? `/api/admin/tests/${testId}` : '/api/admin/tests'
+      const method = isEdit ? 'PATCH' : 'POST'
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          referenceRanges: [],
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'เกิดข้อผิดพลาด')
+      showToast(isEdit ? 'บันทึกการแก้ไขสำเร็จ' : 'เพิ่มรายการตรวจสำเร็จ', 'success')
+      const id = isEdit ? testId : (json as { id: number }).id
+      setTimeout(() => router.push(`/staff/tests/${id}`), 1200)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const catOptions = [
+    { value: '', label: 'เลือกหมวดหมู่' },
+    ...categories.map((c) => ({ value: c.id, label: c.th })),
+  ]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+          padding: '11px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+          background: toast.type === 'success' ? '#166534' : '#B91C1C', color: '#fff',
+          boxShadow: '0 4px 16px rgba(0,0,0,.18)', maxWidth: 320,
+        }}>
+          {toast.type === 'success' ? '✓ ' : '✕ '}{toast.msg}
+        </div>
+      )}
+
+      {/* A: ข้อมูลพื้นฐาน */}
+      <Card>
+        <SectionHeader title="A. ข้อมูลพื้นฐาน" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Field label="รหัสรายการตรวจ" required error={errors.code}>
+            <input style={inp} value={form.code} onChange={(e) => set('code', e.target.value)} placeholder="รหัสใน E-phis" />
+          </Field>
+          <Field label="รหัสกรมบัญชีกลาง (CGD)">
+            <input style={inp} value={form.cgd ?? ''} onChange={(e) => set('cgd', e.target.value || undefined)} placeholder="รหัส CGD" />
+          </Field>
+          <Field label="หมวดหมู่" required error={errors.category_id}>
+            <Select
+              value={form.category_id}
+              onChange={(v) => {
+                set('category_id', v)
+                const cat = categories.find(c => c.id === v)
+                const preset = cat ? CATEGORY_CONTACT[cat.th] : undefined
+                if (preset) {
+                  if (!form.contact_name) set('contact_name', preset.name)
+                  if (!form.contact_phone) set('contact_phone', preset.phone)
+                }
+              }}
+              options={catOptions}
+            />
+          </Field>
+          <Field label="รหัส LOINC">
+            <input style={inp} value={form.loinc ?? ''} onChange={(e) => set('loinc', e.target.value || undefined)} placeholder="เช่น 58410-2" />
+          </Field>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Field label="ชื่อรายการตรวจวิเคราะห์" required error={errors.th}>
+              <input style={inp} value={form.th} onChange={(e) => set('th', e.target.value)} placeholder="ชื่อรายการตรวจ" />
+            </Field>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Field label="ชื่อเต็ม/ชื่ออื่นๆ">
+              <input style={inp} value={form.en ?? ''} onChange={(e) => set('en', e.target.value)} placeholder="Full name / Alias" />
+            </Field>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 24, marginTop: 14 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} style={{ accentColor: 'var(--primary)', width: 16, height: 16 }} />
+            เปิดใช้งาน (Active)
+          </label>
+        </div>
+      </Card>
+
+      {/* B: ราคา & TAT */}
+      <Card>
+        <SectionHeader title="B. ราคา & TAT" />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+          <Field label="ราคา (บาท)">
+            <input type="number" min={0} style={inp} value={form.price ?? ''} onChange={(e) => set('price', e.target.value ? Number(e.target.value) : undefined)} placeholder="0" />
+          </Field>
+          <Field label="TAT">
+            <input type="text" style={inp} value={form.tat_minutes ?? ''} onChange={(e) => set('tat_minutes', e.target.value || undefined)} placeholder="เช่น 60 นาที, 1-2 ชั่วโมง" />
+          </Field>
+          <Field label="TAT เร่งด่วน">
+            <input type="text" style={inp} value={form.urgent_tat_minutes ?? ''} onChange={(e) => set('urgent_tat_minutes', e.target.value || undefined)} placeholder="เช่น 30 นาที" />
+          </Field>
+        </div>
+        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input type="checkbox" checked={form.available_24hr} onChange={(e) => set('available_24hr', e.target.checked)} style={{ accentColor: 'var(--primary)', width: 16, height: 16 }} />
+            ตลอด 24 ชั่วโมง
+          </label>
+          {!form.available_24hr && (
+            <Field label="วัน-เวลาที่ตรวจวิเคราะห์">
+              <input style={inp} value={form.service ?? ''} onChange={(e) => set('service', e.target.value || undefined)} placeholder="เช่น จันทร์–ศุกร์ 08:00–16:00 น." />
+            </Field>
+          )}
+        </div>
+      </Card>
+
+      {/* C: วิธีการตรวจ */}
+      <Card>
+        <SectionHeader title="C. วิธีการตรวจวิเคราะห์" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Field label="วิธีการตรวจ (Method)">
+            <input style={inp} value={form.method ?? ''} onChange={(e) => set('method', e.target.value || undefined)} placeholder="เช่น Flow Cytometry, HPLC" />
+          </Field>
+<Field label="วัตถุประสงค์ของการตรวจ/ข้อบ่งชี้ (Indication)">
+            <textarea style={ta} value={form.methodology_note ?? ''} onChange={(e) => set('methodology_note', e.target.value || undefined)} placeholder="คำอธิบายเพิ่มเติม..." />
+          </Field>
+        </div>
+      </Card>
+
+      {/* D: Specimen */}
+      <Card>
+        <SectionHeader title="D. Specimen" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Field label="ชนิด Specimen">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Select
+                  style={{ flex: 1 }}
+                  placeholder="— เลือกชนิด Specimen —"
+                  value={tubeSelect}
+                  onChange={(val) => {
+                    setTubeSelect(val)
+                    if (val === 'อื่นๆ') {
+                      set('tube', undefined)
+                      set('tube_color', '#000000')
+                    } else if (val === '') {
+                      set('tube', undefined)
+                      set('tube_color', undefined)
+                    } else {
+                      set('tube', val)
+                      const color = TUBE_OPTIONS.find(o => o.label === val)?.color
+                      if (color) set('tube_color', color)
+                    }
+                  }}
+                  options={TUBE_OPTIONS.map(o => o.label)}
+                />
+                <div style={{ width: 28, height: 28, borderRadius: 6, background: form.tube_color ?? '#94A3B8', flexShrink: 0, border: '1px solid var(--border)' }} />
+              </div>
+              {tubeSelect === 'อื่นๆ' && (
+                <input
+                  style={inp}
+                  value={form.tube ?? ''}
+                  onChange={(e) => set('tube', e.target.value || undefined)}
+                  placeholder="ระบุชนิด Specimen..."
+                />
+              )}
+            </div>
+          </Field>
+          <Field label="สีหลอด (Hex color)">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input style={{ ...inp, flex: 1 }} value={form.tube_color ?? ''} onChange={(e) => set('tube_color', e.target.value || undefined)} placeholder="#9333EA" />
+              <input type="color" value={form.tube_color ?? '#94A3B8'} onChange={(e) => set('tube_color', e.target.value)} style={{ width: 36, height: 36, borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', padding: 2 }} />
+            </div>
+          </Field>
+          <Field label="ปริมาตร (Volume)">
+            <input style={inp} value={form.volume ?? ''} onChange={(e) => set('volume', e.target.value || undefined)} placeholder="เช่น 3 mL" />
+          </Field>
+          <Field label="เงื่อนไขการขนส่ง">
+            <input style={inp} value={form.transport_condition ?? ''} onChange={(e) => set('transport_condition', e.target.value || undefined)} placeholder="เช่น ส่งทันทีหลังเก็บ" />
+          </Field>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Field label="การเก็บรักษาตัวอย่างหลังการตรวจวิเคราะห์">
+              <textarea style={ta} value={form.stability ?? ''} onChange={(e) => set('stability', e.target.value || undefined)} placeholder="เงื่อนไขการเก็บรักษาตัวอย่าง..." />
+            </Field>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Field label="เงื่อนไขปฏิเสธ (Rejection Criteria)">
+              <textarea style={ta} value={form.reject ?? ''} onChange={(e) => set('reject', e.target.value || undefined)} placeholder="เหตุผลที่ตัวอย่างถูกปฏิเสธ..." />
+            </Field>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Field label="รายละเอียดอื่นๆ">
+              <textarea style={ta} value={form.specimen_note ?? ''} onChange={(e) => set('specimen_note', e.target.value || undefined)} placeholder="ข้อมูลเพิ่มเติมเกี่ยวกับตัวอย่าง..." />
+            </Field>
+          </div>
+        </div>
+      </Card>
+
+      {/* E: Reference Range */}
+      <Card>
+        <SectionHeader title="E. ค่าอ้างอิง (Reference Range)" />
+        {/* Mode toggle */}
+        <div style={{ display: 'flex', gap: 4, border: '1px solid var(--border)', borderRadius: 8, padding: 3, width: 'fit-content', marginBottom: 16 }}>
+          {(['text', 'table'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setRefMode(m)}
+              style={{
+                padding: '5px 14px', fontSize: 13, border: 'none', borderRadius: 5,
+                background: refMode === m ? 'var(--primary)' : 'transparent',
+                color: refMode === m ? '#fff' : 'var(--muted)',
+                cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500,
+              }}
+            >
+              {m === 'text' ? 'ข้อความอิสระ' : 'ตาราง'}
+            </button>
+          ))}
+        </div>
+
+        {refMode === 'text' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <Field label="ค่าอ้างอิง">
+              <textarea style={ta} value={form.ref ?? ''} onChange={(e) => set('ref', e.target.value || undefined)} placeholder="เช่น 4.0–11.0 × 10⁹/L (WBC)" />
+            </Field>
+            <Field label="หมายเหตุ">
+              <textarea style={ta} value={form.ref_note ?? ''} onChange={(e) => set('ref_note', e.target.value || undefined)} placeholder="เช่น ค่าอ้างอิงนี้ใช้สำหรับผู้ใหญ่ทั่วไป กรณีเด็ก ตั้งครรภ์ หรือสูงอายุ กรุณาดูเอกสารคู่มือฉบับเต็ม" />
+            </Field>
+          </div>
+        ) : (
+          <ReferenceRangePaste
+            value={form.ref}
+            onChange={(v) => set('ref', v)}
+            note={form.ref_note}
+            onNoteChange={(v) => set('ref_note', v)}
+          />
+        )}
+      </Card>
+
+      {/* F: ติดต่อ */}
+      <Card>
+        <SectionHeader title="F. ข้อมูลติดต่อ" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Field label="ชื่อหน่วยงาน">
+              <input style={inp} value={form.contact_name ?? ''} onChange={(e) => set('contact_name', e.target.value || undefined)} placeholder="เช่น กลุ่มงานเทคนิคการแพทย์" />
+            </Field>
+          </div>
+          <Field label="โทรศัพท์">
+            <input style={inp} value={form.contact_phone ?? ''} onChange={(e) => set('contact_phone', e.target.value || undefined)} placeholder="เช่น 038-931-XXX" />
+          </Field>
+          <Field label="อีเมล">
+            <input style={inp} value={form.contact_email ?? ''} onChange={(e) => set('contact_email', e.target.value || undefined)} placeholder="เช่น lab@hospital.go.th" />
+          </Field>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Field label="ที่อยู่ / หมายเหตุ">
+              <textarea style={ta} value={form.contact_note ?? ''} onChange={(e) => set('contact_note', e.target.value || undefined)} placeholder="เช่น ชั้น 1 อาคารผู้ป่วยนอก" />
+            </Field>
+          </div>
+        </div>
+      </Card>
+
+      {/* G: เอกสารที่เกี่ยวข้อง — edit mode only */}
+      {isEdit && testId != null && (
+        <Card>
+          <SectionHeader title="G. เอกสารที่เกี่ยวข้อง" />
+          <TestDocuments testId={testId} />
+        </Card>
+      )}
+
+      {/* Actions */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingBottom: 40 }}>
+        <Button variant="secondary" onClick={() => router.back()}>ยกเลิก</Button>
+        <Button variant="primary" onClick={handleSubmit} disabled={saving} icon="check">
+          {saving ? 'กำลังบันทึก...' : (isEdit ? 'บันทึกการแก้ไข' : 'เพิ่มรายการตรวจ')}
+        </Button>
+      </div>
+    </div>
+  )
+}

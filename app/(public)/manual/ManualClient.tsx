@@ -7,46 +7,55 @@ import { Icon } from '@/components/ui/Icon'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Document } from '@/lib/supabase/types'
 
-interface Props {
-  docs: Document[]
-  catColors: Record<string, string>
-  categories: string[]
+const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Others'] as const
+const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray'> = {
+  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray', Others: 'gray',
 }
 
-export function ManualClient({ docs, catColors, categories }: Props) {
-  const [activeCat, setActiveCat] = useState<string>('all')
+interface Props { docs: Document[] }
 
-  const filtered = activeCat === 'all' ? docs : docs.filter((d) => d.cat === activeCat)
+function fmtSize(bytes: number | null): string {
+  if (!bytes) return '—'
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+export function ManualClient({ docs }: Props) {
+  const [activeType, setActiveType] = useState<string>('All')
+  const [downloading, setDownloading] = useState<string | null>(null)
+
+  const filtered = activeType === 'All' ? docs : docs.filter((d) => d.type === activeType)
+
+  async function handleDownload(doc: Document) {
+    setDownloading(doc.id)
+    try {
+      const res = await fetch(`/api/documents/download?path=${encodeURIComponent(doc.file_url)}`)
+      const json = await res.json()
+      if (json.url) window.open(json.url, '_blank')
+    } finally {
+      setDownloading(null)
+    }
+  }
 
   return (
     <>
-      {/* Category filter pills */}
+      {/* Type tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-        <button
-          onClick={() => setActiveCat('all')}
-          style={{
-            padding: '6px 14px', borderRadius: 20, border: 'none', fontSize: 13, fontWeight: 600,
-            background: activeCat === 'all' ? 'var(--primary)' : 'var(--surface-2)',
-            color: activeCat === 'all' ? '#fff' : 'var(--ink)',
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          ทั้งหมด ({docs.length})
-        </button>
-        {categories.map((cat) => {
-          const count = docs.filter((d) => d.cat === cat).length
+        {TYPE_TABS.map((tab) => {
+          const count = tab === 'All' ? docs.length : docs.filter((d) => d.type === tab).length
+          if (tab !== 'All' && count === 0) return null
           return (
             <button
-              key={cat}
-              onClick={() => setActiveCat(cat)}
+              key={tab}
+              onClick={() => setActiveType(tab)}
               style={{
                 padding: '6px 14px', borderRadius: 20, border: 'none', fontSize: 13, fontWeight: 600,
-                background: activeCat === cat ? 'var(--primary)' : 'var(--surface-2)',
-                color: activeCat === cat ? '#fff' : 'var(--ink)',
+                background: activeType === tab ? 'var(--primary)' : 'var(--surface-2)',
+                color: activeType === tab ? '#fff' : 'var(--ink)',
                 cursor: 'pointer', fontFamily: 'inherit',
               }}
             >
-              {cat} ({count})
+              {tab} ({count})
             </button>
           )
         })}
@@ -60,15 +69,8 @@ export function ManualClient({ docs, catColors, categories }: Props) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
-                  {['รหัสเอกสาร', 'ชื่อเอกสาร', 'ประเภท', 'Rev.', 'วันที่', 'ขนาด', ''].map((h, i) => (
-                    <th
-                      key={i}
-                      style={{
-                        padding: '12px 16px', fontSize: 11.5, fontWeight: 600,
-                        color: 'var(--muted)', letterSpacing: '.04em', textTransform: 'uppercase',
-                        borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
-                      }}
-                    >
+                  {['รหัสเอกสาร', 'ชื่อเอกสาร', 'ประเภท', 'Revision', 'วันที่มีผล', 'ขนาด', ''].map((h, i) => (
+                    <th key={i} style={{ padding: '12px 16px', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', letterSpacing: '.04em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
                       {h}
                     </th>
                   ))}
@@ -77,32 +79,25 @@ export function ManualClient({ docs, catColors, categories }: Props) {
               <tbody>
                 {filtered.map((doc) => (
                   <tr key={doc.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>{doc.code}</td>
-                    <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--ink)' }}>{doc.name}</td>
+                    <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>{doc.document_code}</td>
+                    <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--ink)' }}>{doc.title}</td>
                     <td style={{ padding: '12px 16px' }}>
-                      <Badge color={(catColors[doc.cat] ?? 'gray') as any} size="sm">{doc.cat}</Badge>
+                      <Badge color={TYPE_COLORS[doc.type] ?? 'gray'} size="sm">{doc.type}</Badge>
                     </td>
-                    <td style={{ padding: '12px 16px', color: 'var(--muted)', fontSize: 12 }}>{doc.rev}</td>
+                    <td style={{ padding: '12px 16px', color: 'var(--muted)', fontSize: 12 }}>Rev. {doc.revision}</td>
                     <td style={{ padding: '12px 16px', color: 'var(--muted)', fontSize: 12 }}>
-                      {doc.date ? new Date(doc.date).toLocaleDateString('th-TH') : '—'}
+                      {doc.effective_date ? new Date(doc.effective_date).toLocaleDateString('th-TH') : '—'}
                     </td>
-                    <td style={{ padding: '12px 16px', color: 'var(--muted)', fontSize: 12 }}>
-                      {doc.size_mb ? `${doc.size_mb} MB` : '—'}
-                    </td>
+                    <td style={{ padding: '12px 16px', color: 'var(--muted)', fontSize: 12 }}>{fmtSize(doc.file_size)}</td>
                     <td style={{ padding: '12px 16px' }}>
-                      {doc.storage_path ? (
-                        <button
-                          style={{
-                            background: 'none', border: 'none', cursor: 'pointer',
-                            color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontFamily: 'inherit', fontWeight: 600,
-                          }}
-                        >
-                          <Icon name="download" size={14} />
-                          ดาวน์โหลด
-                        </button>
-                      ) : (
-                        <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
-                      )}
+                      <button
+                        onClick={() => handleDownload(doc)}
+                        disabled={downloading === doc.id}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontFamily: 'inherit', fontWeight: 600, opacity: downloading === doc.id ? .5 : 1 }}
+                      >
+                        <Icon name="download" size={14} />
+                        {downloading === doc.id ? 'กำลังโหลด...' : 'ดาวน์โหลด'}
+                      </button>
                     </td>
                   </tr>
                 ))}

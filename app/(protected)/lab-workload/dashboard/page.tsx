@@ -32,10 +32,12 @@ export default function WorkloadDashboardPage() {
         title="ภาระงานห้องปฏิบัติการ"
         subtitle="Lab Workload Dashboard"
         actions={
-          <AnnualReportExport year={year} summary={summary} chartRef={chartRef} />
-          <Link href="/lab-workload/input">
-            <Button variant="primary" icon="plus">บันทึกข้อมูล</Button>
-          </Link>
+          <>
+            <AnnualReportExport year={year} summary={summary} chartRef={chartRef} />
+            <Link href="/lab-workload/input">
+              <Button variant="primary" icon="plus">บันทึกข้อมูล</Button>
+            </Link>
+          </>
         }
       />
 

@@ -1,8 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
-import { Input } from '@/components/ui/Input'
 import { useLang } from '@/context/LangContext'
 
 const PAGE_TITLES: Record<string, { th: string; en: string }> = {
@@ -13,6 +14,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/rejection':        { th: 'บันทึกการปฏิเสธตัวอย่าง',      en: 'Specimen Rejection Log' },
   '/staff/risk':             { th: 'ทะเบียนความเสี่ยง',             en: 'Risk Register' },
   '/staff/documents':        { th: 'จัดการเอกสารคุณภาพ',           en: 'Quality Documents' },
+  '/staff/documents/master-list': { th: 'จัดการทะเบียนเอกสารคุณภาพ', en: 'Documents Master List' },
   '/staff/contracts':        { th: 'สัญญาและวัสดุ',                en: 'Contracts & Supplies' },
   '/staff/admin':            { th: 'จัดการผู้ใช้และสิทธิ์',          en: 'Users & Roles' },
   '/staff/settings':         { th: 'ตั้งค่าระบบ',                  en: 'System Settings' },
@@ -24,13 +26,32 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/tat/import':             { th: 'นำเข้าข้อมูล TAT',             en: 'Import TAT Data' },
 }
 
-interface StaffTopbarProps {
-  onCollapseToggle?: () => void
+const BTN: React.CSSProperties = {
+  width: 34, height: 34, borderRadius: 8,
+  border: '1px solid var(--border)',
+  background: 'var(--card)', color: 'var(--ink)',
+  cursor: 'pointer', display: 'flex',
+  alignItems: 'center', justifyContent: 'center',
+  flexShrink: 0, textDecoration: 'none',
 }
 
-export function StaffTopbar({ onCollapseToggle }: StaffTopbarProps) {
+export function StaffTopbar() {
   const pathname = usePathname()
   const { lang, setLang } = useLang()
+  const [dark, setDark] = useState(false)
+
+  useEffect(() => {
+    const saved = localStorage.getItem('theme') === 'dark'
+    setDark(saved)
+    document.documentElement.setAttribute('data-theme', saved ? 'dark' : 'light')
+  }, [])
+
+  function toggleDark() {
+    const next = !dark
+    setDark(next)
+    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light')
+    localStorage.setItem('theme', next ? 'dark' : 'light')
+  }
 
   const title = PAGE_TITLES[pathname] ?? { th: '', en: '' }
 
@@ -38,60 +59,33 @@ export function StaffTopbar({ onCollapseToggle }: StaffTopbarProps) {
     <header
       style={{
         height: 56, borderBottom: '1px solid var(--border)', background: 'var(--card)',
-        padding: '0 24px', display: 'flex', alignItems: 'center', gap: 16,
+        padding: '0 24px', display: 'flex', alignItems: 'center', gap: 10,
         position: 'sticky', top: 0, zIndex: 30,
       }}
     >
-      {onCollapseToggle && (
-        <button
-          onClick={onCollapseToggle}
-          style={{
-            width: 32, height: 32, borderRadius: 8, border: 'none',
-            background: 'transparent', color: 'var(--ink)', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-          }}
-        >
-          <Icon name="menu" size={18} />
-        </button>
-      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {lang === 'th' ? title.th : title.en}
         </div>
       </div>
-      <div style={{ width: 280, flexShrink: 0 }}>
-        <Input
-          icon="search"
-          placeholder={lang === 'th' ? 'ค้นหา test, เอกสาร, ผู้ใช้…' : 'Search tests, docs, users…'}
-          size="sm"
-        />
-      </div>
+
+      {/* Lang toggle */}
       <button
         onClick={() => setLang(lang === 'th' ? 'en' : 'th')}
-        style={{
-          width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)',
-          background: 'var(--card)', color: 'var(--ink)', cursor: 'pointer',
-          fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit', flexShrink: 0,
-        }}
+        style={{ ...BTN, fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit' }}
       >
         {lang === 'th' ? 'EN' : 'TH'}
       </button>
-      <button
-        style={{
-          width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)',
-          background: 'var(--card)', color: 'var(--ink)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          position: 'relative', flexShrink: 0,
-        }}
-      >
-        <Icon name="bell" size={15} />
-        <span
-          style={{
-            position: 'absolute', top: 5, right: 5, width: 7, height: 7,
-            borderRadius: '50%', background: '#DC2626', border: '2px solid var(--card)',
-          }}
-        />
+
+      {/* Dark mode toggle */}
+      <button onClick={toggleDark} style={BTN} title={dark ? 'Light mode' : 'Dark mode'}>
+        <Icon name={dark ? 'sun' : 'moon'} size={15} />
       </button>
+
+      {/* Home — public page */}
+      <Link href="/" style={BTN} title="หน้าแรก">
+        <Icon name="home" size={15} />
+      </Link>
     </header>
   )
 }
