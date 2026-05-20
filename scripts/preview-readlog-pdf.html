@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Preview: Fm-QP-LAB-01-05 (35 records)</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm 15mm 12mm 15mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'TH Sarabun New', 'Sarabun', 'Cordia New', Arial, sans-serif; font-size: 14pt; color: #000; background: #888; }
+
+    /* Screen preview wrapper */
+    @media screen {
+      body { padding: 20px; display: flex; flex-direction: column; gap: 24px; align-items: center; }
+      .page { background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.4); }
+    }
+
+    .page { page-break-after: always; display: flex; flex-direction: column; height: 273mm; width: 180mm; }
+    .page:last-child { page-break-after: avoid; }
+    .page-header { text-align: center; margin-bottom: 8px; flex-shrink: 0; }
+    .main-title { font-size: 17pt; font-weight: bold; line-height: 1.5; }
+    .sub-title { font-size: 16pt; font-weight: bold; line-height: 1.5; }
+    .doc-meta { font-size: 14pt; font-weight: bold; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; flex-shrink: 0; }
+    th, td { border: 1.5px solid #000; padding: 3px 6px; font-size: 13pt; height: 26px; }
+    th { background: #f5f5f5; font-weight: bold; text-align: center; }
+    .col-no  { width: 10%; text-align: center; }
+    .col-name { width: 30%; }
+    .col-pos  { width: 30%; text-align: center; }
+    .col-date { width: 30%; text-align: center; }
+    .center { text-align: center; }
+    .page-footer { display: flex; align-items: center; font-size: 10.5pt; color: #555; margin-top: auto; padding-top: 4px; border-top: 1px solid #bbb; }
+    .footer-spacer { flex: 1; }
+    .footer-center { flex: 0 1 auto; text-align: center; }
+    .footer-right { flex: 1; text-align: right; white-space: nowrap; }
+
+    @media print {
+      body { background: none; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<script>
+const ROWS_PER_PAGE = 25
+const DOC_TYPE   = 'ระเบียบปฏิบัติ QP'
+const DOC_TITLE  = 'การควบคุมเอกสารและบันทึกคุณภาพ'
+const DOC_CODE   = 'QP-LAB-01'
+
+const NAMES = [
+  'วราห์ ลิ้มศรี','สมชาย ใจดี','นิภา รักษ์ดี','พิชัย สุขใส','วิไล ทองดี',
+  'อนุสรณ์ มั่นคง','ปรียา แสงทอง','กิตติ วงศ์ทอง','มานิตา เจริญสุข','ธนกร ศรีสวัสดิ์',
+  'รุ่งทิพย์ พันธุ์ดี','ชัยวัฒน์ บุญมาก','สุนีย์ พรมดี','วิทยา รุ่งเรือง','ปิยะ สุขสม',
+  'เบญจมาศ ทองแดง','ณัฐพล สว่างใจ','กนกวรรณ ดีมาก','ประภาส ชัยดี','สิริพร วงศ์งาม',
+  'อรทัย แก้วมณี','ธิดารัตน์ ศรีทอง','ชนิดา บุญเกิด','วันชัย สุขสวัสดิ์','ทิพวรรณ รักษาดี',
+  'ภาณุวัฒน์ ชูศรี','ปาริชาต ฉลาดดี','สุวรรณ ทิพย์มาลา','นงนุช พรหมสวัสดิ์','ชูชาติ บุญช่วย',
+  'ปิยนุช สิทธิดี','วนิดา รุ่งสว่าง','สายสุนีย์ เพชรดี','ธีรพงษ์ มีสุข','รัตนา งามดี',
+]
+const ROLES_POS = [
+  { role: 'Medical Technologist', pos: 'นักเทคนิคการแพทย์' },
+  { role: 'Manager',              pos: 'นักเทคนิคการแพทย์' },
+  { role: 'Assistant',            pos: 'พนักงานประจำห้องทดลอง' },
+]
+
+function fmtDate(daysAgo) {
+  const d = new Date()
+  d.setDate(d.getDate() - daysAgo)
+  return d.toLocaleString('th-TH', { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })
+}
+
+const records = NAMES.map((name, i) => ({
+  name,
+  pos: ROLES_POS[i % ROLES_POS.length].pos,
+  date: fmtDate(NAMES.length - i),
+}))
+
+const pages = []
+for (let i = 0; i < records.length; i += ROWS_PER_PAGE) {
+  pages.push(records.slice(i, i + ROWS_PER_PAGE))
+}
+
+const headerBlock = `
+  <div class="page-header">
+    <div class="main-title">แบบบันทึกการลงชื่อรับทราบ การศึกษาและทำความเข้าใจเอกสารคุณภาพ</div>
+    <div class="sub-title">กลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี</div>
+    <div class="doc-meta">ประเภทเอกสาร ${DOC_TYPE}</div>
+    <div class="doc-meta">เรื่อง ${DOC_TITLE}&nbsp;&nbsp;&nbsp;รหัส ${DOC_CODE}</div>
+  </div>`
+
+const thead = `<thead><tr>
+  <th class="col-no">ลำดับที่</th>
+  <th class="col-name">ชื่อ-สกุล</th>
+  <th class="col-pos">ตำแหน่ง</th>
+  <th class="col-date">วันที่ - เวลา</th>
+</tr></thead>`
+
+const footer = `
+  <div class="page-footer">
+    <span class="footer-spacer"></span>
+    <span class="footer-center">เอกสารนี้เป็นสมบัติของกลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี ห้ามนำออกไปใช้ภายนอกหรือทำซ้ำโดยไม่ได้รับอนุญาต</span>
+    <span class="footer-right">Fm-QP-LAB-01/05</span>
+  </div>`
+
+let rowIdx = 1
+const pagesHtml = pages.map((page, pi) => {
+  const isLast = pi === pages.length - 1
+  const rows = [...page]
+  if (!isLast) { while (rows.length < ROWS_PER_PAGE) rows.push(null) }
+
+  const tbody = rows.map(r => r
+    ? `<tr><td class="center">${rowIdx++}</td><td>${r.name}</td><td class="center">${r.pos}</td><td class="center">${r.date}</td></tr>`
+    : `<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>`
+  ).join('')
+
+  return `<div class="page">${headerBlock}<table>${thead}<tbody>${tbody}</tbody></table>${footer}</div>`
+}).join('')
+
+document.write(pagesHtml)
+</script>
+
+</body>
+</html>

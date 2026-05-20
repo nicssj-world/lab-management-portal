@@ -14,7 +14,7 @@
   --color-warning:      #D97706;
   --color-success:      #16A34A;
   --radius-DEFAULT:     12px;
-  --font-sans: "IBM Plex Sans Thai", "IBM Plex Sans", system-ui, sans-serif;
+  --font-sans: "Noto Sans Thai", "IBM Plex Sans Thai", system-ui, sans-serif;
 }
 
 :root {
@@ -33,17 +33,31 @@
   --radius:       12px;
 }
 
+[data-theme="dark"] {
+  --bg:           #0F172A;
+  --card:         #1E293B;
+  --surface-2:    #273348;
+  --border:       #334155;
+  --ink:          #F1F5F9;
+  --muted:        #94A3B8;
+  --primary:      #60A5FA;
+  --primary-2:    #93C5FD;
+  --primary-soft: rgba(96,165,250,.15);
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 
 body {
-  font-family: "IBM Plex Sans Thai", "IBM Plex Sans", -apple-system, system-ui, sans-serif;
-  font-size: 14px;
+  font-family: "Noto Sans Thai", "IBM Plex Sans Thai", -apple-system, system-ui, sans-serif;
+  font-size: 16px;
   line-height: 1.5;
   color: var(--ink);
   background: var(--bg);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
+  text-rendering: auto;
+  font-weight: 400;
 }
 
 h1, h2, h3, h4 { font-family: inherit; }

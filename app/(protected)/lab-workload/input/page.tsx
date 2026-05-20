@@ -19,7 +19,7 @@ export default async function WorkloadInputPage() {
       : Promise.resolve({ data: null }),
   ])
 
-  const userRole = profileResult.data?.role ?? 'viewer'
+  const userRole = profileResult.data?.role ?? 'Assistant'
   const departments = depts.map(d => ({ id: d.id as number, code: d.code, name: d.name }))
 
   return (

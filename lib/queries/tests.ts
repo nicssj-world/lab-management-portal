@@ -1,32 +1,41 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Test } from '@/lib/supabase/types'
+import type { Test, TestReferenceRange, TestDetail } from '@/lib/supabase/types'
+import type { ReferenceRangeRow } from '@/lib/validations/test-schema'
 
 export interface TestFilters {
   category?: string
   search?: string
   popular?: boolean
   active?: boolean
+  tube?: string
   page?: number
   pageSize?: number
+  sortBy?: string
+  sortDir?: 'asc' | 'desc'
 }
+
+const ALLOWED_SORT = ['code', 'cgd', 'th', 'price', 'tat_minutes', 'service', 'tube']
 
 export async function getTests(
   supabase: SupabaseClient,
   filters: TestFilters = {}
 ): Promise<{ data: Test[]; count: number }> {
-  const { category, search, popular, active = true, page = 0, pageSize = 50 } = filters
+  const { category, search, popular, active, tube, page = 0, pageSize = 50, sortBy = 'code', sortDir = 'asc' } = filters
+
+  const col = ALLOWED_SORT.includes(sortBy) ? sortBy : 'code'
 
   let query = supabase
     .from('tests')
     .select('*', { count: 'exact' })
-    .eq('active', active)
-    .order('code')
+    .order(col, { ascending: sortDir === 'asc', nullsFirst: false })
     .range(page * pageSize, (page + 1) * pageSize - 1)
 
+  if (active !== undefined) query = query.eq('active', active)
   if (category) query = query.eq('category_id', category)
+  if (tube) query = query.eq('tube', tube)
   if (popular !== undefined) query = query.eq('popular', popular)
   if (search) {
-    query = query.or(`th.ilike.%${search}%,en.ilike.%${search}%,code.ilike.%${search}%`)
+    query = query.or(`th.ilike.%${search}%,en.ilike.%${search}%,code.ilike.%${search}%,cgd.ilike.%${search}%,loinc.ilike.%${search}%`)
   }
 
   const { data, error, count } = await query
@@ -57,6 +66,94 @@ export async function upsertTest(supabase: SupabaseClient, test: Partial<Test>):
 export async function deleteTest(supabase: SupabaseClient, id: number): Promise<void> {
   const { error } = await supabase.from('tests').delete().eq('id', id)
   if (error) throw error
+}
+
+export async function getTestDetail(supabase: SupabaseClient, id: number): Promise<TestDetail> {
+  const [testRes, rangesRes, docsRes] = await Promise.all([
+    supabase.from('tests').select('*, categories(*)').eq('id', id).single(),
+    supabase.from('test_reference_ranges').select('*').eq('test_id', id).order('sort_order'),
+    supabase.from('test_documents').select('*').eq('test_id', id).order('created_at'),
+  ])
+  if (testRes.error) throw testRes.error
+  return {
+    test: testRes.data as Test,
+    referenceRanges: (rangesRes.data ?? []) as TestReferenceRange[],
+    documents: docsRes.data ?? [],
+  }
+}
+
+export async function createTest(
+  supabase: SupabaseClient,
+  data: Record<string, unknown>,
+  userId: string,
+): Promise<Test> {
+  const { data: row, error } = await supabase
+    .from('tests')
+    .insert({ ...data, created_by: userId, updated_by: userId, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .select().single()
+  if (error) throw error
+  return row as Test
+}
+
+export async function updateTest(
+  supabase: SupabaseClient,
+  id: number,
+  data: Record<string, unknown>,
+  userId: string,
+): Promise<Test> {
+  const { data: row, error } = await supabase
+    .from('tests')
+    .update({ ...data, updated_by: userId, updated_at: new Date().toISOString() })
+    .eq('id', id).select().single()
+  if (error) throw error
+  return row as Test
+}
+
+export async function duplicateTest(
+  supabase: SupabaseClient,
+  id: number,
+  userId: string,
+): Promise<Test> {
+  const { data: original, error: fetchErr } = await supabase.from('tests').select('*').eq('id', id).single()
+  if (fetchErr) throw fetchErr
+  const { id: _id, created_at: _ca, updated_at: _ua, ...rest } = original as Test & Record<string, unknown>
+  const newCode = `${rest.code}-COPY`
+  const { data: row, error } = await supabase
+    .from('tests')
+    .insert({ ...rest, code: newCode, created_by: userId, updated_by: userId, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .select().single()
+  if (error) throw error
+  const { data: ranges } = await supabase.from('test_reference_ranges').select('*').eq('test_id', id)
+  if (ranges?.length) {
+    await supabase.from('test_reference_ranges').insert(
+      ranges.map(({ id: _rid, test_id: _tid, ...r }: TestReferenceRange) => ({ ...r, test_id: (row as Test).id }))
+    )
+  }
+  return row as Test
+}
+
+export async function upsertReferenceRanges(
+  supabase: SupabaseClient,
+  testId: number,
+  rows: ReferenceRangeRow[],
+): Promise<void> {
+  await supabase.from('test_reference_ranges').delete().eq('test_id', testId)
+  if (rows.length === 0) return
+  const { error } = await supabase.from('test_reference_ranges').insert(
+    rows.map((r, i) => ({ ...r, test_id: testId, sort_order: i }))
+  )
+  if (error) throw error
+}
+
+export async function checkTestCodeExists(
+  supabase: SupabaseClient,
+  code: string,
+  excludeId?: number,
+): Promise<boolean> {
+  let q = supabase.from('tests').select('id').eq('code', code)
+  if (excludeId) q = q.neq('id', excludeId)
+  const { data } = await q
+  return (data?.length ?? 0) > 0
 }
 
 export async function getPopularTests(supabase: SupabaseClient, limit = 6): Promise<Test[]> {

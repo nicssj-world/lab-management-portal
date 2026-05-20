@@ -1,48 +1,69 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { r2, R2_BUCKET } from '@/lib/r2/client'
+import { GetObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import type { Document } from '@/lib/supabase/types'
 
 export interface DocumentFilters {
-  cat?: string
-  publicOnly?: boolean
-  search?: string
+  type?:       string
+  visibility?: string
+  search?:     string
+  page?:       number
+  pageSize?:   number
+  sortBy?:     string
+  sortDir?:    'asc' | 'desc'
 }
 
 export async function getDocuments(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   filters: DocumentFilters = {}
-): Promise<Document[]> {
-  let query = supabase.from('documents').select('*').order('date', { ascending: false })
+): Promise<{ data: Document[]; count: number }> {
+  const {
+    type, visibility, search,
+    page = 1, pageSize = 50,
+    sortBy = 'updated_at', sortDir = 'desc',
+  } = filters
 
-  if (filters.cat) query = query.eq('cat', filters.cat)
-  if (filters.publicOnly) query = query.eq('public', true)
-  if (filters.search) {
-    query = query.or(`name.ilike.%${filters.search}%,code.ilike.%${filters.search}%`)
+  let query = supabaseAdmin
+    .from('documents')
+    .select('*', { count: 'exact' })
+
+  if (type && type !== 'All') query = query.eq('type', type)
+  if (visibility)             query = query.eq('visibility', visibility)
+  if (search) {
+    query = query.or(`title.ilike.%${search}%,document_code.ilike.%${search}%`)
   }
 
-  const { data, error } = await query
+  const from = (page - 1) * pageSize
+  const to   = from + pageSize - 1
+
+  const { data, error, count } = await query
+    .order(sortBy, { ascending: sortDir === 'asc' })
+    .range(from, to)
+
   if (error) throw error
-  return data ?? []
+  return { data: (data ?? []) as Document[], count: count ?? 0 }
 }
 
-export async function upsertDocument(supabase: SupabaseClient, doc: Partial<Document>): Promise<Document> {
-  const { data, error } = await supabase
+export async function getDocumentById(id: string): Promise<Document | null> {
+  const { data } = await supabaseAdmin
     .from('documents')
-    .upsert(doc)
-    .select()
+    .select('*')
+    .eq('id', id)
     .single()
-  if (error) throw error
-  return data
+  return data as Document | null
 }
 
-export async function deleteDocument(supabase: SupabaseClient, id: number): Promise<void> {
-  const { error } = await supabase.from('documents').delete().eq('id', id)
+export async function deleteDocument(_supabase: SupabaseClient, id: string): Promise<void> {
+  const { error } = await supabaseAdmin.from('documents').delete().eq('id', id)
   if (error) throw error
 }
 
-export async function getDocumentDownloadUrl(supabase: SupabaseClient, storagePath: string): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from('documents')
-    .createSignedUrl(storagePath, 3600)
-  if (error) throw error
-  return data.signedUrl
+export async function getDocumentSignedUrl(filePath: string): Promise<string> {
+  return getSignedUrl(
+    r2,
+    new GetObjectCommand({ Bucket: R2_BUCKET, Key: filePath }),
+    { expiresIn: 3600 }
+  )
 }

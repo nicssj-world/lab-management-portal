@@ -9,6 +9,10 @@ import { RiskHeatmap } from '@/components/lab/RiskHeatmap'
 
 export default async function RiskPage() {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: actor } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
+  const canEdit = ['Admin', 'Manager'].includes(actor?.role ?? '')
+
   const risks = await getRisks(supabase)
 
   const high = risks.filter((r) => r.level === 'high')
@@ -30,7 +34,7 @@ export default async function RiskPage() {
         eyebrow="คุณภาพ"
         title="ทะเบียนความเสี่ยง"
         subtitle="Risk Register · ISO 15189"
-        actions={<Button variant="primary" icon="plus">เพิ่มความเสี่ยง</Button>}
+        actions={canEdit ? <Button variant="primary" icon="plus">เพิ่มความเสี่ยง</Button> : undefined}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>

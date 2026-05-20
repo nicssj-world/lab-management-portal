@@ -1,11 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Category } from '@/lib/supabase/types'
 
-export async function getCategories(supabase: SupabaseClient): Promise<Category[]> {
-  const { data, error } = await supabase
-    .from('categories')
-    .select('*')
-    .order('sort_order')
+export async function getCategories(supabase: SupabaseClient, activeOnly = true): Promise<Category[]> {
+  let q = supabase.from('categories').select('*').order('sort_order')
+  if (activeOnly) q = q.eq('active', true)
+  const { data, error } = await q
   if (error) throw error
   return data ?? []
 }

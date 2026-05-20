@@ -32,7 +32,7 @@ const notoSansThai = Noto_Sans_Thai({
 })
 
 export const metadata: Metadata = {
-  title: 'MN-LAB-01 — Lab Management Portal · กลุ่มงานเทคนิคการแพทย์ รพ.ชลบุรี',
+  title: 'CBH - Lab Management',
   description: 'ระบบจัดการห้องปฏิบัติการ กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี',
 }
 

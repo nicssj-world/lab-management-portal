@@ -1,5 +1,7 @@
 'use client'
 
+import { Fragment } from 'react'
+
 interface Risk {
   id: string
   name: string
@@ -42,8 +44,8 @@ export function RiskHeatmap({ risks }: RiskHeatmapProps) {
         ))}
         {/* Grid rows */}
         {ROWS.map(impact => (
-          <>
-            <div key={`r-${impact}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>
+          <Fragment key={impact}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>
               {impact}
             </div>
             {COLS.map(likelihood => {
@@ -71,7 +73,7 @@ export function RiskHeatmap({ risks }: RiskHeatmapProps) {
                 </div>
               )
             })}
-          </>
+          </Fragment>
         ))}
       </div>
       <div style={{ marginTop: 10, display: 'flex', gap: 12, fontSize: 11, color: 'var(--muted)', flexWrap: 'wrap' }}>

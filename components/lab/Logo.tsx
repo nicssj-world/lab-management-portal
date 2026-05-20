@@ -14,6 +14,8 @@ export function Logo({ size = 32, showText = true, lang = 'th' }: LogoProps) {
         alt="โรงพยาบาลชลบุรี"
         width={size}
         height={size}
+        priority
+        quality={100}
         style={{ borderRadius: 8, flexShrink: 0, objectFit: 'contain' }}
       />
       {showText && (
