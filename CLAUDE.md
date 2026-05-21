@@ -40,7 +40,7 @@ app/
 
 Auth is enforced in `app/(protected)/layout.tsx` via Supabase server session. Role comes from `profiles.role` in the DB.
 
-Roles: `'Admin' | 'Manager' | 'Medical Technologist' | 'Assistant'`
+Roles: `'Admin' | 'Manager' | 'Document Controller' | 'Medical Technologist' | 'Medical Science Technician' | 'Assistant'`
 
 **Every API route that mutates data must check role:**
 ```ts
@@ -54,6 +54,48 @@ async function getActor() {
 }
 const canEdit = ['Admin', 'Manager'].includes(actor?.role ?? '')
 ```
+
+### Permission System
+
+Module-level access is controlled by a **permission matrix** stored in the `role_permissions` DB table. Each role × resource combination has a level: `'none' | 'view' | 'edit'`.
+
+**Behaviour:**
+- `none` → module hidden in sidebar + redirect to `/staff/dashboard` if accessed directly
+- `view` → module visible, all add/edit/upload/import buttons hidden
+- `edit` → module visible + all mutation buttons shown
+- `Admin` role always gets `edit` on every resource (hardcoded in `getRolePermissions`)
+
+**Key files — never duplicate these constants:**
+
+| File | Purpose |
+|------|---------|
+| `lib/permission-resources.ts` | **Single source of truth** — `RESOURCES` array and `PERMISSION_ROLES` order |
+| `lib/permissions.ts` | Server-side `getRolePermissions(role)` helper (imports from above) |
+| `context/PermissionContext.tsx` | Client context — `PermissionProvider` + `usePermission(resource)` hook |
+
+**Adding a new module:**
+1. Add the resource name to `RESOURCES` in `lib/permission-resources.ts` — it auto-appears in the Permission Matrix UI and `getRolePermissions` will enforce it.
+2. Add `resource: 'ชื่อ Resource'` to the nav item in `StaffSidebar.tsx`.
+3. In server component pages: call `getRolePermissions` and redirect if `none`, derive `canEdit`.
+4. In client component pages: use `usePermission('ชื่อ Resource')` from context.
+
+**Server page pattern:**
+```ts
+import { getRolePermissions } from '@/lib/permissions'
+// ...
+const perms = actor?.role ? await getRolePermissions(actor.role) : {}
+if ((perms['ชื่อ Resource'] ?? 'none') === 'none') redirect('/staff/dashboard')
+const canEdit = perms['ชื่อ Resource'] === 'edit'
+```
+
+**Client component pattern:**
+```tsx
+import { usePermission } from '@/context/PermissionContext'
+// ...
+const { canEdit } = usePermission('ชื่อ Resource')
+```
+
+**Do NOT** hardcode `['Admin', 'Manager'].includes(role)` to gate UI buttons — use the permission system above. The hardcoded pattern is only acceptable inside `allowedTransitions()` in DocumentsClient (document status workflow logic, not general access).
 
 ### Supabase Client Pattern
 
@@ -244,7 +286,9 @@ Documents are stored in **Cloudflare R2** (not Supabase Storage). Client: `lib/r
 
 `components/layout/StaffSidebar.tsx` computes the active nav item by finding the **longest matching href** (not `startsWith`) to prevent prefix collisions (e.g., `/staff/tests` vs `/staff/tests/categories`).
 
-Nav items with `role: 'Admin'` are hidden for non-Admin users.
+Nav items are filtered by two independent checks (both must pass):
+- `role: 'Admin'` — hard role gate (e.g., Settings, Categories); used only for items that must always be Admin-only regardless of permission matrix
+- `resource: 'ชื่อ Resource'` — hides the item when `userPermissions[resource] === 'none'`; permissions come from `lib/permission-resources.ts` via the layout
 
 ### Language Support
 
@@ -293,12 +337,17 @@ Status workflow: `Draft → Review → Approved → Published → Obsolete`. Tra
 
 ## Module Reference
 
-| Module | Staff Route | API Routes |
-|--------|-------------|------------|
-| Test Catalog | `/staff/tests/*` | `/api/admin/tests/` |
-| Categories | `/staff/tests/categories` | `/api/admin/categories` |
-| Documents | `/staff/documents`, `/staff/documents/master-list` | `/api/admin/documents/`, `/api/admin/documents/[id]/`, `/api/admin/documents/[id]/revisions/`, `/api/admin/documents/[id]/read`, `/api/admin/documents/purge-deleted` |
-| Users & Roles | `/staff/admin` | `/api/admin/users/` |
-| KPI | `/kpi/*` | — |
-| Lab Workload | `/lab-workload/*` | — |
-| TAT | `/tat/*` | — |
+| Module | Resource Key (lib/permission-resources.ts) | Staff Route | API Routes |
+|--------|---------------------------------------------|-------------|------------|
+| Test Catalog | `รายการตรวจ` | `/staff/tests/*` | `/api/admin/tests/` |
+| Categories | `รายการตรวจ` (Admin only) | `/staff/tests/categories` | `/api/admin/categories` |
+| Documents | `เอกสารคุณภาพ` | `/staff/documents` | `/api/admin/documents/`, `/api/admin/documents/[id]/`, `/api/admin/documents/[id]/revisions/`, `/api/admin/documents/[id]/read`, `/api/admin/documents/purge-deleted` |
+| Master List | `Master List` | `/staff/documents/master-list` | — |
+| News | `ข่าวสาร` | `/staff/news` | — |
+| Rejection Log | `ความเสี่ยง / Rejection` | `/staff/rejection` | — |
+| Risk Register | `ความเสี่ยง / Rejection` | `/staff/risk` | — |
+| Contracts | `สัญญา` | `/staff/contracts` | — |
+| KPI | `KPI` | `/kpi/*` | — |
+| Lab Workload | `Workload` | `/lab-workload/*` | — |
+| TAT | `TAT` | `/tat/*` | — |
+| Users & Roles | `User Management` | `/staff/admin` | `/api/admin/users/`, `/api/admin/permissions` |

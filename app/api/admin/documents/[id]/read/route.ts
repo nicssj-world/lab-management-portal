@@ -39,12 +39,10 @@ export async function POST(
     { expiresIn: 3600 }
   )
 
-  // Log the view — skip Admin role (fire-and-forget)
-  if (actor.role !== 'Admin') {
-    supabaseAdmin.from('document_access_logs')
-      .insert({ document_id: id, user_id: actor.id, action: 'view' })
-      .then(undefined, () => {})
-  }
+  // Log the view for all roles (fire-and-forget)
+  supabaseAdmin.from('document_access_logs')
+    .insert({ document_id: id, user_id: actor.id, action: 'view' })
+    .then(undefined, () => {})
 
   return NextResponse.json({ url, mime_type: doc.mime_type })
 }

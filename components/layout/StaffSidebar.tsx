@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
 import { useSettings } from '@/context/SettingsContext'
+import { useSidebar } from '@/context/SidebarContext'
 import { createClient } from '@/lib/supabase/client'
 
 interface NavItem {
@@ -16,24 +17,25 @@ interface NavItem {
   icon: string
   badge?: string
   role?: string | string[]
+  resource?: string
 }
 
 const NAV_ITEMS: (NavItem | null)[] = [
   { href: '/staff/dashboard',  th: 'แดชบอร์ด',           en: 'Dashboard',      icon: 'dash' },
-  { href: '/staff/tests',      th: 'รายการตรวจ',         en: 'Tests',          icon: 'flask' },
-  { href: '/staff/documents',             th: 'เอกสารคุณภาพ', en: 'Documents',   icon: 'doc' },
-  { href: '/staff/documents/master-list', th: 'Master List',  en: 'Master List', icon: 'book' },
-  { href: '/staff/tests/categories', th: 'หมวดหมู่การตรวจ', en: 'Categories', icon: 'beaker', role: 'Admin' },
-  { href: '/staff/news',       th: 'จัดการข่าวสาร',        en: 'News',           icon: 'bell', role: ['Admin', 'Manager'] },
-  { href: '/staff/rejection',  th: 'Rejection Log',       en: 'Rejection',      icon: 'alert' },
-  { href: '/staff/risk',       th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',  icon: 'shield' },
-  { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building' },
+  { href: '/staff/tests',      th: 'รายการตรวจ',         en: 'Tests',          icon: 'flask',    resource: 'รายการตรวจ' },
+  { href: '/staff/documents',             th: 'เอกสารคุณภาพ', en: 'Documents',   icon: 'doc',      resource: 'เอกสารคุณภาพ' },
+  { href: '/staff/documents/master-list', th: 'Master List',  en: 'Master List', icon: 'book',     resource: 'Master List' },
+  { href: '/staff/tests/categories', th: 'หมวดหมู่การตรวจ', en: 'Categories', icon: 'beaker',   resource: 'รายการตรวจ', role: 'Admin' },
+  { href: '/staff/news',       th: 'จัดการข่าวสาร',        en: 'News',           icon: 'bell',     resource: 'ข่าวสาร' },
+  { href: '/staff/rejection',  th: 'Rejection Log',       en: 'Rejection',      icon: 'alert',    resource: 'ความเสี่ยง / Rejection' },
+  { href: '/staff/risk',       th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',  icon: 'shield',   resource: 'ความเสี่ยง / Rejection' },
+  { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building', resource: 'สัญญา' },
   null,
-  { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart' },
-  { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker' },
-  { href: '/tat/dashboard',    th: 'Turnaround Time',     en: 'TAT',            icon: 'clock' },
+  { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',    resource: 'KPI' },
+  { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker',   resource: 'Workload' },
+  { href: '/tat/dashboard',    th: 'Turnaround Time',     en: 'TAT',            icon: 'clock',    resource: 'TAT' },
   null,
-  { href: '/staff/admin',      th: 'จัดการผู้ใช้',         en: 'Users & Roles',  icon: 'users', role: 'Admin' },
+  { href: '/staff/admin',      th: 'จัดการผู้ใช้',         en: 'Users & Roles',  icon: 'users',    resource: 'User Management' },
   { href: '/staff/settings',   th: 'ตั้งค่าระบบ',          en: 'Settings',       icon: 'settings', role: 'Admin' },
 ]
 
@@ -41,14 +43,15 @@ interface StaffSidebarProps {
   userRole?: string
   userName?: string
   userAvatar?: string
+  userPermissions?: Record<string, string>
 }
 
-export function StaffSidebar({ userRole, userName, userAvatar }: StaffSidebarProps) {
+export function StaffSidebar({ userRole, userName, userAvatar, userPermissions }: StaffSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { lang } = useLang()
   const { settings } = useSettings()
-  const [collapsed, setCollapsed] = useState(false)
+  const { collapsed } = useSidebar()
   const [testCount, setTestCount] = useState<number | null>(null)
   const [docCount, setDocCount]   = useState<number | null>(null)
   const w = collapsed ? 64 : 248
@@ -81,8 +84,8 @@ export function StaffSidebar({ userRole, userName, userAvatar }: StaffSidebarPro
         transition: 'width .2s', zIndex: 40,
       }}
     >
-      {/* Logo + collapse toggle */}
-      <div style={{ padding: collapsed ? '18px 12px' : '18px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* Logo */}
+      <div style={{ padding: collapsed ? '18px 12px' : '18px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center' }}>
         <Link href="/staff/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', flex: 1, minWidth: 0 }}>
           <Image
             src="/images/logo-chonburi.png"
@@ -94,20 +97,14 @@ export function StaffSidebar({ userRole, userName, userAvatar }: StaffSidebarPro
             style={{ height: 44, width: 'auto', objectFit: 'contain', flexShrink: 0 }}
           />
           {!collapsed && (
-            <div style={{ lineHeight: 1.1, overflow: 'hidden', flex: 1 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ lineHeight: 1.25, overflow: 'hidden', flex: 1 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                 {settings.orgName}
               </div>
-              <div style={{ fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{settings.siteName}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{settings.siteName}</div>
             </div>
           )}
         </Link>
-        <button
-          onClick={() => setCollapsed(c => !c)}
-          style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-        >
-          <Icon name="menu" size={14} />
-        </button>
       </div>
 
       {/* Nav */}
@@ -122,6 +119,10 @@ export function StaffSidebar({ userRole, userName, userAvatar }: StaffSidebarPro
           if (item.role) {
             const allowed = Array.isArray(item.role) ? item.role : [item.role]
             if (!allowed.includes(userRole ?? '')) return null
+          }
+          if (item.resource) {
+            const level = userPermissions?.[item.resource] ?? 'none'
+            if (level === 'none') return null
           }
           const active = bestMatch?.href === item.href
           return (

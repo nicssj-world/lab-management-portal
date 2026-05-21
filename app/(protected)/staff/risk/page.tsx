@@ -1,4 +1,6 @@
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getRolePermissions } from '@/lib/permissions'
 import { getRisks } from '@/lib/queries/risks'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -11,7 +13,9 @@ export default async function RiskPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: actor } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
-  const canEdit = ['Admin', 'Manager'].includes(actor?.role ?? '')
+  const perms = actor?.role ? await getRolePermissions(actor.role) : {}
+  if ((perms['ความเสี่ยง / Rejection'] ?? 'none') === 'none') redirect('/staff/dashboard')
+  const canEdit = perms['ความเสี่ยง / Rejection'] === 'edit'
 
   const risks = await getRisks(supabase)
 

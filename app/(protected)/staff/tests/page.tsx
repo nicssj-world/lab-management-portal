@@ -8,6 +8,7 @@ import { TestFilters } from '@/components/tests/TestFilters'
 import { TestTable } from '@/components/tests/TestTable'
 import { createClient } from '@/lib/supabase/client'
 import { getCategories } from '@/lib/queries/categories'
+import { usePermission } from '@/context/PermissionContext'
 import type { Test, Category } from '@/lib/supabase/types'
 
 const PAGE_SIZE = 20
@@ -22,32 +23,26 @@ export default function TestsPage() {
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
   const [allTotal, setAllTotal] = useState(0)
-  const [canEdit, setCanEdit] = useState(false)
   const [sortBy, setSortBy] = useState('code')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [deletedCount, setDeletedCount] = useState(0)
   const [purging, setPurging] = useState(false)
   const timer = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
+  const { canEdit } = usePermission('รายการตรวจ')
 
   useEffect(() => {
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: p } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-        const edit = ['Admin', 'Manager'].includes(p?.role ?? '')
-        setCanEdit(edit)
-        if (edit) {
-          fetch('/api/admin/tests/purge-deleted')
-            .then(r => r.json())
-            .then(d => setDeletedCount(d.count ?? 0))
-            .catch(() => {})
-        }
+      if (canEdit) {
+        fetch('/api/admin/tests/purge-deleted')
+          .then(r => r.json())
+          .then(d => setDeletedCount(d.count ?? 0))
+          .catch(() => {})
       }
       getCategories(supabase, false).then(setCategories)
     }
     init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canEdit]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const doLoad = useCallback(async (s: string, cat: string, tb: string, pg: number, sb: string, sd: 'asc' | 'desc') => {
     setLoading(true)

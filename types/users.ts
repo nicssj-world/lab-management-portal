@@ -1,4 +1,4 @@
-export type UserRole = 'Admin' | 'Manager' | 'Medical Technologist' | 'Assistant'
+export type UserRole = 'Admin' | 'Manager' | 'Medical Technologist' | 'Assistant' | 'Document Controller' | 'Medical Science Technician'
 export type UserStatus = 'active' | 'inactive' | 'pending'
 export type SortField = 'name' | 'role' | 'dept' | 'status' | 'created_at'
 export type SortDir = 'asc' | 'desc'

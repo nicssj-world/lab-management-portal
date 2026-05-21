@@ -27,17 +27,24 @@ export async function updateProfile(
 
 export type AuditLogWithUser = AuditLog & { user_name: string | null }
 
+// Actions that represent actual DB mutations (add/edit/delete)
+const CRUD_ACTIONS = [
+  'test.create', 'test.update', 'test.delete', 'test.bulk_delete',
+  'test.import', 'test.duplicate', 'test.purge_deleted',
+  'upload', 'edit', 'delete',
+]
+
 export async function getAuditLog(supabase: SupabaseClient, limit = 100): Promise<AuditLogWithUser[]> {
-  // Fetch more rows than needed to account for Admin-filtered entries
+  // Fetch extra rows to account for Admin entries that will be filtered out in memory
   const { data: logs, error } = await supabase
     .from('audit_log')
     .select('*')
+    .in('action', CRUD_ACTIONS)
     .order('created_at', { ascending: false })
-    .limit(limit * 3)
+    .limit(limit * 4)
   if (error) throw error
   if (!logs?.length) return []
 
-  // Resolve user names and roles via a separate query
   const userIds = [...new Set(logs.map((l) => l.user_id).filter(Boolean))]
   const { data: profileRows } = await supabase
     .from('profiles')
@@ -47,14 +54,11 @@ export async function getAuditLog(supabase: SupabaseClient, limit = 100): Promis
   const profileMap = new Map((profileRows ?? []).map((p) => [p.id, p]))
 
   return logs
+    .slice(0, limit)
     .map((log) => ({
       ...log,
       user_name: profileMap.get(log.user_id)?.name ?? null,
-      _role:     profileMap.get(log.user_id)?.role ?? null,
     }))
-    .filter((log) => log._role !== 'Admin')
-    .slice(0, limit)
-    .map(({ _role, ...log }) => log)
 }
 
 export async function writeAuditLog(

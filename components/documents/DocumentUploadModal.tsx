@@ -8,6 +8,7 @@ import type { Document } from '@/lib/supabase/types'
 
 interface Props {
   doc?: Document | null
+  userRole?: string
   onClose: () => void
   onSaved: (doc: Document) => void
 }
@@ -52,7 +53,10 @@ function deptFromCode(code: string): string | null {
   return null
 }
 
-export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
+export function DocumentUploadModal({ doc, userRole, onClose, onSaved }: Props) {
+  const availableStatuses = ['Admin', 'Document Controller'].includes(userRole ?? '')
+    ? DOC_STATUSES
+    : (['Draft', 'Review', 'Approved'] as const)
   const isEdit = !!doc
   const fileRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -237,7 +241,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
             <div>
               <label style={labelStyle}>สถานะ</label>
               <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ ...inputStyle }}>
-                {DOC_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                {availableStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           </div>

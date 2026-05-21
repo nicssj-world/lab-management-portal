@@ -8,10 +8,12 @@ import { KpiOverviewTable } from '@/components/kpi/KpiOverviewTable'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
+import { usePermission } from '@/context/PermissionContext'
 
 export default function KpiDashboardPage() {
   const [year, setYear] = useState(getCurrentThaiFiscalYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
+  const { canEdit } = usePermission('KPI')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -19,11 +21,11 @@ export default function KpiDashboardPage() {
         eyebrow="KPI"
         title="KPI Dashboard"
         subtitle="ภาพรวม KPI ทุกแผนก"
-        actions={
+        actions={canEdit ? (
           <Link href="/kpi/input">
             <Button variant="primary" icon="plus">บันทึกข้อมูล</Button>
           </Link>
-        }
+        ) : undefined}
       />
 
       {/* Selectors */}
