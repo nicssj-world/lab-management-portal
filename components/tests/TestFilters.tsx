@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Input } from '@/components/ui/Input'
 import type { Category } from '@/lib/supabase/types'
 
@@ -36,13 +36,21 @@ const TUBE_OPTIONS = [
 
 export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tube, onTubeChange, categories, total, filtered }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [isMobile, setIsMobile] = useState(false)
   const isFiltered = filtered !== total || !!search || !!categoryId || !!tube
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-      {/* Row 1: Search + Specimen + Count badge */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      {/* Row 1: Search */}
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 8, alignItems: isMobile ? 'stretch' : 'center' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Input
             icon="search"
@@ -53,39 +61,42 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
           />
         </div>
 
-        <select
-          value={tube}
-          onChange={e => onTubeChange(e.target.value)}
-          style={{
-            height: 44, padding: '0 36px 0 12px', borderRadius: 10,
-            border: `1.5px solid ${tube ? 'var(--primary)' : 'var(--border)'}`,
-            fontSize: 13, fontFamily: 'inherit',
-            color: tube ? 'var(--primary)' : 'var(--muted)',
-            backgroundColor: tube ? 'var(--primary-soft)' : 'var(--card)',
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'right 12px center',
-            cursor: 'pointer', outline: 'none',
-            minWidth: 170, fontWeight: tube ? 600 : 400,
-            appearance: 'none',
-          }}
-        >
-          <option value="">ทุก specimen</option>
-          {TUBE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-        </select>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select
+            value={tube}
+            onChange={e => onTubeChange(e.target.value)}
+            style={{
+              flex: isMobile ? 1 : 'none',
+              height: 44, padding: '0 36px 0 12px', borderRadius: 10,
+              border: `1.5px solid ${tube ? 'var(--primary)' : 'var(--border)'}`,
+              fontSize: 13, fontFamily: 'inherit',
+              color: tube ? 'var(--primary)' : 'var(--muted)',
+              backgroundColor: tube ? 'var(--primary-soft)' : 'var(--card)',
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 12px center',
+              cursor: 'pointer', outline: 'none',
+              minWidth: isMobile ? 0 : 170, fontWeight: tube ? 600 : 400,
+              appearance: 'none',
+            }}
+          >
+            <option value="">ทุก specimen</option>
+            {TUBE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+          </select>
 
-        {/* Result count chip */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          padding: '0 16px', height: 44, borderRadius: 10,
-          background: isFiltered ? 'var(--primary-soft)' : 'var(--surface-2)',
-          border: `1.5px solid ${isFiltered ? 'rgba(30,95,173,.25)' : 'var(--border)'}`,
-          whiteSpace: 'nowrap', flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 18, fontWeight: 800, color: isFiltered ? 'var(--primary)' : 'var(--ink)', lineHeight: 1 }}>
-            {filtered.toLocaleString()}
-          </span>
-          <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>รายการ</span>
+          {/* Result count chip */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '0 16px', height: 44, borderRadius: 10,
+            background: isFiltered ? 'var(--primary-soft)' : 'var(--surface-2)',
+            border: `1.5px solid ${isFiltered ? 'rgba(30,95,173,.25)' : 'var(--border)'}`,
+            whiteSpace: 'nowrap', flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 18, fontWeight: 800, color: isFiltered ? 'var(--primary)' : 'var(--ink)', lineHeight: 1 }}>
+              {filtered.toLocaleString()}
+            </span>
+            <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>รายการ</span>
+          </div>
         </div>
       </div>
 
@@ -97,7 +108,6 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
         >
           <style>{`.no-scrollbar::-webkit-scrollbar { display: none }`}</style>
 
-          {/* "ทั้งหมด" pill */}
           <button
             onClick={() => onCategoryChange('')}
             style={{

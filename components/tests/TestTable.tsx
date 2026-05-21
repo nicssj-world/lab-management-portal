@@ -7,6 +7,17 @@ import { Icon } from '@/components/ui/Icon'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Test, Category } from '@/lib/supabase/types'
 
+function useIsMobile() {
+  const [v, setV] = useState(false)
+  useEffect(() => {
+    const check = () => setV(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+  return v
+}
+
 interface Props {
   tests: Test[]
   categories: Category[]
@@ -83,6 +94,7 @@ export function TestTable({
   onSort, onPageChange, onDelete, onBulkDelete, getHref,
 }: Props) {
   const router = useRouter()
+  const isMobile = useIsMobile()
   const catMap = Object.fromEntries(categories.map(c => [c.id, c]))
   const totalPages = Math.ceil(total / pageSize)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -125,6 +137,90 @@ export function TestTable({
 
   if (!loading && tests.length === 0) {
     return <EmptyState icon="flask" title="ไม่พบรายการตรวจ" hint="ลองเปลี่ยนคำค้นหาหรือตัวกรอง" />
+  }
+
+  /* ── Mobile card list (public catalog only) ── */
+  if (isMobile && !canEdit) {
+    return (
+      <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {loading
+            ? Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px' }}>
+                  <div style={{ height: 14, borderRadius: 4, background: 'var(--surface-2)', width: 200, marginBottom: 8 }} />
+                  <div style={{ height: 11, borderRadius: 4, background: 'var(--surface-2)', width: 140 }} />
+                </div>
+              ))
+            : tests.map(t => {
+                const cat = catMap[t.category_id ?? '']
+                const tubeColor = t.tube_color ?? '#94A3B8'
+                const href = getHref ? getHref(t) : `/catalog/${t.code}`
+                return (
+                  <Link key={t.id} href={href} style={{ textDecoration: 'none' }}>
+                    <div
+                      style={{
+                        background: 'var(--card)', border: '1px solid var(--border)',
+                        borderRadius: 12, padding: '14px 16px',
+                        transition: 'box-shadow .15s',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)', lineHeight: 1.35 }}>{t.th}</div>
+                          {t.en && <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{t.en}</div>}
+                        </div>
+                        <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: 'var(--primary)', flexShrink: 0 }}>
+                          {t.code}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {cat && (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '2px 9px', borderRadius: 20,
+                            background: cat.color + '18', color: cat.color,
+                            fontSize: 11, fontWeight: 600, border: `1px solid ${cat.color}33`,
+                          }}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
+                            {cat.th}
+                          </span>
+                        )}
+                        {t.tube && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--muted)' }}>
+                            <span style={{ width: 8, height: 8, borderRadius: 2, background: tubeColor, flexShrink: 0 }} />
+                            {t.tube}
+                          </span>
+                        )}
+                        {t.price != null && (
+                          <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 13, color: 'var(--ink)' }}>
+                            ฿{Number(t.price).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })
+          }
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 4, marginTop: 16 }}>
+            <button disabled={page === 0} onClick={() => onPageChange(page - 1)} style={navBtnStyle(page === 0)}>
+              <Icon name="arrowLeft" size={14} />
+            </button>
+            <span style={{ fontSize: 13, color: 'var(--muted)', padding: '0 8px' }}>
+              {page + 1} / {totalPages}
+            </span>
+            <button disabled={page >= totalPages - 1} onClick={() => onPageChange(page + 1)} style={navBtnStyle(page >= totalPages - 1)}>
+              <Icon name="arrowRight" size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
