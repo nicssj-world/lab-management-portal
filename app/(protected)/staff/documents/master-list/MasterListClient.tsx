@@ -68,7 +68,7 @@ const PAGE_SIZE = 50
 // ── Main Component ─────────────────────────────────────────────
 interface Props { userRole?: string }
 
-export function MasterListClient({ userRole: _userRole }: Props) {
+export function MasterListClient({ userRole }: Props) {
 const { toasts, add: toast } = useToast()
 
   const [docs, setDocs]         = useState<Document[]>([])
@@ -84,8 +84,11 @@ const { toasts, add: toast } = useToast()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({})
+  const [exportMenu, setExportMenu]       = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
 
   const timer = useRef<NodeJS.Timeout | null>(null)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
 
   // One-time fetch to build type count summary (all docs, no filter)
   useEffect(() => {
@@ -168,6 +171,145 @@ const { toasts, add: toast } = useToast()
     setSearch(''); setActiveType('All'); setStatusFilter(''); setDepartment(''); setPage(0)
   }
 
+  // Close export dropdown on outside click
+  useEffect(() => {
+    if (!exportMenu) return
+    function handler(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) setExportMenu(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [exportMenu])
+
+  function buildMasterListHTML(allDocs: Document[], scope: 'filtered' | 'all'): string {
+    const fmtD = (s: string | null) =>
+      s ? new Date(s).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
+    const today = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+
+    const filterParts: string[] = []
+    if (scope === 'filtered') {
+      if (activeType && activeType !== 'All') filterParts.push(`ประเภท: ${activeType}`)
+      if (statusFilter) filterParts.push(`สถานะ: ${statusFilter}`)
+      if (department) filterParts.push(`แผนก: ${department}`)
+      if (search) filterParts.push(`ค้นหา: "${search}"`)
+    }
+
+    const ROWS_PER_PAGE = 18
+    const pages: (Document | null)[][] = []
+    for (let i = 0; i < Math.max(allDocs.length, 1); i += ROWS_PER_PAGE) {
+      pages.push(allDocs.slice(i, i + ROWS_PER_PAGE))
+    }
+
+    const theadHtml = `<thead><tr>
+      <th class="c">ลำดับ</th>
+      <th>รหัสเอกสาร</th>
+      <th class="l wrap col-fill">ชื่อเอกสาร</th>
+      <th class="c">ประเภท</th>
+      <th class="c">Rev.</th>
+      <th class="c">สถานะ</th>
+      <th class="c">วันที่ทบทวน</th>
+      <th class="c">วันที่บังคับใช้</th>
+      <th class="c wrap col-fill-sm">แผนก</th>
+      <th class="c">ผู้จัดทำ</th>
+      <th class="c">ผู้รับรอง</th>
+      <th class="c">ผู้อนุมัติ</th>
+    </tr></thead>`
+
+    let rowIdx = 1
+    const pagesHtml = pages.map((page, pageIndex) => {
+      const isLastPage = pageIndex === pages.length - 1
+      const filledRows = [...page]
+      if (!isLastPage) {
+        while (filledRows.length < ROWS_PER_PAGE) filledRows.push(null)
+      }
+      const tbodyHtml = filledRows.map((doc) => {
+        if (!doc) return `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`
+        return `<tr>
+          <td class="c muted">${rowIdx++}</td>
+          <td class="c mono">${doc.document_code}</td>
+          <td class="l wrap col-fill">${doc.title}</td>
+          <td class="c">${doc.type}</td>
+          <td class="c muted">${doc.revision}</td>
+          <td class="c">${doc.status}</td>
+          <td class="c muted">${fmtD(doc.expiry_date)}</td>
+          <td class="c muted">${fmtD(doc.effective_date)}</td>
+          <td class="c wrap col-fill-sm">${doc.department || '—'}</td>
+          <td class="c muted">${doc.owner_name || '—'}</td>
+          <td class="c muted">${doc.reviewer_name || '—'}</td>
+          <td class="c muted">${doc.approver_name || '—'}</td>
+        </tr>`
+      }).join('')
+      return `
+        <div class="page">
+          <div class="page-header">
+            <div class="main-title">บัญชีรายการเอกสารคุณภาพ (Master List)</div>
+            <div class="sub-title">กลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี</div>
+            <div class="meta-row">
+              <span>${filterParts.length ? filterParts.join(' · ') : 'แสดงเอกสารทั้งหมด'}</span>
+              <span>วันที่พิมพ์: ${today}</span>
+            </div>
+          </div>
+          <table>${theadHtml}<tbody>${tbodyHtml}</tbody></table>
+          <div class="page-footer">
+            <span class="footer-spacer"></span>
+            <span class="footer-center">เอกสารนี้เป็นสมบัติของกลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี ห้ามนำออกไปใช้ภายนอกหรือทำซ้ำโดยไม่ได้รับอนุญาต</span>
+            <span class="footer-right">Fm-QP-LAB-01/ML</span>
+          </div>
+        </div>`
+    }).join('')
+
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Master List</title><style>
+      @page { size: A4 landscape; margin: 8mm 10mm; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: 'TH Sarabun New','Sarabun','Cordia New',Arial,sans-serif; font-size: 9.5pt; color: #000; }
+      .page { page-break-after: always; display: flex; flex-direction: column; height: 192mm; }
+      .page:last-child { page-break-after: avoid; }
+      .page-header { text-align: center; margin-bottom: 6px; flex-shrink: 0; }
+      .main-title { font-size: 16pt; font-weight: bold; line-height: 1.5; }
+      .sub-title  { font-size: 14pt; font-weight: bold; line-height: 1.4; }
+      .meta-row   { display: flex; justify-content: space-between; font-size: 9pt; color: #555; margin-top: 3px; padding: 0 4px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 4px; flex-shrink: 0; table-layout: auto; }
+      .col-fill    { width: 999px; }
+      .col-fill-sm { width: 300px; }
+      th, td { border: 1px solid #000; padding: 2px 4px; font-size: 9pt; height: 22px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      th { background: #f0f0f0; font-weight: bold; text-align: center; }
+      .c { text-align: center; }
+      .l { text-align: left; }
+      .wrap { white-space: normal; overflow: visible; text-overflow: clip; word-break: break-word; height: auto; min-height: 22px; vertical-align: top; padding-top: 4px; padding-bottom: 4px; }
+      .muted { color: #444; }
+      .mono { font-family: monospace; font-size: 8.5pt; }
+      .page-footer { display: flex; align-items: center; font-size: 9pt; color: #666; margin-top: auto; padding-top: 3px; border-top: 1px solid #bbb; flex-shrink: 0; }
+      .footer-spacer { flex: 1; }
+      .footer-center { flex: 0 1 auto; text-align: center; }
+      .footer-right { flex: 1; text-align: right; white-space: nowrap; }
+    </style></head><body>${pagesHtml}</body></html>`
+  }
+
+  async function downloadMasterListPDF(scope: 'filtered' | 'all') {
+    setExportMenu(false)
+    setExportLoading(true)
+    try {
+      const sp = new URLSearchParams({ pageSize: '9999', sortBy, sortDir })
+      if (scope === 'filtered') {
+        if (activeType && activeType !== 'All') sp.set('type', activeType)
+        if (statusFilter) sp.set('status', statusFilter)
+        if (department)   sp.set('department', department)
+        if (search)       sp.set('search', search)
+      }
+      const json = await fetch(`/api/admin/documents?${sp}`).then(r => r.json())
+      const allDocs: Document[] = json.data ?? []
+      const html = buildMasterListHTML(allDocs, scope)
+      const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
+      const win = window.open(blobUrl, '_blank')
+      if (!win) { URL.revokeObjectURL(blobUrl); return }
+      win.addEventListener('load', () => { win.print(); URL.revokeObjectURL(blobUrl) }, { once: true })
+    } catch {
+      toast('ไม่สามารถ Export PDF ได้', false)
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
   const hasFilter = search || activeType !== 'All' || statusFilter || department
   const totalPages = Math.ceil(count / PAGE_SIZE)
 
@@ -242,6 +384,45 @@ const { toasts, add: toast } = useToast()
             ล้างตัวกรอง
           </button>
         )}
+
+        {/* Export PDF split button */}
+        <div ref={exportMenuRef} style={{ position: 'relative', marginLeft: 'auto' }}>
+          <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+            <button
+              onClick={() => downloadMasterListPDF('filtered')}
+              disabled={exportLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'transparent', border: 'none', fontSize: 12.5, fontFamily: 'inherit', color: 'var(--ink)', cursor: exportLoading ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: exportLoading ? .6 : 1 }}
+            >
+              <Icon name="download" size={13} />
+              {exportLoading ? 'กำลัง Export...' : 'Export PDF'}
+            </button>
+            <button
+              onClick={() => setExportMenu(v => !v)}
+              disabled={exportLoading}
+              style={{ display: 'flex', alignItems: 'center', padding: '8px 8px', background: 'transparent', border: 'none', borderLeft: '1px solid var(--border)', cursor: exportLoading ? 'not-allowed' : 'pointer', color: 'var(--muted)' }}
+            >
+              <Icon name="chevDown" size={12} />
+            </button>
+          </div>
+          {exportMenu && (
+            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', zIndex: 200, minWidth: 180, overflow: 'hidden' }}>
+              <button onClick={() => downloadMasterListPDF('filtered')}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'transparent', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', color: 'var(--ink)' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                Export ตามตัวกรองปัจจุบัน
+              </button>
+              <button onClick={() => downloadMasterListPDF('all')}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'transparent', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', color: 'var(--ink)', borderTop: '1px solid var(--border)' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                Export ทุกเอกสาร
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Type tabs */}
@@ -428,6 +609,7 @@ const { toasts, add: toast } = useToast()
       {/* Upload Modal */}
       {modalOpen && (
         <DocumentUploadModal
+          userRole={userRole}
           onClose={() => setModalOpen(false)}
           onSaved={handleAdded}
         />

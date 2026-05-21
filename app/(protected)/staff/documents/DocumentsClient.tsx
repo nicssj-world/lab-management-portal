@@ -51,13 +51,13 @@ const STATUS_LABEL: Record<DocStatus, string> = {
 const ALL_STATUSES: DocStatus[] = ['Draft', 'Review', 'Approved', 'Published', 'Obsolete']
 
 function allowedTransitions(current: DocStatus, role: string): DocStatus[] {
-  const isManager = ['Admin', 'Manager'].includes(role)
-  const isEditor  = ['Admin', 'Manager', 'Medical Technologist'].includes(role)
+  const canChange = ['Admin', 'Document Controller'].includes(role)
+  if (!canChange) return []
   switch (current) {
-    case 'Draft':     return isEditor  ? ['Review']              : []
-    case 'Review':    return isManager ? ['Approved', 'Draft']   : []
-    case 'Approved':  return isManager ? ['Published', 'Review'] : []
-    case 'Published': return isManager ? ['Obsolete']            : []
+    case 'Draft':     return ['Review']
+    case 'Review':    return ['Approved', 'Draft']
+    case 'Approved':  return ['Published', 'Review']
+    case 'Published': return ['Obsolete']
     default:          return []
   }
 }
@@ -222,13 +222,13 @@ function StatusModal({ doc, userRole, onClose, onSaved, toast }: {
 }
 
 // ── Revision History Panel ─────────────────────────────────────
-function RevisionPanel({ doc, onClose, onDownload, userRole }: {
+function RevisionPanel({ doc, onClose, onDownload, userRole, canAdd }: {
   doc: Document
   onClose: () => void
   onDownload: (path: string) => void
   userRole: string
+  canAdd: boolean
 }) {
-  const canAdd = ['Admin', 'Manager'].includes(userRole)
 
   const [revisions, setRevisions] = useState<RevisionRow[]>([])
   const [loading, setLoading]     = useState(true)
@@ -735,10 +735,12 @@ function RevisionPanel({ doc, onClose, onDownload, userRole }: {
 // ── Read Modal ────────────────────────────────────────────────
 interface ReadLog { id: string; user_id: string; created_at: string; profiles: { name: string; role: string } | null }
 
-function ReadModal({ doc, userRole, onClose }: {
+function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds }: {
   doc: Document
   userRole: string
+  canViewLog: boolean
   onClose: () => void
+  onResetReadIds: (docId: string | null) => void
 }) {
   const [url, setUrl]         = useState<string | null>(null)
   const [mime, setMime]       = useState<string | null>(null)
@@ -746,7 +748,8 @@ function ReadModal({ doc, userRole, onClose }: {
   const [errMsg, setErrMsg]   = useState('')
   const [logs, setLogs]       = useState<ReadLog[]>([])
   const [showLog, setShowLog] = useState(false)
-  const canViewLog = ['Admin', 'Manager'].includes(userRole)
+  const [resetConfirm, setResetConfirm] = useState(false)
+  const [resetting, setResetting]       = useState(false)
   const didLog = useRef(false)
 
   useEffect(() => {
@@ -771,6 +774,18 @@ function ReadModal({ doc, userRole, onClose }: {
       .catch(() => {})
   }
 
+  async function handleReset(scope: 'single' | 'all') {
+    setResetting(true)
+    const url = scope === 'single'
+      ? `/api/admin/documents/read-logs?scope=single&docId=${doc.id}`
+      : `/api/admin/documents/read-logs?scope=all`
+    await fetch(url, { method: 'DELETE' }).catch(() => {})
+    setLogs([])
+    setResetConfirm(false)
+    setResetting(false)
+    onResetReadIds(scope === 'single' ? doc.id : null)
+  }
+
   function downloadReadLog() {
     const TYPE_LABEL: Record<string, string> = {
       QP: 'ระเบียบปฏิบัติ QP',
@@ -782,17 +797,17 @@ function ReadModal({ doc, userRole, onClose }: {
       Others: 'เอกสารอื่นๆ',
     }
     const posLabel = (role: string | undefined) => {
-      if (role === 'Manager' || role === 'Medical Technologist') return 'นักเทคนิคการแพทย์'
+      if (role === 'Manager' || role === 'Medical Technologist' || role === 'Document Controller' || role === 'Admin') return 'นักเทคนิคการแพทย์'
       if (role === 'Assistant') return 'พนักงานประจำห้องทดลอง'
+      if (role === 'Medical Science Technician') return 'เจ้าพนักงานวิทยาศาสตร์การแพทย์'
       return ''
     }
     const fmtDate = (iso: string) =>
       new Date(iso).toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
-    // Deduplicate: keep latest record per user (exclude Admin)
+    // Deduplicate: keep latest record per user (all roles)
     const seen = new Map<string, ReadLog>()
     for (const log of logs) {
-      if (log.profiles?.role === 'Admin') continue
       const uid = log.user_id
       if (!seen.has(uid) || new Date(log.created_at) > new Date(seen.get(uid)!.created_at)) {
         seen.set(uid, log)
@@ -943,33 +958,69 @@ function ReadModal({ doc, userRole, onClose }: {
         {/* Read log panel */}
         {showLog && (
           <div style={{ width: 300, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>ผู้ที่อ่านเอกสาร</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                {logs.length > 0 && (
-                  <button onClick={downloadReadLog} title="ดาวน์โหลด PDF" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'flex', alignItems: 'center' }}>
-                    <Icon name="download" size={14} />
-                  </button>
-                )}
-                <button onClick={() => setShowLog(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 2 }}><Icon name="x" size={14} /></button>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>ผู้ที่อ่านเอกสาร</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {logs.length > 0 && (
+                    <button onClick={downloadReadLog} title="ดาวน์โหลด PDF" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'flex', alignItems: 'center' }}>
+                      <Icon name="download" size={14} />
+                    </button>
+                  )}
+                  {userRole === 'Admin' && (
+                    <button onClick={() => setResetConfirm((v) => !v)} title="Reset read log" style={{ background: 'none', border: 'none', cursor: 'pointer', color: resetConfirm ? 'var(--danger)' : 'var(--muted)', padding: 4, display: 'flex', alignItems: 'center' }}>
+                      <Icon name="trash" size={14} />
+                    </button>
+                  )}
+                  <button onClick={() => setShowLog(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 2 }}><Icon name="x" size={14} /></button>
+                </div>
               </div>
+              {resetConfirm && (
+                <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.2)' }}>
+                  <div style={{ fontSize: 11.5, color: 'var(--danger)', fontWeight: 600, marginBottom: 8 }}>ลบ Read log ทั้งหมด?</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button disabled={resetting} onClick={() => handleReset('single')}
+                      style={{ flex: 1, padding: '5px 0', borderRadius: 6, border: '1px solid rgba(220,38,38,.4)', background: 'transparent', cursor: resetting ? 'not-allowed' : 'pointer', fontSize: 11.5, fontWeight: 600, color: 'var(--danger)', fontFamily: 'inherit', opacity: resetting ? .5 : 1 }}>
+                      เอกสารนี้
+                    </button>
+                    <button disabled={resetting} onClick={() => handleReset('all')}
+                      style={{ flex: 1, padding: '5px 0', borderRadius: 6, border: 'none', background: 'var(--danger)', cursor: resetting ? 'not-allowed' : 'pointer', fontSize: 11.5, fontWeight: 600, color: '#fff', fontFamily: 'inherit', opacity: resetting ? .5 : 1 }}>
+                      ทุกเอกสาร
+                    </button>
+                    <button onClick={() => setResetConfirm(false)}
+                      style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 11.5, color: 'var(--muted)', fontFamily: 'inherit' }}>
+                      ยกเลิก
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
               {logs.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '24px 0', fontSize: 12, color: 'var(--muted)' }}>ยังไม่มีผู้อ่าน</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {logs.map((log) => (
-                    <div key={log.id} style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)' }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>{log.profiles?.name ?? 'ไม่ทราบชื่อ'}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{log.profiles?.role}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
-                        {new Date(log.created_at).toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              ) : (() => {
+                const seen = new Map<string, ReadLog>()
+                for (const log of logs) {
+                  const uid = log.user_id
+                  if (!seen.has(uid) || new Date(log.created_at) > new Date(seen.get(uid)!.created_at)) {
+                    seen.set(uid, log)
+                  }
+                }
+                const unique = Array.from(seen.values()).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {unique.map((log) => (
+                      <div key={log.user_id} style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>{log.profiles?.name ?? 'ไม่ทราบชื่อ'}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{log.profiles?.role}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+                          {new Date(log.created_at).toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
           </div>
         )}
@@ -982,12 +1033,12 @@ function ReadModal({ doc, userRole, onClose }: {
 }
 
 // ── Main component ─────────────────────────────────────────────
-interface Props { userRole?: string }
+interface Props { userRole?: string; canEdit?: boolean }
 
-export function DocumentsClient({ userRole }: Props) {
-  const canUpload = ['Admin', 'Manager'].includes(userRole ?? '')
-  const canDelete = ['Admin', 'Manager'].includes(userRole ?? '')
-  const canRead   = !!userRole
+export function DocumentsClient({ userRole, canEdit = false }: Props) {
+  const canUpload = canEdit
+  const canDelete = canEdit
+  const canRead   = true
 
   const { toasts, add: toast } = useToast()
 
@@ -1018,12 +1069,21 @@ export function DocumentsClient({ userRole }: Props) {
   const [readDoc, setReadDoc]     = useState<Document | null>(null)
 
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({})
+  const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
 
   // Debounce search input: immediate clear, 350ms delay when typing
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), search ? 350 : 0)
     return () => clearTimeout(t)
   }, [search])
+
+  // Fetch read doc IDs for current user on mount
+  useEffect(() => {
+    fetch('/api/admin/documents/my-reads')
+      .then((r) => r.json())
+      .then((ids: string[]) => { if (Array.isArray(ids)) setReadDocIds(new Set(ids)) })
+      .catch(() => {})
+  }, [])
 
   // Fetch type distribution + deleted count once on mount
   useEffect(() => {
@@ -1303,7 +1363,7 @@ export function DocumentsClient({ userRole }: Props) {
                     </button>
                   </th>
                   {['TYPE', 'Status', 'REVISION', 'เผยแพร่', 'ผู้จัดทำ', 'แก้ไขล่าสุด', 'ขนาด', ''].map((h, i) => (
-                    <th key={i} style={{ padding: '11px 16px', fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.07em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+                    <th key={i} style={{ padding: '11px 16px', fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.07em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', textAlign: i < 7 ? 'center' : 'left' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1345,12 +1405,12 @@ export function DocumentsClient({ userRole }: Props) {
                         </td>
 
                         {/* 2. Type */}
-                        <td style={{ padding: '13px 16px', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '13px 16px', whiteSpace: 'nowrap', textAlign: 'center' }}>
                           <Badge color={TYPE_COLORS[doc.type] ?? 'gray'} size="sm">{doc.type}</Badge>
                         </td>
 
                         {/* 3. Status — clickable to change */}
-                        <td style={{ padding: '13px 16px', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '13px 16px', whiteSpace: 'nowrap', textAlign: 'center' }}>
                           <button
                             onClick={() => canChangeStatus ? setStatusDoc(doc) : undefined}
                             title={canChangeStatus ? 'คลิกเพื่อเปลี่ยนสถานะ' : STATUS_LABEL[docStatus]}
@@ -1361,40 +1421,45 @@ export function DocumentsClient({ userRole }: Props) {
                         </td>
 
                         {/* 4. Revision */}
-                        <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', textAlign: 'center' }}>
                           Rev.&nbsp;{doc.revision}
                         </td>
 
                         {/* 5. Visibility */}
-                        <td style={{ padding: '13px 16px', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '13px 16px', whiteSpace: 'nowrap', textAlign: 'center' }}>
                           <Badge color={doc.visibility === 'Public' ? 'green' : 'amber'} size="sm" dot>
                             {doc.visibility === 'Public' ? 'เผยแพร่' : 'ภายใน'}
                           </Badge>
                         </td>
 
                         {/* 6. Owner */}
-                        <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 140 }}>
+                        <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 140, textAlign: 'center' }}>
                           <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.owner_name ?? '—'}</div>
                         </td>
 
                         {/* 7. Updated */}
-                        <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDate(doc.updated_at)}</td>
+                        <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', textAlign: 'center' }}>{fmtDate(doc.updated_at)}</td>
 
                         {/* 8. Size */}
-                        <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap' }}>{fmtSize(doc.file_size)}</td>
+                        <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', textAlign: 'center' }}>{fmtSize(doc.file_size)}</td>
 
                         {/* 9. Actions */}
                         <td style={{ padding: '13px 16px', whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'flex', gap: 4 }}>
                             {/* Read */}
-                            {canRead && (
-                              <button onClick={() => setReadDoc(doc)} title="อ่านเอกสาร"
-                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px', height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--muted)', fontFamily: 'inherit', transition: 'all .12s' }}
-                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
-                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
-                                <Icon name="eye" size={13} /> Read
-                              </button>
-                            )}
+                            {canRead && (() => {
+                              const hasRead = readDocIds.has(doc.id)
+                              return (
+                                <button
+                                  onClick={() => { setReadDoc(doc); setReadDocIds((prev) => new Set(prev).add(doc.id)) }}
+                                  title="อ่านเอกสาร"
+                                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px', height: 32, borderRadius: 7, border: `1px solid ${hasRead ? 'var(--success)' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: hasRead ? 'var(--success)' : 'var(--muted)', fontFamily: 'inherit', transition: 'all .12s' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--success)'; e.currentTarget.style.color = 'var(--success)' }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = hasRead ? 'var(--success)' : 'var(--border)'; e.currentTarget.style.color = hasRead ? 'var(--success)' : 'var(--muted)' }}>
+                                  <Icon name="eye" size={13} /> Read
+                                </button>
+                              )
+                            })()}
                             {/* Download */}
                             <button onClick={() => handleDownload(doc.file_url)} title="ดาวน์โหลด"
                               style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s' }}
@@ -1469,12 +1534,21 @@ export function DocumentsClient({ userRole }: Props) {
 
       {/* Read Modal */}
       {readDoc && (
-        <ReadModal doc={readDoc} userRole={userRole ?? ''} onClose={() => setReadDoc(null)} />
+        <ReadModal
+          doc={readDoc}
+          userRole={userRole ?? ''}
+          canViewLog={canUpload}
+          onClose={() => setReadDoc(null)}
+          onResetReadIds={(docId) => {
+            if (docId === null) setReadDocIds(new Set())
+            else setReadDocIds((prev) => { const next = new Set(prev); next.delete(docId); return next })
+          }}
+        />
       )}
 
       {/* Upload / Edit Modal */}
       {modalOpen && (
-        <DocumentUploadModal doc={editDoc} onClose={() => { setModalOpen(false); setEditDoc(null) }} onSaved={handleSaved} />
+        <DocumentUploadModal doc={editDoc} userRole={userRole} onClose={() => { setModalOpen(false); setEditDoc(null) }} onSaved={handleSaved} />
       )}
 
       {/* Status Change Modal */}
@@ -1495,6 +1569,7 @@ export function DocumentsClient({ userRole }: Props) {
           onClose={() => setRevDoc(null)}
           onDownload={handleDownload}
           userRole={userRole ?? ''}
+          canAdd={canUpload}
         />
       )}
 

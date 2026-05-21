@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
+import { useSidebar } from '@/context/SidebarContext'
 
 const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/dashboard':        { th: 'แดชบอร์ดภาพรวม',              en: 'Dashboard Overview' },
@@ -38,6 +39,7 @@ const BTN: React.CSSProperties = {
 export function StaffTopbar() {
   const pathname = usePathname()
   const { lang, setLang } = useLang()
+  const { toggle } = useSidebar()
   const [dark, setDark] = useState(false)
 
   useEffect(() => {
@@ -63,6 +65,10 @@ export function StaffTopbar() {
         position: 'sticky', top: 0, zIndex: 30,
       }}
     >
+      {/* Hamburger + title */}
+      <button onClick={toggle} style={{ ...BTN, flexShrink: 0 }} title="ย่อ/ขยาย sidebar">
+        <Icon name="menu" size={15} />
+      </button>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {lang === 'th' ? title.th : title.en}

@@ -12,6 +12,7 @@ import { TATDeptChart } from '@/components/tat/TATDeptChart'
 import { TATHistogram } from '@/components/tat/TATHistogram'
 import { TATHeatmap } from '@/components/tat/TATHeatmap'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
+import { usePermission } from '@/context/PermissionContext'
 
 interface TATSummary {
   avgTAT: number | null
@@ -29,6 +30,7 @@ export default function TATDashboardPage() {
   const [year, setYear] = useState(getCurrentThaiFiscalYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const [dept, setDept] = useState('')
+  const { canEdit } = usePermission('TAT')
 
   const [summary, setSummary] = useState<TATSummary>({ avgTAT: null, pctOnTarget: null, totalSamples: 0, peakHour: null })
   const [trend, setTrend] = useState<TrendRow[]>([])
@@ -67,11 +69,11 @@ export default function TATDashboardPage() {
         eyebrow="TAT"
         title="Turnaround Time"
         subtitle="วิเคราะห์ระยะเวลารายงานผล"
-        actions={
+        actions={canEdit ? (
           <Link href="/tat/import">
             <Button variant="primary" icon="plus">นำเข้าข้อมูล</Button>
           </Link>
-        }
+        ) : undefined}
       />
 
       <TATMonthFilter

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
+import { Icon } from '@/components/ui/Icon'
 import { ReferenceRangePaste, isJsonTable } from './ReferenceRangePaste'
 import { TestDocuments } from './TestDocuments'
 import type { TestFormData, ReferenceRangeRow } from '@/lib/validations/test-schema' // ReferenceRangeRow used by initialRanges prop
@@ -414,13 +415,18 @@ export function TestForm({ categories, initial, initialRanges, testId }: Props) 
         </div>
       </Card>
 
-      {/* G: เอกสารที่เกี่ยวข้อง — edit mode only */}
-      {isEdit && testId != null && (
-        <Card>
-          <SectionHeader title="G. เอกสารที่เกี่ยวข้อง" />
+      {/* G: เอกสารที่เกี่ยวข้อง */}
+      <Card>
+        <SectionHeader title="G. เอกสารที่เกี่ยวข้อง" />
+        {isEdit && testId != null ? (
           <TestDocuments testId={testId} />
-        </Card>
-      )}
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 8, background: 'var(--surface-2)', border: '1px dashed var(--border)' }}>
+            <Icon name="doc" size={15} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+            <span style={{ fontSize: 13, color: 'var(--muted)' }}>บันทึกรายการตรวจก่อน เพื่อเพิ่มเอกสารที่เกี่ยวข้อง</span>
+          </div>
+        )}
+      </Card>
 
       {/* Actions */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingBottom: 40 }}>

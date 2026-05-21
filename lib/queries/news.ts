@@ -4,6 +4,7 @@ import type { News } from '@/lib/supabase/types'
 export interface NewsFilters {
   cat?: string
   publishedOnly?: boolean
+  isNew?: boolean
   search?: string
   limit?: number
 }
@@ -12,8 +13,11 @@ export async function getNews(supabase: SupabaseClient, filters: NewsFilters = {
   let query = supabase.from('news').select('*').order('created_at', { ascending: false })
 
   if (filters.publishedOnly) query = query.eq('published', true)
-  if (filters.cat) query = query.eq('cat', filters.cat)
-  if (filters.search) query = query.ilike('title', `%${filters.search}%`)
+  if (filters.cat)    query = query.eq('cat', filters.cat)
+  if (filters.isNew)  query = query.eq('is_new', true)
+  if (filters.search) {
+    query = query.or(`title.ilike.%${filters.search}%,excerpt.ilike.%${filters.search}%`)
+  }
   if (filters.limit) query = query.limit(filters.limit)
 
   const { data, error } = await query
@@ -53,13 +57,13 @@ export async function incrementNewsViews(supabase: SupabaseClient, id: number): 
 export async function getAdjacentNews(
   supabase: SupabaseClient,
   id: number
-): Promise<{ prev: News | null; next: News | null }> {
+): Promise<{ prev: Pick<News, 'id' | 'title'> | null; next: Pick<News, 'id' | 'title'> | null }> {
   const [prevRes, nextRes] = await Promise.all([
     supabase.from('news').select('id, title').eq('published', true).lt('id', id).order('id', { ascending: false }).limit(1),
     supabase.from('news').select('id, title').eq('published', true).gt('id', id).order('id').limit(1),
   ])
   return {
-    prev: prevRes.data?.[0] ?? null,
-    next: nextRes.data?.[0] ?? null,
+    prev: (prevRes.data?.[0] as Pick<News, 'id' | 'title'> | undefined) ?? null,
+    next: (nextRes.data?.[0] as Pick<News, 'id' | 'title'> | undefined) ?? null,
   }
 }

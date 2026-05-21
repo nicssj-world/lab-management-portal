@@ -41,8 +41,8 @@ function useToast() {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const ROLE_COLORS: Record<string, 'red' | 'blue' | 'teal' | 'gray'> = {
-  Admin: 'red', Manager: 'blue', 'Medical Technologist': 'teal', Assistant: 'gray',
+const ROLE_COLORS: Record<string, 'red' | 'blue' | 'teal' | 'gray' | 'purple' | 'amber'> = {
+  Admin: 'red', Manager: 'blue', 'Medical Technologist': 'teal', Assistant: 'gray', 'Document Controller': 'purple', 'Medical Science Technician': 'amber',
 }
 const STATUS_COLORS: Record<string, 'green' | 'amber' | 'gray'> = {
   active: 'green', pending: 'amber', inactive: 'gray',
@@ -294,15 +294,39 @@ type ImportRow = {
 
 function downloadTemplate() {
   import('xlsx').then(({ utils, writeFile }) => {
+    const wb = utils.book_new()
+
+    // Sheet 1: Users (template)
     const headers = ['ชื่อ-นามสกุล', 'E-Phis', 'บทบาท', 'แผนก']
     const examples = [
       ['สมศรี ใจดี', '10001', 'Medical Technologist', DEPARTMENTS[0]],
       ['วิชัย มานะ', '10002', 'Assistant', DEPARTMENTS[1]],
     ]
-    const ws = utils.aoa_to_sheet([headers, ...examples])
-    ws['!cols'] = [{ wch: 28 }, { wch: 10 }, { wch: 22 }, { wch: 40 }]
-    const wb = utils.book_new()
-    utils.book_append_sheet(wb, ws, 'Users')
+    const wsUsers = utils.aoa_to_sheet([headers, ...examples])
+    wsUsers['!cols'] = [{ wch: 28 }, { wch: 10 }, { wch: 26 }, { wch: 44 }]
+    utils.book_append_sheet(wb, wsUsers, 'Users')
+
+    // Sheet 2: บทบาท
+    const wsRoles = utils.aoa_to_sheet([
+      ['บทบาท (Role)', 'คำอธิบาย'],
+      ['Admin',                     'ผู้ดูแลระบบ — สิทธิ์เต็ม'],
+      ['Manager',                   'ผู้จัดการ — จัดการข้อมูลและผู้ใช้'],
+      ['Document Controller',       'ควบคุมเอกสาร'],
+      ['Medical Technologist',      'นักเทคนิคการแพทย์'],
+      ['Medical Science Technician','นักวิทยาศาสตร์การแพทย์'],
+      ['Assistant',                 'ผู้ช่วย — ดูข้อมูลได้อย่างเดียว'],
+    ])
+    wsRoles['!cols'] = [{ wch: 28 }, { wch: 36 }]
+    utils.book_append_sheet(wb, wsRoles, 'บทบาท')
+
+    // Sheet 3: แผนก
+    const wsDepts = utils.aoa_to_sheet([
+      ['แผนก (Department)'],
+      ...DEPARTMENTS.map((d) => [d]),
+    ])
+    wsDepts['!cols'] = [{ wch: 52 }]
+    utils.book_append_sheet(wb, wsDepts, 'แผนก')
+
     writeFile(wb, 'user-import-template.xlsx')
   })
 }
@@ -478,7 +502,7 @@ function ImportModal({ onClose, onDone, showToast }: {
                         <td style={{ padding: '7px 12px', fontWeight: 500 }}>{r.name || <span style={{ color: 'var(--muted)' }}>—</span>}</td>
                         <td style={{ padding: '7px 12px', fontFamily: 'monospace' }}>{r.ephis_id || '—'}</td>
                         <td style={{ padding: '7px 12px' }}>{r.role || '—'}</td>
-                        <td style={{ padding: '7px 12px', color: 'var(--muted)', fontSize: 11.5 }}>{DEPT_ABBR[r.dept] ?? (r.dept || '—')}</td>
+                        <td style={{ padding: '7px 12px', color: 'var(--muted)', fontSize: 11.5 }}>{r.dept || '—'}</td>
                         <td style={{ padding: '7px 12px' }}>
                           {r.error
                             ? <span style={{ color: '#B91C1C', fontSize: 11.5 }}>✕ {r.error}</span>
@@ -682,7 +706,7 @@ export function AdminUserClient() {
         </Sel>
 
         <Sel value={filters.dept} onChange={(v) => applyFilter({ dept: v })} placeholder="แผนกทั้งหมด">
-          {DEPARTMENTS.map((d) => <option key={d} value={d}>{DEPT_ABBR[d] ?? d}</option>)}
+          {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
         </Sel>
 
         <Sel value={filters.status} onChange={(v) => applyFilter({ status: v as UserStatus | '' })} placeholder="สถานะทั้งหมด">
@@ -758,7 +782,7 @@ export function AdminUserClient() {
                       <Badge color={ROLE_COLORS[u.role] ?? 'gray'} size="sm">{u.role}</Badge>
                     </td>
                     <td style={{ padding: '12px 16px', color: 'var(--muted)', fontSize: 12 }}>
-                      {u.dept ? (DEPT_ABBR[u.dept] ?? u.dept) : '—'}
+                      {u.dept || '—'}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <Badge color={STATUS_COLORS[u.status] ?? 'gray'} size="sm">{STATUS_LABEL[u.status] ?? u.status}</Badge>

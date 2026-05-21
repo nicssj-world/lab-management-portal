@@ -12,6 +12,7 @@ import { RefRangeModal } from '@/components/tests/RefRangeModal'
 import { isJsonTable } from '@/components/tests/ReferenceRangePaste'
 import { DocDownloadButton } from '@/components/tests/DocDownloadButton'
 import { createClient } from '@/lib/supabase/client'
+import { usePermission } from '@/context/PermissionContext'
 import type { TestDetail, Category } from '@/lib/supabase/types'
 
 export default function TestDetailPage() {
@@ -20,12 +21,12 @@ export default function TestDetailPage() {
   const [detail, setDetail] = useState<TestDetail | null>(null)
   const [category, setCategory] = useState<Category | undefined>()
   const [loading, setLoading] = useState(true)
-  const [canEdit, setCanEdit] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const supabase = createClient()
+  const { canEdit } = usePermission('รายการตรวจ')
 
   function showToast(msg: string) {
     setToast(msg)
@@ -34,11 +35,6 @@ export default function TestDetailPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: p } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-        setCanEdit(['Admin', 'Manager'].includes(p?.role ?? ''))
-      }
       const res = await fetch(`/api/admin/tests/${id}`)
       const json: TestDetail = await res.json()
       setDetail(json)

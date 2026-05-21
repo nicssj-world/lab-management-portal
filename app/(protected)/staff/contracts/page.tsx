@@ -1,4 +1,6 @@
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getRolePermissions } from '@/lib/permissions'
 import { getContracts } from '@/lib/queries/contracts'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -8,7 +10,9 @@ export default async function ContractsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: actor } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
-  const canEdit = ['Admin', 'Manager'].includes(actor?.role ?? '')
+  const perms = actor?.role ? await getRolePermissions(actor.role) : {}
+  if ((perms['สัญญา'] ?? 'none') === 'none') redirect('/staff/dashboard')
+  const canEdit = perms['สัญญา'] === 'edit'
 
   const contracts = await getContracts(supabase)
 

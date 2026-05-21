@@ -1,0 +1,16 @@
+[33mcommit 94687e1bd38e55bdd8bc337b7184332af2d9347c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Nics SJ <nics.siriwatj@gmail.com>
+Date:   Thu May 21 03:21:06 2026 +0700
+
+    update
+
+[33mcommit 710aef13a0c3d3f31416f082a6e5be643465d6c8[m
+Author: Nics SJ <nics.siriwatj@gmail.com>
+Date:   Tue May 19 21:09:29 2026 +0700
+
+    Initial commit: Lab Management Portal (MN-LAB-01)
+    
+    Next.js 16 + Supabase + Tailwind v4 — full-stack portal for
+    Chonburi Hospital Medical Technology Department.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>

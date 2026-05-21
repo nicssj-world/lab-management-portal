@@ -1,4 +1,4 @@
-export type Role = 'Admin' | 'Manager' | 'Medical Technologist' | 'Assistant'
+export type Role = 'Admin' | 'Manager' | 'Medical Technologist' | 'Assistant' | 'Document Controller' | 'Medical Science Technician'
 export type UserStatus = 'active' | 'inactive' | 'pending'
 
 export interface Profile {

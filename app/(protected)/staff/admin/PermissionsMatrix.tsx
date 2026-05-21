@@ -3,28 +3,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { RESOURCES, PERMISSION_ROLES } from '@/lib/permission-resources'
 
 type PermLevel = 'none' | 'view' | 'edit'
 type Matrix    = Record<string, Record<string, PermLevel>>
 
-const ROLES = ['Admin', 'Manager', 'Medical Technologist', 'Assistant'] as const
+const ROLES = PERMISSION_ROLES
 type Role = typeof ROLES[number]
 
-const ROLE_COLORS: Record<Role, 'red' | 'blue' | 'teal' | 'gray'> = {
-  Admin: 'red', Manager: 'blue', 'Medical Technologist': 'teal', Assistant: 'gray',
+const ROLE_COLORS: Record<Role, 'red' | 'blue' | 'teal' | 'gray' | 'purple' | 'amber'> = {
+  Admin: 'red', Manager: 'blue', 'Document Controller': 'purple', 'Medical Technologist': 'teal', 'Medical Science Technician': 'amber', Assistant: 'gray',
 }
-
-const RESOURCES = [
-  'รายการตรวจ',
-  'เอกสารคุณภาพ',
-  'ข่าวสาร',
-  'ความเสี่ยง / Rejection',
-  'สัญญา',
-  'Workload',
-  'KPI',
-  'TAT (นำเข้า)',
-  'User Management',
-] as const
 
 const LEVELS: PermLevel[] = ['none', 'view', 'edit']
 
@@ -178,7 +167,7 @@ export function PermissionsMatrix({ isAdmin }: Props) {
           <thead>
             <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
               <th style={{ padding: '11px 16px', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', borderBottom: '1px solid var(--border)', minWidth: 180 }}>
-                ทรัพยากร
+                Slide bar
               </th>
               {ROLES.map((role) => (
                 <th key={role} style={{ padding: '11px 16px', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', borderBottom: '1px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>

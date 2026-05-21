@@ -14,11 +14,13 @@ import { useWorkload } from '@/lib/hooks/workload/useWorkload'
 import { useDepartments } from '@/lib/hooks/workload/useDepartments'
 import { useRealtimeEntries } from '@/lib/hooks/workload/useRealtimeEntries'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
+import { usePermission } from '@/context/PermissionContext'
 
 export default function WorkloadDashboardPage() {
   const [year, setYear] = useState(getCurrentThaiFiscalYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const chartRef = useRef<HTMLDivElement>(null)
+  const { canEdit } = usePermission('Workload')
 
   const { summary, loading, refetch } = useWorkload(year, month)
   const { departments } = useDepartments()
@@ -34,9 +36,11 @@ export default function WorkloadDashboardPage() {
         actions={
           <>
             <AnnualReportExport year={year} summary={summary} chartRef={chartRef} />
-            <Link href="/lab-workload/input">
-              <Button variant="primary" icon="plus">บันทึกข้อมูล</Button>
-            </Link>
+            {canEdit && (
+              <Link href="/lab-workload/input">
+                <Button variant="primary" icon="plus">บันทึกข้อมูล</Button>
+              </Link>
+            )}
           </>
         }
       />

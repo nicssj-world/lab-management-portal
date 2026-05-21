@@ -2,18 +2,14 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { RESOURCES, PERMISSION_ROLES } from '@/lib/permission-resources'
 
 // Level is encoded as a suffix in the resource column: 'รายการตรวจ:edit'
 // This avoids needing a schema migration on the existing role_permissions table.
 
 type Level = 'none' | 'view' | 'edit'
 
-const RESOURCES = [
-  'รายการตรวจ', 'เอกสารคุณภาพ', 'ข่าวสาร',
-  'ความเสี่ยง / Rejection', 'สัญญา', 'Workload',
-  'KPI', 'TAT (นำเข้า)', 'User Management',
-]
-const ALL_ROLES = ['Admin', 'Manager', 'Medical Technologist', 'Assistant']
+const ALL_ROLES = [...PERMISSION_ROLES]
 
 function parseResource(raw: string): { base: string; level: Level } | null {
   const i = raw.lastIndexOf(':')
@@ -65,10 +61,13 @@ export async function GET() {
       const parsed = parseResource(row.resource)
       if (!parsed) continue
       const { base, level } = parsed
-      if (matrix[row.role] && RESOURCES.includes(base)) {
+      if (matrix[row.role] && (RESOURCES as readonly string[]).includes(base)) {
         matrix[row.role][base] = level
       }
     }
+
+    // Admin always has full access — cannot be changed
+    for (const res of RESOURCES) matrix['Admin'][res] = 'edit'
 
     return NextResponse.json(matrix)
   } catch (err) {

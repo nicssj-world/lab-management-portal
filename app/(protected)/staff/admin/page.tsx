@@ -26,6 +26,15 @@ export default async function AdminPage() {
     ? (await supabase.from('profiles').select('*', { count: 'exact', head: true })).count
     : countResult.count
 
+  const { data: roleRows } = await supabaseAdmin
+    .from('profiles')
+    .select('role')
+    .is('deleted_at', null)
+  const roleCounts: Record<string, number> = {}
+  for (const r of roleRows ?? []) {
+    roleCounts[r.role] = (roleCounts[r.role] ?? 0) + 1
+  }
+
   const auditLog = await getAuditLog(supabaseAdmin, 30).catch(() => [])
 
   return (
@@ -34,7 +43,42 @@ export default async function AdminPage() {
         eyebrow="ระบบ"
         title="User Management"
         subtitle={`${count ?? 0} ผู้ใช้งานในระบบ`}
+        marginBottom={8}
       />
+
+      {/* Role count chips */}
+      {(() => {
+        const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
+          'Admin':                     { bg: 'rgba(220,38,38,.1)',    color: '#DC2626' },
+          'Manager':                   { bg: 'rgba(30,95,173,.1)',    color: '#1E5FAD' },
+          'Document Controller':       { bg: 'rgba(147,51,234,.1)',   color: '#7C3AED' },
+          'Medical Technologist':      { bg: 'rgba(13,148,136,.1)',   color: '#0D9488' },
+          'Medical Science Technician':{ bg: 'rgba(217,119,6,.1)',    color: '#D97706' },
+          'Assistant':                 { bg: 'rgba(100,116,139,.1)',  color: '#475569' },
+        }
+        const entries = Object.entries(ROLE_STYLES).filter(([role]) => (roleCounts[role] ?? 0) > 0)
+        if (!entries.length) return null
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+            {entries.map(([role, s]) => (
+              <span key={role} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                background: s.bg, color: s.color,
+              }}>
+                {role}
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  minWidth: 18, height: 18, borderRadius: 9,
+                  background: s.color, color: '#fff', fontSize: 10.5, fontWeight: 700,
+                }}>
+                  {roleCounts[role]}
+                </span>
+              </span>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* User table — full client-side CRUD */}
       <AdminUserClient />
