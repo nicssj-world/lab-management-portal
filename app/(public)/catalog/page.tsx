@@ -16,6 +16,7 @@ export default function CatalogPage() {
   const [tests, setTests] = useState<Test[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
   const [search, setSearch] = useState('')
   const [categoryId, setCategoryId] = useState(searchParams.get('cat') ?? '')
   const [tube, setTube] = useState('')
@@ -26,6 +27,13 @@ export default function CatalogPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const timer = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     getCategories(supabase, true).then(setCategories)
@@ -67,7 +75,7 @@ export default function CatalogPage() {
 
   return (
     <main style={{ background: 'var(--bg)', minHeight: '100vh' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 28px 60px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: isMobile ? '20px 16px 48px' : '32px 28px 60px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <PageHeader
           eyebrow="ค้นหา"
           title="รายการตรวจวิเคราะห์"
