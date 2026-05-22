@@ -46,30 +46,78 @@ export function PublicNav() {
   return (
     <>
       <style>{`
+        .pub-header {
+          position: sticky;
+          top: 0;
+          z-index: 50;
+        }
         .pub-nav-desktop { display: flex; }
         .pub-nav-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
         .pub-hamburger { display: none; }
+        .pub-nav-inner {
+          max-width: 1280px;
+          margin: 0 auto;
+          padding: 14px 20px;
+          display: flex;
+          align-items: center;
+          gap: 20px;
+          min-width: 0;
+        }
+        .pub-logo-link {
+          text-decoration: none;
+          flex-shrink: 1;
+          min-width: 0;
+        }
         @media (max-width: 1100px) {
+          .pub-header {
+            position: relative;
+            top: auto;
+            z-index: 20;
+          }
           .pub-nav-desktop { display: none; }
           .pub-nav-actions { display: none; }
           .pub-hamburger { display: flex; }
+          .pub-nav-inner {
+            padding: 10px 14px;
+            gap: 10px;
+            min-height: 64px;
+          }
+          .pub-logo-link {
+            max-width: calc(100% - 96px);
+          }
+          .pub-mobile-nav-panel {
+            top: 64px !important;
+          }
+        }
+        @media (max-width: 420px) {
+          .pub-nav-inner {
+            padding: 9px 12px;
+            min-height: 58px;
+          }
+          .pub-logo-link {
+            max-width: calc(100% - 88px);
+          }
+          .pub-logo-link img {
+            width: 40px;
+            height: 40px;
+          }
+          .pub-mobile-nav-panel {
+            top: 58px !important;
+          }
         }
       `}</style>
 
       <header
+        className="pub-header"
         style={{
-          position: 'sticky', top: 0, zIndex: 50, background: 'var(--card)',
+          background: 'var(--card)',
           borderBottom: '1px solid var(--border)', backdropFilter: 'blur(12px)',
         }}
       >
         <div
-          style={{
-            maxWidth: 1280, margin: '0 auto', padding: '14px 20px',
-            display: 'flex', alignItems: 'center', gap: 20,
-            minWidth: 0,
-          }}
+          className="pub-nav-inner"
         >
-          <Link href="/" style={{ textDecoration: 'none', flexShrink: 1, minWidth: 0 }}>
+          <Link href="/" className="pub-logo-link">
             <Logo size={48} lang={lang} />
           </Link>
 

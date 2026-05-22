@@ -429,9 +429,14 @@ export function TestTable({
                           </div>
                         )}
                       </div>
-                      <span style={{ color: 'var(--primary)', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
-                        {t.code}
-                      </span>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ color: 'var(--primary)', fontWeight: 800, fontSize: 13 }}>
+                          {t.cgd ?? '—'}
+                        </div>
+                        <div style={{ color: 'var(--ink)', fontWeight: 800, fontSize: 13, marginTop: 4 }}>
+                          {t.price != null ? `฿${Number(t.price).toLocaleString()}` : '—'}
+                        </div>
+                      </div>
                     </div>
 
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
@@ -456,12 +461,18 @@ export function TestTable({
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
                       <div>
-                        <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>รหัสกรมบัญชีกลาง</div>
-                        <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{t.cgd ?? '—'}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>รหัส E-PHIS</div>
+                        <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{t.code}</div>
                       </div>
                       <div>
                         <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>TAT</div>
                         <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{tatDisplay}</div>
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>วัน-เวลาที่ตรวจวิเคราะห์</div>
+                        <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>
+                          {t.available_24hr ? '24 ชั่วโมง' : (t.service ?? '—')}
+                        </div>
                       </div>
                     </div>
                   </article>
