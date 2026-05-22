@@ -430,6 +430,9 @@ export function TestTable({
                         )}
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 10.5 }}>
+                          รหัสกรมบัญชีกลาง
+                        </div>
                         <div style={{ color: 'var(--primary)', fontWeight: 800, fontSize: 13 }}>
                           {t.cgd ?? '—'}
                         </div>
@@ -474,6 +477,22 @@ export function TestTable({
                           {t.available_24hr ? '24 ชั่วโมง' : (t.service ?? '—')}
                         </div>
                       </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          color: 'var(--primary)',
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                        }}
+                      >
+                        ดูรายละเอียด
+                        <Icon name="arrowRight" size={13} />
+                      </span>
                     </div>
                   </article>
                 </Link>

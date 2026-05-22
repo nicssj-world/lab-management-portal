@@ -8,7 +8,7 @@ interface Props {
 
 function InfoBox({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'var(--surface-2)', borderRadius: 10, padding: '10px 14px', flex: 1, minWidth: 130 }}>
+    <div className="test-detail-info-box" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'var(--surface-2)', borderRadius: 10, padding: '10px 14px', flex: 1, minWidth: 130 }}>
       <Icon name={icon} size={16} style={{ color: 'var(--muted)', marginTop: 2, flexShrink: 0 }} />
       <div>
         <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{label}</div>
@@ -23,8 +23,44 @@ export function TestDetailCard({ test, category }: Props) {
 
   return (
     <div>
+      <style>{`
+        @media (max-width: 767px) {
+          .test-detail-badge-row {
+            margin-bottom: 12px !important;
+          }
+          .test-detail-title-price {
+            display: block !important;
+            margin-bottom: 16px !important;
+          }
+          .test-detail-title-price h1 {
+            font-size: 24px !important;
+            line-height: 1.25 !important;
+          }
+          .test-detail-price {
+            text-align: left !important;
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+          }
+          .test-detail-price-value {
+            font-size: 22px !important;
+          }
+          .test-detail-info-grid {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 8px !important;
+          }
+          .test-detail-info-box {
+            min-width: 0 !important;
+            width: 100%;
+            flex: none !important;
+            border-radius: 12px !important;
+            padding: 12px 14px !important;
+          }
+        }
+      `}</style>
       {/* Badge row */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+      <div className="test-detail-badge-row" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 20, background: 'var(--surface-2)', fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
           {test.code}
         </span>
@@ -46,24 +82,24 @@ export function TestDetailCard({ test, category }: Props) {
       </div>
 
       {/* Title + price */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, gap: 16 }}>
+      <div className="test-detail-title-price" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, gap: 16 }}>
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--ink)', margin: 0, lineHeight: 1.2 }}>{test.th}</h1>
           {test.en && <div style={{ fontSize: 14, color: 'var(--muted)', marginTop: 6 }}>{test.en}</div>}
         </div>
         {test.price != null && (
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div className="test-detail-price" style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>ราคา</div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>฿{test.price}</div>
+            <div className="test-detail-price-value" style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>฿{test.price}</div>
             <div style={{ fontSize: 12, color: 'var(--muted)' }}>TAT {tatDisplay}</div>
           </div>
         )}
       </div>
 
       {/* Info boxes */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div className="test-detail-info-grid" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {test.tube && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'var(--surface-2)', borderRadius: 10, padding: '10px 14px', flex: 1, minWidth: 130 }}>
+          <div className="test-detail-info-box" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'var(--surface-2)', borderRadius: 10, padding: '10px 14px', flex: 1, minWidth: 130 }}>
             <Icon name="flask" size={16} style={{ color: 'var(--muted)', marginTop: 2, flexShrink: 0 }} />
             <div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>Specimen</div>

@@ -26,7 +26,7 @@ function TubeIcon({ color }: { color: string }) {
 function Row({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null
   return (
-    <div style={{ display: 'flex', gap: 12, paddingBottom: 10, marginBottom: 10, borderBottom: '1px solid var(--border)' }}>
+    <div className="specimen-detail-row" style={{ display: 'flex', gap: 12, paddingBottom: 10, marginBottom: 10, borderBottom: '1px solid var(--border)' }}>
       <span style={{ fontSize: 13, color: 'var(--muted)', minWidth: 140, flexShrink: 0 }}>{label}</span>
       <span style={{ fontSize: 13, color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>{value}</span>
     </div>
@@ -39,6 +39,19 @@ export function SpecimenSection({ test }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <style>{`
+        @media (max-width: 767px) {
+          .specimen-detail-row {
+            display: block !important;
+          }
+          .specimen-detail-row span {
+            display: block;
+          }
+          .specimen-detail-row span + span {
+            margin-top: 4px;
+          }
+        }
+      `}</style>
       {test.tube && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 10, marginBottom: 10, borderBottom: '1px solid var(--border)' }}>
           {showTubeIcon

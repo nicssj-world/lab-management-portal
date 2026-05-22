@@ -33,10 +33,68 @@ export default async function CatalogDetailPage({ params }: Props) {
 
   return (
     <main style={{ background: 'var(--bg)', minHeight: '100vh' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '28px 28px 60px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <style>{`
+        .catalog-detail-page {
+          max-width: 1280px;
+          margin: 0 auto;
+          padding: 28px 28px 60px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .catalog-detail-body {
+          display: grid;
+          grid-template-columns: 1fr 340px;
+          gap: 16px;
+          align-items: start;
+        }
+        .catalog-detail-method-row {
+          display: flex;
+          gap: 16px;
+          padding-block: 10px;
+          border-bottom: 1px solid var(--border);
+        }
+
+        @media (max-width: 767px) {
+          .catalog-detail-page {
+            padding: 18px 16px 48px !important;
+            gap: 12px !important;
+          }
+          .catalog-detail-breadcrumb {
+            font-size: 12px !important;
+            overflow-x: auto;
+            white-space: nowrap;
+            padding-bottom: 2px;
+          }
+          .catalog-detail-header-card,
+          .catalog-detail-section-card,
+          .catalog-detail-side-card {
+            padding: 16px !important;
+            border-radius: 12px !important;
+          }
+          .catalog-detail-body {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+          .catalog-detail-left,
+          .catalog-detail-sidebar {
+            gap: 12px !important;
+          }
+          .catalog-detail-method-row {
+            display: block !important;
+          }
+          .catalog-detail-method-row span {
+            display: block;
+          }
+          .catalog-detail-method-row span + span {
+            margin-top: 4px;
+          }
+        }
+      `}</style>
+      <div className="catalog-detail-page">
 
         {/* Breadcrumb */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' }}>
+        <div className="catalog-detail-breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' }}>
           <Link href="/" style={{ color: 'var(--muted)', textDecoration: 'none' }}>หน้าแรก</Link>
           <Icon name="chevRight" size={14} />
           <Link href="/catalog" style={{ color: 'var(--muted)', textDecoration: 'none' }}>รายการตรวจ</Link>
@@ -45,16 +103,16 @@ export default async function CatalogDetailPage({ params }: Props) {
         </div>
 
         {/* Header card */}
-        <Card padding={24}>
+        <Card className="catalog-detail-header-card" padding={24}>
           <TestDetailCard test={test} category={category} />
         </Card>
 
         {/* Body: 2-column layout */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16, alignItems: 'start' }}>
+        <div className="catalog-detail-body">
           {/* Left column */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="catalog-detail-left" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {(test.method || test.methodology_note || test.service) && (
-              <Card padding={20}>
+              <Card className="catalog-detail-section-card" padding={20}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                   <Icon name="microscope" size={16} style={{ color: 'var(--primary)' }} />
                   <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>วิธีการตรวจวิเคราะห์</span>
@@ -64,7 +122,7 @@ export default async function CatalogDetailPage({ params }: Props) {
                   { label: 'วัน-เวลาที่ตรวจวิเคราะห์', val: test.available_24hr ? 'ตลอด 24 ชั่วโมง' : test.service },
                   { label: 'รายละเอียด', val: test.methodology_note },
                 ].filter(r => r.val).map(r => (
-                  <div key={r.label} style={{ display: 'flex', gap: 16, paddingBlock: 10, borderBottom: '1px solid var(--border)' }}>
+                  <div className="catalog-detail-method-row" key={r.label}>
                     <span style={{ fontSize: 13, color: 'var(--muted)', minWidth: 130, flexShrink: 0 }}>{r.label}</span>
                     <span style={{ fontSize: 13, color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>{r.val}</span>
                   </div>
@@ -72,7 +130,7 @@ export default async function CatalogDetailPage({ params }: Props) {
               </Card>
             )}
 
-            <Card padding={20}>
+            <Card className="catalog-detail-section-card" padding={20}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                 <Icon name="chart" size={16} style={{ color: 'var(--primary)' }} />
                 <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>ค่าอ้างอิง (Reference Range)</span>
@@ -93,7 +151,7 @@ export default async function CatalogDetailPage({ params }: Props) {
               }
             </Card>
 
-            <Card padding={20}>
+            <Card className="catalog-detail-section-card" padding={20}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                 <Icon name="flask" size={16} style={{ color: 'var(--primary)' }} />
                 <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>การเก็บตัวอย่าง</span>
@@ -103,8 +161,8 @@ export default async function CatalogDetailPage({ params }: Props) {
           </div>
 
           {/* Right sidebar */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Card padding={16}>
+          <div className="catalog-detail-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <Card className="catalog-detail-side-card" padding={16}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>เอกสารที่เกี่ยวข้อง</div>
               {documents.length === 0 ? (
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>ยังไม่มีเอกสาร</div>
@@ -121,7 +179,7 @@ export default async function CatalogDetailPage({ params }: Props) {
             </Card>
 
             {(test.contact_name || test.contact_phone || test.contact_email || test.contact_note) && (
-              <Card padding={16}>
+              <Card className="catalog-detail-side-card" padding={16}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>ติดต่อ</div>
                 {test.contact_name && (
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 2 }}>{test.contact_name}</div>
