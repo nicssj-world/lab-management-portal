@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { getCurrentThaiFiscalYear, getThaiMonthLabel, getFiscalMonths } from '@/lib/kpi-utils'
 import { MonthSelector } from '@/components/ui/MonthSelector'
 import { Button } from '@/components/ui/Button'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 
 interface TestRow {
   test_id: number
@@ -168,7 +169,7 @@ export function WorkloadInputForm({ departments, userRole }: Props) {
       ) : rows.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 48, color: 'var(--muted)', fontSize: 13 }}>ไม่พบรายการตรวจในแผนกนี้</div>
       ) : (
-        <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card)' }}>
+        <StickyScroll style={{ borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
@@ -228,7 +229,7 @@ export function WorkloadInputForm({ departments, userRole }: Props) {
               })}
             </tbody>
           </table>
-        </div>
+        </StickyScroll>
       )}
 
       {canEdit && rows.length > 0 && (

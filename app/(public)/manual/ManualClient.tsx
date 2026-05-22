@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import type { Document } from '@/lib/supabase/types'
 
 const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Others'] as const
@@ -65,7 +66,7 @@ export function ManualClient({ docs }: Props) {
         <EmptyState icon="doc" title="ไม่มีเอกสารในหมวดนี้" hint="ลองเลือกหมวดอื่น" />
       ) : (
         <Card padding={0}>
-          <div style={{ overflowX: 'auto' }}>
+          <StickyScroll>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
@@ -103,7 +104,7 @@ export function ManualClient({ docs }: Props) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </StickyScroll>
         </Card>
       )}
     </>

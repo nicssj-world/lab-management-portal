@@ -151,6 +151,9 @@ const inputStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = {
   fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 4, display: 'block',
 }
+function normContractNo(v: string | null | undefined) {
+  return (v ?? '').trim().toLowerCase()
+}
 
 // ── main component ────────────────────────────────────────────────────────────
 
@@ -181,6 +184,15 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
   const totalRemaining = totalValue - totalUsed
   const expiringCount = contracts.filter(isExpiring).length
   const lowBudgetCount = contracts.filter(isLowBudget).length
+  const duplicateContractNumber = editModal !== null
+    && form.contract_number.trim()
+    && contracts.some(c => {
+      if (normContractNo(c.contract_number) !== normContractNo(form.contract_number)) return false
+      return editModal === 'new' || c.id !== (editModal as ContractWithUsage).id
+    })
+  const duplicateContractNumberMsg = duplicateContractNumber
+    ? `เลขที่สัญญา "${form.contract_number.trim()}" มีอยู่แล้ว`
+    : ''
 
   const filteredContracts = contracts.filter(c => {
     if (filterExpiring && !isExpiring(c)) return false
@@ -281,6 +293,11 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
       setFormErr('กรุณากรอก เลขที่สัญญา ชื่อสัญญา มูลค่าสัญญา วันที่เริ่ม และวันที่สิ้นสุด')
       return
     }
+    if (duplicateContractNumberMsg) {
+      alert(duplicateContractNumberMsg)
+      setFormErr(duplicateContractNumberMsg)
+      return
+    }
     setSaving(true)
     setFormErr('')
     try {
@@ -347,12 +364,18 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
 
   async function handleLogUsage() {
     if (!usageModal || !usageAmount) return
+    const amount = parseFloat(usageAmount)
+    const remaining = (usageModal.total ?? 0) - usageModal.used
+    if (Number.isFinite(amount) && amount > remaining) {
+      alert(`จำนวนเงินเกินมูลค่าคงเหลือ (${fmtMoney(remaining)})`)
+      return
+    }
     setSaving(true)
     try {
       const res = await fetch(`/api/admin/contracts/${usageModal.id}/usage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: parseFloat(usageAmount), note: usageNote, usage_date: usageDate }),
+        body: JSON.stringify({ amount, note: usageNote, usage_date: usageDate }),
       })
       const json = await res.json()
       if (!res.ok) { toast(json.error ?? 'เกิดข้อผิดพลาด', false); return }
@@ -667,7 +690,30 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
             <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 13 }}>
               <div>
                 <label style={labelStyle}>เลขที่สัญญา <span style={{ color: 'var(--danger)' }}>*</span></label>
-                <input value={form.contract_number} onChange={e => setForm(f => ({ ...f, contract_number: e.target.value }))} placeholder="เช่น MED-2567-001" style={inputStyle} />
+                <input
+                  value={form.contract_number}
+                  onChange={e => {
+                    setForm(f => ({ ...f, contract_number: e.target.value }))
+                    if (formErr === duplicateContractNumberMsg) setFormErr('')
+                  }}
+                  onBlur={() => {
+                    if (duplicateContractNumberMsg) {
+                      alert(duplicateContractNumberMsg)
+                      setFormErr(duplicateContractNumberMsg)
+                    }
+                  }}
+                  placeholder="เช่น MED-2567-001"
+                  style={{
+                    ...inputStyle,
+                    borderColor: duplicateContractNumberMsg ? 'rgba(220,38,38,.55)' : 'var(--border)',
+                    background: duplicateContractNumberMsg ? 'rgba(220,38,38,.04)' : 'var(--card)',
+                  }}
+                />
+                {duplicateContractNumberMsg && (
+                  <div style={{ marginTop: 4, fontSize: 11, color: 'var(--danger)', lineHeight: 1.35 }}>
+                    {duplicateContractNumberMsg}
+                  </div>
+                )}
               </div>
               <div>
                 <label style={labelStyle}>หน่วยงาน / Department</label>
@@ -758,7 +804,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
             {/* footer */}
             <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
               <Button variant="secondary" onClick={() => setEditModal(null)} disabled={saving}>ยกเลิก</Button>
-              <Button variant="primary" onClick={handleSave} disabled={saving} icon="check">
+              <Button variant="primary" onClick={handleSave} disabled={saving || !!duplicateContractNumberMsg} icon="check">
                 {saving ? 'กำลังบันทึก...' : editModal === 'new' ? 'เพิ่มสัญญา' : 'บันทึก'}
               </Button>
             </div>
@@ -769,6 +815,9 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
       {/* ── Log Usage Modal ── */}
       {usageModal && (() => {
         const mRemaining = (usageModal.total ?? 0) - usageModal.used
+        const mAmount = parseFloat(usageAmount)
+        const usageOverRemaining = Number.isFinite(mAmount) && mAmount > mRemaining
+        const usageWarning = usageOverRemaining ? `จำนวนเงินเกินมูลค่าคงเหลือ (${fmtMoney(mRemaining)})` : ''
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
             <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden' }}>
@@ -810,7 +859,23 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                   </div>
                   <div>
                     <label style={labelStyle}>จำนวนเงิน (บาท) <span style={{ color: 'var(--danger)' }}>*</span></label>
-                    <input type="number" value={usageAmount} onChange={e => setUsageAmount(e.target.value)} placeholder="0" style={inputStyle} />
+                    <input
+                      type="number"
+                      value={usageAmount}
+                      onChange={e => setUsageAmount(e.target.value)}
+                      onBlur={() => { if (usageWarning) alert(usageWarning) }}
+                      placeholder="0"
+                      style={{
+                        ...inputStyle,
+                        borderColor: usageWarning ? 'rgba(220,38,38,.55)' : 'var(--border)',
+                        background: usageWarning ? 'rgba(220,38,38,.04)' : 'var(--card)',
+                      }}
+                    />
+                    {usageWarning && (
+                      <div style={{ marginTop: 4, fontSize: 11, color: 'var(--danger)', lineHeight: 1.35 }}>
+                        {usageWarning}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -830,7 +895,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
               {/* Footer */}
               <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <Button variant="secondary" onClick={() => setUsageModal(null)} disabled={saving}>ยกเลิก</Button>
-                <Button variant="primary" onClick={handleLogUsage} disabled={!usageAmount || !usageDate || saving} icon="check">
+                <Button variant="primary" onClick={handleLogUsage} disabled={!usageAmount || !usageDate || saving || usageOverRemaining} icon="check">
                   {saving ? 'กำลังบันทึก...' : 'บันทึกการใช้จ่าย'}
                 </Button>
               </div>

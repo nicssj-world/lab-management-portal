@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import { RESOURCES, PERMISSION_ROLES } from '@/lib/permission-resources'
 
 type PermLevel = 'none' | 'view' | 'edit'
@@ -162,7 +163,7 @@ export function PermissionsMatrix({ isAdmin }: Props) {
         </div>
       )}
 
-      <div style={{ overflowX: 'auto' }}>
+      <StickyScroll>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
@@ -215,7 +216,7 @@ export function PermissionsMatrix({ isAdmin }: Props) {
             }
           </tbody>
         </table>
-      </div>
+      </StickyScroll>
 
       {/* Legend */}
       <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border)', display: 'flex', gap: 18, fontSize: 11.5, color: 'var(--muted)', flexWrap: 'wrap', alignItems: 'center' }}>

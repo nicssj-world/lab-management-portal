@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Icon } from '@/components/ui/Icon'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import type { Test, Category } from '@/lib/supabase/types'
 
 interface Props {
@@ -169,7 +170,7 @@ export function TestTable({
       )}
 
       {/* ── Table ── */}
-      <div style={{ overflowX: 'auto', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12 }}>
+      <StickyScroll style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
@@ -375,7 +376,7 @@ export function TestTable({
             }
           </tbody>
         </table>
-      </div>
+      </StickyScroll>
 
       {/* ── Pagination ── */}
       {totalPages > 1 && (

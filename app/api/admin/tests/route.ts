@@ -55,7 +55,19 @@ export async function POST(req: NextRequest) {
     if (!parsed.success)
       return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 422 })
 
-    const test = await createTest(supabaseAdmin, parsed.data as Record<string, unknown>, actor.id)
+    const code = parsed.data.code.trim()
+    const { data: existing, error: dupErr } = await supabaseAdmin
+      .from('tests')
+      .select('id, code')
+      .ilike('code', code)
+
+    if (dupErr) return NextResponse.json({ error: dupErr.message }, { status: 500 })
+    const duplicate = (existing ?? []).some((t: { code: string }) => t.code.trim().toLowerCase() === code.toLowerCase())
+    if (duplicate) {
+      return NextResponse.json({ error: 'รหัสรายการตรวจนี้มีอยู่แล้ว' }, { status: 409 })
+    }
+
+    const test = await createTest(supabaseAdmin, { ...parsed.data, code } as Record<string, unknown>, actor.id)
 
     if (Array.isArray(rawRanges)) {
       const rangesParsed = z.array(referenceRangeSchema).safeParse(rawRanges)

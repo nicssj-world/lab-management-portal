@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { buildHeatmapMatrix } from '@/lib/tat-utils'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 
 interface TATEntry {
   received_at: string
@@ -38,7 +39,7 @@ export function TATHeatmap({ entries }: Props) {
   const svgH = HEADER_H + 24 * CELL_H + 32
 
   return (
-    <div style={{ position: 'relative', overflowX: 'auto' }}>
+    <StickyScroll style={{ position: 'relative' }}>
       <svg width={svgW} height={svgH} style={{ display: 'block' }}>
         {/* Day column headers */}
         {DAY_LABELS.map((label, dayIdx) => (
@@ -130,6 +131,6 @@ export function TATHeatmap({ entries }: Props) {
           {DAY_NAMES_TH[tooltip.day]} {String(tooltip.hour).padStart(2, '0')}:00 — {tooltip.count.toLocaleString()} ตัวอย่าง
         </div>
       )}
-    </div>
+    </StickyScroll>
   )
 }

@@ -39,10 +39,23 @@ export async function POST(req: NextRequest) {
   if (!contract_number?.trim() || !product?.trim() || total == null || !start_date || !end_date) {
     return NextResponse.json({ error: 'เลขที่สัญญา ชื่อสัญญา มูลค่าสัญญา วันที่เริ่ม และวันที่สิ้นสุด จำเป็น' }, { status: 422 })
   }
+  const cleanContractNumber = contract_number.trim()
+
+  const { data: existing, error: dupErr } = await supabaseAdmin
+    .from('contracts')
+    .select('id, contract_number')
+
+  if (dupErr) return NextResponse.json({ error: dupErr.message }, { status: 500 })
+  const duplicate = (existing ?? []).some((c: { contract_number: string | null }) =>
+    (c.contract_number ?? '').trim().toLowerCase() === cleanContractNumber.toLowerCase()
+  )
+  if (duplicate) {
+    return NextResponse.json({ error: 'เลขที่สัญญานี้มีอยู่แล้ว' }, { status: 409 })
+  }
 
   const { data, error } = await supabaseAdmin
     .from('contracts')
-    .insert({ vendor, product, total: Number(total), start_date: start_date || null, end_date: end_date || null, contract_number: contract_number || null, department: department || null, status: status || 'active' })
+    .insert({ vendor, product, total: Number(total), start_date: start_date || null, end_date: end_date || null, contract_number: cleanContractNumber, department: department || null, status: status || 'active' })
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

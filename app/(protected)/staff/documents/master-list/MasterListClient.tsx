@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Icon } from '@/components/ui/Icon'
 import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import type { Document } from '@/lib/supabase/types'
 
@@ -442,7 +443,7 @@ const { toasts, add: toast } = useToast()
 
       {/* Table */}
       <Card padding={0}>
-        <div style={{ overflowX: 'auto' }}>
+        <StickyScroll contentWidth={1400}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1400 }}>
             <thead>
               <tr>
@@ -575,7 +576,7 @@ const { toasts, add: toast } = useToast()
               )}
             </tbody>
           </table>
-        </div>
+        </StickyScroll>
 
         {/* Pagination */}
         {totalPages > 1 && (

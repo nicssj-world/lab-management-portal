@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { Button } from '@/components/ui/Button'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 
 interface ParsedRow {
   test_name: string
@@ -242,7 +243,7 @@ export function ExcelImport({ departments }: Props) {
           </div>
 
           {/* Preview table */}
-          <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border)', maxHeight: 400, overflowY: 'auto' }}>
+          <StickyScroll style={{ borderRadius: 12, border: '1px solid var(--border)', maxHeight: 400, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', position: 'sticky', top: 0 }}>
@@ -270,7 +271,7 @@ export function ExcelImport({ departments }: Props) {
                 )}
               </tbody>
             </table>
-          </div>
+          </StickyScroll>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Button

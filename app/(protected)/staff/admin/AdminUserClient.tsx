@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import { createUserSchema, updateUserSchema, ROLES, DEPARTMENTS, DEPT_ABBR } from '@/lib/validations/user-schema'
 import type { UserProfile, UserFilters, PaginationMeta, UserRole, UserStatus } from '@/types/users'
 import type { CreateUserInput, UpdateUserInput } from '@/lib/validations/user-schema'
@@ -736,7 +737,7 @@ export function AdminUserClient() {
 
       {/* Table */}
       <Card padding={0} style={{ marginTop: 12 }}>
-        <div style={{ overflowX: 'auto' }}>
+        <StickyScroll>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
@@ -814,7 +815,7 @@ export function AdminUserClient() {
               }
             </tbody>
           </table>
-        </div>
+        </StickyScroll>
         <Pagination meta={pagination} onPage={handlePage} />
       </Card>
     </>

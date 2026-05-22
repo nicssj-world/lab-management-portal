@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/Button'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { parseTATFile, autoDetectColumns, getTATFiscalYearMonth } from '@/lib/tat-utils'
 
@@ -299,7 +300,7 @@ export function TATImportForm() {
             </div>
           )}
 
-          <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border)', maxHeight: 400, overflowY: 'auto' }}>
+          <StickyScroll style={{ borderRadius: 12, border: '1px solid var(--border)', maxHeight: 400, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', position: 'sticky', top: 0 }}>
@@ -329,7 +330,7 @@ export function TATImportForm() {
                 )}
               </tbody>
             </table>
-          </div>
+          </StickyScroll>
 
           {!existingBatch && (
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
