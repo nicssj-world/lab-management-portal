@@ -4,13 +4,15 @@ interface CardProps {
   children: React.ReactNode
   padding?: number
   style?: React.CSSProperties
+  className?: string
   onClick?: () => void
   hoverable?: boolean
 }
 
-export function Card({ children, padding = 16, style, onClick, hoverable }: CardProps) {
+export function Card({ children, padding = 16, style, className, onClick, hoverable }: CardProps) {
   return (
     <div
+      className={className}
       onClick={onClick}
       style={{
         background: 'var(--card)', border: '1px solid var(--border)',

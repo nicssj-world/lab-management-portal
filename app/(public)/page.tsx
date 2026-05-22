@@ -23,14 +23,188 @@ export default async function PublicHome() {
     <main style={{ background: 'var(--bg)' }}>
       <style>{`
         .public-hero { padding: 64px 28px 80px; }
+        .public-hero-shell {
+          max-width: 1280px;
+          min-height: 360px;
+          margin: 0 auto;
+          position: relative;
+        }
+        .public-hero-text {
+          position: relative;
+          z-index: 2;
+          max-width: 760px;
+        }
         .public-hero-title { font-size: 44px; }
+        .public-hero-title-th {
+          display: inline-block;
+          color: #fff;
+          text-shadow: 0 10px 32px rgba(15,23,42,.22);
+          animation: heroTitleRise .7s ease-out both;
+        }
+        .public-hero-title-en {
+          display: inline-block;
+          position: relative;
+          margin-top: 4px;
+          color: transparent;
+          background: linear-gradient(90deg, #fff 0%, #dbeafe 38%, #fff 72%);
+          background-size: 220% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          text-shadow: none;
+          animation: heroTitleRise .7s ease-out .08s both, heroTitleShine 4.8s ease-in-out 1s infinite;
+        }
+        .public-hero-title-en::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: -7px;
+          height: 3px;
+          border-radius: 999px;
+          background: linear-gradient(90deg, rgba(255,255,255,.85), rgba(219,234,254,.18));
+          transform-origin: left;
+          animation: heroUnderline .75s ease-out .28s both;
+        }
+        @keyframes heroTitleRise {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes heroTitleShine {
+          0%, 42% { background-position: 100% 50%; }
+          72%, 100% { background-position: 0% 50%; }
+        }
+        @keyframes heroUnderline {
+          from { opacity: 0; transform: scaleX(.25); }
+          to { opacity: 1; transform: scaleX(1); }
+        }
         .public-hero-actions { display: flex; gap: 12px; }
+        .public-photo-stack {
+          position: absolute;
+          right: -8px;
+          bottom: -28px;
+          width: 470px;
+          height: 315px;
+          z-index: 1;
+        }
+        .public-photo-card {
+          position: absolute;
+          overflow: hidden;
+          border: 5px solid #fff;
+          border-radius: 14px;
+          background: #fff;
+          box-shadow: 0 20px 46px rgba(15,23,42,.22);
+          transition: transform .22s ease, box-shadow .22s ease, z-index .22s ease;
+        }
+        .public-photo-card img {
+          width: 100%;
+          height: 100%;
+          display: block;
+          object-fit: cover;
+        }
+        .public-photo-card:hover {
+          z-index: 20 !important;
+          box-shadow: 0 30px 70px rgba(15,23,42,.34);
+        }
+        .public-photo-central {
+          right: 58px;
+          bottom: 64px;
+          width: 336px;
+          height: 190px;
+          z-index: 4;
+          transform: rotate(-3deg);
+        }
+        .public-photo-central:hover { transform: rotate(-3deg) translateY(-8px) scale(1.035); }
+        .public-photo-blood {
+          right: 2px;
+          bottom: 28px;
+          width: 164px;
+          height: 106px;
+          z-index: 6;
+          transform: rotate(4deg);
+        }
+        .public-photo-blood:hover { transform: rotate(4deg) translateY(-8px) scale(1.045); }
+        .public-photo-petri {
+          right: 260px;
+          bottom: 26px;
+          width: 176px;
+          height: 118px;
+          z-index: 5;
+          transform: rotate(2deg);
+        }
+        .public-photo-petri:hover { transform: rotate(2deg) translateY(-8px) scale(1.045); }
+        .public-photo-sign {
+          right: 286px;
+          bottom: 198px;
+          width: 168px;
+          height: 92px;
+          z-index: 3;
+          transform: rotate(3deg);
+        }
+        .public-photo-sign:hover { transform: rotate(3deg) translateY(-8px) scale(1.045); }
+        .public-lab-sticker {
+          position: absolute;
+          left: 18px;
+          bottom: 46px;
+          z-index: 12;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 11px;
+          border-radius: 999px;
+          background: rgba(255,255,255,.94);
+          color: var(--primary);
+          border: 1px solid rgba(255,255,255,.65);
+          box-shadow: 0 16px 34px rgba(15,23,42,.2);
+          font-size: 12px;
+          font-weight: 800;
+          white-space: nowrap;
+        }
         .public-section { padding-left: 28px; padding-right: 28px; }
         .public-news-grid { grid-template-columns: 3fr 2fr; }
         .public-category-grid { grid-template-columns: repeat(4, 1fr); }
 
         @media (max-width: 900px) {
           .public-hero { padding: 42px 20px 58px; }
+          .public-hero-shell { min-height: 0; }
+          .public-hero-text { max-width: none; }
+          .public-photo-stack {
+            position: relative;
+            right: auto;
+            bottom: auto;
+            width: 100%;
+            height: 272px;
+            margin-top: 28px;
+          }
+          .public-photo-card { border-width: 5px; }
+          .public-photo-central {
+            right: 7%;
+            bottom: 74px;
+            width: 58%;
+            height: 146px;
+          }
+          .public-photo-blood {
+            right: 1%;
+            bottom: 34px;
+            width: 32%;
+            height: 88px;
+          }
+          .public-photo-petri {
+            right: 47%;
+            bottom: 26px;
+            width: 34%;
+            height: 94px;
+          }
+          .public-photo-sign {
+            right: 56%;
+            bottom: 194px;
+            width: 32%;
+            height: 70px;
+          }
+          .public-lab-sticker {
+            left: 2px;
+            bottom: 36px;
+            font-size: 11.5px;
+          }
           .public-hero-title { font-size: 34px !important; letter-spacing: 0 !important; }
           .public-hero-actions { flex-direction: column; align-items: stretch; max-width: 360px; }
           .public-hero-actions a, .public-hero-actions button { width: 100%; justify-content: center; }
@@ -41,7 +215,46 @@ export default async function PublicHome() {
 
         @media (max-width: 520px) {
           .public-hero { padding: 36px 16px 48px; }
+          .public-photo-stack {
+            height: 238px;
+            margin-top: 24px;
+          }
+          .public-photo-card {
+            border-width: 4px;
+            border-radius: 12px;
+          }
+          .public-photo-central {
+            right: 2%;
+            bottom: 74px;
+            width: 68%;
+            height: 132px;
+          }
+          .public-photo-blood {
+            right: 1%;
+            bottom: 30px;
+            width: 39%;
+            height: 78px;
+          }
+          .public-photo-petri {
+            right: 46%;
+            bottom: 24px;
+            width: 42%;
+            height: 84px;
+          }
+          .public-photo-sign {
+            right: 50%;
+            bottom: 176px;
+            width: 42%;
+            height: 56px;
+          }
+          .public-lab-sticker {
+            bottom: 30px;
+            max-width: calc(100% - 70px);
+            white-space: normal;
+            line-height: 1.25;
+          }
           .public-hero-title { font-size: 30px !important; line-height: 1.18 !important; }
+          .public-hero-title-en::after { bottom: -5px; height: 2px; }
           .public-hero-copy { font-size: 14px !important; }
           .public-section { padding-left: 16px !important; padding-right: 16px !important; }
           .public-category-grid { grid-template-columns: 1fr !important; }
@@ -57,41 +270,60 @@ export default async function PublicHome() {
       >
         <div style={{ position: 'absolute', right: -80, top: -40, width: 460, height: 460, borderRadius: '50%', background: 'rgba(255,255,255,.06)' }} />
         <div style={{ position: 'absolute', right: 120, bottom: -100, width: 280, height: 280, borderRadius: '50%', background: 'rgba(255,255,255,.05)' }} />
-        <div style={{ maxWidth: 1280, margin: '0 auto', position: 'relative' }}>
-          <Badge color="blue" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', marginBottom: 16, display: 'inline-flex' }}>
-            ISO 15189:2022 · ISO 15190:2020 Accredited
-          </Badge>
-          <h1 className="public-hero-title" style={{ fontWeight: 700, margin: '0 0 16px', lineHeight: 1.15, letterSpacing: '-0.02em' }}>
-            คู่มือการส่งตรวจทางห้องปฏิบัติการ<br />Laboratory Services
-          </h1>
-          <p className="public-hero-copy" style={{ fontSize: 16, opacity: 0.9, marginTop: 0, lineHeight: 1.6, maxWidth: 520 }}>
-            ค้นหารายการตรวจวิเคราะห์ คู่มือการเก็บตัวอย่าง และเอกสารแนบต่างๆ<br />ของกลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรีได้ที่นี่
-          </p>
-          <div className="public-hero-actions" style={{ marginTop: 24 }}>
-            <Link href="/catalog">
-              <button
-                style={{
-                  background: '#fff', color: 'var(--primary)', border: 'none',
-                  padding: '12px 22px', borderRadius: 10, fontSize: 14, fontWeight: 600,
-                  cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8,
-                }}
-              >
-                <Icon name="search" size={16} />
-                ค้นหารายการตรวจ
-              </button>
-            </Link>
-            <Link href="/manual">
-              <button
-                style={{
-                  background: 'transparent', color: '#fff',
-                  border: '1px solid rgba(255,255,255,.3)',
-                  padding: '12px 22px', borderRadius: 10, fontSize: 14, fontWeight: 600,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                คู่มือห้องปฏิบัติการ
-              </button>
-            </Link>
+        <div className="public-hero-shell">
+          <div className="public-hero-text">
+            <Badge color="blue" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', marginBottom: 16, display: 'inline-flex' }}>
+              ISO 15189:2022 · ISO 15190:2020 Accredited
+            </Badge>
+            <h1 className="public-hero-title" style={{ fontWeight: 700, margin: '0 0 18px', lineHeight: 1.15, letterSpacing: 0 }}>
+              <span className="public-hero-title-th">คู่มือการส่งตรวจทางห้องปฏิบัติการ</span><br />
+              <span className="public-hero-title-en">LABORATORY SERVICES</span>
+            </h1>
+            <p className="public-hero-copy" style={{ fontSize: 16, opacity: 0.9, marginTop: 0, lineHeight: 1.6, maxWidth: 520 }}>
+              ค้นหารายการตรวจวิเคราะห์ คู่มือการเก็บตัวอย่าง และเอกสารแนบต่างๆ<br />ของกลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรีได้ที่นี่
+            </p>
+            <div className="public-hero-actions" style={{ marginTop: 24 }}>
+              <Link href="/catalog">
+                <button
+                  style={{
+                    background: '#fff', color: 'var(--primary)', border: 'none',
+                    padding: '12px 22px', borderRadius: 10, fontSize: 14, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8,
+                  }}
+                >
+                  <Icon name="search" size={16} />
+                  ค้นหารายการตรวจ
+                </button>
+              </Link>
+              <Link href="/manual">
+                <button
+                  style={{
+                    background: 'transparent', color: '#fff',
+                    border: '1px solid rgba(255,255,255,.3)',
+                    padding: '12px 22px', borderRadius: 10, fontSize: 14, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  คู่มือห้องปฏิบัติการ
+                </button>
+              </Link>
+            </div>
+          </div>
+
+          <div className="public-photo-stack" aria-label="ภาพห้องปฏิบัติการ">
+            <div className="public-photo-card public-photo-sign">
+              <img src="/images/hero-lab/medical-technology-sign.png" alt="ป้ายกลุ่มงานเทคนิคการแพทย์" />
+            </div>
+            <div className="public-photo-card public-photo-central">
+              <img src="/images/hero-lab/central-laboratory.png" alt="Central Laboratory โรงพยาบาลชลบุรี" />
+            </div>
+            <div className="public-photo-card public-photo-petri">
+              <img src="/images/hero-lab/microbiology-petri.jpg" alt="จานเพาะเชื้อ Microbiology" />
+            </div>
+            <div className="public-photo-card public-photo-blood">
+              <img src="/images/hero-lab/blood-tube.webp" alt="หลอดเลือด close-up" />
+            </div>
+            
           </div>
         </div>
       </section>
