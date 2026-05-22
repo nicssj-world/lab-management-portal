@@ -49,7 +49,7 @@ export function PublicNav() {
         .pub-nav-desktop { display: flex; }
         .pub-nav-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
         .pub-hamburger { display: none; }
-        @media (max-width: 768px) {
+        @media (max-width: 1100px) {
           .pub-nav-desktop { display: none; }
           .pub-nav-actions { display: none; }
           .pub-hamburger { display: flex; }
@@ -66,9 +66,10 @@ export function PublicNav() {
           style={{
             maxWidth: 1280, margin: '0 auto', padding: '14px 20px',
             display: 'flex', alignItems: 'center', gap: 20,
+            minWidth: 0,
           }}
         >
-          <Link href="/" style={{ textDecoration: 'none', flexShrink: 0 }}>
+          <Link href="/" style={{ textDecoration: 'none', flexShrink: 1, minWidth: 0 }}>
             <Logo size={48} lang={lang} />
           </Link>
 
@@ -195,7 +196,7 @@ export function PublicNav() {
         className="pub-mobile-nav-panel"
       >
         <style>{`
-          @media (max-width: 768px) {
+          @media (max-width: 1100px) {
             .pub-mobile-nav-panel { display: block !important; }
           }
         `}</style>

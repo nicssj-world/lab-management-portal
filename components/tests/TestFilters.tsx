@@ -40,10 +40,26 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <style>{`
+        @media (max-width: 767px) {
+          .test-filter-row {
+            display: grid !important;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+          }
+          .test-filter-search {
+            grid-column: 1 / -1;
+          }
+          .test-filter-select {
+            min-width: 0 !important;
+            width: 100%;
+          }
+        }
+      `}</style>
 
       {/* Row 1: Search + Specimen + Count badge */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="test-filter-row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="test-filter-search" style={{ flex: 1, minWidth: 0 }}>
           <Input
             icon="search"
             size="lg"
@@ -54,6 +70,7 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
         </div>
 
         <select
+          className="test-filter-select"
           value={tube}
           onChange={e => onTubeChange(e.target.value)}
           style={{

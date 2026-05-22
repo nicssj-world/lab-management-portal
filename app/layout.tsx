@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { IBM_Plex_Sans_Thai, IBM_Plex_Sans, Sarabun, Noto_Sans_Thai } from 'next/font/google'
 import { Providers } from '@/components/providers'
 import './globals.css'
@@ -34,6 +34,11 @@ const notoSansThai = Noto_Sans_Thai({
 export const metadata: Metadata = {
   title: 'CBH - Lab Management',
   description: 'ระบบจัดการห้องปฏิบัติการ กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
