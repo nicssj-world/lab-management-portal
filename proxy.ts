@@ -2,6 +2,15 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
+  if (process.env.MAINTENANCE_MODE === '1') {
+    const url = request.nextUrl.clone()
+    if (url.pathname !== '/maintenance') {
+      url.pathname = '/maintenance'
+      return NextResponse.rewrite(url)
+    }
+    return NextResponse.next()
+  }
+
   const response = NextResponse.next()
 
   const supabase = createServerClient(

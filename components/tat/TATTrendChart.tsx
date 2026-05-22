@@ -40,10 +40,10 @@ export function TATTrendChart({ data, targetMinutes = 240 }: Props) {
         />
         <Tooltip
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-          formatter={(value: number, name: string) => {
-            if (name === 'avgTAT') return [`${value} นาที`, 'TAT เฉลี่ย']
-            if (name === 'sampleCount') return [value.toLocaleString(), 'จำนวนตัวอย่าง']
-            return [value, name]
+          formatter={(value, name) => {
+            if (name === 'avgTAT') return [`${value as number} นาที`, 'TAT เฉลี่ย']
+            if (name === 'sampleCount') return [(value as number).toLocaleString(), 'จำนวนตัวอย่าง']
+            return [value as number, name as string]
           }}
         />
         <Legend wrapperStyle={{ fontSize: 12 }} formatter={(v) => v === 'avgTAT' ? 'TAT เฉลี่ย (นาที)' : 'จำนวนตัวอย่าง'} />

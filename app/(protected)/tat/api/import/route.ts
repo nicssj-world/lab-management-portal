@@ -51,10 +51,10 @@ export async function POST(request: NextRequest) {
     const { batchMeta, entries } = body as {
       batchMeta: { filename: string; fiscal_year: number; month: number }
       entries: {
-        lab_number?: string
-        test_code?: string
-        test_name?: string
-        dept_code?: string
+        lab_number: string | null
+        test_code: string | null
+        test_name: string | null
+        dept_code: string | null
         received_at: string
         resulted_at: string
         fiscal_year: number

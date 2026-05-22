@@ -14,7 +14,7 @@ export function DeptComparisonChart({ data }: Props) {
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
         <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} unit="%" domain={[0, 100]} width={40} />
-        <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [`${v}%`, '% on-time']} />
+        <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v) => [`${v as number}%`, '% on-time']} />
         <ReferenceLine y={100} stroke="#16A34A" strokeDasharray="4 4" />
         <Bar dataKey="pct" radius={[6, 6, 0, 0]}>
           {chartData.map((entry, idx) => (
