@@ -2,11 +2,9 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Icon } from '@/components/ui/Icon'
-import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { CATEGORIES, CAT_MAP } from '@/lib/validations/news'
 import type { News } from '@/lib/supabase/types'
 
@@ -278,7 +276,7 @@ function NewsFormModal({ item, onClose, onSaved, toast }: ModalProps) {
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             {form.is_new && (
-              <span style={{ background: '#DC2626', color: '#fff', fontSize: 9.5, fontWeight: 800, padding: '2px 7px', borderRadius: 4, letterSpacing: '.04em' }}>NEW</span>
+              <span className="news-new-badge" style={{ background: '#DC2626', color: '#fff', fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, letterSpacing: '.06em' }}>NEW</span>
             )}
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600,
@@ -664,7 +662,7 @@ function NewsFormModal({ item, onClose, onSaved, toast }: ModalProps) {
                 />
                 <div>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ background: '#DC2626', color: '#fff', fontSize: 9.5, fontWeight: 800, padding: '1px 5px', borderRadius: 3 }}>NEW</span>
+                    <span style={{ background: '#DC2626', color: '#fff', fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, letterSpacing: '.06em' }}>NEW</span>
                     <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>ติดป้าย NEW</span>
                   </span>
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>ยกเลิกป้ายอัตโนมัติ</div>
@@ -798,6 +796,9 @@ export function NewsManageClient({ canEdit }: Props) {
       const { published } = await res.json()
       setAllNews(prev => prev.map(n => n.id === item.id ? { ...n, published } : n))
       toast(published ? 'เผยแพร่ข่าวแล้ว' : 'ยกเลิกการเผยแพร่แล้ว')
+    } else {
+      const json = await res.json().catch(() => ({}))
+      toast(json.error ?? 'เกิดข้อผิดพลาด กรุณาลองใหม่', false)
     }
   }
 
@@ -832,57 +833,76 @@ export function NewsManageClient({ canEdit }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <style>{`
+        @keyframes news-badge-ripple {
+          0%   { box-shadow: 0 0 0 0 rgba(220,38,38,.55), 0 0 0 0 rgba(220,38,38,.25); }
+          70%  { box-shadow: 0 0 0 8px rgba(220,38,38,0), 0 0 0 16px rgba(220,38,38,0); }
+          100% { box-shadow: 0 0 0 0 rgba(220,38,38,0),  0 0 0 0  rgba(220,38,38,0); }
+        }
+        .news-new-badge { animation: news-badge-ripple 1.4s ease-out infinite; display: inline-flex; }
+      `}</style>
 
       {/* Header */}
-      <PageHeader
-        eyebrow="จัดการ"
-        title="จัดการข่าวสาร"
-        subtitle={`${stats.total} ข่าว · เผยแพร่ ${stats.published}`}
-        marginBottom={0}
-        actions={canEdit ? (
-          <Button variant="primary" icon="plus" onClick={() => { setEditTarget(null); setModalOpen(true) }}>
-            สร้างข่าวใหม่
-          </Button>
-        ) : undefined}
-      />
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4, fontWeight: 500 }}>
+            {stats.total} ข่าว · เผยแพร่ {stats.published}
+          </div>
+          <h1 style={{ margin: '0 0 4px', fontSize: 26, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.15 }}>
+            จัดการข่าวสารห้องปฏิบัติการ
+          </h1>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+            สร้าง แก้ไข และตั้งป้าย NEW สำหรับข่าวที่แสดงในหน้าเว็บ public
+          </div>
+        </div>
+        {canEdit && (
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <Button variant="secondary" icon="download">ส่งออก</Button>
+            <Button variant="primary" icon="plus" onClick={() => { setEditTarget(null); setModalOpen(true) }}>
+              สร้างข่าวใหม่
+            </Button>
+          </div>
+        )}
+      </div>
 
-      {/* Stats row */}
+      {/* Stats row — icon top-right */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
         {[
-          { label: 'ข่าวทั้งหมด', value: stats.total,     icon: 'bell',   color: 'var(--primary)', bg: 'var(--primary-soft)' },
-          { label: 'เผยแพร่แล้ว', value: stats.published, icon: 'globe',  color: 'var(--success)', bg: 'rgba(22,163,74,.1)' },
-          { label: 'ฉบับร่าง',    value: stats.draft,     icon: 'edit',   color: 'var(--warning)', bg: 'rgba(217,119,6,.1)' },
-          { label: 'ติดป้าย NEW', value: stats.isNew,     icon: 'alert',  color: 'var(--danger)',  bg: 'rgba(220,38,38,.1)' },
+          { label: 'ข่าวทั้งหมด', value: stats.total,     icon: 'bell',  color: 'var(--primary)', bg: 'var(--primary-soft)' },
+          { label: 'เผยแพร่แล้ว', value: stats.published, icon: 'globe', color: 'var(--success)', bg: 'rgba(22,163,74,.1)' },
+          { label: 'ฉบับร่าง',    value: stats.draft,     icon: 'edit',  color: 'var(--warning)', bg: 'rgba(217,119,6,.1)' },
+          { label: 'ติดป้าย NEW', value: stats.isNew,     icon: 'alert', color: 'var(--danger)',  bg: 'rgba(220,38,38,.1)' },
         ].map(s => (
-          <div key={s.label} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Icon name={s.icon as any} size={18} style={{ color: s.color }} />
+          <div key={s.label} style={{
+            background: 'var(--card)', border: '1px solid var(--border)',
+            borderRadius: 12, padding: '16px 18px', position: 'relative',
+          }}>
+            <div style={{
+              position: 'absolute', top: 14, right: 14,
+              width: 34, height: 34, borderRadius: 8, backgroundColor: s.bg,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Icon name={s.icon as any} size={16} style={{ color: s.color }} />
             </div>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)', lineHeight: 1 }}>{s.value}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>{s.label}</div>
-            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--ink)', lineHeight: 1 }}>{s.value}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 5 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* Filter bar */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 200, maxWidth: 320 }}>
-          <Input value={search} onChange={setSearch} icon="search" placeholder="ค้นหาหัวข้อ, คำโปรย..." size="lg" />
-        </div>
-
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <select
           value={catFilter}
           onChange={e => setCatFilter(e.target.value)}
           style={{
-            height: 44, padding: '0 32px 0 12px', borderRadius: 10,
+            height: 38, padding: '0 28px 0 10px', borderRadius: 8,
             border: `1.5px solid ${catFilter ? 'var(--primary)' : 'var(--border)'}`,
-            fontSize: 13, fontFamily: 'inherit',
+            fontSize: 12.5, fontFamily: 'inherit',
             color: catFilter ? 'var(--primary)' : 'var(--muted)',
             backgroundColor: catFilter ? 'var(--primary-soft)' : 'var(--card)',
             backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-            backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center',
+            backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center',
             appearance: 'none', cursor: 'pointer', outline: 'none', fontWeight: catFilter ? 600 : 400,
           }}
         >
@@ -914,12 +934,8 @@ export function NewsManageClient({ canEdit }: Props) {
           })}
         </div>
 
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 4, padding: '0 14px', height: 44, borderRadius: 10,
-          background: 'var(--surface-2)', border: '1.5px solid var(--border)', whiteSpace: 'nowrap', flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>{filtered.length}</span>
-          <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>รายการ</span>
+        <div style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          พบ <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{filtered.length}</span> รายการ
         </div>
       </div>
 
@@ -934,36 +950,44 @@ export function NewsManageClient({ canEdit }: Props) {
             const cat = CAT_MAP[n.cat as keyof typeof CAT_MAP]
             const initial = (n.author ?? 'A').charAt(0).toUpperCase()
             const isLast = idx === filtered.length - 1
+            const catColor = cat?.color ?? '#64748B'
             return (
               <div
                 key={n.id}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 14, padding: '13px 20px',
+                  display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px',
                   borderBottom: isLast ? 'none' : '1px solid var(--border)',
                   transition: 'background .1s',
                 }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                {/* Left: category + date */}
-                <div style={{ width: 130, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {/* Category icon */}
+                <div style={{
+                  width: 38, height: 38, borderRadius: 9, flexShrink: 0,
+                  background: catColor + '18', border: `1px solid ${catColor}28`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Icon name="doc" size={16} style={{ color: catColor }} />
+                </div>
+
+                {/* Meta: badges + date */}
+                <div style={{ width: 156, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: 2, background: cat?.color ?? '#64748B', flexShrink: 0 }} />
+                    {n.is_new && (
+                      <span className="news-new-badge" style={{ background: '#DC2626', color: '#fff', fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, letterSpacing: '.06em' }}>NEW</span>
+                    )}
                     <span style={{
                       fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 4,
-                      background: (cat?.color ?? '#64748B') + '18',
-                      color: cat?.color ?? '#64748B',
+                      background: catColor + '18', color: catColor, whiteSpace: 'nowrap',
                     }}>
                       {cat?.th ?? n.cat}
                     </span>
-                    {n.is_new && (
-                      <span style={{ background: '#DC2626', color: '#fff', fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 3 }}>NEW</span>
-                    )}
                   </div>
                   <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtDate(n.created_at)}</span>
                 </div>
 
-                {/* Center: title + excerpt */}
+                {/* Content: title + excerpt + author + views */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>
                     {n.title}
@@ -973,73 +997,73 @@ export function NewsManageClient({ canEdit }: Props) {
                       {n.excerpt}
                     </div>
                   )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+                    <div title={n.author ?? ''} style={{
+                      width: 20, height: 20, borderRadius: '50%', background: 'var(--primary)',
+                      color: '#fff', fontSize: 9.5, fontWeight: 700, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {initial}
+                    </div>
+                    {n.author && <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{n.author}</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: 'var(--muted)', fontSize: 11.5 }}>
+                      <Icon name="eye" size={11} />
+                      <span>{(n.views ?? 0).toLocaleString()} views</span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Right: author + views + actions */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                  {/* Author avatar */}
-                  <div title={n.author ?? ''} style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--primary)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {initial}
-                  </div>
-
-                  {/* Views */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: 'var(--muted)', fontSize: 11.5, minWidth: 36 }}>
-                    <Icon name="eye" size={11} />
-                    <span>{(n.views ?? 0).toLocaleString()}</span>
-                  </div>
-
-                  {/* Publish status + actions */}
-                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                    {/* Toggle publish */}
-                    {canEdit && (
-                      <button
-                        onClick={() => handleTogglePublish(n)}
-                        title={n.published ? 'ยกเลิกการเผยแพร่' : 'เผยแพร่'}
-                        style={{ width: 30, height: 30, borderRadius: 7, border: `1px solid ${n.published ? 'rgba(22,163,74,.3)' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .12s' }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--success)'; e.currentTarget.style.background = 'rgba(22,163,74,.08)' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = n.published ? 'rgba(22,163,74,.3)' : 'var(--border)'; e.currentTarget.style.background = 'transparent' }}
-                      >
-                        <Icon name="globe" size={13} style={{ color: n.published ? 'var(--success)' : 'var(--muted)' }} />
-                      </button>
-                    )}
-
-                    {/* Preview */}
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                  {/* Toggle publish — globe icon, green = published, gray = draft */}
+                  {canEdit && (
                     <button
-                      onClick={() => window.open(`/news/${n.id}`, '_blank')}
-                      title="ดูหน้า public"
-                      style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .12s' }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}
+                      onClick={() => handleTogglePublish(n)}
+                      title={n.published ? 'ยกเลิกการเผยแพร่' : 'เผยแพร่'}
+                      style={{ width: 30, height: 30, borderRadius: 7, border: `1px solid ${n.published ? 'rgba(22,163,74,.3)' : 'var(--border)'}`, background: n.published ? 'rgba(22,163,74,.06)' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .12s' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--success)'; e.currentTarget.style.background = 'rgba(22,163,74,.12)' }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = n.published ? 'rgba(22,163,74,.3)' : 'var(--border)'; e.currentTarget.style.background = n.published ? 'rgba(22,163,74,.06)' : 'transparent' }}
                     >
-                      <Icon name="eye" size={13} style={{ color: 'var(--muted)' }} />
+                      <Icon name="globe" size={13} style={{ color: n.published ? 'var(--success)' : 'var(--muted)' }} />
                     </button>
+                  )}
 
-                    {/* Edit */}
-                    {canEdit && (
-                      <button
-                        onClick={() => { setEditTarget(n); setModalOpen(true) }}
-                        title="แก้ไข"
-                        style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .12s' }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}
-                      >
-                        <Icon name="edit" size={13} style={{ color: 'var(--muted)' }} />
-                      </button>
-                    )}
+                  {/* Preview */}
+                  <button
+                    onClick={() => window.open(`/news/${n.id}`, '_blank')}
+                    title="ดูหน้า public"
+                    style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .12s' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'var(--primary-soft)' }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <Icon name="eye" size={13} style={{ color: 'var(--muted)' }} />
+                  </button>
 
-                    {/* Delete */}
-                    {canEdit && (
-                      <button
-                        onClick={() => handleDelete(n)}
-                        title="ลบ"
-                        style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .12s' }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#FCA5A5'; e.currentTarget.style.color = 'var(--danger)' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}
-                      >
-                        <Icon name="trash" size={13} style={{ color: 'var(--muted)' }} />
-                      </button>
-                    )}
-                  </div>
+                  {/* Edit */}
+                  {canEdit && (
+                    <button
+                      onClick={() => { setEditTarget(n); setModalOpen(true) }}
+                      title="แก้ไข"
+                      style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .12s' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'var(--primary-soft)' }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <Icon name="edit" size={13} style={{ color: 'var(--muted)' }} />
+                    </button>
+                  )}
+
+                  {/* Delete */}
+                  {canEdit && (
+                    <button
+                      onClick={() => handleDelete(n)}
+                      title="ลบ"
+                      style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .12s' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#FCA5A5'; e.currentTarget.style.background = 'rgba(220,38,38,.06)' }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <Icon name="trash" size={13} style={{ color: 'var(--muted)' }} />
+                    </button>
+                  )}
                 </div>
               </div>
             )

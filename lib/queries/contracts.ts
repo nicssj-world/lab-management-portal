@@ -3,6 +3,7 @@ import type { Contract, ContractUsage } from '@/lib/supabase/types'
 
 export interface ContractWithUsage extends Contract {
   used: number
+  lastUsageDate: string | null
 }
 
 export async function getContracts(supabase: SupabaseClient): Promise<ContractWithUsage[]> {
@@ -10,14 +11,23 @@ export async function getContracts(supabase: SupabaseClient): Promise<ContractWi
     .from('contracts')
     .select(`
       *,
-      contract_usage(amount)
+      contract_usage(amount, usage_date)
     `)
     .order('created_at', { ascending: false })
   if (error) throw error
-  return (data ?? []).map((c) => ({
-    ...c,
-    used: (c.contract_usage as { amount: number }[])?.reduce((sum, u) => sum + (u.amount ?? 0), 0) ?? 0,
-  }))
+  return (data ?? []).map((c) => {
+    const usages = c.contract_usage as { amount: number; usage_date: string | null }[]
+    const lastUsageDate = (usages ?? [])
+      .filter(u => u.usage_date)
+      .map(u => u.usage_date!)
+      .sort()
+      .at(-1) ?? null
+    return {
+      ...c,
+      used: (usages ?? []).reduce((sum, u) => sum + (u.amount ?? 0), 0),
+      lastUsageDate,
+    }
+  })
 }
 
 export async function upsertContract(supabase: SupabaseClient, contract: Partial<Contract>): Promise<Contract> {

@@ -15,6 +15,31 @@ const CATEGORY_CONTACT: Record<string, { name: string; phone: string }> = {
   'ศูนย์สุขภาพชุมชนเมืองชลบุรี':        { name: 'ศูนย์สุขภาพชุมชนเมืองชลบุรี',           phone: '1633, 1634' },
 }
 
+// keyword → color, ordered most-specific first
+const KEYWORD_COLOR: [string, string][] = [
+  ['body fluid', '#f221ba'],
+  ['csf',        '#fe892a'],
+  ['sputum',     '#001eff'],
+  ['blood gas',  '#B91C1C'],
+  ['hemoculture','#B91C1C'],
+  ['clotted',    '#EF4444'],
+  ['citrate',    '#25a6eb'],
+  ['heparin',    '#10B981'],
+  ['edta',       '#9333EA'],
+  ['naf',        '#94A3B8'],
+  ['cowin',      '#F59E0B'],
+  ['urine',      '#FACC15'],
+  ['stool',      '#92400E'],
+]
+
+function inferTubeColor(note: string): string {
+  const lower = note.toLowerCase()
+  for (const [kw, color] of KEYWORD_COLOR) {
+    if (lower.includes(kw)) return color
+  }
+  return '#000000'
+}
+
 const TUBE_COLOR_MAP: Record<string, string> = {
   'Sodium citrate (ฟ้า)':         '#25a6eb',
   'Clotted blood (แดง)':           '#EF4444',
@@ -30,6 +55,9 @@ const TUBE_COLOR_MAP: Record<string, string> = {
   'Blood gas capillary tube':      '#B91C1C',
   'Cowin tube':                    '#F59E0B',
   'Random urine':                  '#FACC15',
+  'Body Fluid':                    '#f221ba',
+  'CSF':                           '#fe892a',
+  'Sputum':                        '#001eff',
   'อื่นๆ':                         '#000000',
 }
 
@@ -63,7 +91,9 @@ export async function POST(req: NextRequest) {
     for (const row of rows) {
       try {
         const categoryId = row.category ? (catMap[row.category.toLowerCase()] ?? null) : null
-        const tubeColor = row.tube ? (TUBE_COLOR_MAP[row.tube] ?? '#94A3B8') : null
+        const tubeColor = row.tube
+          ? (TUBE_COLOR_MAP[row.tube] ?? inferTubeColor(row.tube))
+          : null
         const contactPreset = row.category ? CATEGORY_CONTACT[row.category] : undefined
         const { error } = await supabaseAdmin.from('tests').upsert({
           code:          row.code,
@@ -76,11 +106,13 @@ export async function POST(req: NextRequest) {
           tat_minutes:   row.tat_minutes ? String(row.tat_minutes) : null,
           tube:          row.tube ?? null,
           tube_color:    tubeColor,
+          specimen_note: row.specimen_note ?? null,
           volume:        row.volume ?? null,
           method:        row.method ?? null,
           ref:           row.ref ?? null,
           ref_note:      row.ref_note ?? null,
           service:       row.service ?? null,
+          description:   row.description ?? null,
           contact_name:  contactPreset?.name ?? null,
           contact_phone: contactPreset?.phone ?? null,
           active:        true,

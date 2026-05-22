@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getCategories } from '@/lib/queries/categories'
 import { getNews } from '@/lib/queries/news'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
@@ -14,6 +13,11 @@ export default async function PublicHome() {
     getCategories(supabase),
     getNews(supabase, { publishedOnly: true, limit: 5 }),
   ])
+
+  const outLabCat = categories.find(c =>
+    c.en?.toLowerCase().includes('out lab') || c.th?.includes('ตรวจพิเศษ')
+  )
+  const outLabUrl = outLabCat ? `/catalog?cat=${outLabCat.id}` : '/catalog'
 
   return (
     <main style={{ background: 'var(--bg)' }}>
@@ -67,7 +71,17 @@ export default async function PublicHome() {
 
       {/* Service scope */}
       <section style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 0' }}>
-        <PageHeader eyebrow="Service scope" title="ขอบเขตการให้บริการ" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
+          <div style={{ width: 3, height: 44, borderRadius: 2, background: 'var(--primary)', flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>
+              Service Scope
+            </div>
+            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--ink)', lineHeight: 1, letterSpacing: '-.01em' }}>
+              ขอบเขตการให้บริการ
+            </h2>
+          </div>
+        </div>
         <Card padding={28}>
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 16 }}>
             <div
@@ -90,7 +104,17 @@ export default async function PublicHome() {
             การตรวจสุขภาพประจำปีแบบหมู่คณะ และผู้มารับบริการทั้งหน่วยงานภายในและภายนอก
             (เฉพาะในเวลาราชการ 08.00-15.30 น.) 
             <br /><br />ส่วนรายการตรวจตรวจวิเคราะห์บางรายการที่ยังไม่เปิดให้บริการ จะดำเนินการส่งต่อยังห้องปฏิบัติการภายนอกที่มีคุณภาพมาตรฐานทั้งภาครัฐและภาคเอกชน
-            <br />ผู้รับบริการสามารถดูรายละเอียดตามรายการทดสอบที่หมวดหมู่ <strong>ตรวจพิเศษและปฏิบัติการตรวจต่อ (OUT LAB)</strong>
+            <br />ผู้รับบริการสามารถดูรายละเอียดตามรายการทดสอบที่หมวดหมู่{' '}
+            <Link
+              href={outLabUrl}
+              style={{
+                fontWeight: 700, color: 'var(--primary)',
+                textDecoration: 'underline', textDecorationColor: 'rgba(30,95,173,.35)',
+                textUnderlineOffset: 3,
+              }}
+            >
+              ตรวจพิเศษและปฏิบัติการตรวจต่อ (OUT LAB)
+            </Link>
           </p>
         </Card>
       </section>
@@ -143,18 +167,19 @@ export default async function PublicHome() {
 
         {featuredNews.length > 0 && (() => {
           const featured = featuredNews[0]
-          const sideNews = featuredNews.slice(1)
+          const sideNews = featuredNews.slice(1, 4)
           const featCat = CAT_MAP[featured.cat as keyof typeof CAT_MAP]
           return (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16, alignItems: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, alignItems: 'stretch' }}>
 
               {/* Featured card */}
-              <Link href={`/news/${featured.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+              <Link href={`/news/${featured.id}`} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
                 <div className="news-featured" style={{
                   background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden',
+                  height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
                 }}>
-                  <div style={{ height: 4, background: featCat?.color ?? 'var(--primary)' }} />
-                  <div style={{ padding: '26px 30px 28px' }}>
+                  <div style={{ height: 4, background: featCat?.color ?? 'var(--primary)', flexShrink: 0 }} />
+                  <div style={{ padding: '26px 30px 28px', flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                       {featured.is_new && (
                         <span className="news-new-badge" style={{ background: '#DC2626', color: '#fff', fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, letterSpacing: '.06em' }}>NEW</span>
@@ -185,7 +210,7 @@ export default async function PublicHome() {
                         {featured.excerpt}
                       </p>
                     )}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 18, borderTop: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 18, borderTop: '1px solid var(--border)', marginTop: 'auto' }}>
                       {featured.author ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{
@@ -209,7 +234,7 @@ export default async function PublicHome() {
               </Link>
 
               {/* Sidebar list */}
-              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
+              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)' }}>
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
                     ข่าวสารล่าสุด
@@ -250,7 +275,7 @@ export default async function PublicHome() {
                     </Link>
                   )
                 })}
-                <Link href="/news" style={{ display: 'block', textDecoration: 'none' }}>
+                <Link href="/news" style={{ display: 'block', textDecoration: 'none', marginTop: 'auto' }}>
                   <div className="news-footer-link" style={{
                     padding: '13px 18px', borderTop: '1px solid var(--border)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -268,11 +293,20 @@ export default async function PublicHome() {
 
       {/* Categories */}
       <section style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 60px' }}>
-        <PageHeader
-          eyebrow="Categories"
-          title="ค้นหารายการตรวจวิเคราะห์ตามหมวดหมู่"
-          subtitle={`รวม ${categories.length} หมวดหมู่ทางห้องปฏิบัติการ`}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
+          <div style={{ width: 3, height: 44, borderRadius: 2, background: 'var(--primary)', flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>
+              Categories
+            </div>
+            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--ink)', lineHeight: 1, letterSpacing: '-.01em' }}>
+              ค้นหารายการตรวจวิเคราะห์ตามหมวดหมู่
+            </h2>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 5 }}>
+              รวม {categories.length} หมวดหมู่ทางห้องปฏิบัติการ
+            </div>
+          </div>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
           {categories.map((c) => (
             <Link key={c.id} href={`/catalog?cat=${c.id}`} style={{ textDecoration: 'none' }}>

@@ -8,6 +8,8 @@ import { NewsShareButton } from '@/components/news/NewsShareButton'
 import { CAT_MAP, CATEGORIES } from '@/lib/validations/news'
 import type { News } from '@/lib/supabase/types'
 
+export const dynamic = 'force-dynamic'
+
 interface Props {
   params: Promise<{ id: string }>
 }
@@ -49,6 +51,10 @@ export default async function NewsDetailPage({ params }: Props) {
 
   if (!news || !news.published) notFound()
 
+  // Increment view count (fire-and-forget)
+  supabaseAdmin.from('news').update({ views: (news.views ?? 0) + 1 }).eq('id', newsId)
+    .then(undefined, () => {})
+
   // Related news: same category, excluding current, limit 3
   const { data: relatedRaw } = await supabaseAdmin
     .from('news')
@@ -60,6 +66,17 @@ export default async function NewsDetailPage({ params }: Props) {
     .limit(3)
   const related = (relatedRaw ?? []) as Pick<News, 'id' | 'title' | 'cat' | 'created_at' | 'excerpt'>[]
 
+  // Look up author avatar from profiles
+  let authorAvatarUrl: string | null = null
+  if (news.author) {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('avatar_url')
+      .eq('name', news.author)
+      .maybeSingle()
+    authorAvatarUrl = profile?.avatar_url ?? null
+  }
+
   const cat = CAT_MAP[news.cat as keyof typeof CAT_MAP]
   const tags = extractTags(news.body, news.cat)
   const initial = (news.author ?? 'ก').charAt(0).toUpperCase()
@@ -67,6 +84,14 @@ export default async function NewsDetailPage({ params }: Props) {
 
   return (
     <main style={{ background: 'var(--bg)', minHeight: '100vh' }}>
+      <style>{`
+        @keyframes news-badge-ripple {
+          0%   { box-shadow: 0 0 0 0 rgba(220,38,38,.55), 0 0 0 0 rgba(220,38,38,.25); }
+          70%  { box-shadow: 0 0 0 8px rgba(220,38,38,0), 0 0 0 16px rgba(220,38,38,0); }
+          100% { box-shadow: 0 0 0 0 rgba(220,38,38,0),  0 0 0 0  rgba(220,38,38,0); }
+        }
+        .news-new-badge { animation: news-badge-ripple 1.4s ease-out infinite; display: inline-flex; }
+      `}</style>
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '32px 24px 72px' }}>
 
         {/* Breadcrumb */}
@@ -92,7 +117,7 @@ export default async function NewsDetailPage({ params }: Props) {
             </span>
           )}
           {news.is_new && (
-            <span style={{ background: '#DC2626', color: '#fff', fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 4, letterSpacing: '.04em' }}>NEW</span>
+            <span className="news-new-badge" style={{ background: '#DC2626', color: '#fff', fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, letterSpacing: '.06em' }}>NEW</span>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--muted)', fontSize: 12.5 }}>
             <Icon name="clock" size={12} />
@@ -125,14 +150,25 @@ export default async function NewsDetailPage({ params }: Props) {
           marginBottom: 32,
         }}>
           {/* Avatar */}
-          <div style={{
-            width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-            background: 'var(--ink)', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 15, fontWeight: 700,
-          }}>
-            {initial}
-          </div>
+          {authorAvatarUrl ? (
+            <img
+              src={authorAvatarUrl}
+              alt={news.author ?? ''}
+              style={{
+                width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+                objectFit: 'cover', border: '2px solid var(--border)',
+              }}
+            />
+          ) : (
+            <div style={{
+              width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+              background: 'var(--ink)', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 15, fontWeight: 700,
+            }}>
+              {initial}
+            </div>
+          )}
 
           {/* Author info */}
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -152,14 +188,16 @@ export default async function NewsDetailPage({ params }: Props) {
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  height: 36, padding: '0 14px', borderRadius: 8,
-                  border: '1px solid var(--border)', background: 'var(--card)',
-                  textDecoration: 'none', fontSize: 13, color: 'var(--ink)', fontWeight: 500,
+                  display: 'inline-flex', alignItems: 'center', gap: 7,
+                  height: 38, padding: '0 18px', borderRadius: 9,
+                  border: 'none', background: 'var(--primary)',
+                  boxShadow: '0 2px 8px rgba(30,95,173,.30)',
+                  textDecoration: 'none', fontSize: 13.5, color: '#fff', fontWeight: 700,
+                  letterSpacing: '.01em',
                 }}
               >
-                <Icon name="download" size={13} />
-                PDF
+                <Icon name="download" size={14} />
+                ดาวน์โหลด PDF
               </a>
             )}
             <NewsShareButton title={news.title} />

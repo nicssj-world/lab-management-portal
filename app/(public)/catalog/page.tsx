@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { TestFilters } from '@/components/tests/TestFilters'
@@ -11,7 +11,7 @@ import type { Test, Category } from '@/lib/supabase/types'
 
 const PAGE_SIZE = 20
 
-export default function CatalogPage() {
+function CatalogContent() {
   const searchParams = useSearchParams()
   const [tests, setTests] = useState<Test[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -102,5 +102,13 @@ export default function CatalogPage() {
         />
       </div>
     </main>
+  )
+}
+
+export default function CatalogPage() {
+  return (
+    <Suspense>
+      <CatalogContent />
+    </Suspense>
   )
 }

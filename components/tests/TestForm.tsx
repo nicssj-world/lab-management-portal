@@ -37,6 +37,9 @@ const TUBE_OPTIONS: { label: string; color: string }[] = [
   { label: 'Blood gas capillary tube',      color: '#B91C1C' },
   { label: 'Cowin tube',                    color: '#F59E0B' },
   { label: 'Random urine',                  color: '#FACC15' },
+  { label: 'Body Fluid',                    color: '#f221ba' },
+  { label: 'CSF',                           color: '#fe892a' },
+  { label: 'Sputum',                        color: '#001eff' },
   { label: 'อื่นๆ',                         color: '#000000' },
 ]
 const TUBE_PRESET_LABELS = TUBE_OPTIONS.filter(o => o.label !== 'อื่นๆ').map(o => o.label)

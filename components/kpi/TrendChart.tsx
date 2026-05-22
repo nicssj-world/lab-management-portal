@@ -30,7 +30,7 @@ export function TrendChart({ data, targetType, targetVal, unit = '%' }: Props) {
         <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} unit={unit} width={40} />
         <Tooltip
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-          formatter={(v: number) => [`${v}${unit}`, 'ผล']}
+          formatter={(v) => [`${v as number}${unit}`, 'ผล']}
         />
         <ReferenceLine y={targetVal} stroke="#D97706" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: `Target: ${targetVal}${unit}`, fill: '#D97706', fontSize: 10 }} />
         <Line type="monotone" dataKey="value" stroke="var(--primary)" strokeWidth={2} dot={{ r: 3, fill: 'var(--primary)' }} connectNulls />

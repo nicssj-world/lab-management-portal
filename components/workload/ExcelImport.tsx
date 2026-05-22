@@ -56,7 +56,7 @@ export function ExcelImport({ departments }: Props) {
 
     if (raw.length < 2) { setToast({ type: 'error', msg: 'ไม่พบข้อมูลในไฟล์' }); return }
 
-    const headers = (raw[0] as (string | number)[]).map(h => String(h).trim())
+    const headers = (raw[0] as unknown as (string | number)[]).map(h => String(h).trim())
     const testNameCol = headers.findIndex(h => /ชื่อ|test.?name|name|รายการ/i.test(h))
     if (testNameCol === -1) { setToast({ type: 'error', msg: 'ไม่พบคอลัมน์ "ชื่อรายการตรวจ"' }); return }
 
@@ -79,7 +79,7 @@ export function ExcelImport({ departments }: Props) {
 
     const parsed: ParsedRow[] = []
     for (let rowIdx = 1; rowIdx < raw.length; rowIdx++) {
-      const dataRow = raw[rowIdx] as (string | number)[]
+      const dataRow = raw[rowIdx] as unknown as (string | number)[]
       const test_name = String(dataRow[testNameCol] ?? '').trim()
       if (!test_name) continue
 

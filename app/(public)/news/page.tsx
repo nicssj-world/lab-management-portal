@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { getNews } from '@/lib/queries/news'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Icon } from '@/components/ui/Icon'
 import type { News } from '@/lib/supabase/types'
 
 const CAT_LABELS: Record<string, string> = {
@@ -39,8 +39,47 @@ export default function NewsPage() {
 
   return (
     <main style={{ background: 'var(--bg)', minHeight: '100vh' }}>
+      <style>{`
+        @keyframes news-badge-ripple {
+          0%   { box-shadow: 0 0 0 0 rgba(220,38,38,.55), 0 0 0 0 rgba(220,38,38,.25); }
+          70%  { box-shadow: 0 0 0 8px rgba(220,38,38,0), 0 0 0 16px rgba(220,38,38,0); }
+          100% { box-shadow: 0 0 0 0 rgba(220,38,38,0),  0 0 0 0  rgba(220,38,38,0); }
+        }
+        .news-new-badge { animation: news-badge-ripple 1.4s ease-out infinite; display: inline-flex; }
+      `}</style>
       <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 28px 60px' }}>
-        <PageHeader eyebrow="ข่าวสาร" title="ข่าวสารและประกาศ" subtitle="ข่าวสาร ประกาศ และอัปเดตจากกลุ่มงานเทคนิคการแพทย์" />
+
+        {/* Page header */}
+        <div style={{ marginBottom: 28 }}>
+          {/* Breadcrumb */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--muted)', marginBottom: 14 }}>
+            <Link href="/" style={{ color: 'var(--muted)', textDecoration: 'none', transition: 'color .15s' }}
+              onMouseEnter={e => (e.currentTarget.style.color = 'var(--ink)')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
+            >หน้าแรก</Link>
+            <Icon name="chevRight" size={11} />
+            <span style={{ color: 'var(--ink)', fontWeight: 500 }}>ข่าวสาร</span>
+          </div>
+
+          {/* Count + last updated */}
+          {!loading && news.length > 0 && (
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontWeight: 600, color: 'var(--primary)' }}>{news.length} ข่าว</span>
+              <span>·</span>
+              <span>อัปเดตล่าสุด {new Date(news[0].created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+            </div>
+          )}
+
+          {/* Title */}
+          <h1 style={{ margin: '0 0 8px', fontSize: 34, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.2, letterSpacing: '-.02em' }}>
+            ข่าวสารห้องปฏิบัติการ
+          </h1>
+
+          {/* Subtitle */}
+          <p style={{ margin: 0, fontSize: 14.5, color: 'var(--muted)', lineHeight: 1.6 }}>
+            ข่าวสาร ประกาศ และอัปเดตจากกลุ่มงานเทคนิคการแพทย์
+          </p>
+        </div>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
           <button
@@ -88,7 +127,7 @@ export default function NewsPage() {
                         {CAT_LABELS[n.cat] ?? n.cat}
                       </Badge>
                     )}
-                    {n.is_new && <Badge color="red" size="sm">NEW</Badge>}
+                    {n.is_new && <span className="news-new-badge" style={{ background: '#DC2626', color: '#fff', fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 4, letterSpacing: '.06em' }}>NEW</span>}
                   </div>
                   <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ink)', marginBottom: 8, lineHeight: 1.4 }}>
                     {n.title}

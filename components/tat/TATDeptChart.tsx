@@ -24,11 +24,11 @@ export function TATDeptChart({ data, targetMinutes = 240 }: Props) {
         <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} unit="น" width={45} />
         <Tooltip
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-          formatter={(v: number, name: string) => name === 'avgTAT' ? [`${v} นาที`, 'TAT เฉลี่ย'] : [v.toLocaleString(), 'ตัวอย่าง']}
+          formatter={(v, name) => name === 'avgTAT' ? [`${v as number} นาที`, 'TAT เฉลี่ย'] : [(v as number).toLocaleString(), 'ตัวอย่าง']}
         />
         <ReferenceLine y={targetMinutes} stroke="#D97706" strokeDasharray="4 4" />
         <Bar dataKey="avgTAT" radius={[6, 6, 0, 0]}>
-          <LabelList dataKey="count" position="top" style={{ fontSize: 10, fill: 'var(--muted)' }} formatter={(v: number) => v.toLocaleString()} />
+          <LabelList dataKey="count" position="top" style={{ fontSize: 10, fill: 'var(--muted)' }} formatter={(v: unknown) => (v as number).toLocaleString()} />
           {chartData.map((entry, idx) => (
             <Cell key={idx} fill={entry.avgTAT <= targetMinutes ? '#16A34A' : '#DC2626'} />
           ))}

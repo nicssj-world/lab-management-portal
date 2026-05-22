@@ -16,16 +16,19 @@ export interface ImportRow {
   price?: number
   tat_minutes?: string
   tube?: string
+  specimen_note?: string
   volume?: string
   method?: string
   instrument?: string
   ref?: string
   ref_note?: string
   service?: string
+  description?: string
   _status: 'ok' | 'error'
   _error?: string
   _rowNum: number
 }
+
 
 // Normalize header for matching
 function norm(s: string) {
@@ -48,6 +51,8 @@ const HEADER_MAP: Record<string, keyof Omit<ImportRow, '_status' | '_error' | '_
   'ค่าอ้างอิง': 'ref', 'ref': 'ref', 'referencRange': 'ref', 'referencerange': 'ref',
   'หมายเหตุ': 'ref_note', 'refnote': 'ref_note', 'note': 'ref_note',
   'วันเวลาที่ตรวจ': 'service', 'service': 'service', 'วันเวลาที่ตรวจวิเคราะห์': 'service',
+  'รายละเอียดอื่นๆ': 'specimen_note', 'รายละเอียด': 'specimen_note', 'หมายเหตุเพิ่มเติม': 'specimen_note',
+  'description': 'description',
 }
 
 function parseExcel(file: File): Promise<Record<string, unknown>[][]> {
@@ -101,12 +106,14 @@ function parseRows(data: unknown[][], categories: Category[]): ImportRow[] {
       price: r.price != null ? Number(r.price) || undefined : undefined,
       tat_minutes: r.tat_minutes ? String(r.tat_minutes).trim() : undefined,
       tube: r.tube ? String(r.tube).trim() : undefined,
+      specimen_note: r.specimen_note ? String(r.specimen_note).trim() : undefined,
       volume: r.volume ? String(r.volume).trim() : undefined,
       method: r.method ? String(r.method).trim() : undefined,
       instrument: r.instrument ? String(r.instrument).trim() : undefined,
       ref: r.ref ? String(r.ref).trim() : undefined,
       ref_note: r.ref_note ? String(r.ref_note).trim() : undefined,
       service: r.service ? String(r.service).trim() : undefined,
+      description: r.description ? String(r.description).trim() : undefined,
       _status: 'ok',
       _rowNum: idx + 2,
     }
@@ -164,15 +171,16 @@ export function TestImport({ categories }: Props) {
     const headers = [
       'รหัส', 'รหัสกรมบัญชีกลาง', 'ชื่อรายการตรวจ', 'ชื่ออังกฤษ', 'LOINC',
       'หมวดหมู่', 'TAT', 'specimen', 'ปริมาตร',
-      'วิธีการ', 'ค่าอ้างอิง', 'วันเวลาที่ตรวจ', 'ราคา',
+      'วิธีการ', 'ค่าอ้างอิง', 'วันเวลาที่ตรวจ', 'ราคา', 'รายละเอียดอื่นๆ',
     ]
     const example = [
       'CBC-001', '30101', 'Complete Blood Count', 'CBC', '',
       'โลหิตวิทยาคลินิก', '60 นาที', 'EDTA (ม่วง)', '3 mL',
       'Hematology analyzer', '4.0–11.0 × 10⁹/L', 'ตลอด 24 ชั่วโมง', 90,
+      'ข้อมูลเพิ่มเติมหรือข้อควรระวัง',
     ]
     const ws = XLSX.utils.aoa_to_sheet([headers, example])
-    ws['!cols'] = headers.map((_, i) => ({ wch: [10, 20, 26, 24, 10, 20, 14, 22, 10, 22, 20, 18, 8][i] }))
+    ws['!cols'] = headers.map((_, i) => ({ wch: [10, 20, 26, 24, 10, 20, 14, 22, 10, 22, 20, 18, 8, 28][i] }))
     headers.forEach((_, i) => {
       const cell = XLSX.utils.encode_cell({ r: 0, c: i })
       if (ws[cell]) ws[cell].s = { font: { bold: true }, fill: { fgColor: { rgb: 'DBEAFE' } } }
@@ -193,7 +201,8 @@ export function TestImport({ categories }: Props) {
       'Sodium citrate (ฟ้า)', 'Clotted blood (แดง)', 'Lithium heparin (เขียว)',
       'EDTA (ม่วง)', 'NaF (เทา)', 'Urine', 'Stool',
       'Hemoculture aerobic (ผู้ใหญ่)', 'Hemoculture aerobic (เด็ก)', 'Hemoculture fungi/TB',
-      'Blood gas syringe', 'Blood gas capillary tube', 'Cowin tube', 'Random urine', 'อื่นๆ',
+      'Blood gas syringe', 'Blood gas capillary tube', 'Cowin tube', 'Random urine',
+      'Body Fluid', 'CSF', 'Sputum', 'อื่นๆ',
     ]
     const specimenRows: string[][] = [['specimen (ค่าที่ใช้ได้)']]
     specimenList.forEach(s => specimenRows.push([s]))
@@ -314,6 +323,7 @@ export function TestImport({ categories }: Props) {
                 ['ค่าอ้างอิง / ref', ''],
                 ['วันเวลาที่ตรวจ / service', ''],
                 ['ราคา / price', ''],
+                ['รายละเอียดอื่นๆ / specimen_note', ''],
               ].map(([label, req]) => (
                 <span key={label} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: req ? '#DBEAFE' : 'var(--surface-2)', color: req ? '#1D4ED8' : 'var(--muted)', fontWeight: req ? 600 : 400 }}>
                   {label}{req ? ' *' : ''}

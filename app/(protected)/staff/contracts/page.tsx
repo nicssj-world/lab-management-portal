@@ -1,9 +1,8 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { getContracts } from '@/lib/queries/contracts'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { Button } from '@/components/ui/Button'
 import { ContractsClient } from './ContractsClient'
 
 export default async function ContractsPage() {
@@ -14,17 +13,23 @@ export default async function ContractsPage() {
   if ((perms['สัญญา'] ?? 'none') === 'none') redirect('/staff/dashboard')
   const canEdit = perms['สัญญา'] === 'edit'
 
-  const contracts = await getContracts(supabase)
+  const [contracts, profilesRes] = await Promise.all([
+    getContracts(supabase),
+    supabaseAdmin.from('profiles').select('dept').not('dept', 'is', null),
+  ])
+
+  const departments = [...new Set(
+    (profilesRes.data ?? []).map((p: { dept: string | null }) => p.dept).filter(Boolean) as string[]
+  )].filter(d => d !== 'Medical Technology').sort()
+
+  const lastUpdated = contracts[0]?.created_at ?? null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <PageHeader
-        eyebrow="สัญญา"
-        title="สัญญาและวัสดุ"
-        subtitle={`${contracts.length} สัญญา`}
-        actions={canEdit ? <Button variant="primary" icon="plus">เพิ่มสัญญา</Button> : undefined}
-      />
-      <ContractsClient contracts={contracts} canEdit={canEdit} />
-    </div>
+    <ContractsClient
+      contracts={contracts}
+      canEdit={canEdit}
+      lastUpdated={lastUpdated}
+      departments={departments}
+    />
   )
 }

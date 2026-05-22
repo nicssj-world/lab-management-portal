@@ -1,156 +1,1026 @@
 'use client'
 
-import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { getContractUsage, addContractUsage } from '@/lib/queries/contracts'
-import { Card } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
+import { useState, useCallback, useRef } from 'react'
+import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
-import { ContractBattery } from '@/components/lab/ContractBattery'
 import type { ContractWithUsage } from '@/lib/queries/contracts'
 import type { ContractUsage } from '@/lib/supabase/types'
 
-interface Props { contracts: ContractWithUsage[]; canEdit?: boolean }
+const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 
-export function ContractsClient({ contracts: initialContracts, canEdit = false }: Props) {
-  const [contracts, setContracts] = useState(initialContracts)
-  const [usageModal, setUsageModal] = useState<{ contractId: number; contractName: string } | null>(null)
-  const [historyModal, setHistoryModal] = useState<{ contractId: number; contractName: string; history: ContractUsage[] } | null>(null)
-  const [amount, setAmount] = useState('')
-  const [note, setNote] = useState('')
-  const supabase = createClient()
+function getMonthlyData(history: ContractUsage[], startDate: string | null) {
+  const now = new Date()
+  const contractStart = startDate ? new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth(), 1) : null
+  const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+  // Use contract start if it's within the last 12 months, otherwise fall back to 12 months ago
+  const start = contractStart && contractStart >= twelveMonthsAgo ? contractStart : twelveMonthsAgo
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(start.getFullYear(), start.getMonth() + i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const amount = history.filter(h => h.usage_date?.startsWith(key)).reduce((s, h) => s + h.amount, 0)
+    return { label: THAI_MONTHS_SHORT[d.getMonth()], amount }
+  })
+}
+
+function exportCSV(history: ContractUsage[], vendor: string, product: string) {
+  const rows = [
+    ['วันที่', 'จำนวน (บาท)', 'หมายเหตุ', 'บันทึกโดย'],
+    ...history.map(u => [u.usage_date ?? '', u.amount, u.note ?? '', u.recorded_by ?? '']),
+  ]
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `contract_${vendor}_${product}.csv`.replace(/\s+/g, '_')
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+interface Props {
+  contracts: ContractWithUsage[]
+  canEdit: boolean
+  lastUpdated: string | null
+  departments: string[]
+}
+
+// ── business logic helpers ──────────────────────────────────────────────────
+
+function monthsLeft(endDate: string | null): number {
+  if (!endDate) return 999
+  const diff = new Date(endDate).getTime() - Date.now()
+  return Math.floor(diff / (1000 * 60 * 60 * 24 * 30))
+}
+
+function isExpiring(c: ContractWithUsage): boolean {
+  const m = monthsLeft(c.end_date)
+  return c.total > 10_000_000 ? m <= 6 : m <= 3
+}
+
+function isLowBudget(c: ContractWithUsage): boolean {
+  if (!c.total) return false
+  return ((c.total - c.used) / c.total) < 0.30
+}
+
+function fmtDate(s: string | null): string {
+  if (!s) return '—'
+  return new Date(s).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function fmtMoney(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)} ล้านบาท`
+  return `฿${n.toLocaleString()}`
+}
+
+function fmtMoneyShort(n: number): string {
+  return `฿${n.toLocaleString()}`
+}
+
+// ── toast ───────────────────────────────────────────────────────────────────
+
+function useToast() {
+  const [toasts, setToasts] = useState<{ id: number; msg: string; ok: boolean }[]>([])
+  const counter = useRef(0)
+  const add = useCallback((msg: string, ok = true) => {
+    const id = ++counter.current
+    setToasts(t => [...t, { id, msg, ok }])
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3500)
+  }, [])
+  return { toasts, add }
+}
+
+// ── default form state ───────────────────────────────────────────────────────
+
+type ContractStatus = 'active' | 'expired' | 'cancelled' | 'pending'
+
+function emptyForm(): { contract_number: string; vendor: string; product: string; total: string; start_date: string; end_date: string; department: string; status: ContractStatus } {
+  return { contract_number: '', vendor: '', product: '', total: '', start_date: '', end_date: '', department: '', status: 'active' }
+}
+
+// ── ContractBattery ──────────────────────────────────────────────────────────
+
+function ContractBattery({ percent, warn }: { percent: number; warn: boolean }) {
+  const clamped = Math.max(0, Math.min(100, percent))
+  const fillColor = warn ? '#DC2626' : clamped >= 60 ? '#16A34A' : '#F59E0B'
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>คงเหลือเทียบกับมูลค่าสัญญา</span>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: warn ? 'var(--danger)' : 'var(--muted)', display: 'flex', alignItems: 'center', gap: 3 }}>
+          {warn && <Icon name="alert" size={10} style={{ color: 'var(--danger)' }} />}
+          {warn ? 'ใกล้หมด · ' : ''}{percent.toFixed(1)}%
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+        <div style={{
+          flex: 1, height: 18, borderRadius: '4px 0 0 4px',
+          border: `2px solid ${fillColor}`, background: 'var(--surface-2)',
+          overflow: 'hidden', position: 'relative',
+        }}>
+          <div style={{
+            width: `${clamped}%`, height: '100%', transition: 'width .4s',
+            background: warn
+              ? 'repeating-linear-gradient(45deg,#DC2626,#DC2626 4px,#FCA5A5 4px,#FCA5A5 8px)'
+              : fillColor,
+          }} />
+          {clamped > 15 && (
+            <span style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 10, fontWeight: 800,
+              color: warn ? '#fff' : clamped >= 40 ? '#fff' : 'var(--ink)',
+            }}>
+              {percent.toFixed(0)}%
+            </span>
+          )}
+        </div>
+        <div style={{ width: 4, height: 9, background: fillColor, borderRadius: '0 2px 2px 0', flexShrink: 0 }} />
+      </div>
+    </div>
+  )
+}
+
+// ── styles ───────────────────────────────────────────────────────────────────
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '9px 12px', borderRadius: 8,
+  border: '1px solid var(--border)', fontSize: 13,
+  fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)',
+  outline: 'none', boxSizing: 'border-box',
+}
+const labelStyle: React.CSSProperties = {
+  fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 4, display: 'block',
+}
+
+// ── main component ────────────────────────────────────────────────────────────
+
+export function ContractsClient({ contracts: initial, canEdit, lastUpdated, departments }: Props) {
+  const [contracts, setContracts] = useState<ContractWithUsage[]>(initial)
+  const [editModal, setEditModal] = useState<ContractWithUsage | null | 'new'>(null)
+  const [usageModal, setUsageModal] = useState<ContractWithUsage | null>(null)
+  const [historyModal, setHistoryModal] = useState<{ contract: ContractWithUsage; history: ContractUsage[] } | null>(null)
+  const [form, setForm] = useState(emptyForm())
+  const [usageAmount, setUsageAmount] = useState('')
+  const [usageNote, setUsageNote] = useState('')
+  const [usageDate, setUsageDate] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [formErr, setFormErr] = useState('')
+  const [editUsage, setEditUsage] = useState<ContractUsage | null>(null)
+  const [editUsageForm, setEditUsageForm] = useState({ amount: '', note: '', usage_date: '' })
+  const [filterExpiring, setFilterExpiring] = useState(false)
+  const [filterLowBudget, setFilterLowBudget] = useState(false)
+  const [filterDept, setFilterDept] = useState('')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { toasts, add: toast } = useToast()
+
+  // ── computed stats ──────────────────────────────────────────────────────────
+
+  const totalValue = contracts.reduce((s, c) => s + (c.total ?? 0), 0)
+  const totalUsed = contracts.reduce((s, c) => s + c.used, 0)
+  const totalRemaining = totalValue - totalUsed
+  const expiringCount = contracts.filter(isExpiring).length
+  const lowBudgetCount = contracts.filter(isLowBudget).length
+
+  const filteredContracts = contracts.filter(c => {
+    if (filterExpiring && !isExpiring(c)) return false
+    if (filterLowBudget && !isLowBudget(c)) return false
+    if (filterDept && c.department !== filterDept) return false
+    return true
+  })
+
+  // ── open modals ─────────────────────────────────────────────────────────────
+
+  function openCreate() {
+    setForm(emptyForm())
+    setFormErr('')
+    setSelectedFile(null)
+    setEditModal('new')
+  }
+
+  function openEdit(c: ContractWithUsage) {
+    setForm({
+      contract_number: c.contract_number ?? '',
+      vendor: c.vendor,
+      product: c.product,
+      total: String(c.total ?? ''),
+      start_date: c.start_date ?? '',
+      end_date: c.end_date ?? '',
+      department: c.department ?? '',
+      status: c.status,
+    })
+    setFormErr('')
+    setSelectedFile(null)
+    setEditModal(c)
+  }
+
+  async function downloadFile(contractId: number) {
+    const res = await fetch(`/api/admin/contracts/${contractId}/file`)
+    if (!res.ok) { toast('ไม่สามารถดาวน์โหลดไฟล์ได้', false); return }
+    const { url } = await res.json()
+    window.open(url, '_blank')
+  }
+
+  function openUsage(c: ContractWithUsage) {
+    setUsageAmount('')
+    setUsageNote('')
+    setUsageDate(new Date().toISOString().split('T')[0])
+    setUsageModal(c)
+  }
+
+  async function openHistory(c: ContractWithUsage) {
+    const res = await fetch(`/api/admin/contracts/${c.id}/usage`)
+    const history: ContractUsage[] = res.ok ? await res.json() : []
+    setHistoryModal({ contract: c, history })
+  }
+
+  function openEditUsage(u: ContractUsage) {
+    setEditUsageForm({ amount: String(u.amount), note: u.note ?? '', usage_date: u.usage_date ?? '' })
+    setEditUsage(u)
+  }
+
+  async function handleSaveEditUsage() {
+    if (!editUsage || !editUsageForm.amount || !historyModal) return
+    setSaving(true)
+    try {
+      const contractId = historyModal.contract.id
+      const res = await fetch(`/api/admin/contracts/${contractId}/usage/${editUsage.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: parseFloat(editUsageForm.amount), note: editUsageForm.note, usage_date: editUsageForm.usage_date }),
+      })
+      const json = await res.json()
+      if (!res.ok) { toast(json.error ?? 'เกิดข้อผิดพลาด', false); return }
+      const updatedHistory = historyModal.history.map(u => u.id === editUsage.id ? { ...u, ...json } : u)
+      const newUsed = updatedHistory.reduce((s, u) => s + u.amount, 0)
+      setHistoryModal(m => m ? { ...m, history: updatedHistory, contract: { ...m.contract, used: newUsed } } : m)
+      setContracts(prev => prev.map(c => c.id === contractId ? { ...c, used: newUsed } : c))
+      setEditUsage(null)
+      toast('แก้ไขรายการสำเร็จ')
+    } catch { toast('เกิดข้อผิดพลาด', false) }
+    finally { setSaving(false) }
+  }
+
+  async function handleDeleteUsage(u: ContractUsage) {
+    if (!historyModal) return
+    if (!confirm(`ยืนยันลบรายการ ฿${u.amount.toLocaleString()}?`)) return
+    const contractId = historyModal.contract.id
+    const res = await fetch(`/api/admin/contracts/${contractId}/usage/${u.id}`, { method: 'DELETE' })
+    if (!res.ok) { toast('ลบไม่สำเร็จ', false); return }
+    const updatedHistory = historyModal.history.filter(x => x.id !== u.id)
+    const newUsed = updatedHistory.reduce((s, x) => s + x.amount, 0)
+    setHistoryModal(m => m ? { ...m, history: updatedHistory, contract: { ...m.contract, used: newUsed } } : m)
+    setContracts(prev => prev.map(c => c.id === contractId ? { ...c, used: newUsed } : c))
+    toast('ลบรายการสำเร็จ')
+  }
+
+  // ── save contract ───────────────────────────────────────────────────────────
+
+  async function handleSave() {
+    if (!form.contract_number.trim() || !form.product.trim() || !form.total || !form.start_date || !form.end_date) {
+      setFormErr('กรุณากรอก เลขที่สัญญา ชื่อสัญญา มูลค่าสัญญา วันที่เริ่ม และวันที่สิ้นสุด')
+      return
+    }
+    setSaving(true)
+    setFormErr('')
+    try {
+      const isNew = editModal === 'new'
+      const url = isNew ? '/api/admin/contracts' : `/api/admin/contracts/${(editModal as ContractWithUsage).id}`
+      const res = await fetch(url, {
+        method: isNew ? 'POST' : 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, total: parseFloat(form.total) }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setFormErr(json.error ?? 'เกิดข้อผิดพลาด'); return }
+
+      let finalData = json
+      if (selectedFile) {
+        const contractId: number = isNew ? json.id : (editModal as ContractWithUsage).id
+        const fd = new FormData()
+        fd.append('file', selectedFile)
+        const uploadRes = await fetch(`/api/admin/contracts/${contractId}/file`, { method: 'POST', body: fd })
+        if (uploadRes.ok) finalData = await uploadRes.json()
+        else toast('บันทึกสัญญาแล้ว แต่อัปโหลดไฟล์ไม่สำเร็จ', false)
+      }
+
+      if (isNew) {
+        setContracts(prev => [{ ...finalData, used: 0, lastUsageDate: null }, ...prev])
+      } else {
+        setContracts(prev => prev.map(c => c.id === (editModal as ContractWithUsage).id ? { ...c, ...finalData } : c))
+      }
+      toast(isNew ? 'เพิ่มสัญญาสำเร็จ' : 'อัปเดตสัญญาสำเร็จ')
+      setSelectedFile(null)
+      setEditModal(null)
+    } catch { setFormErr('เกิดข้อผิดพลาด กรุณาลองใหม่') }
+    finally { setSaving(false) }
+  }
+
+  // ── delete contract ─────────────────────────────────────────────────────────
+
+  async function handleDeleteFile() {
+    if (editModal === 'new' || editModal === null) return
+    const c = editModal as ContractWithUsage
+    if (!confirm('ยืนยันลบไฟล์สัญญา?')) return
+    const res = await fetch(`/api/admin/contracts/${c.id}/file`, { method: 'DELETE' })
+    if (res.ok || res.status === 204) {
+      setContracts(prev => prev.map(x => x.id === c.id ? { ...x, file_url: null } : x))
+      setEditModal({ ...c, file_url: null })
+      toast('ลบไฟล์สำเร็จ')
+    } else {
+      toast('ลบไฟล์ไม่สำเร็จ', false)
+    }
+  }
+
+  async function handleDelete(c: ContractWithUsage) {
+    if (!confirm(`ยืนยันลบสัญญา "${c.vendor} — ${c.product}"?`)) return
+    const res = await fetch(`/api/admin/contracts/${c.id}`, { method: 'DELETE' })
+    if (res.ok || res.status === 204) {
+      setContracts(prev => prev.filter(x => x.id !== c.id))
+      toast('ลบสัญญาสำเร็จ')
+    } else {
+      toast('ลบไม่สำเร็จ', false)
+    }
+  }
+
+  // ── log usage ───────────────────────────────────────────────────────────────
 
   async function handleLogUsage() {
-    if (!usageModal || !amount) return
-    const usage = await addContractUsage(supabase, {
-      contract_id: usageModal.contractId,
-      amount: parseFloat(amount),
-      note,
-      usage_date: new Date().toISOString().split('T')[0],
-    })
-    setContracts((prev) => prev.map((c) => c.id === usageModal.contractId ? { ...c, used: c.used + usage.amount } : c))
-    setUsageModal(null)
-    setAmount('')
-    setNote('')
+    if (!usageModal || !usageAmount) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/admin/contracts/${usageModal.id}/usage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: parseFloat(usageAmount), note: usageNote, usage_date: usageDate }),
+      })
+      const json = await res.json()
+      if (!res.ok) { toast(json.error ?? 'เกิดข้อผิดพลาด', false); return }
+      setContracts(prev => prev.map(c => c.id === usageModal.id ? { ...c, used: c.used + json.amount, lastUsageDate: usageDate || new Date().toISOString().split('T')[0] } : c))
+      toast('บันทึกการใช้จ่ายสำเร็จ')
+      setUsageModal(null)
+    } catch { toast('เกิดข้อผิดพลาด', false) }
+    finally { setSaving(false) }
   }
 
-  async function openHistory(contract: ContractWithUsage) {
-    const history = await getContractUsage(supabase, contract.id)
-    setHistoryModal({ contractId: contract.id, contractName: `${contract.vendor} — ${contract.product}`, history })
-  }
+  // ── render ──────────────────────────────────────────────────────────────────
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
-        {contracts.map((c) => {
-          const pct = c.total ? (c.used / c.total) * 100 : 0
-          const isExpiring = c.end_date && (new Date(c.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24) < 30
-          return (
-            <Card key={c.id} padding={20}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14.5, color: 'var(--ink)' }}>{c.vendor}</div>
-                  <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{c.product}</div>
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {isExpiring && <Badge color="red" size="sm">ใกล้หมด</Badge>}
-                  <Badge color={c.status === 'active' ? 'green' : c.status === 'expired' ? 'red' : 'gray'} size="sm">{c.status}</Badge>
-                </div>
-              </div>
+      <style>{`
+        .ct-card { transition: box-shadow .15s, transform .15s; }
+        .ct-card:hover { box-shadow: 0 6px 28px rgba(0,0,0,.09); transform: translateY(-1px); }
+      `}</style>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 14, fontSize: 12 }}>
-                <div>
-                  <div style={{ color: 'var(--muted)' }}>มูลค่ารวม</div>
-                  <div style={{ fontWeight: 700, color: 'var(--ink)' }}>฿{(c.total ?? 0).toLocaleString()}</div>
-                </div>
-                <div>
-                  <div style={{ color: 'var(--muted)' }}>ใช้แล้ว</div>
-                  <div style={{ fontWeight: 700, color: 'var(--ink)' }}>฿{c.used.toLocaleString()}</div>
-                </div>
-                <div>
-                  <div style={{ color: 'var(--muted)' }}>คงเหลือ</div>
-                  <div style={{ fontWeight: 700, color: pct >= 80 ? '#DC2626' : 'var(--ink)' }}>฿{((c.total ?? 0) - c.used).toLocaleString()}</div>
-                </div>
-              </div>
-
-              <ContractBattery total={c.total ?? 0} used={c.used} />
-
-              {c.end_date && (
-                <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--muted)' }}>
-                  สิ้นสุด: {new Date(c.end_date).toLocaleDateString('th-TH')}
-                </div>
-              )}
-
-              <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-                {canEdit && (
-                  <Button variant="primary" size="sm" onClick={() => setUsageModal({ contractId: c.id, contractName: `${c.vendor} — ${c.product}` })}>
-                    บันทึกการใช้
-                  </Button>
-                )}
-                <Button variant="ghost" size="sm" onClick={() => openHistory(c)}>
-                  ประวัติ
-                </Button>
-              </div>
-            </Card>
-          )
-        })}
+      {/* ── Page header ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 6, fontWeight: 500 }}>
+            {contracts.length} สัญญา
+            {lastUpdated && ` · อัปเดตล่าสุด ${fmtDate(lastUpdated)}`}
+          </div>
+          <h1 style={{ margin: '0 0 4px', fontSize: 28, fontWeight: 800, color: 'var(--ink)', letterSpacing: '-.02em' }}>บริหารสัญญา</h1>
+          <p style={{ margin: 0, fontSize: 13.5, color: 'var(--muted)' }}>บันทึกการใช้จ่ายรายเดือน · เตือนเมื่อใกล้หมดอายุหรือมูลค่าเหลือต่ำ</p>
+        </div>
+        {canEdit && (
+          <Button variant="primary" icon="plus" onClick={openCreate} style={{ flexShrink: 0 }}>
+            สัญญาใหม่
+          </Button>
+        )}
       </div>
 
-      {/* Log usage modal */}
-      {usageModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }} onClick={() => setUsageModal(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, width: '100%', maxWidth: 420, padding: 28, boxShadow: '0 24px 60px rgba(0,0,0,.25)' }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>บันทึกการใช้งาน</div>
-            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 20 }}>{usageModal.contractName}</div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', display: 'block', marginBottom: 6 }}>จำนวน (บาท) *</label>
-              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+      {/* ── Stat cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+        {[
+          { label: 'มูลค่าสัญญารวม',      value: fmtMoney(totalValue),     icon: 'chart'   as const, color: 'var(--primary)',  bg: 'rgba(30,95,173,.08)'  },
+          { label: 'ใช้ไปแล้วรวม',        value: fmtMoney(totalUsed),      icon: 'trending' as const, color: '#e12727',        bg: 'rgba(124,58,237,.08)' },
+          { label: 'คงเหลือรวม',          value: fmtMoney(totalRemaining), icon: 'check'   as const, color: 'var(--success)',  bg: 'rgba(22,163,74,.08)'  },
+          { label: 'ใกล้หมดอายุ',        value: String(expiringCount),    icon: 'alert'   as const, color: 'var(--danger)',   bg: 'rgba(220,38,38,.08)'  },
+          { label: 'มูลค่าคงเหลือ < 30%', value: String(lowBudgetCount),   icon: 'bell'    as const, color: '#D97706',         bg: 'rgba(217,119,6,.08)'  },
+        ].map(s => (
+          <div key={s.label} style={{ background: 'var(--card)', borderRadius: 12, border: '1px solid var(--border)', padding: '16px 18px', position: 'relative' }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 8 }}>{s.label}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.1 }}>{s.value}</div>
+            <div style={{ position: 'absolute', top: 14, right: 14, width: 32, height: 32, borderRadius: 8, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name={s.icon} size={16} style={{ color: s.color }} />
             </div>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', display: 'block', marginBottom: 6 }}>หมายเหตุ</label>
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="รายละเอียดการใช้งาน"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+        ))}
+      </div>
+
+      {/* ── Filter bar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+        <button
+          onClick={() => setFilterExpiring(v => !v)}
+          style={{
+            padding: '5px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+            fontFamily: 'inherit', cursor: 'pointer', transition: 'all .15s',
+            border: filterExpiring ? '1px solid #DC2626' : '1px solid var(--border)',
+            background: filterExpiring ? '#FEF2F2' : 'transparent',
+            color: filterExpiring ? '#DC2626' : 'var(--muted)',
+            display: 'flex', alignItems: 'center', gap: 5,
+          }}
+        >
+          <Icon name="alert" size={12} />
+          ใกล้หมดอายุ
+          {expiringCount > 0 && <span style={{ fontSize: 11, fontWeight: 700, opacity: .75 }}>{expiringCount}</span>}
+        </button>
+
+        <button
+          onClick={() => setFilterLowBudget(v => !v)}
+          style={{
+            padding: '5px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+            fontFamily: 'inherit', cursor: 'pointer', transition: 'all .15s',
+            border: filterLowBudget ? '1px solid #D97706' : '1px solid var(--border)',
+            background: filterLowBudget ? '#FFFBEB' : 'transparent',
+            color: filterLowBudget ? '#D97706' : 'var(--muted)',
+            display: 'flex', alignItems: 'center', gap: 5,
+          }}
+        >
+          <Icon name="bell" size={12} />
+          งบเหลือ &lt; 30%
+          {lowBudgetCount > 0 && <span style={{ fontSize: 11, fontWeight: 700, opacity: .75 }}>{lowBudgetCount}</span>}
+        </button>
+
+        {departments.length > 0 && (
+          <select
+            value={filterDept}
+            onChange={e => setFilterDept(e.target.value)}
+            style={{
+              padding: '5px 28px 5px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+              fontFamily: 'inherit', cursor: 'pointer', transition: 'all .15s', outline: 'none',
+              border: filterDept ? '1px solid var(--primary)' : '1px solid var(--border)',
+              background: filterDept ? 'rgba(30,95,173,.06)' : 'transparent',
+              color: filterDept ? 'var(--primary)' : 'var(--muted)',
+              appearance: 'none', WebkitAppearance: 'none',
+            }}
+          >
+            <option value="">ทุกแผนก</option>
+            {departments.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
+
+        {(filterExpiring || filterLowBudget || filterDept) && (
+          <button
+            onClick={() => { setFilterExpiring(false); setFilterLowBudget(false); setFilterDept('') }}
+            style={{
+              padding: '5px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 600,
+              fontFamily: 'inherit', cursor: 'pointer', transition: 'all .15s',
+              border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}
+          >
+            <Icon name="x" size={11} />
+            ล้างตัวกรอง
+          </button>
+        )}
+
+        <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--muted)', fontWeight: 500 }}>
+          {filteredContracts.length} / {contracts.length} สัญญา
+        </span>
+      </div>
+
+      {/* ── Alert banner ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: '#FFFBEB', border: '1px solid #FDE68A', marginBottom: 20, fontSize: 12.5, color: '#92400E' }}>
+        <Icon name="alert" size={14} style={{ color: '#D97706', flexShrink: 0 }} />
+        <span><strong>กฎการเตือน:</strong> แดง = คงเหลือ ≤ 3 เดือน (หรือ ≤ 6 เดือนหากมูลค่า &gt; 10 ล้านบาท) · หลอดพลังเปลี่ยนเป็นแดงเมื่อเหลือ &lt; 30%</span>
+      </div>
+
+      {/* ── Contract cards grid ── */}
+      {filteredContracts.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--muted)', fontSize: 14 }}>
+          {contracts.length === 0
+            ? (canEdit ? 'ยังไม่มีสัญญา — กดปุ่ม "สัญญาใหม่" เพื่อเพิ่ม' : 'ยังไม่มีสัญญา')
+            : 'ไม่มีสัญญาตรงกับตัวกรองที่เลือก'}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
+          {filteredContracts.map(c => {
+            const remaining = (c.total ?? 0) - c.used
+            const pct = c.total ? (remaining / c.total) * 100 : 0
+            const ml = monthsLeft(c.end_date)
+            const expiring = isExpiring(c)
+            const lowBudget = isLowBudget(c)
+
+            // left accent color
+            const accentColor = expiring ? 'var(--danger)' : lowBudget ? '#F59E0B' : 'var(--success)'
+
+            return (
+              <div key={c.id} className="ct-card" style={{
+                background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)',
+                overflow: 'hidden',
+              }}>
+                {/* top accent bar */}
+                <div style={{ height: 3, background: accentColor }} />
+
+                <div style={{ padding: '18px 20px 16px' }}>
+                  {/* Header row */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      {c.contract_number && (
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 3, letterSpacing: '.04em' }}>
+                          {c.contract_number}
+                        </div>
+                      )}
+                      <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--ink)', lineHeight: 1.3 }}>{c.product}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{c.vendor}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      {/* status badge */}
+                      {expiring ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', padding: '3px 9px', borderRadius: 20 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#DC2626' }} />
+                          ใกล้หมดอายุ
+                        </span>
+                      ) : lowBudget ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: '#D97706', background: '#FFFBEB', border: '1px solid #FDE68A', padding: '3px 9px', borderRadius: 20 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#F59E0B' }} />
+                          งบเหลือน้อย
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: '#16A34A', background: '#F0FDF4', border: '1px solid #BBF7D0', padding: '3px 9px', borderRadius: 20 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#16A34A' }} />
+                          ปกติ
+                        </span>
+                      )}
+                      {c.file_url && (
+                        <button onClick={() => downloadFile(c.id)} title="ดาวน์โหลดไฟล์สัญญา" style={{ padding: 5, borderRadius: 6, border: 'none', background: 'var(--surface-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--primary)' }}>
+                          <Icon name="download" size={13} />
+                        </button>
+                      )}
+                      {canEdit && (
+                        <>
+                          <button onClick={() => openEdit(c)} style={{ padding: 5, borderRadius: 6, border: 'none', background: 'var(--surface-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--muted)' }}>
+                            <Icon name="edit" size={13} />
+                          </button>
+                          <button onClick={() => handleDelete(c)} style={{ padding: 5, borderRadius: 6, border: 'none', background: 'var(--surface-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--danger)' }}>
+                            <Icon name="trash" size={13} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Date row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
+                    {[
+                      { label: 'เริ่มสัญญา', value: fmtDate(c.start_date), warn: false },
+                      { label: 'สิ้นสุดสัญญา', value: fmtDate(c.end_date), warn: false },
+                      { label: 'วันคงเหลือ', value: ml < 0 ? 'หมดแล้ว' : `${ml} เดือน`, warn: expiring },
+                    ].map(d => (
+                      <div key={d.label} style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '9px 11px' }}>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>{d.label}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: d.warn ? 'var(--danger)' : 'var(--ink)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {d.warn && <Icon name="alert" size={11} style={{ color: 'var(--danger)' }} />}
+                          {d.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Amount row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
+                    <div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>มูลค่าสัญญา</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>{fmtMoneyShort(c.total ?? 0)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>ใช้ไปแล้ว</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: '#e01818' }}>{fmtMoneyShort(c.used)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>คงเหลือ</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: remaining <= 0 ? 'var(--danger)' : 'var(--success)' }}>{fmtMoneyShort(remaining)}</div>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <ContractBattery percent={pct} warn={lowBudget} />
+
+                  {/* Monthly log notice */}
+                  {(() => {
+                    const now = new Date()
+                    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                    const hasLog = c.lastUsageDate?.startsWith(thisMonth) ?? false
+                    return (
+                      <div style={{ fontSize: 11.5, marginBottom: 12, fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 4, color: hasLog ? 'var(--success)' : 'var(--muted)' }}>
+                        {hasLog ? (
+                          <>
+                            <Icon name="check" size={11} style={{ color: 'var(--success)', flexShrink: 0 }} />
+                            บันทึกล่าสุด {fmtDate(c.lastUsageDate)}
+                          </>
+                        ) : 'ยังไม่มีการบันทึกในรอบนี้'}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Action buttons */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => openHistory(c)}
+                      style={{
+                        flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                        background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+                        fontSize: 12.5, fontWeight: 600, color: 'var(--ink)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      }}
+                    >
+                      <Icon name="trending" size={12} />
+                      ประวัติการใช้สัญญา
+                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => openUsage(c)}
+                        style={{
+                          flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none',
+                          background: 'var(--primary)', cursor: 'pointer', fontFamily: 'inherit',
+                          fontSize: 12.5, fontWeight: 700, color: '#fff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                          boxShadow: '0 1px 6px rgba(30,95,173,.25)',
+                        }}
+                      >
+                        <Icon name="plus" size={12} />
+                        บันทึกการใช้จ่าย
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Create / Edit Modal ── */}
+      {editModal !== null && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+            {/* header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{editModal === 'new' ? 'เพิ่มสัญญาใหม่' : 'แก้ไขสัญญา'}</span>
+              <button onClick={() => setEditModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}>
+                <Icon name="x" size={16} />
+              </button>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <Button variant="ghost" onClick={() => setUsageModal(null)}>ยกเลิก</Button>
-              <Button variant="primary" onClick={handleLogUsage} disabled={!amount}>บันทึก</Button>
+
+            {/* body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 13 }}>
+              <div>
+                <label style={labelStyle}>เลขที่สัญญา <span style={{ color: 'var(--danger)' }}>*</span></label>
+                <input value={form.contract_number} onChange={e => setForm(f => ({ ...f, contract_number: e.target.value }))} placeholder="เช่น MED-2567-001" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>หน่วยงาน / Department</label>
+                <select value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} style={{ ...inputStyle }}>
+                  <option value="">— เลือกหน่วยงาน —</option>
+                  {departments.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>ชื่อบริษัท / Vendor</label>
+                <input value={form.vendor} onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))} placeholder="เช่น Roche Diagnostics" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>ชื่อสัญญา / ผลิตภัณฑ์ <span style={{ color: 'var(--danger)' }}>*</span></label>
+                <input value={form.product} onChange={e => setForm(f => ({ ...f, product: e.target.value }))} placeholder="เช่น Cobas 8000 + Reagent" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>มูลค่าสัญญา (บาท) <span style={{ color: 'var(--danger)' }}>*</span></label>
+                <input type="number" value={form.total} onChange={e => setForm(f => ({ ...f, total: e.target.value }))} placeholder="0.00" style={inputStyle} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+                <div>
+                  <label style={labelStyle}>วันที่เริ่มสัญญา <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>วันที่สิ้นสุดสัญญา <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <input type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} style={inputStyle} />
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>สถานะ</label>
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as ContractStatus }))} style={{ ...inputStyle }}>
+                  <option value="active">ปกติ (Active)</option>
+                  <option value="expired">หมดอายุ (Expired)</option>
+                  <option value="cancelled">ยกเลิก (Cancelled)</option>
+                  <option value="pending">รอดำเนินการ (Pending)</option>
+                </select>
+              </div>
+
+              {/* File upload */}
+              <div>
+                <label style={labelStyle}>ไฟล์สัญญา (PDF / รูปภาพ)</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,image/*"
+                  style={{ display: 'none' }}
+                  onChange={e => setSelectedFile(e.target.files?.[0] ?? null)}
+                />
+                {selectedFile ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                    <Icon name="doc" size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 12.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedFile.name}</span>
+                    <button onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 2, display: 'flex' }}>
+                      <Icon name="x" size={12} />
+                    </button>
+                  </div>
+                ) : editModal !== 'new' && (editModal as ContractWithUsage).file_url ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12.5, color: 'var(--muted)', background: 'var(--surface-2)' }}>
+                      มีไฟล์แนบอยู่แล้ว
+                    </div>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                      เปลี่ยนไฟล์
+                    </button>
+                    <button type="button" onClick={handleDeleteFile} style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--danger)', flexShrink: 0 }}>
+                      <Icon name="trash" size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => fileInputRef.current?.click()} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px dashed var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--muted)', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, boxSizing: 'border-box' }}>
+                    <Icon name="upload" size={13} />
+                    แนบไฟล์ PDF หรือรูปภาพ
+                  </button>
+                )}
+              </div>
+
+              {formErr && (
+                <div style={{ fontSize: 12.5, color: 'var(--danger)', padding: '8px 12px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                  {formErr}
+                </div>
+              )}
+            </div>
+
+            {/* footer */}
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
+              <Button variant="secondary" onClick={() => setEditModal(null)} disabled={saving}>ยกเลิก</Button>
+              <Button variant="primary" onClick={handleSave} disabled={saving} icon="check">
+                {saving ? 'กำลังบันทึก...' : editModal === 'new' ? 'เพิ่มสัญญา' : 'บันทึก'}
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* History modal */}
-      {historyModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }} onClick={() => setHistoryModal(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,.25)' }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>ประวัติการใช้งาน</div>
-              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4 }}>{historyModal.contractName}</div>
+      {/* ── Log Usage Modal ── */}
+      {usageModal && (() => {
+        const mRemaining = (usageModal.total ?? 0) - usageModal.used
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden' }}>
+
+              {/* Header */}
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>บันทึกการใช้จ่ายรายเดือน</div>
+                <button onClick={() => setUsageModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}>
+                  <Icon name="x" size={16} />
+                </button>
+              </div>
+
+              <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Vendor info */}
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: 'var(--ink)', lineHeight: 1.2 }}>{usageModal.product}</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>{usageModal.contract_number}</div>
+                </div>
+
+                {/* Budget summary */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, background: 'var(--surface-2)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  {[
+                    { label: 'มูลค่าสัญญา', value: fmtMoneyShort(usageModal.total ?? 0), color: 'var(--ink)' },
+                    { label: 'ใช้ไปแล้ว',   value: fmtMoneyShort(usageModal.used),        color: '#e62320' },
+                    { label: 'คงเหลือ',      value: fmtMoneyShort(mRemaining),             color: mRemaining <= 0 ? 'var(--danger)' : 'var(--success)' },
+                  ].map((s, i) => (
+                    <div key={s.label} style={{ padding: '11px 14px', borderLeft: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>{s.label}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: s.color }}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Date + Amount in 2 cols */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>วันที่บันทึก <span style={{ color: 'var(--danger)' }}>*</span></label>
+                    <input type="date" value={usageDate} onChange={e => setUsageDate(e.target.value)} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>จำนวนเงิน (บาท) <span style={{ color: 'var(--danger)' }}>*</span></label>
+                    <input type="number" value={usageAmount} onChange={e => setUsageAmount(e.target.value)} placeholder="0" style={inputStyle} />
+                  </div>
+                </div>
+
+                {/* Note textarea */}
+                <div>
+                  <label style={labelStyle}>หมายเหตุ</label>
+                  <textarea
+                    value={usageNote}
+                    onChange={e => setUsageNote(e.target.value)}
+                    placeholder={`เช่น เบิกน้ำยา ${usageModal.product} รอบ พ.ค. 2569`}
+                    rows={3}
+                    style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }}
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <Button variant="secondary" onClick={() => setUsageModal(null)} disabled={saving}>ยกเลิก</Button>
+                <Button variant="primary" onClick={handleLogUsage} disabled={!usageAmount || !usageDate || saving} icon="check">
+                  {saving ? 'กำลังบันทึก...' : 'บันทึกการใช้จ่าย'}
+                </Button>
+              </div>
             </div>
-            <div style={{ padding: 24 }}>
-              {historyModal.history.length === 0 ? (
-                <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>ยังไม่มีประวัติ</div>
-              ) : (
-                historyModal.history.map((u) => (
-                  <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{u.note ?? '—'}</div>
-                      <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
-                        {u.usage_date} · {u.recorded_by ?? '—'}
+          </div>
+        )
+      })()}
+
+      {/* ── History Modal ── */}
+      {historyModal && (() => {
+        const hc = historyModal.contract
+        const history = historyModal.history
+        const monthlyData = getMonthlyData(history, hc.start_date)
+        const monthsWithData = monthlyData.filter(m => m.amount > 0).length
+        const avgPerMonth = monthsWithData > 0 ? hc.used / monthsWithData : 0
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 660, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+
+              {/* Header */}
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0 }}>
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>ประวัติการใช้สัญญา</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.2 }}>{hc.product}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{hc.contract_number}</div>
+                </div>
+                <button onClick={() => setHistoryModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, marginTop: 2 }}>
+                  <Icon name="x" size={16} />
+                </button>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {/* Stats row */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                  {[
+                    { label: 'มูลค่าสัญญา',   value: fmtMoneyShort(hc.total ?? 0), color: 'var(--ink)' },
+                    { label: 'ใช้ไปแล้วรวม',  value: fmtMoneyShort(hc.used),       color: '#e12323' },
+                    { label: 'เฉลี่ยต่อเดือน', value: fmtMoneyShort(Math.round(avgPerMonth)), color: 'var(--ink)' },
+                    { label: 'จำนวนรายการ',   value: `${history.length} รายการ`,   color: 'var(--ink)' },
+                  ].map((s, i) => (
+                    <div key={s.label} style={{ padding: '13px 16px', borderLeft: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>{s.label}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: s.color }}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Bar chart — manual flex bars, no Recharts */}
+                {history.length > 0 && (() => {
+                  const maxV = Math.max(...monthlyData.map(m => m.amount), 1)
+                  return (
+                    <div style={{ padding: '18px 20px 8px', borderBottom: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>
+                        แนวโน้มรายเดือน – 12 เดือนย้อนหลัง
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 130, padding: '0 2px' }}>
+                        {monthlyData.map((m, i) => {
+                          const barH = (m.amount / maxV) * 106
+                          const label = m.amount > 0
+                            ? (m.amount >= 1_000_000 ? `${(m.amount / 1_000_000).toFixed(1)}M` : `${Math.round(m.amount / 1000)}K`)
+                            : ''
+                          return (
+                            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                              <div style={{ fontSize: 10, color: '#475569', fontWeight: 700, opacity: m.amount > 0 ? 1 : 0, lineHeight: 1, whiteSpace: 'nowrap' }}>{label}</div>
+                              <div
+                                title={m.amount > 0 ? `฿${m.amount.toLocaleString()}` : '—'}
+                                style={{ width: '100%', height: Math.max(barH, m.amount > 0 ? 6 : 2), background: m.amount > 0 ? '#1E5FAD' : '#E5EAF0', borderRadius: '5px 5px 0 0', transition: 'height .3s' }}
+                              />
+                              <div style={{ fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{m.label}</div>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>฿{u.amount.toLocaleString()}</div>
+                  )
+                })()}
+
+                {/* List header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px 8px' }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)' }}>บันทึกรายการทั้งหมด</span>
+                  {history.length > 0 && (
+                    <button
+                      onClick={() => exportCSV(history, hc.vendor, hc.product)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--primary)', fontFamily: 'inherit', padding: 0 }}
+                    >
+                      <Icon name="download" size={13} />
+                      ส่งออก CSV
+                    </button>
+                  )}
+                </div>
+
+                {/* Timeline rows */}
+                {history.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)', fontSize: 13 }}>ยังไม่มีประวัติการใช้งาน</div>
+                ) : (
+                  <div style={{ position: 'relative', padding: '0 20px 20px' }}>
+                    {/* vertical connector line */}
+                    <div style={{ position: 'absolute', left: 34, top: 6, bottom: 26, width: 2, background: 'var(--border)' }} />
+                    {[...history]
+                      .sort((a, b) => (b.usage_date ?? '').localeCompare(a.usage_date ?? ''))
+                      .map(u => (
+                        <div key={u.id} style={{ display: 'flex', gap: 14, marginBottom: 10, position: 'relative' }}>
+                          {/* circle icon */}
+                          <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--primary-soft)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, zIndex: 1, border: '3px solid var(--card)' }}>
+                            <Icon name="trending" size={13} />
+                          </div>
+                          {/* card */}
+                          <div style={{ flex: 1, padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 2 }}>
+                              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink)' }}>฿{u.amount.toLocaleString()}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8, flexShrink: 0 }}>
+                                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                                  {u.usage_date ? new Date(u.usage_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                </div>
+                                {canEdit && <>
+                                  <button onClick={() => openEditUsage(u)} style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Icon name="edit" size={12} />
+                                  </button>
+                                  <button onClick={() => handleDeleteUsage(u)} style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Icon name="trash" size={12} />
+                                  </button>
+                                </>}
+                              </div>
+                            </div>
+                            {u.note && <div style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 2 }}>{u.note}</div>}
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>บันทึกโดย · {u.recorded_by ?? '—'}</div>
+                          </div>
+                        </div>
+                      ))}
                   </div>
-                ))
-              )}
+                )}
+              </div>
+
             </div>
-            <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
-              <Button variant="ghost" onClick={() => setHistoryModal(null)}>ปิด</Button>
+          </div>
+        )
+      })()}
+
+      {/* ── Edit Usage Modal ── */}
+      {editUsage && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>แก้ไขรายการ</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)' }}>{historyModal?.contract.vendor}</div>
+              </div>
+              <button onClick={() => setEditUsage(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}>
+                <Icon name="x" size={16} />
+              </button>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>วันที่บันทึก</label>
+                  <input type="date" value={editUsageForm.usage_date} onChange={e => setEditUsageForm(f => ({ ...f, usage_date: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>จำนวนเงิน (บาท) <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <input type="number" value={editUsageForm.amount} onChange={e => setEditUsageForm(f => ({ ...f, amount: e.target.value }))} placeholder="0" style={inputStyle} />
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>หมายเหตุ</label>
+                <textarea value={editUsageForm.note} onChange={e => setEditUsageForm(f => ({ ...f, note: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} />
+              </div>
+            </div>
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Button variant="secondary" onClick={() => setEditUsage(null)} disabled={saving}>ยกเลิก</Button>
+              <Button variant="primary" onClick={handleSaveEditUsage} disabled={!editUsageForm.amount || saving} icon="check">
+                {saving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+              </Button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ── Toasts ── */}
+      <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {toasts.map(t => (
+          <div key={t.id} style={{
+            padding: '11px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+            background: t.ok ? '#166534' : '#B91C1C', color: '#fff',
+            boxShadow: '0 4px 16px rgba(0,0,0,.18)', maxWidth: 320,
+          }}>
+            {t.ok ? '✓ ' : '✕ '}{t.msg}
+          </div>
+        ))}
+      </div>
     </>
   )
 }

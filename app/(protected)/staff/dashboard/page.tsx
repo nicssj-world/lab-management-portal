@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { RiskHeatmap } from '@/components/lab/RiskHeatmap'
 import { ContractBattery } from '@/components/lab/ContractBattery'
+import Link from "next/link"
 
 export default async function StaffDashboardPage() {
   const supabase = await createClient()
@@ -99,7 +100,9 @@ export default async function StaffDashboardPage() {
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>การบริหารสัญญา</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>สัญญาวัสดุและบริการ</div>
           </div>
-          <Button variant="secondary" size="sm" href="/staff/contracts">ดูทั้งหมด →</Button>
+          <Link href="/staff/contracts">
+          <Button variant="secondary" size="sm">
+            ดูทั้งหมด →</Button></Link>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
           {contracts.slice(0, 6).map((c) => {

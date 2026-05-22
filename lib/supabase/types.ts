@@ -165,13 +165,16 @@ export interface Risk {
 
 export interface Contract {
   id: number
+  contract_number: string | null
   vendor: string
   product: string
   total: number
   start_date: string | null
   end_date: string | null
   unit: string | null
+  department: string | null
   status: 'active' | 'expired' | 'cancelled' | 'pending'
+  file_url: string | null
   created_at: string
   used?: number
 }
@@ -271,6 +274,7 @@ export interface KpiDefinition {
   target_type: 'gte' | 'lte' | 'eq'
   target_val: number
   sort_order: number
+  denominator: string | null
 }
 
 export interface KpiEntry {

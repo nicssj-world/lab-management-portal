@@ -16,7 +16,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/risk':             { th: 'ทะเบียนความเสี่ยง',             en: 'Risk Register' },
   '/staff/documents':        { th: 'จัดการเอกสารคุณภาพ',           en: 'Quality Documents' },
   '/staff/documents/master-list': { th: 'จัดการทะเบียนเอกสารคุณภาพ', en: 'Documents Master List' },
-  '/staff/contracts':        { th: 'สัญญาและวัสดุ',                en: 'Contracts & Supplies' },
+  '/staff/contracts':        { th: 'บริหารสัญญา',                en: 'Contracts Management' },
   '/staff/admin':            { th: 'จัดการผู้ใช้และสิทธิ์',          en: 'Users & Roles' },
   '/staff/settings':         { th: 'ตั้งค่าระบบ',                  en: 'System Settings' },
   '/kpi/dashboard':          { th: 'KPI Dashboard',                en: 'KPI Dashboard' },

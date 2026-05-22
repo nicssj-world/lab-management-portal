@@ -51,7 +51,7 @@ export function SpecimenSection({ test }: Props) {
           </div>
         </div>
       )}
-      <Row label="การเก็บรักษา" value={test.stability} />
+      <Row label="การเก็บรักษาหลังตรวจ" value={test.stability} />
       <Row label="เงื่อนไขปฏิเสธ" value={test.reject} />
       <Row label="เงื่อนไขการขนส่ง" value={test.transport_condition} />
       <Row label="รายละเอียดอื่นๆ" value={test.specimen_note} />

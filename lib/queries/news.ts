@@ -58,9 +58,14 @@ export async function getAdjacentNews(
   supabase: SupabaseClient,
   id: number
 ): Promise<{ prev: Pick<News, 'id' | 'title'> | null; next: Pick<News, 'id' | 'title'> | null }> {
+  const { data: current } = await supabase.from('news').select('created_at').eq('id', id).single()
+  if (!current) return { prev: null, next: null }
+
   const [prevRes, nextRes] = await Promise.all([
-    supabase.from('news').select('id, title').eq('published', true).lt('id', id).order('id', { ascending: false }).limit(1),
-    supabase.from('news').select('id, title').eq('published', true).gt('id', id).order('id').limit(1),
+    supabase.from('news').select('id, title').eq('published', true)
+      .lt('created_at', current.created_at).order('created_at', { ascending: false }).limit(1),
+    supabase.from('news').select('id, title').eq('published', true)
+      .gt('created_at', current.created_at).order('created_at', { ascending: true }).limit(1),
   ])
   return {
     prev: (prevRes.data?.[0] as Pick<News, 'id' | 'title'> | undefined) ?? null,

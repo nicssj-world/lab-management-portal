@@ -54,10 +54,10 @@ export function TATHistogram({ data }: Props) {
         />
         <Tooltip
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-          formatter={(v: number, name: string) => {
-            if (name === 'count') return [v.toLocaleString(), 'จำนวนตัวอย่าง']
-            if (name === 'cumPct') return [`${v}%`, 'สะสม %']
-            return [v, name]
+          formatter={(v, name) => {
+            if (name === 'count') return [(v as number).toLocaleString(), 'จำนวนตัวอย่าง']
+            if (name === 'cumPct') return [`${v as number}%`, 'สะสม %']
+            return [v as number, name as string]
           }}
         />
         <Legend wrapperStyle={{ fontSize: 12 }} formatter={(v) => v === 'count' ? 'จำนวนตัวอย่าง' : 'สะสม %'} />
