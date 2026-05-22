@@ -130,6 +130,15 @@ export function TestTable({
 
   return (
     <div>
+      <style>{`
+        .test-table-mobile-list { display: none; }
+
+        @media (max-width: 767px) {
+          .test-table-desktop-wrap { display: none !important; }
+          .test-table-mobile-list { display: grid !important; gap: 10px; }
+          .test-table-pagination-range { display: none; }
+        }
+      `}</style>
       {/* ── Bulk action bar ── */}
       {canEdit && someSelected && (
         <div style={{
@@ -170,8 +179,9 @@ export function TestTable({
       )}
 
       {/* ── Table ── */}
-      <StickyScroll style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <div className="test-table-desktop-wrap">
+      <StickyScroll style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, maxWidth: '100%' }}>
+        <table style={{ width: '100%', minWidth: 1080, borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
               {canEdit && (
@@ -377,6 +387,88 @@ export function TestTable({
           </tbody>
         </table>
       </StickyScroll>
+      </div>
+
+      <div className="test-table-mobile-list">
+        {loading
+          ? Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+                <div style={{ height: 16, width: '65%', background: 'var(--surface-2)', borderRadius: 6, marginBottom: 10 }} />
+                <div style={{ height: 13, width: '42%', background: 'var(--surface-2)', borderRadius: 6, marginBottom: 16 }} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ height: 28, width: 96, background: 'var(--surface-2)', borderRadius: 20 }} />
+                  <div style={{ height: 28, width: 80, background: 'var(--surface-2)', borderRadius: 20 }} />
+                </div>
+              </div>
+            ))
+          : tests.map(t => {
+              const cat = catMap[t.category_id ?? '']
+              const tubeColor = t.tube_color ?? '#94A3B8'
+              const href = getHref ? getHref(t) : `/staff/tests/${t.id}`
+              const tatDisplay = t.tat_minutes ?? t.tat ?? '—'
+
+              return (
+                <Link key={t.id} href={href} style={{ textDecoration: 'none' }}>
+                  <article
+                    style={{
+                      background: 'var(--card)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      padding: 16,
+                      color: 'var(--ink)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.35, color: 'var(--ink)' }}>
+                          {t.th}
+                        </div>
+                        {t.en && (
+                          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4, marginTop: 3 }}>
+                            {t.en}
+                          </div>
+                        )}
+                      </div>
+                      <span style={{ color: 'var(--primary)', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
+                        {t.code}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                      {cat && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '4px 10px', borderRadius: 20,
+                          background: cat.color + '18', color: cat.color,
+                          fontSize: 12, fontWeight: 700, border: `1px solid ${cat.color}33`,
+                        }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
+                          {cat.th}
+                        </span>
+                      )}
+                      {t.tube && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--ink)', fontSize: 12.5 }}>
+                          <span style={{ width: 9, height: 9, borderRadius: 3, background: tubeColor, flexShrink: 0 }} />
+                          {t.tube}
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                      <div>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>รหัสกรมบัญชีกลาง</div>
+                        <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{t.cgd ?? '—'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>TAT</div>
+                        <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{tatDisplay}</div>
+                      </div>
+                    </div>
+                  </article>
+                </Link>
+              )
+            })}
+      </div>
 
       {/* ── Pagination ── */}
       {totalPages > 1 && (
@@ -423,7 +515,7 @@ export function TestTable({
             <Icon name="arrowRight" size={14} />
           </button>
 
-          <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--muted)' }}>
+          <span className="test-table-pagination-range" style={{ marginLeft: 8, fontSize: 12, color: 'var(--muted)' }}>
             {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)} จาก {total.toLocaleString()}
           </span>
         </div>

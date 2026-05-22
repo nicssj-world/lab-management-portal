@@ -21,11 +21,38 @@ export default async function PublicHome() {
 
   return (
     <main style={{ background: 'var(--bg)' }}>
+      <style>{`
+        .public-hero { padding: 64px 28px 80px; }
+        .public-hero-title { font-size: 44px; }
+        .public-hero-actions { display: flex; gap: 12px; }
+        .public-section { padding-left: 28px; padding-right: 28px; }
+        .public-news-grid { grid-template-columns: 3fr 2fr; }
+        .public-category-grid { grid-template-columns: repeat(4, 1fr); }
+
+        @media (max-width: 900px) {
+          .public-hero { padding: 42px 20px 58px; }
+          .public-hero-title { font-size: 34px !important; letter-spacing: 0 !important; }
+          .public-hero-actions { flex-direction: column; align-items: stretch; max-width: 360px; }
+          .public-hero-actions a, .public-hero-actions button { width: 100%; justify-content: center; }
+          .public-section { padding-left: 20px !important; padding-right: 20px !important; }
+          .public-news-grid { grid-template-columns: 1fr !important; }
+          .public-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        }
+
+        @media (max-width: 520px) {
+          .public-hero { padding: 36px 16px 48px; }
+          .public-hero-title { font-size: 30px !important; line-height: 1.18 !important; }
+          .public-hero-copy { font-size: 14px !important; }
+          .public-section { padding-left: 16px !important; padding-right: 16px !important; }
+          .public-category-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
       {/* Hero */}
       <section
+        className="public-hero"
         style={{
           background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%)',
-          color: '#fff', padding: '64px 28px 80px', position: 'relative', overflow: 'hidden',
+          color: '#fff', position: 'relative', overflow: 'hidden',
         }}
       >
         <div style={{ position: 'absolute', right: -80, top: -40, width: 460, height: 460, borderRadius: '50%', background: 'rgba(255,255,255,.06)' }} />
@@ -34,13 +61,13 @@ export default async function PublicHome() {
           <Badge color="blue" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', marginBottom: 16, display: 'inline-flex' }}>
             ISO 15189:2022 · ISO 15190:2020 Accredited
           </Badge>
-          <h1 style={{ fontSize: 44, fontWeight: 700, margin: '0 0 16px', lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+          <h1 className="public-hero-title" style={{ fontWeight: 700, margin: '0 0 16px', lineHeight: 1.15, letterSpacing: '-0.02em' }}>
             คู่มือการส่งตรวจทางห้องปฏิบัติการ<br />Laboratory Services
           </h1>
-          <p style={{ fontSize: 16, opacity: 0.9, marginTop: 0, lineHeight: 1.6, maxWidth: 520 }}>
+          <p className="public-hero-copy" style={{ fontSize: 16, opacity: 0.9, marginTop: 0, lineHeight: 1.6, maxWidth: 520 }}>
             ค้นหารายการตรวจวิเคราะห์ คู่มือการเก็บตัวอย่าง และเอกสารแนบต่างๆ<br />ของกลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรีได้ที่นี่
           </p>
-          <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+          <div className="public-hero-actions" style={{ marginTop: 24 }}>
             <Link href="/catalog">
               <button
                 style={{
@@ -70,7 +97,7 @@ export default async function PublicHome() {
       </section>
 
       {/* Service scope */}
-      <section style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 0' }}>
+      <section className="public-section" style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
           <div style={{ width: 3, height: 44, borderRadius: 2, background: 'var(--primary)', flexShrink: 0 }} />
           <div>
@@ -120,7 +147,7 @@ export default async function PublicHome() {
       </section>
 
       {/* News */}
-      <section style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 0' }}>
+      <section className="public-section" style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 0' }}>
         <style>{`
           .news-featured { transition: box-shadow .2s, transform .2s; }
           .news-featured:hover { box-shadow: 0 12px 40px rgba(0,0,0,.1); transform: translateY(-2px); }
@@ -170,7 +197,7 @@ export default async function PublicHome() {
           const sideNews = featuredNews.slice(1, 4)
           const featCat = CAT_MAP[featured.cat as keyof typeof CAT_MAP]
           return (
-            <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, alignItems: 'stretch' }}>
+            <div className="public-news-grid" style={{ display: 'grid', gap: 16, alignItems: 'stretch' }}>
 
               {/* Featured card */}
               <Link href={`/news/${featured.id}`} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
@@ -292,7 +319,7 @@ export default async function PublicHome() {
       </section>
 
       {/* Categories */}
-      <section style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 60px' }}>
+      <section className="public-section" style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 60px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
           <div style={{ width: 3, height: 44, borderRadius: 2, background: 'var(--primary)', flexShrink: 0 }} />
           <div>
@@ -307,7 +334,7 @@ export default async function PublicHome() {
             </div>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+        <div className="public-category-grid" style={{ display: 'grid', gap: 14 }}>
           {categories.map((c) => (
             <Link key={c.id} href={`/catalog?cat=${c.id}`} style={{ textDecoration: 'none' }}>
               <Card hoverable padding={20}>
