@@ -10,6 +10,7 @@ import { WorkloadKpiCards } from '@/components/workload/WorkloadKpiCards'
 import { MonthlyTrendChart } from '@/components/workload/MonthlyTrendChart'
 import { DeptComparisonChart } from '@/components/workload/DeptComparisonChart'
 import { AnnualReportExport } from '@/components/workload/AnnualReportExport'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import { useWorkload } from '@/lib/hooks/workload/useWorkload'
 import { useDepartments } from '@/lib/hooks/workload/useDepartments'
 import { useRealtimeEntries } from '@/lib/hooks/workload/useRealtimeEntries'
@@ -83,7 +84,7 @@ export default function WorkloadDashboardPage() {
 
           {/* Dept table */}
           <Card padding={0}>
-            <div style={{ overflowX: 'auto' }}>
+            <StickyScroll>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
@@ -117,7 +118,7 @@ export default function WorkloadDashboardPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </StickyScroll>
           </Card>
         </>
       )}

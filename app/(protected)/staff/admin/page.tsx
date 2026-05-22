@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAuditLog, type AuditLogWithUser } from '@/lib/queries/admin'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import { AdminUserClient } from './AdminUserClient'
 import { PermissionsMatrix } from './PermissionsMatrix'
 
@@ -92,7 +93,7 @@ export default async function AdminPage() {
           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Audit Log</div>
           <div style={{ fontSize: 12, color: 'var(--muted)' }}>30 รายการล่าสุด</div>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <StickyScroll>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
@@ -125,7 +126,7 @@ export default async function AdminPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </StickyScroll>
       </Card>
     </div>
   )

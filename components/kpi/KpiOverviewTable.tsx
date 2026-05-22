@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import { StatusBadge } from './StatusBadge'
 import type { Department, KpiDefinition, VwKpiDashboardRow } from '@/lib/supabase/types'
 
@@ -42,7 +43,7 @@ export function KpiOverviewTable({ year, month }: Props) {
   }
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <StickyScroll>
       <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: '100%' }}>
         <thead>
           <tr style={{ background: 'var(--surface-2)' }}>
@@ -83,6 +84,6 @@ export function KpiOverviewTable({ year, month }: Props) {
           ))}
         </tbody>
       </table>
-    </div>
+    </StickyScroll>
   )
 }

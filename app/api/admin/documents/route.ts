@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getRolePermissions } from '@/lib/permissions'
 import { DocumentSchema } from '@/lib/validations/document'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
@@ -16,6 +17,11 @@ async function getActor() {
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
+}
+
+async function canEditDocuments(role: string) {
+  const perms = await getRolePermissions(role)
+  return (perms['เอกสารคุณภาพ'] ?? 'none') === 'edit'
 }
 
 export async function GET(req: NextRequest) {
@@ -58,8 +64,9 @@ export async function POST(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const canUpload = ['Admin', 'Manager', 'Medical Technologist'].includes(actor.role)
-  if (!canUpload) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await canEditDocuments(actor.role))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   try {
     const form = await req.formData()
@@ -113,6 +120,16 @@ export async function POST(req: NextRequest) {
 
     supabaseAdmin.from('document_access_logs')
       .insert({ document_id: doc.id, user_id: actor.id, action: 'upload' })
+      .then(undefined, () => {})
+
+    supabaseAdmin.from('document_status_history')
+      .insert({
+        document_id: doc.id,
+        from_status: null,
+        to_status: doc.status,
+        changed_by: actor.id,
+        changed_at: doc.created_at,
+      })
       .then(undefined, () => {})
 
     return NextResponse.json(doc, { status: 201 })

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getRolePermissions } from '@/lib/permissions'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
@@ -11,6 +12,11 @@ async function getActor() {
   const { data } = await supabaseAdmin
     .from('profiles').select('id, role').eq('id', user.id).single()
   return data as { id: string; role: string } | null
+}
+
+async function canEditDocuments(role: string) {
+  const perms = await getRolePermissions(role)
+  return (perms['เอกสารคุณภาพ'] ?? 'none') === 'edit'
 }
 
 export async function GET(
@@ -39,8 +45,9 @@ export async function POST(
 ) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['Admin', 'Manager'].includes(actor.role))
+  if (!(await canEditDocuments(actor.role))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { id } = await params
 

@@ -16,6 +16,7 @@ interface Props {
   initial?: Partial<TestFormData>
   initialRanges?: ReferenceRangeRow[]
   testId?: number
+  existingCodes?: string[]
 }
 
 const EMPTY: TestFormData = {
@@ -67,6 +68,9 @@ const ta: React.CSSProperties = {
   color: 'var(--ink)', fontSize: 13, fontFamily: 'inherit',
   resize: 'vertical', minHeight: 80, boxSizing: 'border-box',
 }
+function normCode(v: string | null | undefined) {
+  return (v ?? '').trim().toLowerCase()
+}
 
 function SectionHeader({ title }: { title: string }) {
   return (
@@ -90,7 +94,7 @@ function Field({ label, required, error, children }: {
   )
 }
 
-export function TestForm({ categories, initial, initialRanges, testId }: Props) {
+export function TestForm({ categories, initial, initialRanges, testId, existingCodes = [] }: Props) {
   const router = useRouter()
   const [form, setForm] = useState<TestFormData>(() => {
     const merged: Record<string, unknown> = { ...EMPTY }
@@ -134,6 +138,11 @@ export function TestForm({ categories, initial, initialRanges, testId }: Props) 
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
   const isEdit = testId != null
+  const originalCode = initial?.code ?? ''
+  const duplicateCode = form.code?.trim()
+    && normCode(form.code) !== normCode(originalCode)
+    && existingCodes.some(code => normCode(code) === normCode(form.code))
+  const duplicateCodeMsg = duplicateCode ? `รหัสรายการตรวจ "${form.code.trim()}" มีอยู่แล้ว` : ''
 
   function set<K extends keyof TestFormData>(key: K, value: TestFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -148,6 +157,7 @@ export function TestForm({ categories, initial, initialRanges, testId }: Props) 
   function validate(): boolean {
     const errs: Record<string, string> = {}
     if (!form.code?.trim()) errs.code = 'กรุณากรอกรหัสรายการตรวจ'
+    else if (duplicateCodeMsg) errs.code = duplicateCodeMsg
     if (!form.category_id) errs.category_id = 'กรุณาเลือกหมวดหมู่'
     if (!form.th?.trim()) errs.th = 'กรุณากรอกชื่อภาษาไทย'
     setErrors(errs)
@@ -156,6 +166,10 @@ export function TestForm({ categories, initial, initialRanges, testId }: Props) 
 
   async function handleSubmit() {
     if (!validate()) return
+    if (duplicateCodeMsg) {
+      alert(duplicateCodeMsg)
+      return
+    }
     setSaving(true)
     try {
       const url = isEdit ? `/api/admin/tests/${testId}` : '/api/admin/tests'
@@ -203,7 +217,22 @@ export function TestForm({ categories, initial, initialRanges, testId }: Props) 
         <SectionHeader title="A. ข้อมูลพื้นฐาน" />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <Field label="รหัสรายการตรวจ" required error={errors.code}>
-            <input style={inp} value={form.code} onChange={(e) => set('code', e.target.value)} placeholder="รหัสใน E-phis" />
+            <input
+              style={{
+                ...inp,
+                borderColor: duplicateCodeMsg ? 'rgba(220,38,38,.55)' : 'var(--border)',
+                background: duplicateCodeMsg ? 'rgba(220,38,38,.04)' : 'var(--card)',
+              }}
+              value={form.code}
+              onChange={(e) => set('code', e.target.value)}
+              onBlur={() => {
+                if (duplicateCodeMsg) {
+                  alert(duplicateCodeMsg)
+                  setErrors(prev => ({ ...prev, code: duplicateCodeMsg }))
+                }
+              }}
+              placeholder="รหัสใน E-phis"
+            />
           </Field>
           <Field label="รหัสกรมบัญชีกลาง (CGD)">
             <input style={inp} value={form.cgd ?? ''} onChange={(e) => set('cgd', e.target.value || undefined)} placeholder="รหัส CGD" />
@@ -434,7 +463,7 @@ export function TestForm({ categories, initial, initialRanges, testId }: Props) 
       {/* Actions */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingBottom: 40 }}>
         <Button variant="secondary" onClick={() => router.back()}>ยกเลิก</Button>
-        <Button variant="primary" onClick={handleSubmit} disabled={saving} icon="check">
+        <Button variant="primary" onClick={handleSubmit} disabled={saving || !!duplicateCodeMsg} icon="check">
           {saving ? 'กำลังบันทึก...' : (isEdit ? 'บันทึกการแก้ไข' : 'เพิ่มรายการตรวจ')}
         </Button>
       </div>

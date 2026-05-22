@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Icon } from '@/components/ui/Icon'
 import { Input } from '@/components/ui/Input'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import type { Document } from '@/lib/supabase/types'
 
@@ -49,6 +50,11 @@ const STATUS_LABEL: Record<DocStatus, string> = {
   Published: 'Published', Obsolete: 'Obsolete',
 }
 const ALL_STATUSES: DocStatus[] = ['Draft', 'Review', 'Approved', 'Published', 'Obsolete']
+
+interface StatusHistoryRow {
+  to_status: string
+  changed_at: string
+}
 
 function allowedTransitions(current: DocStatus, role: string): DocStatus[] {
   const canChange = ['Admin', 'Document Controller'].includes(role)
@@ -98,6 +104,10 @@ function fmtDate(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })
 }
+function fmtStatusDate(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })
+}
 
 const PAGE_SIZE = 30
 
@@ -112,6 +122,27 @@ function StatusModal({ doc, userRole, onClose, onSaved, toast }: {
   const transitions = allowedTransitions(doc.status as DocStatus, userRole)
   const [saving, setSaving] = useState(false)
   const [reason, setReason] = useState('')
+  const [statusDates, setStatusDates] = useState<Partial<Record<DocStatus, string>>>({})
+
+  useEffect(() => {
+    let alive = true
+    fetch(`/api/admin/documents/${doc.id}/status-history`)
+      .then(async (res) => (res.ok ? await res.json() : []))
+      .then((rows: StatusHistoryRow[]) => {
+        if (!alive) return
+        const nextDates: Partial<Record<DocStatus, string>> = {}
+        for (const row of rows) {
+          if (ALL_STATUSES.includes(row.to_status as DocStatus)) {
+            nextDates[row.to_status as DocStatus] = row.changed_at
+          }
+        }
+        setStatusDates(nextDates)
+      })
+      .then(undefined, () => {
+        if (alive) setStatusDates({})
+      })
+    return () => { alive = false }
+  }, [doc.id])
 
   async function handleChange(next: DocStatus) {
     setSaving(true)
@@ -129,13 +160,14 @@ function StatusModal({ doc, userRole, onClose, onSaved, toast }: {
       return
     }
     const updated = await res.json()
+    setStatusDates((prev) => ({ ...prev, [next]: updated.updated_at ?? new Date().toISOString() }))
     toast(`เปลี่ยนสถานะเป็น "${STATUS_LABEL[next]}" แล้ว`)
     onSaved(updated)
   }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <Card padding={24} style={{ maxWidth: 420, width: '100%' }}>
+      <Card padding={24} style={{ maxWidth: 560, width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>เปลี่ยนสถานะเอกสาร</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}>
@@ -152,21 +184,30 @@ function StatusModal({ doc, userRole, onClose, onSaved, toast }: {
         {/* Status flow */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 10 }}>สถานะปัจจุบัน</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, flexWrap: 'wrap' }}>
             {ALL_STATUSES.map((s, i) => {
               const isCurrent = s === doc.status
               const isTarget  = transitions.includes(s)
+              const statusDate = fmtStatusDate(statusDates[s] ?? null)
               return (
-                <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {i > 0 && <span style={{ fontSize: 10, color: 'var(--muted)' }}>→</span>}
-                  <div style={{
-                    padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                    border: `1px solid ${isCurrent ? 'var(--primary)' : 'var(--border)'}`,
-                    background: isCurrent ? 'var(--primary-soft)' : 'transparent',
-                    color: isCurrent ? 'var(--primary)' : 'var(--muted)',
-                    opacity: !isCurrent && !isTarget ? 0.4 : 1,
-                  }}>
-                    {STATUS_LABEL[s]}
+                <div key={s} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                  {i > 0 && <span style={{ fontSize: 10, color: 'var(--muted)', lineHeight: '28px' }}>→</span>}
+                  <div style={{ minWidth: 76, textAlign: 'center' }}>
+                    <div style={{
+                      padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      border: `1px solid ${isCurrent ? 'var(--primary)' : 'var(--border)'}`,
+                      background: isCurrent ? 'var(--primary-soft)' : 'transparent',
+                      color: isCurrent ? 'var(--primary)' : 'var(--muted)',
+                      opacity: !isCurrent && !isTarget ? 0.4 : 1,
+                    }}>
+                      {STATUS_LABEL[s]}
+                    </div>
+                    <div style={{
+                      height: 16, marginTop: 4, fontSize: 10.5, lineHeight: '16px',
+                      color: statusDate ? 'var(--muted)' : 'transparent', whiteSpace: 'nowrap',
+                    }}>
+                      {statusDate || '-'}
+                    </div>
                   </div>
                 </div>
               )
@@ -222,16 +263,18 @@ function StatusModal({ doc, userRole, onClose, onSaved, toast }: {
 }
 
 // ── Revision History Panel ─────────────────────────────────────
-function RevisionPanel({ doc, onClose, onDownload, userRole, canAdd }: {
+function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, canAdd }: {
   doc: Document
   onClose: () => void
   onDownload: (path: string) => void
+  onPromoted: (updated: Document) => void
   userRole: string
   canAdd: boolean
 }) {
 
   const [revisions, setRevisions] = useState<RevisionRow[]>([])
   const [loading, setLoading]     = useState(true)
+  const [deletingCurrent, setDeletingCurrent] = useState(false)
 
   // Add form state
   const [showForm, setShowForm]           = useState(false)
@@ -270,6 +313,26 @@ function RevisionPanel({ doc, onClose, onDownload, userRole, canAdd }: {
     const res = await fetch(`/api/admin/documents/${doc.id}/revisions/${revId}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       setRevisions(prev => prev.filter(r => r.id !== revId))
+    }
+  }
+
+  async function handleDeleteCurrentRevision() {
+    if (revisions.length === 0) return
+    if (!confirm(`ลบ Rev. ${doc.revision} ล่าสุด และเลื่อน Rev. ${revisions[0].revision_number} ขึ้นมาแทน?`)) return
+    setDeletingCurrent(true)
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}/current-revision`, { method: 'DELETE' })
+      const json = await res.json()
+      if (!res.ok) {
+        alert(json.error ?? 'ลบ Revision ล่าสุดไม่สำเร็จ')
+        return
+      }
+      setRevisions(prev => prev.filter(r => r.id !== json.promotedRevisionId))
+      onPromoted(json.document)
+    } catch {
+      alert('เกิดข้อผิดพลาด')
+    } finally {
+      setDeletingCurrent(false)
     }
   }
 
@@ -477,13 +540,27 @@ function RevisionPanel({ doc, onClose, onDownload, userRole, canAdd }: {
                   {STATUS_LABEL[doc.status as DocStatus] ?? doc.status}
                 </Badge>
               </div>
-              <button
-                onClick={() => onDownload(doc.file_url)}
-                title="ดาวน์โหลด"
-                style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid rgba(30,95,173,.3)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', flexShrink: 0 }}
-              >
-                <Icon name="download" size={14} />
-              </button>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                {canAdd && revisions.length > 0 && (
+                  <button
+                    onClick={handleDeleteCurrentRevision}
+                    disabled={deletingCurrent}
+                    title="ลบ Rev. ล่าสุด"
+                    style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid rgba(220,38,38,.25)', background: 'transparent', cursor: deletingCurrent ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)', opacity: deletingCurrent ? 0.55 : 1 }}
+                    onMouseEnter={e => { if (!deletingCurrent) e.currentTarget.style.background = 'rgba(220,38,38,.06)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <Icon name="trash" size={14} />
+                  </button>
+                )}
+                <button
+                  onClick={() => onDownload(doc.file_url)}
+                  title="ดาวน์โหลด"
+                  style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid rgba(30,95,173,.3)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}
+                >
+                  <Icon name="download" size={14} />
+                </button>
+              </div>
             </div>
             {/* Meta rows */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -1226,6 +1303,12 @@ export function DocumentsClient({ userRole, canEdit = false }: Props) {
     setStatusDoc(null)
   }
 
+  function handleRevisionPromoted(updated: Document) {
+    setDocs((d) => d.map((x) => x.id === updated.id ? updated : x))
+    setRevDoc(updated)
+    toast(`เลื่อน Rev. ${updated.revision} ขึ้นมาเป็นเวอร์ชันล่าสุดแล้ว`)
+  }
+
   const totalPages = Math.ceil(count / PAGE_SIZE)
   const hasFilters = !!(search || visibility || department || (activeType && activeType !== 'All'))
   const typeEntries = (Object.entries(typeCounts) as [string, number][])
@@ -1353,7 +1436,7 @@ export function DocumentsClient({ userRole, canEdit = false }: Props) {
         <div style={{ padding: '16px 20px', borderRadius: 10, background: 'rgba(220,38,38,.08)', color: '#B91C1C', fontSize: 13 }}>{error}</div>
       ) : (
         <Card padding={0}>
-          <div style={{ overflowX: 'auto' }}>
+          <StickyScroll>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
@@ -1500,7 +1583,7 @@ export function DocumentsClient({ userRole, canEdit = false }: Props) {
                 )}
               </tbody>
             </table>
-          </div>
+          </StickyScroll>
 
           {/* Pagination */}
           {totalPages > 1 && (
@@ -1568,6 +1651,7 @@ export function DocumentsClient({ userRole, canEdit = false }: Props) {
           doc={revDoc}
           onClose={() => setRevDoc(null)}
           onDownload={handleDownload}
+          onPromoted={handleRevisionPromoted}
           userRole={userRole ?? ''}
           canAdd={canUpload}
         />

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import { decodeTable, type RawTable } from '@/lib/utils/refTable'
 export { isJsonTable, decodeTable } from '@/lib/utils/refTable'
 export type { RawTable } from '@/lib/utils/refTable'
@@ -31,7 +32,7 @@ function parseTSV(text: string): RawTable | string {
 export function RawTableView({ table }: { table: RawTable }) {
   const colCount = Math.max(table.h.length, ...table.r.map(r => r.length), 1)
   return (
-    <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+    <StickyScroll style={{ border: '1px solid var(--border)', borderRadius: 8 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
         {table.h.length > 0 && (
           <thead>
@@ -54,7 +55,7 @@ export function RawTableView({ table }: { table: RawTable }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </StickyScroll>
   )
 }
 

@@ -36,12 +36,28 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params
   const body = await req.json()
   const { amount, note, usage_date } = body
-  if (!amount || isNaN(Number(amount))) return NextResponse.json({ error: 'amount จำเป็น' }, { status: 422 })
+  const numericAmount = Number(amount)
+  if (!amount || isNaN(numericAmount)) return NextResponse.json({ error: 'amount จำเป็น' }, { status: 422 })
+
+  const { data: contract, error: contractErr } = await supabaseAdmin
+    .from('contracts')
+    .select('total, contract_usage(amount)')
+    .eq('id', Number(id))
+    .single()
+
+  if (contractErr) return NextResponse.json({ error: contractErr.message }, { status: 500 })
+
+  const used = ((contract.contract_usage as { amount: number | null }[] | null) ?? [])
+    .reduce((sum, row) => sum + (row.amount ?? 0), 0)
+  const remaining = Number(contract.total ?? 0) - used
+  if (numericAmount > remaining) {
+    return NextResponse.json({ error: 'จำนวนเงินเกินมูลค่าคงเหลือ' }, { status: 422 })
+  }
 
   const date = usage_date || new Date().toISOString().split('T')[0]
   const { data, error } = await supabaseAdmin
     .from('contract_usage')
-    .insert({ contract_id: Number(id), amount: Number(amount), note: note || null, usage_date: date, recorded_by: actor.name })
+    .insert({ contract_id: Number(id), amount: numericAmount, note: note || null, usage_date: date, recorded_by: actor.name })
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

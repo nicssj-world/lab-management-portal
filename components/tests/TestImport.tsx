@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import type { Category } from '@/lib/supabase/types'
 
 export interface ImportRow {
@@ -353,7 +354,7 @@ export function TestImport({ categories }: Props) {
             </div>
           </Card>
 
-          <div style={{ overflowX: 'auto', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12 }}>
+          <StickyScroll style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)' }}>
@@ -385,7 +386,7 @@ export function TestImport({ categories }: Props) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </StickyScroll>
         </>
       )}
     </div>

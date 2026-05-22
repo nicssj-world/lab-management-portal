@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getRolePermissions } from '@/lib/permissions'
 import { DocumentSchema } from '@/lib/validations/document'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
@@ -18,6 +19,11 @@ function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
 }
 
+async function canEditDocuments(role: string) {
+  const perms = await getRolePermissions(role)
+  return (perms['เอกสารคุณภาพ'] ?? 'none') === 'edit'
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -25,8 +31,9 @@ export async function PATCH(
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const canEdit = ['Admin', 'Manager', 'Medical Technologist'].includes(actor.role)
-  if (!canEdit) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await canEditDocuments(actor.role))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { id } = await params
 
@@ -59,7 +66,7 @@ export async function PATCH(
     // Always fetch current doc (needed for revision history + R2 key)
     const { data: current } = await supabaseAdmin
       .from('documents')
-      .select('file_url, file_name, revision, type, description, owner_name, approver_name')
+      .select('file_url, file_name, revision, type, description, owner_name, approver_name, status')
       .eq('id', id)
       .single()
 
@@ -126,6 +133,17 @@ export async function PATCH(
 
     if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
 
+    if (typeof newStatus === 'string' && newStatus !== current?.status) {
+      supabaseAdmin.from('document_status_history')
+        .insert({
+          document_id: id,
+          from_status: current?.status ?? null,
+          to_status: newStatus,
+          changed_by: actor.id,
+        })
+        .then(undefined, () => {})
+    }
+
     supabaseAdmin.from('document_access_logs')
       .insert({ document_id: id, user_id: actor.id, action: 'edit' })
       .then(undefined, () => {})
@@ -143,8 +161,9 @@ export async function DELETE(
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const canDelete = ['Admin', 'Manager'].includes(actor.role)
-  if (!canDelete) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await canEditDocuments(actor.role))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { id } = await params
 

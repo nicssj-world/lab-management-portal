@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Stat } from '@/components/ui/Stat'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 
 export default async function RejectionPage() {
   const supabase = await createClient()
@@ -65,7 +66,7 @@ export default async function RejectionPage() {
 
       {/* Log table */}
       <Card padding={0}>
-        <div style={{ overflowX: 'auto' }}>
+        <StickyScroll>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
@@ -96,7 +97,7 @@ export default async function RejectionPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </StickyScroll>
       </Card>
     </div>
   )

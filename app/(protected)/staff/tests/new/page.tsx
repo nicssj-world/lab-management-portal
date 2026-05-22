@@ -11,10 +11,15 @@ import type { Category } from '@/lib/supabase/types'
 
 export default function NewTestPage() {
   const [categories, setCategories] = useState<Category[]>([])
+  const [existingCodes, setExistingCodes] = useState<string[]>([])
 
   useEffect(() => {
     const supabase = createClient()
     getCategories(supabase, false).then(setCategories)
+    fetch('/api/admin/tests?pageSize=10000&sortBy=code')
+      .then((r) => r.ok ? r.json() : { data: [] })
+      .then((j) => setExistingCodes(Array.isArray(j.data) ? j.data.map((t: { code?: string }) => t.code).filter(Boolean) : []))
+      .catch(() => setExistingCodes([]))
   }, [])
 
   return (
@@ -25,7 +30,7 @@ export default function NewTestPage() {
         <span style={{ color: 'var(--ink)' }}>เพิ่มรายการตรวจใหม่</span>
       </div>
       <PageHeader eyebrow="รายการตรวจ" title="เพิ่มรายการตรวจใหม่" />
-      <TestForm categories={categories} />
+      <TestForm categories={categories} existingCodes={existingCodes} />
     </div>
   )
 }

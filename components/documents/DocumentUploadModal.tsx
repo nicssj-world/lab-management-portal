@@ -24,6 +24,10 @@ const labelStyle: React.CSSProperties = {
   fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 4, display: 'block',
 }
 
+function RequiredMark() {
+  return <span style={{ color: 'var(--danger)' }}> *</span>
+}
+
 function fmtSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -51,6 +55,11 @@ function deptFromCode(code: string): string | null {
     if (DEPT_BY_PREFIX[prefix]) return DEPT_BY_PREFIX[prefix]
   }
   return null
+}
+
+function revisionNumber(v: string): number | null {
+  const n = Number(v.trim())
+  return Number.isFinite(n) ? n : null
 }
 
 export function DocumentUploadModal({ doc, userRole, onClose, onSaved }: Props) {
@@ -82,6 +91,16 @@ export function DocumentUploadModal({ doc, userRole, onClose, onSaved }: Props) 
   const [description, setDescription]   = useState(doc?.description ?? '')
 
   const isObsolete = status === 'Obsolete'
+  const originalRevision = doc?.revision ?? '1'
+  const originalRevisionNumber = revisionNumber(originalRevision)
+  const currentRevisionNumber = revisionNumber(revision)
+  const revisionChanged = isEdit && revision.trim() !== originalRevision.trim()
+  const revisionMustIncrease = revisionChanged
+    && originalRevisionNumber !== null
+    && (currentRevisionNumber === null || currentRevisionNumber <= originalRevisionNumber)
+  const revisionWarning = revisionMustIncrease
+    ? `Revision ใหม่ต้องเป็นตัวเลขที่สูงกว่า Rev. ${originalRevision}`
+    : ''
 
   const handleFile = useCallback((file: File) => {
     const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
@@ -122,6 +141,7 @@ export function DocumentUploadModal({ doc, userRole, onClose, onSaved }: Props) 
     if (!title.trim())         { setError('กรุณากรอกชื่อเอกสาร'); return }
     if (!documentCode.trim())  { setError('กรุณากรอกรหัสเอกสาร'); return }
     if (!isEdit && !selectedFile) { setError('กรุณาเลือกไฟล์'); return }
+    if (revisionWarning) { setError(revisionWarning); return }
 
     setSaving(true)
     setError('')
@@ -202,14 +222,14 @@ export function DocumentUploadModal({ doc, userRole, onClose, onSaved }: Props) 
 
           {/* ชื่อเอกสาร */}
           <div>
-            <label style={labelStyle}>ชื่อเอกสาร *</label>
+            <label style={labelStyle}>ชื่อเอกสาร<RequiredMark /></label>
             <input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} placeholder="คู่มือคุณภาพ กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี" />
           </div>
 
           {/* รหัสเอกสาร + ประเภท */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={labelStyle}>รหัสเอกสาร *</label>
+              <label style={labelStyle}>รหัสเอกสาร<RequiredMark /></label>
               <input
                 value={documentCode}
                 onChange={(e) => {
@@ -223,7 +243,7 @@ export function DocumentUploadModal({ doc, userRole, onClose, onSaved }: Props) 
               />
             </div>
             <div>
-              <label style={labelStyle}>ประเภทเอกสาร *</label>
+              <label style={labelStyle}>ประเภทเอกสาร<RequiredMark /></label>
               <select value={type} onChange={(e) => setType(e.target.value)} style={{ ...inputStyle }}>
                 {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -250,7 +270,30 @@ export function DocumentUploadModal({ doc, userRole, onClose, onSaved }: Props) 
           <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12 }}>
             <div>
               <label style={labelStyle}>Revision</label>
-              <input value={revision} onChange={(e) => setRevision(e.target.value)} style={inputStyle} placeholder="1" />
+              <input
+                value={revision}
+                onChange={(e) => {
+                  setRevision(e.target.value)
+                  if (error === revisionWarning) setError('')
+                }}
+                onBlur={() => {
+                  if (revisionWarning) {
+                    alert(revisionWarning)
+                    setError(revisionWarning)
+                  }
+                }}
+                style={{
+                  ...inputStyle,
+                  borderColor: revisionWarning ? 'rgba(220,38,38,.55)' : 'var(--border)',
+                  background: revisionWarning ? 'rgba(220,38,38,.04)' : 'var(--card)',
+                }}
+                placeholder="1"
+              />
+              {revisionWarning && (
+                <div style={{ marginTop: 4, fontSize: 11, color: 'var(--danger)', lineHeight: 1.35 }}>
+                  {revisionWarning}
+                </div>
+              )}
             </div>
             <div>
               <label style={labelStyle}>แผนก</label>
@@ -315,7 +358,7 @@ export function DocumentUploadModal({ doc, userRole, onClose, onSaved }: Props) 
           {/* File Upload */}
           <div>
             <label style={labelStyle}>
-              {isEdit ? 'เปลี่ยนไฟล์ (ไม่บังคับ)' : 'ไฟล์เอกสาร * (PDF, DOCX, XLSX — ไม่เกิน 50 MB)'}
+              {isEdit ? 'เปลี่ยนไฟล์ (ไม่บังคับ)' : <>ไฟล์เอกสาร<RequiredMark /> (PDF, DOCX, XLSX — ไม่เกิน 50 MB)</>}
             </label>
             <div
               onDragEnter={onDragEnter}
@@ -370,7 +413,7 @@ export function DocumentUploadModal({ doc, userRole, onClose, onSaved }: Props) 
           >
             ยกเลิก
           </button>
-          <Button variant="primary" onClick={handleSave} disabled={saving}>
+          <Button variant="primary" onClick={handleSave} disabled={saving || !!revisionWarning}>
             {saving ? (isEdit ? 'กำลังบันทึก...' : 'กำลัง Upload...') : (isEdit ? 'บันทึกการแก้ไข' : 'Upload เอกสาร')}
           </Button>
         </div>

@@ -1,4 +1,5 @@
 import { Icon } from '@/components/ui/Icon'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 
 const STAFF_DIRECTORY = [
   { name: 'น.ส. ณัฏฐ์ฤทัย ไพโรจน์',       position: 'นักเทคนิคการแพทย์ชำนาญการพิเศษ', responsibility: 'หัวหน้ากลุ่มงานเทคนิคการแพทย์',                                            phones: ['1453'] },
@@ -99,7 +100,7 @@ export default function ContactPage() {
             </span>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <StickyScroll>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)' }}>
@@ -158,7 +159,7 @@ export default function ContactPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </StickyScroll>
 
           {/* Footer note */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '12px 18px', background: '#FFFBEB', borderTop: '1px solid #FDE68A', fontSize: 12.5, color: '#92400E' }}>

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getRolePermissions } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getActor() {
@@ -11,13 +12,19 @@ async function getActor() {
   return data as { id: string; role: string } | null
 }
 
+async function canEditDocuments(role: string) {
+  const perms = await getRolePermissions(role)
+  return (perms['เอกสารคุณภาพ'] ?? 'none') === 'edit'
+}
+
 type Params = { params: Promise<{ id: string; revId: string }> }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['Admin', 'Manager'].includes(actor.role))
+  if (!(await canEditDocuments(actor.role))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { revId } = await params
   const body = await req.json()
@@ -48,8 +55,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['Admin', 'Manager'].includes(actor.role))
+  if (!(await canEditDocuments(actor.role))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { revId } = await params
 
