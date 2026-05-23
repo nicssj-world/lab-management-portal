@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -21,6 +21,7 @@ interface Props {
 
 const EMPTY: TestFormData = {
   code: '', category_id: '', th: '', en: '', active: true, popular: false, available_24hr: false,
+  related_doc_ids: [],
 }
 
 const TUBE_OPTIONS: { label: string; color: string }[] = [
@@ -137,6 +138,19 @@ export function TestForm({ categories, initial, initialRanges, testId, existingC
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
+  // Related documents (from quality docs module)
+  const [allDocs, setAllDocs] = useState<{ id: string; title: string; document_code: string; type: string }[]>([])
+  const [docSearch, setDocSearch] = useState('')
+  const [showDocDrop, setShowDocDrop] = useState(false)
+  const docInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/documents?pageSize=500&sortBy=document_code&sortDir=asc')
+      .then(r => r.json())
+      .then(j => setAllDocs(j.data ?? []))
+      .catch(() => {})
+  }, [])
+
   const isEdit = testId != null
   const originalCode = initial?.code ?? ''
   const duplicateCode = form.code?.trim()
@@ -198,6 +212,16 @@ export function TestForm({ categories, initial, initialRanges, testId, existingC
     { value: '', label: 'เลือกหมวดหมู่' },
     ...categories.map((c) => ({ value: c.id, label: c.th })),
   ]
+
+  const relatedDocIds = (form.related_doc_ids ?? []) as string[]
+  const filteredDocs = allDocs
+    .filter(d =>
+      !relatedDocIds.includes(d.id) &&
+      (docSearch === '' ||
+        d.title.toLowerCase().includes(docSearch.toLowerCase()) ||
+        d.document_code.toLowerCase().includes(docSearch.toLowerCase()))
+    )
+    .slice(0, 25)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -450,12 +474,95 @@ export function TestForm({ categories, initial, initialRanges, testId, existingC
       {/* G: เอกสารที่เกี่ยวข้อง */}
       <Card>
         <SectionHeader title="G. เอกสารที่เกี่ยวข้อง" />
-        {isEdit && testId != null ? (
-          <TestDocuments testId={testId} />
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 8, background: 'var(--surface-2)', border: '1px dashed var(--border)' }}>
-            <Icon name="doc" size={15} style={{ color: 'var(--muted)', flexShrink: 0 }} />
-            <span style={{ fontSize: 13, color: 'var(--muted)' }}>บันทึกรายการตรวจก่อน เพื่อเพิ่มเอกสารที่เกี่ยวข้อง</span>
+
+        {/* Searchable document selector */}
+        <div style={{ position: 'relative', marginBottom: 10 }}>
+          <div style={{ position: 'relative' }}>
+            <Icon name="search" size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
+            <input
+              ref={docInputRef}
+              value={docSearch}
+              onChange={e => { setDocSearch(e.target.value); setShowDocDrop(true) }}
+              onFocus={() => setShowDocDrop(true)}
+              onBlur={() => setTimeout(() => setShowDocDrop(false), 150)}
+              placeholder="ค้นหาหรือเลือกเอกสารที่เกี่ยวข้อง..."
+              style={{ ...inp, paddingLeft: 32 }}
+            />
+          </div>
+
+          {showDocDrop && (filteredDocs.length > 0 || allDocs.length === 0) && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+              background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8,
+              boxShadow: '0 8px 28px rgba(0,0,0,.13)', maxHeight: 260, overflowY: 'auto', marginTop: 4,
+            }}>
+              {allDocs.length === 0 ? (
+                <div style={{ padding: '12px 14px', fontSize: 12.5, color: 'var(--muted)', textAlign: 'center' }}>กำลังโหลดเอกสาร...</div>
+              ) : filteredDocs.length === 0 ? (
+                <div style={{ padding: '12px 14px', fontSize: 12.5, color: 'var(--muted)', textAlign: 'center' }}>ไม่พบเอกสาร</div>
+              ) : (
+                filteredDocs.map(doc => (
+                  <button
+                    key={doc.id}
+                    type="button"
+                    onMouseDown={e => {
+                      e.preventDefault()
+                      set('related_doc_ids', [...relatedDocIds, doc.id])
+                      setDocSearch('')
+                      docInputRef.current?.focus()
+                    }}
+                    style={{
+                      width: '100%', padding: '9px 14px', border: 'none', background: 'transparent',
+                      cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
+                      fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--primary)', fontFamily: 'monospace', flexShrink: 0, minWidth: 80 }}>{doc.document_code}</span>
+                    <span style={{ fontSize: 12.5, color: 'var(--ink)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.title}</span>
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--muted)', background: 'var(--surface-2)', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>{doc.type}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Selected document chips */}
+        {relatedDocIds.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: isEdit && testId != null ? 20 : 0 }}>
+            {relatedDocIds.map(id => {
+              const doc = allDocs.find(d => d.id === id)
+              return (
+                <div key={id} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '3px 6px 3px 10px', borderRadius: 20,
+                  border: '1px solid var(--border)', background: 'var(--surface-2)',
+                  fontSize: 12, color: 'var(--ink)', maxWidth: 340,
+                }}>
+                  <Icon name="doc" size={11} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {doc ? `${doc.document_code} — ${doc.title}` : id.slice(0, 8) + '…'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => set('related_doc_ids', relatedDocIds.filter(x => x !== id))}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: '0 2px', display: 'flex', lineHeight: 1, flexShrink: 0 }}
+                  >
+                    <Icon name="x" size={10} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* File upload area (edit mode only) */}
+        {isEdit && testId != null && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>ไฟล์แนบโดยตรง</div>
+            <TestDocuments testId={testId} />
           </div>
         )}
       </Card>

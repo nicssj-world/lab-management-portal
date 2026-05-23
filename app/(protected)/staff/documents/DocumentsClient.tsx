@@ -1128,9 +1128,10 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
 
   const [search, setSearch]               = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [activeType, setActiveType] = useState<string>('All')
-  const [visibility, setVisibility] = useState<string>('')
-  const [department, setDepartment] = useState<string>('')
+  const [activeType, setActiveType]     = useState<string>('All')
+  const [filterStatus, setFilterStatus] = useState<string>('')
+  const [visibility, setVisibility]     = useState<string>('')
+  const [department, setDepartment]     = useState<string>('')
   const [page, setPage]             = useState(1)
   const [sortDir, setSortDir]       = useState<'asc' | 'desc'>('asc')
 
@@ -1193,8 +1194,9 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
 
     const sp = new URLSearchParams()
     if (activeType && activeType !== 'All') sp.set('type', activeType)
-    if (visibility)  sp.set('visibility', visibility)
-    if (department)  sp.set('department', department)
+    if (filterStatus) sp.set('status', filterStatus)
+    if (visibility)   sp.set('visibility', visibility)
+    if (department)   sp.set('department', department)
     if (debouncedSearch) sp.set('search', debouncedSearch)
     sp.set('page', String(p))
     sp.set('pageSize', String(PAGE_SIZE))
@@ -1212,7 +1214,7 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [activeType, visibility, department, debouncedSearch, page, sortDir])
+  }, [activeType, filterStatus, visibility, department, debouncedSearch, page, sortDir])
 
   useEffect(() => { fetchDocs() }, [fetchDocs])
 
@@ -1312,7 +1314,7 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
   }
 
   const totalPages = Math.ceil(count / PAGE_SIZE)
-  const hasFilters = !!(search || visibility || department || (activeType && activeType !== 'All'))
+  const hasFilters = !!(search || filterStatus || visibility || department || (activeType && activeType !== 'All'))
   const typeEntries = (Object.entries(typeCounts) as [string, number][])
     .filter(([k, v]) => k !== 'All' && v > 0).slice(0, 5)
 
@@ -1410,11 +1412,12 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
 
       {/* ── Filter toolbar ─────────────────────────────────────────── */}
       <Card padding={16} style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+        {/* Row 1: search + dropdowns + clear */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
           <div style={{ flex: '0 0 260px' }}>
             <Input icon="search" placeholder="ค้นหาชื่อหรือรหัสเอกสาร..." value={search} onChange={handleSearchChange} />
           </div>
-          <div style={{ flex: '0 0 240px', position: 'relative' }}>
+          <div style={{ flex: '0 0 200px', position: 'relative' }}>
             <select
               value={department}
               onChange={(e) => { setDepartment(e.target.value); setPage(1) }}
@@ -1425,34 +1428,69 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
             </select>
             <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', fontSize: 11 }}>▾</span>
           </div>
-          {(search || department) && (
+          <div style={{ flex: '0 0 150px', position: 'relative' }}>
+            <select
+              value={activeType}
+              onChange={(e) => { setActiveType(e.target.value); setPage(1) }}
+              style={{ width: '100%', padding: '8px 32px 8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', color: activeType !== 'All' ? 'var(--ink)' : 'var(--muted)', background: 'var(--card)', outline: 'none', cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none' }}
+            >
+              <option value="All">ทุกประเภท</option>
+              {TYPE_TABS.filter(t => t !== 'All').map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', fontSize: 11 }}>▾</span>
+          </div>
+          {(search || department || activeType !== 'All' || filterStatus || visibility) && (
             <button
-              onClick={() => { setSearch(''); setDepartment(''); setPage(1) }}
+              onClick={() => { setSearch(''); setDepartment(''); setFilterStatus(''); setActiveType('All'); setVisibility(''); setPage(1) }}
               style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--muted)', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
             >
               ล้าง
             </button>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {TYPE_TABS.map((tab) => {
-              const n = typeCounts[tab]
-              if (tab !== 'All' && !n) return null
-              const active = activeType === tab
-              return (
-                <button key={tab} onClick={() => { setActiveType(tab); setPage(1) }} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: active ? 700 : 500, transition: 'all .15s', border: '1px solid var(--border)', background: active ? 'var(--surface-2)' : 'transparent', color: active ? 'var(--ink)' : 'var(--muted)' }}>
-                  {tab}
-                  {n !== undefined && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', opacity: active ? 1 : 0.65 }}>{n}</span>}
-                </button>
-              )
-            })}
-          </div>
-          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+        {/* Row 2: Status pills + visibility pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {([
+            ['', 'All'],
+            ['Draft',     '#64748B'],
+            ['Review',    '#D97706'],
+            ['Approved',  '#1E5FAD'],
+            ['Published', '#16A34A'],
+            ['Obsolete',  '#9CA3AF'],
+          ] as [string, string][]).map(([s, color]) => {
+            const active = filterStatus === s
+            const isAll = s === ''
+            return (
+              <button
+                key={s || 'all'}
+                onClick={() => { setFilterStatus(s); setPage(1) }}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '4px 11px', borderRadius: 20, cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: 12, fontWeight: active ? 700 : 500,
+                  transition: 'all .15s',
+                  border: active ? `1px solid ${isAll ? 'var(--border)' : color}` : '1px solid var(--border)',
+                  background: active ? (isAll ? 'var(--surface-2)' : color) : 'transparent',
+                  color: active ? (isAll ? 'var(--ink)' : '#fff') : 'var(--ink)',
+                }}
+              >
+                {!isAll && (
+                  <span style={{
+                    width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                    background: active ? 'rgba(255,255,255,0.8)' : color,
+                    transition: 'background .15s',
+                  }} />
+                )}
+                {isAll ? 'All' : s}
+              </button>
+            )
+          })}
+          {/* Visibility pills — pushed to the right */}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
             {([['', 'ทั้งหมด'], ['Public', 'เผยแพร่'], ['Internal', 'ภายใน']] as const).map(([v, label]) => {
               const active = visibility === v
               return (
-                <button key={v} onClick={() => { setVisibility(v); setPage(1) }} style={{ padding: '5px 14px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, transition: 'all .15s', border: '1px solid var(--border)', background: active ? 'var(--primary)' : 'transparent', color: active ? '#fff' : 'var(--ink)' }}>
+                <button key={v} onClick={() => { setVisibility(v); setPage(1) }} style={{ padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, transition: 'all .15s', border: '1px solid var(--border)', background: active ? 'var(--primary)' : 'transparent', color: active ? '#fff' : 'var(--ink)' }}>
                   {label}
                 </button>
               )

@@ -20,7 +20,7 @@ const FOOTER_COLS = [
     links: [
       { th: 'โทร 038-931-455',        en: 'Tel. 038-931-455', href: '/contact' },
       { th: 'เวลาทำการ 08:00–16:00',  en: 'Hours 08:00–16:00', href: '/contact' },
-      { th: 'Facebook https://www.facebook.com/medtechcbh',    en: 'Facebook', href: 'https://www.facebook.com/medtechcbh' },
+      { th: 'Facebook',    en: 'Facebook', href: 'https://www.facebook.com/medtechcbh' },
     ],
   },
 ]

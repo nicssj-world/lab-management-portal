@@ -18,7 +18,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('name, role, avatar_url')
+    .select('name, role, avatar_url, doc_role')
     .eq('id', session.user.id)
     .single()
 
@@ -146,6 +146,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           userRole={role}
           userName={profile?.name ?? undefined}
           userAvatar={profile?.avatar_url ?? undefined}
+          userDocRole={profile?.doc_role ?? undefined}
           userPermissions={permissions}
         />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>

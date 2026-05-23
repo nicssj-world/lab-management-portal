@@ -39,14 +39,23 @@ const NAV_ITEMS: (NavItem | null)[] = [
   { href: '/staff/settings',   th: 'ตั้งค่าระบบ',          en: 'Settings',       icon: 'settings', role: 'Admin' },
 ]
 
+const DOC_ROLE_COLOR: Record<string, string> = {
+  'Laboratory Director': '#1E5FAD',
+  'Quality Manager':     '#0D9488',
+  'Document Controller': '#7C3AED',
+  'Reviewer':            '#B45309',
+  'Viewer':              '#64748B',
+}
+
 interface StaffSidebarProps {
   userRole?: string
   userName?: string
   userAvatar?: string
+  userDocRole?: string
   userPermissions?: Record<string, string>
 }
 
-export function StaffSidebar({ userRole, userName, userAvatar, userPermissions }: StaffSidebarProps) {
+export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, userPermissions }: StaffSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { lang } = useLang()
@@ -180,7 +189,14 @@ export function StaffSidebar({ userRole, userName, userAvatar, userPermissions }
               // eslint-disable-next-line @next/next/no-img-element
               <img src={userAvatar} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
             ) : (
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8, color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 12, fontWeight: 700, flexShrink: 0,
+                background: userDocRole && DOC_ROLE_COLOR[userDocRole]
+                  ? `linear-gradient(135deg, ${DOC_ROLE_COLOR[userDocRole]}cc, ${DOC_ROLE_COLOR[userDocRole]}88)`
+                  : 'linear-gradient(135deg, var(--primary), #3B82F6)',
+              }}>
                 {initial}
               </div>
             )}

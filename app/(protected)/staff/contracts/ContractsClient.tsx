@@ -174,6 +174,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
   const [filterLowBudget, setFilterLowBudget] = useState(false)
   const [filterDept, setFilterDept] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toasts, add: toast } = useToast()
 
@@ -764,7 +765,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                   type="file"
                   accept=".pdf,image/*"
                   style={{ display: 'none' }}
-                  onChange={e => setSelectedFile(e.target.files?.[0] ?? null)}
+                  onChange={e => { setSelectedFile(e.target.files?.[0] ?? null); setDragOver(false) }}
                 />
                 {selectedFile ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
@@ -775,22 +776,50 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                     </button>
                   </div>
                 ) : editModal !== 'new' && (editModal as ContractWithUsage).file_url ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12.5, color: 'var(--muted)', background: 'var(--surface-2)' }}>
-                      มีไฟล์แนบอยู่แล้ว
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) setSelectedFile(f) }}
+                    style={{
+                      borderRadius: 8, border: `1.5px dashed ${dragOver ? 'var(--primary)' : 'var(--border)'}`,
+                      background: dragOver ? 'var(--primary-soft)' : 'transparent',
+                      transition: 'all .15s', overflow: 'hidden',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px' }}>
+                      <div style={{ flex: 1, fontSize: 12.5, color: dragOver ? 'var(--primary)' : 'var(--muted)', fontWeight: dragOver ? 600 : 400 }}>
+                        {dragOver ? 'วางไฟล์เพื่อเปลี่ยน...' : 'มีไฟล์แนบอยู่แล้ว'}
+                      </div>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--ink)', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        เปลี่ยนไฟล์
+                      </button>
+                      <button type="button" onClick={handleDeleteFile} style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid #FECACA', background: '#FEF2F2', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--danger)', flexShrink: 0 }}>
+                        <Icon name="trash" size={13} />
+                      </button>
                     </div>
-                    <button type="button" onClick={() => fileInputRef.current?.click()} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-                      เปลี่ยนไฟล์
-                    </button>
-                    <button type="button" onClick={handleDeleteFile} style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--danger)', flexShrink: 0 }}>
-                      <Icon name="trash" size={13} />
-                    </button>
                   </div>
                 ) : (
-                  <button type="button" onClick={() => fileInputRef.current?.click()} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px dashed var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--muted)', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, boxSizing: 'border-box' }}>
-                    <Icon name="upload" size={13} />
-                    แนบไฟล์ PDF หรือรูปภาพ
-                  </button>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) setSelectedFile(f) }}
+                    style={{
+                      width: '100%', padding: '22px 12px', borderRadius: 8,
+                      border: `1.5px dashed ${dragOver ? 'var(--primary)' : 'var(--border)'}`,
+                      background: dragOver ? 'var(--primary-soft)' : 'transparent',
+                      cursor: 'pointer', fontFamily: 'inherit', boxSizing: 'border-box',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexDirection: 'column', gap: 7, transition: 'all .15s', textAlign: 'center',
+                    }}
+                  >
+                    <Icon name="upload" size={20} style={{ color: dragOver ? 'var(--primary)' : 'var(--muted)' }} />
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: dragOver ? 'var(--primary)' : 'var(--muted)' }}>
+                      ลากไฟล์มาวางที่นี่{' '}
+                      <span style={{ fontWeight: 400, opacity: .7 }}>หรือคลิกเพื่อเลือก</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', opacity: .6 }}>PDF หรือรูปภาพ</div>
+                  </div>
                 )}
               </div>
 
