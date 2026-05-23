@@ -34,6 +34,7 @@ export const testSchema = z.object({
   contact_note:        z.string().optional(),
   ref:                 z.string().optional(),
   ref_note:            z.string().optional(),
+  related_doc_ids:     z.array(z.string()).optional(),
 })
 
 export const referenceRangeSchema = z.object({

@@ -24,6 +24,7 @@ export interface ImportRow {
   ref?: string
   ref_note?: string
   service?: string
+  available_24hr?: boolean
   description?: string
   _status: 'ok' | 'error'
   _error?: string
@@ -114,9 +115,16 @@ function parseRows(data: unknown[][], categories: Category[]): ImportRow[] {
       ref: r.ref ? String(r.ref).trim() : undefined,
       ref_note: r.ref_note ? String(r.ref_note).trim() : undefined,
       service: r.service ? String(r.service).trim() : undefined,
+      available_24hr: false,
       description: r.description ? String(r.description).trim() : undefined,
       _status: 'ok',
       _rowNum: idx + 2,
+    }
+
+    // "ตลอด 24 ชั่วโมง" in the service column → checkbox flag
+    if (obj.service && obj.service.includes('24')) {
+      obj.available_24hr = true
+      obj.service = undefined
     }
 
     if (!obj.code) { obj._status = 'error'; obj._error = 'ไม่มีรหัส' }

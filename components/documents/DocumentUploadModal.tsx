@@ -52,6 +52,20 @@ const DEPT_BY_PREFIX: Record<string, string> = {
   SR: 'งานตรวจพิเศษและปฏิบัติการตรวจต่อ',
 }
 
+const TYPE_BY_PREFIX: Record<string, string> = {
+  QP: 'QP', WI: 'WI',
+  QM: 'Manual', MN: 'Manual',
+  FM: 'Form', FR: 'Form',
+  PL: 'Policy', PO: 'Policy',
+  RC: 'Record', RD: 'Record',
+}
+
+function typeFromCode(code: string): string | null {
+  const first = code.split('-')[0]?.toUpperCase() ?? ''
+  if (DOC_TYPES.includes(first as typeof DOC_TYPES[number])) return first
+  return TYPE_BY_PREFIX[first] ?? null
+}
+
 function deptFromCode(code: string): string | null {
   for (const seg of code.split('-')) {
     const prefix = seg.match(/^([A-Z]{2})/)?.[1] ?? ''
@@ -63,6 +77,87 @@ function deptFromCode(code: string): string | null {
 function revisionNumber(v: string): number | null {
   const n = Number(v.trim())
   return Number.isFinite(n) ? n : null
+}
+
+function stripThaiTitle(name: string): string {
+  return name
+    .replace(/^(นาย|นางสาว|นาง|ดร\.|นพ\.|พญ\.|ภก\.|ภญ\.)\s*/g, '')
+    .trim()
+}
+
+const THAI_MONTHS: Record<string, number> = {
+  'มกราคม': 1,   'ม.ค.': 1,  'ม.ค': 1,
+  'กุมภาพันธ์': 2, 'ก.พ.': 2, 'ก.พ': 2,
+  'มีนาคม': 3,   'มี.ค.': 3, 'มี.ค': 3,
+  'เมษายน': 4,   'เม.ย.': 4, 'เม.ย': 4,
+  'พฤษภาคม': 5,  'พ.ค.': 5,  'พ.ค': 5,
+  'มิถุนายน': 6,  'มิ.ย.': 6, 'มิ.ย': 6,
+  'กรกฎาคม': 7,  'ก.ค.': 7,  'ก.ค': 7,
+  'สิงหาคม': 8,   'ส.ค.': 8,  'ส.ค': 8,
+  'กันยายน': 9,  'ก.ย.': 9,  'ก.ย': 9,
+  'ตุลาคม': 10,  'ต.ค.': 10, 'ต.ค': 10,
+  'พฤศจิกายน': 11, 'พ.ย.': 11, 'พ.ย': 11,
+  'ธันวาคม': 12,  'ธ.ค.': 12, 'ธ.ค': 12,
+}
+
+function parseThaiDate(raw: string): string | null {
+  if (!raw || /click|tap/i.test(raw)) return null
+  // dd/mm/yyyy or dd-mm-yyyy
+  const numM = raw.match(/(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})/)
+  if (numM) {
+    const d = Number(numM[1]), mo = Number(numM[2])
+    let y = Number(numM[3])
+    if (y > 2500) y -= 543
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+  }
+  // "14 พฤษภาคม 2568" or "14 พ.ค. 2568"
+  for (const [name, num] of Object.entries(THAI_MONTHS)) {
+    const escaped = name.replace(/\./g, '\\.')
+    const thaiM = raw.match(new RegExp(`(\\d{1,2})\\s+${escaped}\\s+(\\d{4})`))
+    if (thaiM) {
+      let y = Number(thaiM[2])
+      if (y > 2500) y -= 543
+      return `${y}-${String(num).padStart(2, '0')}-${String(Number(thaiM[1])).padStart(2, '0')}`
+    }
+  }
+  return null
+}
+
+// Find a date in the text within ~150 chars after a label keyword (handles label+value on separate lines)
+function findDateNear(text: string, labels: string[]): string | null {
+  for (const label of labels) {
+    const idx = text.indexOf(label)
+    if (idx === -1) continue
+    const nearby = text.slice(idx + label.length, idx + label.length + 150)
+    const parsed = parseThaiDate(nearby)
+    if (parsed) return parsed
+  }
+  return null
+}
+
+function parseExtractedText(text: string) {
+  const get = (patterns: RegExp[]): string | undefined => {
+    for (const re of patterns) {
+      const m = text.match(re)
+      if (m?.[1] && !m[1].includes('{')) return m[1].trim()
+    }
+    return undefined
+  }
+
+  const ownerRaw   = get([/จัดทำโดย\s*:\s*([^\n\r{][^\n\r]+)/])
+  const reviewRaw  = get([/รับรองโดย\s*:\s*([^\n\r{][^\n\r]+)/])
+  const approveRaw = get([/อนุมัติโดย\s*:\s*([^\n\r{][^\n\r]+)/])
+
+  return {
+    title:         get([/(?:เรื่อง|ชื่อเอกสาร)\s*:\s*([^\n\r{][^\n\r]+)/]),
+    documentCode:  get([/(?:หมายเลขเอกสาร|Document\s+No\.?)\s*:\s*([^\n\r{]+)/]),
+    revision:      get([/(?:ครั้งที่แก้ไข|Revision)\s*:\s*([^\n\r{]+)/]),
+    ownerName:     ownerRaw   ? stripThaiTitle(ownerRaw)   : undefined,
+    reviewerName:  reviewRaw  ? stripThaiTitle(reviewRaw)  : undefined,
+    approverName:  approveRaw ? stripThaiTitle(approveRaw) : undefined,
+    expiryDate:    findDateNear(text, ['วันที่แก้ไขเอกสาร', 'Edit Date', 'Edit\xa0Date']),
+    effectiveDate: findDateNear(text, ['วันที่บังคับใช้เอกสาร', 'วันที่บังคับใช้', 'Effective Date', 'Effective\xa0Date']),
+  }
 }
 
 export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }: Props) {
@@ -77,6 +172,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
   const dragCounter = useRef(0)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
+  const [extracting, setExtracting] = useState(false)
   const [error, setError] = useState('')
 
   const [title, setTitle]               = useState(doc?.title ?? '')
@@ -142,10 +238,44 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
     if (file) handleFile(file)
   }, [handleFile])
 
+  async function extractFromFile() {
+    if (!selectedFile) return
+    setExtracting(true)
+    setError('')
+    try {
+      const fd = new FormData()
+      fd.append('file', selectedFile)
+      const res = await fetch('/api/admin/documents/extract', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'ไม่สามารถอ่านไฟล์ได้')
+
+      const fields = parseExtractedText(json.text as string)
+      if (fields.title)         setTitle(fields.title)
+      if (fields.documentCode) {
+        const code = fields.documentCode.toUpperCase()
+        setDocumentCode(code)
+        const dept = deptFromCode(code)
+        if (dept) setDepartment(dept)
+        const docType = typeFromCode(code)
+        if (docType) setType(docType)
+      }
+      if (fields.revision)      setRevision(fields.revision)
+      if (fields.ownerName)     setOwnerName(fields.ownerName)
+      if (fields.reviewerName)  setReviewerName(fields.reviewerName)
+      if (fields.approverName)  setApproverName(fields.approverName)
+      if (fields.expiryDate)    setExpiryDate(fields.expiryDate)
+      if (fields.effectiveDate) setEffectiveDate(fields.effectiveDate)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ดึงข้อมูลไม่สำเร็จ')
+    } finally {
+      setExtracting(false)
+    }
+  }
+
   async function handleSave() {
     if (!title.trim())         { setError('กรุณากรอกชื่อเอกสาร'); return }
     if (!documentCode.trim())  { setError('กรุณากรอกรหัสเอกสาร'); return }
-    if (!isEdit && !selectedFile) { setError('กรุณาเลือกไฟล์'); return }
+    if (!isEdit && !selectedFile && status !== 'Draft') { setError('กรุณาเลือกไฟล์'); return }
     if (revisionWarning) { setError(revisionWarning); return }
 
     setSaving(true)
@@ -242,6 +372,8 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
                   setDocumentCode(val)
                   const dept = deptFromCode(val)
                   if (dept) setDepartment(dept)
+                  const docType = typeFromCode(val)
+                  if (docType) setType(docType)
                 }}
                 style={inputStyle}
                 placeholder="เช่น QM-LAB-01"
@@ -363,7 +495,12 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
           {/* File Upload */}
           <div>
             <label style={labelStyle}>
-              {isEdit ? 'เปลี่ยนไฟล์ (ไม่บังคับ)' : <>ไฟล์เอกสาร<RequiredMark /> (PDF, DOCX, XLSX — ไม่เกิน 50 MB)</>}
+              {isEdit
+                ? 'เปลี่ยนไฟล์ (ไม่บังคับ)'
+                : status === 'Draft'
+                  ? 'ไฟล์เอกสาร (ไม่บังคับสำหรับ Draft) — PDF, DOCX, XLSX ไม่เกิน 50 MB'
+                  : <>ไฟล์เอกสาร<RequiredMark /> (PDF, DOCX, XLSX — ไม่เกิน 50 MB)</>
+              }
             </label>
             <div
               onDragEnter={onDragEnter}
@@ -407,6 +544,26 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }}
               />
             </div>
+            {selectedFile && (
+              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={extractFromFile}
+                  disabled={extracting}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    fontSize: 12, fontWeight: 600, cursor: extracting ? 'default' : 'pointer',
+                    padding: '5px 12px', borderRadius: 7, fontFamily: 'inherit',
+                    background: 'transparent',
+                    border: `1px solid ${extracting ? 'var(--border)' : 'var(--primary)'}`,
+                    color: extracting ? 'var(--muted)' : 'var(--primary)',
+                    transition: 'all .15s',
+                  }}
+                >
+                  {extracting ? '⏳ กำลังอ่านไฟล์...' : '✦ ดึงข้อมูลจากไฟล์'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

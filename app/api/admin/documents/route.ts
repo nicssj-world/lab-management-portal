@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams
     const type       = sp.get('type') ?? undefined
+    const status     = sp.get('status') ?? undefined
     const visibility = sp.get('visibility') ?? undefined
     const department = sp.get('department') ?? undefined
     const search     = sp.get('search') ?? undefined
@@ -46,6 +47,7 @@ export async function GET(req: NextRequest) {
       .is('deleted_at', null)
 
     if (type && type !== 'All') query = query.eq('type', type)
+    if (status)                 query = query.eq('status', status)
     if (visibility)             query = query.eq('visibility', visibility)
     if (department)             query = query.eq('department', department)
     if (search) {

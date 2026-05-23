@@ -215,44 +215,7 @@ export default async function PublicHome() {
 
         @media (max-width: 520px) {
           .public-hero { padding: 36px 16px 48px; }
-          .public-photo-stack {
-            height: 238px;
-            margin-top: 24px;
-          }
-          .public-photo-card {
-            border-width: 4px;
-            border-radius: 12px;
-          }
-          .public-photo-central {
-            right: 2%;
-            bottom: 74px;
-            width: 68%;
-            height: 132px;
-          }
-          .public-photo-blood {
-            right: 1%;
-            bottom: 30px;
-            width: 39%;
-            height: 78px;
-          }
-          .public-photo-petri {
-            right: 46%;
-            bottom: 24px;
-            width: 42%;
-            height: 84px;
-          }
-          .public-photo-sign {
-            right: 50%;
-            bottom: 176px;
-            width: 42%;
-            height: 56px;
-          }
-          .public-lab-sticker {
-            bottom: 30px;
-            max-width: calc(100% - 70px);
-            white-space: normal;
-            line-height: 1.25;
-          }
+          .public-photo-stack { display: none; }
           .public-hero-title { font-size: 30px !important; line-height: 1.18 !important; }
           .public-hero-title-en::after { bottom: -5px; height: 2px; }
           .public-hero-copy { font-size: 14px !important; }
