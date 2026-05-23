@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(node scripts/run-migration.mjs scripts/permissions-level-migration.sql)",
-      "Bash(supabase --version)"
-    ]
-  }
-}
