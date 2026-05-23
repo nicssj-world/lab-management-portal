@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -12,6 +12,8 @@ export default function SettingsPage() {
   const { settings, saveSettings } = useSettings()
   const [draft, setDraft] = useState<SystemSettings>(settings)
   const [saved, setSaved] = useState(false)
+
+  useEffect(() => { setDraft(settings) }, [settings])
 
   function set(key: keyof SystemSettings, value: string) {
     setDraft((prev) => ({ ...prev, [key]: value }))
