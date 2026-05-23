@@ -23,6 +23,8 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/kpi/input':              { th: 'บันทึกข้อมูล KPI',             en: 'KPI Data Entry' },
   '/lab-workload/dashboard': { th: 'Lab Workload',                 en: 'Lab Workload' },
   '/lab-workload/input':     { th: 'บันทึกข้อมูลภาระงาน',          en: 'Workload Entry' },
+  '/tat':                    { th: 'Turnaround Time (TAT)',         en: 'Turnaround Time (TAT)' },
+  '/tat/upload':             { th: 'อัพโหลดข้อมูล TAT',            en: 'Upload TAT Data' },
   '/tat/dashboard':          { th: 'Turnaround Time',              en: 'Turnaround Time' },
   '/tat/import':             { th: 'นำเข้าข้อมูล TAT',             en: 'Import TAT Data' },
 }

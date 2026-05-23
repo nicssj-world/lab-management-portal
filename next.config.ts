@@ -2,6 +2,9 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['canvas'],
+  experimental: {
+    serverActions: { bodySizeLimit: '10mb' },
+  },
   devIndicators: {
     position: 'bottom-right',
   },

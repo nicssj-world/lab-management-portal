@@ -1,0 +1,24 @@
+เนื้อหาแบ่งออกเป็น 2 ส่วน:
+
+ส่วนที่แก้ง่ายที่สุด — data.ts
+
+ข้อมูลทุกอย่างที่เป็น "ตาราง" อยู่ที่นี่หมดเลย:
+
+PHONE_DIRECTORY — เบอร์โทรภายใน
+TEAM — รายชื่อทีม
+CONTAINERS — ภาชนะเก็บตัวอย่าง (สี/ชื่อ/การใช้)
+CRITICAL_VALUES — ค่าวิกฤติ
+OUTLAB_PARTNERS / OUTLAB_TESTS — รายการส่งตรวจภายนอก
+MANUAL_SECTIONS — ชื่อบทในสารบัญ
+แก้ไขแค่ไฟล์นี้ไฟล์เดียว ไม่ต้องแตะ JSX เลย
+
+ส่วนที่เป็น prose/ขั้นตอน — Section files
+
+Section	ไฟล์
+หน้าแรก	ManualHome.tsx
+การเก็บตัวอย่าง	ManualCollection.tsx
+การส่งตัวอย่าง	ManualTransport.tsx
+ขอตรวจเพิ่ม/ซ้ำ	ManualAddon.tsx
+รายงานผล/ค่าวิกฤติ	ManualReport.tsx
+OUT LAB	ManualOutLab.tsx
+ส่วนนี้เนื้อหาฝังอยู่ใน JSX โดยตรง ต้องเปิดไฟล์แล้วหาข้อความที่ต้องการแก้

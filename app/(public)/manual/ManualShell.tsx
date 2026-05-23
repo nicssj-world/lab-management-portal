@@ -26,18 +26,26 @@ export function ManualShell() {
 
   return (
     <>
+      <style>{`
+        .manual-nav-btn { transition: background .15s, color .15s, transform .15s !important; }
+        .manual-nav-btn:not(.manual-nav-active):hover {
+          background: var(--primary-soft) !important;
+          color: var(--ink) !important;
+          transform: translateX(3px);
+        }
+      `}</style>
       {/* Page header strip */}
       <div style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto', padding: '28px 28px 24px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-            MN-LAB-01 · พ.ศ. 2569 · Rev. 2
+            MN-LAB-01 · พ.ศ. 2569 · Rev. 13
           </div>
           <h1 style={{ fontSize: 30, fontWeight: 800, color: 'var(--ink)', letterSpacing: '-.01em', margin: 0 }}>
             {lang === 'th' ? 'คู่มือการใช้บริการห้องปฏิบัติการ' : 'Laboratory Services Manual'}
           </h1>
           <p style={{ margin: '8px 0 0', color: 'var(--muted)', fontSize: 14, maxWidth: 760, lineHeight: 1.6 }}>
             {lang === 'th'
-              ? 'กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี — แนวทางปฏิบัติสำหรับการเก็บ ส่ง ตรวจ และรายงานผลตัวอย่างทางห้องปฏิบัติการ'
+              ? 'กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี — แนวทางปฏิบัติสำหรับการเก็บสิ่งส่งตรวจ และรายงานผลตัวอย่างทางห้องปฏิบัติการ'
               : 'Medical Technology Department, Chonburi Hospital — procedures for collection, transport, testing, and reporting of laboratory specimens.'}
           </p>
         </div>
@@ -59,6 +67,7 @@ export function ManualShell() {
                 <button
                   key={s.id}
                   onClick={() => goSection(s.id)}
+                  className={active ? 'manual-nav-btn manual-nav-active' : 'manual-nav-btn'}
                   style={{
                     display: 'flex', alignItems: 'flex-start', gap: 10,
                     padding: '10px 12px', borderRadius: 8, border: 'none',
@@ -66,7 +75,7 @@ export function ManualShell() {
                     color: active ? 'var(--primary)' : 'var(--ink)',
                     fontWeight: active ? 600 : 500, fontSize: 13,
                     lineHeight: 1.35, cursor: 'pointer', fontFamily: 'inherit',
-                    textAlign: 'left', transition: 'background .15s', width: '100%',
+                    textAlign: 'left', width: '100%',
                   }}
                 >
                   <Icon name={s.icon} size={16} style={{ marginTop: 1, flexShrink: 0 }} />
@@ -82,8 +91,8 @@ export function ManualShell() {
               <Icon name="phone" size={13} style={{ color: 'var(--primary)' }} />
               {lang === 'th' ? 'เบอร์โทรภายใน' : 'Internal extensions'}
             </div>
-            {PHONE_DIRECTORY.map(({ label, ext }) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+            {PHONE_DIRECTORY.map(({ label, ext }, i) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: i < PHONE_DIRECTORY.length - 1 ? '1px solid var(--border)' : 'none' }}>
                 <span>{label}</span>
                 <strong style={{ color: 'var(--ink)', fontFamily: '"IBM Plex Mono",monospace' }}>{ext}</strong>
               </div>
