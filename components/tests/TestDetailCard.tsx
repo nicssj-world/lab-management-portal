@@ -24,6 +24,29 @@ export function TestDetailCard({ test, category }: Props) {
   return (
     <div>
       <style>{`
+        @keyframes contactStaffPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.5); }
+          60% { box-shadow: 0 0 0 7px rgba(220,38,38,0); }
+        }
+        @keyframes contactStaffShimmer {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        .contact-staff-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 13px 4px 9px;
+          border-radius: 20px;
+          background: linear-gradient(120deg, #DC2626 0%, #EF4444 50%, #DC2626 100%);
+          background-size: 200% 200%;
+          color: #fff;
+          font-size: 12px;
+          font-weight: 700;
+          white-space: nowrap;
+          animation: contactStaffPulse 2s ease-out infinite, contactStaffShimmer 3s ease-in-out infinite;
+          cursor: default;
+        }
         @media (max-width: 767px) {
           .test-detail-badge-row {
             margin-bottom: 12px !important;
@@ -61,14 +84,16 @@ export function TestDetailCard({ test, category }: Props) {
       `}</style>
       {/* Badge row */}
       <div className="test-detail-badge-row" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 20, background: 'var(--surface-2)', fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
-          {test.code}
-        </span>
-        {test.cgd && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 20, background: '#2563EB', fontSize: 12, fontWeight: 600, color: '#fff' }}>
-            CGD {test.cgd}
+        {test.contact_staff && (
+          <span className="contact-staff-badge">
+            <Icon name="phone" size={12} style={{ color: '#fff', flexShrink: 0 }} />
+            ติดต่อเจ้าหน้าที่ ก่อนเก็บตัวอย่าง
           </span>
         )}
+        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 20, background: '#2563EB', fontSize: 12, fontWeight: 600, color: '#fff' }}>
+          รหัส E-Phis: <strong>{test.code}</strong>
+        </span>
+       
         {test.loinc && (
           <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 20, background: 'var(--surface-2)', fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
             LOINC {test.loinc}
