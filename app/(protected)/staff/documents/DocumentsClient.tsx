@@ -9,6 +9,8 @@ import { Icon } from '@/components/ui/Icon'
 import { Input } from '@/components/ui/Input'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
+import { allowedTransitions } from '@/lib/documents/transitions'
+import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document } from '@/lib/supabase/types'
 
 // ── Constants ─────────────────────────────────────────────────
@@ -40,8 +42,6 @@ const TYPE_ICON_FG: Record<string, string> = {
   Policy: '#D97706', Manual: '#16A34A', Record: '#64748B', Others: '#64748B',
 }
 
-type DocStatus = 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolete'
-
 const STATUS_COLOR: Record<DocStatus, 'gray' | 'amber' | 'blue' | 'green' | 'red'> = {
   Draft: 'gray', Review: 'amber', Approved: 'blue', Published: 'green', Obsolete: 'red',
 }
@@ -54,18 +54,6 @@ const ALL_STATUSES: DocStatus[] = ['Draft', 'Review', 'Approved', 'Published', '
 interface StatusHistoryRow {
   to_status: string
   changed_at: string
-}
-
-function allowedTransitions(current: DocStatus, role: string): DocStatus[] {
-  const canChange = ['Admin', 'Document Controller'].includes(role)
-  if (!canChange) return []
-  switch (current) {
-    case 'Draft':     return ['Review']
-    case 'Review':    return ['Approved', 'Draft']
-    case 'Approved':  return ['Published', 'Review']
-    case 'Published': return ['Obsolete']
-    default:          return []
-  }
 }
 
 // ── Revision type ─────────────────────────────────────────────
@@ -112,14 +100,15 @@ function fmtStatusDate(iso: string | null): string {
 const PAGE_SIZE = 30
 
 // ── Status Change Modal ────────────────────────────────────────
-function StatusModal({ doc, userRole, onClose, onSaved, toast }: {
+function StatusModal({ doc, userRole, docRole, onClose, onSaved, toast }: {
   doc: Document
   userRole: string
+  docRole?: string
   onClose: () => void
   onSaved: (updated: Document) => void
   toast: (msg: string, ok?: boolean) => void
 }) {
-  const transitions = allowedTransitions(doc.status as DocStatus, userRole)
+  const transitions = allowedTransitions(doc.status as DocStatus, userRole, docRole)
   const [saving, setSaving] = useState(false)
   const [reason, setReason] = useState('')
   const [statusDates, setStatusDates] = useState<Partial<Record<DocStatus, string>>>({})
@@ -1110,11 +1099,24 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds }: {
 }
 
 // ── Main component ─────────────────────────────────────────────
-interface Props { userRole?: string; canEdit?: boolean }
+const DOC_ROLE_COLOR: Record<string, { bg: string; color: string; dot: string }> = {
+  'Laboratory Director': { bg: 'rgba(30,95,173,.09)',  color: '#1E5FAD', dot: '#1E5FAD' },
+  'Quality Manager':     { bg: 'rgba(13,148,136,.09)', color: '#0D9488', dot: '#0D9488' },
+  'Document Controller': { bg: 'rgba(147,51,234,.09)', color: '#9333EA', dot: '#9333EA' },
+  'Reviewer':            { bg: 'rgba(217,119,6,.09)',  color: '#B45309', dot: '#D97706' },
+  'Viewer':              { bg: 'rgba(100,116,139,.09)',color: '#64748B', dot: '#94A3B8' },
+}
 
-export function DocumentsClient({ userRole, canEdit = false }: Props) {
-  const canUpload = canEdit
-  const canDelete = canEdit
+interface Props { userRole?: string; docRole?: string; userName?: string }
+
+export function DocumentsClient({ userRole, docRole, userName }: Props) {
+  const isAdmin = userRole === 'Admin'
+  const canUpload = isAdmin
+    ? true
+    : ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(docRole ?? '')
+  const canDelete = isAdmin
+    ? true
+    : ['Laboratory Director', 'Document Controller'].includes(docRole ?? '')
   const canRead   = true
 
   const { toasts, add: toast } = useToast()
@@ -1356,6 +1358,34 @@ export function DocumentsClient({ userRole, canEdit = false }: Props) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* User identity badge */}
+          {(userName || docRole) && (() => {
+            const scheme = docRole ? DOC_ROLE_COLOR[docRole] : undefined
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '7px 12px', borderRadius: 10,
+                background: scheme?.bg ?? 'var(--surface-2)',
+                border: `1px solid ${scheme ? scheme.color + '33' : 'var(--border)'}`,
+              }}>
+                <div style={{
+                  width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                  background: scheme?.dot ?? 'var(--muted)',
+                  boxShadow: scheme ? `0 0 0 2px ${scheme.dot}33` : 'none',
+                }} />
+                <div>
+                  {userName && (
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                      {userName}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: scheme?.color ?? 'var(--muted)', fontWeight: 600, lineHeight: 1.3, whiteSpace: 'nowrap' }}>
+                    {docRole ?? userRole ?? 'Staff'}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
           {canDelete && deletedCount > 0 && (
             <button
               onClick={handlePurge}
@@ -1468,7 +1498,7 @@ export function DocumentsClient({ userRole, canEdit = false }: Props) {
                 ) : (
                   docs.map((doc) => {
                     const docStatus = (doc.status ?? 'Draft') as DocStatus
-                    const canChangeStatus = allowedTransitions(docStatus, userRole ?? '').length > 0
+                    const canChangeStatus = allowedTransitions(docStatus, userRole ?? '', docRole).length > 0
                     return (
                       <tr key={doc.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background .12s' }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
@@ -1631,7 +1661,7 @@ export function DocumentsClient({ userRole, canEdit = false }: Props) {
 
       {/* Upload / Edit Modal */}
       {modalOpen && (
-        <DocumentUploadModal doc={editDoc} userRole={userRole} onClose={() => { setModalOpen(false); setEditDoc(null) }} onSaved={handleSaved} />
+        <DocumentUploadModal doc={editDoc} userRole={userRole} docRole={docRole} onClose={() => { setModalOpen(false); setEditDoc(null) }} onSaved={handleSaved} />
       )}
 
       {/* Status Change Modal */}
@@ -1639,6 +1669,7 @@ export function DocumentsClient({ userRole, canEdit = false }: Props) {
         <StatusModal
           doc={statusDoc}
           userRole={userRole ?? ''}
+          docRole={docRole}
           onClose={() => setStatusDoc(null)}
           onSaved={handleStatusSaved}
           toast={toast}

@@ -13,7 +13,7 @@ const ROLES = PERMISSION_ROLES
 type Role = typeof ROLES[number]
 
 const ROLE_COLORS: Record<Role, 'red' | 'blue' | 'teal' | 'gray' | 'purple' | 'amber'> = {
-  Admin: 'red', Manager: 'blue', 'Document Controller': 'purple', 'Medical Technologist': 'teal', 'Medical Science Technician': 'amber', Assistant: 'gray',
+  Admin: 'red', Manager: 'blue', 'Medical Technologist': 'teal', 'Medical Science Technician': 'amber', Assistant: 'gray',
 }
 
 const LEVELS: PermLevel[] = ['none', 'view', 'edit']

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
@@ -13,6 +12,21 @@ interface ProfileData {
   role: string
   dept: string | null
   avatar_url: string | null
+  doc_role: string | null
+}
+
+const DOC_ROLE_SCHEME: Record<string, { color: string; bg: string; border: string; label: string }> = {
+  'Laboratory Director': { color: '#1E5FAD', bg: 'rgba(30,95,173,.08)',  border: 'rgba(30,95,173,.2)',  label: 'Laboratory Director' },
+  'Quality Manager':     { color: '#0D9488', bg: 'rgba(13,148,136,.08)', border: 'rgba(13,148,136,.2)', label: 'Quality Manager' },
+  'Document Controller': { color: '#7C3AED', bg: 'rgba(124,58,237,.08)', border: 'rgba(124,58,237,.2)', label: 'Document Controller' },
+  'Reviewer':            { color: '#B45309', bg: 'rgba(217,119,6,.08)',  border: 'rgba(217,119,6,.2)',  label: 'Reviewer' },
+  'Viewer':              { color: '#64748B', bg: 'rgba(100,116,139,.08)',border: 'rgba(100,116,139,.2)',label: 'Viewer' },
+}
+
+const ROLE_SCHEME: Record<string, string> = {
+  Admin: '#DC2626', Manager: '#1E5FAD', 'Medical Technologist': '#0D9488',
+  'Medical Science Technician': '#D97706', Assistant: '#64748B',
+  'Document Controller': '#7C3AED',
 }
 
 export default function ProfilePage() {
@@ -24,6 +38,7 @@ export default function ProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [savingName, setSavingName] = useState(false)
+  const [editingName, setEditingName] = useState(false)
 
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -56,7 +71,7 @@ export default function ProfilePage() {
     const res = await fetch('/api/me', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: displayName.trim() }) })
     setSavingName(false)
     if (!res.ok) showToast('บันทึกไม่สำเร็จ', false)
-    else { setProfile((p) => p ? { ...p, name: displayName.trim() } : p); showToast('บันทึกชื่อแล้ว') }
+    else { setProfile((p) => p ? { ...p, name: displayName.trim() } : p); setEditingName(false); showToast('บันทึกชื่อแล้ว') }
   }
 
   async function resizeImage(file: File, maxSize = 200): Promise<Blob> {
@@ -114,7 +129,6 @@ export default function ProfilePage() {
       showToast('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', false); return
     }
     setSavingPwd(true)
-    // Re-authenticate with old password first
     const { data: { user } } = await supabase.auth.getUser()
     if (user?.email) {
       const { error: signInErr } = await supabase.auth.signInWithPassword({ email: user.email, password: oldPassword })
@@ -127,16 +141,18 @@ export default function ProfilePage() {
   }
 
   const initial = profile?.name?.charAt(0).toUpperCase() ?? 'U'
+  const roleColor = profile?.role ? (ROLE_SCHEME[profile.role] ?? '#64748B') : '#64748B'
+  const docScheme = profile?.doc_role ? DOC_ROLE_SCHEME[profile.doc_role] : null
 
   const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '10px 12px', borderRadius: 8,
+    width: '100%', padding: '9px 12px', borderRadius: 8,
     border: '1px solid var(--border)', fontSize: 13,
     fontFamily: 'inherit', color: 'var(--ink)',
     background: 'var(--card)', outline: 'none', boxSizing: 'border-box',
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 640 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 680 }}>
       {toast && (
         <div style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
@@ -148,28 +164,34 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <PageHeader eyebrow="บัญชีผู้ใช้" title="Profile" subtitle="Profile Settings" />
+      {/* ── Hero profile card ─────────────────────────────────── */}
+      <Card padding={0} style={{ overflow: 'hidden' }}>
+        {/* Top accent strip */}
+        <div style={{
+          height: 6,
+          background: docScheme
+            ? `linear-gradient(90deg, ${docScheme.color}, ${docScheme.color}88)`
+            : `linear-gradient(90deg, var(--primary), #3B82F6)`,
+        }} />
 
-      {/* Avatar + display name */}
-      <Card padding={24}>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 20 }}>ข้อมูลโปรไฟล์</div>
-
-        {/* Avatar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24 }}>
+        <div style={{ padding: '28px 28px 24px', display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          {/* Avatar */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={avatarUrl}
-                alt="avatar"
-                style={{ width: 72, height: 72, borderRadius: 16, objectFit: 'cover', border: '2px solid var(--border)' }}
+              <img src={avatarUrl} alt="avatar"
+                style={{ width: 88, height: 88, borderRadius: 18, objectFit: 'cover', border: '3px solid var(--card)', boxShadow: '0 0 0 2px var(--border)' }}
               />
             ) : (
               <div style={{
-                width: 72, height: 72, borderRadius: 16,
-                background: 'var(--primary)', color: '#fff',
+                width: 88, height: 88, borderRadius: 18,
+                background: docScheme
+                  ? `linear-gradient(135deg, ${docScheme.color}cc, ${docScheme.color}88)`
+                  : 'linear-gradient(135deg, var(--primary), #3B82F6)',
+                color: '#fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 26, fontWeight: 700,
+                fontSize: 32, fontWeight: 700,
+                boxShadow: '0 4px 16px rgba(0,0,0,.1)',
               }}>
                 {initial}
               </div>
@@ -177,130 +199,190 @@ export default function ProfilePage() {
             <button
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
+              title="เปลี่ยนรูป"
               style={{
-                position: 'absolute', bottom: -6, right: -6,
+                position: 'absolute', bottom: -4, right: -4,
                 width: 26, height: 26, borderRadius: '50%',
                 background: 'var(--primary)', color: '#fff',
                 border: '2px solid var(--card)', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 11,
               }}
-              title="เปลี่ยนรูป"
             >
-              <Icon name="edit" size={12} />
+              <Icon name="edit" size={11} />
             </button>
-            <input
-              ref={fileRef} type="file"
-              accept="image/png,image/jpeg,image/webp"
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
               style={{ display: 'none' }}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAvatarUpload(f) }}
             />
           </div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{profile?.name ?? '—'}</div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{profile?.role?.toUpperCase()}</div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}
-              >
-                {uploading ? 'กำลังอัปโหลด...' : 'เปลี่ยนรูป'}
-              </button>
-              {avatarUrl && (
-                <button
-                  onClick={handleRemoveAvatar}
-                  style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #FEE2E2', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: '#DC2626' }}
-                >
-                  ลบรูป
-                </button>
+
+          {/* Identity */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Name row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+              {editingName ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
+                  <input
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') { setEditingName(false); setDisplayName(profile?.name ?? '') } }}
+                    autoFocus
+                    style={{ ...inputStyle, fontSize: 20, fontWeight: 700, padding: '4px 10px', maxWidth: 300 }}
+                  />
+                  <button onClick={handleSaveName} disabled={savingName}
+                    style={{ padding: '5px 14px', borderRadius: 7, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    {savingName ? '...' : 'บันทึก'}
+                  </button>
+                  <button onClick={() => { setEditingName(false); setDisplayName(profile?.name ?? '') }}
+                    style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    ยกเลิก
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)', margin: 0, letterSpacing: '-0.02em' }}>
+                    {profile?.name ?? '—'}
+                  </h1>
+                  <button onClick={() => setEditingName(true)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 2, display: 'flex', alignItems: 'center' }}
+                    title="แก้ไขชื่อ">
+                    <Icon name="edit" size={13} />
+                  </button>
+                </>
               )}
             </div>
+
+            {/* Role + Doc Role badges */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Main role */}
+              {profile?.role && (
+                <span style={{
+                  fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                  background: roleColor + '15', color: roleColor,
+                  border: `1px solid ${roleColor}30`, letterSpacing: '.02em',
+                }}>
+                  {profile.role}
+                </span>
+              )}
+
+              {/* Doc role badge */}
+              {docScheme && (
+                <span style={{
+                  fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                  background: docScheme.bg, color: docScheme.color,
+                  border: `1px solid ${docScheme.border}`,
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: docScheme.color, flexShrink: 0 }} />
+                  {docScheme.label}
+                </span>
+              )}
+            </div>
+
+            {/* Dept */}
+            {profile?.dept && (
+              <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Icon name="building" size={12} />
+                {profile.dept}
+              </div>
+            )}
+
+            {/* Avatar actions */}
+            {!editingName && (
+              <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+                <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                  style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>
+                  {uploading ? 'กำลังอัปโหลด...' : 'เปลี่ยนรูปโปรไฟล์'}
+                </button>
+                {avatarUrl && (
+                  <button onClick={handleRemoveAvatar}
+                    style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #FEE2E2', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: '#DC2626' }}>
+                    ลบรูป
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
+      </Card>
 
-        {/* Read-only info */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
-          <div style={{ padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 8 }}>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>บทบาท (Role)</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: profile?.role ? 'var(--primary)' : 'var(--muted)' }}>
-              {profile?.role ?? 'ไม่ระบุ'}
-            </div>
-          </div>
-          <div style={{ padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 8 }}>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>แผนก (Department)</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: profile?.dept ? 'var(--ink)' : 'var(--muted)' }}>
-              {profile?.dept ?? 'ไม่ระบุ'}
-            </div>
-          </div>
+      {/* ── Account info ──────────────────────────────────────── */}
+      <Card padding={0}>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>ข้อมูลบัญชี</div>
+        </div>
+        <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <InfoCell label="บทบาทหลัก" value={profile?.role} color={roleColor} />
+          <InfoCell label="แผนก" value={profile?.dept} />
+          {profile?.doc_role && (
+            <InfoCell label="บทบาทด้านเอกสาร" value={profile.doc_role} color={docScheme?.color} />
+          )}
         </div>
         {(!profile?.role || !profile?.dept) && (
-          <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ padding: '0 24px 16px', fontSize: 11.5, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Icon name="alert" size={13} />
             Role และ Department ถูกจัดการโดย Admin ใน User Management
           </div>
         )}
       </Card>
 
-      {/* Change password */}
-      <Card padding={24}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showPwdSection ? 20 : 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>เปลี่ยนรหัสผ่าน</div>
+      {/* ── Change password ───────────────────────────────────── */}
+      <Card padding={0}>
+        <div style={{ padding: '16px 24px', borderBottom: showPwdSection ? '1px solid var(--border)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>ความปลอดภัย</div>
+            {!showPwdSection && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>เปลี่ยนรหัสผ่านสำหรับเข้าสู่ระบบ</div>}
+          </div>
           {!showPwdSection && (
-            <button
-              onClick={() => setShowPwdSection(true)}
-              style={{ fontSize: 12, padding: '5px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}
-            >
+            <button onClick={() => setShowPwdSection(true)}
+              style={{ fontSize: 12, padding: '6px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)', fontWeight: 500 }}>
               เปลี่ยนรหัสผ่าน
             </button>
           )}
         </div>
         {showPwdSection && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
               { label: 'รหัสผ่านเดิม', value: oldPassword, set: setOldPassword, autoComplete: 'current-password' },
               { label: 'รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)', value: newPassword, set: setNewPassword, autoComplete: 'new-password' },
               { label: 'ยืนยันรหัสผ่านใหม่', value: confirmPassword, set: setConfirmPassword, autoComplete: 'new-password' },
             ].map(({ label, value, set, autoComplete }) => (
-              <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>{label}</label>
                 <div style={{ position: 'relative' }}>
-                  <input
-                    type={showPwd ? 'text' : 'password'}
-                    value={value}
-                    autoComplete={autoComplete}
+                  <input type={showPwd ? 'text' : 'password'} value={value} autoComplete={autoComplete}
                     onChange={(e) => set(e.target.value)}
-                    style={{ ...inputStyle, paddingRight: 40 }}
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPwd(v => !v)}
-                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 0 }}
-                  >
+                    style={{ ...inputStyle, paddingRight: 40 }} placeholder="••••••••" />
+                  <button type="button" onClick={() => setShowPwd(v => !v)}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 0 }}>
                     <Icon name="eye" size={15} />
                   </button>
                 </div>
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-              <button
-                onClick={() => { setShowPwdSection(false); setOldPassword(''); setNewPassword(''); setConfirmPassword('') }}
-                style={{ fontSize: 12, padding: '5px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--muted)' }}
-              >
+              <button onClick={() => { setShowPwdSection(false); setOldPassword(''); setNewPassword(''); setConfirmPassword('') }}
+                style={{ fontSize: 12, padding: '6px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--muted)' }}>
                 ยกเลิก
               </button>
-              <Button
-                variant="primary"
-                onClick={handleChangePassword}
-                disabled={savingPwd || !oldPassword || !newPassword || !confirmPassword}
-              >
+              <Button variant="primary" onClick={handleChangePassword} disabled={savingPwd || !oldPassword || !newPassword || !confirmPassword}>
                 {savingPwd ? 'กำลังเปลี่ยน...' : 'ยืนยันเปลี่ยนรหัสผ่าน'}
               </Button>
             </div>
           </div>
         )}
       </Card>
+    </div>
+  )
+}
+
+function InfoCell({ label, value, color }: { label: string; value?: string | null; color?: string }) {
+  return (
+    <div style={{ padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 8 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: color ?? (value ? 'var(--ink)' : 'var(--muted)') }}>
+        {value ?? 'ไม่ระบุ'}
+      </div>
     </div>
   )
 }
