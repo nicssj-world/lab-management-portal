@@ -319,9 +319,38 @@ supabaseAdmin.from('audit_log').insert({ action, user_id, target, detail })
 
 SQL scripts are in `scripts/`. Run them manually via **Supabase Dashboard → SQL Editor**. There is no automated migration runner for schema changes.
 
+
 ### Soft Delete Pattern
 
 Documents use soft delete: `deleted_at timestamptz DEFAULT NULL`. GET queries always filter `.is('deleted_at', null)`. The purge route (`DELETE /api/admin/documents/purge-deleted`) hard-deletes soft-deleted records and cleans R2 files.
+
+### Test Catalog Extended Columns
+
+The `tests` table has extended columns added via migrations (not in the original schema). The `Test` interface in `lib/supabase/types.ts` marks these as optional (`?`):
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `contact_staff` | `boolean` | Show animated red "ติดต่อเจ้าหน้าที่ ก่อนเก็บตัวอย่าง" badge on public catalog detail page (`components/tests/TestDetailCard.tsx`) |
+| `related_doc_ids` | `uuid[]` | Links to `documents.id` — shown as searchable multi-select in TestForm Section G |
+
+The `contact_staff` badge uses CSS `@keyframes contactStaffPulse` + `contactStaffShimmer` injected via `<style>` in `TestDetailCard`. It renders **first** in the badge row, before the E-Phis code pill.
+
+### PDF Text Extraction (Documents Module)
+
+`app/api/admin/documents/extract/route.ts` extracts text from uploaded files for auto-filling the upload form. Uses:
+- **PDF**: `unpdf` (`getDocumentProxy` + `extractText`) — pure JS, Vercel serverless compatible. Do NOT use `pdf-parse` (v2 requires `canvas`/`DOMMatrix` which is unavailable in Node.js serverless).
+- **DOCX**: `mammoth`
+- **XLSX**: `xlsx`
+
+`next.config.ts` `serverExternalPackages` contains `['canvas']` only — `pdf-parse` is NOT in the list.
+
+### Public Manual Page Architecture
+
+`app/(public)/manual/` — lab services manual for public users.
+
+- **`data.ts`** — single source of truth for ALL structured content: `PHONE_DIRECTORY`, `TEAM`, `CONTAINERS`, `CRITICAL_VALUES`, `OUTLAB_PARTNERS`, `OUTLAB_TESTS`, `MANUAL_SECTIONS`. Edit here to update tables/lists without touching JSX.
+- **`ManualShell.tsx`** — layout shell with sticky sidebar nav + phone directory card. Nav uses CSS class `.manual-nav-btn` / `.manual-nav-active` for hover effect (translateX + primary-soft background).
+- **Section files** (`sections/Manual*.tsx`) — prose/step content per chapter. Edit these for paragraph-level content changes.
 
 ### Documents Module DB Tables
 

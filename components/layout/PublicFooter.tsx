@@ -191,7 +191,7 @@ export function PublicFooter() {
         <span>© 2026 Chonburi Hospital — Medical Technology Department.</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Icon name="doc" size={12} />
-          v1.0.0 · MN-LAB-01
+          v1.0.0 2006
         </span>
       </div>
     </footer>

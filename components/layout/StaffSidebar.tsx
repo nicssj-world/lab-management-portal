@@ -18,6 +18,7 @@ interface NavItem {
   badge?: string
   role?: string | string[]
   resource?: string
+  requireEdit?: boolean
 }
 
 const NAV_ITEMS: (NavItem | null)[] = [
@@ -33,7 +34,8 @@ const NAV_ITEMS: (NavItem | null)[] = [
   null,
   { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',    resource: 'KPI' },
   { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker',   resource: 'Workload' },
-  { href: '/tat/dashboard',    th: 'Turnaround Time',     en: 'TAT',            icon: 'clock',    resource: 'TAT' },
+  { href: '/tat',              th: 'Turnaround Time',     en: 'TAT',            icon: 'clock',    resource: 'TAT' },
+  { href: '/tat/upload',       th: 'อัพโหลดข้อมูล TAT',   en: 'Upload TAT',     icon: 'upload',   resource: 'TAT', requireEdit: true },
   null,
   { href: '/staff/admin',      th: 'จัดการผู้ใช้',         en: 'Users & Roles',  icon: 'users',    resource: 'User Management' },
   { href: '/staff/settings',   th: 'ตั้งค่าระบบ',          en: 'Settings',       icon: 'settings', role: 'Admin' },
@@ -137,6 +139,7 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
           if (item.resource) {
             const level = userPermissions?.[item.resource] ?? 'none'
             if (level === 'none') return null
+            if (item.requireEdit && level !== 'edit') return null
           }
           const active = bestMatch?.href === item.href
           return (
