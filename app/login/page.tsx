@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
+import { Icon } from '@/components/ui/Icon'
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -42,11 +43,11 @@ export default function LoginPage() {
       <div
         style={{
           flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 48,
+          padding: 'clamp(24px, 5vw, 48px)',
         }}
       >
         <div style={{ width: '100%', maxWidth: 400 }}>
-          {/* Logo */}
+          {/* Logo row with home button on the right */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 36 }}>
             <Image
               src="/images/logo-chonburi.png"
@@ -57,10 +58,25 @@ export default function LoginPage() {
               quality={100}
               style={{ height: 64, width: 'auto', objectFit: 'contain' }}
             />
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>กลุ่มงานเทคนิคการแพทย์</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>โรงพยาบาลชลบุรี · Staff Portal</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>โรงพยาบาลชลบุรี · CBH Staff</div>
             </div>
+            <a
+              href="/"
+              title="กลับหน้าแรก"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '7px 12px', borderRadius: 8, flexShrink: 0,
+                border: '1px solid var(--border)', background: 'var(--card)',
+                color: 'var(--primary)', textDecoration: 'none',
+                fontSize: 12, fontWeight: 600,
+                boxShadow: '0 1px 4px rgba(0,0,0,.06)',
+              }}
+            >
+              <Icon name="home" size={14} />
+              หน้าแรก
+            </a>
           </div>
 
           <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink)', margin: '0 0 6px' }}>
@@ -122,28 +138,32 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Right panel */}
+      {/* Right panel — hidden on mobile */}
       <div
+        className="login-right-panel"
         style={{
           flex: 1, background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48,
           position: 'relative', overflow: 'hidden',
         }}
       >
+        <style>{`
+          @media (max-width: 640px) { .login-right-panel { display: none !important; } }
+        `}</style>
         <div style={{ position: 'absolute', right: -80, top: -80, width: 360, height: 360, borderRadius: '50%', background: 'rgba(255,255,255,.07)' }} />
         <div style={{ position: 'absolute', left: -40, bottom: -60, width: 260, height: 260, borderRadius: '50%', background: 'rgba(255,255,255,.05)' }} />
         <div style={{ position: 'relative', color: '#fff', maxWidth: 400, textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 20 }}>🔬</div>
           <h2 style={{ fontSize: 24, fontWeight: 700, margin: '0 0 12px', letterSpacing: '-0.02em' }}>
-            Lab Management Portal
+            Lab Management CBH
           </h2>
           <p style={{ fontSize: 14, opacity: 0.85, lineHeight: 1.7 }}>
             ระบบจัดการห้องปฏิบัติการเทคนิคการแพทย์ โรงพยาบาลชลบุรี
-            ครอบคลุมรายการตรวจ เอกสารคุณภาพ ทะเบียนความเสี่ยง KPI และภาระงาน
+            
           </p>
           <div style={{ marginTop: 28, padding: '12px 18px', background: 'rgba(255,255,255,.12)', borderRadius: 10, border: '1px solid rgba(255,255,255,.2)' }}>
             <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>Accredited</div>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>ISO 15189 · ISO 15190</div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>ISO 15189:2022 · ISO 15190:2020</div>
           </div>
         </div>
       </div>

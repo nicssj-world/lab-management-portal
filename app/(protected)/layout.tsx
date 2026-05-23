@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { StaffSidebar } from '@/components/layout/StaffSidebar'
 import { StaffTopbar } from '@/components/layout/StaffTopbar'
 import { Icon } from '@/components/ui/Icon'
+import { MobileBypassInit, MobileBypassButton } from '@/components/layout/MobileBypass'
 import { PermissionProvider } from '@/context/PermissionContext'
 import { SidebarProvider } from '@/context/SidebarContext'
 import { getRolePermissions } from '@/lib/permissions'
@@ -29,6 +30,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <SidebarProvider>
+      <MobileBypassInit />
       <style>{`
         .protected-desktop-shell { display: flex; }
         .protected-mobile-block { display: none; min-height: 100vh; min-height: 100svh; }
@@ -37,6 +39,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           .protected-desktop-shell { display: none !important; }
           .protected-mobile-block { display: flex !important; }
         }
+
+        [data-mobile-bypass] .protected-desktop-shell { display: flex !important; }
+        [data-mobile-bypass] .protected-mobile-block { display: none !important; }
       `}</style>
 
       <div
@@ -131,6 +136,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
               <Icon name="search" size={15} />
               รายการตรวจ
             </a>
+            <MobileBypassButton />
           </div>
         </div>
       </div>

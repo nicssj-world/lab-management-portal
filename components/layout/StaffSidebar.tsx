@@ -76,12 +76,17 @@ export function StaffSidebar({ userRole, userName, userAvatar, userPermissions }
   const initial = userName?.charAt(0) ?? 'U'
 
   return (
+    <>
+    {/* Spacer keeps the flex layout — actual sidebar is fixed */}
+    <div style={{ width: w, flexShrink: 0, transition: 'width .2s' }} />
     <aside
       style={{
-        width: w, flexShrink: 0, background: 'var(--card)',
+        width: w, background: 'var(--card)',
         borderRight: '1px solid var(--border)', height: '100vh',
-        position: 'sticky', top: 0, display: 'flex', flexDirection: 'column',
+        position: 'fixed', top: 0, left: 0,
+        display: 'flex', flexDirection: 'column',
         transition: 'width .2s', zIndex: 40,
+        overflowY: 'hidden',
       }}
     >
       {/* Logo */}
@@ -196,5 +201,6 @@ export function StaffSidebar({ userRole, userName, userAvatar, userPermissions }
         </div>
       </div>
     </aside>
+    </>
   )
 }
