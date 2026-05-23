@@ -2,6 +2,16 @@ import { z } from 'zod'
 
 export const ROLES = ['Admin', 'Manager', 'Medical Technologist', 'Assistant', 'Document Controller', 'Medical Science Technician'] as const
 
+export const DOC_ROLES = [
+  'Laboratory Director',
+  'Quality Manager',
+  'Document Controller',
+  'Reviewer',
+  'Viewer',
+] as const
+
+export type DocRoleValue = typeof DOC_ROLES[number]
+
 export const DEPARTMENTS = [
   'สำนักงานกลุ่มงานเทคนิคการแพทย์',
   'งานเคมีคลินิก',
@@ -50,6 +60,7 @@ export const updateUserSchema = z.object({
   role: z.enum(ROLES).optional(),
   dept: z.enum(DEPARTMENTS).optional(),
   status: z.enum(['active', 'inactive', 'pending']).optional(),
+  doc_role: z.enum(DOC_ROLES).nullable().optional(),
 })
 
 export type CreateUserInput = z.infer<typeof createUserSchema>

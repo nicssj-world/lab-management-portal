@@ -4,11 +4,14 @@ import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { DOC_TYPES, DOC_STATUSES, DOC_VISIBILITIES } from '@/lib/validations/document'
+import { availableEditStatuses } from '@/lib/documents/transitions'
+import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document } from '@/lib/supabase/types'
 
 interface Props {
   doc?: Document | null
   userRole?: string
+  docRole?: string
   onClose: () => void
   onSaved: (doc: Document) => void
 }
@@ -62,10 +65,12 @@ function revisionNumber(v: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-export function DocumentUploadModal({ doc, userRole, onClose, onSaved }: Props) {
-  const availableStatuses = ['Admin', 'Document Controller'].includes(userRole ?? '')
-    ? DOC_STATUSES
-    : (['Draft', 'Review', 'Approved'] as const)
+export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }: Props) {
+  const availableStatuses = availableEditStatuses(
+    userRole ?? '',
+    docRole,
+    doc?.status as DocStatus | undefined,
+  )
   const isEdit = !!doc
   const fileRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)

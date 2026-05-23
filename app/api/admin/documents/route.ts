@@ -11,15 +11,19 @@ async function getActor() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data } = await supabaseAdmin
-    .from('profiles').select('id, role').eq('id', user.id).single()
-  return data as { id: string; role: string } | null
+    .from('profiles').select('id, role, doc_role').eq('id', user.id).single()
+  return data as { id: string; role: string; doc_role: string | null } | null
 }
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
 }
 
-async function canEditDocuments(role: string) {
+const DOC_UPLOAD_ROLES = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer']
+
+async function canUploadDocument(role: string, docRole: string | null) {
+  if (role === 'Admin') return true
+  if (docRole && DOC_UPLOAD_ROLES.includes(docRole)) return true
   const perms = await getRolePermissions(role)
   return (perms['เอกสารคุณภาพ'] ?? 'none') === 'edit'
 }
@@ -64,7 +68,7 @@ export async function POST(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!(await canEditDocuments(actor.role))) {
+  if (!(await canUploadDocument(actor.role, actor.doc_role))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

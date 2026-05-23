@@ -10,6 +10,7 @@ export interface UserProfile {
   role: UserRole
   dept: string | null
   status: UserStatus
+  doc_role: string | null
   created_at: string
   updated_at: string | null
   deleted_at: string | null

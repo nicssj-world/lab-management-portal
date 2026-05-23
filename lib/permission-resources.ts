@@ -20,7 +20,6 @@ export type ResourceKey = typeof RESOURCES[number]
 export const PERMISSION_ROLES = [
   'Admin',
   'Manager',
-  'Document Controller',
   'Medical Technologist',
   'Medical Science Technician',
   'Assistant',

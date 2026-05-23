@@ -14,14 +14,14 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('id, name, role, dept, avatar_url')
+    .select('id, name, role, dept, avatar_url, doc_role')
     .eq('id', user.id)
     .single()
 
   if (error) {
     const { data: basic } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, role, dept')
+      .select('id, name, role, dept, doc_role')
       .eq('id', user.id)
       .single()
     return NextResponse.json(basic ? { ...basic, avatar_url: null } : { error: 'Not found' })

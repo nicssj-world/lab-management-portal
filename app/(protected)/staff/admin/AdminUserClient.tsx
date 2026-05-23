@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
 import { StickyScroll } from '@/components/ui/StickyScroll'
-import { createUserSchema, updateUserSchema, ROLES, DEPARTMENTS, DEPT_ABBR } from '@/lib/validations/user-schema'
+import { createUserSchema, updateUserSchema, ROLES, DEPARTMENTS, DEPT_ABBR, DOC_ROLES } from '@/lib/validations/user-schema'
 import type { UserProfile, UserFilters, PaginationMeta, UserRole, UserStatus } from '@/types/users'
 import type { CreateUserInput, UpdateUserInput } from '@/lib/validations/user-schema'
 
@@ -127,6 +127,7 @@ function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModa
     role:     (user?.role    ?? 'Medical Technologist') as UserRole,
     dept:     (user?.dept    ?? DEPARTMENTS[0]) as typeof DEPARTMENTS[number],
     status:   (user?.status  ?? 'active') as UserStatus,
+    doc_role: user?.doc_role ?? '',
   })
 
   const set = (k: keyof typeof form) => (v: string) => {
@@ -144,6 +145,7 @@ function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModa
         name:     form.name     || undefined,
         role:     form.role,
         dept:     form.dept,
+        doc_role: (form.doc_role as typeof DOC_ROLES[number]) || null,
       }
       const parsed = updateUserSchema.safeParse(payload)
       if (!parsed.success) {
@@ -207,7 +209,7 @@ function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModa
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="บทบาท" error={errors.role}>
               <Sel value={form.role} onChange={set('role')}>
-                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                {ROLES.filter((r) => r !== 'Document Controller').map((r) => <option key={r} value={r}>{r}</option>)}
               </Sel>
             </Field>
 
@@ -225,6 +227,15 @@ function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModa
               {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
             </Sel>
           </Field>
+
+          {isEdit && (
+            <Field label="บทบาทด้านเอกสาร (Document sub-role)">
+              <Sel value={form.doc_role} onChange={(v) => setForm((f) => ({ ...f, doc_role: v }))}>
+                <option value="">— ตาม Role หลัก / ไม่ระบุ —</option>
+                {DOC_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </Sel>
+            </Field>
+          )}
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 6 }}>
             <Button variant="ghost" type="button" onClick={onClose}>ยกเลิก</Button>
@@ -246,7 +257,7 @@ function SkeletonRow() {
       <div style={{ height: 14, width: w, borderRadius: 4, background: 'var(--surface-2)', animation: 'pulse 1.5s ease-in-out infinite' }} />
     </td>
   )
-  return <tr>{cell(120)}{cell(60)}{cell(160)}{cell(60)}{cell(90)}{cell(60)}</tr>
+  return <tr>{cell(120)}{cell(60)}{cell(160)}{cell(120)}{cell(60)}{cell(90)}{cell(60)}{cell(60)}</tr>
 }
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
@@ -703,7 +714,7 @@ export function AdminUserClient() {
         </div>
 
         <Sel value={filters.role} onChange={(v) => applyFilter({ role: v as UserRole | '' })} placeholder="บทบาททั้งหมด">
-          {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+          {ROLES.filter((r) => r !== 'Document Controller').map((r) => <option key={r} value={r}>{r}</option>)}
         </Sel>
 
         <Sel value={filters.dept} onChange={(v) => applyFilter({ dept: v })} placeholder="แผนกทั้งหมด">
@@ -744,6 +755,7 @@ export function AdminUserClient() {
                 <SortTh label="ชื่อ-นามสกุล" field="name"       sortField={sortField} sortDir={sortDir} onClick={handleSort} />
                 <SortTh label="E-Phis"         field="ephis_id"  sortField={sortField} sortDir={sortDir} onClick={handleSort} />
                 <SortTh label="บทบาท"          field="role"      sortField={sortField} sortDir={sortDir} onClick={handleSort} />
+                <th style={{ padding: '11px 16px', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', borderBottom: '1px solid var(--border)', letterSpacing: '.04em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Doc Role</th>
                 <SortTh label="แผนก"           field="dept"      sortField={sortField} sortDir={sortDir} onClick={handleSort} />
                 <SortTh label="สถานะ"          field="status"    sortField={sortField} sortDir={sortDir} onClick={handleSort} />
                 <SortTh label="วันที่สร้าง"    field="created_at" sortField={sortField} sortDir={sortDir} onClick={handleSort} />
@@ -756,7 +768,7 @@ export function AdminUserClient() {
                 : fetchError
                 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '32px 24px', textAlign: 'center' }}>
+                    <td colSpan={8} style={{ padding: '32px 24px', textAlign: 'center' }}>
                       <div style={{ fontSize: 13, color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 18px', display: 'inline-block', maxWidth: 480 }}>
                         <strong>โหลดข้อมูลไม่สำเร็จ:</strong> {fetchError}
                       </div>
@@ -766,7 +778,7 @@ export function AdminUserClient() {
                 : users.length === 0
                 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)' }}>
+                    <td colSpan={8} style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)' }}>
                       <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
                       <div style={{ fontSize: 14, fontWeight: 600 }}>ไม่พบผู้ใช้งาน</div>
                       {activeFilters > 0 && <div style={{ fontSize: 12, marginTop: 4 }}>ลองปรับตัวกรองหรือคำค้นหา</div>}
@@ -781,6 +793,9 @@ export function AdminUserClient() {
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <Badge color={ROLE_COLORS[u.role] ?? 'gray'} size="sm">{u.role}</Badge>
+                    </td>
+                    <td style={{ padding: '12px 16px', color: 'var(--muted)', fontSize: 11.5, whiteSpace: 'nowrap' }}>
+                      {u.doc_role ?? '—'}
                     </td>
                     <td style={{ padding: '12px 16px', color: 'var(--muted)', fontSize: 12 }}>
                       {u.dept || '—'}
