@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['pdf-parse', 'canvas'],
+  serverExternalPackages: ['canvas'],
   devIndicators: {
     position: 'bottom-right',
   },

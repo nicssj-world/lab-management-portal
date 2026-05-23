@@ -16,12 +16,10 @@ export async function POST(req: NextRequest) {
 
   try {
     if (ext === 'pdf') {
-      const { PDFParse } = await import('pdf-parse')
-      const parser = new PDFParse({ data: buffer })
-      // partial: [1] extracts first page only
-      const result = await parser.getText({ partial: [1] })
-      text = result.text
-      await parser.destroy()
+      const { getDocumentProxy, extractText } = await import('unpdf')
+      const pdf = await getDocumentProxy(new Uint8Array(buffer))
+      const { text: pages } = await extractText(pdf, { mergePages: false })
+      text = Array.isArray(pages) ? (pages[0] ?? '') : String(pages)
     } else if (ext === 'docx') {
       const mammoth = await import('mammoth')
       const result = await mammoth.extractRawText({ buffer })
