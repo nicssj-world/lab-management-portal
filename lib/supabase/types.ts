@@ -65,6 +65,8 @@ export interface Test {
   contact_email?: string | null
   contact_note?: string | null
   ref_note?: string | null
+  contact_staff?: boolean
+  related_doc_ids?: string[] | null
 }
 
 export interface TestReferenceRange {

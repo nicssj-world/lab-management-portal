@@ -10,6 +10,7 @@ export const testSchema = z.object({
   description:         z.string().optional(),
   department:          z.string().optional(),
   active:              z.boolean().default(true),
+  contact_staff:       z.boolean().default(false),
   popular:             z.boolean().default(false),
   price:               z.coerce.number().nonnegative().optional().nullable(),
   tat_minutes:         z.string().optional().nullable(),

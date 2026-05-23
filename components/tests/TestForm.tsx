@@ -20,7 +20,7 @@ interface Props {
 }
 
 const EMPTY: TestFormData = {
-  code: '', category_id: '', th: '', en: '', active: true, popular: false, available_24hr: false,
+  code: '', category_id: '', th: '', en: '', active: true, contact_staff: false, popular: false, available_24hr: false,
   related_doc_ids: [],
 }
 
@@ -294,6 +294,10 @@ export function TestForm({ categories, initial, initialRanges, testId, existingC
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
             <input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} style={{ accentColor: 'var(--primary)', width: 16, height: 16 }} />
             เปิดใช้งาน (Active)
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input type="checkbox" checked={form.contact_staff ?? false} onChange={(e) => set('contact_staff', e.target.checked)} style={{ accentColor: 'var(--primary)', width: 16, height: 16 }} />
+            ติดต่อเจ้าหน้าที่
           </label>
         </div>
       </Card>

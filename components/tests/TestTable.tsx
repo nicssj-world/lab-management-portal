@@ -294,6 +294,7 @@ export function TestTable({
                             padding: '3px 10px', borderRadius: 20,
                             background: cat.color + '18', color: cat.color,
                             fontSize: 11.5, fontWeight: 600, border: `1px solid ${cat.color}33`,
+                            whiteSpace: 'nowrap',
                           }}>
                             <span style={{ width: 5, height: 5, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
                             {cat.th}

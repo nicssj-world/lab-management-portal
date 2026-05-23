@@ -1,22 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
-import { getDocuments } from '@/lib/queries/documents'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { ManualClient } from './ManualClient'
+import { ManualShell } from './ManualShell'
 
-export default async function ManualPage() {
-  const supabase = await createClient()
-  const { data: docs } = await getDocuments(supabase, { visibility: 'Public', pageSize: 200 })
+export const metadata = {
+  title: 'คู่มือการใช้บริการห้องปฏิบัติการ — กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี',
+  description: 'แนวทางปฏิบัติสำหรับการเก็บ ส่ง ตรวจ และรายงานผลตัวอย่างทางห้องปฏิบัติการ MN-LAB-01',
+}
 
-  return (
-    <main style={{ background: 'var(--bg)', minHeight: '100vh' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 28px 60px' }}>
-        <PageHeader
-          eyebrow="เอกสาร"
-          title="คู่มือห้องปฏิบัติการ"
-          subtitle={`เอกสารคุณภาพสำหรับบุคลากรและผู้รับบริการ (${docs.length} รายการ)`}
-        />
-        <ManualClient docs={docs} />
-      </div>
-    </main>
-  )
+export default function ManualPage() {
+  return <ManualShell />
 }
