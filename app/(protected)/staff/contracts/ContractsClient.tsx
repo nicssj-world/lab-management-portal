@@ -315,17 +315,45 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
       let finalData = json
       if (selectedFile) {
         const contractId: number = isNew ? json.id : (editModal as ContractWithUsage).id
-        const fd = new FormData()
-        fd.append('file', selectedFile)
-        const uploadRes = await fetch(`/api/admin/contracts/${contractId}/file`, { method: 'POST', body: fd })
-        if (uploadRes.ok) {
-          finalData = await uploadRes.json()
-        } else {
-          const uploadErr = await uploadRes.json().catch(() => ({}))
-          toast(`บันทึกสัญญาแล้ว แต่อัปโหลดไฟล์ไม่สำเร็จ${uploadErr.error ? ': ' + uploadErr.error : ''}`, false)
+        const uploadErrMsg = async (label: string) => {
+          toast(`บันทึกสัญญาแล้ว แต่อัปโหลดไฟล์ไม่สำเร็จ: ${label}`, false)
           setContracts(prev => isNew ? [{ ...finalData, used: 0, lastUsageDate: null }, ...prev] : prev.map(c => c.id === (editModal as ContractWithUsage).id ? { ...c, ...finalData } : c))
           setSelectedFile(null)
           setEditModal(null)
+        }
+        // 1. Get presigned PUT URL from server
+        const presignRes = await fetch(
+          `/api/admin/contracts/${contractId}/file?intent=upload&filename=${encodeURIComponent(selectedFile.name)}&content_type=${encodeURIComponent(selectedFile.type)}`
+        )
+        if (!presignRes.ok) {
+          const e = await presignRes.json().catch(() => ({}))
+          await uploadErrMsg(e.error ?? 'ไม่สามารถสร้าง upload URL ได้')
+          return
+        }
+        const { url: presignedUrl, key } = await presignRes.json()
+
+        // 2. Upload directly to R2 (bypasses Vercel body size limit)
+        const r2Res = await fetch(presignedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': selectedFile.type },
+          body: selectedFile,
+        })
+        if (!r2Res.ok) {
+          await uploadErrMsg('อัปโหลดไฟล์ไปยัง storage ไม่สำเร็จ')
+          return
+        }
+
+        // 3. Confirm key to server
+        const confirmRes = await fetch(`/api/admin/contracts/${contractId}/file`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key }),
+        })
+        if (confirmRes.ok) {
+          finalData = await confirmRes.json()
+        } else {
+          const e = await confirmRes.json().catch(() => ({}))
+          await uploadErrMsg(e.error ?? 'บันทึก key ไม่สำเร็จ')
           return
         }
       }
