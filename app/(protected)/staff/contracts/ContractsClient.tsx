@@ -318,8 +318,16 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
         const fd = new FormData()
         fd.append('file', selectedFile)
         const uploadRes = await fetch(`/api/admin/contracts/${contractId}/file`, { method: 'POST', body: fd })
-        if (uploadRes.ok) finalData = await uploadRes.json()
-        else toast('บันทึกสัญญาแล้ว แต่อัปโหลดไฟล์ไม่สำเร็จ', false)
+        if (uploadRes.ok) {
+          finalData = await uploadRes.json()
+        } else {
+          const uploadErr = await uploadRes.json().catch(() => ({}))
+          toast(`บันทึกสัญญาแล้ว แต่อัปโหลดไฟล์ไม่สำเร็จ${uploadErr.error ? ': ' + uploadErr.error : ''}`, false)
+          setContracts(prev => isNew ? [{ ...finalData, used: 0, lastUsageDate: null }, ...prev] : prev.map(c => c.id === (editModal as ContractWithUsage).id ? { ...c, ...finalData } : c))
+          setSelectedFile(null)
+          setEditModal(null)
+          return
+        }
       }
 
       if (isNew) {
