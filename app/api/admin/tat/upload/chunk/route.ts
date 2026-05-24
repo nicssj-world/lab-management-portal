@@ -93,9 +93,36 @@ export async function POST(req: NextRequest) {
     }
   })
 
+  // Dedup within the chunk itself
+  const seenKeys = new Set<string>()
+  const deduped: typeof records = []
+  for (const r of records) {
+    const key = `${r.spcm_at}|${r.test_name}|${r.lab_section}`
+    if (!seenKeys.has(key)) { seenKeys.add(key); deduped.push(r) }
+  }
+
+  // Dedup against records already inserted from earlier chunks of this upload
+  const spcmAts = [...new Set(deduped.map(r => r.spcm_at))]
+  let toInsert = deduped
+  if (spcmAts.length > 0) {
+    const { data: existing } = await supabaseAdmin
+      .from('tat_records')
+      .select('spcm_at, test_name, lab_section')
+      .eq('upload_id', upload_id)
+      .in('spcm_at', spcmAts)
+    const existingKeys = new Set((existing ?? []).map(r => `${r.spcm_at}|${r.test_name}|${r.lab_section}`))
+    toInsert = deduped.filter(r => !existingKeys.has(`${r.spcm_at}|${r.test_name}|${r.lab_section}`))
+  }
+
+  const skipped = records.length - toInsert.length
+
+  if (toInsert.length === 0) {
+    return NextResponse.json({ inserted: 0, skipped })
+  }
+
   const { data: inserted, error } = await supabaseAdmin
     .from('tat_records')
-    .insert(records)
+    .insert(toInsert)
     .select('id')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -110,5 +137,5 @@ export async function POST(req: NextRequest) {
       .eq('id', upload_id)
   }
 
-  return NextResponse.json({ inserted: inserted?.length ?? 0 })
+  return NextResponse.json({ inserted: inserted?.length ?? 0, skipped })
 }
