@@ -5,13 +5,16 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
 import { getThaiMonthLabel } from '@/lib/kpi-utils'
 
 type Phase = 'idle' | 'parsing' | 'uploading' | 'done' | 'error'
+type TabType = 'lab' | 'phleb'
 
 interface UploadRecord {
   id: string
+  type: TabType
   year: number
   month: number
   file_name: string
@@ -33,8 +36,7 @@ function useToast() {
 
 const CHUNK_SIZE = 1000
 
-// หา year-month ที่พบมากที่สุดจาก spcm_at timestamps
-function detectYearMonth(rows: { spcm_at: string }[]): { year: number; month: number } | null {
+function detectYearMonthFromSpcm(rows: { spcm_at: string }[]): { year: number; month: number } | null {
   if (rows.length === 0) return null
   const counts = new Map<string, number>()
   for (const r of rows) {
@@ -47,7 +49,32 @@ function detectYearMonth(rows: { spcm_at: string }[]): { year: number; month: nu
   return { year: y, month: m }
 }
 
-export function TatUploadClient() {
+function detectYearMonthFromRegister(rows: { register_at: string }[]): { year: number; month: number } | null {
+  if (rows.length === 0) return null
+  const counts = new Map<string, number>()
+  for (const r of rows) {
+    const d = new Date(r.register_at)
+    const key = `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}`
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  const [best] = [...counts.entries()].sort((a, b) => b[1] - a[1])
+  const [y, m] = best[0].split('-').map(Number)
+  return { year: y, month: m }
+}
+
+// ───────────────────────── Upload panel (reusable) ─────────────────────────
+
+interface UploadPanelProps {
+  workerSrc: string
+  initUrl: string
+  chunkUrl: string
+  detectYearMonth: (rows: Record<string, string>[]) => { year: number; month: number } | null
+  sampleDateField: string
+  fileLabel: string
+  onDone: (ym: { year: number; month: number }, joined: boolean) => void
+}
+
+function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, sampleDateField, fileLabel, onDone }: UploadPanelProps) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [parseProgress, setParseProgress] = useState(0)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -56,25 +83,10 @@ export function TatUploadClient() {
   const [detected, setDetected] = useState<{ year: number; month: number } | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [dragOver, setDragOver] = useState(false)
-  const [uploads, setUploads] = useState<UploadRecord[]>([])
-  const [deleting, setDeleting] = useState<string | null>(null)
 
   const workerRef = useRef<Worker | null>(null)
   const abortRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { toasts, add: addToast } = useToast()
-
-  const loadHistory = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/tat/uploads')
-      if (res.ok) {
-        const j = await res.json()
-        setUploads(j.uploads ?? [])
-      }
-    } catch { /* ignore */ }
-  }, [])
-
-  useEffect(() => { loadHistory() }, [loadHistory])
 
   async function handleFile(file: File) {
     abortRef.current = false
@@ -85,12 +97,11 @@ export function TatUploadClient() {
     setDetected(null)
     setErrorMsg('')
 
-    let rows: { spcm_at: string }[]
+    let rows: Record<string, string>[]
     try {
       const buffer = await file.arrayBuffer()
-
-      rows = await new Promise<{ spcm_at: string }[]>((resolve, reject) => {
-        const worker = new Worker('/workers/tat-parser.worker.js')
+      rows = await new Promise<Record<string, string>[]>((resolve, reject) => {
+        const worker = new Worker(workerSrc)
         workerRef.current = worker
         worker.onmessage = (e) => {
           if (e.data.type === 'progress') {
@@ -115,7 +126,6 @@ export function TatUploadClient() {
 
     if (abortRef.current) { setPhase('idle'); return }
 
-    // Detect year/month from data
     const ym = detectYearMonth(rows)
     if (!ym) {
       setPhase('error')
@@ -123,11 +133,10 @@ export function TatUploadClient() {
       return
     }
     setDetected(ym)
-
     setPhase('uploading')
 
     try {
-      const initRes = await fetch('/api/admin/tat/upload/init', {
+      const initRes = await fetch(initUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ year: ym.year, month: ym.month, file_name: file.name, total_rows: rows.length }),
@@ -137,40 +146,35 @@ export function TatUploadClient() {
 
       const totalChunks = Math.ceil(rows.length / CHUNK_SIZE)
       setChunkStatus({ current: 0, total: totalChunks })
+      let joined = false
 
       for (let i = 0; i < totalChunks; i++) {
         if (abortRef.current) break
         const chunk = rows.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
-        const chunkRes = await fetch('/api/admin/tat/upload/chunk', {
+        const chunkRes = await fetch(chunkUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            upload_id,
-            rows: chunk,
-            chunk_index: i,
-            is_last_chunk: i === totalChunks - 1,
-          }),
+          body: JSON.stringify({ upload_id, rows: chunk, chunk_index: i, is_last_chunk: i === totalChunks - 1 }),
         })
         const chunkJson = await chunkRes.json()
         if (!chunkRes.ok) throw new Error(chunkJson.error ?? `Chunk ${i} failed`)
         if (chunkJson.skipped > 0) {
           setStats(s => s ? { ...s, skipped: s.skipped + chunkJson.skipped } : s)
         }
+        if (chunkJson.joined) joined = true
         setChunkStatus({ current: i + 1, total: totalChunks })
         setUploadProgress(Math.round(((i + 1) / totalChunks) * 100))
       }
 
       if (!abortRef.current) {
         setPhase('done')
-        addToast(`บันทึก ${rows.length.toLocaleString()} แถว เดือน ${getThaiMonthLabel(ym.month)} ${ym.year + 543} สำเร็จ`)
-        loadHistory()
+        onDone(ym, joined)
       } else {
         setPhase('idle')
       }
     } catch (err) {
       setPhase('error')
       setErrorMsg((err as Error).message)
-      addToast((err as Error).message, false)
     }
   }
 
@@ -181,10 +185,148 @@ export function TatUploadClient() {
     setPhase('idle')
   }
 
-  async function handleDelete(id: string) {
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleFile(file)
+  }
+
+  return (
+    <>
+      <div
+        onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        onClick={() => phase === 'idle' && fileInputRef.current?.click()}
+        style={{
+          border: `2px dashed ${dragOver ? 'var(--primary)' : 'var(--border)'}`,
+          borderRadius: 12,
+          padding: 40,
+          textAlign: 'center',
+          background: dragOver ? 'var(--primary-soft)' : 'var(--bg)',
+          cursor: phase === 'idle' ? 'pointer' : 'default',
+          transition: 'all .15s',
+        }}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".txt,.tsv"
+          style={{ display: 'none' }}
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }}
+        />
+        <div style={{ color: 'var(--primary)', marginBottom: 10 }}>
+          <Icon name="upload" size={36} />
+        </div>
+        <div style={{ fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
+          {phase === 'idle' ? `ลากไฟล์ ${fileLabel} มาวาง หรือคลิกเพื่อเลือกไฟล์` : 'กำลังประมวลผล...'}
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>รองรับไฟล์ .txt และ .tsv (UTF-16LE จาก HIS/LIS)</div>
+      </div>
+
+      {phase === 'parsing' && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>กำลัง parse ข้อมูล...</span>
+            <span style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>{parseProgress}%</span>
+          </div>
+          <div style={{ height: 8, borderRadius: 4, background: 'var(--surface-2)', overflow: 'hidden', position: 'relative' }}>
+            <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${parseProgress}%`, background: 'var(--primary)', borderRadius: 4, transition: 'width .2s' }} />
+          </div>
+          <div style={{ marginTop: 12, textAlign: 'right' }}>
+            <Button variant="secondary" size="sm" onClick={handleCancel}>ยกเลิก</Button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'uploading' && detected && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>
+              บันทึกเดือน <strong>{getThaiMonthLabel(detected.month)} {detected.year + 543}</strong>
+              {' '}— {stats?.total.toLocaleString()} แถว  •  chunk {chunkStatus.current}/{chunkStatus.total}
+            </span>
+            <span style={{ fontSize: 13, color: 'var(--success)', fontWeight: 600 }}>{uploadProgress}%</span>
+          </div>
+          <div style={{ height: 8, borderRadius: 4, background: 'var(--surface-2)', overflow: 'hidden', position: 'relative' }}>
+            <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${uploadProgress}%`, background: 'var(--success)', borderRadius: 4, transition: 'width .2s' }} />
+          </div>
+          <div style={{ marginTop: 12, textAlign: 'right' }}>
+            <Button variant="secondary" size="sm" onClick={handleCancel}>ยกเลิก</Button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'done' && stats && detected && (
+        <div style={{ marginTop: 20, padding: 16, borderRadius: 10, background: 'var(--surface-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 600, color: 'var(--success)', marginBottom: 4 }}>✓ อัพโหลดสำเร็จ</div>
+            <div style={{ fontSize: 13, color: 'var(--ink)' }}>
+              เดือน <strong>{getThaiMonthLabel(detected.month)} {detected.year + 543}</strong>
+              {'  •  '}บันทึก <strong>{(stats.total - stats.invalid - stats.skipped).toLocaleString()}</strong> แถว
+              {'  •  '}ไม่ถูกต้อง <strong>{stats.invalid}</strong> แถว
+              {stats.skipped > 0 && <>{'  •  '}ข้ามซ้ำ <strong>{stats.skipped.toLocaleString()}</strong> แถว</>}
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => { setPhase('idle'); setDetected(null) }}>อัพโหลดเพิ่ม</Button>
+        </div>
+      )}
+
+      {phase === 'error' && (
+        <div style={{ marginTop: 20, padding: 14, borderRadius: 10, background: '#FEF2F2', border: '1px solid #FECACA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 13, color: 'var(--danger)' }}>⚠ {errorMsg || 'เกิดข้อผิดพลาด'}</div>
+          <Button variant="ghost" size="sm" onClick={() => setPhase('idle')}>ลองใหม่</Button>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ───────────────────────── Main client component ─────────────────────────
+
+export function TatUploadClient() {
+  const [activeTab, setActiveTab] = useState<TabType>('lab')
+  const [uploads, setUploads] = useState<UploadRecord[]>([])
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const { toasts, add: addToast } = useToast()
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const [tatRes, phlebRes] = await Promise.all([
+        fetch('/api/admin/tat/uploads'),
+        fetch('/api/admin/phleb/uploads'),
+      ])
+      const tatData = tatRes.ok ? await tatRes.json() : { uploads: [] }
+      const phlebData = phlebRes.ok ? await phlebRes.json() : { uploads: [] }
+
+      const tatRecords: UploadRecord[] = (tatData.uploads ?? []).map((u: Omit<UploadRecord, 'type'>) => ({ ...u, type: 'lab' as const }))
+      const phlebRecords: UploadRecord[] = (phlebData.uploads ?? []).map((u: Omit<UploadRecord, 'type'>) => ({ ...u, type: 'phleb' as const }))
+
+      const merged = [...tatRecords, ...phlebRecords].sort((a, b) => {
+        if (b.year !== a.year) return b.year - a.year
+        if (b.month !== a.month) return b.month - a.month
+        return new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()
+      })
+      setUploads(merged)
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { loadHistory() }, [loadHistory])
+
+  function handleDone(ym: { year: number; month: number }, joined: boolean, type: TabType) {
+    addToast(`บันทึกไฟล์${type === 'lab' ? 'ผลตรวจ' : 'การเจาะเลือด'} เดือน ${getThaiMonthLabel(ym.month)} ${ym.year + 543} สำเร็จ`)
+    if (joined) {
+      addToast(`เชื่อมข้อมูล 2 ไฟล์เดือน ${getThaiMonthLabel(ym.month)} สำเร็จ`)
+    }
+    loadHistory()
+  }
+
+  async function handleDelete(id: string, type: TabType) {
     setDeleting(id)
     try {
-      const res = await fetch(`/api/admin/tat/upload/${id}`, { method: 'DELETE' })
+      const url = type === 'lab' ? `/api/admin/tat/upload/${id}` : `/api/admin/phleb/upload/${id}`
+      const res = await fetch(url, { method: 'DELETE' })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Delete failed')
       addToast('ลบข้อมูลสำเร็จ')
       loadHistory()
@@ -195,12 +337,13 @@ export function TatUploadClient() {
     }
   }
 
-  function onDrop(e: React.DragEvent) {
-    e.preventDefault()
-    setDragOver(false)
-    const file = e.dataTransfer.files[0]
-    if (file) handleFile(file)
-  }
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding: '5px 16px', borderRadius: 20, border: '1px solid var(--border)',
+    background: active ? 'var(--primary)' : 'transparent',
+    color: active ? '#fff' : 'var(--ink)',
+    fontWeight: 600, fontSize: 12.5,
+    cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -219,103 +362,52 @@ export function TatUploadClient() {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Link href="/tat"><Button variant="ghost" size="sm" icon="arrowLeft">กลับ</Button></Link>
-        <PageHeader eyebrow="TAT" title="อัพโหลดข้อมูล TAT" subtitle="นำเข้าไฟล์จาก HIS หรือ LIS (UTF-16LE TSV) — ระบบ detect ปี/เดือนจากไฟล์อัตโนมัติ" marginBottom={0} />
+        <PageHeader eyebrow="TAT" title="อัพโหลดข้อมูล" subtitle="นำเข้าไฟล์จาก HIS/LIS (UTF-16LE TSV) — ระบบ detect ปี/เดือนจากไฟล์อัตโนมัติ" marginBottom={0} />
+      </div>
+
+      {/* Tab selector */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button style={tabStyle(activeTab === 'lab')} onClick={() => setActiveTab('lab')}>
+          ไฟล์ผลตรวจ Lab (TAT)
+        </button>
+        <button style={tabStyle(activeTab === 'phleb')} onClick={() => setActiveTab('phleb')}>
+          ไฟล์การเจาะเลือด (Phlebotomy)
+        </button>
       </div>
 
       <Card padding={24}>
-        {/* Drop zone */}
-        <div
-          onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          onClick={() => phase === 'idle' && fileInputRef.current?.click()}
-          style={{
-            border: `2px dashed ${dragOver ? 'var(--primary)' : 'var(--border)'}`,
-            borderRadius: 12,
-            padding: 40,
-            textAlign: 'center',
-            background: dragOver ? 'var(--primary-soft)' : 'var(--bg)',
-            cursor: phase === 'idle' ? 'pointer' : 'default',
-            transition: 'all .15s',
-          }}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".txt,.tsv"
-            style={{ display: 'none' }}
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }}
+        {activeTab === 'lab' && (
+          <UploadPanel
+            workerSrc="/workers/tat-parser.worker.js"
+            initUrl="/api/admin/tat/upload/init"
+            chunkUrl="/api/admin/tat/upload/chunk"
+            detectYearMonth={(rows) => detectYearMonthFromSpcm(rows as { spcm_at: string }[])}
+            sampleDateField="spcm_at"
+            fileLabel="ผลตรวจ Lab"
+            onDone={(ym, joined) => handleDone(ym, joined, 'lab')}
           />
-          <div style={{ color: 'var(--primary)', marginBottom: 10 }}>
-            <Icon name="upload" size={36} />
-          </div>
-          <div style={{ fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
-            {phase === 'idle' ? 'ลากไฟล์มาวาง หรือคลิกเพื่อเลือกไฟล์' : 'กำลังประมวลผล...'}
-          </div>
-          <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>รองรับไฟล์ .txt และ .tsv (UTF-16LE จาก LIS)</div>
-        </div>
-
-        {/* Parsing progress */}
-        {phase === 'parsing' && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>กำลัง parse ข้อมูล...</span>
-              <span style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>{parseProgress}%</span>
-            </div>
-            <div style={{ height: 8, borderRadius: 4, background: 'var(--surface-2)', overflow: 'hidden', position: 'relative' }}>
-              <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${parseProgress}%`, background: 'var(--primary)', borderRadius: 4, transition: 'width .2s' }} />
-            </div>
-            <div style={{ marginTop: 12, textAlign: 'right' }}>
-              <Button variant="secondary" size="sm" onClick={handleCancel}>ยกเลิก</Button>
-            </div>
-          </div>
         )}
-
-        {/* Upload progress */}
-        {phase === 'uploading' && detected && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>
-                บันทึกเดือน <strong>{getThaiMonthLabel(detected.month)} {detected.year + 543}</strong>
-                {' '}— {stats?.total.toLocaleString()} แถว  •  chunk {chunkStatus.current}/{chunkStatus.total}
-              </span>
-              <span style={{ fontSize: 13, color: 'var(--success)', fontWeight: 600 }}>{uploadProgress}%</span>
+        {activeTab === 'phleb' && (
+          <>
+            <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'var(--surface-2)', fontSize: 12.5, color: 'var(--muted)' }}>
+              <strong style={{ color: 'var(--ink)' }}>หมายเหตุ:</strong>
+              {' '}เดือนที่ต้องการข้อมูล Phlebotomy ต้อง re-upload ไฟล์ผลตรวจ Lab (TAT) ด้วย
+              เพื่อให้ column hn ถูกบันทึก — ไฟล์ที่อัพโหลดก่อนหน้าจะ join ไม่ได้
             </div>
-            <div style={{ height: 8, borderRadius: 4, background: 'var(--surface-2)', overflow: 'hidden', position: 'relative' }}>
-              <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${uploadProgress}%`, background: 'var(--success)', borderRadius: 4, transition: 'width .2s' }} />
-            </div>
-            <div style={{ marginTop: 12, textAlign: 'right' }}>
-              <Button variant="secondary" size="sm" onClick={handleCancel}>ยกเลิก</Button>
-            </div>
-          </div>
-        )}
-
-        {/* Done summary */}
-        {phase === 'done' && stats && detected && (
-          <div style={{ marginTop: 20, padding: 16, borderRadius: 10, background: 'var(--surface-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 600, color: 'var(--success)', marginBottom: 4 }}>✓ อัพโหลดสำเร็จ</div>
-              <div style={{ fontSize: 13, color: 'var(--ink)' }}>
-                เดือน <strong>{getThaiMonthLabel(detected.month)} {detected.year + 543}</strong>
-                {'  •  '}บันทึก <strong>{(stats.total - stats.invalid - stats.skipped).toLocaleString()}</strong> แถว
-                {'  •  '}ข้ามข้อมูลไม่ถูกต้อง <strong>{stats.invalid}</strong> แถว
-                {stats.skipped > 0 && <>{'  •  '}ข้ามซ้ำ <strong>{stats.skipped.toLocaleString()}</strong> แถว</>}
-              </div>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => { setPhase('idle'); setDetected(null) }}>อัพโหลดเพิ่ม</Button>
-          </div>
-        )}
-
-        {/* Error */}
-        {phase === 'error' && (
-          <div style={{ marginTop: 20, padding: 14, borderRadius: 10, background: '#FEF2F2', border: '1px solid #FECACA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: 13, color: 'var(--danger)' }}>⚠ {errorMsg || 'เกิดข้อผิดพลาด'}</div>
-            <Button variant="ghost" size="sm" onClick={() => setPhase('idle')}>ลองใหม่</Button>
-          </div>
+            <UploadPanel
+              workerSrc="/workers/phleb-parser.worker.js"
+              initUrl="/api/admin/phleb/upload/init"
+              chunkUrl="/api/admin/phleb/upload/chunk"
+              detectYearMonth={(rows) => detectYearMonthFromRegister(rows as { register_at: string }[])}
+              sampleDateField="register_at"
+              fileLabel="การเจาะเลือด"
+              onDone={(ym, joined) => handleDone(ym, joined, 'phleb')}
+            />
+          </>
         )}
       </Card>
 
-      {/* Upload history */}
+      {/* Combined upload history */}
       <Card padding={0}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>
           ประวัติการอัพโหลด
@@ -328,7 +420,7 @@ export function TatUploadClient() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)' }}>
-                {['เดือน', 'ไฟล์', 'จำนวนแถว', 'อัพโหลดโดย', 'วันที่', ''].map((h, i) => (
+                {['ประเภท', 'เดือน', 'ไฟล์', 'จำนวนแถว', 'อัพโหลดโดย', 'วันที่', ''].map((h, i) => (
                   <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', letterSpacing: '.04em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>
                     {h}
                   </th>
@@ -338,15 +430,20 @@ export function TatUploadClient() {
             <tbody>
               {uploads.map(u => (
                 <tr
-                  key={u.id}
+                  key={`${u.type}-${u.id}`}
                   style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
+                  <td style={{ padding: '10px 16px' }}>
+                    <Badge color={u.type === 'lab' ? 'blue' : 'purple'} dot>
+                      {u.type === 'lab' ? 'Lab TAT' : 'Phlebotomy'}
+                    </Badge>
+                  </td>
                   <td style={{ padding: '10px 16px', fontWeight: 600 }}>
                     {getThaiMonthLabel(u.month)} {u.year + 543}
                   </td>
-                  <td style={{ padding: '10px 16px', color: 'var(--muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '10px 16px', color: 'var(--muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {u.file_name}
                   </td>
                   <td style={{ padding: '10px 16px' }}>{u.row_count.toLocaleString()}</td>
@@ -360,7 +457,7 @@ export function TatUploadClient() {
                       size="sm"
                       icon="trash"
                       disabled={deleting === u.id}
-                      onClick={() => handleDelete(u.id)}
+                      onClick={() => handleDelete(u.id, u.type)}
                     >
                       {deleting === u.id ? 'กำลังลบ...' : 'ลบ'}
                     </Button>

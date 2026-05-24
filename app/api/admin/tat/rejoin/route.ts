@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 async function getActor() {
   const supabase = await createClient()
@@ -11,30 +12,23 @@ async function getActor() {
   return data as { id: string; role: string } | null
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+const bodySchema = z.object({
+  year: z.number().int().min(2000),
+  month: z.number().int().min(1).max(12),
+})
+
+export async function POST(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const perms = await getRolePermissions(actor.role)
   if (perms['TAT'] !== 'edit') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { id } = await params
+  const parsed = bodySchema.safeParse(await req.json())
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues }, { status: 422 })
+  const { year, month } = parsed.data
 
-  // Fetch year/month before deleting (for rejoin reset)
-  const { data: upload } = await supabaseAdmin
-    .from('tat_uploads')
-    .select('year, month')
-    .eq('id', id)
-    .maybeSingle()
-  if (!upload) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  const { error } = await supabaseAdmin.from('tat_uploads').delete().eq('id', id)
+  const { error } = await supabaseAdmin.rpc('rejoin_tat', { p_year: year, p_month: month })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  // Reset phleb join fields (rejoin with no TAT data clears everything)
-  await supabaseAdmin.rpc('rejoin_tat', { p_year: upload.year, p_month: upload.month })
 
   return NextResponse.json({ ok: true })
 }
