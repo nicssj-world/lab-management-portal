@@ -24,6 +24,12 @@ self.onmessage = function (e) {
   }
 }
 
+// Strip leading zeros from numeric HNs so both files match regardless of export format
+function normalizeHn(hn) {
+  if (!hn) return ''
+  return /^\d+$/.test(hn) ? String(parseInt(hn, 10)) : hn
+}
+
 // ไฟล์ Phlebotomy: "DD/MM/YYYY  HH:MM:SS" (สอง space ระหว่างวันที่กับเวลา, ปี พ.ศ.)
 // ต่างจากไฟล์ TAT ที่ใช้ "DD/MM/YYYY - HH:MM:SS"
 function parseThaiDT(s) {
@@ -49,7 +55,7 @@ function parseRow(cols) {
   const wait = (new Date(phlebDone) - new Date(register)) / 60000
   if (wait < 0 || wait > 480) return null  // > 8 ชม. = data error
 
-  const hn = cols[0]?.trim() || ''
+  const hn = normalizeHn(cols[0]?.trim() || '')
   if (!hn) return null
 
   return {

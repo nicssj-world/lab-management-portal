@@ -405,7 +405,11 @@ export function TestForm({ categories, initial, initialRanges, testId, existingC
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <Field label="รายละเอียดอื่นๆ">
-              <textarea style={ta} value={form.specimen_note ?? ''} onChange={(e) => set('specimen_note', e.target.value || undefined)} placeholder="ข้อมูลเพิ่มเติมเกี่ยวกับตัวอย่าง..." />
+              <RichTextEditor
+                value={form.specimen_note ?? ''}
+                onChange={v => set('specimen_note', v || undefined)}
+                placeholder="ข้อมูลเพิ่มเติมเกี่ยวกับตัวอย่าง..."
+              />
             </Field>
           </div>
         </div>
@@ -577,6 +581,166 @@ export function TestForm({ categories, initial, initialRanges, testId, existingC
         <Button variant="primary" onClick={handleSubmit} disabled={saving || !!duplicateCodeMsg} icon="check">
           {saving ? 'กำลังบันทึก...' : (isEdit ? 'บันทึกการแก้ไข' : 'เพิ่มรายการตรวจ')}
         </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Rich Text Editor ─────────────────────────────────────────────────────────
+
+const RICH_COLORS = [
+  { hex: '#0F172A', label: 'ดำ' },
+  { hex: '#1E5FAD', label: 'น้ำเงิน' },
+  { hex: '#DC2626', label: 'แดง' },
+  { hex: '#059669', label: 'เขียว' },
+  { hex: '#D97706', label: 'ส้ม' },
+  { hex: '#7C3AED', label: 'ม่วง' },
+]
+
+function RichTextEditor({ value, onChange, placeholder }: {
+  value: string
+  onChange: (html: string) => void
+  placeholder?: string
+}) {
+  const editorRef = useRef<HTMLDivElement>(null)
+  const initialized = useRef(false)
+  const [showColors, setShowColors] = useState(false)
+
+  useEffect(() => {
+    if (editorRef.current && !initialized.current) {
+      editorRef.current.innerHTML = value || ''
+      initialized.current = true
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function exec(cmd: string, val?: string) {
+    editorRef.current?.focus()
+    document.execCommand(cmd, false, val)
+    onChange(editorRef.current?.innerHTML ?? '')
+  }
+
+  function handleLink(e: React.MouseEvent) {
+    e.preventDefault()
+    const url = window.prompt('URL:', 'https://')
+    if (url) exec('createLink', url)
+  }
+
+  const btnStyle: React.CSSProperties = {
+    width: 30, height: 28, borderRadius: 6, border: 'none',
+    background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: 'var(--ink)', fontSize: 13, transition: 'background .12s',
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'visible' }}>
+      <style>{`
+        .rich-editor [contenteditable]:empty:before {
+          content: attr(data-placeholder);
+          color: var(--muted);
+          pointer-events: none;
+        }
+        .rich-editor [contenteditable] a { color: #1E5FAD; text-decoration: underline; }
+        .rich-tool-btn:hover { background: var(--border) !important; }
+      `}</style>
+
+      {/* Toolbar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 2,
+        padding: '5px 8px', borderBottom: '1px solid var(--border)',
+        background: 'var(--surface-2)', flexWrap: 'wrap',
+      }}>
+        {/* Bold */}
+        <button type="button" className="rich-tool-btn" title="ตัวหนา"
+          style={{ ...btnStyle, fontWeight: 800 }}
+          onMouseDown={e => { e.preventDefault(); exec('bold') }}>
+          B
+        </button>
+
+        {/* Italic */}
+        <button type="button" className="rich-tool-btn" title="ตัวเอียง"
+          style={{ ...btnStyle, fontStyle: 'italic', fontWeight: 600 }}
+          onMouseDown={e => { e.preventDefault(); exec('italic') }}>
+          I
+        </button>
+
+        <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
+
+        {/* Color */}
+        <div style={{ position: 'relative' }}>
+          <button type="button" className="rich-tool-btn" title="สีข้อความ"
+            style={btnStyle}
+            onMouseDown={e => { e.preventDefault(); setShowColors(p => !p) }}>
+            <span style={{ fontWeight: 800, fontSize: 14, borderBottom: '2.5px solid #DC2626', lineHeight: 1.1 }}>A</span>
+          </button>
+          {showColors && (
+            <div style={{
+              position: 'absolute', top: 34, left: 0, zIndex: 200,
+              background: 'var(--card)', border: '1px solid var(--border)',
+              borderRadius: 10, padding: '8px 10px',
+              boxShadow: '0 4px 20px rgba(0,0,0,.12)',
+              display: 'flex', gap: 6, alignItems: 'center',
+            }}>
+              {RICH_COLORS.map(c => (
+                <button key={c.hex} type="button" title={c.label}
+                  style={{
+                    width: 22, height: 22, borderRadius: 6,
+                    border: '2px solid rgba(0,0,0,.08)',
+                    background: c.hex, cursor: 'pointer',
+                  }}
+                  onMouseDown={e => { e.preventDefault(); exec('foreColor', c.hex); setShowColors(false) }}
+                />
+              ))}
+              <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
+              <button type="button" title="ล้างการจัดรูปแบบ"
+                style={{ ...btnStyle, width: 26, fontSize: 11, color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 6 }}
+                onMouseDown={e => { e.preventDefault(); exec('removeFormat'); setShowColors(false) }}>
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
+
+        {/* Link */}
+        <button type="button" className="rich-tool-btn" title="เพิ่มลิ้งค์"
+          style={btnStyle}
+          onMouseDown={handleLink}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+        </button>
+
+        {/* Unlink */}
+        <button type="button" className="rich-tool-btn" title="ลบลิ้งค์"
+          style={btnStyle}
+          onMouseDown={e => { e.preventDefault(); exec('unlink') }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            <line x1="2" y1="2" x2="22" y2="22"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Editable area */}
+      <div className="rich-editor">
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          data-placeholder={placeholder}
+          onInput={() => onChange(editorRef.current?.innerHTML ?? '')}
+          onBlur={() => setShowColors(false)}
+          style={{
+            minHeight: 96, padding: '10px 12px', fontSize: 13,
+            color: 'var(--ink)', fontFamily: 'inherit', outline: 'none',
+            lineHeight: 1.7, background: 'var(--card)',
+            borderRadius: '0 0 7px 7px',
+          }}
+        />
       </div>
     </div>
   )

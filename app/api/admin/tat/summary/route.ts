@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 
 interface TatRecord {
+  hn: string | null
   tat_minutes: number | null
   target_minutes: number | null
   within_target: boolean | null
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
   let q = supabaseAdmin
     .from('tat_records')
     .select([
-      'tat_minutes', 'target_minutes', 'within_target',
+      'hn', 'tat_minutes', 'target_minutes', 'within_target',
       'lab_section', 'ward', 'priority', 'test_name',
       'spcm_hour', 'spcm_dow',
       'phleb_wait_minutes', 'transport_minutes', 'total_tat_minutes',
@@ -226,6 +227,14 @@ export async function GET(req: NextRequest) {
     .eq('month', month)
   const has_phleb_data = (phlebCount ?? 0) > 0
 
+  // ===== HN diagnostics (help surface null-hn mismatch) =====
+  const hn_null_count = data.filter(r => !r.hn).length
+  const { count: phlebRecordCount } = await supabaseAdmin
+    .from('phlebotomy_records')
+    .select('id', { count: 'exact', head: true })
+    .eq('year', year)
+    .eq('month', month)
+
   // ===== Filter options =====
   const { data: rawOpts } = await supabaseAdmin
     .from('tat_records')
@@ -285,6 +294,8 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     has_phleb_data,
+    hn_null_count,
+    phleb_record_count: phlebRecordCount ?? 0,
     kpi: {
       avg_tat,
       median_tat,

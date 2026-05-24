@@ -39,6 +39,8 @@ interface FilterOptions { lab_sections: string[]; wards: string[]; test_names: s
 
 interface SummaryData {
   has_phleb_data: boolean
+  hn_null_count: number
+  phleb_record_count: number
   kpi: KpiData
   match_breakdown: MatchBreakdown
   stage_breakdown: StageRow[]
@@ -307,6 +309,31 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
               color="blue"
             />
           </div>
+
+          {/* ── Phleb join diagnostic warning ── */}
+          {hasPhleb && kpi.phleb_match_rate === 0 && (
+            <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(217,119,6,.08)', border: '1px solid rgba(217,119,6,.3)', fontSize: 13 }}>
+              <div style={{ fontWeight: 600, color: 'var(--warning)', marginBottom: 4 }}>⚠ ไม่พบการจับคู่ข้อมูลการเจาะเลือด</div>
+              {(data?.hn_null_count ?? 0) > 0 && (data?.hn_null_count ?? 0) === kpi.total_count ? (
+                <div style={{ color: 'var(--ink)', lineHeight: 1.6 }}>
+                  ข้อมูล TAT ทั้งหมด ({kpi.total_count.toLocaleString()} แถว) ไม่มีรหัส HN — ไฟล์นี้ถูกอัพโหลดก่อนเปิดใช้งานฟีเจอร์ Phlebotomy
+                  {canEdit && <> กรุณา <Link href="/tat/upload" style={{ color: 'var(--primary)', fontWeight: 600 }}>อัพโหลดไฟล์ Lab TAT</Link> ใหม่อีกครั้งเพื่อให้ระบบบันทึก HN</>}
+                </div>
+              ) : (data?.hn_null_count ?? 0) > 0 ? (
+                <div style={{ color: 'var(--ink)', lineHeight: 1.6 }}>
+                  {(data?.hn_null_count ?? 0).toLocaleString()} จาก {kpi.total_count.toLocaleString()} แถว ไม่มีรหัส HN — อาจต้อง{canEdit && <> <Link href="/tat/upload" style={{ color: 'var(--primary)', fontWeight: 600 }}>อัพโหลดไฟล์ Lab TAT</Link> ใหม่</>}
+                </div>
+              ) : (data?.phleb_record_count ?? 0) === 0 ? (
+                <div style={{ color: 'var(--ink)' }}>
+                  พบข้อมูล upload แต่ไม่มี phlebotomy records ในฐานข้อมูล — ลองอัพโหลดไฟล์เจาะเลือดใหม่อีกครั้ง
+                </div>
+              ) : (
+                <div style={{ color: 'var(--ink)' }}>
+                  ระบบพบ HN ใน TAT และข้อมูลการเจาะเลือด แต่ไม่พบคู่ที่ตรงกัน — รหัส HN หรือช่วงเวลาอาจไม่ตรงกันระหว่าง 2 ไฟล์
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Section B: Pipeline ── */}
           {hasPhleb ? (

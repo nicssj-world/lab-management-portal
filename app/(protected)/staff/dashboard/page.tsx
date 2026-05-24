@@ -13,17 +13,18 @@ import Link from "next/link"
 
 export default async function StaffDashboardPage() {
   const supabase = await createClient()
-  const [risks, contracts, recentRejections] = await Promise.all([
+  const [risks, contracts, rejResult] = await Promise.all([
     getRisks(supabase),
     getContracts(supabase),
     getRejectionLogs(supabase, { limit: 50 }),
   ])
+  const recentRejections = rejResult.data ?? []
 
   const today = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
 
   const rejByReason: Record<string, number> = {}
   for (const r of recentRejections) {
-    const key = r.reason ?? 'Unknown'
+    const key = r.reject ?? r.reason ?? 'Unknown'
     rejByReason[key] = (rejByReason[key] ?? 0) + 1
   }
   const topReasons = Object.entries(rejByReason).sort((a, b) => b[1] - a[1]).slice(0, 6)
