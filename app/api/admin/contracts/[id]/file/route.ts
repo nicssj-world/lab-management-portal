@@ -51,6 +51,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif']
   if (!allowed.includes(file.type))
     return NextResponse.json({ error: 'รองรับเฉพาะ PDF และรูปภาพ' }, { status: 422 })
+  if (file.size > 50 * 1024 * 1024)
+    return NextResponse.json({ error: 'ไฟล์ใหญ่เกิน 50 MB' }, { status: 422 })
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const key = `contracts/${id}/${Date.now()}-${safeName}`
