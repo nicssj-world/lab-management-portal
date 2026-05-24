@@ -16,12 +16,38 @@ async function getActor() {
 
 interface Params { params: Promise<{ id: string }> }
 
-// GET — generate presigned download URL
-export async function GET(_req: NextRequest, { params }: Params) {
+const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif']
+
+// GET — presigned download URL (default) or presigned upload URL (?intent=upload)
+export async function GET(req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const sp = new URL(req.url).searchParams
   const { id } = await params
+
+  if (sp.get('intent') === 'upload') {
+    const perms = await getRolePermissions(actor.role)
+    if ((perms['สัญญา'] ?? 'none') !== 'edit') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+    const filename = sp.get('filename') ?? 'file'
+    const contentType = sp.get('content_type') ?? 'application/octet-stream'
+
+    if (!ALLOWED_TYPES.includes(contentType))
+      return NextResponse.json({ error: 'รองรับเฉพาะ PDF และรูปภาพ' }, { status: 422 })
+
+    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const key = `contracts/${id}/${Date.now()}-${safeName}`
+
+    const url = await getSignedUrl(
+      r2,
+      new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, ContentType: contentType }),
+      { expiresIn: 300 }
+    )
+    return NextResponse.json({ url, key })
+  }
+
+  // Default: presigned download URL
   const { data, error } = await supabaseAdmin
     .from('contracts').select('file_url').eq('id', Number(id)).single()
 
@@ -36,7 +62,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ url })
 }
 
-// POST — upload file, save key to contracts.file_url
+// POST — save uploaded key to contracts.file_url (after client uploads directly to R2)
 export async function POST(req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -44,26 +70,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   if ((perms['สัญญา'] ?? 'none') !== 'edit') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
-  const formData = await req.formData()
-  const file = formData.get('file') as File | null
-  if (!file) return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
+  const { key } = await req.json()
+  if (!key || typeof key !== 'string') return NextResponse.json({ error: 'ไม่พบ key' }, { status: 422 })
 
-  const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif']
-  if (!allowed.includes(file.type))
-    return NextResponse.json({ error: 'รองรับเฉพาะ PDF และรูปภาพ' }, { status: 422 })
-  if (file.size > 50 * 1024 * 1024)
-    return NextResponse.json({ error: 'ไฟล์ใหญ่เกิน 50 MB' }, { status: 422 })
-
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const key = `contracts/${id}/${Date.now()}-${safeName}`
-  const buffer = Buffer.from(await file.arrayBuffer())
-
-  await r2.send(new PutObjectCommand({
-    Bucket: R2_BUCKET,
-    Key: key,
-    Body: buffer,
-    ContentType: file.type,
-  }))
+  // Delete old file from R2 if exists
+  const { data: existing } = await supabaseAdmin.from('contracts').select('file_url').eq('id', Number(id)).single()
+  if (existing?.file_url) {
+    await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: existing.file_url })).catch(() => {})
+  }
 
   const { data, error } = await supabaseAdmin
     .from('contracts')
