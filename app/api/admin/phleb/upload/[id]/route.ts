@@ -22,18 +22,18 @@ export async function DELETE(
 
   const { id } = await params
 
-  // Fetch year/month before deleting (for rejoin reset)
+  // Fetch year/month before deleting (for rejoin)
   const { data: upload } = await supabaseAdmin
-    .from('tat_uploads')
+    .from('phleb_uploads')
     .select('year, month')
     .eq('id', id)
     .maybeSingle()
   if (!upload) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { error } = await supabaseAdmin.from('tat_uploads').delete().eq('id', id)
+  const { error } = await supabaseAdmin.from('phleb_uploads').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Reset phleb join fields (rejoin with no TAT data clears everything)
+  // Reset phleb fields in tat_records for this month
   await supabaseAdmin.rpc('rejoin_tat', { p_year: upload.year, p_month: upload.month })
 
   return NextResponse.json({ ok: true })

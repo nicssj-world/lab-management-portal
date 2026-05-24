@@ -41,6 +41,7 @@ function parseRow(cols) {
   if (tat < 0 || tat > 10080) return null
   const spcmDate = new Date(spcm)
   return {
+    hn: cols[3]?.trim() || '',
     spcm_at: spcm,
     rslt_at: rslt,
     tat_minutes: Math.round(tat * 10) / 10,

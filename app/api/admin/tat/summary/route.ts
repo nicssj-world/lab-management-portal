@@ -2,6 +2,31 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 
+interface TatRecord {
+  tat_minutes: number | null
+  target_minutes: number | null
+  within_target: boolean | null
+  lab_section: string | null
+  ward: string | null
+  priority: string | null
+  test_name: string | null
+  spcm_hour: number | null
+  spcm_dow: number | null
+  phleb_wait_minutes: number | null
+  transport_minutes: number | null
+  total_tat_minutes: number | null
+  is_blood_draw: boolean | null
+  match_confidence: string | null
+  labzone_name: string | null
+}
+
+function median(arr: number[]): number {
+  if (arr.length === 0) return 0
+  const sorted = [...arr].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+}
+
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -17,11 +42,18 @@ export async function GET(req: NextRequest) {
   const ward = sp.get('ward') || null
   const priority = sp.get('priority') || null
   const test_name = sp.get('test_name') || null
+  const labzone_name = sp.get('labzone_name') || null
 
-  // Main data for selected month
+  // Main data for selected month (includes phlebotomy join fields)
   let q = supabaseAdmin
     .from('tat_records')
-    .select('tat_minutes, target_minutes, within_target, lab_section, ward, priority, test_name, spcm_hour, spcm_dow')
+    .select([
+      'tat_minutes', 'target_minutes', 'within_target',
+      'lab_section', 'ward', 'priority', 'test_name',
+      'spcm_hour', 'spcm_dow',
+      'phleb_wait_minutes', 'transport_minutes', 'total_tat_minutes',
+      'is_blood_draw', 'match_confidence', 'labzone_name',
+    ].join(', '))
     .eq('year', year)
     .eq('month', month)
 
@@ -29,12 +61,13 @@ export async function GET(req: NextRequest) {
   if (ward) q = q.eq('ward', ward)
   if (priority) q = q.eq('priority', priority)
   if (test_name) q = q.eq('test_name', test_name)
+  if (labzone_name) q = q.eq('labzone_name', labzone_name)
 
   const { data: rows, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  const data = rows ?? []
+  const data = (rows ?? []) as unknown as TatRecord[]
 
-  // KPI
+  // ===== Core TAT KPI =====
   const total_count = data.length
   const avg_tat =
     total_count > 0
@@ -63,7 +96,56 @@ export async function GET(req: NextRequest) {
   const maxHour = hourCounts.indexOf(Math.max(...hourCounts))
   const busiest_hour = `${String(maxHour).padStart(2, '0')}:00–${String(maxHour + 1).padStart(2, '0')}:00`
 
-  // By lab section
+  // ===== Phlebotomy KPI =====
+  // phleb_wait + total_tat: blood draw rows that matched successfully
+  const bloodMatched = data.filter(
+    r => r.is_blood_draw && r.match_confidence && r.match_confidence !== 'no_match'
+      && r.phleb_wait_minutes != null
+  )
+  const avg_phleb_wait =
+    bloodMatched.length > 0
+      ? Math.round((bloodMatched.reduce((s, r) => s + (r.phleb_wait_minutes ?? 0), 0) / bloodMatched.length) * 10) / 10
+      : 0
+
+  const totalTatVals = data
+    .filter(r => r.is_blood_draw && r.match_confidence && r.match_confidence !== 'no_match' && r.total_tat_minutes != null)
+    .map(r => r.total_tat_minutes as number)
+  const avg_total_tat = totalTatVals.length > 0
+    ? Math.round((totalTatVals.reduce((s, v) => s + v, 0) / totalTatVals.length) * 10) / 10
+    : 0
+  const median_total_tat = Math.round(median(totalTatVals) * 10) / 10
+
+  // transport: any row that matched (regardless of tube type)
+  const transportMatched = data.filter(
+    r => r.match_confidence && r.match_confidence !== 'no_match' && r.transport_minutes != null
+  )
+  const avg_transport =
+    transportMatched.length > 0
+      ? Math.round((transportMatched.reduce((s, r) => s + (r.transport_minutes ?? 0), 0) / transportMatched.length) * 10) / 10
+      : 0
+
+  // Match rate — % of total rows that are NOT 'no_match'
+  const matchedCount = data.filter(r => r.match_confidence && r.match_confidence !== 'no_match').length
+  const phleb_match_rate =
+    total_count > 0 ? Math.round((matchedCount / total_count) * 1000) / 10 : 0
+
+  // ===== Match breakdown =====
+  const matchCounts = { exact: 0, ambiguous: 0, no_match: 0 }
+  for (const r of data) {
+    const mc = r.match_confidence
+    if (mc === 'exact') matchCounts.exact++
+    else if (mc === 'ambiguous') matchCounts.ambiguous++
+    else matchCounts.no_match++
+  }
+
+  // ===== Stage breakdown (blood+matched only, for fair comparison) =====
+  const stage_breakdown = [
+    { stage: 'รอเจาะเลือด', avg_minutes: avg_phleb_wait },
+    { stage: 'ขนส่งตัวอย่าง', avg_minutes: avg_transport },
+    { stage: 'วิเคราะห์ในแลป', avg_minutes: avg_tat },
+  ]
+
+  // ===== By lab section =====
   const sectionMap = new Map<string, { sum: number; count: number }>()
   for (const r of data) {
     const key = r.lab_section || 'ไม่ระบุ'
@@ -80,7 +162,27 @@ export async function GET(req: NextRequest) {
     }))
     .sort((a, b) => b.avg_tat - a.avg_tat)
 
-  // Distribution
+  // ===== By labzone =====
+  const labzoneMap = new Map<string, { waitSum: number; waitCount: number; count: number }>()
+  for (const r of data) {
+    if (!r.labzone_name) continue
+    const g = labzoneMap.get(r.labzone_name) ?? { waitSum: 0, waitCount: 0, count: 0 }
+    g.count++
+    if (r.is_blood_draw && r.phleb_wait_minutes != null) {
+      g.waitSum += r.phleb_wait_minutes
+      g.waitCount++
+    }
+    labzoneMap.set(r.labzone_name, g)
+  }
+  const by_labzone = Array.from(labzoneMap.entries())
+    .map(([lz, g]) => ({
+      labzone_name: lz,
+      count: g.count,
+      avg_wait: g.waitCount > 0 ? Math.round((g.waitSum / g.waitCount) * 10) / 10 : 0,
+    }))
+    .sort((a, b) => b.count - a.count)
+
+  // ===== Distribution =====
   const binLabels = ['<30นาที', '30–60นาที', '1–2ชม.', '2–4ชม.', '4–8ชม.', '>8ชม.']
   const binCounts = [0, 0, 0, 0, 0, 0]
   for (const r of data) {
@@ -103,7 +205,7 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  // Heatmap
+  // ===== Heatmap =====
   const heatMap = new Map<string, number>()
   for (const r of data) {
     if (r.spcm_dow != null && r.spcm_hour != null) {
@@ -116,18 +218,27 @@ export async function GET(req: NextRequest) {
     return { dow, hour, count }
   })
 
-  // Filter options (distinct values for current month, no extra filters)
+  // ===== Phlebotomy data exists check =====
+  const { count: phlebCount } = await supabaseAdmin
+    .from('phleb_uploads')
+    .select('id', { count: 'exact', head: true })
+    .eq('year', year)
+    .eq('month', month)
+  const has_phleb_data = (phlebCount ?? 0) > 0
+
+  // ===== Filter options =====
   const { data: rawOpts } = await supabaseAdmin
     .from('tat_records')
-    .select('lab_section, ward, test_name')
+    .select('lab_section, ward, test_name, labzone_name')
     .eq('year', year)
     .eq('month', month)
 
   const labSections = [...new Set((rawOpts ?? []).map(r => r.lab_section).filter(Boolean))].sort()
   const wards = [...new Set((rawOpts ?? []).map(r => r.ward).filter(Boolean))].sort()
   const testNames = [...new Set((rawOpts ?? []).map(r => r.test_name).filter(Boolean))].sort()
+  const labzoneNames = [...new Set((rawOpts ?? []).map(r => r.labzone_name).filter(Boolean))].sort()
 
-  // Trend — 12 months rolling back from selected month (no extra filters)
+  // ===== Trend (12 months rolling) =====
   const trendMonths: { year: number; month: number }[] = []
   let ty = year, tm = month
   for (let i = 0; i < 12; i++) {
@@ -171,11 +282,31 @@ export async function GET(req: NextRequest) {
   })
 
   return NextResponse.json({
-    kpi: { avg_tat, median_tat, pct_within_target, total_count, busiest_hour },
+    has_phleb_data,
+    kpi: {
+      avg_tat,
+      median_tat,
+      pct_within_target,
+      total_count,
+      busiest_hour,
+      avg_phleb_wait,
+      avg_transport,
+      avg_total_tat,
+      median_total_tat,
+      phleb_match_rate,
+    },
+    match_breakdown: matchCounts,
+    stage_breakdown,
+    by_labzone,
     by_lab_section,
     tat_distribution,
     heatmap,
     trend,
-    filter_options: { lab_sections: labSections, wards, test_names: testNames },
+    filter_options: {
+      lab_sections: labSections,
+      wards,
+      test_names: testNames,
+      labzone_names: labzoneNames,
+    },
   })
 }
