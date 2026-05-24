@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
   if (test_name) q = q.eq('test_name', test_name)
   if (labzone_name) q = q.eq('labzone_name', labzone_name)
 
-  const { data: rows, error } = await q
+  const { data: rows, error } = await q.limit(500000)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const data = (rows ?? []) as unknown as TatRecord[]
 
@@ -232,6 +232,7 @@ export async function GET(req: NextRequest) {
     .select('lab_section, ward, test_name, labzone_name')
     .eq('year', year)
     .eq('month', month)
+    .limit(500000)
 
   const labSections = [...new Set((rawOpts ?? []).map(r => r.lab_section).filter(Boolean))].sort()
   const wards = [...new Set((rawOpts ?? []).map(r => r.ward).filter(Boolean))].sort()
@@ -252,6 +253,7 @@ export async function GET(req: NextRequest) {
     .from('tat_records')
     .select('year, month, tat_minutes, within_target')
     .in('year', trendYears)
+    .limit(2000000)
 
   const trendGrouped = new Map<string, { sum: number; count: number; onTarget: number; withTarget: number }>()
   for (const t of trendMonths) {
