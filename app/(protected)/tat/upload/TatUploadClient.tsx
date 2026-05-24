@@ -52,7 +52,7 @@ export function TatUploadClient() {
   const [parseProgress, setParseProgress] = useState(0)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [chunkStatus, setChunkStatus] = useState({ current: 0, total: 0 })
-  const [stats, setStats] = useState<{ total: number; invalid: number } | null>(null)
+  const [stats, setStats] = useState<{ total: number; invalid: number; skipped: number } | null>(null)
   const [detected, setDetected] = useState<{ year: number; month: number } | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [dragOver, setDragOver] = useState(false)
@@ -96,7 +96,7 @@ export function TatUploadClient() {
           if (e.data.type === 'progress') {
             setParseProgress(Math.round((e.data.parsed / Math.max(e.data.total, 1)) * 100))
           } else if (e.data.type === 'done') {
-            setStats({ total: e.data.rows.length, invalid: e.data.invalid })
+            setStats({ total: e.data.rows.length, invalid: e.data.invalid, skipped: 0 })
             worker.terminate()
             resolve(e.data.rows)
           } else if (e.data.type === 'error') {
@@ -151,7 +151,11 @@ export function TatUploadClient() {
             is_last_chunk: i === totalChunks - 1,
           }),
         })
-        if (!chunkRes.ok) throw new Error((await chunkRes.json()).error ?? `Chunk ${i} failed`)
+        const chunkJson = await chunkRes.json()
+        if (!chunkRes.ok) throw new Error(chunkJson.error ?? `Chunk ${i} failed`)
+        if (chunkJson.skipped > 0) {
+          setStats(s => s ? { ...s, skipped: s.skipped + chunkJson.skipped } : s)
+        }
         setChunkStatus({ current: i + 1, total: totalChunks })
         setUploadProgress(Math.round(((i + 1) / totalChunks) * 100))
       }
@@ -293,8 +297,9 @@ export function TatUploadClient() {
               <div style={{ fontWeight: 600, color: 'var(--success)', marginBottom: 4 }}>✓ อัพโหลดสำเร็จ</div>
               <div style={{ fontSize: 13, color: 'var(--ink)' }}>
                 เดือน <strong>{getThaiMonthLabel(detected.month)} {detected.year + 543}</strong>
-                {'  •  '}บันทึก <strong>{stats.total.toLocaleString()}</strong> แถว
+                {'  •  '}บันทึก <strong>{(stats.total - stats.invalid - stats.skipped).toLocaleString()}</strong> แถว
                 {'  •  '}ข้ามข้อมูลไม่ถูกต้อง <strong>{stats.invalid}</strong> แถว
+                {stats.skipped > 0 && <>{'  •  '}ข้ามซ้ำ <strong>{stats.skipped.toLocaleString()}</strong> แถว</>}
               </div>
             </div>
             <Button variant="ghost" size="sm" onClick={() => { setPhase('idle'); setDetected(null) }}>อัพโหลดเพิ่ม</Button>

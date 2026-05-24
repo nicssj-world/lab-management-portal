@@ -74,6 +74,39 @@ function deptFromCode(code: string): string | null {
   return null
 }
 
+function isFormFile(filename: string): boolean {
+  return /^(?:Fm|FR)-/i.test(filename)
+}
+
+function extractFormDocumentCode(filename: string): string | null {
+  // "Fm-QP-LAB-03-05 แบบบันทึก....pdf" → "FM-QP-LAB-03-05"
+  const m = filename.match(/^([^\s.]+)/)
+  return m ? m[1].toUpperCase() : null
+}
+
+function extractFormTitle(filename: string): string | null {
+  // "Fm-QP-LAB-03-05 แบบบันทึก....pdf" → "แบบบันทึก...."
+  const withoutExt = filename.replace(/\.[^.]+$/, '')
+  const spaceIdx = withoutExt.indexOf(' ')
+  if (spaceIdx === -1) return null
+  return withoutExt.slice(spaceIdx + 1).trim() || null
+}
+
+function extractParentCode(filename: string): string | null {
+  // Take the code token right after Fm-/FR- (stop at first space or extension)
+  const m = filename.match(/^(?:Fm|FR)-([^\s.]+)/i)
+  if (!m) return null
+  let code = m[1]
+  // Strip underscore variant: Fm-QP-LAB-01_01 → QP-LAB-01
+  code = code.replace(/_\d+$/, '')
+  // Strip dash variant when 4+ segments and last segment is numeric: Fm-QP-LAB-03-05 → QP-LAB-03
+  const parts = code.split('-')
+  if (parts.length >= 4 && /^\d+$/.test(parts[parts.length - 1])) {
+    code = parts.slice(0, -1).join('-')
+  }
+  return code.toUpperCase()
+}
+
 function revisionNumber(v: string): number | null {
   const n = Number(v.trim())
   return Number.isFinite(n) ? n : null
@@ -243,28 +276,53 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
     setExtracting(true)
     setError('')
     try {
-      const fd = new FormData()
-      fd.append('file', selectedFile)
-      const res = await fetch('/api/admin/documents/extract', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'ไม่สามารถอ่านไฟล์ได้')
+      if (isFormFile(selectedFile.name)) {
+        const formCode = extractFormDocumentCode(selectedFile.name)
+        const formTitle = extractFormTitle(selectedFile.name)
+        if (formCode) {
+          setDocumentCode(formCode)
+          const docType = typeFromCode(formCode)
+          if (docType) setType(docType)
+        }
+        if (formTitle) setTitle(formTitle)
 
-      const fields = parseExtractedText(json.text as string)
-      if (fields.title)         setTitle(fields.title)
-      if (fields.documentCode) {
-        const code = fields.documentCode.toUpperCase()
-        setDocumentCode(code)
-        const dept = deptFromCode(code)
-        if (dept) setDepartment(dept)
-        const docType = typeFromCode(code)
-        if (docType) setType(docType)
+        const parentCode = extractParentCode(selectedFile.name)
+        if (!parentCode) throw new Error('ไม่สามารถตรวจสอบรหัสเอกสารแม่ได้')
+        const res = await fetch(`/api/admin/documents?code=${encodeURIComponent(parentCode)}&pageSize=1`)
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error ?? 'ไม่สามารถดึงข้อมูลได้')
+        const parent = json.data?.[0]
+        if (!parent) throw new Error(`ไม่พบเอกสาร ${parentCode} ในระบบ`)
+        if (parent.revision)       setRevision(parent.revision)
+        if (parent.department)     setDepartment(parent.department)
+        if (parent.owner_name)     setOwnerName(parent.owner_name)
+        if (parent.reviewer_name)  setReviewerName(parent.reviewer_name)
+        if (parent.approver_name)  setApproverName(parent.approver_name)
+        if (parent.expiry_date)    setExpiryDate(parent.expiry_date)
+        if (parent.effective_date) setEffectiveDate(parent.effective_date)
+      } else {
+        const fd = new FormData()
+        fd.append('file', selectedFile)
+        const res = await fetch('/api/admin/documents/extract', { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error ?? 'ไม่สามารถอ่านไฟล์ได้')
+        const fields = parseExtractedText(json.text as string)
+        if (fields.title)         setTitle(fields.title)
+        if (fields.documentCode) {
+          const code = fields.documentCode.toUpperCase()
+          setDocumentCode(code)
+          const dept = deptFromCode(code)
+          if (dept) setDepartment(dept)
+          const docType = typeFromCode(code)
+          if (docType) setType(docType)
+        }
+        if (fields.revision)      setRevision(fields.revision)
+        if (fields.ownerName)     setOwnerName(fields.ownerName)
+        if (fields.reviewerName)  setReviewerName(fields.reviewerName)
+        if (fields.approverName)  setApproverName(fields.approverName)
+        if (fields.expiryDate)    setExpiryDate(fields.expiryDate)
+        if (fields.effectiveDate) setEffectiveDate(fields.effectiveDate)
       }
-      if (fields.revision)      setRevision(fields.revision)
-      if (fields.ownerName)     setOwnerName(fields.ownerName)
-      if (fields.reviewerName)  setReviewerName(fields.reviewerName)
-      if (fields.approverName)  setApproverName(fields.approverName)
-      if (fields.expiryDate)    setExpiryDate(fields.expiryDate)
-      if (fields.effectiveDate) setEffectiveDate(fields.effectiveDate)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ดึงข้อมูลไม่สำเร็จ')
     } finally {

@@ -41,11 +41,14 @@ export async function GET(req: NextRequest) {
     const sortBy     = sp.get('sortBy') ?? 'updated_at'
     const sortDir    = (sp.get('sortDir') ?? 'desc') as 'asc' | 'desc'
 
+    const code = sp.get('code') ?? undefined
+
     let query = supabaseAdmin
       .from('documents')
       .select('*', { count: 'exact' })
       .is('deleted_at', null)
 
+    if (code)                   query = query.eq('document_code', code.toUpperCase())
     if (type && type !== 'All') query = query.eq('type', type)
     if (status)                 query = query.eq('status', status)
     if (visibility)             query = query.eq('visibility', visibility)
