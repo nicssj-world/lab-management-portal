@@ -69,12 +69,11 @@ interface UploadPanelProps {
   initUrl: string
   chunkUrl: string
   detectYearMonth: (rows: Record<string, string>[]) => { year: number; month: number } | null
-  sampleDateField: string
   fileLabel: string
   onDone: (ym: { year: number; month: number }, joined: boolean) => void
 }
 
-function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, sampleDateField, fileLabel, onDone }: UploadPanelProps) {
+function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel, onDone }: UploadPanelProps) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [parseProgress, setParseProgress] = useState(0)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -289,6 +288,7 @@ export function TatUploadClient() {
   const [activeTab, setActiveTab] = useState<TabType>('lab')
   const [uploads, setUploads] = useState<UploadRecord[]>([])
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [rejoining, setRejoining] = useState<string | null>(null)
   const { toasts, add: addToast } = useToast()
 
   const loadHistory = useCallback(async () => {
@@ -337,6 +337,24 @@ export function TatUploadClient() {
     }
   }
 
+  async function handleRejoin(year: number, month: number) {
+    const key = `${year}-${month}`
+    setRejoining(key)
+    try {
+      const res = await fetch('/api/admin/tat/rejoin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, month }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Rejoin failed')
+      addToast(`เชื่อมข้อมูลเดือน ${getThaiMonthLabel(month)} ${year + 543} สำเร็จ`)
+    } catch (err) {
+      addToast((err as Error).message, false)
+    } finally {
+      setRejoining(null)
+    }
+  }
+
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '5px 16px', borderRadius: 20, border: '1px solid var(--border)',
     background: active ? 'var(--primary)' : 'transparent',
@@ -382,7 +400,6 @@ export function TatUploadClient() {
             initUrl="/api/admin/tat/upload/init"
             chunkUrl="/api/admin/tat/upload/chunk"
             detectYearMonth={(rows) => detectYearMonthFromSpcm(rows as { spcm_at: string }[])}
-            sampleDateField="spcm_at"
             fileLabel="ผลตรวจ Lab"
             onDone={(ym, joined) => handleDone(ym, joined, 'lab')}
           />
@@ -399,7 +416,6 @@ export function TatUploadClient() {
               initUrl="/api/admin/phleb/upload/init"
               chunkUrl="/api/admin/phleb/upload/chunk"
               detectYearMonth={(rows) => detectYearMonthFromRegister(rows as { register_at: string }[])}
-              sampleDateField="register_at"
               fileLabel="การเจาะเลือด"
               onDone={(ym, joined) => handleDone(ym, joined, 'phleb')}
             />
@@ -416,57 +432,84 @@ export function TatUploadClient() {
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
             ยังไม่มีข้อมูลที่อัพโหลด
           </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: 'var(--surface-2)' }}>
-                {['ประเภท', 'เดือน', 'ไฟล์', 'จำนวนแถว', 'อัพโหลดโดย', 'วันที่', ''].map((h, i) => (
-                  <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', letterSpacing: '.04em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {uploads.map(u => (
-                <tr
-                  key={`${u.type}-${u.id}`}
-                  style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <td style={{ padding: '10px 16px' }}>
-                    <Badge color={u.type === 'lab' ? 'blue' : 'purple'} dot>
-                      {u.type === 'lab' ? 'Lab TAT' : 'Phlebotomy'}
-                    </Badge>
-                  </td>
-                  <td style={{ padding: '10px 16px', fontWeight: 600 }}>
-                    {getThaiMonthLabel(u.month)} {u.year + 543}
-                  </td>
-                  <td style={{ padding: '10px 16px', color: 'var(--muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {u.file_name}
-                  </td>
-                  <td style={{ padding: '10px 16px' }}>{u.row_count.toLocaleString()}</td>
-                  <td style={{ padding: '10px 16px', color: 'var(--muted)' }}>{u.uploader_name}</td>
-                  <td style={{ padding: '10px 16px', color: 'var(--muted)' }}>
-                    {new Date(u.uploaded_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </td>
-                  <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      icon="trash"
-                      disabled={deleting === u.id}
-                      onClick={() => handleDelete(u.id, u.type)}
-                    >
-                      {deleting === u.id ? 'กำลังลบ...' : 'ลบ'}
-                    </Button>
-                  </td>
+        ) : (() => {
+          // Find months that have both lab and phleb uploads (can trigger rejoin)
+          const monthTypes = new Map<string, Set<TabType>>()
+          for (const u of uploads) {
+            const key = `${u.year}-${u.month}`
+            if (!monthTypes.has(key)) monthTypes.set(key, new Set())
+            monthTypes.get(key)!.add(u.type)
+          }
+          const canRejoin = (year: number, month: number) => {
+            const s = monthTypes.get(`${year}-${month}`)
+            return s?.has('lab') && s?.has('phleb')
+          }
+
+          return (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: 'var(--surface-2)' }}>
+                  {['ประเภท', 'เดือน', 'ไฟล์', 'จำนวนแถว', 'อัพโหลดโดย', 'วันที่', ''].map((h, i) => (
+                    <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', letterSpacing: '.04em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {uploads.map(u => (
+                  <tr
+                    key={`${u.type}-${u.id}`}
+                    style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <td style={{ padding: '10px 16px' }}>
+                      <Badge color={u.type === 'lab' ? 'blue' : 'purple'} dot>
+                        {u.type === 'lab' ? 'Lab TAT' : 'Phlebotomy'}
+                      </Badge>
+                    </td>
+                    <td style={{ padding: '10px 16px', fontWeight: 600 }}>
+                      {getThaiMonthLabel(u.month)} {u.year + 543}
+                    </td>
+                    <td style={{ padding: '10px 16px', color: 'var(--muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {u.file_name}
+                    </td>
+                    <td style={{ padding: '10px 16px' }}>{u.row_count.toLocaleString()}</td>
+                    <td style={{ padding: '10px 16px', color: 'var(--muted)' }}>{u.uploader_name}</td>
+                    <td style={{ padding: '10px 16px', color: 'var(--muted)' }}>
+                      {new Date(u.uploaded_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td style={{ padding: '10px 16px', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        {u.type === 'lab' && canRejoin(u.year, u.month) && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon="check"
+                            disabled={rejoining === `${u.year}-${u.month}`}
+                            onClick={() => handleRejoin(u.year, u.month)}
+                          >
+                            {rejoining === `${u.year}-${u.month}` ? 'กำลังเชื่อม...' : 'Rejoin'}
+                          </Button>
+                        )}
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          icon="trash"
+                          disabled={deleting === u.id}
+                          onClick={() => handleDelete(u.id, u.type)}
+                        >
+                          {deleting === u.id ? 'กำลังลบ...' : 'ลบ'}
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        })()}
       </Card>
     </div>
   )

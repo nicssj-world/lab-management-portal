@@ -1,58 +1,71 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-import type { RejectionLog } from '@/lib/supabase/types'
+import { SupabaseClient } from '@supabase/supabase-js'
 
-export interface RejectionFilters {
-  severity?: string
-  dept?: string
-  search?: string
+// ⚠️ PRIVACY: never expose dspname, hn, an, ln to client
+export type RejectionLog = {
+  id: string
+  spcmdate: string
+  labspcmnm: string | null
+  itemno: number
+  reject: string | null
+  reason: string | null
+  work: string | null
+  ward: string | null
+  uploaded_at: string
+}
+
+export type RejectionUpload = {
+  id: string
+  filename: string
+  data_month: string | null
+  total_rows: number
+  inserted: number
+  skipped: number
+  uploaded_at: string
+}
+
+export type RejectionSummary = {
+  current_total: number
+  prev_total: number
+  by_reason: { reason: string; total: number }[]
+  by_reason_prev: { reason: string; total: number }[]
+  by_reason_detail: { label: string; total: number }[]
+  by_section: { section: string; total: number }[]
+  by_specimen: { specimen: string; total: number }[]
+  by_ward: { ward: string; total: number }[]
+  monthly_trend: { month: string; total: number }[]
+  yearly_trend: { yr: number; total: number }[]
+  yearly_by_reason: { yr: number; reason: string; total: number }[]
+  yearly_by_section: { yr: number; section: string; total: number }[]
+  monthly_by_year: { yr: number; mo: number; total: number }[]
+}
+
+export type RejectionFilters = {
+  year?: number
+  month?: number
+  reject?: string
+  page?: number
   limit?: number
 }
 
+// ⚠️ select only non-PII columns — never select dspname/hn/an/ln
 export async function getRejectionLogs(
   supabase: SupabaseClient,
-  filters: RejectionFilters = {}
-): Promise<RejectionLog[]> {
-  let query = supabase
-    .from('rejection_log')
-    .select('*')
-    .order('logged_at', { ascending: false })
+  filters: RejectionFilters
+) {
+  const { year, month, reject, page = 1, limit = 50 } = filters
+  let q = supabase
+    .from('rejection_logs')
+    .select('id,spcmdate,labspcmnm,itemno,reject,reason,work,ward,uploaded_at', { count: 'exact' })
 
-  if (filters.severity) query = query.eq('severity', filters.severity)
-  if (filters.dept) query = query.eq('dept', filters.dept)
-  if (filters.search) {
-    query = query.or(`ref_no.ilike.%${filters.search}%,reason.ilike.%${filters.search}%,test_code.ilike.%${filters.search}%`)
+  if (year && month) {
+    const start = `${year}-${String(month).padStart(2, '0')}-01`
+    const end = new Date(year, month, 0).toISOString().split('T')[0]
+    q = q.gte('spcmdate', start).lte('spcmdate', end)
   }
-  if (filters.limit) query = query.limit(filters.limit)
+  if (reject) q = q.eq('reject', reject)
 
-  const { data, error } = await query
-  if (error) throw error
-  return data ?? []
-}
-
-export async function addRejectionLog(
-  supabase: SupabaseClient,
-  log: Omit<RejectionLog, 'id' | 'logged_at'>
-): Promise<RejectionLog> {
-  const { data, error } = await supabase
-    .from('rejection_log')
-    .insert(log)
-    .select()
-    .single()
-  if (error) throw error
-  return data
-}
-
-export async function getRejectionStats(supabase: SupabaseClient) {
-  const { data, error } = await supabase
-    .from('rejection_log')
-    .select('severity, reason')
-  if (error) throw error
-
-  const byReason: Record<string, number> = {}
-  const bySeverity: Record<string, number> = {}
-  for (const row of data ?? []) {
-    byReason[row.reason ?? 'Unknown'] = (byReason[row.reason ?? 'Unknown'] ?? 0) + 1
-    bySeverity[row.severity ?? 'low'] = (bySeverity[row.severity ?? 'low'] ?? 0) + 1
-  }
-  return { byReason, bySeverity, total: data?.length ?? 0 }
+  return q
+    .order('spcmdate', { ascending: false })
+    .order('uploaded_at', { ascending: false })
+    .range((page - 1) * limit, page * limit - 1)
 }

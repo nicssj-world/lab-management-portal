@@ -213,6 +213,13 @@ export default function TestDetailPage() {
             </Card>
           )}
 
+          <Card padding={16}>
+            <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>แก้ไขล่าสุด</div>
+            <div style={{ fontSize: 13, color: 'var(--ink)' }}>
+              {new Date(test.updated_at).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}
+            </div>
+          </Card>
+
           <Button variant="secondary" size="md" icon="download" full onClick={() => window.print()}>
             พิมพ์ / ส่งออก PDF
           </Button>

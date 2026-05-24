@@ -24,6 +24,12 @@ self.onmessage = function (e) {
   }
 }
 
+// Strip leading zeros from numeric HNs so both files match regardless of export format
+function normalizeHn(hn) {
+  if (!hn) return ''
+  return /^\d+$/.test(hn) ? String(parseInt(hn, 10)) : hn
+}
+
 function parseThaiDT(s) {
   if (!s) return null
   const m = s.trim().match(/(\d+)\/(\d+)\/(\d+) - (\d+):(\d+):(\d+)/)
@@ -41,7 +47,7 @@ function parseRow(cols) {
   if (tat < 0 || tat > 10080) return null
   const spcmDate = new Date(spcm)
   return {
-    hn: cols[3]?.trim() || '',
+    hn: normalizeHn(cols[3]?.trim() || ''),
     spcm_at: spcm,
     rslt_at: rslt,
     tat_minutes: Math.round(tat * 10) / 10,

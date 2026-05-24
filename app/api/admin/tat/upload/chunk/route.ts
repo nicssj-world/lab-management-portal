@@ -105,29 +105,33 @@ export async function POST(req: NextRequest) {
 
   const { targetMap, tubeMap } = await getTestMaps()
 
-  const records = rows.map((row) => {
-    const target_minutes = row.priority === 'ด่วน' ? 30 : resolveTarget(row.test_name, targetMap)
-    const within_target = target_minutes !== null ? row.tat_minutes <= target_minutes : null
-    const is_blood_draw = resolveIsBloodDraw(row.test_name, tubeMap)
-
-    return {
-      upload_id,
-      year: upload.year,
-      month: upload.month,
-      hn: row.hn || null,
-      spcm_at: row.spcm_at,
-      rslt_at: row.rslt_at,
-      tat_minutes: row.tat_minutes,
-      target_minutes,
-      within_target,
-      is_blood_draw,
-      lab_section: row.lab_section,
-      ward: row.ward,
-      priority: row.priority,
-      test_name: row.test_name,
-      spcm_hour: row.spcm_hour,
-      spcm_dow: row.spcm_dow,
-    }
+  // Split comma-separated test names into individual records (one row per test)
+  const records = rows.flatMap((row) => {
+    const tests = row.test_name.split(',').map(t => t.trim()).filter(Boolean)
+    const effectiveTests = tests.length > 0 ? tests : [row.test_name]
+    return effectiveTests.map(testName => {
+      const target_minutes = row.priority === 'ด่วน' ? 30 : resolveTarget(testName, targetMap)
+      const within_target = target_minutes !== null ? row.tat_minutes <= target_minutes : null
+      const is_blood_draw = resolveIsBloodDraw(testName, tubeMap)
+      return {
+        upload_id,
+        year: upload.year,
+        month: upload.month,
+        hn: row.hn || null,
+        spcm_at: row.spcm_at,
+        rslt_at: row.rslt_at,
+        tat_minutes: row.tat_minutes,
+        target_minutes,
+        within_target,
+        is_blood_draw,
+        lab_section: row.lab_section,
+        ward: row.ward,
+        priority: row.priority,
+        test_name: testName,
+        spcm_hour: row.spcm_hour,
+        spcm_dow: row.spcm_dow,
+      }
+    })
   })
 
   // Dedup within the chunk

@@ -67,7 +67,12 @@ export function SpecimenSection({ test }: Props) {
       <Row label="การเก็บรักษาหลังตรวจ" value={test.stability} />
       <Row label="เงื่อนไขปฏิเสธ" value={test.reject} />
       <Row label="เงื่อนไขการขนส่ง" value={test.transport_condition} />
-      <Row label="รายละเอียดอื่นๆ" value={test.specimen_note} />
+      {test.specimen_note && (
+        <div className="specimen-detail-row" style={{ display: 'flex', gap: 12, paddingBottom: 10, marginBottom: 10, borderBottom: '1px solid var(--border)' }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)', minWidth: 140, flexShrink: 0 }}>รายละเอียดอื่นๆ</span>
+          <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: test.specimen_note }} />
+        </div>
+      )}
       {!hasData && (
         <div style={{ fontSize: 13, color: 'var(--muted)' }}>ไม่มีข้อมูล specimen</div>
       )}

@@ -38,7 +38,10 @@ begin
       coalesce(d.n, 1)  as dup_n
     from tat_records t
     join phlebotomy_records p
-      on  p.hn = t.hn
+      -- HN normalisation: strip leading zeros + whitespace to handle HIS/phlebotomy
+      -- export differences (e.g. "0012345" vs "12345").  nullif prevents '' = '' matches.
+      on  nullif(trim(leading '0' from trim(p.hn)), '')
+        = nullif(trim(leading '0' from trim(t.hn)), '')
       -- allow up to 120 min clock skew (phleb_done can appear after spcm_at due to HIS/LIS lag)
       and p.phleb_done_at <= t.spcm_at + interval '120 minutes'
       -- blood draw at most 8 hours before specimen arrived at lab
