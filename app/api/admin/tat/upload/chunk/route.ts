@@ -2,10 +2,13 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { isPanelBloodDraw } from '@/lib/tat/tube-classify'
+import { rejoinTatBatch } from '@/lib/tat/rejoin-batch'
+import { refreshLabWorkloadSummary } from '@/lib/workload/refresh-summary'
 import { NextRequest, NextResponse } from 'next/server'
 
 // Module-scope caches — populated once per function instance lifetime
 let testTargetMap: Map<string, number> | null = null
+let testUrgentTargetMap: Map<string, number> | null = null
 let testTubeMap: Map<string, string> | null = null
 
 interface TestRow {
@@ -14,26 +17,60 @@ interface TestRow {
   code: string
   lis_code: string | null
   tat: string | null
+  tat_minutes: string | null
+  urgent_tat_minutes: string | null
   tube: string | null
 }
 
-async function getTestMaps(): Promise<{ targetMap: Map<string, number>; tubeMap: Map<string, string> }> {
-  if (testTargetMap && testTubeMap) return { targetMap: testTargetMap, tubeMap: testTubeMap }
+function parseTatTargetMinutes(value: string | null): number | null {
+  if (!value) return null
+
+  const raw = value.trim()
+  const nums = raw.match(/\d+(?:\.\d+)?/g)?.map(Number).filter(Number.isFinite) ?? []
+  if (nums.length === 0) return null
+
+  // For ranges such as "24-48 ชั่วโมง", use the upper bound as the allowed target.
+  const n = Math.max(...nums)
+  const normalized = raw.toLowerCase().replace(/\s+/g, '')
+
+  if (normalized.includes('นาที')) return n
+  if (
+    normalized.includes('ชม')
+    || normalized.includes('ช.ม')
+    || normalized.includes('ชั่วโมง')
+    || normalized.includes('hr')
+    || normalized.includes('hour')
+  ) return n * 60
+  if (normalized.includes('วัน')) return n * 24 * 60
+
+  return n
+}
+
+async function getTestMaps(): Promise<{ targetMap: Map<string, number>; urgentTargetMap: Map<string, number>; tubeMap: Map<string, string> }> {
+  if (testTargetMap && testUrgentTargetMap && testTubeMap) {
+    return { targetMap: testTargetMap, urgentTargetMap: testUrgentTargetMap, tubeMap: testTubeMap }
+  }
 
   const { data } = await supabaseAdmin
     .from('tests')
-    .select('th, en, code, lis_code, tat, tube')
+    .select('th, en, code, lis_code, tat, tat_minutes, urgent_tat_minutes, tube')
 
   testTargetMap = new Map()
+  testUrgentTargetMap = new Map()
   testTubeMap = new Map()
 
   for (const r of (data ?? []) as TestRow[]) {
     const keys = [r.th, r.en, r.code, r.lis_code].filter((k): k is string => !!k)
     for (const key of keys) {
       const k = key.trim()
-      if (r.tat && !testTargetMap.has(k)) {
-        const tatVal = parseFloat(r.tat)
-        if (!isNaN(tatVal)) testTargetMap.set(k, tatVal)
+      const normalTat = r.tat_minutes ?? r.tat
+      if (normalTat && !testTargetMap.has(k)) {
+        const tatVal = parseTatTargetMinutes(normalTat)
+        if (tatVal !== null) testTargetMap.set(k, tatVal)
+      }
+      if (r.urgent_tat_minutes && !testUrgentTargetMap.has(k)) {
+        const urgentTatVal = parseTatTargetMinutes(r.urgent_tat_minutes)
+        if (urgentTatVal !== null) testUrgentTargetMap.set(k, urgentTatVal)
       }
       if (r.tube && !testTubeMap.has(k)) {
         testTubeMap.set(k, r.tube)
@@ -41,7 +78,7 @@ async function getTestMaps(): Promise<{ targetMap: Map<string, number>; tubeMap:
     }
   }
 
-  return { targetMap: testTargetMap, tubeMap: testTubeMap }
+  return { targetMap: testTargetMap, urgentTargetMap: testUrgentTargetMap, tubeMap: testTubeMap }
 }
 
 function resolveTarget(testName: string, map: Map<string, number>): number | null {
@@ -104,14 +141,16 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (!upload) return NextResponse.json({ error: 'Upload not found' }, { status: 404 })
 
-  const { targetMap, tubeMap } = await getTestMaps()
+  const { targetMap, urgentTargetMap, tubeMap } = await getTestMaps()
 
   // Split comma-separated test names into individual records (one row per test)
   const records = rows.flatMap((row) => {
     const tests = row.test_name.split(',').map(t => t.trim()).filter(Boolean)
     const effectiveTests = tests.length > 0 ? tests : [row.test_name]
     return effectiveTests.map(testName => {
-      const target_minutes = row.priority === 'ด่วน' ? 30 : resolveTarget(testName, targetMap)
+      const target_minutes = row.priority === 'ด่วน'
+        ? (resolveTarget(testName, urgentTargetMap) ?? resolveTarget(testName, targetMap) ?? 30)
+        : resolveTarget(testName, targetMap)
       const within_target = target_minutes !== null ? row.tat_minutes <= target_minutes : null
       const is_blood_draw = resolveIsBloodDraw(testName, tubeMap)
       return {
@@ -132,6 +171,7 @@ export async function POST(req: NextRequest) {
         test_name: testName,
         spcm_hour: row.spcm_hour,
         spcm_dow: row.spcm_dow,
+        match_confidence: 'no_match',
       }
     })
   })
@@ -140,22 +180,23 @@ export async function POST(req: NextRequest) {
   const seenKeys = new Set<string>()
   const deduped: typeof records = []
   for (const r of records) {
-    const key = `${r.spcm_at}|${r.test_name}|${r.lab_section}`
+    const key = `${r.ln ?? ''}|${r.hn ?? ''}|${r.spcm_at}|${r.test_name}|${r.lab_section}`
     if (!seenKeys.has(key)) { seenKeys.add(key); deduped.push(r) }
   }
 
-  // Dedup against ALL records for this year/month (covers multiple uploads of the same month)
+  // Dedup against existing rows for this month. Re-upload normally clears the
+  // month first; this still protects retry/double-submit scenarios.
   const spcmAts = [...new Set(deduped.map(r => r.spcm_at))]
   let toInsert = deduped
   if (spcmAts.length > 0) {
     const { data: existing } = await supabaseAdmin
       .from('tat_records')
-      .select('spcm_at, test_name, lab_section')
+      .select('ln, hn, spcm_at, test_name, lab_section')
       .eq('year', upload.year)
       .eq('month', upload.month)
       .in('spcm_at', spcmAts)
-    const existingKeys = new Set((existing ?? []).map(r => `${r.spcm_at}|${r.test_name}|${r.lab_section}`))
-    toInsert = deduped.filter(r => !existingKeys.has(`${r.spcm_at}|${r.test_name}|${r.lab_section}`))
+    const existingKeys = new Set((existing ?? []).map(r => `${r.ln ?? ''}|${r.hn ?? ''}|${r.spcm_at}|${r.test_name}|${r.lab_section}`))
+    toInsert = deduped.filter(r => !existingKeys.has(`${r.ln ?? ''}|${r.hn ?? ''}|${r.spcm_at}|${r.test_name}|${r.lab_section}`))
   }
 
   const skipped = records.length - toInsert.length
@@ -173,7 +214,7 @@ export async function POST(req: NextRequest) {
   let joined = false
 
   if (is_last_chunk) {
-    // Count total across ALL uploads for this month (append mode)
+    // Count total rows for this snapshot month.
     const { count } = await supabaseAdmin
       .from('tat_records')
       .select('id', { count: 'exact', head: true })
@@ -192,9 +233,11 @@ export async function POST(req: NextRequest) {
       .eq('month', upload.month)
 
     if ((phlebCount ?? 0) > 0) {
-      const { error: joinErr } = await supabaseAdmin.rpc('rejoin_tat', { p_year: upload.year, p_month: upload.month })
-      if (!joinErr) joined = true
+      await rejoinTatBatch(upload.year, upload.month)
+      joined = true
     }
+
+    await refreshLabWorkloadSummary(upload.year, upload.month)
   }
 
   return NextResponse.json({ inserted: insertedCount, skipped, joined })

@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['canvas'],
   experimental: {
     serverActions: { bodySizeLimit: '10mb' },
+    proxyClientMaxBodySize: '20mb',
   },
   devIndicators: {
     position: 'bottom-right',

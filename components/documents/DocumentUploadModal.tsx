@@ -36,6 +36,17 @@ function fmtSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+async function readJsonOrError(res: Response): Promise<{ error?: string; [key: string]: unknown }> {
+  const contentType = res.headers.get('content-type') ?? ''
+  if (contentType.includes('application/json')) return await res.json()
+
+  const text = (await res.text()).trim()
+  if (/request entity too large|body exceeded|payload too large/i.test(text)) {
+    return { error: 'ไฟล์ใหญ่เกินขนาดที่ระบบอ่านอัตโนมัติได้ กรุณาลดขนาดไฟล์หรือกรอกข้อมูลเอง' }
+  }
+  return { error: text || res.statusText || 'เกิดข้อผิดพลาด' }
+}
+
 const DEPT_BY_PREFIX: Record<string, string> = {
   QP: 'กลุ่มงานเทคนิคการแพทย์',
   QM: 'กลุ่มงานเทคนิคการแพทย์',
@@ -168,11 +179,48 @@ function findDateNear(text: string, labels: string[]): string | null {
   return null
 }
 
+function normalizeExtractedWhitespace(value: string): string {
+  return value
+    .replace(/([\u0E00-\u0E7F])[\t ]*[\r\n]+[\t ]*([\u0E00-\u0E7F])/g, '$1$2')
+    .replace(/[\t ]*[\r\n]+[\t ]*/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .trim()
+}
+
+function cleanExtractedField(value: string, stopLabels: string[] = []): string {
+  let cleaned = normalizeExtractedWhitespace(value)
+  for (const label of stopLabels) {
+    const idx = cleaned.search(new RegExp(`\\s*${label}\\s*:`, 'i'))
+    if (idx !== -1) cleaned = cleaned.slice(0, idx).trim()
+  }
+  return cleaned
+}
+
 function parseExtractedText(text: string) {
-  const get = (patterns: RegExp[]): string | undefined => {
+  const stopLabelPattern = [
+    'หมายเลขเอกสาร',
+    'Document\\s+No\\.?',
+    'วันที่ประกาศใช้เอกสาร',
+    'Issue\\s+Date',
+    'วันที่แก้ไขเอกสาร',
+    'Edit\\s+Date',
+    'วันที่บังคับใช้เอกสาร',
+    'Effective\\s+Date',
+    'หน้า\\/จำนวนหน้า',
+    'Page\\s+No\\.?',
+    'ผู้เกี่ยวข้อง',
+    'จัดทำโดย',
+    'รับรองโดย',
+    'อนุมัติโดย',
+  ].join('|')
+
+  const get = (patterns: RegExp[], stopLabels: string[] = []): string | undefined => {
     for (const re of patterns) {
       const m = text.match(re)
-      if (m?.[1] && !m[1].includes('{')) return m[1].trim()
+      if (m?.[1] && !m[1].includes('{')) {
+        const cleaned = cleanExtractedField(m[1], stopLabels)
+        if (cleaned) return cleaned
+      }
     }
     return undefined
   }
@@ -182,9 +230,12 @@ function parseExtractedText(text: string) {
   const approveRaw = get([/อนุมัติโดย\s*:\s*([^\n\r{][^\n\r]+)/])
 
   return {
-    title:         get([/(?:เรื่อง|ชื่อเอกสาร)\s*:\s*([^\n\r{][^\n\r]+)/]),
-    documentCode:  get([/(?:หมายเลขเอกสาร|Document\s+No\.?)\s*:\s*([^\n\r{]+)/]),
-    revision:      get([/(?:ครั้งที่แก้ไข|Revision)\s*:\s*([^\n\r{]+)/]),
+    title:         get([
+      new RegExp(`(?:เรื่อง|ชื่อเอกสาร)\\s*:\\s*([^\\r\\n{][\\s\\S]*?)(?=\\s*(?:${stopLabelPattern})\\s*:|$)`, 'i'),
+      /(?:เรื่อง|ชื่อเอกสาร)\s*:\s*([^\n\r{][^\n\r]+)/,
+    ], stopLabelPattern.split('|')),
+    documentCode:  get([/(?:หมายเลขเอกสาร|Document\s+No\.?)\s*:\s*([^\n\r{]+)/], ['หน้า\\/จำนวนหน้า', 'Page\\s+No\\.?', 'วันที่']),
+    revision:      get([/(?:ครั้งที่แก้ไข|Revision)\s*:\s*([^\n\r{]+)/], ['หมายเลขเอกสาร', 'Document\\s+No\\.?']),
     ownerName:     ownerRaw   ? stripThaiTitle(ownerRaw)   : undefined,
     reviewerName:  reviewRaw  ? stripThaiTitle(reviewRaw)  : undefined,
     approverName:  approveRaw ? stripThaiTitle(approveRaw) : undefined,
@@ -289,9 +340,9 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
         const parentCode = extractParentCode(selectedFile.name)
         if (!parentCode) throw new Error('ไม่สามารถตรวจสอบรหัสเอกสารแม่ได้')
         const res = await fetch(`/api/admin/documents?code=${encodeURIComponent(parentCode)}&pageSize=1`)
-        const json = await res.json()
+        const json = await readJsonOrError(res)
         if (!res.ok) throw new Error(json.error ?? 'ไม่สามารถดึงข้อมูลได้')
-        const parent = json.data?.[0]
+        const parent = (json.data as Document[] | undefined)?.[0]
         if (!parent) throw new Error(`ไม่พบเอกสาร ${parentCode} ในระบบ`)
         if (parent.revision)       setRevision(parent.revision)
         if (parent.department)     setDepartment(parent.department)
@@ -304,7 +355,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
         const fd = new FormData()
         fd.append('file', selectedFile)
         const res = await fetch('/api/admin/documents/extract', { method: 'POST', body: fd })
-        const json = await res.json()
+        const json = await readJsonOrError(res)
         if (!res.ok) throw new Error(json.error ?? 'ไม่สามารถอ่านไฟล์ได้')
         const fields = parseExtractedText(json.text as string)
         if (fields.title)         setTitle(fields.title)
@@ -380,9 +431,9 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
         res = await fetch('/api/admin/documents', { method: 'POST', body: fd })
       }
 
-      const json = await res.json()
+      const json = await readJsonOrError(res)
       if (!res.ok) { setError(json.error ?? 'เกิดข้อผิดพลาด'); setSaving(false); return }
-      onSaved(json as Document)
+      onSaved(json as unknown as Document)
     } catch {
       setError('เกิดข้อผิดพลาด กรุณาลองใหม่')
       setSaving(false)

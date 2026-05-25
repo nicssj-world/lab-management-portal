@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { rejoinTatBatch } from '@/lib/tat/rejoin-batch'
+import { refreshLabWorkloadSummary } from '@/lib/workload/refresh-summary'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -89,9 +91,11 @@ export async function POST(req: NextRequest) {
       .eq('month', upload.month)
 
     if ((tatCount ?? 0) > 0) {
-      const { error: joinErr } = await supabaseAdmin.rpc('rejoin_tat', { p_year: upload.year, p_month: upload.month })
-      if (!joinErr) joined = true
+      await rejoinTatBatch(upload.year, upload.month, true)
+      joined = true
     }
+
+    await refreshLabWorkloadSummary(upload.year, upload.month)
   }
 
   return NextResponse.json({ inserted: insertedCount, skipped: 0, joined })

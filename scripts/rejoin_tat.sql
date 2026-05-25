@@ -1,9 +1,14 @@
 -- Rejoin TAT + Phlebotomy data for a given year/month
 -- Run via Supabase Dashboard → SQL Editor after phlebotomy_tables.sql
+--
+-- Requires HNs in both tables to be pre-normalized (no leading zeros).
+-- Run normalize_hn.sql once if migrating existing data.
 
 create or replace function rejoin_tat(p_year int, p_month int)
-returns void language plpgsql as $$
+returns void language plpgsql security definer as $$
 begin
+  set local statement_timeout = '0';
+
   -- 1. Reset phleb fields for the month (idempotent)
   update tat_records set
     register_at        = null,
@@ -16,16 +21,27 @@ begin
     match_confidence   = 'no_match'
   where year = p_year and month = p_month;
 
-  -- 2. Count duplicate visits per hn+date to flag ambiguous matches
-  with dupcount as (
-    select hn, phleb_date, count(*) as n
+  -- 2. Pre-load phlebotomy slice into temp table + index on (hn, phleb_done_at)
+  create temp table _phleb on commit drop as
+    select hn, register_at, phleb_done_at, wait_minutes, labzone_name, phlebotomist, phleb_date
     from phlebotomy_records
-    where year = p_year and month = p_month
-    group by hn, phleb_date
-  ),
-  -- 3. Nearest phlebotomy record before spcm_at (within 120-minute window)
-  nearest as (
-    select distinct on (t.id)
+    where year = p_year and month = p_month;
+
+  create index on _phleb (hn, phleb_done_at);
+
+  -- 3. Count duplicate visits per hn+date (ambiguous flag)
+  create temp table _dupcount on commit drop as
+    select hn, phleb_date, count(*) as n
+    from _phleb
+    group by hn, phleb_date;
+
+  create index on _dupcount (hn, phleb_date);
+
+  -- 4. LATERAL join: for each blood-draw TAT row, index-seek the nearest phleb record.
+  --    Much faster than DISTINCT ON over a full join because the planner uses
+  --    an index scan + limit 1 per TAT row instead of sorting the whole result set.
+  with nearest as (
+    select
       t.id              as tat_id,
       t.spcm_at,
       t.rslt_at,
@@ -35,23 +51,22 @@ begin
       p.wait_minutes,
       p.labzone_name,
       p.phlebotomist,
+      p.phleb_date,
       coalesce(d.n, 1)  as dup_n
     from tat_records t
-    join phlebotomy_records p
-      -- HN normalisation: strip leading zeros + whitespace to handle HIS/phlebotomy
-      -- export differences (e.g. "0012345" vs "12345").  nullif prevents '' = '' matches.
-      on  nullif(trim(leading '0' from trim(p.hn)), '')
-        = nullif(trim(leading '0' from trim(t.hn)), '')
-      -- allow up to 120 min clock skew (phleb_done can appear after spcm_at due to HIS/LIS lag)
-      and p.phleb_done_at <= t.spcm_at + interval '120 minutes'
-      -- blood draw at most 8 hours before specimen arrived at lab
-      and p.phleb_done_at >= t.spcm_at - interval '480 minutes'
-    left join dupcount d
-      on  d.hn = p.hn
-      and d.phleb_date = p.phleb_date
+    cross join lateral (
+      select register_at, phleb_done_at, wait_minutes, labzone_name, phlebotomist, phleb_date
+      from _phleb
+      where hn = t.hn
+        and phleb_done_at <= t.spcm_at + interval '120 minutes'
+        and phleb_done_at >= t.spcm_at - interval '480 minutes'
+      order by abs(extract(epoch from (t.spcm_at - phleb_done_at)))
+      limit 1
+    ) p
+    left join _dupcount d on d.hn = t.hn and d.phleb_date = p.phleb_date
     where t.year = p_year and t.month = p_month
+      and t.is_blood_draw = true
       and t.hn is not null and t.hn <> ''
-    order by t.id, abs(extract(epoch from (t.spcm_at - p.phleb_done_at)))
   )
   update tat_records t set
     register_at        = n.register_at,
@@ -59,8 +74,7 @@ begin
     transport_minutes  = extract(epoch from (n.spcm_at - n.phleb_done_at)) / 60.0,
     labzone_name       = n.labzone_name,
     phlebotomist       = n.phlebotomist,
-    phleb_wait_minutes = case when t.is_blood_draw
-                              then n.wait_minutes else null end,
+    phleb_wait_minutes = case when t.is_blood_draw then n.wait_minutes else null end,
     total_tat_minutes  = case when t.is_blood_draw
                               then extract(epoch from (n.rslt_at - n.register_at)) / 60.0
                               else null end,

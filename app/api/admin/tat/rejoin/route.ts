@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { rejoinTatBatch } from '@/lib/tat/rejoin-batch'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -27,8 +28,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues }, { status: 422 })
   const { year, month } = parsed.data
 
-  const { error } = await supabaseAdmin.rpc('rejoin_tat', { p_year: year, p_month: month })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const result = await rejoinTatBatch(year, month, true)
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, ...result })
 }
