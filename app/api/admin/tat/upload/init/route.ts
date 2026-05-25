@@ -32,10 +32,10 @@ export async function POST(req: NextRequest) {
   let upload_id: string
 
   if (existing) {
-    await supabaseAdmin.from('tat_records').delete().eq('upload_id', existing.id)
+    // Append mode: keep existing records, just update metadata
     await supabaseAdmin
       .from('tat_uploads')
-      .update({ file_name, row_count: 0, uploaded_by: actor.id, uploaded_at: new Date().toISOString() })
+      .update({ file_name, uploaded_by: actor.id, uploaded_at: new Date().toISOString() })
       .eq('id', existing.id)
     upload_id = existing.id
   } else {

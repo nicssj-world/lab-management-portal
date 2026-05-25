@@ -8,25 +8,26 @@ import {
   PieChart, Pie, Cell,
 } from 'recharts'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
-import { Stat } from '@/components/ui/Stat'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MonthSelector } from '@/components/ui/MonthSelector'
-import { getCurrentThaiFiscalYear, getThaiMonthLabel } from '@/lib/kpi-utils'
+import { getThaiMonthLabel } from '@/lib/kpi-utils'
 
 interface KpiData {
   avg_tat: number
   median_tat: number
   pct_within_target: number
   total_count: number
+  sample_count: number
   busiest_hour: string
   avg_phleb_wait: number
   avg_transport: number
   avg_total_tat: number
   median_total_tat: number
   phleb_match_rate: number
+  pct_total_within_target: number
+  pct_phleb_within_target: number
 }
 interface LabRow { lab_section: string; avg_tat: number; count: number }
 interface DistRow { bin: string; count: number; cumulative_pct: number }
@@ -35,35 +36,168 @@ interface TrendRow { year: number; month: number; avg_tat: number; pct_within_ta
 interface MatchBreakdown { exact: number; ambiguous: number; no_match: number }
 interface StageRow { stage: string; avg_minutes: number }
 interface LabzoneRow { labzone_name: string; count: number; avg_wait: number }
-interface FilterOptions { lab_sections: string[]; wards: string[]; test_names: string[]; labzone_names: string[] }
+interface LabzonePhleb { labzone_name: string; count: number }
+interface FilterOptions { lab_sections: string[]; wards: string[]; test_names: string[]; labzone_names: string[]; phleb_labzone_names: string[] }
 
 interface SummaryData {
   has_phleb_data: boolean
   hn_null_count: number
   phleb_record_count: number
+  phleb_hn_count: number
   kpi: KpiData
   match_breakdown: MatchBreakdown
   stage_breakdown: StageRow[]
   by_labzone: LabzoneRow[]
+  by_labzone_phleb: LabzonePhleb[]
   by_lab_section: LabRow[]
   tat_distribution: DistRow[]
   heatmap: HeatCell[]
+  phleb_heatmap: HeatCell[]
   trend: TrendRow[]
   filter_options: FilterOptions
 }
 
 const DOW_LABELS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+const HIDDEN_ZONES = new Set(['ช่อง 21', 'ช่อง 2', 'ช่อง 5', 'ช่อง 7', 'ช่อง 3', 'ช่อง 8', 'ช่อง 9'])
+const LABZONE_DISPLAY: Record<string, string> = {}
 const MATCH_COLORS: Record<string, string> = {
-  'จับคู่แน่นอน': 'var(--success)',
-  'จับคู่ไม่แน่นอน': 'var(--warning)',
-  'ไม่พบคู่': 'var(--border)',
+  'จับคู่แน่นอน': '#16A34A',
+  'จับคู่ไม่แน่นอน': '#D97706',
+  'ไม่พบคู่': '#CBD5E1',
 }
 
+function displayLabzone(name: string) { return LABZONE_DISPLAY[name] ?? name }
 function formatTrendLabel(year: number, month: number) {
   return `${getThaiMonthLabel(month)} ${String(year + 543).slice(2)}`
 }
 
-function TatHeatmap({ cells }: { cells: HeatCell[] }) {
+// ── Design Components ─────────────────────────────────────────────────────
+
+function KpiRingStat({ label, pct, avgValue, avgUnit, color }: {
+  label: string; pct: number; avgValue?: number; avgUnit?: string; color: string
+}) {
+  const r = 32
+  const circ = 2 * Math.PI * r
+  const clamped = Math.max(0, Math.min(100, pct))
+  const offset = circ * (1 - clamped / 100)
+  return (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 18px' }}>
+      <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12, lineHeight: 1.5 }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <svg width={80} height={80} style={{ flexShrink: 0 }}>
+          <circle cx={40} cy={40} r={r} fill="none" stroke="var(--surface-2)" strokeWidth={7} />
+          <circle cx={40} cy={40} r={r} fill="none" stroke={color} strokeWidth={7}
+            strokeDasharray={`${circ}`} strokeDashoffset={offset}
+            strokeLinecap="round"
+            transform="rotate(-90 40 40)"
+            style={{ transition: 'stroke-dashoffset 1.4s cubic-bezier(.4,0,.2,1)' }}
+          />
+          <text x={40} y={44} textAnchor="middle" fontSize={14} fontWeight={700} fill={color}>{clamped}%</text>
+        </svg>
+        {avgValue != null && (
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink)', lineHeight: 1, letterSpacing: '-0.02em' }}>{avgValue}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>{avgUnit ?? ''}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function KpiBigStat({ label, value, sub, iconBg, icon }: {
+  label: string; value: string | number; sub?: string; iconBg?: string; icon?: string
+}) {
+  return (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', lineHeight: 1.5, maxWidth: '78%' }}>
+          {label}
+        </div>
+        {icon && iconBg && (
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name={icon} size={14} />
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--ink)', letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>{sub}</div>}
+    </div>
+  )
+}
+
+function SectionCard({ title, subtitle, accentColor = 'var(--primary)', children, style }: {
+  title: string; subtitle?: string; accentColor?: string; children: React.ReactNode; style?: React.CSSProperties
+}) {
+  return (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', ...style }}>
+      <div style={{
+        padding: '13px 20px', borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 10,
+        borderLeft: `3px solid ${accentColor}`,
+      }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
+          {subtitle && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{subtitle}</div>}
+        </div>
+      </div>
+      <div style={{ padding: 20 }}>{children}</div>
+    </div>
+  )
+}
+
+function PipelineViz({ stages, total }: { stages: StageRow[]; total: number }) {
+  const STAGE_CFG = [
+    { key: 'รอเจาะเลือด',    color: '#1E5FAD', label: 'รอเจาะเลือด' },
+    { key: 'ขนส่งตัวอย่าง', color: '#D97706', label: 'ขนส่งตัวอย่าง' },
+    { key: 'วิเคราะห์ในแลป', color: '#16A34A', label: 'วิเคราะห์ในแลป' },
+  ]
+  const values = STAGE_CFG.map(s => stages.find(r => r.stage === s.key)?.avg_minutes ?? 0)
+  const sumVals = values.reduce((a, b) => a + b, 0)
+
+  return (
+    <div>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 8 }}>
+        ลงทะเบียน → เจาะเสร็จ → รับ specimen → รายงานผล
+      </div>
+      <div style={{ display: 'flex', height: 20, borderRadius: 10, overflow: 'hidden', gap: 2, marginBottom: 14, background: 'var(--surface-2)' }}>
+        {values.map((val, i) => (
+          <div key={i} style={{
+            flex: sumVals > 0 ? val : 1,
+            background: STAGE_CFG[i].color,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 9.5, color: '#fff', fontWeight: 700,
+            minWidth: val > 0 ? 30 : 0,
+            transition: 'flex 1.2s ease',
+          }}>
+            {sumVals > 0 && val > 0 ? `${Math.round(val / sumVals * 100)}%` : ''}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+        {STAGE_CFG.map((s, i) => (
+          <div key={i} style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg)', borderLeft: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 3 }}>{s.label}</div>
+            <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--ink)', lineHeight: 1 }}>
+              {values[i].toFixed(1)}
+              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted)', marginLeft: 3 }}>นาที</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      {total > 0 && (
+        <div style={{ marginTop: 10, padding: '9px 14px', borderRadius: 8, background: 'rgba(30,95,173,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>Total TAT รวมทุก stage</span>
+          <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--primary)' }}>{Math.round(total)} นาที</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TatHeatmap({ cells, tooltipLabel = 'ตัวอย่าง' }: { cells: HeatCell[]; tooltipLabel?: string }) {
   const grid = new Map<string, number>()
   let maxCount = 0
   for (const c of cells) {
@@ -72,14 +206,13 @@ function TatHeatmap({ cells }: { cells: HeatCell[] }) {
     if (c.count > maxCount) maxCount = c.count
   }
 
-  const cellStyle = (count: number): React.CSSProperties => {
-    const opacity = maxCount > 0 ? count / maxCount : 0
-    return {
-      background: `rgba(30,95,173,${opacity.toFixed(2)})`,
-      border: '1px solid var(--border)',
-      borderRadius: 2,
-      position: 'relative',
-    }
+  function getCellBg(count: number) {
+    if (count === 0 || maxCount === 0) return 'var(--surface-2)'
+    const t = count / maxCount
+    const r = Math.round(219 + (30 - 219) * t)
+    const g = Math.round(234 + (95 - 234) * t)
+    const b = Math.round(254 + (173 - 254) * t)
+    return `rgb(${r},${g},${b})`
   }
 
   return (
@@ -87,9 +220,7 @@ function TatHeatmap({ cells }: { cells: HeatCell[] }) {
       <div style={{ display: 'grid', gridTemplateColumns: '28px repeat(7, 1fr)', gap: 2, minWidth: 280 }}>
         <div />
         {DOW_LABELS.map(d => (
-          <div key={d} style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, paddingBottom: 2 }}>
-            {d}
-          </div>
+          <div key={d} style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, paddingBottom: 3 }}>{d}</div>
         ))}
         {Array.from({ length: 24 }, (_, hour) => (
           <React.Fragment key={hour}>
@@ -101,41 +232,89 @@ function TatHeatmap({ cells }: { cells: HeatCell[] }) {
               return (
                 <div
                   key={`${dow}-${hour}`}
-                  title={count > 0 ? `${DOW_LABELS[dow]} ${String(hour).padStart(2, '0')}:00 — ${count} ตัวอย่าง` : undefined}
-                  style={{ ...cellStyle(count), height: 14 }}
+                  title={count > 0 ? `${DOW_LABELS[dow]} ${String(hour).padStart(2, '0')}:00 — ${count} ${tooltipLabel}` : undefined}
+                  style={{ background: getCellBg(count), border: '1px solid var(--border)', borderRadius: 2, height: 14 }}
                 />
               )
             })}
           </React.Fragment>
         ))}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 10 }}>
         <span style={{ fontSize: 10, color: 'var(--muted)' }}>น้อย</span>
-        {[0.1, 0.3, 0.5, 0.7, 1].map(o => (
-          <div key={o} style={{ width: 14, height: 14, borderRadius: 2, border: '1px solid var(--border)', background: `rgba(30,95,173,${o})` }} />
-        ))}
+        {[0, 0.25, 0.5, 0.75, 1].map(t => {
+          const r = Math.round(219 + (30 - 219) * t)
+          const g = Math.round(234 + (95 - 234) * t)
+          const b = Math.round(254 + (173 - 254) * t)
+          return (
+            <div key={t} style={{
+              width: 14, height: 14, borderRadius: 2,
+              border: t === 0 ? '1px solid var(--border)' : 'none',
+              background: t === 0 ? 'var(--surface-2)' : `rgb(${r},${g},${b})`,
+            }} />
+          )
+        })}
         <span style={{ fontSize: 10, color: 'var(--muted)' }}>มาก</span>
       </div>
     </div>
   )
 }
 
-const selectStyle: React.CSSProperties = {
-  padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
-  fontSize: 12.5, fontFamily: 'inherit', background: 'var(--card)',
-  color: 'var(--ink)', cursor: 'pointer', minWidth: 120,
+// ── Filter Select ─────────────────────────────────────────────────────────
+
+function FilterSelect({ value, onChange, children }: {
+  value: string; onChange: (v: string) => void; children: React.ReactNode
+}) {
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          appearance: 'none', WebkitAppearance: 'none',
+          padding: '6px 28px 6px 11px', borderRadius: 8,
+          border: value ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+          fontSize: 12.5, fontFamily: 'inherit',
+          background: value ? 'rgba(30,95,173,.05)' : 'var(--card)',
+          color: value ? 'var(--primary)' : 'var(--ink)',
+          cursor: 'pointer', minWidth: 130,
+          fontWeight: value ? 600 : 400,
+          outline: 'none', transition: 'border-color .15s, background .15s',
+        }}
+      >
+        {children}
+      </select>
+      <svg style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+        width={11} height={11} viewBox="0 0 12 12">
+        <path d="M2 4l4 4 4-4" stroke={value ? '#1E5FAD' : '#64748B'} strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  )
 }
 
-export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
-  const [year, setYear] = useState(new Date().getFullYear())
-  const [month, setMonth] = useState(new Date().getMonth() + 1)
-  const [labSection, setLabSection] = useState('')
-  const [ward, setWard] = useState('')
-  const [priority, setPriority] = useState('')
-  const [testName, setTestName] = useState('')
-  const [labzone, setLabzone] = useState('')
+// ── Tabs ──────────────────────────────────────────────────────────────────
 
-  const [data, setData] = useState<SummaryData | null>(null)
+type TabId = 'overview' | 'phlebotomy' | 'lab'
+const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: 'overview',   label: 'ภาพรวม',            icon: 'chart'   },
+  { id: 'phlebotomy', label: 'TAT Phlebotomy',     icon: 'syringe' },
+  { id: 'lab',        label: 'TAT ห้องปฏิบัติการ', icon: 'beaker'  },
+]
+
+// ── Main ──────────────────────────────────────────────────────────────────
+
+export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
+  const [activeTab, setActiveTab] = useState<TabId>('overview')
+  const [year, setYear]           = useState(new Date().getFullYear())
+  const [month, setMonth]         = useState(new Date().getMonth() + 1)
+  const [labSection, setLabSection] = useState('')
+  const [ward, setWard]           = useState('')
+  const [priority, setPriority]   = useState('')
+  const [testName, setTestName]   = useState('')
+  const [labzone, setLabzone]     = useState('')
+  const [allLabzones, setAllLabzones] = useState<string[]>([])
+
+  const [data, setData]     = useState<SummaryData | null>(null)
   const [loading, setLoading] = useState(true)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -149,8 +328,8 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
     try {
       const params = new URLSearchParams({ year: String(y), month: String(m) })
       if (ls) params.set('lab_section', ls)
-      if (w) params.set('ward', w)
-      if (p) params.set('priority', p)
+      if (w)  params.set('ward', w)
+      if (p)  params.set('priority', p)
       if (tn) params.set('test_name', tn)
       if (lz) params.set('labzone_name', lz)
       const res = await fetch(`/api/admin/tat/summary?${params}`, { signal: ctrl.signal })
@@ -167,44 +346,92 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
     fetchData(year, month, labSection, ward, priority, testName, labzone)
   }, [year, month, labSection, ward, priority, testName, labzone, fetchData])
 
-  const kpi = data?.kpi
+  useEffect(() => {
+    if (data && !labzone) {
+      const src = activeTab === 'phlebotomy'
+        ? (data.filter_options.phleb_labzone_names ?? [])
+        : (data.filter_options.labzone_names ?? [])
+      setAllLabzones(src.filter(lz => !HIDDEN_ZONES.has(lz)))
+    }
+  }, [data, labzone, activeTab])
+
+  const handleTabChange = (tab: TabId) => {
+    setActiveTab(tab)
+    setAllLabzones([])
+    if (tab === 'phlebotomy') { setLabSection(''); setWard(''); setPriority(''); setTestName('') }
+    else if (tab === 'lab')   { setLabzone('') }
+    else                      { setWard(''); setTestName('') }
+  }
+
+  const kpi     = data?.kpi
   const isEmpty = !loading && (kpi?.total_count ?? 0) === 0
   const hasPhleb = !loading && !isEmpty && (data?.has_phleb_data ?? false)
-
-  const sectionData = data?.by_lab_section ?? []
-  const sectionAvgs = sectionData.map(s => s.avg_tat)
-  const sectionMedIdx = Math.floor(sectionAvgs.length / 2)
-  const sectionMedian = [...sectionAvgs].sort((a, b) => a - b)[sectionMedIdx] ?? 0
-
   const thisYear = new Date().getFullYear()
   const yearOptions = [thisYear, thisYear - 1, thisYear - 2]
 
-  // Stage breakdown stacked bar data
+  const labzoneOptions = allLabzones.length > 0
+    ? allLabzones
+    : (activeTab === 'phlebotomy'
+        ? (data?.filter_options.phleb_labzone_names ?? [])
+        : (data?.filter_options.labzone_names ?? [])
+      ).filter(lz => !HIDDEN_ZONES.has(lz))
+
+  const labzoneData = (data?.by_labzone ?? []).filter(r => !HIDDEN_ZONES.has(r.labzone_name))
+  const phlebLabzoneData = (data?.by_labzone_phleb ?? []).filter(r => !HIDDEN_ZONES.has(r.labzone_name))
+
   const stageBarData = data?.stage_breakdown
     ? [{
         name: 'Pipeline',
-        'รอเจาะเลือด': data.stage_breakdown.find(s => s.stage === 'รอเจาะเลือด')?.avg_minutes ?? 0,
+        'รอเจาะเลือด':   data.stage_breakdown.find(s => s.stage === 'รอเจาะเลือด')?.avg_minutes   ?? 0,
         'ขนส่งตัวอย่าง': data.stage_breakdown.find(s => s.stage === 'ขนส่งตัวอย่าง')?.avg_minutes ?? 0,
-        'วิเคราะห์ในแลป': data.stage_breakdown.find(s => s.stage === 'วิเคราะห์ในแลป')?.avg_minutes ?? 0,
+        'วิเคราะห์ในแลป':data.stage_breakdown.find(s => s.stage === 'วิเคราะห์ในแลป')?.avg_minutes ?? 0,
       }]
     : []
-
   const totalStageMin = stageBarData[0]
-    ? (stageBarData[0]['รอเจาะเลือด'] + stageBarData[0]['ขนส่งตัวอย่าง'] + stageBarData[0]['วิเคราะห์ในแลป'])
+    ? stageBarData[0]['รอเจาะเลือด'] + stageBarData[0]['ขนส่งตัวอย่าง'] + stageBarData[0]['วิเคราะห์ในแลป']
     : 0
 
-  // Match donut data
   const mb = data?.match_breakdown
   const matchPieData = mb
     ? [
-        { name: 'จับคู่แน่นอน', value: mb.exact },
+        { name: 'จับคู่แน่นอน',   value: mb.exact },
         { name: 'จับคู่ไม่แน่นอน', value: mb.ambiguous },
-        { name: 'ไม่พบคู่', value: mb.no_match },
+        { name: 'ไม่พบคู่',        value: mb.no_match },
       ]
     : []
 
+  const sectionData   = data?.by_lab_section ?? []
+  const sectionMedIdx = Math.floor(sectionData.length / 2)
+  const sectionMedian = [...sectionData.map(s => s.avg_tat)].sort((a, b) => a - b)[sectionMedIdx] ?? 0
+
+  const hasActiveFilter =
+    activeTab === 'phlebotomy' ? !!labzone :
+    activeTab === 'lab'        ? !!(labSection || ward || priority || testName) :
+                                 !!(labSection || priority || labzone)
+
+  const clearFilters = () => {
+    if (activeTab === 'phlebotomy')   { setLabzone('') }
+    else if (activeTab === 'lab')     { setLabSection(''); setWard(''); setPriority(''); setTestName('') }
+    else                              { setLabSection(''); setPriority(''); setLabzone('') }
+  }
+
+  const activeFilterCount = [labSection, ward, priority, testName, labzone].filter(Boolean).length
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <style>{`
+        @keyframes tatFadeIn {
+          from { opacity: 0; transform: translateY(5px); }
+          to   { opacity: 1; transform: translateY(0);   }
+        }
+        .tat-panel { animation: tatFadeIn .22s ease both; }
+        @keyframes tatSkeletonPulse {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: .5; }
+        }
+        .tat-skeleton { animation: tatSkeletonPulse 1.5s ease-in-out infinite; }
+      `}</style>
+
       <PageHeader
         eyebrow="TAT"
         title="Turnaround Time"
@@ -217,57 +444,131 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
         ) : undefined}
       />
 
-      {/* Filter bar */}
-      <Card padding={14}>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select value={year} onChange={e => setYear(Number(e.target.value))} style={selectStyle}>
+      {/* ── Segmented tab control ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'inline-flex', background: 'var(--surface-2)', padding: 3, borderRadius: 28, gap: 2 }}>
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id)}
+              style={{
+                padding: '8px 20px', borderRadius: 24, border: 'none',
+                background: activeTab === tab.id ? 'var(--card)' : 'transparent',
+                color: activeTab === tab.id ? 'var(--primary)' : 'var(--muted)',
+                fontWeight: activeTab === tab.id ? 700 : 500,
+                fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                transition: 'all .2s',
+                boxShadow: activeTab === tab.id ? '0 2px 8px rgba(0,0,0,.10)' : 'none',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <Icon name={tab.icon} size={13} />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Filter bar ── */}
+      <div style={{
+        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+        padding: '11px 14px', background: 'var(--card)',
+        border: '1px solid var(--border)', borderRadius: 12,
+      }}>
+        <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginRight: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <Icon name="filter" size={11} />
+          กรอง
+        </span>
+
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          <select
+            value={year}
+            onChange={e => setYear(Number(e.target.value))}
+            style={{
+              appearance: 'none', WebkitAppearance: 'none',
+              padding: '6px 28px 6px 11px', borderRadius: 8,
+              border: '1px solid var(--border)', fontSize: 12.5,
+              fontFamily: 'inherit', background: 'var(--card)',
+              color: 'var(--ink)', cursor: 'pointer', outline: 'none',
+            }}
+          >
             {yearOptions.map(y => <option key={y} value={y}>{y + 543}</option>)}
           </select>
-          <MonthSelector value={month} onChange={setMonth} />
-          <select value={labSection} onChange={e => setLabSection(e.target.value)} style={selectStyle}>
+          <svg style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} width={11} height={11} viewBox="0 0 12 12">
+            <path d="M2 4l4 4 4-4" stroke="#64748B" strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+
+        <MonthSelector value={month} onChange={setMonth} />
+
+        {activeTab !== 'phlebotomy' && (
+          <FilterSelect value={labSection} onChange={setLabSection}>
             <option value="">แผนก Lab ทั้งหมด</option>
             {(data?.filter_options.lab_sections ?? []).map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select value={ward} onChange={e => setWard(e.target.value)} style={selectStyle}>
+          </FilterSelect>
+        )}
+
+        {activeTab === 'lab' && (
+          <FilterSelect value={ward} onChange={setWard}>
             <option value="">หอผู้ป่วยทั้งหมด</option>
             {(data?.filter_options.wards ?? []).map(w => <option key={w} value={w}>{w}</option>)}
-          </select>
-          <select value={priority} onChange={e => setPriority(e.target.value)} style={selectStyle}>
+          </FilterSelect>
+        )}
+
+        {activeTab !== 'phlebotomy' && (
+          <FilterSelect value={priority} onChange={setPriority}>
             <option value="">ทุกความเร่งด่วน</option>
             <option value="ด่วน">ด่วน</option>
             <option value="ปกติ">ปกติ</option>
-          </select>
-          <select value={testName} onChange={e => setTestName(e.target.value)} style={selectStyle}>
+          </FilterSelect>
+        )}
+
+        {activeTab === 'lab' && (
+          <FilterSelect value={testName} onChange={setTestName}>
             <option value="">ทุกประเภทการตรวจ</option>
             {(data?.filter_options.test_names ?? []).map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          {(data?.filter_options.labzone_names ?? []).length > 0 && (
-            <select value={labzone} onChange={e => setLabzone(e.target.value)} style={selectStyle}>
-              <option value="">หน่วยเจาะเลือดทั้งหมด</option>
-              {(data?.filter_options.labzone_names ?? []).map(lz => <option key={lz} value={lz}>{lz}</option>)}
-            </select>
-          )}
-          {(labSection || ward || priority || testName || labzone) && (
-            <Button variant="ghost" size="sm" onClick={() => { setLabSection(''); setWard(''); setPriority(''); setTestName(''); setLabzone('') }}>
-              ล้าง filter
-            </Button>
-          )}
-        </div>
-      </Card>
+          </FilterSelect>
+        )}
 
+        {activeTab !== 'lab' && labzoneOptions.length > 0 && (
+          <FilterSelect value={labzone} onChange={setLabzone}>
+            <option value="">หน่วยเจาะเลือดทั้งหมด</option>
+            {labzoneOptions.map(lz => <option key={lz} value={lz}>{displayLabzone(lz)}</option>)}
+          </FilterSelect>
+        )}
+
+        {hasActiveFilter && (
+          <button
+            onClick={clearFilters}
+            style={{
+              padding: '5px 11px', borderRadius: 16,
+              border: '1.5px solid var(--danger)',
+              background: 'rgba(220,38,38,.05)', color: 'var(--danger)',
+              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4,
+              transition: 'background .15s',
+            }}
+          >
+            <Icon name="x" size={11} />
+            ล้าง {activeFilterCount > 1 ? `(${activeFilterCount})` : ''}
+          </button>
+        )}
+      </div>
+
+      {/* ── Loading skeleton ── */}
       {loading && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
-          {[0,1,2,3,4,5].map(i => (
-            <Card key={i} padding={18}>
-              <div style={{ height: 12, borderRadius: 4, background: 'var(--surface-2)', width: 80, marginBottom: 10 }} />
-              <div style={{ height: 28, borderRadius: 4, background: 'var(--surface-2)', width: 60 }} />
-            </Card>
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className="tat-skeleton" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 18 }}>
+              <div style={{ height: 10, borderRadius: 4, background: 'var(--surface-2)', width: 90, marginBottom: 14 }} />
+              <div style={{ height: 28, borderRadius: 6, background: 'var(--surface-2)', width: 70 }} />
+            </div>
           ))}
         </div>
       )}
 
       {!loading && isEmpty && (
-        <Card padding={0}>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
           <EmptyState
             icon="clock"
             title="ยังไม่มีข้อมูล TAT สำหรับเดือนนี้"
@@ -280,247 +581,291 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
               </Link>
             </div>
           )}
-        </Card>
+        </div>
       )}
 
       {!loading && !isEmpty && kpi && (
         <>
-          {/* ── Section A: KPI Cards ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
-            <Stat label="TAT เฉลี่ย (ช่วงแลป)" value={`${kpi.avg_tat} นาที`} icon="clock" color="blue" />
-            <Stat label="% ตามเป้าหมาย TAT" value={`${kpi.pct_within_target}%`} icon="chart" color="green" />
-            <Stat label="จำนวนตัวอย่างทั้งหมด" value={kpi.total_count.toLocaleString()} icon="beaker" color="purple" />
-            <Stat
-              label="เวลารอเจาะเฉลี่ย"
-              value={kpi.avg_phleb_wait > 0 ? `${kpi.avg_phleb_wait} นาที` : '—'}
-              icon="syringe"
-              color="amber"
-            />
-            <Stat
-              label="Total TAT เฉลี่ย"
-              value={kpi.avg_total_tat > 0 ? `${kpi.avg_total_tat} นาที` : '—'}
-              icon="trending"
-              color="blue"
-            />
-            <Stat
-              label="Match rate (Phlebotomy)"
-              value={kpi.phleb_match_rate > 0 ? `${kpi.phleb_match_rate}%` : '—'}
-              icon="check"
-              color="blue"
-            />
-          </div>
+          {/* ════════ TAB 1: ภาพรวม ════════ */}
+          {activeTab === 'overview' && (
+            <div key="overview" className="tat-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+                <KpiBigStat
+                  label="Total TAT เฉลี่ย"
+                  value={kpi.avg_total_tat > 0 ? `${kpi.avg_total_tat} นาที` : '—'}
+                  sub={kpi.median_total_tat > 0 ? `มัธยฐาน ${kpi.median_total_tat} นาที` : undefined}
+                  iconBg="rgba(30,95,173,.12)"
+                  icon="clock"
+                />
+                <KpiRingStat
+                  label="% ตามเป้าหมาย TAT (≤120 นาที)"
+                  pct={kpi.pct_total_within_target}
+                  color="#16A34A"
+                />
+                <KpiRingStat
+                  label="% ไม่ผ่านตามเป้าหมาย"
+                  pct={Math.max(0, +(100 - kpi.pct_total_within_target).toFixed(1))}
+                  color="#D97706"
+                />
+              </div>
 
-          {/* ── Phleb join diagnostic warning ── */}
-          {hasPhleb && kpi.phleb_match_rate === 0 && (
-            <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(217,119,6,.08)', border: '1px solid rgba(217,119,6,.3)', fontSize: 13 }}>
-              <div style={{ fontWeight: 600, color: 'var(--warning)', marginBottom: 4 }}>⚠ ไม่พบการจับคู่ข้อมูลการเจาะเลือด</div>
-              {(data?.hn_null_count ?? 0) > 0 && (data?.hn_null_count ?? 0) === kpi.total_count ? (
-                <div style={{ color: 'var(--ink)', lineHeight: 1.6 }}>
-                  ข้อมูล TAT ทั้งหมด ({kpi.total_count.toLocaleString()} แถว) ไม่มีรหัส HN — ไฟล์นี้ถูกอัพโหลดก่อนเปิดใช้งานฟีเจอร์ Phlebotomy
-                  {canEdit && <> กรุณา <Link href="/tat/upload" style={{ color: 'var(--primary)', fontWeight: 600 }}>อัพโหลดไฟล์ Lab TAT</Link> ใหม่อีกครั้งเพื่อให้ระบบบันทึก HN</>}
-                </div>
-              ) : (data?.hn_null_count ?? 0) > 0 ? (
-                <div style={{ color: 'var(--ink)', lineHeight: 1.6 }}>
-                  {(data?.hn_null_count ?? 0).toLocaleString()} จาก {kpi.total_count.toLocaleString()} แถว ไม่มีรหัส HN — อาจต้อง{canEdit && <> <Link href="/tat/upload" style={{ color: 'var(--primary)', fontWeight: 600 }}>อัพโหลดไฟล์ Lab TAT</Link> ใหม่</>}
-                </div>
-              ) : (data?.phleb_record_count ?? 0) === 0 ? (
-                <div style={{ color: 'var(--ink)' }}>
-                  พบข้อมูล upload แต่ไม่มี phlebotomy records ในฐานข้อมูล — ลองอัพโหลดไฟล์เจาะเลือดใหม่อีกครั้ง
+              {hasPhleb ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 12 }}>
+                  <SectionCard title="Pipeline เวลา" subtitle="ลงทะเบียน → เจาะเสร็จ → รับ specimen → รายงานผล" accentColor="var(--primary)">
+                    <PipelineViz stages={data?.stage_breakdown ?? []} total={totalStageMin} />
+                  </SectionCard>
+
+                  <SectionCard title="คุณภาพการจับคู่ข้อมูล" accentColor="#9333EA">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <PieChart width={130} height={130}>
+                        <Pie data={matchPieData} cx={60} cy={60} innerRadius={38} outerRadius={58}
+                          dataKey="value" startAngle={90} endAngle={-270}>
+                          {matchPieData.map(entry => (
+                            <Cell key={entry.name} fill={MATCH_COLORS[entry.name] ?? '#CBD5E1'} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {matchPieData.map(entry => (
+                          <div key={entry.name} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
+                            <div style={{ width: 9, height: 9, borderRadius: 2, background: MATCH_COLORS[entry.name] ?? '#CBD5E1', flexShrink: 0 }} />
+                            <span style={{ color: 'var(--muted)' }}>{entry.name}</span>
+                            <span style={{ fontWeight: 700, color: 'var(--ink)', marginLeft: 'auto' }}>{entry.value.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {(data?.match_breakdown.ambiguous ?? 0) > 0 && (
+                      <div style={{ marginTop: 12, fontSize: 11.5, color: 'var(--warning)', padding: '7px 10px', background: 'rgba(217,119,6,.08)', borderRadius: 7, borderLeft: '3px solid var(--warning)' }}>
+                        จับคู่ไม่แน่นอน {data?.match_breakdown.ambiguous.toLocaleString()} รายการ (ผู้ป่วยมาเจาะหลายครั้ง/วัน)
+                      </div>
+                    )}
+                  </SectionCard>
                 </div>
               ) : (
-                <div style={{ color: 'var(--ink)' }}>
-                  ระบบพบ HN ใน TAT และข้อมูลการเจาะเลือด แต่ไม่พบคู่ที่ตรงกัน — รหัส HN หรือช่วงเวลาอาจไม่ตรงกันระหว่าง 2 ไฟล์
+                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(30,95,173,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', flexShrink: 0 }}>
+                    <Icon name="syringe" size={18} />
+                  </div>
+                  <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+                    ยังไม่มีข้อมูลการเจาะเลือดสำหรับเดือนนี้ — Pipeline จะแสดงเมื่ออัพโหลดไฟล์ Phlebotomy
+                  </span>
+                  {canEdit && (
+                    <Link href="/tat/upload" style={{ marginLeft: 'auto' }}>
+                      <Button variant="secondary" size="sm" icon="upload">อัพโหลดไฟล์ Phlebotomy</Button>
+                    </Link>
+                  )}
                 </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
+                <SectionCard title="Trend รายเดือน" accentColor="var(--primary)">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <ComposedChart data={data?.trend ?? []} margin={{ top: 4, right: 40, bottom: 0, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey={({ year: y, month: m }: TrendRow) => formatTrendLabel(y, m)} tick={{ fontSize: 10.5, fill: 'var(--muted)' }} />
+                      <YAxis yAxisId="left"  tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="นาที" width={50} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="%" width={36} domain={[0, 100]} />
+                      <Tooltip
+                        formatter={(val, name) => name === 'TAT เฉลี่ย' ? [`${val} นาที`, name] : [`${val}%`, name]}
+                        labelFormatter={(label) => String(label)}
+                        contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Line yAxisId="left"  type="monotone" dataKey="avg_tat"          name="TAT เฉลี่ย" stroke="#1E5FAD" strokeWidth={2.5} dot={{ r: 3, fill: '#1E5FAD' }} />
+                      <Line yAxisId="right" type="monotone" dataKey="pct_within_target" name="% ตามเป้า"  stroke="#16A34A" strokeWidth={2.5} dot={{ r: 3, fill: '#16A34A' }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </SectionCard>
+
+                <SectionCard title="การกระจาย TAT" accentColor="var(--warning)">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <ComposedChart data={data?.tat_distribution ?? []} margin={{ top: 4, right: 36, bottom: 0, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey="bin" tick={{ fontSize: 9.5, fill: 'var(--muted)' }} />
+                      <YAxis yAxisId="left"  tick={{ fontSize: 10.5, fill: 'var(--muted)' }} allowDecimals={false} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="%" domain={[0, 100]} width={36} />
+                      <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar  yAxisId="left"  dataKey="count"          name="จำนวน"  fill="var(--primary)" opacity={0.85} radius={[4, 4, 0, 0]} />
+                      <Line yAxisId="right" dataKey="cumulative_pct" name="% สะสม" stroke="#D97706" strokeWidth={2.5} dot={{ r: 3, fill: '#D97706' }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </SectionCard>
+              </div>
+            </div>
+          )}
+
+          {/* ════════ TAB 2: TAT Phlebotomy ════════ */}
+          {activeTab === 'phlebotomy' && (
+            <div key="phlebotomy" className="tat-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {!hasPhleb ? (
+                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                  <EmptyState
+                    icon="syringe"
+                    title="ยังไม่มีข้อมูลการเจาะเลือดสำหรับเดือนนี้"
+                    hint={canEdit ? 'อัพโหลดไฟล์ Phlebotomy เพื่อดูข้อมูล TAT การเจาะเลือด' : undefined}
+                  />
+                  {canEdit && (
+                    <div style={{ textAlign: 'center', paddingBottom: 28 }}>
+                      <Link href="/tat/upload">
+                        <Button variant="primary" icon="upload">อัพโหลดไฟล์ Phlebotomy</Button>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+                    <KpiBigStat
+                      label="จำนวนคนมาเจาะเลือด"
+                      value={(data?.phleb_hn_count ?? 0).toLocaleString()}
+                      sub="HN ไม่ซ้ำ"
+                      iconBg="rgba(30,95,173,.12)"
+                      icon="syringe"
+                    />
+                    <KpiBigStat
+                      label="เวลารอเจาะเลือดเฉลี่ย"
+                      value={kpi.avg_phleb_wait > 0 ? `${kpi.avg_phleb_wait} นาที` : '—'}
+                      iconBg="rgba(217,119,6,.12)"
+                      icon="clock"
+                    />
+                    <KpiRingStat
+                      label="% ตามเป้าหมาย (รอ ≤30 นาที)"
+                      pct={kpi.pct_phleb_within_target}
+                      color="#16A34A"
+                    />
+                    <KpiRingStat
+                      label="% ไม่ผ่านตามเป้าหมาย"
+                      pct={Math.max(0, +(100 - kpi.pct_phleb_within_target).toFixed(1))}
+                      color="#D97706"
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 12 }}>
+                    <SectionCard title="Heatmap เวลาลงทะเบียน/เจาะเลือด" accentColor="var(--primary)">
+                      <TatHeatmap cells={data?.phleb_heatmap ?? []} tooltipLabel="คน" />
+                    </SectionCard>
+
+                    {phlebLabzoneData.length > 0 && (
+                      <SectionCard title="Workload หน่วยเจาะเลือด" accentColor="#9333EA">
+                        <ResponsiveContainer width="100%" height={Math.max(180, phlebLabzoneData.length * 36)}>
+                          <BarChart layout="vertical" data={phlebLabzoneData} margin={{ top: 0, right: 80, bottom: 0, left: 8 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                            <XAxis type="number" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} />
+                            <YAxis
+                              type="category"
+                              dataKey="labzone_name"
+                              tick={{ fontSize: 10.5, fill: 'var(--muted)' }}
+                              width={130}
+                              tickFormatter={displayLabzone}
+                            />
+                            <Tooltip
+                              formatter={(val, name) => [Number(val).toLocaleString(), String(name)]}
+                              labelFormatter={(label) => displayLabzone(String(label))}
+                              contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }}
+                            />
+                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                            <Bar dataKey="count" name="จำนวนคน" fill="var(--primary)" opacity={0.85} radius={[0, 4, 4, 0]}
+                              label={{ position: 'right', fontSize: 11, fill: 'var(--muted)', formatter: (v: unknown) => Number(v).toLocaleString() }}
+                            />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </SectionCard>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           )}
 
-          {/* ── Section B: Pipeline ── */}
-          {hasPhleb ? (
-            <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 12 }}>
-              {/* Stage breakdown stacked bar */}
-              <Card padding={20}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
-                  Pipeline เวลา (นาที)
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
-                  ลงทะเบียน → เจาะเสร็จ → รับ specimen → รายงานผล
-                </div>
-                <ResponsiveContainer width="100%" height={80}>
-                  <BarChart layout="vertical" data={stageBarData} margin={{ top: 0, right: 60, bottom: 0, left: 0 }}>
-                    <XAxis type="number" hide />
-                    <YAxis type="category" dataKey="name" hide />
-                    <Tooltip
-                      formatter={(val, name) => [`${Number(val)} นาที`, String(name)]}
-                      contentStyle={{ fontSize: 12 }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="รอเจาะเลือด" stackId="a" fill="var(--primary)" radius={[4, 0, 0, 4]} />
-                    <Bar dataKey="ขนส่งตัวอย่าง" stackId="a" fill="var(--warning)" />
-                    <Bar dataKey="วิเคราะห์ในแลป" stackId="a" fill="var(--success)" radius={[0, 4, 4, 0]}
-                      label={{
-                        position: 'right',
-                        content: () => `รวม ${Math.round(totalStageMin)} นาที`,
-                        fontSize: 12,
-                        fill: 'var(--ink)',
-                      }}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </Card>
+          {/* ════════ TAB 3: TAT ห้องปฏิบัติการ ════════ */}
+          {activeTab === 'lab' && (
+            <div key="lab" className="tat-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+                <KpiBigStat
+                  label="จำนวนตัวอย่าง (LN)"
+                  value={(kpi.sample_count ?? kpi.total_count).toLocaleString()}
+                  iconBg="rgba(147,51,234,.12)"
+                  icon="beaker"
+                />
+                <KpiBigStat
+                  label="TAT เฉลี่ย (รับ→ผล)"
+                  value={`${kpi.avg_tat} นาที`}
+                  sub={kpi.median_tat > 0 ? `มัธยฐาน ${kpi.median_tat} นาที` : undefined}
+                  iconBg="rgba(30,95,173,.12)"
+                  icon="clock"
+                />
+                <KpiRingStat
+                  label="% ตามเป้าหมาย TAT"
+                  pct={kpi.pct_within_target}
+                  color="#16A34A"
+                />
+                <KpiRingStat
+                  label="% ไม่ผ่านตามเป้าหมาย"
+                  pct={Math.max(0, +(100 - kpi.pct_within_target).toFixed(1))}
+                  color="#DC2626"
+                />
+              </div>
 
-              {/* Match quality donut */}
-              <Card padding={20}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 14 }}>
-                  คุณภาพการจับคู่ข้อมูล
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <PieChart width={130} height={130}>
-                    <Pie
-                      data={matchPieData}
-                      cx={60}
-                      cy={60}
-                      innerRadius={38}
-                      outerRadius={58}
-                      dataKey="value"
-                      startAngle={90}
-                      endAngle={-270}
-                    >
-                      {matchPieData.map(entry => (
-                        <Cell key={entry.name} fill={MATCH_COLORS[entry.name] ?? 'var(--border)'} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {matchPieData.map(entry => (
-                      <div key={entry.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                        <div style={{ width: 10, height: 10, borderRadius: 2, background: MATCH_COLORS[entry.name] ?? 'var(--border)', flexShrink: 0 }} />
-                        <span style={{ color: 'var(--muted)' }}>{entry.name}</span>
-                        <span style={{ fontWeight: 600, color: 'var(--ink)', marginLeft: 'auto' }}>{entry.value.toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {(data?.match_breakdown.ambiguous ?? 0) > 0 && (
-                  <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--warning)', padding: '6px 10px', background: 'rgba(217,119,6,.08)', borderRadius: 6 }}>
-                    ⚠ จับคู่ไม่แน่นอน {data?.match_breakdown.ambiguous.toLocaleString()} รายการ (ผู้ป่วยมาเจาะหลายครั้ง/วัน)
-                  </div>
-                )}
-              </Card>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
+                <SectionCard title="Trend รายเดือน" accentColor="var(--primary)">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <ComposedChart data={data?.trend ?? []} margin={{ top: 4, right: 40, bottom: 0, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey={({ year: y, month: m }: TrendRow) => formatTrendLabel(y, m)} tick={{ fontSize: 10.5, fill: 'var(--muted)' }} />
+                      <YAxis yAxisId="left"  tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="นาที" width={50} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="%" width={36} domain={[0, 100]} />
+                      <Tooltip
+                        formatter={(val, name) => name === 'TAT เฉลี่ย' ? [`${val} นาที`, name] : [`${val}%`, name]}
+                        labelFormatter={(label) => String(label)}
+                        contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Line yAxisId="left"  type="monotone" dataKey="avg_tat"           name="TAT เฉลี่ย" stroke="#1E5FAD" strokeWidth={2.5} dot={{ r: 3, fill: '#1E5FAD' }} />
+                      <Line yAxisId="right" type="monotone" dataKey="pct_within_target"  name="% ตามเป้า"  stroke="#16A34A" strokeWidth={2.5} dot={{ r: 3, fill: '#16A34A' }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </SectionCard>
+
+                <SectionCard title="TAT เฉลี่ยต่อแผนก" subtitle="แดง = เกินมัธยฐาน" accentColor="var(--danger)">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart layout="vertical" data={sectionData} margin={{ top: 0, right: 20, bottom: 0, left: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                      <XAxis type="number" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="นาที" />
+                      <YAxis type="category" dataKey="lab_section" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} width={80} />
+                      <Tooltip formatter={(val) => [`${val} นาที`, 'TAT เฉลี่ย']} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }} />
+                      <Bar dataKey="avg_tat" name="TAT เฉลี่ย" radius={[0, 4, 4, 0]}>
+                        {sectionData.map((entry, i) => (
+                          <Cell key={i} fill={entry.avg_tat > sectionMedian ? '#DC2626' : '#1E5FAD'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </SectionCard>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 12 }}>
+                <SectionCard title="การกระจาย TAT" accentColor="var(--warning)">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <ComposedChart data={data?.tat_distribution ?? []} margin={{ top: 4, right: 36, bottom: 0, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey="bin" tick={{ fontSize: 9.5, fill: 'var(--muted)' }} />
+                      <YAxis yAxisId="left"  tick={{ fontSize: 10.5, fill: 'var(--muted)' }} allowDecimals={false} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="%" domain={[0, 100]} width={36} />
+                      <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar  yAxisId="left"  dataKey="count"          name="จำนวน"  fill="var(--primary)" opacity={0.85} radius={[4, 4, 0, 0]} />
+                      <Line yAxisId="right" dataKey="cumulative_pct" name="% สะสม" stroke="#D97706" strokeWidth={2.5} dot={{ r: 3, fill: '#D97706' }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </SectionCard>
+
+                <SectionCard title="Heatmap เวลารับตัวอย่าง" accentColor="var(--primary)">
+                  <TatHeatmap cells={data?.heatmap ?? []} />
+                </SectionCard>
+              </div>
             </div>
-          ) : (
-            <Card padding={20}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: 'var(--muted)', fontSize: 13 }}>
-                <Icon name="syringe" size={20} />
-                <span>ยังไม่มีข้อมูลการเจาะเลือดสำหรับเดือนนี้</span>
-                {canEdit && (
-                  <Link href="/tat/upload" style={{ marginLeft: 'auto' }}>
-                    <Button variant="secondary" size="sm" icon="upload">อัพโหลดไฟล์ Phlebotomy</Button>
-                  </Link>
-                )}
-              </div>
-            </Card>
-          )}
-
-          {/* ── Section C: Charts ── */}
-
-          {/* Trend + Dept */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
-            <Card padding={20}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 14 }}>Trend รายเดือน</div>
-              <ResponsiveContainer width="100%" height={220}>
-                <ComposedChart data={data?.trend ?? []} margin={{ top: 4, right: 40, bottom: 0, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis
-                    dataKey={({ year: y, month: m }: TrendRow) => formatTrendLabel(y, m)}
-                    tick={{ fontSize: 10.5, fill: 'var(--muted)' }}
-                  />
-                  <YAxis yAxisId="left" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="นาที" width={50} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="%" width={36} domain={[0, 100]} />
-                  <Tooltip
-                    formatter={(val, name) =>
-                      name === 'TAT เฉลี่ย' ? [`${val} นาที`, name] : [`${val}%`, name]
-                    }
-                    labelFormatter={(label) => String(label)}
-                    contentStyle={{ fontSize: 12 }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line yAxisId="left" type="monotone" dataKey="avg_tat" name="TAT เฉลี่ย" stroke="var(--primary)" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line yAxisId="right" type="monotone" dataKey="pct_within_target" name="% ตามเป้า" stroke="var(--success)" strokeWidth={2} dot={{ r: 3 }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </Card>
-
-            <Card padding={20}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 14 }}>TAT เฉลี่ยต่อแผนก</div>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart layout="vertical" data={sectionData} margin={{ top: 0, right: 20, bottom: 0, left: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="นาที" />
-                  <YAxis type="category" dataKey="lab_section" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} width={80} />
-                  <Tooltip formatter={(val) => [`${val} นาที`, 'TAT เฉลี่ย']} contentStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="avg_tat" name="TAT เฉลี่ย" radius={[0, 4, 4, 0]} fill="var(--primary)">
-                    {sectionData.map((entry, i) => (
-                      <rect key={i} fill={entry.avg_tat > sectionMedian ? 'var(--danger)' : 'var(--primary)'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
-          </div>
-
-          {/* Distribution + Heatmap */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 12 }}>
-            <Card padding={20}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 14 }}>การกระจาย TAT</div>
-              <ResponsiveContainer width="100%" height={220}>
-                <ComposedChart data={data?.tat_distribution ?? []} margin={{ top: 4, right: 36, bottom: 0, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="bin" tick={{ fontSize: 9.5, fill: 'var(--muted)' }} />
-                  <YAxis yAxisId="left" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} allowDecimals={false} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="%" domain={[0, 100]} width={36} />
-                  <Tooltip contentStyle={{ fontSize: 12 }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar yAxisId="left" dataKey="count" name="จำนวน" fill="var(--primary)" opacity={0.85} radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="cumulative_pct" name="% สะสม" stroke="var(--warning)" strokeWidth={2} dot={{ r: 3 }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </Card>
-
-            <Card padding={20}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 14 }}>
-                Heatmap เวลารับตัวอย่าง
-              </div>
-              <TatHeatmap cells={data?.heatmap ?? []} />
-            </Card>
-          </div>
-
-          {/* Labzone workload (only when phleb data exists) */}
-          {hasPhleb && (data?.by_labzone ?? []).length > 0 && (
-            <Card padding={20}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 14 }}>
-                Workload หน่วยเจาะเลือด
-              </div>
-              <ResponsiveContainer width="100%" height={Math.max(180, (data?.by_labzone ?? []).length * 36)}>
-                <BarChart layout="vertical" data={data?.by_labzone ?? []} margin={{ top: 0, right: 80, bottom: 0, left: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} />
-                  <YAxis type="category" dataKey="labzone_name" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} width={120} />
-                  <Tooltip
-                    formatter={(val, name) =>
-                      name === 'จำนวนตัวอย่าง'
-                        ? [Number(val).toLocaleString(), String(name)]
-                        : [`${Number(val)} นาที`, String(name)]
-                    }
-                    contentStyle={{ fontSize: 12 }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="count" name="จำนวนตัวอย่าง" fill="var(--primary)" opacity={0.85} radius={[0, 4, 4, 0]}
-                    label={{ position: 'right', fontSize: 11, fill: 'var(--muted)', formatter: (v: unknown) => Number(v).toLocaleString() }}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
           )}
         </>
       )}
