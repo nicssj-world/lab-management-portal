@@ -3,7 +3,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
@@ -62,7 +61,21 @@ function detectYearMonthFromRegister(rows: { register_at: string }[]): { year: n
   return { year: y, month: m }
 }
 
-// ───────────────────────── Upload panel (reusable) ─────────────────────────
+// ── Progress Bar ──────────────────────────────────────────────────────────
+
+function ProgressBar({ pct, color = 'var(--primary)' }: { pct: number; color?: string }) {
+  return (
+    <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-2)', overflow: 'hidden', position: 'relative' }}>
+      <div style={{
+        position: 'absolute', inset: '0 auto 0 0',
+        width: `${pct}%`, background: color,
+        borderRadius: 3, transition: 'width .2s',
+      }} />
+    </div>
+  )
+}
+
+// ── Upload Panel ──────────────────────────────────────────────────────────
 
 interface UploadPanelProps {
   workerSrc: string
@@ -191,21 +204,26 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
     if (file) handleFile(file)
   }
 
+  const isActive = phase !== 'idle'
+
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Drop zone */}
       <div
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
-        onClick={() => phase === 'idle' && fileInputRef.current?.click()}
+        onClick={() => !isActive && fileInputRef.current?.click()}
         style={{
-          border: `2px dashed ${dragOver ? 'var(--primary)' : 'var(--border)'}`,
-          borderRadius: 12,
-          padding: 40,
+          border: `2px dashed ${dragOver ? 'var(--primary)' : isActive ? 'var(--border)' : 'var(--border)'}`,
+          borderRadius: 14,
+          padding: '36px 24px',
           textAlign: 'center',
-          background: dragOver ? 'var(--primary-soft)' : 'var(--bg)',
-          cursor: phase === 'idle' ? 'pointer' : 'default',
-          transition: 'all .15s',
+          background: dragOver ? 'rgba(30,95,173,.05)' : 'var(--bg)',
+          cursor: isActive ? 'default' : 'pointer',
+          transition: 'all .2s',
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
         <input
@@ -215,74 +233,136 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
           style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }}
         />
-        <div style={{ color: 'var(--primary)', marginBottom: 10 }}>
-          <Icon name="upload" size={36} />
+
+        {/* Upload icon with ring */}
+        <div style={{
+          width: 56, height: 56, borderRadius: '50%',
+          background: dragOver ? 'rgba(30,95,173,.15)' : 'rgba(30,95,173,.08)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          margin: '0 auto 14px',
+          transition: 'all .2s',
+          color: 'var(--primary)',
+          border: dragOver ? '2px solid var(--primary)' : '2px solid rgba(30,95,173,.2)',
+        }}>
+          <Icon name="upload" size={24} />
         </div>
-        <div style={{ fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
-          {phase === 'idle' ? `ลากไฟล์ ${fileLabel} มาวาง หรือคลิกเพื่อเลือกไฟล์` : 'กำลังประมวลผล...'}
+
+        <div style={{ fontWeight: 600, color: 'var(--ink)', fontSize: 14, marginBottom: 6 }}>
+          {isActive ? 'กำลังประมวลผล...' : `ลากไฟล์ ${fileLabel} มาวาง`}
         </div>
-        <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>รองรับไฟล์ .txt และ .tsv (UTF-16LE จาก HIS/LIS)</div>
+        {!isActive && (
+          <>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
+              หรือ{' '}
+              <span style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2 }}>
+                คลิกเพื่อเลือกไฟล์
+              </span>
+            </div>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '5px 12px', borderRadius: 20,
+              background: 'var(--surface-2)', fontSize: 11.5, color: 'var(--muted)',
+            }}>
+              <Icon name="doc" size={12} />
+              รองรับ .txt และ .tsv (UTF-16LE จาก HIS/LIS)
+            </div>
+          </>
+        )}
       </div>
 
+      {/* Parsing progress */}
       {phase === 'parsing' && (
-        <div style={{ marginTop: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-            <span style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>กำลัง parse ข้อมูล...</span>
-            <span style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>{parseProgress}%</span>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(30,95,173,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+                <Icon name="doc" size={14} />
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>กำลัง parse ข้อมูล...</span>
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>{parseProgress}%</span>
           </div>
-          <div style={{ height: 8, borderRadius: 4, background: 'var(--surface-2)', overflow: 'hidden', position: 'relative' }}>
-            <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${parseProgress}%`, background: 'var(--primary)', borderRadius: 4, transition: 'width .2s' }} />
-          </div>
-          <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <ProgressBar pct={parseProgress} />
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
             <Button variant="secondary" size="sm" onClick={handleCancel}>ยกเลิก</Button>
           </div>
         </div>
       )}
 
+      {/* Uploading progress */}
       {phase === 'uploading' && detected && (
-        <div style={{ marginTop: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-            <span style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>
-              บันทึกเดือน <strong>{getThaiMonthLabel(detected.month)} {detected.year + 543}</strong>
-              {' '}— {stats?.total.toLocaleString()} แถว  •  chunk {chunkStatus.current}/{chunkStatus.total}
-            </span>
-            <span style={{ fontSize: 13, color: 'var(--success)', fontWeight: 600 }}>{uploadProgress}%</span>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(22,163,74,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)' }}>
+                <Icon name="upload" size={14} />
+              </div>
+              <div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
+                  บันทึกเดือน {getThaiMonthLabel(detected.month)} {detected.year + 543}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 8 }}>
+                  {stats?.total.toLocaleString()} แถว • chunk {chunkStatus.current}/{chunkStatus.total}
+                </span>
+              </div>
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)' }}>{uploadProgress}%</span>
           </div>
-          <div style={{ height: 8, borderRadius: 4, background: 'var(--surface-2)', overflow: 'hidden', position: 'relative' }}>
-            <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${uploadProgress}%`, background: 'var(--success)', borderRadius: 4, transition: 'width .2s' }} />
-          </div>
-          <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <ProgressBar pct={uploadProgress} color="var(--success)" />
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
             <Button variant="secondary" size="sm" onClick={handleCancel}>ยกเลิก</Button>
           </div>
         </div>
       )}
 
+      {/* Success */}
       {phase === 'done' && stats && detected && (
-        <div style={{ marginTop: 20, padding: 16, borderRadius: 10, background: 'var(--surface-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontWeight: 600, color: 'var(--success)', marginBottom: 4 }}>✓ อัพโหลดสำเร็จ</div>
-            <div style={{ fontSize: 13, color: 'var(--ink)' }}>
-              เดือน <strong>{getThaiMonthLabel(detected.month)} {detected.year + 543}</strong>
-              {'  •  '}บันทึก <strong>{(stats.total - stats.invalid - stats.skipped).toLocaleString()}</strong> แถว
-              {'  •  '}ไม่ถูกต้อง <strong>{stats.invalid}</strong> แถว
-              {stats.skipped > 0 && <>{'  •  '}ข้ามซ้ำ <strong>{stats.skipped.toLocaleString()}</strong> แถว</>}
+        <div style={{
+          padding: '14px 18px', borderRadius: 12,
+          background: 'rgba(22,163,74,.07)', border: '1px solid rgba(22,163,74,.25)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(22,163,74,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)', flexShrink: 0 }}>
+              <Icon name="check" size={16} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 600, color: 'var(--success)', fontSize: 13 }}>อัพโหลดสำเร็จ</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                {getThaiMonthLabel(detected.month)} {detected.year + 543}
+                {' · '}บันทึก <strong style={{ color: 'var(--ink)' }}>{(stats.total - stats.invalid - stats.skipped).toLocaleString()}</strong> แถว
+                {' · '}ไม่ถูกต้อง <strong style={{ color: 'var(--ink)' }}>{stats.invalid}</strong> แถว
+                {stats.skipped > 0 && <>{' · '}ข้ามซ้ำ <strong style={{ color: 'var(--ink)' }}>{stats.skipped.toLocaleString()}</strong> แถว</>}
+              </div>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={() => { setPhase('idle'); setDetected(null) }}>อัพโหลดเพิ่ม</Button>
         </div>
       )}
 
+      {/* Error */}
       {phase === 'error' && (
-        <div style={{ marginTop: 20, padding: 14, borderRadius: 10, background: '#FEF2F2', border: '1px solid #FECACA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 13, color: 'var(--danger)' }}>⚠ {errorMsg || 'เกิดข้อผิดพลาด'}</div>
+        <div style={{
+          padding: '14px 18px', borderRadius: 12,
+          background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.2)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(220,38,38,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)', flexShrink: 0 }}>
+              <Icon name="alert" size={16} />
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--danger)', fontWeight: 500 }}>
+              {errorMsg || 'เกิดข้อผิดพลาด กรุณาลองใหม่'}
+            </div>
+          </div>
           <Button variant="ghost" size="sm" onClick={() => setPhase('idle')}>ลองใหม่</Button>
         </div>
       )}
-    </>
+    </div>
   )
 }
 
-// ───────────────────────── Main client component ─────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────
 
 export function TatUploadClient() {
   const [activeTab, setActiveTab] = useState<TabType>('lab')
@@ -355,85 +435,125 @@ export function TatUploadClient() {
     }
   }
 
-  const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding: '5px 16px', borderRadius: 20, border: '1px solid var(--border)',
-    background: active ? 'var(--primary)' : 'transparent',
-    color: active ? '#fff' : 'var(--ink)',
-    fontWeight: 600, fontSize: 12.5,
-    cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
-  })
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Toast */}
+      {/* Toasts */}
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {toasts.map(t => (
           <div key={t.id} style={{
             padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 500,
             background: t.ok ? 'var(--success)' : 'var(--danger)', color: '#fff',
-            boxShadow: '0 4px 16px rgba(0,0,0,.2)', maxWidth: 320,
+            boxShadow: '0 4px 20px rgba(0,0,0,.2)', maxWidth: 320,
+            display: 'flex', alignItems: 'center', gap: 8,
           }}>
+            <Icon name={t.ok ? 'check' : 'alert'} size={14} />
             {t.msg}
           </div>
         ))}
       </div>
 
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Link href="/tat"><Button variant="ghost" size="sm" icon="arrowLeft">กลับ</Button></Link>
-        <PageHeader eyebrow="TAT" title="อัพโหลดข้อมูล" subtitle="นำเข้าไฟล์จาก HIS/LIS (UTF-16LE TSV) — ระบบ detect ปี/เดือนจากไฟล์อัตโนมัติ" marginBottom={0} />
+        <PageHeader
+          eyebrow="TAT"
+          title="อัพโหลดข้อมูล"
+          subtitle="นำเข้าไฟล์จาก HIS/LIS (UTF-16LE TSV) — ระบบ detect ปี/เดือนจากไฟล์อัตโนมัติ"
+          marginBottom={0}
+        />
       </div>
 
       {/* Tab selector */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button style={tabStyle(activeTab === 'lab')} onClick={() => setActiveTab('lab')}>
-          ไฟล์ผลตรวจ Lab (TAT)
-        </button>
-        <button style={tabStyle(activeTab === 'phleb')} onClick={() => setActiveTab('phleb')}>
-          ไฟล์การเจาะเลือด (Phlebotomy)
-        </button>
+      <div style={{ display: 'inline-flex', background: 'var(--surface-2)', padding: 3, borderRadius: 28, gap: 2, alignSelf: 'flex-start' }}>
+        {([
+          { id: 'lab' as TabType,  label: 'ไฟล์ผลตรวจ Lab (TAT)', icon: 'beaker'  },
+          { id: 'phleb' as TabType, label: 'ไฟล์การเจาะเลือด',      icon: 'syringe' },
+        ]).map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              padding: '8px 20px', borderRadius: 24, border: 'none',
+              background: activeTab === tab.id ? 'var(--card)' : 'transparent',
+              color: activeTab === tab.id ? 'var(--primary)' : 'var(--muted)',
+              fontWeight: activeTab === tab.id ? 700 : 500,
+              fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+              transition: 'all .2s',
+              boxShadow: activeTab === tab.id ? '0 2px 8px rgba(0,0,0,.10)' : 'none',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            <Icon name={tab.icon} size={13} />
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <Card padding={24}>
-        {activeTab === 'lab' && (
-          <UploadPanel
-            workerSrc="/workers/tat-parser.worker.js"
-            initUrl="/api/admin/tat/upload/init"
-            chunkUrl="/api/admin/tat/upload/chunk"
-            detectYearMonth={(rows) => detectYearMonthFromSpcm(rows as { spcm_at: string }[])}
-            fileLabel="ผลตรวจ Lab"
-            onDone={(ym, joined) => handleDone(ym, joined, 'lab')}
-          />
-        )}
+      {/* Upload card */}
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
         {activeTab === 'phleb' && (
-          <>
-            <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'var(--surface-2)', fontSize: 12.5, color: 'var(--muted)' }}>
+          <div style={{
+            padding: '11px 18px', borderBottom: '1px solid var(--border)',
+            background: 'rgba(217,119,6,.04)',
+            display: 'flex', alignItems: 'flex-start', gap: 8,
+            borderLeft: '3px solid var(--warning)',
+          }}>
+            <span style={{ color: 'var(--warning)', marginTop: 1 }}><Icon name="alert" size={14} /></span>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.6 }}>
               <strong style={{ color: 'var(--ink)' }}>หมายเหตุ:</strong>
               {' '}เดือนที่ต้องการข้อมูล Phlebotomy ต้อง re-upload ไฟล์ผลตรวจ Lab (TAT) ด้วย
               เพื่อให้ column hn ถูกบันทึก — ไฟล์ที่อัพโหลดก่อนหน้าจะ join ไม่ได้
             </div>
+          </div>
+        )}
+        <div style={{ padding: 24 }}>
+          {activeTab === 'lab' && (
             <UploadPanel
-              workerSrc="/workers/phleb-parser.worker.js"
+              workerSrc="/workers/tat-parser.worker.js"
+              initUrl="/api/admin/tat/upload/init"
+              chunkUrl="/api/admin/tat/upload/chunk"
+              detectYearMonth={(rows) => detectYearMonthFromSpcm(rows as { spcm_at: string }[])}
+              fileLabel="ผลตรวจ Lab"
+              onDone={(ym, joined) => handleDone(ym, joined, 'lab')}
+            />
+          )}
+          {activeTab === 'phleb' && (
+            <UploadPanel
+              workerSrc="/workers/phleb-parser.worker.js?v=3"
               initUrl="/api/admin/phleb/upload/init"
               chunkUrl="/api/admin/phleb/upload/chunk"
               detectYearMonth={(rows) => detectYearMonthFromRegister(rows as { register_at: string }[])}
               fileLabel="การเจาะเลือด"
               onDone={(ym, joined) => handleDone(ym, joined, 'phleb')}
             />
-          </>
-        )}
-      </Card>
-
-      {/* Combined upload history */}
-      <Card padding={0}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>
-          ประวัติการอัพโหลด
+          )}
         </div>
+      </div>
+
+      {/* Upload history */}
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{
+          padding: '13px 20px', borderBottom: '1px solid var(--border)',
+          borderLeft: '3px solid var(--primary)',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <Icon name="clock" size={14} />
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>ประวัติการอัพโหลด</span>
+          {uploads.length > 0 && (
+            <span style={{
+              marginLeft: 4, fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+              background: 'var(--surface-2)', padding: '2px 7px', borderRadius: 10,
+            }}>
+              {uploads.length}
+            </span>
+          )}
+        </div>
+
         {uploads.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
             ยังไม่มีข้อมูลที่อัพโหลด
           </div>
         ) : (() => {
-          // Find months that have both lab and phleb uploads (can trigger rejoin)
           const monthTypes = new Map<string, Set<TabType>>()
           for (const u of uploads) {
             const key = `${u.year}-${u.month}`
@@ -450,7 +570,12 @@ export function TatUploadClient() {
               <thead>
                 <tr style={{ background: 'var(--surface-2)' }}>
                   {['ประเภท', 'เดือน', 'ไฟล์', 'จำนวนแถว', 'อัพโหลดโดย', 'วันที่', ''].map((h, i) => (
-                    <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', letterSpacing: '.04em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>
+                    <th key={i} style={{
+                      padding: '10px 16px', textAlign: 'left',
+                      fontSize: 10.5, fontWeight: 700, color: 'var(--muted)',
+                      letterSpacing: '.05em', textTransform: 'uppercase',
+                      borderBottom: '1px solid var(--border)',
+                    }}>
                       {h}
                     </th>
                   ))}
@@ -510,7 +635,7 @@ export function TatUploadClient() {
             </table>
           )
         })()}
-      </Card>
+      </div>
     </div>
   )
 }

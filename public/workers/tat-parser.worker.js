@@ -48,6 +48,7 @@ function parseRow(cols) {
   const spcmDate = new Date(spcm)
   return {
     hn: normalizeHn(cols[3]?.trim() || ''),
+    ln: cols[5]?.trim() || '',
     spcm_at: spcm,
     rslt_at: rslt,
     tat_minutes: Math.round(tat * 10) / 10,

@@ -69,6 +69,7 @@ async function getActor() {
 
 interface RawRow {
   hn: string
+  ln: string
   spcm_at: string
   rslt_at: string
   tat_minutes: number
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
         year: upload.year,
         month: upload.month,
         hn: row.hn || null,
+        ln: row.ln || null,
         spcm_at: row.spcm_at,
         rslt_at: row.rslt_at,
         tat_minutes: row.tat_minutes,
@@ -142,14 +144,15 @@ export async function POST(req: NextRequest) {
     if (!seenKeys.has(key)) { seenKeys.add(key); deduped.push(r) }
   }
 
-  // Dedup against earlier chunks of this upload
+  // Dedup against ALL records for this year/month (covers multiple uploads of the same month)
   const spcmAts = [...new Set(deduped.map(r => r.spcm_at))]
   let toInsert = deduped
   if (spcmAts.length > 0) {
     const { data: existing } = await supabaseAdmin
       .from('tat_records')
       .select('spcm_at, test_name, lab_section')
-      .eq('upload_id', upload_id)
+      .eq('year', upload.year)
+      .eq('month', upload.month)
       .in('spcm_at', spcmAts)
     const existingKeys = new Set((existing ?? []).map(r => `${r.spcm_at}|${r.test_name}|${r.lab_section}`))
     toInsert = deduped.filter(r => !existingKeys.has(`${r.spcm_at}|${r.test_name}|${r.lab_section}`))
@@ -170,10 +173,12 @@ export async function POST(req: NextRequest) {
   let joined = false
 
   if (is_last_chunk) {
+    // Count total across ALL uploads for this month (append mode)
     const { count } = await supabaseAdmin
       .from('tat_records')
       .select('id', { count: 'exact', head: true })
-      .eq('upload_id', upload_id)
+      .eq('year', upload.year)
+      .eq('month', upload.month)
     await supabaseAdmin
       .from('tat_uploads')
       .update({ row_count: count ?? 0 })
