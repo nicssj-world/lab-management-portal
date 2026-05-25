@@ -11,8 +11,8 @@ create or replace function get_phleb_kpi(
     'avg_phleb_wait',          coalesce(round(avg(wait_minutes)::numeric, 1), 0),
     'pct_phleb_within_target', coalesce(round(
       100.0 * count(*) filter (where wait_minutes <= 30)::numeric /
-      nullif(count(*), 0)
-    , 1), 0)
+      nullif(count(*) filter (where wait_minutes is not null), 0)
+    , 2), 0)
   )
   from phlebotomy_records
   where year  = p_year

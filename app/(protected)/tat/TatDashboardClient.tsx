@@ -20,8 +20,12 @@ interface KpiData {
   pct_within_target: number
   total_count: number
   sample_count: number
+  blood_sample_count?: number
+  target_count?: number
+  target_coverage_pct?: number
   busiest_hour: string
   avg_phleb_wait: number
+  pipeline_avg_phleb_wait?: number
   avg_transport: number
   avg_total_tat: number
   median_total_tat: number
@@ -59,6 +63,16 @@ interface SummaryData {
 
 const DOW_LABELS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 const HIDDEN_ZONES = new Set(['ช่อง 21', 'ช่อง 2', 'ช่อง 5', 'ช่อง 7', 'ช่อง 3', 'ช่อง 8', 'ช่อง 9'])
+const CAR_BED_LABZONE = 'ช่องรถนั่ง-นอน'
+const CAR_BED_SOURCE_ZONES = ['ช่อง 10', 'ช่อง 11']
+const PHLEB_ALLOWED_LABZONES = [
+  'ห้องปฏิบัติการ ชั้น G',
+  'ห้องปฏิบัติการ เมือง',
+  'ห้องปฏิบัติการ นอกรพ.Central',
+  'ห้องปฏิบัติการ สูติ-นรีเวชกรรม',
+  'ห้องเจาะเลือด ชั้น 3',
+  CAR_BED_LABZONE,
+]
 const LABZONE_DISPLAY: Record<string, string> = {}
 const MATCH_COLORS: Record<string, string> = {
   'จับคู่แน่นอน': '#16A34A',
@@ -67,6 +81,31 @@ const MATCH_COLORS: Record<string, string> = {
 }
 
 function displayLabzone(name: string) { return LABZONE_DISPLAY[name] ?? name }
+function toPhlebLabzoneOptions(names: string[]) {
+  const sourceSet = new Set(names)
+  return PHLEB_ALLOWED_LABZONES.filter(name =>
+    name === CAR_BED_LABZONE
+      ? CAR_BED_SOURCE_ZONES.some(z => sourceSet.has(z))
+      : sourceSet.has(name)
+  )
+}
+
+function aggregatePhlebLabzones(rows: LabzonePhleb[]) {
+  const counts = new Map<string, number>()
+
+  for (const row of rows) {
+    const key = CAR_BED_SOURCE_ZONES.includes(row.labzone_name)
+      ? CAR_BED_LABZONE
+      : row.labzone_name
+    counts.set(key, (counts.get(key) ?? 0) + row.count)
+  }
+
+  return PHLEB_ALLOWED_LABZONES
+    .map(labzone_name => ({ labzone_name, count: counts.get(labzone_name) ?? 0 }))
+    .filter(row => row.count > 0)
+    .sort((a, b) => b.count - a.count)
+}
+
 function formatTrendLabel(year: number, month: number) {
   return `${getThaiMonthLabel(month)} ${String(year + 543).slice(2)}`
 }
@@ -189,7 +228,7 @@ function PipelineViz({ stages, total }: { stages: StageRow[]; total: number }) {
       </div>
       {total > 0 && (
         <div style={{ marginTop: 10, padding: '9px 14px', borderRadius: 8, background: 'rgba(30,95,173,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>Total TAT รวมทุก stage</span>
+          <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>Total TAT เฉลี่ยต่อ LN</span>
           <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--primary)' }}>{Math.round(total)} นาที</span>
         </div>
       )}
@@ -351,7 +390,10 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
       const src = activeTab === 'phlebotomy'
         ? (data.filter_options.phleb_labzone_names ?? [])
         : (data.filter_options.labzone_names ?? [])
-      setAllLabzones(src.filter(lz => !HIDDEN_ZONES.has(lz)))
+      setAllLabzones(activeTab === 'phlebotomy'
+        ? toPhlebLabzoneOptions(src)
+        : src.filter(lz => !HIDDEN_ZONES.has(lz))
+      )
     }
   }, [data, labzone, activeTab])
 
@@ -365,19 +407,19 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
 
   const kpi     = data?.kpi
   const isEmpty = !loading && (kpi?.total_count ?? 0) === 0
-  const hasPhleb = !loading && !isEmpty && (data?.has_phleb_data ?? false)
+  const hasPhleb = !loading && (data?.has_phleb_data ?? false)
+  const canShowPhlebOnly = activeTab === 'phlebotomy' && hasPhleb
   const thisYear = new Date().getFullYear()
   const yearOptions = [thisYear, thisYear - 1, thisYear - 2]
 
   const labzoneOptions = allLabzones.length > 0
     ? allLabzones
-    : (activeTab === 'phlebotomy'
-        ? (data?.filter_options.phleb_labzone_names ?? [])
-        : (data?.filter_options.labzone_names ?? [])
-      ).filter(lz => !HIDDEN_ZONES.has(lz))
+    : activeTab === 'phlebotomy'
+      ? toPhlebLabzoneOptions(data?.filter_options.phleb_labzone_names ?? [])
+      : (data?.filter_options.labzone_names ?? []).filter(lz => !HIDDEN_ZONES.has(lz))
 
   const labzoneData = (data?.by_labzone ?? []).filter(r => !HIDDEN_ZONES.has(r.labzone_name))
-  const phlebLabzoneData = (data?.by_labzone_phleb ?? []).filter(r => !HIDDEN_ZONES.has(r.labzone_name))
+  const phlebLabzoneData = aggregatePhlebLabzones(data?.by_labzone_phleb ?? [])
 
   const stageBarData = data?.stage_breakdown
     ? [{
@@ -392,6 +434,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
     : 0
 
   const mb = data?.match_breakdown
+  const matchedBloodSamples = mb ? mb.exact + mb.ambiguous : 0
   const matchPieData = mb
     ? [
         { name: 'จับคู่แน่นอน',   value: mb.exact },
@@ -567,7 +610,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
         </div>
       )}
 
-      {!loading && isEmpty && (
+      {!loading && isEmpty && !canShowPhlebOnly && (
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
           <EmptyState
             icon="clock"
@@ -584,7 +627,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
         </div>
       )}
 
-      {!loading && !isEmpty && kpi && (
+      {!loading && (!isEmpty || canShowPhlebOnly) && kpi && (
         <>
           {/* ════════ TAB 1: ภาพรวม ════════ */}
           {activeTab === 'overview' && (
@@ -593,12 +636,15 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                 <KpiBigStat
                   label="Total TAT เฉลี่ย"
                   value={kpi.avg_total_tat > 0 ? `${kpi.avg_total_tat} นาที` : '—'}
-                  sub={kpi.median_total_tat > 0 ? `มัธยฐาน ${kpi.median_total_tat} นาที` : undefined}
+                  sub={kpi.median_total_tat > 0
+                    ? `LN เจาะเลือดที่จับคู่ได้ ${matchedBloodSamples.toLocaleString()} • มัธยฐาน ${kpi.median_total_tat} นาที`
+                    : `LN เจาะเลือด ${(kpi.blood_sample_count ?? matchedBloodSamples).toLocaleString()}`
+                  }
                   iconBg="rgba(30,95,173,.12)"
                   icon="clock"
                 />
                 <KpiRingStat
-                  label="% ตามเป้าหมาย TAT (≤120 นาที)"
+                  label="% Total TAT ≤120 นาที"
                   pct={kpi.pct_total_within_target}
                   color="#16A34A"
                 />
@@ -615,7 +661,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                     <PipelineViz stages={data?.stage_breakdown ?? []} total={totalStageMin} />
                   </SectionCard>
 
-                  <SectionCard title="คุณภาพการจับคู่ข้อมูล" accentColor="#9333EA">
+                  <SectionCard title="คุณภาพการจับคู่ข้อมูล" subtitle="ระดับ LN เฉพาะตัวอย่างเจาะเลือด" accentColor="#9333EA">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                       <PieChart width={130} height={130}>
                         <Pie data={matchPieData} cx={60} cy={60} innerRadius={38} outerRadius={58}
@@ -637,7 +683,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                     </div>
                     {(data?.match_breakdown.ambiguous ?? 0) > 0 && (
                       <div style={{ marginTop: 12, fontSize: 11.5, color: 'var(--warning)', padding: '7px 10px', background: 'rgba(217,119,6,.08)', borderRadius: 7, borderLeft: '3px solid var(--warning)' }}>
-                        จับคู่ไม่แน่นอน {data?.match_breakdown.ambiguous.toLocaleString()} รายการ (ผู้ป่วยมาเจาะหลายครั้ง/วัน)
+                        จับคู่ไม่แน่นอน {data?.match_breakdown.ambiguous.toLocaleString()} LN (ผู้ป่วยมาเจาะหลายครั้ง/วัน)
                       </div>
                     )}
                   </SectionCard>
@@ -737,7 +783,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                     />
                     <KpiRingStat
                       label="% ไม่ผ่านตามเป้าหมาย"
-                      pct={Math.max(0, +(100 - kpi.pct_phleb_within_target).toFixed(1))}
+                      pct={Math.max(0, +(100 - kpi.pct_phleb_within_target).toFixed(2))}
                       color="#D97706"
                     />
                   </div>
@@ -749,14 +795,14 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
 
                     {phlebLabzoneData.length > 0 && (
                       <SectionCard title="Workload หน่วยเจาะเลือด" accentColor="#9333EA">
-                        <ResponsiveContainer width="100%" height={Math.max(180, phlebLabzoneData.length * 36)}>
+                        <ResponsiveContainer width="100%" height={Math.max(180, phlebLabzoneData.length * 75)}>
                           <BarChart layout="vertical" data={phlebLabzoneData} margin={{ top: 0, right: 80, bottom: 0, left: 8 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                            <XAxis type="number" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} />
+                            <XAxis type="number" tick={{ fontSize: 12, fill: 'var(--muted)' }} />
                             <YAxis
                               type="category"
                               dataKey="labzone_name"
-                              tick={{ fontSize: 10.5, fill: 'var(--muted)' }}
+                              tick={{ fontSize: 11, fill: 'var(--muted)' }}
                               width={130}
                               tickFormatter={displayLabzone}
                             />
@@ -797,7 +843,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                   icon="clock"
                 />
                 <KpiRingStat
-                  label="% ตามเป้าหมาย TAT"
+                  label={`% ตามเป้าหมายราย test (${(kpi.target_count ?? 0).toLocaleString()} มี target)`}
                   pct={kpi.pct_within_target}
                   color="#16A34A"
                 />

@@ -1,14 +1,38 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
+const EXTRACT_MAX_BYTES = 20 * 1024 * 1024
+
+function fileTooLargeResponse() {
+  return NextResponse.json(
+    { error: 'ดึงข้อมูลจากไฟล์รองรับไฟล์ไม่เกิน 20 MB กรุณาลดขนาดไฟล์หรือกรอกข้อมูลเอง' },
+    { status: 413 },
+  )
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const form = await req.formData()
+  const contentLength = Number(req.headers.get('content-length') ?? 0)
+  if (contentLength > EXTRACT_MAX_BYTES) return fileTooLargeResponse()
+
+  let form: FormData
+  try {
+    form = await req.formData()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    const status = /large|size|body|payload/i.test(msg) ? 413 : 400
+    return NextResponse.json(
+      { error: status === 413 ? 'ไฟล์ใหญ่เกินขนาดที่ระบบอ่านอัตโนมัติได้ กรุณาลดขนาดไฟล์หรือกรอกข้อมูลเอง' : `ไม่สามารถอ่านข้อมูลไฟล์ได้: ${msg}` },
+      { status },
+    )
+  }
+
   const file = form.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
+  if (file.size > EXTRACT_MAX_BYTES) return fileTooLargeResponse()
 
   const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
   const buffer = Buffer.from(await file.arrayBuffer())

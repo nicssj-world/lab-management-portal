@@ -28,11 +28,17 @@ create table if not exists phlebotomy_records (
 );
 
 create index if not exists idx_phleb_records_hn_date on phlebotomy_records (hn, phleb_date);
+create index if not exists idx_phleb_records_hn_done_at on phlebotomy_records (hn, phleb_done_at);
 create index if not exists idx_phleb_records_year_month on phlebotomy_records (year, month);
+create index if not exists idx_phleb_records_year_month_labzone on phlebotomy_records (year, month, labzone_name);
+create index if not exists idx_phleb_records_year_month_wait on phlebotomy_records (year, month, wait_minutes);
+create index if not exists idx_phleb_records_year_month_labzone_wait on phlebotomy_records (year, month, labzone_name, wait_minutes);
+create index if not exists idx_phleb_records_year_month_register_at on phlebotomy_records (year, month, register_at);
 create index if not exists idx_phleb_records_upload_id on phlebotomy_records (upload_id);
 
 -- ===== ขยาย tat_records เดิม =====
 alter table tat_records add column if not exists hn text;
+alter table tat_records add column if not exists ln text;
 alter table tat_records add column if not exists is_blood_draw bool;
 alter table tat_records add column if not exists register_at timestamptz;
 alter table tat_records add column if not exists phleb_done_at timestamptz;
@@ -41,9 +47,15 @@ alter table tat_records add column if not exists transport_minutes numeric;
 alter table tat_records add column if not exists total_tat_minutes numeric;
 alter table tat_records add column if not exists labzone_name text;
 alter table tat_records add column if not exists phlebotomist text;
-alter table tat_records add column if not exists match_confidence text;  -- exact|ambiguous|no_match
+alter table tat_records add column if not exists match_confidence text default 'no_match';  -- exact|ambiguous|no_match
+alter table tat_records alter column match_confidence set default 'no_match';
 
 create index if not exists idx_tat_records_hn on tat_records (hn);
+create index if not exists idx_tat_records_year_month_ln on tat_records (year, month, ln);
+create index if not exists idx_tat_records_year_month_blood_ln on tat_records (year, month, is_blood_draw, ln);
+create index if not exists idx_tat_records_year_month_labzone on tat_records (year, month, labzone_name);
+create index if not exists idx_tat_records_year_month_blood_match_ln on tat_records (year, month, is_blood_draw, match_confidence, ln);
+create index if not exists idx_tat_records_year_month_labzone_blood on tat_records (year, month, labzone_name, is_blood_draw);
 
 -- RLS for new tables (read = authenticated, write = via service role only)
 alter table phleb_uploads enable row level security;

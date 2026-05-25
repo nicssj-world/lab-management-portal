@@ -33,8 +33,5 @@ export async function DELETE(
   const { error } = await supabaseAdmin.from('tat_uploads').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Reset phleb join fields (rejoin with no TAT data clears everything)
-  await supabaseAdmin.rpc('rejoin_tat', { p_year: upload.year, p_month: upload.month })
-
   return NextResponse.json({ ok: true })
 }

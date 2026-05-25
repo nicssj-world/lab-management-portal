@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { rejoinTatBatch } from '@/lib/tat/rejoin-batch'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getActor() {
@@ -34,7 +35,7 @@ export async function DELETE(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Reset phleb fields in tat_records for this month
-  await supabaseAdmin.rpc('rejoin_tat', { p_year: upload.year, p_month: upload.month })
+  await rejoinTatBatch(upload.year, upload.month, true)
 
   return NextResponse.json({ ok: true })
 }

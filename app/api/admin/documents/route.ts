@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { DocumentSchema } from '@/lib/validations/document'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
-import { PutObjectCommand } from '@aws-sdk/client-s3'
+import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getActor() {
@@ -17,6 +17,11 @@ async function getActor() {
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
+}
+
+function isDuplicateDocumentCodeError(err: { code?: string; message?: string }) {
+  return err.code === '23505'
+    || (err.message ?? '').includes('documents_document_code_key')
 }
 
 const DOC_UPLOAD_ROLES = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer']
@@ -94,6 +99,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.errors[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
     }
     const meta = parsed.data
+    const documentCode = meta.document_code.toUpperCase()
+
+    const { data: existingDoc, error: existingErr } = await supabaseAdmin
+      .from('documents')
+      .select('id, title, revision, deleted_at')
+      .eq('document_code', documentCode)
+      .maybeSingle()
+
+    if (existingErr) {
+      return NextResponse.json({ error: existingErr.message }, { status: 500 })
+    }
+
+    if (existingDoc) {
+      const deletedHint = existingDoc.deleted_at
+        ? 'เอกสารรหัสนี้เคยถูกลบไว้แล้ว กรุณากู้คืน/ลบถาวรก่อน หรือใช้รหัสเอกสารอื่น'
+        : 'รหัสเอกสารนี้มีอยู่ในระบบแล้ว หากต้องการอัปโหลดฉบับแก้ไข ให้เปิดเอกสารเดิมแล้วเพิ่ม Revision แทน'
+
+      return NextResponse.json({
+        error: `${deletedHint} (${documentCode}, Rev. ${existingDoc.revision})`,
+        documentId: existingDoc.id,
+      }, { status: 409 })
+    }
 
     const year = new Date().getFullYear()
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
@@ -111,6 +138,7 @@ export async function POST(req: NextRequest) {
       .from('documents')
       .insert({
         ...meta,
+        document_code: documentCode,
         owner_id:  actor.id,
         file_url:  r2Key,
         file_name: file.name,
@@ -122,8 +150,13 @@ export async function POST(req: NextRequest) {
 
     if (dbErr) {
       // Best-effort cleanup on DB error
-      r2.send(new (await import('@aws-sdk/client-s3')).DeleteObjectCommand({ Bucket: R2_BUCKET, Key: r2Key }))
+      r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: r2Key }))
         .catch(() => {})
+      if (isDuplicateDocumentCodeError(dbErr)) {
+        return NextResponse.json({
+          error: `รหัสเอกสารนี้มีอยู่ในระบบแล้ว (${documentCode}) หากต้องการอัปโหลดฉบับแก้ไข ให้เปิดเอกสารเดิมแล้วเพิ่ม Revision แทน`,
+        }, { status: 409 })
+      }
       return NextResponse.json({ error: dbErr.message }, { status: 500 })
     }
 
