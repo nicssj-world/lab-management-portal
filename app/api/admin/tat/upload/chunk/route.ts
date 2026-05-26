@@ -108,6 +108,7 @@ async function getActor() {
 interface RawRow {
   hn: string
   ln: string
+  register_at: string | null
   spcm_at: string
   rslt_at: string
   tat_minutes: number
@@ -160,6 +161,7 @@ export async function POST(req: NextRequest) {
         month: upload.month,
         hn: row.hn || null,
         ln: row.ln || null,
+        register_at: row.register_at || null,
         spcm_at: row.spcm_at,
         rslt_at: row.rslt_at,
         tat_minutes: row.tat_minutes,

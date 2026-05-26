@@ -98,7 +98,7 @@ function CatalogContent() {
           sortDir={sortDir}
           onSort={handleSort}
           onPageChange={handlePageChange}
-          getHref={(t) => `/catalog/${t.code}`}
+          getHref={(t) => `/catalog/${t.id}`}
           nameSortKey="display_name_alpha"
           headerFontSize={11.5}
         />

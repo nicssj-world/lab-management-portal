@@ -6,7 +6,7 @@ create index if not exists idx_tat_records_summary_filters
 
 create index if not exists idx_tat_records_summary_blood_samples
   on tat_records (year, month, is_blood_draw, ln, match_confidence)
-  include (register_at, phleb_done_at, spcm_at, rslt_at, tat_minutes, phleb_wait_minutes);
+  include (register_at, queue_confirmed_at, phleb_done_at, spcm_at, rslt_at, tat_minutes, phleb_wait_minutes, phleb_draw_minutes);
 
 create index if not exists idx_tat_records_summary_heatmap
   on tat_records (year, month, spcm_dow, spcm_hour)

@@ -42,11 +42,13 @@ create or replace function get_tat_summary(
     select
       coalesce(nullif(ln, ''), id::text) as sample_key,
       min(register_at) filter (where register_at is not null)       as register_at,
+      min(queue_confirmed_at) filter (where queue_confirmed_at is not null) as queue_confirmed_at,
       min(phleb_done_at) filter (where phleb_done_at is not null)   as phleb_done_at,
       min(spcm_at) filter (where spcm_at is not null)               as spcm_at,
       max(rslt_at) filter (where rslt_at is not null)               as rslt_at,
       max(tat_minutes) filter (where tat_minutes is not null)       as lab_tat_minutes,
       min(phleb_wait_minutes) filter (where phleb_wait_minutes is not null) as phleb_wait_minutes,
+      min(phleb_draw_minutes) filter (where phleb_draw_minutes is not null) as phleb_draw_minutes,
       case
         when bool_or(match_confidence = 'exact')     then 'exact'
         when bool_or(match_confidence = 'ambiguous') then 'ambiguous'
@@ -63,6 +65,10 @@ create or replace function get_tat_summary(
         then extract(epoch from (spcm_at - phleb_done_at)) / 60.0
         else null
       end as transport_minutes_sample,
+      case when register_at is not null and queue_confirmed_at is not null
+        then extract(epoch from (queue_confirmed_at - register_at)) / 60.0
+        else null
+      end as prequeue_wait_minutes_sample,
       case when register_at is not null and rslt_at is not null
         then extract(epoch from (rslt_at - register_at)) / 60.0
         else null
@@ -106,6 +112,9 @@ create or replace function get_tat_summary(
       coalesce(round(avg(phleb_wait_minutes) filter (
         where sample_match <> 'no_match' and phleb_wait_minutes is not null
       )::numeric, 1), 0)                                                           as pipeline_avg_phleb_wait,
+      coalesce(round(avg(phleb_draw_minutes) filter (
+        where sample_match <> 'no_match' and phleb_draw_minutes is not null
+      )::numeric, 1), 0)                                                           as pipeline_avg_phleb_draw,
       coalesce(round(avg(transport_minutes_sample) filter (
         where sample_match <> 'no_match' and transport_minutes_sample is not null
       )::numeric, 1), 0)                                                           as avg_transport,
@@ -318,6 +327,7 @@ create or replace function get_tat_summary(
                                   || ':00',
       'avg_phleb_wait',           pc.avg_phleb_wait,
       'pipeline_avg_phleb_wait',  bc.pipeline_avg_phleb_wait,
+      'pipeline_avg_phleb_draw',  bc.pipeline_avg_phleb_draw,
       'avg_transport',            bc.avg_transport,
       'avg_total_tat',            bc.avg_total_tat,
       'median_total_tat',         bc.median_total_tat,
@@ -336,6 +346,7 @@ create or replace function get_tat_summary(
     ),
     'stage_breakdown', jsonb_build_array(
       jsonb_build_object('stage', 'รอเจาะเลือด',   'avg_minutes', bc.pipeline_avg_phleb_wait),
+      jsonb_build_object('stage', 'เจาะเลือด',     'avg_minutes', bc.pipeline_avg_phleb_draw),
       jsonb_build_object('stage', 'ขนส่งตัวอย่าง', 'avg_minutes', bc.avg_transport),
       jsonb_build_object('stage', 'วิเคราะห์ในแลป','avg_minutes', bc.avg_lab_stage)
     ),

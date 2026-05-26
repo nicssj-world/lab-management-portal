@@ -11,9 +11,10 @@ begin
 
   -- 1. Reset phleb fields for the month (idempotent)
   update tat_records set
-    register_at        = null,
+    queue_confirmed_at = null,
     phleb_done_at      = null,
     phleb_wait_minutes = null,
+    phleb_draw_minutes = null,
     transport_minutes  = null,
     total_tat_minutes  = null,
     labzone_name       = null,
@@ -23,7 +24,7 @@ begin
 
   -- 2. Pre-load phlebotomy slice into temp table + index on (hn, phleb_done_at)
   create temp table _phleb on commit drop as
-    select hn, register_at, phleb_done_at, wait_minutes, labzone_name, phlebotomist, phleb_date
+    select hn, register_at, queue_confirmed_at, phleb_done_at, wait_minutes, draw_minutes, labzone_name, phlebotomist, phleb_date
     from phlebotomy_records
     where year = p_year and month = p_month;
 
@@ -43,19 +44,22 @@ begin
   with nearest as (
     select
       t.id              as tat_id,
+      t.register_at     as tat_register_at,
       t.spcm_at,
       t.rslt_at,
       t.is_blood_draw,
       p.register_at,
+      coalesce(p.queue_confirmed_at, p.register_at) as queue_confirmed_at,
       p.phleb_done_at,
       p.wait_minutes,
+      p.draw_minutes,
       p.labzone_name,
       p.phlebotomist,
       p.phleb_date,
       coalesce(d.n, 1)  as dup_n
     from tat_records t
     cross join lateral (
-      select register_at, phleb_done_at, wait_minutes, labzone_name, phlebotomist, phleb_date
+      select register_at, queue_confirmed_at, phleb_done_at, wait_minutes, draw_minutes, labzone_name, phlebotomist, phleb_date
       from _phleb
       where hn = t.hn
         and phleb_done_at <= t.spcm_at + interval '120 minutes'
@@ -69,14 +73,18 @@ begin
       and t.hn is not null and t.hn <> ''
   )
   update tat_records t set
-    register_at        = n.register_at,
+    register_at        = n.tat_register_at,
+    queue_confirmed_at = n.queue_confirmed_at,
     phleb_done_at      = n.phleb_done_at,
     transport_minutes  = extract(epoch from (n.spcm_at - n.phleb_done_at)) / 60.0,
     labzone_name       = n.labzone_name,
     phlebotomist       = n.phlebotomist,
-    phleb_wait_minutes = case when t.is_blood_draw then n.wait_minutes else null end,
+    phleb_wait_minutes = case when t.is_blood_draw and n.tat_register_at is not null and n.queue_confirmed_at is not null
+                              then extract(epoch from (n.queue_confirmed_at - n.tat_register_at)) / 60.0
+                              else null end,
+    phleb_draw_minutes = case when t.is_blood_draw then coalesce(n.draw_minutes, n.wait_minutes) else null end,
     total_tat_minutes  = case when t.is_blood_draw
-                              then extract(epoch from (n.rslt_at - n.register_at)) / 60.0
+                              then extract(epoch from (n.rslt_at - n.tat_register_at)) / 60.0
                               else null end,
     match_confidence   = case when n.dup_n > 1 then 'ambiguous' else 'exact' end
   from nearest n
