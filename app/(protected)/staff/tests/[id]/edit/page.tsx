@@ -15,6 +15,7 @@ export default function EditTestPage() {
   const { id } = useParams() as { id: string }
   const [categories, setCategories] = useState<Category[]>([])
   const [detail, setDetail] = useState<TestDetail | null>(null)
+  const [existingTests, setExistingTests] = useState<{ id: number; code: string; th: string; category_id: string | null }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -24,6 +25,15 @@ export default function EditTestPage() {
         getCategories(supabase, false),
         fetch(`/api/admin/tests/${id}`),
       ])
+      fetch('/api/admin/tests?pageSize=10000&sortBy=code')
+        .then((r) => r.ok ? r.json() : { data: [] })
+        .then((j) => setExistingTests(Array.isArray(j.data) ? j.data.map((t: { id: number; code: string; th: string; category_id: string | null }) => ({
+          id: t.id,
+          code: t.code,
+          th: t.th,
+          category_id: t.category_id,
+        })) : []))
+        .catch(() => setExistingTests([]))
       setCategories(cats)
       const json: TestDetail = await res.json()
       setDetail(json)
@@ -101,6 +111,7 @@ export default function EditTestPage() {
         testId={Number(id)}
         initial={formData}
         initialRanges={rangesData}
+        existingTests={existingTests}
       />
     </div>
   )

@@ -28,7 +28,7 @@ const DOC_UPLOAD_ROLES = ['Laboratory Director', 'Quality Manager', 'Document Co
 
 async function canUploadDocument(role: string, docRole: string | null) {
   if (role === 'Admin') return true
-  if (docRole && DOC_UPLOAD_ROLES.includes(docRole)) return true
+  if (DOC_UPLOAD_ROLES.includes(docRole ?? role)) return true
   const perms = await getRolePermissions(role)
   return (perms['เอกสารคุณภาพ'] ?? 'none') === 'edit'
 }

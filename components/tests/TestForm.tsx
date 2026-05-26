@@ -16,7 +16,7 @@ interface Props {
   initial?: Partial<TestFormData>
   initialRanges?: ReferenceRangeRow[]
   testId?: number
-  existingCodes?: string[]
+  existingTests?: { id?: number; code?: string | null; th?: string | null; category_id?: string | null }[]
 }
 
 const EMPTY: TestFormData = {
@@ -95,7 +95,7 @@ function Field({ label, required, error, children }: {
   )
 }
 
-export function TestForm({ categories, initial, initialRanges, testId, existingCodes = [] }: Props) {
+export function TestForm({ categories, initial, initialRanges, testId, existingTests = [] }: Props) {
   const router = useRouter()
   const [form, setForm] = useState<TestFormData>(() => {
     const merged: Record<string, unknown> = { ...EMPTY }
@@ -152,11 +152,17 @@ export function TestForm({ categories, initial, initialRanges, testId, existingC
   }, [])
 
   const isEdit = testId != null
-  const originalCode = initial?.code ?? ''
-  const duplicateCode = form.code?.trim()
-    && normCode(form.code) !== normCode(originalCode)
-    && existingCodes.some(code => normCode(code) === normCode(form.code))
-  const duplicateCodeMsg = duplicateCode ? `รหัสรายการตรวจ "${form.code.trim()}" มีอยู่แล้ว` : ''
+  const duplicateInCategory = existingTests.find(test =>
+    test.id !== testId
+    && (test.category_id ?? '') === (form.category_id ?? '')
+    && (
+      (!!form.code?.trim() && normCode(test.code) === normCode(form.code))
+      || (!!form.th?.trim() && normCode(test.th) === normCode(form.th))
+    )
+  )
+  const duplicateCodeMsg = duplicateInCategory
+    ? `รหัสหรือชื่อรายการตรวจนี้มีอยู่แล้วในหมวดหมู่เดียวกัน`
+    : ''
 
   function set<K extends keyof TestFormData>(key: K, value: TestFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))

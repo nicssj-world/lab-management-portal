@@ -13,6 +13,7 @@ interface Props {
   categories: Category[]
   loading: boolean
   canEdit: boolean
+  canDelete?: boolean
   page: number
   pageSize: number
   total: number
@@ -81,6 +82,7 @@ function navBtnStyle(disabled: boolean): React.CSSProperties {
 
 export function TestTable({
   tests, categories, loading, canEdit,
+  canDelete = canEdit,
   page, pageSize, total,
   sortBy = 'code', sortDir = 'asc',
   onSort, onPageChange, onDelete, onBulkDelete, getHref,
@@ -98,7 +100,7 @@ export function TestTable({
   const allIds = tests.map(t => t.id)
   const allSelected = allIds.length > 0 && allIds.every(id => selected.has(id))
   const someSelected = selected.size > 0
-  const colCount = 8 + (canEdit ? 2 : 0)
+  const colCount = 8 + (canDelete ? 1 : 0) + (canEdit ? 1 : 0)
 
   function toggleAll() {
     setSelected(allSelected ? new Set() : new Set(allIds))
@@ -144,7 +146,7 @@ export function TestTable({
         }
       `}</style>
       {/* ── Bulk action bar ── */}
-      {canEdit && someSelected && (
+      {canDelete && someSelected && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '10px 16px', marginBottom: 8, borderRadius: 10,
@@ -188,7 +190,7 @@ export function TestTable({
         <table style={{ width: '100%', minWidth: 1080, borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
-              {canEdit && (
+              {canDelete && (
                 <th style={{ ...TH, width: 44, paddingRight: 6, paddingLeft: 14 }}>
                   <input
                     type="checkbox"
@@ -264,7 +266,7 @@ export function TestTable({
                         }
                       }}
                     >
-                      {canEdit && (
+                      {canDelete && (
                         <td style={{ ...TD, width: 44, paddingRight: 6, paddingLeft: 14 }} onClick={e => e.stopPropagation()}>
                           <input
                             type="checkbox"
@@ -374,20 +376,22 @@ export function TestTable({
                             >
                               <Icon name="edit" size={13} />
                             </Link>
-                            <button
-                              onClick={() => onDelete?.(t.id)}
-                              style={{
-                                width: 30, height: 30, borderRadius: 7,
-                                border: '1px solid var(--border)', background: 'transparent',
-                                cursor: 'pointer', color: 'var(--muted)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                padding: 0, transition: 'all .12s',
-                              }}
-                              onMouseEnter={e => { e.currentTarget.style.borderColor = '#FCA5A5'; e.currentTarget.style.color = 'var(--danger)' }}
-                              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}
-                            >
-                              <Icon name="trash" size={13} />
-                            </button>
+                            {canDelete && (
+                              <button
+                                onClick={() => onDelete?.(t.id)}
+                                style={{
+                                  width: 30, height: 30, borderRadius: 7,
+                                  border: '1px solid var(--border)', background: 'transparent',
+                                  cursor: 'pointer', color: 'var(--muted)',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  padding: 0, transition: 'all .12s',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.borderColor = '#FCA5A5'; e.currentTarget.style.color = 'var(--danger)' }}
+                                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}
+                              >
+                                <Icon name="trash" size={13} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       )}

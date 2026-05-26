@@ -11,15 +11,20 @@ import type { Category } from '@/lib/supabase/types'
 
 export default function NewTestPage() {
   const [categories, setCategories] = useState<Category[]>([])
-  const [existingCodes, setExistingCodes] = useState<string[]>([])
+  const [existingTests, setExistingTests] = useState<{ id: number; code: string; th: string; category_id: string | null }[]>([])
 
   useEffect(() => {
     const supabase = createClient()
     getCategories(supabase, false).then(setCategories)
     fetch('/api/admin/tests?pageSize=10000&sortBy=code')
       .then((r) => r.ok ? r.json() : { data: [] })
-      .then((j) => setExistingCodes(Array.isArray(j.data) ? j.data.map((t: { code?: string }) => t.code).filter(Boolean) : []))
-      .catch(() => setExistingCodes([]))
+      .then((j) => setExistingTests(Array.isArray(j.data) ? j.data.map((t: { id: number; code: string; th: string; category_id: string | null }) => ({
+        id: t.id,
+        code: t.code,
+        th: t.th,
+        category_id: t.category_id,
+      })) : []))
+      .catch(() => setExistingTests([]))
   }, [])
 
   return (
@@ -30,7 +35,7 @@ export default function NewTestPage() {
         <span style={{ color: 'var(--ink)' }}>เพิ่มรายการตรวจใหม่</span>
       </div>
       <PageHeader eyebrow="รายการตรวจ" title="เพิ่มรายการตรวจใหม่" />
-      <TestForm categories={categories} existingCodes={existingCodes} />
+      <TestForm categories={categories} existingTests={existingTests} />
     </div>
   )
 }

@@ -14,6 +14,7 @@ export interface ImportRow {
   en?: string
   loinc?: string
   category?: string
+  category_id?: string
   price?: number
   tat_minutes?: string
   tube?: string
@@ -133,7 +134,7 @@ function parseRows(data: unknown[][], categories: Category[]): ImportRow[] {
     // Resolve category name → id (stored for API use)
     if (obj.category) {
       const catId = catByName[obj.category.toLowerCase()]
-      if (catId) (obj as unknown as Record<string, unknown>).category_id = catId
+      if (catId) obj.category_id = catId
     }
 
     return obj

@@ -3,14 +3,16 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { testSchema, referenceRangeSchema } from '@/lib/validations/test-schema'
 import { getTests, createTest, upsertReferenceRanges } from '@/lib/queries/tests'
+import { getRolePermissions } from '@/lib/permissions'
+import { canEditTests } from '@/lib/tests/permissions'
 import { z } from 'zod'
 
 async function getActor() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const { data } = await supabaseAdmin.from('profiles').select('id, role').eq('id', user.id).single()
-  return data as { id: string; role: string } | null
+  const { data } = await supabaseAdmin.from('profiles').select('id, role, doc_role').eq('id', user.id).single()
+  return data as { id: string; role: string; doc_role: string | null } | null
 }
 
 function toMsg(err: unknown): string {
@@ -19,6 +21,10 @@ function toMsg(err: unknown): string {
     return String(e.message ?? e.error ?? JSON.stringify(err))
   }
   return String(err)
+}
+
+function norm(v: string | null | undefined) {
+  return (v ?? '').trim().toLowerCase()
 }
 
 export async function GET(req: NextRequest) {
@@ -46,8 +52,8 @@ export async function POST(req: NextRequest) {
   try {
     const actor = await getActor()
     if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const canEdit = ['Admin', 'Manager'].includes(actor.role ?? '')
-    if (!canEdit) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const perms = await getRolePermissions(actor.role)
+    if (!canEditTests(actor, perms['รายการตรวจ'] ?? 'none')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const body = await req.json()
     const { referenceRanges: rawRanges, ...rest } = body
@@ -56,15 +62,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 422 })
 
     const code = parsed.data.code.trim()
+    const name = parsed.data.th.trim()
+    const categoryId = parsed.data.category_id
     const { data: existing, error: dupErr } = await supabaseAdmin
       .from('tests')
-      .select('id, code')
-      .ilike('code', code)
+      .select('id, code, th, category_id')
+      .eq('category_id', categoryId)
 
     if (dupErr) return NextResponse.json({ error: dupErr.message }, { status: 500 })
-    const duplicate = (existing ?? []).some((t: { code: string }) => t.code.trim().toLowerCase() === code.toLowerCase())
+    const duplicate = (existing ?? []).some((t: { code: string; th: string; category_id: string | null }) =>
+      t.category_id === categoryId && (norm(t.code) === norm(code) || norm(t.th) === norm(name))
+    )
     if (duplicate) {
-      return NextResponse.json({ error: 'รหัสรายการตรวจนี้มีอยู่แล้ว' }, { status: 409 })
+      return NextResponse.json({ error: 'รหัสหรือชื่อรายการตรวจนี้มีอยู่แล้วในหมวดหมู่เดียวกัน' }, { status: 409 })
     }
 
     const test = await createTest(supabaseAdmin, { ...parsed.data, code } as Record<string, unknown>, actor.id)

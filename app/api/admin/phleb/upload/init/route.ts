@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { invalidateAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -28,6 +29,8 @@ export async function POST(req: NextRequest) {
   const parsed = bodySchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues }, { status: 422 })
   const { year, month, file_name } = parsed.data
+
+  await invalidateAnalysisCache(year, month)
 
   const { data: existing } = await supabaseAdmin
     .from('phleb_uploads')

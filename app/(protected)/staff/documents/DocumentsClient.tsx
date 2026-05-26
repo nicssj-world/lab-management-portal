@@ -1119,12 +1119,13 @@ interface Props { userRole?: string; docRole?: string; userName?: string }
 
 export function DocumentsClient({ userRole, docRole, userName }: Props) {
   const isAdmin = userRole === 'Admin'
+  const workflowRole = docRole ?? userRole
   const canUpload = isAdmin
     ? true
-    : ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(docRole ?? '')
+    : ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(workflowRole ?? '')
   const canDelete = isAdmin
     ? true
-    : ['Laboratory Director', 'Document Controller'].includes(docRole ?? '')
+    : ['Laboratory Director', 'Document Controller'].includes(workflowRole ?? '')
   const canRead   = true
 
   const { toasts, add: toast } = useToast()
