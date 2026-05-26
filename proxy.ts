@@ -2,12 +2,19 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
+  const path = request.nextUrl.pathname
+
   if (process.env.MAINTENANCE_MODE === '1') {
     const url = request.nextUrl.clone()
     if (url.pathname !== '/maintenance') {
       url.pathname = '/maintenance'
       return NextResponse.rewrite(url)
     }
+    return NextResponse.next()
+  }
+
+  const isProtected = /^\/(staff|kpi|lab-workload|tat)(?:\/|$)/.test(path)
+  if (!isProtected) {
     return NextResponse.next()
   }
 
@@ -29,10 +36,7 @@ export async function proxy(request: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession()
 
-  const path = request.nextUrl.pathname
-  const isProtected = /^\/(staff|kpi|lab-workload|tat)/.test(path)
-
-  if (isProtected && !session) {
+  if (!session) {
     if (/\/api\//.test(path)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

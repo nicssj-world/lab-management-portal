@@ -9,6 +9,12 @@ const SUMMARY_CACHE_TTL_MS = 2 * 60 * 1000
 type SummaryPayload = Record<string, unknown> & {
   kpi?: Record<string, unknown>
 }
+type SummaryData = SummaryPayload & {
+  by_labzone_phleb?: Array<{ count?: number }>
+  has_phleb_data?: boolean
+  phleb_record_count?: number
+  phleb_hn_count?: number
+}
 
 const summaryCache = new Map<string, { expiresAt: number; payload: SummaryPayload }>()
 
@@ -61,65 +67,7 @@ export async function GET(req: NextRequest) {
 
   const isCarBedFilter = requestedLabzone === CAR_BED_LABZONE
 
-  let phlebUploadQuery = supabaseAdmin
-    .from('phleb_uploads')
-    .select('id', { count: 'exact', head: true })
-    .eq('year', year)
-    .eq('month', month)
-
-  let phlebRecordQuery = supabaseAdmin
-    .from('phlebotomy_records')
-    .select('id', { count: 'exact', head: true })
-    .eq('year', year)
-    .eq('month', month)
-  if (isCarBedFilter) phlebRecordQuery = phlebRecordQuery.in('labzone_name', CAR_BED_SOURCE_ZONES)
-
-  const labzone = requestedLabzone
-
-  const phlebKpiPromise = isCarBedFilter
-    ? Promise.resolve({ data: null, error: null })
-    : supabaseAdmin.rpc('get_phleb_kpi', {
-        p_year:    year,
-        p_month:   month,
-        p_labzone: labzone,
-      })
-
-  let phlebWaitBaseQuery = supabaseAdmin
-    .from('phlebotomy_records')
-    .select('id', { count: 'exact', head: true })
-    .eq('year', year)
-    .eq('month', month)
-    .not('wait_minutes', 'is', null)
-  if (isCarBedFilter) phlebWaitBaseQuery = phlebWaitBaseQuery.in('labzone_name', CAR_BED_SOURCE_ZONES)
-  else if (labzone) phlebWaitBaseQuery = phlebWaitBaseQuery.eq('labzone_name', labzone)
-
-  let phlebWithinQuery = supabaseAdmin
-    .from('phlebotomy_records')
-    .select('id', { count: 'exact', head: true })
-    .eq('year', year)
-    .eq('month', month)
-    .not('wait_minutes', 'is', null)
-    .lte('wait_minutes', 30)
-  if (isCarBedFilter) phlebWithinQuery = phlebWithinQuery.in('labzone_name', CAR_BED_SOURCE_ZONES)
-  else if (labzone) phlebWithinQuery = phlebWithinQuery.eq('labzone_name', labzone)
-  const [
-    { count: phlebCount },
-    { count: phlebRecordCount },
-    { data: phlebKpi },
-    { count: phlebWaitCount },
-    { count: phlebWithinCount },
-  ] = await Promise.all([
-    phlebUploadQuery,
-    phlebRecordQuery,
-    phlebKpiPromise,
-    phlebWaitBaseQuery,
-    phlebWithinQuery,
-  ])
-
-  const pctPhlebWithinTarget = phlebWaitCount
-    ? Number((((phlebWithinCount ?? 0) * 100) / phlebWaitCount).toFixed(2))
-    : 0
-  const responseData = data as { kpi?: Record<string, unknown> }
+  const responseData = data as SummaryData
 
   if (isCarBedFilter) {
     const { data: phlebRows, error: phlebRowsError } = await supabaseAdmin
@@ -139,6 +87,9 @@ export async function GET(req: NextRequest) {
     const avgWait = waits.length
       ? Number((waits.reduce((sum, value) => sum + value, 0) / waits.length).toFixed(1))
       : 0
+    const pctPhlebWithinTarget = waits.length
+      ? Number(((waits.filter(value => value <= 30).length * 100) / waits.length).toFixed(2))
+      : 0
     const heat = new Map<string, number>()
     for (const row of rows) {
       if (!row.register_at) continue
@@ -156,7 +107,7 @@ export async function GET(req: NextRequest) {
             pct_phleb_within_target: pctPhlebWithinTarget,
           }
         : responseData.kpi,
-      has_phleb_data:     (phlebCount ?? 0) > 0,
+      has_phleb_data:     rows.length > 0,
       phleb_record_count: rows.length,
       phleb_hn_count:     hnCount,
       by_labzone_phleb:   [{ labzone_name: CAR_BED_LABZONE, count: hnCount }],
@@ -172,13 +123,15 @@ export async function GET(req: NextRequest) {
   }
 
   const payload: SummaryPayload = {
-    ...data,
-    kpi: responseData.kpi
-      ? { ...responseData.kpi, pct_phleb_within_target: pctPhlebWithinTarget }
-      : responseData.kpi,
-    has_phleb_data:     (phlebCount ?? 0) > 0,
-    phleb_record_count: phlebRecordCount ?? 0,
-    phleb_hn_count:     (phlebKpi as { phleb_hn_count: number } | null)?.phleb_hn_count ?? 0,
+    ...responseData,
+    has_phleb_data: responseData.has_phleb_data ?? (
+      responseData.by_labzone_phleb?.some(row => (row.count ?? 0) > 0) ?? false
+    ),
+    phleb_record_count: responseData.phleb_record_count ?? 0,
+    phleb_hn_count: responseData.phleb_hn_count ?? (
+      responseData.by_labzone_phleb?.reduce((sum, row) => sum + (row.count ?? 0), 0) ?? 0
+    ),
+    kpi: responseData.kpi,
   }
 
   summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload })
