@@ -3,6 +3,7 @@ import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { NextRequest, NextResponse } from 'next/server'
+import { buildDocumentDownloadFilename, contentDispositionForDownload } from '@/lib/documents/download-filename'
 
 // Public download endpoint — only serves documents with visibility='Public'
 export async function GET(req: NextRequest) {
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
   // Verify document is public before serving
   const { data: doc } = await supabaseAdmin
     .from('documents')
-    .select('id, visibility')
+    .select('id, visibility, document_code, title, file_name')
     .eq('file_url', path)
     .maybeSingle()
 
@@ -22,7 +23,13 @@ export async function GET(req: NextRequest) {
 
   const url = await getSignedUrl(
     r2,
-    new GetObjectCommand({ Bucket: R2_BUCKET, Key: path }),
+    new GetObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: path,
+      ResponseContentDisposition: contentDispositionForDownload(
+        buildDocumentDownloadFilename(doc)
+      ),
+    }),
     { expiresIn: 3600 }
   )
 
