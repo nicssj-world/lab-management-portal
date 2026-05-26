@@ -6,8 +6,10 @@ const UPSERT_SIZE = 500
 interface PhlebRow {
   hn: string | null
   register_at: string | null
+  queue_confirmed_at: string | null
   phleb_done_at: string | null
   wait_minutes: number | null
+  draw_minutes: number | null
   labzone_name: string | null
   phlebotomist: string | null
   phleb_date: string | null
@@ -19,6 +21,7 @@ interface TatBloodRow {
   year: number
   month: number
   hn: string | null
+  register_at: string | null
   spcm_at: string | null
   rslt_at: string | null
 }
@@ -28,8 +31,10 @@ interface TatUpdate {
   year: number
   month: number
   register_at: string | null
+  queue_confirmed_at: string | null
   phleb_done_at: string | null
   phleb_wait_minutes: number | null
+  phleb_draw_minutes: number | null
   transport_minutes: number | null
   total_tat_minutes: number | null
   labzone_name: string | null
@@ -130,7 +135,7 @@ function findNearestPhleb(rows: PhlebRow[], spcmMs: number): PhlebRow | null {
 export async function rejoinTatBatch(year: number, month: number, resetUnmatched = false): Promise<RejoinTatBatchResult> {
   const phlebRows = await fetchAll<PhlebRow>(
     'phlebotomy_records',
-    'hn,register_at,phleb_done_at,wait_minutes,labzone_name,phlebotomist,phleb_date',
+    'hn,register_at,queue_confirmed_at,phleb_done_at,wait_minutes,draw_minutes,labzone_name,phlebotomist,phleb_date',
     year,
     month,
   )
@@ -156,7 +161,7 @@ export async function rejoinTatBatch(year: number, month: number, resetUnmatched
 
   const tatRows = await fetchAll<TatBloodRow>(
     'tat_records',
-    'id,year,month,hn,spcm_at,rslt_at',
+    'id,year,month,hn,register_at,spcm_at,rslt_at',
     year,
     month,
     { is_blood_draw: true },
@@ -179,8 +184,10 @@ export async function rejoinTatBatch(year: number, month: number, resetUnmatched
           year: tat.year,
           month: tat.month,
           register_at: null,
+          queue_confirmed_at: null,
           phleb_done_at: null,
           phleb_wait_minutes: null,
+          phleb_draw_minutes: null,
           transport_minutes: null,
           total_tat_minutes: null,
           labzone_name: null,
@@ -191,7 +198,9 @@ export async function rejoinTatBatch(year: number, month: number, resetUnmatched
       continue
     }
 
-    const registerMs = toMs(phleb.register_at)
+    const registerMs = toMs(tat.register_at)
+    const queueConfirmedAt = phleb.queue_confirmed_at ?? phleb.register_at
+    const queueMs = toMs(queueConfirmedAt)
     const resultMs = toMs(tat.rslt_at)
     const isAmbiguous = (duplicateVisit.get(`${phleb.hn}|${phleb.phleb_date ?? ''}`) ?? 1) > 1
     if (isAmbiguous) ambiguous += 1
@@ -201,9 +210,13 @@ export async function rejoinTatBatch(year: number, month: number, resetUnmatched
       id: tat.id,
       year: tat.year,
       month: tat.month,
-      register_at: phleb.register_at,
+      register_at: tat.register_at,
+      queue_confirmed_at: queueConfirmedAt,
       phleb_done_at: phleb.phleb_done_at,
-      phleb_wait_minutes: phleb.wait_minutes,
+      phleb_wait_minutes: Number.isFinite(registerMs) && Number.isFinite(queueMs)
+        ? minutes(queueMs, registerMs)
+        : null,
+      phleb_draw_minutes: phleb.draw_minutes ?? phleb.wait_minutes,
       transport_minutes: minutes(spcmMs, phleb._done ?? spcmMs),
       total_tat_minutes: Number.isFinite(resultMs) && Number.isFinite(registerMs)
         ? minutes(resultMs, registerMs)

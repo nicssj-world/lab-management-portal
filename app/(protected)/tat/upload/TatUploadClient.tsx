@@ -509,7 +509,7 @@ export function TatUploadClient() {
         <div style={{ padding: 24 }}>
           {activeTab === 'lab' && (
             <UploadPanel
-              workerSrc="/workers/tat-parser.worker.js"
+              workerSrc="/workers/tat-parser.worker.js?v=2"
               initUrl="/api/admin/tat/upload/init"
               chunkUrl="/api/admin/tat/upload/chunk"
               detectYearMonth={(rows) => detectYearMonthFromSpcm(rows as { spcm_at: string }[])}
@@ -519,7 +519,7 @@ export function TatUploadClient() {
           )}
           {activeTab === 'phleb' && (
             <UploadPanel
-              workerSrc="/workers/phleb-parser.worker.js?v=3"
+              workerSrc="/workers/phleb-parser.worker.js?v=4"
               initUrl="/api/admin/phleb/upload/init"
               chunkUrl="/api/admin/phleb/upload/chunk"
               detectYearMonth={(rows) => detectYearMonthFromRegister(rows as { register_at: string }[])}

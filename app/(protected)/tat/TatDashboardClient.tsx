@@ -26,6 +26,7 @@ interface KpiData {
   busiest_hour: string
   avg_phleb_wait: number
   pipeline_avg_phleb_wait?: number
+  pipeline_avg_phleb_draw?: number
   avg_transport: number
   avg_total_tat: number
   median_total_tat: number
@@ -190,6 +191,7 @@ function SectionCard({ title, subtitle, accentColor = 'var(--primary)', children
 function PipelineViz({ stages, total }: { stages: StageRow[]; total: number }) {
   const STAGE_CFG = [
     { key: 'รอเจาะเลือด',    color: '#1E5FAD', label: 'รอเจาะเลือด' },
+    { key: 'เจาะเลือด',      color: '#9333EA', label: 'เจาะเลือด' },
     { key: 'ขนส่งตัวอย่าง', color: '#D97706', label: 'ขนส่งตัวอย่าง' },
     { key: 'วิเคราะห์ในแลป', color: '#16A34A', label: 'วิเคราะห์ในแลป' },
   ]
@@ -199,7 +201,7 @@ function PipelineViz({ stages, total }: { stages: StageRow[]; total: number }) {
   return (
     <div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 8 }}>
-        ลงทะเบียน → เจาะเสร็จ → รับ specimen → รายงานผล
+        ลงทะเบียน → ยืนยันคิว → เจาะเสร็จ → รับ specimen → รายงานผล
       </div>
       <div style={{ display: 'flex', height: 20, borderRadius: 10, overflow: 'hidden', gap: 2, marginBottom: 14, background: 'var(--surface-2)' }}>
         {values.map((val, i) => (
@@ -462,12 +464,13 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
     ? [{
         name: 'Pipeline',
         'รอเจาะเลือด':   data.stage_breakdown.find(s => s.stage === 'รอเจาะเลือด')?.avg_minutes   ?? 0,
+        'เจาะเลือด':     data.stage_breakdown.find(s => s.stage === 'เจาะเลือด')?.avg_minutes     ?? 0,
         'ขนส่งตัวอย่าง': data.stage_breakdown.find(s => s.stage === 'ขนส่งตัวอย่าง')?.avg_minutes ?? 0,
         'วิเคราะห์ในแลป':data.stage_breakdown.find(s => s.stage === 'วิเคราะห์ในแลป')?.avg_minutes ?? 0,
       }]
     : []
   const totalStageMin = stageBarData[0]
-    ? stageBarData[0]['รอเจาะเลือด'] + stageBarData[0]['ขนส่งตัวอย่าง'] + stageBarData[0]['วิเคราะห์ในแลป']
+    ? stageBarData[0]['รอเจาะเลือด'] + stageBarData[0]['เจาะเลือด'] + stageBarData[0]['ขนส่งตัวอย่าง'] + stageBarData[0]['วิเคราะห์ในแลป']
     : 0
 
   const mb = data?.match_breakdown
@@ -694,7 +697,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
 
               {hasPhleb ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 12 }}>
-                  <SectionCard title="Pipeline เวลา" subtitle="ลงทะเบียน → เจาะเสร็จ → รับ specimen → รายงานผล" accentColor="var(--primary)">
+                  <SectionCard title="Pipeline เวลา" subtitle="ลงทะเบียน → ยืนยันคิว → เจาะเสร็จ → รับ specimen → รายงานผล" accentColor="var(--primary)">
                     <PipelineViz stages={data?.stage_breakdown ?? []} total={totalStageMin} />
                   </SectionCard>
 
@@ -808,13 +811,13 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                       icon="syringe"
                     />
                     <KpiBigStat
-                      label="เวลารอเจาะเลือดเฉลี่ย"
+                      label="เวลาเจาะเลือดเฉลี่ย"
                       value={kpi.avg_phleb_wait > 0 ? `${kpi.avg_phleb_wait} นาที` : '—'}
                       iconBg="rgba(217,119,6,.12)"
                       icon="clock"
                     />
                     <KpiRingStat
-                      label="% ตามเป้าหมาย (รอ ≤30 นาที)"
+                      label="% ตามเป้าหมาย (เจาะ ≤30 นาที)"
                       pct={kpi.pct_phleb_within_target}
                       color="#16A34A"
                     />
@@ -826,7 +829,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 12 }}>
-                    <SectionCard title="Heatmap เวลาลงทะเบียน/เจาะเลือด" accentColor="var(--primary)">
+                    <SectionCard title="Heatmap เวลายืนยันคิวเจาะเลือด" accentColor="var(--primary)">
                       <TatHeatmap cells={data?.phleb_heatmap ?? []} tooltipLabel="คน" />
                     </SectionCard>
 

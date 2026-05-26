@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getTestByCode } from '@/lib/queries/tests'
+import { getTestByCatalogParam } from '@/lib/queries/tests'
 import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
 import { TestDetailCard } from '@/components/tests/TestDetailCard'
@@ -19,7 +19,7 @@ export default async function CatalogDetailPage({ params }: Props) {
   const { code } = await params
   const supabase = await createClient()
 
-  const test = await getTestByCode(supabase, code)
+  const test = await getTestByCatalogParam(supabase, code)
   if (!test) notFound()
 
   const [rangesRes, docsRes] = await Promise.all([

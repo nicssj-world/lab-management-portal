@@ -48,27 +48,28 @@ function parseThaiDT(s) {
 // 10=labzoneno  11=opdptq_ptqno  12=labzoneno_name  13=labzone_name
 // 14=confstf  15=sucessstf
 //
-// wait_minutes = attaindatee − confdatee (draw completion − queue registration)
-// cols[3] confdatee   = queue registration datetime
+// queue_confirmed_at = confdatee (queue confirmed datetime)
 // cols[4] attaindatee = draw completion datetime
 function parseRow(cols) {
-  const registerAt = parseThaiDT(cols[3])   // confdatee — queue registration
-  const phlebDone  = parseThaiDT(cols[4])   // attaindatee — draw completed
-  if (!registerAt || !phlebDone) return null
+  const queueConfirmedAt = parseThaiDT(cols[3]) // confdatee — queue confirmed
+  const phlebDone  = parseThaiDT(cols[4])       // attaindatee — draw completed
+  if (!queueConfirmedAt || !phlebDone) return null
 
-  const wait = (new Date(phlebDone) - new Date(registerAt)) / 60000
-  if (wait < 0 || wait > 480) return null
+  const draw = (new Date(phlebDone) - new Date(queueConfirmedAt)) / 60000
+  if (draw < 0 || draw > 480) return null
 
   const hn = normalizeHn(cols[0]?.trim() || '')
   if (!hn) return null
 
   return {
     hn,
-    register_at:   registerAt,
+    register_at:   queueConfirmedAt,
+    queue_confirmed_at: queueConfirmedAt,
     phleb_done_at: phlebDone,
-    wait_minutes:  Math.round(wait * 100) / 100,
+    wait_minutes:  Math.round(draw * 100) / 100,
+    draw_minutes:  Math.round(draw * 100) / 100,
     labzone_name:  cols[13]?.trim() || null,
     phlebotomist:  cols[15]?.trim() || null,
-    phleb_date:    registerAt.slice(0, 10),
+    phleb_date:    queueConfirmedAt.slice(0, 10),
   }
 }

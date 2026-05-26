@@ -8,10 +8,12 @@ self.onmessage = function (e) {
     const rows = []
     let invalid = 0
 
+    const headers = lines[0].split('\t').map(normalizeHeader)
+
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue
       const cols = lines[i].split('\t')
-      const row = parseRow(cols)
+      const row = parseRow(cols, headers)
       if (row) rows.push(row)
       else invalid++
       if (i % 2000 === 0) {
@@ -39,23 +41,37 @@ function parseThaiDT(s) {
   return new Date(Date.UTC(+y - 543, +mo - 1, +d, +h, +min, +sec)).toISOString()
 }
 
-function parseRow(cols) {
-  const spcm = parseThaiDT(cols[8])
-  const rslt = parseThaiDT(cols[9])
+function normalizeHeader(s) {
+  return String(s || '').trim().toLowerCase().replace(/[\s_\-]/g, '')
+}
+
+function col(cols, headers, names, fallbackIndex) {
+  for (const name of names) {
+    const idx = headers.indexOf(normalizeHeader(name))
+    if (idx >= 0) return cols[idx]
+  }
+  return fallbackIndex === undefined ? undefined : cols[fallbackIndex]
+}
+
+function parseRow(cols, headers) {
+  const register = parseThaiDT(col(cols, headers, ['lvstdatetime'], undefined))
+  const spcm = parseThaiDT(col(cols, headers, ['spcmdatetime', 'spcmdatee'], 8))
+  const rslt = parseThaiDT(col(cols, headers, ['rsltdatetime', 'rsltdatee'], 9))
   if (!spcm || !rslt) return null
   const tat = (new Date(rslt) - new Date(spcm)) / 60000
   if (tat < 0 || tat > 10080) return null
   const spcmDate = new Date(spcm)
   return {
-    hn: normalizeHn(cols[3]?.trim() || ''),
-    ln: cols[5]?.trim() || '',
+    hn: normalizeHn(col(cols, headers, ['hn'], 3)?.trim() || ''),
+    ln: col(cols, headers, ['ln'], 5)?.trim() || '',
+    register_at: register,
     spcm_at: spcm,
     rslt_at: rslt,
     tat_minutes: Math.round(tat * 10) / 10,
-    lab_section: cols[2]?.trim() || '',
-    ward: cols[14]?.trim() || '',
-    priority: cols[15]?.trim() || '',
-    test_name: cols[13]?.trim() || '',
+    lab_section: col(cols, headers, ['labsection', 'section'], 2)?.trim() || '',
+    ward: col(cols, headers, ['ward'], 14)?.trim() || '',
+    priority: col(cols, headers, ['priority'], 15)?.trim() || '',
+    test_name: col(cols, headers, ['testname', 'test_name'], 13)?.trim() || '',
     spcm_hour: spcmDate.getUTCHours(),
     spcm_dow: spcmDate.getUTCDay(),
   }

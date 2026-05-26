@@ -88,6 +88,20 @@ export async function getTestByCode(supabase: SupabaseClient, code: string): Pro
   return data
 }
 
+export async function getTestByCatalogParam(supabase: SupabaseClient, param: string): Promise<Test | null> {
+  const id = Number(param)
+  if (Number.isInteger(id) && id > 0) {
+    const { data, error } = await supabase
+      .from('tests')
+      .select('*, categories(*)')
+      .eq('id', id)
+      .single()
+    if (!error) return data
+  }
+
+  return getTestByCode(supabase, param)
+}
+
 export async function upsertTest(supabase: SupabaseClient, test: Partial<Test>): Promise<Test> {
   const { data, error } = await supabase
     .from('tests')
