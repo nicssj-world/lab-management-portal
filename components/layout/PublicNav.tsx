@@ -24,6 +24,7 @@ export function PublicNav() {
   const { lang, setLang } = useLang()
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [dark, setDark] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -37,9 +38,22 @@ export function PublicNav() {
   useEffect(() => { setMenuOpen(false) }, [pathname])
 
   useEffect(() => {
+    const saved = localStorage.getItem('theme') === 'dark'
+    setDark(saved)
+    document.documentElement.setAttribute('data-theme', saved ? 'dark' : 'light')
+  }, [])
+
+  useEffect(() => {
     document.body.style.overflow = menuOpen ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
   }, [menuOpen])
+
+  function toggleDark() {
+    const next = !dark
+    setDark(next)
+    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light')
+    localStorage.setItem('theme', next ? 'dark' : 'light')
+  }
 
   const activeHref = pathname.startsWith('/news') ? '/news' : pathname
 
@@ -163,6 +177,18 @@ export function PublicNav() {
             >
               {lang === 'th' ? 'EN' : 'TH'}
             </button>
+            <button
+              onClick={toggleDark}
+              title={dark ? 'Light mode' : 'Dark mode'}
+              aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+              style={{
+                width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)',
+                background: 'var(--card)', color: 'var(--ink)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <Icon name={dark ? 'sun' : 'moon'} size={15} />
+            </button>
             {sessionUser ? (
               <Link href="/staff/profile" style={{ textDecoration: 'none' }}>
                 <div style={{
@@ -215,6 +241,18 @@ export function PublicNav() {
               }}
             >
               {lang === 'th' ? 'EN' : 'TH'}
+            </button>
+            <button
+              onClick={toggleDark}
+              title={dark ? 'Light mode' : 'Dark mode'}
+              aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+              style={{
+                width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)',
+                background: 'var(--card)', color: 'var(--ink)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <Icon name={dark ? 'sun' : 'moon'} size={15} />
             </button>
             <button
               onClick={() => setMenuOpen(!menuOpen)}

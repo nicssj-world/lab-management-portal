@@ -22,7 +22,7 @@ function CatalogContent() {
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
   const [allTotal, setAllTotal] = useState(0)
-  const [sortBy, setSortBy] = useState('code')
+  const [sortBy, setSortBy] = useState('display_name_alpha')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const timer = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
@@ -99,6 +99,8 @@ function CatalogContent() {
           onSort={handleSort}
           onPageChange={handlePageChange}
           getHref={(t) => `/catalog/${t.code}`}
+          nameSortKey="display_name_alpha"
+          headerFontSize={11.5}
         />
       </div>
     </main>
