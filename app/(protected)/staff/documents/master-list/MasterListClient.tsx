@@ -154,7 +154,7 @@ const { toasts, add: toast } = useToast()
 
   async function handleDownload(doc: Document) {
     try {
-      const res = await fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
+      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(doc.file_url)}`)
       const { url } = await res.json()
       if (!url) { toast('ไม่สามารถดาวน์โหลดได้', false); return }
       window.open(url, '_blank')

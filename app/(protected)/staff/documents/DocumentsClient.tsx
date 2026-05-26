@@ -840,6 +840,14 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds }: {
       .catch(() => {})
   }
 
+  async function downloadCurrentFile() {
+    try {
+      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(doc.file_url)}`)
+      const json = await res.json()
+      if (json.url) window.open(json.url, '_blank')
+    } catch {}
+  }
+
   async function handleReset(scope: 'single' | 'all') {
     setResetting(true)
     const url = scope === 'single'
@@ -973,11 +981,11 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds }: {
             </button>
           )}
           {url && (
-            <a href={url} target="_blank" rel="noreferrer"
+            <button onClick={downloadCurrentFile}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--muted)', textDecoration: 'none', fontFamily: 'inherit' }}
             >
               <Icon name="download" size={13} /> ดาวน์โหลด
-            </a>
+            </button>
           )}
           <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>
             <Icon name="x" size={16} />
@@ -1013,9 +1021,9 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds }: {
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>{doc.file_name}</div>
                 <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>ไม่สามารถแสดงตัวอย่างได้ กรุณาดาวน์โหลดเพื่อเปิด</div>
-                <a href={url!} target="_blank" rel="noreferrer">
+                <button onClick={downloadCurrentFile} style={{ background: 'none', border: 0, padding: 0 }}>
                   <Button variant="primary" icon="download">ดาวน์โหลดไฟล์</Button>
-                </a>
+                </button>
               </div>
             </div>
           )}
