@@ -238,6 +238,39 @@ function PipelineViz({ stages, total }: { stages: StageRow[]; total: number }) {
   )
 }
 
+function LabTatPipeline({ avgTat }: { avgTat: number }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 8 }}>
+        รับ specimen → รายงานผล
+      </div>
+      <div style={{ display: 'flex', height: 20, borderRadius: 10, overflow: 'hidden', marginBottom: 14, background: 'var(--surface-2)' }}>
+        <div style={{
+          flex: 1,
+          background: '#16A34A',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 9.5,
+          color: '#fff',
+          fontWeight: 700,
+        }}>
+          วิเคราะห์ในแลป
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
+        <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg)', borderLeft: '3px solid #16A34A' }}>
+          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 3 }}>รับ specimen → รายงานผล</div>
+          <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--ink)', lineHeight: 1 }}>
+            {avgTat.toFixed(1)}
+            <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted)', marginLeft: 3 }}>นาที</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TatHeatmap({ cells, tooltipLabel = 'ตัวอย่าง' }: { cells: HeatCell[]; tooltipLabel?: string }) {
   const grid = new Map<string, number>()
   let maxCount = 0
@@ -399,7 +432,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
       if (p)  params.set('priority', p)
       if (tn) params.set('test_name', tn)
       if (lz) params.set('labzone_name', lz)
-      const cacheKey = `tat-summary:${params.toString()}`
+      const cacheKey = `tat-summary:v2:${params.toString()}`
       const cached = readTatClientCache(cacheKey)
       if (cached) {
         usedCache = true
@@ -444,6 +477,21 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
     else                      { setWard(''); setTestName('') }
   }
 
+  const handleLabSectionChange = (value: string) => {
+    setLabSection(value)
+    setTestName('')
+    setData(null)
+    setAllLabzones([])
+    setLoading(true)
+  }
+
+  const handleWardChange = (value: string) => {
+    setWard(value)
+    setTestName('')
+    setData(null)
+    setLoading(true)
+  }
+
   const kpi     = data?.kpi
   const isEmpty = !loading && (kpi?.total_count ?? 0) === 0
   const hasPhleb = !loading && (data?.has_phleb_data ?? false)
@@ -475,6 +523,12 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
 
   const mb = data?.match_breakdown
   const matchedBloodSamples = mb ? mb.exact + mb.ambiguous : 0
+  const overviewHasTotalTat = (kpi?.avg_total_tat ?? 0) > 0
+  const overviewAvgTat = overviewHasTotalTat ? (kpi?.avg_total_tat ?? 0) : (kpi?.avg_tat ?? 0)
+  const overviewMedianTat = overviewHasTotalTat ? (kpi?.median_total_tat ?? 0) : (kpi?.median_tat ?? 0)
+  const overviewPctWithinTarget = overviewHasTotalTat ? (kpi?.pct_total_within_target ?? 0) : (kpi?.pct_within_target ?? 0)
+  const overviewTatLabel = overviewHasTotalTat ? 'Total TAT เฉลี่ย' : 'TAT เฉลี่ย (รับ specimen → รายงานผล)'
+  const showPhlebPipeline = overviewHasTotalTat && matchedBloodSamples > 0
   const matchPieData = mb
     ? [
         { name: 'จับคู่แน่นอน',   value: mb.exact },
@@ -585,14 +639,14 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
         <MonthSelector value={month} onChange={setMonth} />
 
         {activeTab !== 'phlebotomy' && (
-          <FilterSelect value={labSection} onChange={setLabSection}>
+          <FilterSelect value={labSection} onChange={handleLabSectionChange}>
             <option value="">แผนก Lab ทั้งหมด</option>
             {(data?.filter_options.lab_sections ?? []).map(s => <option key={s} value={s}>{s}</option>)}
           </FilterSelect>
         )}
 
         {activeTab === 'lab' && (
-          <FilterSelect value={ward} onChange={setWard}>
+          <FilterSelect value={ward} onChange={handleWardChange}>
             <option value="">หอผู้ป่วยทั้งหมด</option>
             {(data?.filter_options.wards ?? []).map(w => <option key={w} value={w}>{w}</option>)}
           </FilterSelect>
@@ -674,28 +728,32 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
             <div key="overview" className="tat-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
                 <KpiBigStat
-                  label="Total TAT เฉลี่ย"
-                  value={kpi.avg_total_tat > 0 ? `${kpi.avg_total_tat} นาที` : '—'}
-                  sub={kpi.median_total_tat > 0
-                    ? `LN เจาะเลือดที่จับคู่ได้ ${matchedBloodSamples.toLocaleString()} • มัธยฐาน ${kpi.median_total_tat} นาที`
-                    : `LN เจาะเลือด ${(kpi.blood_sample_count ?? matchedBloodSamples).toLocaleString()}`
+                  label={overviewTatLabel}
+                  value={overviewAvgTat > 0 ? `${overviewAvgTat} นาที` : '—'}
+                  sub={overviewMedianTat > 0
+                    ? (overviewHasTotalTat
+                      ? `LN เจาะเลือดที่จับคู่ได้ ${matchedBloodSamples.toLocaleString()} • มัธยฐาน ${overviewMedianTat} นาที`
+                      : `LN เจาะเลือด 0 • ใช้ TAT ห้องปฏิบัติการ • มัธยฐาน ${overviewMedianTat} นาที`)
+                    : (overviewHasTotalTat
+                      ? `LN เจาะเลือด ${(kpi.blood_sample_count ?? matchedBloodSamples).toLocaleString()}`
+                      : 'ไม่มี LN เจาะเลือดที่จับคู่ได้ในตัวกรองนี้')
                   }
                   iconBg="rgba(30,95,173,.12)"
                   icon="clock"
                 />
                 <KpiRingStat
-                  label="% Total TAT ≤120 นาที"
-                  pct={kpi.pct_total_within_target}
+                  label={overviewHasTotalTat ? '% Total TAT ≤120 นาที' : `% ตามเป้าหมายราย test (${(kpi.target_count ?? 0).toLocaleString()} มี target)`}
+                  pct={overviewPctWithinTarget}
                   color="#16A34A"
                 />
                 <KpiRingStat
                   label="% ไม่ผ่านตามเป้าหมาย"
-                  pct={Math.max(0, +(100 - kpi.pct_total_within_target).toFixed(1))}
+                  pct={Math.max(0, +(100 - overviewPctWithinTarget).toFixed(1))}
                   color="#D97706"
                 />
               </div>
 
-              {hasPhleb ? (
+              {showPhlebPipeline ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 12 }}>
                   <SectionCard title="Pipeline เวลา" subtitle="ลงทะเบียน → ยืนยันคิว → เจาะเสร็จ → รับ specimen → รายงานผล" accentColor="var(--primary)">
                     <PipelineViz stages={data?.stage_breakdown ?? []} total={totalStageMin} />
@@ -729,18 +787,10 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                   </SectionCard>
                 </div>
               ) : (
-                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(30,95,173,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', flexShrink: 0 }}>
-                    <Icon name="syringe" size={18} />
-                  </div>
-                  <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-                    ยังไม่มีข้อมูลการเจาะเลือดสำหรับเดือนนี้ — Pipeline จะแสดงเมื่ออัพโหลดไฟล์ Phlebotomy
-                  </span>
-                  {canEdit && (
-                    <Link href="/tat/upload" style={{ marginLeft: 'auto' }}>
-                      <Button variant="secondary" size="sm" icon="upload">อัพโหลดไฟล์ Phlebotomy</Button>
-                    </Link>
-                  )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+                  <SectionCard title="Pipeline เวลา" subtitle="รับ specimen → รายงานผล" accentColor="var(--primary)">
+                    <LabTatPipeline avgTat={kpi.avg_tat} />
+                  </SectionCard>
                 </div>
               )}
 

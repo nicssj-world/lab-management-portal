@@ -34,13 +34,22 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user }, error } = await supabase.auth.getUser()
 
-  if (!session) {
+  if (error || !user) {
+    request.cookies
+      .getAll()
+      .filter((cookie) => cookie.name.startsWith('sb-') && cookie.name.includes('auth-token'))
+      .forEach((cookie) => response.cookies.set(cookie.name, '', { path: '/', maxAge: 0 }))
+
     if (/\/api\//.test(path)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      const unauthorizedResponse = NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      response.cookies.getAll().forEach((cookie) => unauthorizedResponse.cookies.set(cookie))
+      return unauthorizedResponse
     }
-    return NextResponse.redirect(new URL('/login', request.url))
+    const redirectResponse = NextResponse.redirect(new URL('/login', request.url))
+    response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie))
+    return redirectResponse
   }
 
   return response

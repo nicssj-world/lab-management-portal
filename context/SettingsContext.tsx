@@ -1,52 +1,67 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-
-export interface SystemSettings {
-  siteName:   string
-  systemCode: string
-  orgName:    string
-  standards:  string
-  version:    string
-}
-
-export const SETTINGS_DEFAULTS: SystemSettings = {
-  siteName:   'Lab Management Portal',
-  systemCode: 'MN-LAB-01',
-  orgName:    'กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี',
-  standards:  'ISO 15189 · ISO 15190',
-  version:    'v1.0.0',
-}
+import { SETTINGS_DEFAULTS, type SystemSettings } from '@/lib/settings'
+export { SETTINGS_DEFAULTS, type SystemSettings } from '@/lib/settings'
 
 const STORAGE_KEY = 'lab_system_settings'
 
 interface SettingsContextValue {
   settings: SystemSettings
-  saveSettings: (s: SystemSettings) => void
+  loading: boolean
+  saveSettings: (s: SystemSettings) => Promise<void>
 }
 
 const SettingsContext = createContext<SettingsContextValue>({
   settings: SETTINGS_DEFAULTS,
-  saveSettings: () => {},
+  loading: false,
+  saveSettings: async () => {},
 })
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SystemSettings>(SETTINGS_DEFAULTS)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) setSettings({ ...SETTINGS_DEFAULTS, ...JSON.parse(raw) })
-    } catch {}
+    let ignore = false
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings', { cache: 'no-store' })
+        const data = await res.json()
+        if (!ignore && res.ok) {
+          const next = { ...SETTINGS_DEFAULTS, ...data }
+          setSettings(next)
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+        }
+      } catch {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY)
+          if (!ignore && raw) setSettings({ ...SETTINGS_DEFAULTS, ...JSON.parse(raw) })
+        } catch {}
+      } finally {
+        if (!ignore) setLoading(false)
+      }
+    }
+    loadSettings()
+    return () => { ignore = true }
   }, [])
 
-  function saveSettings(s: SystemSettings) {
-    setSettings(s)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
+  async function saveSettings(s: SystemSettings) {
+    const res = await fetch('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(s),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error ?? 'Unable to save settings')
+
+    const next = { ...SETTINGS_DEFAULTS, ...data }
+    setSettings(next)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   }
 
   return (
-    <SettingsContext.Provider value={{ settings, saveSettings }}>
+    <SettingsContext.Provider value={{ settings, loading, saveSettings }}>
       {children}
     </SettingsContext.Provider>
   )

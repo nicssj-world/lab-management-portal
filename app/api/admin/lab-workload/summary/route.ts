@@ -2,11 +2,15 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { readAnalysisCache, writeAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
+import fs from 'fs'
+import path from 'path'
+import * as XLSX from 'xlsx'
 
 const PAGE_SIZE = 1000
-const CACHE_TTL_MS = 3 * 60 * 1000
+const CACHE_TTL_MS = 0
 const PERSISTENT_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const CACHE_ENDPOINT = 'lab-workload-summary'
+const WORKLOAD_MAP_FILE = 'workload-test-map-2569.xlsx'
 const CAR_BED_LABZONE = 'ช่องรถนั่ง-นอน'
 const CAR_BED_SOURCE_ZONES = ['ช่อง 10', 'ช่อง 11']
 const PHLEB_ALLOWED_LABZONES = [
@@ -24,6 +28,7 @@ interface TatRow {
   ln: string | null
   lab_section: string | null
   test_name: string | null
+  name_1: string | null
   within_target: boolean | null
   spcm_hour: number | null
   spcm_dow: number | null
@@ -35,19 +40,23 @@ interface PhlebRow {
   register_at: string | null
 }
 
-interface TestCatalogRow {
-  th: string | null
-  en: string | null
+interface WorkloadTestMeta {
+  section: string
+  test_name: string
   code: string | null
-  lis_code: string | null
   price: number | null
 }
+
+type MatchedTatRow = TatRow & WorkloadTestMeta
+type WorkloadRule = { section: string; test_name: string }[]
 
 type MonthPair = { in_time: number; total: number; row_in_time: number; row_total: number }
 type Payload = Record<string, unknown>
 type SummaryRow = Record<string, any>
+type UploadVersion = { row_count: number | null; uploaded_at: string | null }
 
 const cache = new Map<string, { expiresAt: number; payload: Payload }>()
+let workloadMatchersCache: ReturnType<typeof buildWorkloadMatchers> | null = null
 
 function toGregorianYear(year: number) {
   return year > 2400 ? year - 543 : year
@@ -60,17 +69,54 @@ function fiscalMonths(fiscalYear: number) {
   }))
 }
 
+async function fetchUploadVersion(year: number, month: number) {
+  const [tatRes, phlebRes] = await Promise.all([
+    supabaseAdmin
+      .from('tat_uploads')
+      .select('row_count,uploaded_at')
+      .eq('year', year)
+      .eq('month', month)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('phleb_uploads')
+      .select('row_count,uploaded_at')
+      .eq('year', year)
+      .eq('month', month)
+      .maybeSingle(),
+  ])
+
+  if (tatRes.error) throw new Error(tatRes.error.message)
+  if (phlebRes.error) throw new Error(phlebRes.error.message)
+
+  const tat = (tatRes.data ?? { row_count: 0, uploaded_at: 'none' }) as UploadVersion
+  const phleb = (phlebRes.data ?? { row_count: 0, uploaded_at: 'none' }) as UploadVersion
+  return `tat:${tat.row_count ?? 0}:${tat.uploaded_at ?? 'none'}|phleb:${phleb.row_count ?? 0}:${phleb.uploaded_at ?? 'none'}`
+}
+
 async function fetchTatRows(months: { year: number; month: number }[]) {
   const rows: TatRow[] = []
 
   for (const ym of months) {
     for (let from = 0; ; from += PAGE_SIZE) {
-      const { data, error } = await supabaseAdmin
+      let { data, error } = await supabaseAdmin
         .from('tat_records')
-        .select('year,month,ln,lab_section,test_name,within_target,spcm_hour,spcm_dow')
+        .select('year,month,ln,lab_section,test_name,name_1,within_target,spcm_hour,spcm_dow')
         .eq('year', ym.year)
         .eq('month', ym.month)
+        .order('id', { ascending: true })
         .range(from, from + PAGE_SIZE - 1)
+
+      if (error && error.message.toLowerCase().includes('name_1')) {
+        const fallback = await supabaseAdmin
+          .from('tat_records')
+          .select('year,month,ln,lab_section,test_name,within_target,spcm_hour,spcm_dow')
+          .eq('year', ym.year)
+          .eq('month', ym.month)
+          .order('id', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1)
+        data = fallback.data ? fallback.data.map(row => ({ ...row, name_1: null })) : null
+        error = fallback.error
+      }
 
       if (error) throw new Error(error.message)
       rows.push(...((data ?? []) as TatRow[]))
@@ -90,6 +136,7 @@ async function fetchPhlebRows(year: number, month: number) {
       .select('hn,labzone_name,register_at')
       .eq('year', year)
       .eq('month', month)
+      .order('id', { ascending: true })
       .range(from, from + PAGE_SIZE - 1)
 
     if (error) throw new Error(error.message)
@@ -110,6 +157,7 @@ async function fetchPhlebRowsForMonths(months: { year: number; month: number }[]
         .select('year,month,hn,labzone_name,register_at')
         .eq('year', ym.year)
         .eq('month', ym.month)
+        .order('id', { ascending: true })
         .range(from, from + PAGE_SIZE - 1)
 
       if (error) throw new Error(error.message)
@@ -151,16 +199,299 @@ function normalizeLabSection(name: string | null) {
   return section
 }
 
-function buildCatalogMap(rows: TestCatalogRow[]) {
-  const map = new Map<string, { code: string | null; price: number | null }>()
-  for (const row of rows) {
-    const value = { code: row.code ?? row.lis_code ?? null, price: row.price }
-    for (const key of [row.th, row.en, row.code, row.lis_code]) {
-      const trimmed = key?.trim()
-      if (trimmed && !map.has(trimmed)) map.set(trimmed, value)
+function normalizeMatchText(value: string | null) {
+  return value
+    ?.toLowerCase()
+    .replace(/[()[\]{}]/g, ' ')
+    .replace(/[\/_,;:|+-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() ?? ''
+}
+
+function parseNumber(value: unknown) {
+  if (value == null || value === '') return null
+  const n = Number(String(value).replace(/,/g, '').trim())
+  return Number.isFinite(n) ? n : null
+}
+
+function readWorkloadWorkbook() {
+  const filePath = path.resolve(process.cwd(), 'data', WORKLOAD_MAP_FILE)
+  try {
+    const buffer = fs.readFileSync(filePath)
+    return XLSX.read(buffer, { type: 'buffer', cellDates: false })
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'unknown error'
+    throw new Error(`Cannot access workload map file ${filePath}: ${reason}`)
+  }
+}
+
+function readWorkloadTestMap(): WorkloadTestMeta[] {
+  const wb = readWorkloadWorkbook()
+  const rows: WorkloadTestMeta[] = []
+
+  for (const section of wb.SheetNames) {
+    const ws = wb.Sheets[section]
+    const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, raw: false, blankrows: false })
+    for (const row of sheetRows.slice(2)) {
+      const testName = String(row[1] ?? '').trim()
+      if (!testName || testName === 'Test (LN)' || testName.toLowerCase() === 'total') continue
+      const ephisCode = String(row[0] ?? '').trim()
+      const govCode = String(row[2] ?? '').trim()
+      rows.push({
+        section,
+        test_name: testName,
+        code: ephisCode || govCode || null,
+        price: parseNumber(row[3]),
+      })
     }
   }
-  return map
+
+  rows.push(
+    { section: 'อณูพันธุศาสตร์', test_name: 'NIPT (สปสช.)', code: null, price: null },
+    { section: 'POCT2', test_name: 'POCT Blood gas', code: null, price: null },
+    { section: 'POCT2', test_name: 'SARS-CoV-2(COVID-19) Rapid Antigen Test', code: null, price: null },
+    { section: 'เคมีคลินิก', test_name: 'Protein-random urine', code: null, price: null }
+  )
+
+  return rows
+}
+
+function buildWorkloadMatchers(rows: WorkloadTestMeta[]) {
+  const exact = new Map<string, WorkloadTestMeta[]>()
+  const partial: { key: string; value: WorkloadTestMeta }[] = []
+  const bySection = new Map<string, WorkloadTestMeta[]>()
+
+  for (const row of rows) {
+    const key = normalizeMatchText(row.test_name)
+    if (!key) continue
+    if (!exact.has(key)) exact.set(key, [])
+    exact.get(key)!.push(row)
+    if (!bySection.has(row.section)) bySection.set(row.section, [])
+    bySection.get(row.section)!.push(row)
+    if (key.length >= 4) partial.push({ key, value: row })
+  }
+
+  return { rows, exact, partial, bySection }
+}
+
+function getWorkloadMatchers() {
+  if (!workloadMatchersCache) workloadMatchersCache = buildWorkloadMatchers(readWorkloadTestMap())
+  return workloadMatchersCache
+}
+
+function pickPreferredMatch(matches: WorkloadTestMeta[], preferredSection: string | null) {
+  if (matches.length === 0) return null
+  if (preferredSection) {
+    const preferred = matches.filter(match => match.section === preferredSection)
+    if (preferred.length === 1) return preferred[0]
+  }
+  return matches.length === 1 ? matches[0] : null
+}
+
+function editDistance(a: string, b: string) {
+  if (a === b) return 0
+  if (!a) return b.length
+  if (!b) return a.length
+
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  const curr = Array(b.length + 1).fill(0)
+
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      curr[j] = Math.min(
+        curr[j - 1] + 1,
+        prev[j] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      )
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j]
+  }
+
+  return prev[b.length]
+}
+
+function findFuzzySectionMatch(
+  normalized: string,
+  matchers: ReturnType<typeof buildWorkloadMatchers>,
+  preferredSection: string | null
+) {
+  if (!preferredSection || normalized.length < 12) return null
+
+  let best: { distance: number; row: WorkloadTestMeta } | null = null
+  for (const row of matchers.bySection.get(preferredSection) ?? []) {
+    const key = normalizeMatchText(row.test_name)
+    if (!key || Math.abs(key.length - normalized.length) > 2) continue
+    const distance = editDistance(normalized, key)
+    if (distance <= 2 && (!best || distance < best.distance)) {
+      best = { distance, row }
+    }
+  }
+
+  return best?.row ?? null
+}
+
+function isHealthCenterWork(name: string | null) {
+  return normalizeMatchText(name).includes('ศสม')
+}
+
+function workloadRule(testName: string | null, preferredSection: string | null): WorkloadRule | null {
+  const normalized = normalizeMatchText(testName)
+  const isHealthCenter = isHealthCenterWork(testName)
+
+  if (normalized === 'egfr ckd epi') return []
+  if (normalized.startsWith('fio2')) return []
+  if (normalized === 'tibc') return []
+  if (normalized === 'protein random urine') {
+    return [{ section: 'เคมีคลินิก', test_name: 'Protein-random urine' }]
+  }
+  if (normalized === 'microalbumin urine creatinine ratio') {
+    return [{ section: 'ศสม.', test_name: 'Creatinine-random urine' }]
+  }
+  if (normalized === 'pregnancy test') {
+    return [{
+      section: isHealthCenter || preferredSection === 'ศสม.' ? 'ศสม.' : 'จุลทรรศน์วิทยาคลินิก',
+      test_name: 'Pregnancy test',
+    }]
+  }
+  if (normalized === 'sars cov 2 covid 19 rapid antigen test') {
+    return [{ section: 'POCT2', test_name: 'SARS-CoV-2(COVID-19) Rapid Antigen Test' }]
+  }
+  if (normalized === 'direct antiglobulin test gel method') {
+    return [{ section: 'ธนาคารเลือด', test_name: 'DAT(Gel method)' }]
+  }
+  if (preferredSection === 'เคมีคลินิก' && normalized === 'iron study') {
+    return [
+      { section: 'เคมีคลินิก', test_name: 'Ferritin' },
+      { section: 'เคมีคลินิก', test_name: 'Iron(Fe)' },
+    ]
+  }
+  if (preferredSection === 'โลหิตวิทยา' && normalized === 'g 6 p d') {
+    return [{ section: 'โลหิตวิทยา', test_name: 'G-6-PD' }]
+  }
+  if (preferredSection === 'โลหิตวิทยา' && normalized === 'pt inr') {
+    return [{ section: 'โลหิตวิทยา', test_name: 'PT' }]
+  }
+  if (preferredSection === 'เคมีคลินิก' && normalized === 'lipid profile') {
+    return [
+      { section: 'เคมีคลินิก', test_name: 'Cholesterol(total)' },
+      { section: 'เคมีคลินิก', test_name: 'HDL-Cholesterol' },
+      { section: 'เคมีคลินิก', test_name: 'Triglyceride' },
+      { section: 'เคมีคลินิก', test_name: 'LDL Cholesterol (direct)' },
+    ]
+  }
+  if (preferredSection === 'เคมีคลินิก' && normalized === 'liver function') {
+    return [
+      { section: 'เคมีคลินิก', test_name: 'SGOT' },
+      { section: 'เคมีคลินิก', test_name: 'SGPT' },
+      { section: 'เคมีคลินิก', test_name: 'Alkaline phosphatase' },
+    ]
+  }
+  if (preferredSection === 'เคมีคลินิก' && normalized === 'kidney function test clotted blood') {
+    return [
+      { section: 'เคมีคลินิก', test_name: 'BUN(urea nitrogen)' },
+      { section: 'เคมีคลินิก', test_name: 'Creatinine' },
+    ]
+  }
+  if (preferredSection === 'จุลชีววิทยา' && normalized === 'hemoculture 2 ขวด') {
+    return [{ section: 'จุลชีววิทยา', test_name: 'Hemoculture ขวดที่1' }]
+  }
+
+  return null
+}
+
+function getRuleMeta(rule: WorkloadRule, matchers: ReturnType<typeof buildWorkloadMatchers>) {
+  return rule
+    .map(item => {
+      const matches = matchers.exact.get(normalizeMatchText(item.test_name)) ?? []
+      return matches.find(match => match.section === item.section)
+        ?? matchers.bySection.get(item.section)?.find(match => match.test_name === item.test_name)
+        ?? { ...item, code: null, price: null }
+    })
+}
+
+function findWorkloadMatch(
+  testName: string | null,
+  matchers: ReturnType<typeof buildWorkloadMatchers>,
+  preferredSection: string | null
+) {
+  const normalized = normalizeMatchText(testName)
+  if (!normalized) return null
+
+  const exact = pickPreferredMatch(matchers.exact.get(normalized) ?? [], preferredSection)
+  if (exact) return exact
+
+  const matches = matchers.partial
+    .filter(({ key }) => normalized.includes(key) || key.includes(normalized))
+    .map(({ value }) => value)
+
+  return pickPreferredMatch(matches, preferredSection) ?? findFuzzySectionMatch(normalized, matchers, preferredSection)
+}
+
+function toMatchedTatRows(row: TatRow, matchers: ReturnType<typeof buildWorkloadMatchers>): MatchedTatRow[] {
+  const preferredSection = isHealthCenterWork(row.name_1) || isHealthCenterWork(row.test_name)
+    ? 'ศสม.'
+    : normalizeLabSection(row.lab_section)
+
+  const rule = workloadRule(row.test_name, preferredSection)
+  if (rule) return getRuleMeta(rule, matchers).map(meta => ({ ...row, ...meta }))
+
+  const meta = findWorkloadMatch(row.test_name, matchers, preferredSection)
+  return meta ? [{ ...row, ...meta }] : []
+}
+
+function buildDepartmentsFromMap(
+  matchers: ReturnType<typeof buildWorkloadMatchers>,
+  deptLn: Map<string, Set<string>>,
+  deptRows: Map<string, number>
+) {
+  return Array.from(matchers.bySection.entries())
+    .map(([section, tests]) => ({
+      section,
+      ln_count: countSetMap(deptLn, section),
+      test_rows: deptRows.get(section) ?? 0,
+      test_count: tests.length,
+    }))
+    .sort((a, b) => b.ln_count - a.ln_count || a.section.localeCompare(b.section, 'th'))
+}
+
+function buildSectionDetailsFromMap(
+  matchers: ReturnType<typeof buildWorkloadMatchers>,
+  months: { year: number; month: number }[],
+  selectedYear: number,
+  selectedMonth: number,
+  sectionMonthTestLn: Map<string, Set<string>>,
+  sectionMonthTestInTimeLn: Map<string, Set<string>>,
+  sectionMonthTestRows: Map<string, number>,
+  sectionMonthTestInTimeRows: Map<string, number>
+) {
+  return Object.fromEntries(Array.from(matchers.bySection.entries()).map(([section, tests]) => {
+    const rows = tests.map(test => {
+      const monthsData: Record<string, MonthPair> = {}
+      for (const ym of months) {
+        const key = `${section}|${test.test_name}|${ym.year}|${ym.month}`
+        monthsData[monthKey(ym.year, ym.month)] = {
+          in_time: countSetMap(sectionMonthTestInTimeLn, key),
+          total: countSetMap(sectionMonthTestLn, key),
+          row_in_time: sectionMonthTestInTimeRows.get(key) ?? 0,
+          row_total: sectionMonthTestRows.get(key) ?? 0,
+        }
+      }
+
+      return {
+        test_name: test.test_name,
+        code: test.code,
+        price: test.price,
+        current_total: monthsData[monthKey(selectedYear, selectedMonth)]?.total ?? 0,
+        current_test_rows: monthsData[monthKey(selectedYear, selectedMonth)]?.row_total ?? 0,
+        fiscal_total: Object.values(monthsData).reduce((sum, m) => sum + m.total, 0),
+        fiscal_test_rows: Object.values(monthsData).reduce((sum, m) => sum + m.row_total, 0),
+        months: monthsData,
+      }
+    })
+
+    return [section, rows]
+  }))
 }
 
 async function fetchPrecomputedPayload(displayFiscalYear: number, fiscalYear: number, selectedYear: number, selectedMonth: number, months: { year: number; month: number }[]) {
@@ -178,7 +509,7 @@ async function fetchPrecomputedPayload(displayFiscalYear: number, fiscalYear: nu
   if (!overallRes.data?.length || !deptRes.data?.length || !testRes.data?.length) return null
 
   const currentOverall = (overallRes.data as SummaryRow[]).find(row => row.year === selectedYear && row.month === selectedMonth)
-  const departments = (deptRes.data as SummaryRow[])
+  const currentDepartments = (deptRes.data as SummaryRow[])
     .filter(row => row.year === selectedYear && row.month === selectedMonth)
     .map(row => ({
       section: row.lab_section as string,
@@ -187,6 +518,13 @@ async function fetchPrecomputedPayload(displayFiscalYear: number, fiscalYear: nu
       test_count: Number(row.test_count ?? 0),
     }))
     .sort((a, b) => b.ln_count - a.ln_count)
+  const fiscalSections = Array.from(new Set((testRes.data as SummaryRow[]).map(row => row.lab_section as string).filter(Boolean)))
+  const departments = [
+    ...currentDepartments,
+    ...fiscalSections
+      .filter(section => !currentDepartments.some(dept => dept.section === section))
+      .map(section => ({ section, ln_count: 0, test_rows: 0, test_count: 0 })),
+  ]
 
   const trend = months.map(ym => {
     const row = (overallRes.data as SummaryRow[]).find(r => r.year === ym.year && r.month === ym.month)
@@ -272,7 +610,7 @@ async function fetchPrecomputedPayload(displayFiscalYear: number, fiscalYear: nu
     kpi: {
       total_ln: Number(currentOverall?.ln_count ?? 0),
       total_test_rows: Number(currentOverall?.test_rows ?? 0),
-      department_count: departments.length,
+      department_count: currentDepartments.length,
       opd_hn: phlebotomyZones.reduce((sum, row) => sum + row.hn_count, 0),
     },
     departments,
@@ -284,110 +622,64 @@ async function fetchPrecomputedPayload(displayFiscalYear: number, fiscalYear: nu
 }
 
 export async function GET(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const displayFiscalYear = Number(req.nextUrl.searchParams.get('year'))
-  const selectedMonth = Number(req.nextUrl.searchParams.get('month'))
-  if (!displayFiscalYear || !selectedMonth) {
-    return NextResponse.json({ error: 'year and month required' }, { status: 422 })
-  }
+    const displayFiscalYear = Number(req.nextUrl.searchParams.get('year'))
+    const selectedMonth = Number(req.nextUrl.searchParams.get('month'))
+    if (!displayFiscalYear || !Number.isInteger(selectedMonth) || selectedMonth < 1 || selectedMonth > 12) {
+      return NextResponse.json({ error: 'year and month required' }, { status: 422 })
+    }
 
-  const fiscalYear = toGregorianYear(displayFiscalYear)
-  const selectedYear = selectedMonth >= 10 ? fiscalYear - 1 : fiscalYear
-  const key = `v2|${displayFiscalYear}|${fiscalYear}|${selectedYear}|${selectedMonth}`
-  const hit = cache.get(key)
-  if (hit && hit.expiresAt > Date.now()) {
-    return NextResponse.json(hit.payload, { headers: { 'X-Lab-Workload-Cache': 'hit' } })
-  }
+    const fiscalYear = toGregorianYear(displayFiscalYear)
+    const selectedYear = selectedMonth >= 10 ? fiscalYear - 1 : fiscalYear
+    const uploadVersion = await fetchUploadVersion(selectedYear, selectedMonth)
+    const key = `v13|${displayFiscalYear}|${fiscalYear}|${selectedYear}|${selectedMonth}|${uploadVersion}`
+    const hit = cache.get(key)
+    if (hit && hit.expiresAt > Date.now()) {
+      return NextResponse.json(hit.payload, { headers: { 'X-Lab-Workload-Cache': 'hit' } })
+    }
 
-  const months = fiscalMonths(fiscalYear)
-  const persistent = await readAnalysisCache<Payload>(CACHE_ENDPOINT, key)
-  if (persistent) {
-    cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload: persistent })
-    return NextResponse.json(persistent, { headers: { 'X-Lab-Workload-Cache': 'persistent' } })
-  }
+    const months = fiscalMonths(fiscalYear)
+    const persistent = await readAnalysisCache<Payload>(CACHE_ENDPOINT, key)
+    if (persistent) {
+      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload: persistent })
+      return NextResponse.json(persistent, { headers: { 'X-Lab-Workload-Cache': 'persistent' } })
+    }
 
-  const precomputed = await fetchPrecomputedPayload(displayFiscalYear, fiscalYear, selectedYear, selectedMonth, months)
-  if (precomputed) {
-    const [selectedTatRows, selectedPhlebRows] = await Promise.all([
-      fetchTatRows([{ year: selectedYear, month: selectedMonth }]),
+    const [tatRows, phlebRows, phlebRowsAll] = await Promise.all([
+      fetchTatRows(months),
       fetchPhlebRows(selectedYear, selectedMonth),
+      fetchPhlebRowsForMonths(months),
     ])
-    const heatmapLn = new Map<string, Set<string>>()
-    for (const row of selectedTatRows) {
-      if (row.spcm_dow != null && row.spcm_hour != null) {
-        addToSetMap(heatmapLn, `${row.spcm_dow}-${row.spcm_hour}`, row.ln)
-      }
-    }
 
-    const phlebHeatmap = new Map<string, Set<string>>()
-    for (const row of selectedPhlebRows) {
-      const zone = normalizeLabzone(row.labzone_name)
-      if (!zone || !PHLEB_ALLOWED_LABZONES.includes(zone) || !row.register_at) continue
-      const d = new Date(row.register_at)
-      addToSetMap(phlebHeatmap, `${d.getUTCDay()}-${d.getUTCHours()}`, row.hn)
-    }
-
-    const payload = {
-      ...precomputed,
-      heatmap: Array.from(heatmapLn.entries()).map(([key, set]) => {
-        const [dow, hour] = key.split('-').map(Number)
-        return { dow, hour, count: set.size }
-      }),
-      phleb_heatmap: Array.from(phlebHeatmap.entries()).map(([key, set]) => {
-        const [dow, hour] = key.split('-').map(Number)
-        return { dow, hour, count: set.size }
-      }),
-    }
-    cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
-    await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
-    return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'precomputed' } })
-  }
-
-  const [{ data: catalogRows, error: catalogError }, tatRows, phlebRows, phlebRowsAll] = await Promise.all([
-    supabaseAdmin.from('tests').select('th,en,code,lis_code,price'),
-    fetchTatRows(months),
-    fetchPhlebRows(selectedYear, selectedMonth),
-    fetchPhlebRowsForMonths(months),
-  ])
-  if (catalogError) return NextResponse.json({ error: catalogError.message }, { status: 500 })
-
-  const catalog = buildCatalogMap((catalogRows ?? []) as TestCatalogRow[])
-  const currentRows = tatRows.filter(row => row.year === selectedYear && row.month === selectedMonth)
+  const matchers = getWorkloadMatchers()
+  const matchedTatRows = tatRows
+    .flatMap(row => toMatchedTatRows(row, matchers))
+  const currentRows = matchedTatRows.filter(row => row.year === selectedYear && row.month === selectedMonth)
   const totalLn = new Set(currentRows.map(row => row.ln).filter(Boolean)).size
 
   const deptLn = new Map<string, Set<string>>()
   const deptRows = new Map<string, number>()
-  const deptTests = new Map<string, Set<string>>()
   const heatmapLn = new Map<string, Set<string>>()
 
   for (const row of currentRows) {
-    const section = normalizeLabSection(row.lab_section)
-    const test = csvSafeKey(row.test_name)
+    const section = row.section
     deptRows.set(section, (deptRows.get(section) ?? 0) + 1)
     addToSetMap(deptLn, section, row.ln)
-    if (!deptTests.has(section)) deptTests.set(section, new Set())
-    deptTests.get(section)!.add(test)
 
     if (row.spcm_dow != null && row.spcm_hour != null) {
       addToSetMap(heatmapLn, `${row.spcm_dow}-${row.spcm_hour}`, row.ln)
     }
   }
 
-  const departments = Array.from(deptRows.keys())
-    .map(section => ({
-      section,
-      ln_count: countSetMap(deptLn, section),
-      test_rows: deptRows.get(section) ?? 0,
-      test_count: deptTests.get(section)?.size ?? 0,
-    }))
-    .sort((a, b) => b.ln_count - a.ln_count)
+  const departments = buildDepartmentsFromMap(matchers, deptLn, deptRows)
 
   const trendLn = new Map<string, Set<string>>()
   const trendRows = new Map<string, number>()
-  for (const row of tatRows) {
+  for (const row of matchedTatRows) {
     const key = monthKey(row.year, row.month)
     addToSetMap(trendLn, key, row.ln)
     trendRows.set(key, (trendRows.get(key) ?? 0) + 1)
@@ -453,9 +745,9 @@ export async function GET(req: NextRequest) {
   const sectionMonthTestRows = new Map<string, number>()
   const sectionMonthTestInTimeRows = new Map<string, number>()
 
-  for (const row of tatRows) {
-    const section = normalizeLabSection(row.lab_section)
-    const test = csvSafeKey(row.test_name)
+  for (const row of matchedTatRows) {
+    const section = row.section
+    const test = row.test_name
     const key = `${section}|${test}|${row.year}|${row.month}`
     addToSetMap(sectionMonthTestLn, key, row.ln)
     if (row.within_target === true) addToSetMap(sectionMonthTestInTimeLn, key, row.ln)
@@ -465,36 +757,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const sectionDetails = Object.fromEntries(departments.map(dept => {
-    const tests = Array.from(deptTests.get(dept.section) ?? [])
-      .map(testName => {
-        const meta = catalog.get(testName)
-        const monthsData: Record<string, MonthPair> = {}
-        for (const ym of months) {
-          const key = `${dept.section}|${testName}|${ym.year}|${ym.month}`
-          monthsData[monthKey(ym.year, ym.month)] = {
-            in_time: countSetMap(sectionMonthTestInTimeLn, key),
-            total: countSetMap(sectionMonthTestLn, key),
-            row_in_time: sectionMonthTestInTimeRows.get(key) ?? 0,
-            row_total: sectionMonthTestRows.get(key) ?? 0,
-          }
-        }
-        return {
-          test_name: testName,
-          code: meta?.code ?? null,
-          price: meta?.price ?? null,
-          current_total: monthsData[monthKey(selectedYear, selectedMonth)]?.total ?? 0,
-          current_test_rows: monthsData[monthKey(selectedYear, selectedMonth)]?.row_total ?? 0,
-          fiscal_total: Object.values(monthsData).reduce((sum, m) => sum + m.total, 0),
-          fiscal_test_rows: Object.values(monthsData).reduce((sum, m) => sum + m.row_total, 0),
-          months: monthsData,
-        }
-      })
-      .filter(row => row.fiscal_total > 0 || row.fiscal_test_rows > 0)
-      .sort((a, b) => b.current_total - a.current_total || b.current_test_rows - a.current_test_rows || b.fiscal_total - a.fiscal_total)
-
-    return [dept.section, tests]
-  }))
+  const sectionDetails = buildSectionDetailsFromMap(
+    matchers,
+    months,
+    selectedYear,
+    selectedMonth,
+    sectionMonthTestLn,
+    sectionMonthTestInTimeLn,
+    sectionMonthTestRows,
+    sectionMonthTestInTimeRows
+  )
 
   const payload: Payload = {
     fiscal_year: displayFiscalYear,
@@ -524,5 +796,9 @@ export async function GET(req: NextRequest) {
 
   cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
   await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
-  return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'miss' } })
+    return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'miss' } })
+  } catch (err) {
+    console.error('lab workload summary failed', err)
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'โหลดข้อมูล workload ไม่สำเร็จ' }, { status: 500 })
+  }
 }

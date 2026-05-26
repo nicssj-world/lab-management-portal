@@ -10,8 +10,15 @@ async function getActor() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data } = await supabaseAdmin
-    .from('profiles').select('id, role, name').eq('id', user.id).single()
-  return data as { id: string; role: string; name: string } | null
+    .from('profiles').select('id, role, doc_role, name').eq('id', user.id).single()
+  return data as { id: string; role: string; doc_role: string | null; name: string } | null
+}
+
+function canViewReadLog(actor: { role: string; doc_role: string | null }) {
+  return (
+    ['Admin', 'Manager'].includes(actor.role) ||
+    ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(actor.doc_role ?? '')
+  )
 }
 
 // POST — log read event + return presigned URL
@@ -39,12 +46,12 @@ export async function POST(
     { expiresIn: 3600 }
   )
 
-  // Log the view for all roles (fire-and-forget)
-  supabaseAdmin.from('document_access_logs')
+  const { error: logErr } = await supabaseAdmin.from('document_access_logs')
     .insert({ document_id: id, user_id: actor.id, action: 'view' })
-    .then(undefined, () => {})
 
-  return NextResponse.json({ url, mime_type: doc.mime_type })
+  if (logErr) return NextResponse.json({ error: logErr.message }, { status: 500 })
+
+  return NextResponse.json({ url, mime_type: doc.mime_type, read_logged: true })
 }
 
 // GET — list who has read this document (Admin/Manager only)
@@ -54,7 +61,7 @@ export async function GET(
 ) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['Admin', 'Manager'].includes(actor.role))
+  if (!canViewReadLog(actor))
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params

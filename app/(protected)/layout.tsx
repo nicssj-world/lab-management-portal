@@ -8,16 +8,16 @@ import { getRolePermissions } from '@/lib/permissions'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user }, error } = await supabase.auth.getUser()
 
-  if (!session) {
+  if (error || !user) {
     redirect('/login')
   }
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('name, role, avatar_url, doc_role')
-    .eq('id', session.user.id)
+    .eq('id', user.id)
     .single()
 
   const LEGACY_ROLES: Record<string, string> = {

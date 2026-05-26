@@ -231,6 +231,56 @@ async function exportOpdXlsx(rows: OpdRow[], months: MonthRef[]) {
   XLSX.writeFile(wb, 'lab-workload-opd.xlsx')
 }
 
+function buildOverviewRows(data: WorkloadData) {
+  const sectionRows = Object.entries(data.section_details)
+    .map(([section, rows]) => {
+      const values = Object.fromEntries(data.months.map(m => {
+        const key = monthKey(m.year, m.month)
+        return [key, rows.reduce((sum, row) => sum + metricValue(row, key, 'ln'), 0)]
+      }))
+      return {
+        section,
+        months: values,
+        total: Object.values(values).reduce((sum, value) => sum + value, 0),
+      }
+    })
+    .filter(row => row.total > 0)
+
+  const opdValues = Object.fromEntries(data.months.map(m => {
+    const key = monthKey(m.year, m.month)
+    return [key, (data.opd_rows ?? []).reduce((sum, row) => sum + (row.months[key] ?? 0), 0)]
+  }))
+  const opdTotal = Object.values(opdValues).reduce((sum, value) => sum + value, 0)
+
+  return [
+    ...sectionRows.sort((a, b) => b.total - a.total),
+    ...(opdTotal > 0 ? [{ section: 'งานบริการผู้ป่วยนอก (HN)', months: opdValues, total: opdTotal }] : []),
+  ]
+}
+
+async function exportOverviewXlsx(data: WorkloadData) {
+  const XLSX = await import('xlsx')
+  const rows = buildOverviewRows(data)
+  const monthTotals = data.months.map(m => rows.reduce((sum, row) => sum + (row.months[monthKey(m.year, m.month)] ?? 0), 0))
+  const grandTotal = monthTotals.reduce((sum, value) => sum + value, 0)
+  const aoa: (string | number)[][] = [
+    [`สรุปรวมภาระงานห้องปฏิบัติการ ปีงบ ${data.fiscal_year}`],
+    ['งาน', ...data.months.map(m => getThaiMonthLabel(m.month)), 'Total'],
+    ...rows.map(row => [
+      row.section,
+      ...data.months.map(m => row.months[monthKey(m.year, m.month)] ?? 0),
+      row.total,
+    ]),
+    ['Total', ...monthTotals, grandTotal],
+  ]
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: data.months.length + 1 } }]
+  ws['!cols'] = [{ wch: 34 }, ...data.months.map(() => ({ wch: 12 })), { wch: 14 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Workload Summary')
+  XLSX.writeFile(wb, `lab-workload-summary-${data.fiscal_year}.xlsx`)
+}
+
 const WORKLOAD_CLIENT_CACHE_TTL_MS = 5 * 60 * 1000
 
 function readWorkloadClientCache(key: string): WorkloadData | null {
@@ -257,11 +307,21 @@ function writeWorkloadClientCache(key: string, data: WorkloadData) {
   } catch {}
 }
 
+async function readJsonResponse(res: Response) {
+  const text = await res.text()
+  if (!text) return {}
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { error: text.slice(0, 300) || `HTTP ${res.status}` }
+  }
+}
+
 export default function WorkloadDashboardPage() {
   const [year, setYear] = useState(getCurrentThaiFiscalYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const [activeTab, setActiveTab] = useState('ภาพรวม')
-  const [metricMode, setMetricMode] = useState<MetricMode>('ln')
+  const metricMode: MetricMode = 'ln'
   const [data, setData] = useState<WorkloadData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -274,7 +334,7 @@ export default function WorkloadDashboardPage() {
     setError('')
     let usedCache = false
     try {
-      const cacheKey = `lab-workload-summary:${year}:${month}`
+      const cacheKey = `lab-workload-summary:v13:${year}:${month}`
       const cached = readWorkloadClientCache(cacheKey)
       if (cached) {
         usedCache = true
@@ -284,7 +344,7 @@ export default function WorkloadDashboardPage() {
         setLoading(true)
       }
       const res = await fetch(`/api/admin/lab-workload/summary?year=${year}&month=${month}`, { signal: ctrl.signal })
-      const json = await res.json()
+      const json = await readJsonResponse(res)
       if (!res.ok) throw new Error(json.error ?? 'โหลดข้อมูลไม่สำเร็จ')
       const nextData = json as WorkloadData
       writeWorkloadClientCache(cacheKey, nextData)
@@ -310,6 +370,9 @@ export default function WorkloadDashboardPage() {
   const grandTotal = monthTotals.reduce((sum, value) => sum + value, 0)
   const opdMonthTotals = data?.months.map(m => (data.opd_rows ?? []).reduce((sum, row) => sum + (row.months[monthKey(m.year, m.month)] ?? 0), 0)) ?? []
   const opdGrandTotal = opdMonthTotals.reduce((sum, value) => sum + value, 0)
+  const overviewRows = data ? buildOverviewRows(data) : []
+  const overviewMonthTotals = data?.months.map(m => overviewRows.reduce((sum, row) => sum + (row.months[monthKey(m.year, m.month)] ?? 0), 0)) ?? []
+  const overviewGrandTotal = overviewMonthTotals.reduce((sum, value) => sum + value, 0)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -322,10 +385,11 @@ export default function WorkloadDashboardPage() {
           icon="download"
           onClick={() => {
             if (!data) return
-            if (activeTab === OPD_TAB) void exportOpdXlsx(data.opd_rows ?? [], data.months)
+            if (activeTab === 'ภาพรวม') void exportOverviewXlsx(data)
+            else if (activeTab === OPD_TAB) void exportOpdXlsx(data.opd_rows ?? [], data.months)
             else if (currentSection) void exportSectionXlsx(currentSection, currentRows, data.months, metricMode)
           }}
-          disabled={!data || activeTab === 'ภาพรวม' || (activeTab === OPD_TAB ? (data.opd_rows ?? []).length === 0 : currentRows.length === 0)}
+          disabled={!data || (activeTab === OPD_TAB ? (data.opd_rows ?? []).length === 0 : activeTab === 'ภาพรวม' ? overviewRows.length === 0 : currentRows.length === 0)}
         >Export</Button>}
       />
 
@@ -420,6 +484,51 @@ export default function WorkloadDashboardPage() {
               </ResponsiveContainer>
             </Panel>
           </div>
+
+          <Panel title="ตารางสรุปรวม" subtitle="ปริมาณ workload รวม แยกตามงานและเดือน ปีงบประมาณ" accent="#FBBF24">
+            <div style={{ overflow: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980, fontSize: 12.5 }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle({ background: '#FFF4CC', minWidth: 260 })}>งาน</th>
+                    {data.months.map(m => (
+                      <th key={monthKey(m.year, m.month)} style={thStyle({ background: '#DCEBFA', textAlign: 'right', minWidth: 88 })}>
+                        {getThaiMonthLabel(m.month)}
+                      </th>
+                    ))}
+                    <th style={thStyle({ background: '#FFF4CC', textAlign: 'right', minWidth: 110 })}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overviewRows.map(row => (
+                    <tr key={row.section}>
+                      <td style={tdStyle({ fontWeight: 800, background: '#FFFFFF' })}>{row.section}</td>
+                      {data.months.map(m => (
+                        <td key={`${row.section}-${monthKey(m.year, m.month)}`} style={tdStyle({ textAlign: 'right', background: '#EAF2FD', fontWeight: 700 })}>
+                          {fmt(row.months[monthKey(m.year, m.month)] ?? 0)}
+                        </td>
+                      ))}
+                      <td style={tdStyle({ textAlign: 'right', background: '#FFF4CC', fontWeight: 900 })}>{fmt(row.total)}</td>
+                    </tr>
+                  ))}
+                  {overviewRows.length > 0 && (
+                    <tr>
+                      <td style={tdStyle({ textAlign: 'center', background: '#FBBF24', fontWeight: 900, fontSize: 14 })}>Total</td>
+                      {overviewMonthTotals.map((total, i) => (
+                        <td key={`${data.months[i].year}-${data.months[i].month}-overview-total`} style={tdStyle({ textAlign: 'right', background: '#FBBF24', fontWeight: 900, fontSize: 14 })}>
+                          {fmt(total)}
+                        </td>
+                      ))}
+                      <td style={tdStyle({ textAlign: 'right', background: '#FB923C', fontWeight: 900, fontSize: 14 })}>{fmt(overviewGrandTotal)}</td>
+                    </tr>
+                  )}
+                  {overviewRows.length === 0 && (
+                    <tr><td colSpan={2 + data.months.length} style={{ padding: 28, textAlign: 'center', color: 'var(--muted)' }}>ไม่มีข้อมูล</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
         </>
       )}
 
@@ -489,38 +598,7 @@ export default function WorkloadDashboardPage() {
             <StatCard label="เดือนที่เลือก" value={getThaiMonthLabel(month)} sub={`ปีงบ ${year}`} icon="clock" color="rgba(217,119,6,.12)" />
           </div>
 
-          <Panel title={`ตารางปริมาณงาน: ${currentSection}`} subtitle="จำนวน LN ไม่ซ้ำ แยกตามรายการตรวจและเดือน" accent="#1E5FAD">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                {metricMode === 'ln' ? 'แสดงจำนวนตัวอย่างแบบ LN ไม่ซ้ำ' : 'แสดงจำนวนรายการตรวจจริงจาก test rows'}
-              </div>
-              <div style={{ display: 'inline-flex', background: 'var(--surface-2)', borderRadius: 10, padding: 3, border: '1px solid var(--border)' }}>
-                {([
-                  ['ln', 'LN ไม่ซ้ำ'],
-                  ['rows', 'Test rows'],
-                ] as const).map(([mode, label]) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setMetricMode(mode)}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: 8,
-                      border: 'none',
-                      background: metricMode === mode ? 'var(--card)' : 'transparent',
-                      color: metricMode === mode ? 'var(--primary)' : 'var(--muted)',
-                      fontWeight: 800,
-                      fontSize: 12,
-                      fontFamily: 'inherit',
-                      cursor: 'pointer',
-                      boxShadow: metricMode === mode ? '0 1px 4px rgba(15,23,42,.10)' : 'none',
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <Panel title={`ตารางปริมาณงาน: ${currentSection}`} subtitle="จำนวนตัวอย่างแบบ LN ไม่ซ้ำ แยกตามรายการตรวจและเดือน" accent="#1E5FAD">
             <div style={{ overflow: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 880, fontSize: 12.5 }}>
                 <thead>
@@ -533,7 +611,7 @@ export default function WorkloadDashboardPage() {
                   </tr>
                   <tr style={{ background: '#EAF2FD' }}>
                     {data.months.map(m => (
-                      <th key={`${monthKey(m.year, m.month)}-total`} style={thStyle({ textAlign: 'right' })}>{metricMode === 'ln' ? 'Total LN' : 'Test rows'}</th>
+                      <th key={`${monthKey(m.year, m.month)}-total`} style={thStyle({ textAlign: 'right' })}>Total LN</th>
                     ))}
                   </tr>
                 </thead>

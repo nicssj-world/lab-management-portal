@@ -1,0 +1,66 @@
+import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getRolePermissions } from '@/lib/permissions'
+import { mapIorStatusToStatus, requiresRca, riskLevel, riskScore } from '@/lib/risk-utils'
+
+export async function getRiskActor() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data } = await supabaseAdmin
+    .from('profiles')
+    .select('id, role, name')
+    .eq('id', user.id)
+    .single()
+  return data as { id: string; role: string; name: string | null } | null
+}
+
+export async function getRiskPermission(role: string) {
+  const perms = await getRolePermissions(role)
+  return perms['ความเสี่ยง / Rejection'] ?? 'none'
+}
+
+export function canManageRisk(actor: { role: string } | null) {
+  return actor?.role === 'Admin' || actor?.role === 'Manager'
+}
+
+export function normalizeRiskPayload(input: Record<string, unknown>) {
+  const likelihood = toInt(input.likelihood)
+  const impact = toInt(input.impact)
+  const score = riskScore(likelihood, impact)
+  const severity = toText(input.severity_level)
+  const residualLikelihood = toInt(input.residual_likelihood)
+  const residualImpact = toInt(input.residual_impact)
+  const residualScore = riskScore(residualLikelihood, residualImpact)
+
+  const payload: Record<string, unknown> = {
+    ...input,
+    likelihood,
+    impact,
+    level: riskLevel(score) ?? input.level ?? 'low',
+    requires_rca: Boolean(input.requires_rca) || requiresRca(severity),
+    residual_likelihood: residualLikelihood,
+    residual_impact: residualImpact,
+    residual_score: residualScore,
+    residual_level: riskLevel(residualScore),
+    updated_at: new Date().toISOString(),
+  }
+
+  if (!payload.status) payload.status = mapIorStatusToStatus(toText(input.ior_status))
+  if (!payload.review_status) payload.review_status = payload.requires_rca ? 'rca_required' : 'pending'
+  if (!payload.name) payload.name = toText(input.event_detail)?.slice(0, 160) || toText(input.event_category) || 'ไม่ระบุ'
+
+  return payload
+}
+
+export function toInt(value: unknown) {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+export function toText(value: unknown) {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  return text || null
+}

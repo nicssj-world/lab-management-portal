@@ -23,6 +23,7 @@ const summaryCache = new Map<string, { expiresAt: number; payload: SummaryPayloa
 
 function cacheKey(sp: URLSearchParams) {
   return [
+    'v2',
     sp.get('year') ?? '',
     sp.get('month') ?? '',
     sp.get('lab_section') ?? '',
