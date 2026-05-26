@@ -14,21 +14,48 @@ export interface TestFilters {
   sortDir?: 'asc' | 'desc'
 }
 
-const ALLOWED_SORT = ['code', 'cgd', 'th', 'price', 'tat_minutes', 'service', 'tube']
+const ALLOWED_SORT = ['code', 'cgd', 'th', 'en', 'price', 'tat_minutes', 'service', 'tube']
+const CUSTOM_SORT = ['display_name_alpha']
+
+function getDisplayNameSortKey(test: Test): { group: number; key: string } {
+  const raw = (test.th || test.en || test.code || '').trim()
+  const withoutLeadingMarks = raw.replace(/^[^A-Za-z]+/, '')
+  if (/^[A-Za-z]/.test(withoutLeadingMarks)) {
+    return { group: 0, key: withoutLeadingMarks }
+  }
+  if (/^[0-9]/.test(raw)) {
+    return { group: 1, key: raw }
+  }
+  return { group: 2, key: raw }
+}
+
+function compareDisplayName(a: Test, b: Test, ascending: boolean): number {
+  const ak = getDisplayNameSortKey(a)
+  const bk = getDisplayNameSortKey(b)
+  const result = ak.group - bk.group
+    || ak.key.localeCompare(bk.key, 'en', { sensitivity: 'base', numeric: true })
+    || a.code.localeCompare(b.code, 'en', { sensitivity: 'base', numeric: true })
+  return ascending ? result : -result
+}
 
 export async function getTests(
   supabase: SupabaseClient,
   filters: TestFilters = {}
 ): Promise<{ data: Test[]; count: number }> {
   const { category, search, popular, active, tube, page = 0, pageSize = 50, sortBy = 'code', sortDir = 'asc' } = filters
+  const customSort = CUSTOM_SORT.includes(sortBy)
 
   const col = ALLOWED_SORT.includes(sortBy) ? sortBy : 'code'
 
   let query = supabase
     .from('tests')
     .select('*', { count: 'exact' })
-    .order(col, { ascending: sortDir === 'asc', nullsFirst: false })
-    .range(page * pageSize, (page + 1) * pageSize - 1)
+
+  if (!customSort) {
+    query = query
+      .order(col, { ascending: sortDir === 'asc', nullsFirst: false })
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+  }
 
   if (active !== undefined) query = query.eq('active', active)
   if (category) query = query.eq('category_id', category)
@@ -37,9 +64,17 @@ export async function getTests(
   if (search) {
     query = query.or(`th.ilike.%${search}%,en.ilike.%${search}%,code.ilike.%${search}%,cgd.ilike.%${search}%,loinc.ilike.%${search}%`)
   }
+  if (customSort) query = query.range(0, 9999)
 
   const { data, error, count } = await query
   if (error) throw error
+  if (customSort) {
+    const sorted = [...(data ?? [])].sort((a, b) => compareDisplayName(a as Test, b as Test, sortDir === 'asc'))
+    return {
+      data: sorted.slice(page * pageSize, (page + 1) * pageSize),
+      count: count ?? sorted.length,
+    }
+  }
   return { data: data ?? [], count: count ?? 0 }
 }
 

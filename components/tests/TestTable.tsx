@@ -23,6 +23,8 @@ interface Props {
   onDelete?: (id: number) => void
   onBulkDelete?: (ids: number[]) => void
   getHref?: (t: Test) => string
+  nameSortKey?: string
+  headerFontSize?: number
 }
 
 const TH: React.CSSProperties = {
@@ -82,6 +84,8 @@ export function TestTable({
   page, pageSize, total,
   sortBy = 'code', sortDir = 'asc',
   onSort, onPageChange, onDelete, onBulkDelete, getHref,
+  nameSortKey = 'th',
+  headerFontSize,
 }: Props) {
   const router = useRouter()
   const catMap = Object.fromEntries(categories.map(c => [c.id, c]))
@@ -198,7 +202,7 @@ export function TestTable({
               {([
                 [null,       'รหัส E-phis',     'center'],
                 [null,       'รหัสกรมบัญชีกลาง', 'center'],
-                ['th',       'ชื่อรายการตรวจ',   'left'],
+                [nameSortKey, 'ชื่อรายการตรวจ',   'left'],
                 ['category', 'หมวดหมู่',          'center'],
                 ['tube',     'Specimen',          'left'],
                 [null,       'วัน-เวลาที่ตรวจ',  'center'],
@@ -210,7 +214,13 @@ export function TestTable({
                 return (
                   <th
                     key={label}
-                    style={{ ...TH, textAlign: align as 'left' | 'center' | 'right', cursor: col ? 'pointer' : 'default', userSelect: 'none' }}
+                    style={{
+                      ...TH,
+                      fontSize: headerFontSize ?? TH.fontSize,
+                      textAlign: align as 'left' | 'center' | 'right',
+                      cursor: col ? 'pointer' : 'default',
+                      userSelect: 'none',
+                    }}
                     onClick={() => col && onSort?.(col, nextDir)}
                   >
                     {label}
