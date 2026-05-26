@@ -35,6 +35,16 @@ function useToast() {
 
 const CHUNK_SIZE = 1000
 
+async function readJsonResponse(res: Response) {
+  const text = await res.text()
+  if (!text) return {}
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { error: text.slice(0, 300) || `HTTP ${res.status}` }
+  }
+}
+
 function detectYearMonthFromSpcm(rows: { spcm_at: string }[]): { year: number; month: number } | null {
   if (rows.length === 0) return null
   const counts = new Map<string, number>()
@@ -153,8 +163,9 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ year: ym.year, month: ym.month, file_name: file.name, total_rows: rows.length }),
       })
-      if (!initRes.ok) throw new Error((await initRes.json()).error ?? 'Init failed')
-      const { upload_id } = await initRes.json()
+      const initJson = await readJsonResponse(initRes)
+      if (!initRes.ok) throw new Error(initJson.error ?? 'Init failed')
+      const { upload_id } = initJson
 
       const totalChunks = Math.ceil(rows.length / CHUNK_SIZE)
       setChunkStatus({ current: 0, total: totalChunks })
@@ -168,7 +179,7 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ upload_id, rows: chunk, chunk_index: i, is_last_chunk: i === totalChunks - 1 }),
         })
-        const chunkJson = await chunkRes.json()
+        const chunkJson = await readJsonResponse(chunkRes)
         if (!chunkRes.ok) throw new Error(chunkJson.error ?? `Chunk ${i} failed`)
         if (chunkJson.skipped > 0) {
           setStats(s => s ? { ...s, skipped: s.skipped + chunkJson.skipped } : s)
@@ -509,7 +520,7 @@ export function TatUploadClient() {
         <div style={{ padding: 24 }}>
           {activeTab === 'lab' && (
             <UploadPanel
-              workerSrc="/workers/tat-parser.worker.js?v=2"
+              workerSrc="/workers/tat-parser.worker.js?v=3"
               initUrl="/api/admin/tat/upload/init"
               chunkUrl="/api/admin/tat/upload/chunk"
               detectYearMonth={(rows) => detectYearMonthFromSpcm(rows as { spcm_at: string }[])}

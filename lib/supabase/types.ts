@@ -163,6 +163,69 @@ export interface Risk {
   owner: string | null
   status: 'open' | 'mitigating' | 'monitoring' | 'closed'
   created_at: string
+  risk_no?: string | null
+  external_no?: string | null
+  event_type?: string | null
+  event_date?: string | null
+  event_time?: string | null
+  reporter_name?: string | null
+  reporter_position?: string | null
+  department_found?: string | null
+  department_target?: string | null
+  risk_type?: string | null
+  event_main_category?: string | null
+  event_sub_category?: string | null
+  event_category?: string | null
+  event_detail?: string | null
+  impact_summary?: string | null
+  immediate_correction?: string | null
+  evidence_note?: string | null
+  severity_level?: string | null
+  ior_status?: string | null
+  recorded_date?: string | null
+  requires_rca?: boolean | null
+  review_status?: 'pending' | 'reviewed' | 'rca_required' | 'action_plan' | 'follow_up' | 'closed' | null
+  reviewed_by?: string | null
+  reviewed_at?: string | null
+  review_note?: string | null
+  rca_method?: string | null
+  root_cause?: string | null
+  rca_factors?: Record<string, unknown> | null
+  residual_likelihood?: number | null
+  residual_impact?: number | null
+  residual_score?: number | null
+  residual_level?: 'low' | 'medium' | 'high' | null
+  residual_assessed_at?: string | null
+  residual_assessed_by?: string | null
+  risk_accepted_by?: string | null
+  risk_accepted_at?: string | null
+  due_date?: string | null
+  follow_up_date?: string | null
+  effectiveness_result?: string | null
+  closed_by?: string | null
+  closed_at?: string | null
+  created_by?: string | null
+  updated_at?: string | null
+}
+
+export interface RiskAction {
+  id: number
+  risk_id: number
+  action_type: 'correction' | 'corrective' | 'preventive' | 'follow_up'
+  description: string
+  owner: string | null
+  due_date: string | null
+  status: 'open' | 'in_progress' | 'done'
+  completed_at: string | null
+  evidence: string | null
+  effectiveness_note: string | null
+  follow_up_date: string | null
+  followed_by: string | null
+  result: string | null
+  is_effective: boolean | null
+  next_follow_up_date: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface Contract {

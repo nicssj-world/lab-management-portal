@@ -129,7 +129,7 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
           {!collapsed && (
             <div style={{ lineHeight: 1.25, overflow: 'hidden', flex: 1 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                {settings.orgName}
+                {settings.systemCode}
               </div>
               <div style={{ fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{settings.siteName}</div>
             </div>

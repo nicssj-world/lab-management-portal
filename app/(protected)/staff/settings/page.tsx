@@ -12,6 +12,8 @@ export default function SettingsPage() {
   const { settings, saveSettings } = useSettings()
   const [draft, setDraft] = useState<SystemSettings>(settings)
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => { setDraft(settings) }, [settings])
 
@@ -19,10 +21,18 @@ export default function SettingsPage() {
     setDraft((prev) => ({ ...prev, [key]: value }))
   }
 
-  function handleSave() {
-    saveSettings(draft)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  async function handleSave() {
+    setSaving(true)
+    setError('')
+    try {
+      await saveSettings(draft)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ไม่สามารถบันทึกการตั้งค่าได้')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const inputStyle: React.CSSProperties = {
@@ -69,7 +79,7 @@ export default function SettingsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           {([
             { key: 'siteName',   label: 'ชื่อระบบ' },
-            { key: 'systemCode', label: 'รหัสระบบ' },
+            { key: 'systemCode', label: 'Site-Name' },
             { key: 'orgName',    label: 'หน่วยงาน' },
             { key: 'standards',  label: 'มาตรฐาน' },
             { key: 'version',    label: 'เวอร์ชัน' },
@@ -87,10 +97,16 @@ export default function SettingsPage() {
           ))}
         </div>
 
+        {error && (
+          <div style={{ marginTop: 16, padding: '10px 12px', borderRadius: 8, background: '#FEE2E2', color: '#B91C1C', fontSize: 12 }}>
+            {error}
+          </div>
+        )}
+
         <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <Button variant="ghost" onClick={() => setDraft(SETTINGS_DEFAULTS)}>รีเซ็ตค่าเริ่มต้น</Button>
-          <Button variant="primary" onClick={handleSave}>
-            {saved ? 'บันทึกแล้ว ✓' : 'บันทึกการตั้งค่า'}
+          <Button variant="primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'กำลังบันทึก...' : saved ? 'บันทึกแล้ว ✓' : 'บันทึกการตั้งค่า'}
           </Button>
         </div>
       </Card>

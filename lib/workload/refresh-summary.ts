@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { invalidateAnalysisCache } from '@/lib/analysis-cache'
 
 export async function refreshLabWorkloadSummary(year: number, month: number) {
   const { error } = await supabaseAdmin.rpc('refresh_lab_workload_summary_month', {
@@ -11,4 +12,6 @@ export async function refreshLabWorkloadSummary(year: number, month: number) {
   if (error && !['42883', '42P01'].includes(error.code ?? '')) {
     throw new Error(error.message)
   }
+
+  await invalidateAnalysisCache(year > 2400 ? year - 543 : year, month)
 }

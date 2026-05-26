@@ -28,11 +28,19 @@ export function PublicNav() {
 
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
-      const { data } = await supabase.from('profiles').select('name, role, avatar_url').eq('id', user.id).single()
-      if (data) setSessionUser({ name: data.name, role: data.role, avatar_url: data.avatar_url ?? null })
-    })
+    supabase.auth.getUser()
+      .then(async ({ data: { user }, error }) => {
+        if (error) {
+          await supabase.auth.signOut({ scope: 'local' })
+          return
+        }
+        if (!user) return
+        const { data } = await supabase.from('profiles').select('name, role, avatar_url').eq('id', user.id).single()
+        if (data) setSessionUser({ name: data.name, role: data.role, avatar_url: data.avatar_url ?? null })
+      })
+      .catch(async () => {
+        await supabase.auth.signOut({ scope: 'local' })
+      })
   }, [])
 
   useEffect(() => { setMenuOpen(false) }, [pathname])
@@ -94,7 +102,7 @@ export function PublicNav() {
           .pub-nav-inner {
             padding: calc(env(safe-area-inset-top, 0px) + 14px) 14px 12px;
             gap: 10px;
-            min-height: 76px;
+            min-height: 82px;
           }
           .pub-logo-link {
             max-width: calc(100% - 96px);
@@ -108,7 +116,7 @@ export function PublicNav() {
             max-height: none !important;
           }
           .pub-mobile-nav-panel {
-            top: 76px !important;
+            top: 82px !important;
           }
         }
         @media (max-width: 420px) {
@@ -120,11 +128,11 @@ export function PublicNav() {
             max-width: calc(100% - 88px);
           }
           .pub-logo-link img {
-            width: 40px;
-            height: 40px;
+            width: 48px !important;
+            height: 48px !important;
           }
           .pub-mobile-nav-panel {
-            top: 72px !important;
+            top: 76px !important;
           }
         }
       `}</style>
@@ -140,7 +148,7 @@ export function PublicNav() {
           className="pub-nav-inner"
         >
           <Link href="/" className="pub-logo-link">
-            <Logo size={48} lang={lang} />
+            <Logo size={64} lang={lang} />
           </Link>
 
           {/* Desktop nav */}

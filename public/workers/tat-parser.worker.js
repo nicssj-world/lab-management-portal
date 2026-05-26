@@ -69,6 +69,7 @@ function parseRow(cols, headers) {
     rslt_at: rslt,
     tat_minutes: Math.round(tat * 10) / 10,
     lab_section: col(cols, headers, ['labsection', 'section'], 2)?.trim() || '',
+    name_1: col(cols, headers, ['name1', 'name_1'], undefined)?.trim() || '',
     ward: col(cols, headers, ['ward'], 14)?.trim() || '',
     priority: col(cols, headers, ['priority'], 15)?.trim() || '',
     test_name: col(cols, headers, ['testname', 'test_name'], 13)?.trim() || '',

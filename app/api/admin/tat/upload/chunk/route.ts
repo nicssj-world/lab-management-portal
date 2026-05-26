@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 let testTargetMap: Map<string, number> | null = null
 let testUrgentTargetMap: Map<string, number> | null = null
 let testTubeMap: Map<string, string> | null = null
+let tatRecordsSupportsName1: boolean | null = null
 
 interface TestRow {
   th: string
@@ -97,6 +98,10 @@ function resolveIsBloodDraw(testName: string, tubeMap: Map<string, string>): boo
   return isPanelBloodDraw(tubes)
 }
 
+function stripName1<T extends { name_1?: string | null }>(rows: T[]) {
+  return rows.map(({ name_1: _name1, ...row }) => row)
+}
+
 async function getActor() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -113,6 +118,7 @@ interface RawRow {
   rslt_at: string
   tat_minutes: number
   lab_section: string
+  name_1?: string
   ward: string
   priority: string
   test_name: string
@@ -169,6 +175,7 @@ export async function POST(req: NextRequest) {
         within_target,
         is_blood_draw,
         lab_section: row.lab_section,
+        name_1: row.name_1 || null,
         ward: row.ward,
         priority: row.priority,
         test_name: testName,
@@ -206,10 +213,22 @@ export async function POST(req: NextRequest) {
 
   let insertedCount = 0
   if (toInsert.length > 0) {
-    const { data: inserted, error } = await supabaseAdmin
+    const insertRows = tatRecordsSupportsName1 === false ? stripName1(toInsert) : toInsert
+    let { data: inserted, error } = await supabaseAdmin
       .from('tat_records')
-      .insert(toInsert)
+      .insert(insertRows)
       .select('id')
+    if (error && error.message.toLowerCase().includes('name_1')) {
+      tatRecordsSupportsName1 = false
+      const fallback = await supabaseAdmin
+        .from('tat_records')
+        .insert(stripName1(toInsert))
+        .select('id')
+      inserted = fallback.data
+      error = fallback.error
+    } else if (!error) {
+      tatRecordsSupportsName1 = true
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     insertedCount = inserted?.length ?? 0
   }
@@ -240,7 +259,11 @@ export async function POST(req: NextRequest) {
       joined = true
     }
 
-    await refreshLabWorkloadSummary(upload.year, upload.month)
+    try {
+      await refreshLabWorkloadSummary(upload.year, upload.month)
+    } catch (err) {
+      console.warn('refreshLabWorkloadSummary failed after TAT upload', err)
+    }
     await invalidateAnalysisCache(upload.year, upload.month)
   }
 

@@ -54,6 +54,10 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
             min-width: 0 !important;
             width: 100%;
           }
+          .test-category-scroll {
+            margin-inline: -4px;
+            padding-inline: 4px;
+          }
         }
       `}</style>
 
@@ -109,11 +113,17 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
       {/* Row 2: Category pills */}
       {categories.length > 0 && (
         <div
+          className="test-category-scroll"
           ref={scrollRef}
-          style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8,
+            maxWidth: '100%',
+            overflow: 'visible',
+            paddingBottom: 2,
+          }}
         >
-          <style>{`.no-scrollbar::-webkit-scrollbar { display: none }`}</style>
-
           {/* "ทั้งหมด" pill */}
           <button
             onClick={() => onCategoryChange('')}
@@ -140,12 +150,14 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
                 onClick={() => onCategoryChange(active ? '' : cat.id)}
                 style={{
                   flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6,
+                  minWidth: 'max-content',
                   padding: '5px 14px', borderRadius: 20, cursor: 'pointer',
                   fontFamily: 'inherit', fontSize: 12.5, transition: 'all .15s',
                   border: `1.5px solid ${active ? cat.color : 'var(--border)'}`,
                   background: active ? cat.color + '1a' : 'transparent',
                   color: active ? cat.color : 'var(--muted)',
                   fontWeight: active ? 700 : 500,
+                  whiteSpace: 'nowrap',
                 }}
               >
                 <span style={{

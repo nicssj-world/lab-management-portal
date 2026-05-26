@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Logo } from '@/components/lab/Logo'
 import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
+import { useSettings } from '@/context/SettingsContext'
 
 const FOOTER_COLS = [
   {
@@ -27,6 +28,12 @@ const FOOTER_COLS = [
 
 export function PublicFooter() {
   const { lang } = useLang()
+  const { settings } = useSettings()
+  const standards = settings.standards
+    .split(/[·,|]/)
+    .map((standard) => standard.trim())
+    .filter(Boolean)
+
   return (
     <footer
       className="public-footer"
@@ -129,18 +136,16 @@ export function PublicFooter() {
           <Logo size={56} lang={lang} />
           <p style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 14, lineHeight: 1.7 }}>
             {lang === 'th'
-              ? 'กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี ให้บริการตรวจวิเคราะห์ทางห้องปฏิบัติการที่ได้มาตรฐาน'
-              : 'Medical Technology Department, Chonburi Hospital. Accredited laboratory services certified under ISO 15189:2022 and ISO 15190:2020 standards.'}
+              ? `${settings.orgName} ให้บริการตรวจวิเคราะห์ทางห้องปฏิบัติการที่ได้มาตรฐาน`
+              : `${settings.orgName}. Accredited laboratory services certified under ${settings.standards} standards.`}
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 20, background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--primary)', fontSize: 11.5, fontWeight: 700 }}>
-              <Icon name="shieldCheck" size={13} />
-              ISO 15189:2022
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 20, background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--primary)', fontSize: 11.5, fontWeight: 700 }}>
-              <Icon name="shieldCheck" size={13} />
-              ISO 15190:2020
-            </span>
+            {standards.map((standard) => (
+              <span key={standard} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 20, background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--primary)', fontSize: 11.5, fontWeight: 700 }}>
+                <Icon name="shieldCheck" size={13} />
+                {standard}
+              </span>
+            ))}
           </div>
         </div>
         {FOOTER_COLS.map((col) => (
@@ -191,7 +196,7 @@ export function PublicFooter() {
         <span>© 2026 Chonburi Hospital — Medical Technology Department.</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Icon name="doc" size={12} />
-          v1.0.0 2006
+          {settings.version}
         </span>
       </div>
     </footer>

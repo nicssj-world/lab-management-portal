@@ -801,12 +801,13 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, canAdd 
 // ── Read Modal ────────────────────────────────────────────────
 interface ReadLog { id: string; user_id: string; created_at: string; profiles: { name: string; role: string } | null }
 
-function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds }: {
+function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadLogged }: {
   doc: Document
   userRole: string
   canViewLog: boolean
   onClose: () => void
   onResetReadIds: (docId: string | null) => void
+  onReadLogged: (docId: string) => void
 }) {
   const [url, setUrl]         = useState<string | null>(null)
   const [mime, setMime]       = useState<string | null>(null)
@@ -824,12 +825,12 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds }: {
     fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
       .then((r) => r.json())
       .then((d) => {
-        if (d.url) { setUrl(d.url); setMime(d.mime_type ?? '') }
+        if (d.url) { setUrl(d.url); setMime(d.mime_type ?? ''); onReadLogged(doc.id) }
         else setErrMsg(d.error ?? 'ไม่สามารถเปิดได้')
       })
       .catch(() => setErrMsg('เกิดข้อผิดพลาด'))
       .finally(() => setLoading(false))
-  }, [doc.id])
+  }, [doc.id, onReadLogged])
 
   function loadLogs() {
     if (!canViewLog) return
@@ -1611,7 +1612,7 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
                               const hasRead = readDocIds.has(doc.id)
                               return (
                                 <button
-                                  onClick={() => { setReadDoc(doc); setReadDocIds((prev) => new Set(prev).add(doc.id)) }}
+                                  onClick={() => setReadDoc(doc)}
                                   title="อ่านเอกสาร"
                                   style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px', height: 32, borderRadius: 7, border: `1px solid ${hasRead ? 'var(--success)' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: hasRead ? 'var(--success)' : 'var(--muted)', fontFamily: 'inherit', transition: 'all .12s' }}
                                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--success)'; e.currentTarget.style.color = 'var(--success)' }}
@@ -1703,6 +1704,7 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
             if (docId === null) setReadDocIds(new Set())
             else setReadDocIds((prev) => { const next = new Set(prev); next.delete(docId); return next })
           }}
+          onReadLogged={(docId) => setReadDocIds((prev) => new Set(prev).add(docId))}
         />
       )}
 
