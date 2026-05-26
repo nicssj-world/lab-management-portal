@@ -61,7 +61,7 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
   const router = useRouter()
   const { lang } = useLang()
   const { settings } = useSettings()
-  const { collapsed } = useSidebar()
+  const { collapsed, mobileOpen, closeMobile } = useSidebar()
   const [testCount, setTestCount] = useState<number | null>(null)
   const [docCount, setDocCount]   = useState<number | null>(null)
   const w = collapsed ? 64 : 248
@@ -88,8 +88,23 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
   return (
     <>
     {/* Spacer keeps the flex layout — actual sidebar is fixed */}
-    <div style={{ width: w, flexShrink: 0, transition: 'width .2s' }} />
+    <button
+      aria-label="Close navigation"
+      onClick={closeMobile}
+      className={`staff-sidebar-overlay ${mobileOpen ? 'is-mobile-open' : ''}`}
+      style={{
+        display: mobileOpen ? 'block' : 'none',
+        position: 'fixed',
+        inset: 0,
+        border: 0,
+        background: 'rgba(15,23,42,.42)',
+        zIndex: 39,
+        padding: 0,
+      }}
+    />
+    <div className="staff-sidebar-spacer" style={{ width: w, flexShrink: 0, transition: 'width .2s' }} />
     <aside
+      className={`staff-sidebar ${mobileOpen ? 'is-mobile-open' : ''}`}
       style={{
         width: w, background: 'var(--card)',
         borderRight: '1px solid var(--border)', height: '100vh',
@@ -145,6 +160,7 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
             <Link
               key={item.href}
               href={item.href}
+              onClick={closeMobile}
               title={collapsed ? (lang === 'th' ? item.th : item.en) : undefined}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10,

@@ -231,6 +231,32 @@ async function exportOpdXlsx(rows: OpdRow[], months: MonthRef[]) {
   XLSX.writeFile(wb, 'lab-workload-opd.xlsx')
 }
 
+const WORKLOAD_CLIENT_CACHE_TTL_MS = 5 * 60 * 1000
+
+function readWorkloadClientCache(key: string): WorkloadData | null {
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { expiresAt: number; data: WorkloadData }
+    if (parsed.expiresAt <= Date.now()) {
+      sessionStorage.removeItem(key)
+      return null
+    }
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+function writeWorkloadClientCache(key: string, data: WorkloadData) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({
+      expiresAt: Date.now() + WORKLOAD_CLIENT_CACHE_TTL_MS,
+      data,
+    }))
+  } catch {}
+}
+
 export default function WorkloadDashboardPage() {
   const [year, setYear] = useState(getCurrentThaiFiscalYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
@@ -245,21 +271,32 @@ export default function WorkloadDashboardPage() {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
-    setLoading(true)
     setError('')
+    let usedCache = false
     try {
+      const cacheKey = `lab-workload-summary:${year}:${month}`
+      const cached = readWorkloadClientCache(cacheKey)
+      if (cached) {
+        usedCache = true
+        setData(cached)
+        setLoading(false)
+      } else {
+        setLoading(true)
+      }
       const res = await fetch(`/api/admin/lab-workload/summary?year=${year}&month=${month}`, { signal: ctrl.signal })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'โหลดข้อมูลไม่สำเร็จ')
-      setData(json as WorkloadData)
+      const nextData = json as WorkloadData
+      writeWorkloadClientCache(cacheKey, nextData)
+      setData(nextData)
       setActiveTab(prev => prev === 'ภาพรวม' || prev === OPD_TAB || json.departments.some((d: DepartmentRow) => d.section === prev) ? prev : 'ภาพรวม')
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         setError((err as Error).message)
-        setData(null)
+        if (!usedCache) setData(null)
       }
     } finally {
-      setLoading(false)
+      if (abortRef.current === ctrl) setLoading(false)
     }
   }, [year, month])
 
