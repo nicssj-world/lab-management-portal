@@ -265,6 +265,15 @@ create or replace function get_tat_summary(
       and month = p_month
       and (p_labzone is null or labzone_name = p_labzone)
   ),
+  phleb_stats as (
+    select
+      count(*)::int as phleb_record_count,
+      count(distinct nullif(trim(hn), ''))::int as phleb_hn_count
+    from phlebotomy_records
+    where year  = p_year
+      and month = p_month
+      and (p_labzone is null or labzone_name = p_labzone)
+  ),
   by_labzone_phleb as (
     select
       labzone_name,
@@ -317,6 +326,9 @@ create or replace function get_tat_summary(
       'pct_phleb_within_target',  pc.pct_phleb_within_target
     ),
     'hn_null_count', c.hn_null_count,
+    'has_phleb_data', ps.phleb_record_count > 0,
+    'phleb_record_count', ps.phleb_record_count,
+    'phleb_hn_count', ps.phleb_hn_count,
     'match_breakdown', jsonb_build_object(
       'exact',     mc.exact_count,
       'ambiguous', mc.ambiguous_count,
@@ -369,5 +381,6 @@ create or replace function get_tat_summary(
   cross join blood_core bc
   cross join match_core mc
   cross join phleb_core pc
+  cross join phleb_stats ps
   left join busiest b on true
 $$;
