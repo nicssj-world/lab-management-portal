@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { refreshLabWorkloadSummary } from '@/lib/workload/refresh-summary'
+import { invalidateAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getActor() {
@@ -32,6 +34,9 @@ export async function DELETE(
 
   const { error } = await supabaseAdmin.from('tat_uploads').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await refreshLabWorkloadSummary(upload.year, upload.month)
+  await invalidateAnalysisCache(upload.year, upload.month)
 
   return NextResponse.json({ ok: true })
 }

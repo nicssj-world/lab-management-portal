@@ -24,14 +24,14 @@ const DOC_DELETE_ROLES = ['Laboratory Director', 'Document Controller']
 
 async function canUploadDocument(role: string, docRole: string | null) {
   if (role === 'Admin') return true
-  if (docRole && DOC_UPLOAD_ROLES.includes(docRole)) return true
+  if (DOC_UPLOAD_ROLES.includes(docRole ?? role)) return true
   const perms = await getRolePermissions(role)
   return (perms['เอกสารคุณภาพ'] ?? 'none') === 'edit'
 }
 
 function canDeleteDocument(role: string, docRole: string | null) {
   if (role === 'Admin') return true
-  return !!(docRole && DOC_DELETE_ROLES.includes(docRole))
+  return DOC_DELETE_ROLES.includes(docRole ?? role)
 }
 
 export async function PATCH(

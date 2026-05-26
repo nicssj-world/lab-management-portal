@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getRolePermissions } from '@/lib/permissions'
+import { canDeleteTests } from '@/lib/tests/permissions'
 
 async function getActor() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const { data } = await supabaseAdmin.from('profiles').select('id, role').eq('id', user.id).single()
-  return data as { id: string; role: string } | null
+  const { data } = await supabaseAdmin.from('profiles').select('id, role, doc_role').eq('id', user.id).single()
+  return data as { id: string; role: string; doc_role: string | null } | null
 }
 
 export async function POST(req: NextRequest) {
   try {
     const actor = await getActor()
     if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    if (!['Admin', 'Manager'].includes(actor.role))
+    const perms = await getRolePermissions(actor.role)
+    if (!canDeleteTests(actor, perms['รายการตรวจ'] ?? 'none'))
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { ids }: { ids: number[] } = await req.json()

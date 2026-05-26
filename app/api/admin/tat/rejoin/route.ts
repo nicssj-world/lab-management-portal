@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { rejoinTatBatch } from '@/lib/tat/rejoin-batch'
+import { refreshLabWorkloadSummary } from '@/lib/workload/refresh-summary'
+import { invalidateAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -29,6 +31,8 @@ export async function POST(req: NextRequest) {
   const { year, month } = parsed.data
 
   const result = await rejoinTatBatch(year, month, true)
+  await refreshLabWorkloadSummary(year, month)
+  await invalidateAnalysisCache(year, month)
 
   return NextResponse.json({ ok: true, ...result })
 }

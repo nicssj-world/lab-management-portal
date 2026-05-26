@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { invalidateAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getActor() {
@@ -21,6 +22,8 @@ export async function POST(req: NextRequest) {
   const { year, month, file_name } = body as { year: number; month: number; file_name: string }
   if (!year || !month || !file_name)
     return NextResponse.json({ error: 'year, month, file_name required' }, { status: 422 })
+
+  await invalidateAnalysisCache(year, month)
 
   const { data: existing } = await supabaseAdmin
     .from('tat_uploads')

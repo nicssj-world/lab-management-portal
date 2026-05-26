@@ -2,13 +2,15 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { duplicateTest } from '@/lib/queries/tests'
+import { getRolePermissions } from '@/lib/permissions'
+import { canEditTests } from '@/lib/tests/permissions'
 
 async function getActor() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const { data } = await supabaseAdmin.from('profiles').select('id, role').eq('id', user.id).single()
-  return data as { id: string; role: string } | null
+  const { data } = await supabaseAdmin.from('profiles').select('id, role, doc_role').eq('id', user.id).single()
+  return data as { id: string; role: string; doc_role: string | null } | null
 }
 
 function toMsg(err: unknown): string {
@@ -23,8 +25,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   try {
     const actor = await getActor()
     if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const canEdit = ['Admin', 'Manager'].includes(actor.role ?? '')
-    if (!canEdit) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const perms = await getRolePermissions(actor.role)
+    if (!canEditTests(actor, perms['รายการตรวจ'] ?? 'none')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { id } = await params
     const test = await duplicateTest(supabaseAdmin, Number(id), actor.id)

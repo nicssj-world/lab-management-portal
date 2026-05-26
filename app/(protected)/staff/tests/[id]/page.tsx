@@ -13,11 +13,13 @@ import { isJsonTable } from '@/components/tests/ReferenceRangePaste'
 import { DocDownloadButton } from '@/components/tests/DocDownloadButton'
 import { createClient } from '@/lib/supabase/client'
 import { usePermission } from '@/context/PermissionContext'
+import { canDeleteTests, canEditTests } from '@/lib/tests/permissions'
 import type { TestDetail, Category } from '@/lib/supabase/types'
 
 export default function TestDetailPage() {
   const { id } = useParams() as { id: string }
   const router = useRouter()
+  const [actor, setActor] = useState<{ role: string; doc_role?: string | null } | null>(null)
   const [detail, setDetail] = useState<TestDetail | null>(null)
   const [category, setCategory] = useState<Category | undefined>()
   const [loading, setLoading] = useState(true)
@@ -26,7 +28,9 @@ export default function TestDetailPage() {
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const supabase = createClient()
-  const { canEdit } = usePermission('รายการตรวจ')
+  const testPerm = usePermission('รายการตรวจ')
+  const canModifyTests = canEditTests(actor, testPerm.level)
+  const canRemoveTests = canDeleteTests(actor, testPerm.level)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -35,6 +39,11 @@ export default function TestDetailPage() {
 
   useEffect(() => {
     async function load() {
+      fetch('/api/me')
+        .then(r => r.ok ? r.json() : null)
+        .then(me => setActor(me ? { role: me.role, doc_role: me.doc_role } : null))
+        .catch(() => setActor(null))
+
       const res = await fetch(`/api/admin/tests/${id}`)
       const json: TestDetail = await res.json()
       setDetail(json)
@@ -105,7 +114,7 @@ export default function TestDetailPage() {
       {/* Header card */}
       <Card padding={24}>
         <TestDetailCard test={test} category={category} />
-        {canEdit && (
+        {canModifyTests && (
           <div style={{ display: 'flex', gap: 8, marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
             <Link href={`/staff/tests/${id}/edit`} style={{ textDecoration: 'none' }}>
               <Button variant="secondary" size="sm" icon="edit">แก้ไข</Button>
@@ -113,7 +122,9 @@ export default function TestDetailPage() {
             <Button variant="ghost" size="sm" icon="doc" onClick={handleDuplicate} disabled={duplicating}>
               {duplicating ? 'กำลังคัดลอก...' : 'คัดลอก'}
             </Button>
-            <Button variant="danger" size="sm" icon="trash" onClick={() => setConfirmDelete(true)}>ลบ</Button>
+            {canRemoveTests && (
+              <Button variant="danger" size="sm" icon="trash" onClick={() => setConfirmDelete(true)}>ลบ</Button>
+            )}
           </div>
         )}
       </Card>

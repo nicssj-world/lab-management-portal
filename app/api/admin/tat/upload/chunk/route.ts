@@ -4,6 +4,7 @@ import { getRolePermissions } from '@/lib/permissions'
 import { isPanelBloodDraw } from '@/lib/tat/tube-classify'
 import { rejoinTatBatch } from '@/lib/tat/rejoin-batch'
 import { refreshLabWorkloadSummary } from '@/lib/workload/refresh-summary'
+import { invalidateAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
 
 // Module-scope caches — populated once per function instance lifetime
@@ -238,6 +239,7 @@ export async function POST(req: NextRequest) {
     }
 
     await refreshLabWorkloadSummary(upload.year, upload.month)
+    await invalidateAnalysisCache(upload.year, upload.month)
   }
 
   return NextResponse.json({ inserted: insertedCount, skipped, joined })

@@ -1,9 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { readAnalysisCache, writeAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
 
 const PAGE_SIZE = 1000
 const CACHE_TTL_MS = 3 * 60 * 1000
+const PERSISTENT_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+const CACHE_ENDPOINT = 'lab-workload-summary'
 const CAR_BED_LABZONE = 'ช่องรถนั่ง-นอน'
 const CAR_BED_SOURCE_ZONES = ['ช่อง 10', 'ช่อง 11']
 const PHLEB_ALLOWED_LABZONES = [
@@ -300,6 +303,12 @@ export async function GET(req: NextRequest) {
   }
 
   const months = fiscalMonths(fiscalYear)
+  const persistent = await readAnalysisCache<Payload>(CACHE_ENDPOINT, key)
+  if (persistent) {
+    cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload: persistent })
+    return NextResponse.json(persistent, { headers: { 'X-Lab-Workload-Cache': 'persistent' } })
+  }
+
   const precomputed = await fetchPrecomputedPayload(displayFiscalYear, fiscalYear, selectedYear, selectedMonth, months)
   if (precomputed) {
     const [selectedTatRows, selectedPhlebRows] = await Promise.all([
@@ -333,6 +342,7 @@ export async function GET(req: NextRequest) {
       }),
     }
     cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
+    await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
     return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'precomputed' } })
   }
 
@@ -513,5 +523,6 @@ export async function GET(req: NextRequest) {
   }
 
   cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
+  await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
   return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'miss' } })
 }

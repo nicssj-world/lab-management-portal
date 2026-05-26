@@ -1,4 +1,7 @@
 export type DocStatus = 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolete'
+type WorkflowRole = 'Laboratory Director' | 'Quality Manager' | 'Document Controller' | 'Reviewer' | 'Viewer'
+
+const WORKFLOW_ROLES: WorkflowRole[] = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer', 'Viewer']
 
 export const FULL_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   Draft:     ['Review'],
@@ -19,14 +22,15 @@ const QM_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
 const REVIEWER_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   Draft:     ['Review'],
   Review:    ['Draft'],
-  Approved:  [],
+  Approved:  ['Draft', 'Review'],
   Published: [],
-  Obsolete:  [],
+  Obsolete:  ['Draft', 'Review'],
 }
 
 export function allowedTransitions(current: DocStatus, role: string, docRole?: string): DocStatus[] {
   if (role === 'Admin') return FULL_TRANSITIONS[current] ?? []
-  switch (docRole) {
+  const workflowRole = docRole ?? (WORKFLOW_ROLES.includes(role as WorkflowRole) ? role : undefined)
+  switch (workflowRole) {
     case 'Laboratory Director':
     case 'Document Controller':
       return FULL_TRANSITIONS[current] ?? []
@@ -47,21 +51,21 @@ export function availableEditStatuses(
   docRole: string | undefined,
   currentStatus?: DocStatus,
 ): DocStatus[] {
+  const workflowRole = docRole ?? (WORKFLOW_ROLES.includes(role as WorkflowRole) ? role : undefined)
+
   // Admin / Lab Director / Doc Controller — เห็นทุกสถานะเสมอ
-  if (role === 'Admin' || docRole === 'Laboratory Director' || docRole === 'Document Controller') {
+  if (role === 'Admin' || workflowRole === 'Laboratory Director' || workflowRole === 'Document Controller') {
     return ALL_STATUSES
   }
 
   // Quality Manager — Draft, Review, Approved (ไม่มี Published/Obsolete)
-  if (docRole === 'Quality Manager') {
+  if (workflowRole === 'Quality Manager') {
     return ['Draft', 'Review', 'Approved']
   }
 
-  // Reviewer — ขึ้นอยู่กับ current status + transitions
-  if (docRole === 'Reviewer') {
-    if (!currentStatus) return ['Draft']
-    const transitions = allowedTransitions(currentStatus, role, docRole)
-    return [currentStatus, ...transitions.filter((s) => s !== currentStatus)]
+  // Reviewer — จำกัดให้เลือกได้เฉพาะ Draft / Review
+  if (workflowRole === 'Reviewer') {
+    return ['Draft', 'Review']
   }
 
   // Viewer / null — Draft เท่านั้น (ถ้าผ่านมาได้ถึง modal นี้)

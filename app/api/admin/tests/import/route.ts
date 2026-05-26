@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getRolePermissions } from '@/lib/permissions'
+import { canEditTests } from '@/lib/tests/permissions'
 import type { ImportRow } from '@/components/tests/TestImport'
 
 const CATEGORY_CONTACT: Record<string, { name: string; phone: string }> = {
@@ -40,6 +42,14 @@ function inferTubeColor(note: string): string {
   return '#000000'
 }
 
+function norm(v: string | null | undefined) {
+  return (v ?? '').trim().toLowerCase()
+}
+
+function duplicateKey(categoryId: string | null, value: string | null | undefined) {
+  return `${categoryId ?? ''}::${norm(value)}`
+}
+
 const TUBE_COLOR_MAP: Record<string, string> = {
   'Sodium citrate (ฟ้า)':         '#25a6eb',
   'Clotted blood (แดง)':           '#EF4444',
@@ -65,15 +75,16 @@ async function getActor() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const { data } = await supabaseAdmin.from('profiles').select('id, role').eq('id', user.id).single()
-  return data as { id: string; role: string } | null
+  const { data } = await supabaseAdmin.from('profiles').select('id, role, doc_role').eq('id', user.id).single()
+  return data as { id: string; role: string; doc_role: string | null } | null
 }
 
 export async function POST(req: NextRequest) {
   try {
     const actor = await getActor()
     if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    if (!['Admin', 'Manager'].includes(actor.role))
+    const perms = await getRolePermissions(actor.role)
+    if (!canEditTests(actor, perms['รายการตรวจ'] ?? 'none'))
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { rows }: { rows: ImportRow[] } = await req.json()
@@ -85,17 +96,36 @@ export async function POST(req: NextRequest) {
     const catMap: Record<string, string> = {}
     cats?.forEach(c => { catMap[c.th.toLowerCase()] = c.id })
 
+    const { data: existingTests, error: existingErr } = await supabaseAdmin
+      .from('tests')
+      .select('code, th, category_id')
+    if (existingErr) return NextResponse.json({ error: existingErr.message }, { status: 500 })
+
+    const existingKeys = new Set<string>()
+    ;(existingTests ?? []).forEach((test: { code: string | null; th: string | null; category_id: string | null }) => {
+      if (test.code) existingKeys.add(duplicateKey(test.category_id, test.code))
+      if (test.th) existingKeys.add(duplicateKey(test.category_id, test.th))
+    })
+    const importedKeys = new Set<string>()
+
     let imported = 0
     const errors: { row: number; error: string }[] = []
 
     for (const row of rows) {
       try {
-        const categoryId = row.category ? (catMap[row.category.toLowerCase()] ?? null) : null
+        const categoryId = row.category_id ?? (row.category ? (catMap[row.category.toLowerCase()] ?? null) : null)
+        const rowKeys = [
+          duplicateKey(categoryId, row.code),
+          duplicateKey(categoryId, row.th),
+        ]
+        if (rowKeys.some(key => existingKeys.has(key) || importedKeys.has(key))) {
+          throw new Error('รหัสหรือชื่อรายการตรวจนี้มีอยู่แล้วในหมวดหมู่เดียวกัน')
+        }
         const tubeColor = row.tube
           ? (TUBE_COLOR_MAP[row.tube] ?? inferTubeColor(row.tube))
           : null
         const contactPreset = row.category ? CATEGORY_CONTACT[row.category] : undefined
-        const { error } = await supabaseAdmin.from('tests').upsert({
+        const { error } = await supabaseAdmin.from('tests').insert({
           code:          row.code,
           th:            row.th,
           en:            row.en ?? '',
@@ -118,8 +148,9 @@ export async function POST(req: NextRequest) {
           contact_phone: contactPreset?.phone ?? null,
           active:        true,
           updated_by:    actor.id,
-        }, { onConflict: 'code' })
+        })
         if (error) throw new Error(error.message)
+        rowKeys.forEach(key => importedKeys.add(key))
         imported++
       } catch (err) {
         errors.push({ row: row._rowNum, error: err instanceof Error ? err.message : String(err) })

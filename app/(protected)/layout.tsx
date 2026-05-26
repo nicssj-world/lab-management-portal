@@ -25,6 +25,12 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   }
   const role = profile?.role ? (LEGACY_ROLES[profile.role] ?? profile.role) : undefined
   const permissions = role ? await getRolePermissions(role) : {}
+  if (['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(profile?.doc_role ?? '')) {
+    permissions['เอกสารคุณภาพ'] = 'edit'
+  }
+  if (profile?.doc_role === 'Reviewer') {
+    permissions['รายการตรวจ'] = 'edit'
+  }
 
   return (
     <SidebarProvider>

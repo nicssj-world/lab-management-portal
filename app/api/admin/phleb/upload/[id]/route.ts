@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { rejoinTatBatch } from '@/lib/tat/rejoin-batch'
+import { refreshLabWorkloadSummary } from '@/lib/workload/refresh-summary'
+import { invalidateAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getActor() {
@@ -36,6 +38,8 @@ export async function DELETE(
 
   // Reset phleb fields in tat_records for this month
   await rejoinTatBatch(upload.year, upload.month, true)
+  await refreshLabWorkloadSummary(upload.year, upload.month)
+  await invalidateAnalysisCache(upload.year, upload.month)
 
   return NextResponse.json({ ok: true })
 }

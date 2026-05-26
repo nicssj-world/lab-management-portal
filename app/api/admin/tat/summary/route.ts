@@ -1,10 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { readAnalysisCache, writeAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
 
 const CAR_BED_LABZONE = 'ช่องรถนั่ง-นอน'
 const CAR_BED_SOURCE_ZONES = ['ช่อง 10', 'ช่อง 11']
 const SUMMARY_CACHE_TTL_MS = 2 * 60 * 1000
+const PERSISTENT_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+const CACHE_ENDPOINT = 'tat-summary'
 
 type SummaryPayload = Record<string, unknown> & {
   kpi?: Record<string, unknown>
@@ -46,6 +49,14 @@ export async function GET(req: NextRequest) {
   if (cached && cached.expiresAt > Date.now()) {
     return NextResponse.json(cached.payload, {
       headers: { 'X-TAT-Summary-Cache': 'hit' },
+    })
+  }
+
+  const persistent = await readAnalysisCache<SummaryPayload>(CACHE_ENDPOINT, key)
+  if (persistent) {
+    summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: persistent })
+    return NextResponse.json(persistent, {
+      headers: { 'X-TAT-Summary-Cache': 'persistent' },
     })
   }
 
@@ -117,6 +128,7 @@ export async function GET(req: NextRequest) {
       }),
     }
     summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload })
+    await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, payload, PERSISTENT_CACHE_TTL_MS)
     return NextResponse.json(payload, {
       headers: { 'X-TAT-Summary-Cache': 'miss' },
     })
@@ -135,6 +147,7 @@ export async function GET(req: NextRequest) {
   }
 
   summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload })
+  await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, payload, PERSISTENT_CACHE_TTL_MS)
   return NextResponse.json(payload, {
     headers: { 'X-TAT-Summary-Cache': 'miss' },
   })

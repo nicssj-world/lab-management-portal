@@ -9,11 +9,13 @@ import { TestTable } from '@/components/tests/TestTable'
 import { createClient } from '@/lib/supabase/client'
 import { getCategories } from '@/lib/queries/categories'
 import { usePermission } from '@/context/PermissionContext'
+import { canDeleteTests, canEditTests } from '@/lib/tests/permissions'
 import type { Test, Category } from '@/lib/supabase/types'
 
 const PAGE_SIZE = 20
 
 export default function TestsPage() {
+  const [actor, setActor] = useState<{ role: string; doc_role?: string | null } | null>(null)
   const [tests, setTests] = useState<Test[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,11 +31,18 @@ export default function TestsPage() {
   const [purging, setPurging] = useState(false)
   const timer = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
-  const { canEdit } = usePermission('รายการตรวจ')
+  const testPerm = usePermission('รายการตรวจ')
+  const canModifyTests = canEditTests(actor, testPerm.level)
+  const canRemoveTests = canDeleteTests(actor, testPerm.level)
 
   useEffect(() => {
     async function init() {
-      if (canEdit) {
+      fetch('/api/me')
+        .then(r => r.ok ? r.json() : null)
+        .then(me => setActor(me ? { role: me.role, doc_role: me.doc_role } : null))
+        .catch(() => setActor(null))
+
+      if (canRemoveTests) {
         fetch('/api/admin/tests/purge-deleted')
           .then(r => r.json())
           .then(d => setDeletedCount(d.count ?? 0))
@@ -42,7 +51,7 @@ export default function TestsPage() {
       getCategories(supabase, false).then(setCategories)
     }
     init()
-  }, [canEdit]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canRemoveTests]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const doLoad = useCallback(async (s: string, cat: string, tb: string, pg: number, sb: string, sd: 'asc' | 'desc') => {
     setLoading(true)
@@ -107,9 +116,9 @@ export default function TestsPage() {
         eyebrow="ค้นหา"
         title="รายการตรวจวิเคราะห์"
         subtitle={`ทั้งหมด ${allTotal} รายการ`}
-        actions={canEdit
+        actions={canModifyTests
           ? <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              {deletedCount > 0 && (
+              {canRemoveTests && deletedCount > 0 && (
                 <button
                   onClick={handlePurge}
                   disabled={purging}
@@ -150,7 +159,8 @@ export default function TestsPage() {
         tests={tests}
         categories={categories}
         loading={loading}
-        canEdit={canEdit}
+        canEdit={canModifyTests}
+        canDelete={canRemoveTests}
         page={page}
         pageSize={PAGE_SIZE}
         total={total}
