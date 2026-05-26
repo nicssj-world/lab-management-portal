@@ -342,6 +342,32 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 
 // ── Main ──────────────────────────────────────────────────────────────────
 
+const TAT_CLIENT_CACHE_TTL_MS = 5 * 60 * 1000
+
+function readTatClientCache(key: string): SummaryData | null {
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { expiresAt: number; data: SummaryData }
+    if (parsed.expiresAt <= Date.now()) {
+      sessionStorage.removeItem(key)
+      return null
+    }
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+function writeTatClientCache(key: string, data: SummaryData) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({
+      expiresAt: Date.now() + TAT_CLIENT_CACHE_TTL_MS,
+      data,
+    }))
+  } catch {}
+}
+
 export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [year, setYear]           = useState(new Date().getFullYear())
@@ -363,7 +389,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
-    setLoading(true)
+    let usedCache = false
     try {
       const params = new URLSearchParams({ year: String(y), month: String(m) })
       if (ls) params.set('lab_section', ls)
@@ -371,13 +397,24 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
       if (p)  params.set('priority', p)
       if (tn) params.set('test_name', tn)
       if (lz) params.set('labzone_name', lz)
+      const cacheKey = `tat-summary:${params.toString()}`
+      const cached = readTatClientCache(cacheKey)
+      if (cached) {
+        usedCache = true
+        setData(cached)
+        setLoading(false)
+      } else {
+        setLoading(true)
+      }
       const res = await fetch(`/api/admin/tat/summary?${params}`, { signal: ctrl.signal })
       if (!res.ok) throw new Error(await res.text())
-      setData(await res.json())
+      const json = await res.json() as SummaryData
+      writeTatClientCache(cacheKey, json)
+      setData(json)
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') setData(null)
+      if ((err as Error).name !== 'AbortError' && !usedCache) setData(null)
     } finally {
-      setLoading(false)
+      if (abortRef.current === ctrl) setLoading(false)
     }
   }, [])
 

@@ -41,7 +41,7 @@ const BTN: React.CSSProperties = {
 export function StaffTopbar() {
   const pathname = usePathname()
   const { lang, setLang } = useLang()
-  const { toggle } = useSidebar()
+  const { toggle, toggleMobile } = useSidebar()
   const [dark, setDark] = useState(false)
 
   useEffect(() => {
@@ -58,9 +58,14 @@ export function StaffTopbar() {
   }
 
   const title = PAGE_TITLES[pathname] ?? { th: '', en: '' }
+  function handleMenuClick() {
+    if (window.matchMedia('(max-width: 767px)').matches) toggleMobile()
+    else toggle()
+  }
 
   return (
     <header
+      className="staff-topbar"
       style={{
         height: 56, borderBottom: '1px solid var(--border)', background: 'var(--card)',
         padding: '0 24px', display: 'flex', alignItems: 'center', gap: 10,
@@ -68,7 +73,7 @@ export function StaffTopbar() {
       }}
     >
       {/* Hamburger + title */}
-      <button onClick={toggle} style={{ ...BTN, flexShrink: 0 }} title="ย่อ/ขยาย sidebar">
+      <button onClick={handleMenuClick} style={{ ...BTN, flexShrink: 0 }} title="ย่อ/ขยาย sidebar">
         <Icon name="menu" size={15} />
       </button>
       <div style={{ flex: 1, minWidth: 0 }}>
