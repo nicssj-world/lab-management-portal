@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
-import { createClient } from '@/lib/supabase/client'
 
 interface ProfileData {
   id: string
@@ -30,7 +29,6 @@ const ROLE_SCHEME: Record<string, string> = {
 }
 
 export default function ProfilePage() {
-  const supabase = createClient()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -130,14 +128,15 @@ export default function ProfilePage() {
     }
     setSavingPwd(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user?.email) {
-        const { error: signInErr } = await supabase.auth.signInWithPassword({ email: user.email, password: oldPassword })
-        if (signInErr) { showToast('รหัสผ่านเดิมไม่ถูกต้อง', false); return }
-      }
-      const { error } = await supabase.auth.updateUser({ password: newPassword })
-      if (error) showToast('เปลี่ยนรหัสผ่านไม่สำเร็จ', false)
-      else { setOldPassword(''); setNewPassword(''); setConfirmPassword(''); setShowPwdSection(false); showToast('เปลี่ยนรหัสผ่านแล้ว') }
+      const res = await fetch('/api/me/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword, newPassword }),
+      })
+      const json = await res.json()
+      if (!res.ok) { showToast(json.error ?? 'เปลี่ยนรหัสผ่านไม่สำเร็จ', false); return }
+      setOldPassword(''); setNewPassword(''); setConfirmPassword(''); setShowPwdSection(false)
+      showToast('เปลี่ยนรหัสผ่านแล้ว')
     } catch {
       showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', false)
     } finally {
