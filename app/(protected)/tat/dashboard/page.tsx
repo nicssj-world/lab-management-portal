@@ -11,7 +11,7 @@ import { TATTrendChart } from '@/components/tat/TATTrendChart'
 import { TATDeptChart } from '@/components/tat/TATDeptChart'
 import { TATHistogram } from '@/components/tat/TATHistogram'
 import { TATHeatmap } from '@/components/tat/TATHeatmap'
-import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
+import { getPreviousThaiFiscalMonth } from '@/lib/kpi-utils'
 import { usePermission } from '@/context/PermissionContext'
 
 interface TATSummary {
@@ -27,8 +27,9 @@ interface BucketRow { bucket: string; count: number }
 interface HeatEntry { received_at: string }
 
 export default function TATDashboardPage() {
-  const [year, setYear] = useState(getCurrentThaiFiscalYear())
-  const [month, setMonth] = useState(new Date().getMonth() + 1)
+  const defaultMonth = getPreviousThaiFiscalMonth()
+  const [year, setYear] = useState(defaultMonth.fiscalYear)
+  const [month, setMonth] = useState(defaultMonth.month)
   const [dept, setDept] = useState('')
   const { canEdit } = usePermission('TAT')
 

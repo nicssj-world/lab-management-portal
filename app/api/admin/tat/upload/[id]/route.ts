@@ -35,8 +35,14 @@ export async function DELETE(
   const { error } = await supabaseAdmin.from('tat_uploads').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  await refreshLabWorkloadSummary(upload.year, upload.month)
+  let warning: string | null = null
+  try {
+    await refreshLabWorkloadSummary(upload.year, upload.month)
+  } catch (err) {
+    warning = err instanceof Error ? err.message : 'Refresh workload summary failed'
+    console.warn('refreshLabWorkloadSummary failed after deleting TAT upload', err)
+  }
   await invalidateAnalysisCache(upload.year, upload.month)
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, warning })
 }

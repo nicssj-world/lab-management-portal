@@ -49,3 +49,23 @@ export function getCurrentThaiFiscalYear(): number {
   const year = now.getFullYear()
   return month >= 10 ? year + 544 : year + 543
 }
+
+export function getPreviousCalendarMonth(date = new Date()): { year: number; month: number } {
+  const previous = new Date(date.getFullYear(), date.getMonth() - 1, 1)
+  return {
+    year: previous.getFullYear(),
+    month: previous.getMonth() + 1,
+  }
+}
+
+export function getThaiFiscalYearForMonth(year: number, month: number): number {
+  return month >= 10 ? year + 544 : year + 543
+}
+
+export function getPreviousThaiFiscalMonth(date = new Date()): { fiscalYear: number; year: number; month: number } {
+  const previous = getPreviousCalendarMonth(date)
+  return {
+    ...previous,
+    fiscalYear: getThaiFiscalYearForMonth(previous.year, previous.month),
+  }
+}

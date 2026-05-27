@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "tat:local": "node scripts/tat-local-analyze.mjs",
+    "tat:clean-raw": "node scripts/tat-clean-raw.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1050.0",

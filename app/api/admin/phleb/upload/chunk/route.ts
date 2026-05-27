@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
-import { rejoinTatBatch } from '@/lib/tat/rejoin-batch'
 import { refreshLabWorkloadSummary } from '@/lib/workload/refresh-summary'
 import { invalidateAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
@@ -76,7 +75,7 @@ export async function POST(req: NextRequest) {
     insertedCount = inserted?.length ?? 0
   }
 
-  let joined = false
+  let needs_rejoin = false
 
   if (is_last_chunk) {
     const { count } = await supabaseAdmin
@@ -88,21 +87,20 @@ export async function POST(req: NextRequest) {
       .update({ row_count: count ?? 0 })
       .eq('id', upload_id)
 
-    // Trigger rejoin if TAT data exists for the same month
     const { count: tatCount } = await supabaseAdmin
       .from('tat_uploads')
       .select('id', { count: 'exact', head: true })
       .eq('year', upload.year)
       .eq('month', upload.month)
+    needs_rejoin = (tatCount ?? 0) > 0
 
-    if ((tatCount ?? 0) > 0) {
-      await rejoinTatBatch(upload.year, upload.month, true)
-      joined = true
+    try {
+      await refreshLabWorkloadSummary(upload.year, upload.month)
+    } catch (err) {
+      console.warn('refreshLabWorkloadSummary failed after phlebotomy upload', err)
     }
-
-    await refreshLabWorkloadSummary(upload.year, upload.month)
     await invalidateAnalysisCache(upload.year, upload.month)
   }
 
-  return NextResponse.json({ inserted: insertedCount, skipped: 0, joined })
+  return NextResponse.json({ inserted: insertedCount, skipped: 0, joined: false, needs_rejoin })
 }

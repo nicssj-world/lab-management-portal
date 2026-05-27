@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { isPanelBloodDraw } from '@/lib/tat/tube-classify'
-import { rejoinTatBatch } from '@/lib/tat/rejoin-batch'
 import { refreshLabWorkloadSummary } from '@/lib/workload/refresh-summary'
 import { invalidateAnalysisCache } from '@/lib/analysis-cache'
 import { NextRequest, NextResponse } from 'next/server'
@@ -12,6 +11,7 @@ let testTargetMap: Map<string, number> | null = null
 let testUrgentTargetMap: Map<string, number> | null = null
 let testTubeMap: Map<string, string> | null = null
 let tatRecordsSupportsName1: boolean | null = null
+const INSERT_BATCH_SIZE = 500
 
 interface TestRow {
   th: string
@@ -213,30 +213,32 @@ export async function POST(req: NextRequest) {
 
   let insertedCount = 0
   if (toInsert.length > 0) {
-    const insertRows = tatRecordsSupportsName1 === false ? stripName1(toInsert) : toInsert
-    let { data: inserted, error } = await supabaseAdmin
-      .from('tat_records')
-      .insert(insertRows)
-      .select('id')
-    if (error && error.message.toLowerCase().includes('name_1')) {
-      tatRecordsSupportsName1 = false
-      const fallback = await supabaseAdmin
+    for (let i = 0; i < toInsert.length; i += INSERT_BATCH_SIZE) {
+      const batch = toInsert.slice(i, i + INSERT_BATCH_SIZE)
+      const insertRows = tatRecordsSupportsName1 === false ? stripName1(batch) : batch
+      let { data: inserted, error } = await supabaseAdmin
         .from('tat_records')
-        .insert(stripName1(toInsert))
+        .insert(insertRows)
         .select('id')
-      inserted = fallback.data
-      error = fallback.error
-    } else if (!error) {
-      tatRecordsSupportsName1 = true
+      if (error && error.message.toLowerCase().includes('name_1')) {
+        tatRecordsSupportsName1 = false
+        const fallback = await supabaseAdmin
+          .from('tat_records')
+          .insert(stripName1(batch))
+          .select('id')
+        inserted = fallback.data
+        error = fallback.error
+      } else if (!error) {
+        tatRecordsSupportsName1 = true
+      }
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      insertedCount += inserted?.length ?? 0
     }
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    insertedCount = inserted?.length ?? 0
   }
 
-  let joined = false
+  let needs_rejoin = false
 
   if (is_last_chunk) {
-    // Count total rows for this snapshot month.
     const { count } = await supabaseAdmin
       .from('tat_records')
       .select('id', { count: 'exact', head: true })
@@ -247,17 +249,12 @@ export async function POST(req: NextRequest) {
       .update({ row_count: count ?? 0 })
       .eq('id', upload_id)
 
-    // Trigger rejoin if phlebotomy data exists for this month
     const { count: phlebCount } = await supabaseAdmin
       .from('phleb_uploads')
       .select('id', { count: 'exact', head: true })
       .eq('year', upload.year)
       .eq('month', upload.month)
-
-    if ((phlebCount ?? 0) > 0) {
-      await rejoinTatBatch(upload.year, upload.month)
-      joined = true
-    }
+    needs_rejoin = (phlebCount ?? 0) > 0
 
     try {
       await refreshLabWorkloadSummary(upload.year, upload.month)
@@ -267,5 +264,5 @@ export async function POST(req: NextRequest) {
     await invalidateAnalysisCache(upload.year, upload.month)
   }
 
-  return NextResponse.json({ inserted: insertedCount, skipped, joined })
+  return NextResponse.json({ inserted: insertedCount, skipped, joined: false, needs_rejoin })
 }
