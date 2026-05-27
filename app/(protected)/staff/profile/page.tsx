@@ -129,15 +129,20 @@ export default function ProfilePage() {
       showToast('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', false); return
     }
     setSavingPwd(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user?.email) {
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email: user.email, password: oldPassword })
-      if (signInErr) { setSavingPwd(false); showToast('รหัสผ่านเดิมไม่ถูกต้อง', false); return }
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({ email: user.email, password: oldPassword })
+        if (signInErr) { showToast('รหัสผ่านเดิมไม่ถูกต้อง', false); return }
+      }
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) showToast('เปลี่ยนรหัสผ่านไม่สำเร็จ', false)
+      else { setOldPassword(''); setNewPassword(''); setConfirmPassword(''); setShowPwdSection(false); showToast('เปลี่ยนรหัสผ่านแล้ว') }
+    } catch {
+      showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', false)
+    } finally {
+      setSavingPwd(false)
     }
-    const { error } = await supabase.auth.updateUser({ password: newPassword })
-    setSavingPwd(false)
-    if (error) showToast('เปลี่ยนรหัสผ่านไม่สำเร็จ', false)
-    else { setOldPassword(''); setNewPassword(''); setConfirmPassword(''); showToast('เปลี่ยนรหัสผ่านแล้ว') }
   }
 
   const initial = profile?.name?.charAt(0).toUpperCase() ?? 'U'
