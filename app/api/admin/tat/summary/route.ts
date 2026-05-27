@@ -21,6 +21,188 @@ type SummaryData = SummaryPayload & {
 
 const summaryCache = new Map<string, { expiresAt: number; payload: SummaryPayload }>()
 
+async function computeTotalTatCutMetrics(
+  year: number,
+  month: number,
+  filters: {
+    lab_section: string | null
+    ward: string | null
+    priority: string | null
+    test_name: string | null
+    labzone_name: string | null
+  },
+) {
+  const rows: Array<{
+    id: number
+    ln: string | null
+    register_at: string | null
+    rslt_at: string | null
+    match_confidence: string | null
+  }> = []
+
+  for (let from = 0; ; from += 1000) {
+    let query = supabaseAdmin
+      .from('tat_records')
+      .select('id,ln,register_at,rslt_at,match_confidence')
+      .eq('year', year)
+      .eq('month', month)
+      .eq('is_blood_draw', true)
+      .range(from, from + 999)
+
+    if (filters.lab_section) query = query.eq('lab_section', filters.lab_section)
+    if (filters.ward) query = query.eq('ward', filters.ward)
+    if (filters.priority) query = query.eq('priority', filters.priority)
+    if (filters.test_name) query = query.eq('test_name', filters.test_name)
+    if (filters.labzone_name) query = query.eq('labzone_name', filters.labzone_name)
+
+    const { data, error } = await query
+    if (error) return null
+    rows.push(...(data ?? []))
+    if (!data || data.length < 1000) break
+  }
+
+  const samples = new Map<string, { registerMs: number | null; rsltMs: number | null; matched: boolean }>()
+  for (const row of rows) {
+    const sampleKey = row.ln?.trim() || String(row.id)
+    const sample = samples.get(sampleKey) ?? { registerMs: null, rsltMs: null, matched: false }
+    if (row.register_at) {
+      const registerMs = new Date(row.register_at).getTime()
+      if (Number.isFinite(registerMs) && (sample.registerMs == null || registerMs < sample.registerMs)) {
+        sample.registerMs = registerMs
+      }
+    }
+    if (row.rslt_at) {
+      const rsltMs = new Date(row.rslt_at).getTime()
+      if (Number.isFinite(rsltMs) && (sample.rsltMs == null || rsltMs > sample.rsltMs)) {
+        sample.rsltMs = rsltMs
+      }
+    }
+    if (row.match_confidence && row.match_confidence !== 'no_match') sample.matched = true
+    samples.set(sampleKey, sample)
+  }
+
+  const values = Array.from(samples.values())
+    .filter(sample => sample.matched && sample.registerMs != null && sample.rsltMs != null)
+    .map(sample => ((sample.rsltMs as number) - (sample.registerMs as number)) / 60000)
+    .filter(value => Number.isFinite(value) && value >= 0)
+
+  const cut = values.filter(value => value <= 720)
+  const avg = cut.length ? cut.reduce((sum, value) => sum + value, 0) / cut.length : 0
+  const sorted = [...cut].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  const median = sorted.length
+    ? sorted.length % 2
+      ? sorted[mid]
+      : (sorted[mid - 1] + sorted[mid]) / 2
+    : 0
+
+  return {
+    avg_total_tat_cut_720: Number(avg.toFixed(1)),
+    median_total_tat_cut_720: Number(median.toFixed(1)),
+    total_tat_cut_720_count: cut.length,
+    total_tat_outlier_720_count: values.length - cut.length,
+  }
+}
+
+async function enrichWithCutMetrics(
+  payload: SummaryPayload,
+  year: number,
+  month: number,
+  filters: {
+    lab_section: string | null
+    ward: string | null
+    priority: string | null
+    test_name: string | null
+    labzone_name: string | null
+  },
+) {
+  if (payload.kpi?.avg_total_tat_cut_720 != null) return payload
+  const cutMetrics = await computeTotalTatCutMetrics(year, month, filters)
+  if (!cutMetrics) return payload
+  return {
+    ...payload,
+    kpi: {
+      ...payload.kpi,
+      ...cutMetrics,
+    },
+  }
+}
+
+async function computeMonthlyTrend(
+  year: number,
+  month: number,
+  filters: {
+    lab_section: string | null
+    ward: string | null
+    priority: string | null
+    test_name: string | null
+    labzone_name: string | null
+  },
+) {
+  const months = Array.from({ length: 12 }, (_, index) => {
+    const d = new Date(year, month - 1 - (11 - index), 1)
+    return { year: d.getFullYear(), month: d.getMonth() + 1 }
+  })
+
+  const trend = []
+  for (const ym of months) {
+    const rows: Array<{ tat_minutes: number | null; within_target: boolean | null }> = []
+    for (let from = 0; ; from += 1000) {
+      let query = supabaseAdmin
+        .from('tat_records')
+        .select('tat_minutes,within_target')
+        .eq('year', ym.year)
+        .eq('month', ym.month)
+        .range(from, from + 999)
+
+      if (filters.lab_section) query = query.eq('lab_section', filters.lab_section)
+      if (filters.ward) query = query.eq('ward', filters.ward)
+      if (filters.priority) query = query.eq('priority', filters.priority)
+      if (filters.test_name) query = query.eq('test_name', filters.test_name)
+      if (filters.labzone_name) query = query.eq('labzone_name', filters.labzone_name)
+
+      const { data, error } = await query
+      if (error) return null
+      rows.push(...(data ?? []))
+      if (!data || data.length < 1000) break
+    }
+
+    const tatValues = rows
+      .map(row => typeof row.tat_minutes === 'number' ? row.tat_minutes : Number(row.tat_minutes))
+      .filter(Number.isFinite)
+    const targetRows = rows.filter(row => row.within_target != null)
+    const within = targetRows.filter(row => row.within_target === true).length
+
+    trend.push({
+      year: ym.year,
+      month: ym.month,
+      avg_tat: tatValues.length
+        ? Number((tatValues.reduce((sum, value) => sum + value, 0) / tatValues.length).toFixed(1))
+        : 0,
+      pct_within_target: targetRows.length
+        ? Number(((within * 100) / targetRows.length).toFixed(1))
+        : 0,
+    })
+  }
+  return trend
+}
+
+async function enrichWithFilteredTrend(
+  payload: SummaryPayload,
+  year: number,
+  month: number,
+  filters: {
+    lab_section: string | null
+    ward: string | null
+    priority: string | null
+    test_name: string | null
+    labzone_name: string | null
+  },
+) {
+  const trend = await computeMonthlyTrend(year, month, filters)
+  return trend ? { ...payload, trend } : payload
+}
+
 function cacheKey(sp: URLSearchParams) {
   return [
     'v2',
@@ -32,6 +214,16 @@ function cacheKey(sp: URLSearchParams) {
     sp.get('test_name') ?? '',
     sp.get('labzone_name') ?? '',
   ].join('|')
+}
+
+function requestFilters(sp: URLSearchParams, labzoneForRpc?: string | null) {
+  return {
+    lab_section: sp.get('lab_section') || null,
+    ward:        sp.get('ward') || null,
+    priority:    sp.get('priority') || null,
+    test_name:   sp.get('test_name') || null,
+    labzone_name: labzoneForRpc !== undefined ? labzoneForRpc : (sp.get('labzone_name') || null),
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -48,15 +240,25 @@ export async function GET(req: NextRequest) {
   const key = cacheKey(sp)
   const cached = summaryCache.get(key)
   if (cached && cached.expiresAt > Date.now()) {
-    return NextResponse.json(cached.payload, {
+    const enriched = await enrichWithCutMetrics(cached.payload, year, month, {
+      ...requestFilters(sp),
+    })
+    const withTrend = await enrichWithFilteredTrend(enriched, year, month, requestFilters(sp))
+    if (withTrend !== cached.payload) {
+      summaryCache.set(key, { expiresAt: cached.expiresAt, payload: withTrend })
+    }
+    return NextResponse.json(withTrend, {
       headers: { 'X-TAT-Summary-Cache': 'hit' },
     })
   }
 
   const persistent = await readAnalysisCache<SummaryPayload>(CACHE_ENDPOINT, key)
   if (persistent) {
-    summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: persistent })
-    return NextResponse.json(persistent, {
+    const enriched = await enrichWithCutMetrics(persistent, year, month, requestFilters(sp))
+    const withTrend = await enrichWithFilteredTrend(enriched, year, month, requestFilters(sp))
+    summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: withTrend })
+    if (withTrend !== persistent) await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, withTrend, PERSISTENT_CACHE_TTL_MS)
+    return NextResponse.json(withTrend, {
       headers: { 'X-TAT-Summary-Cache': 'persistent' },
     })
   }
@@ -110,7 +312,7 @@ export async function GET(req: NextRequest) {
       heat.set(key, (heat.get(key) ?? 0) + 1)
     }
 
-    const payload: SummaryPayload = {
+    const payload: SummaryPayload = await enrichWithCutMetrics({
       ...data,
       kpi: responseData.kpi
         ? {
@@ -127,15 +329,16 @@ export async function GET(req: NextRequest) {
         const [dow, hour] = key.split('-').map(Number)
         return { dow, hour, count }
       }),
-    }
-    summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload })
-    await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, payload, PERSISTENT_CACHE_TTL_MS)
-    return NextResponse.json(payload, {
+    }, year, month, requestFilters(sp, labzoneForRpc))
+    const withTrend = await enrichWithFilteredTrend(payload, year, month, requestFilters(sp, labzoneForRpc))
+    summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: withTrend })
+    await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, withTrend, PERSISTENT_CACHE_TTL_MS)
+    return NextResponse.json(withTrend, {
       headers: { 'X-TAT-Summary-Cache': 'miss' },
     })
   }
 
-  const payload: SummaryPayload = {
+  const payload: SummaryPayload = await enrichWithCutMetrics({
     ...responseData,
     has_phleb_data: responseData.has_phleb_data ?? (
       responseData.by_labzone_phleb?.some(row => (row.count ?? 0) > 0) ?? false
@@ -145,11 +348,12 @@ export async function GET(req: NextRequest) {
       responseData.by_labzone_phleb?.reduce((sum, row) => sum + (row.count ?? 0), 0) ?? 0
     ),
     kpi: responseData.kpi,
-  }
+  }, year, month, requestFilters(sp, labzoneForRpc))
+  const withTrend = await enrichWithFilteredTrend(payload, year, month, requestFilters(sp, labzoneForRpc))
 
-  summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload })
-  await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, payload, PERSISTENT_CACHE_TTL_MS)
-  return NextResponse.json(payload, {
+  summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: withTrend })
+  await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, withTrend, PERSISTENT_CACHE_TTL_MS)
+  return NextResponse.json(withTrend, {
     headers: { 'X-TAT-Summary-Cache': 'miss' },
   })
 }

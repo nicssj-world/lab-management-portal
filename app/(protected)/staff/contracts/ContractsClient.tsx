@@ -435,12 +435,12 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
       {/* ── Page header ── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 16 }}>
         <div>
-          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 6, fontWeight: 500 }}>
+          <div style={{ fontSize: 11, color: 'var(--primary)', marginBottom: 5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' }}>
             {contracts.length} สัญญา
             {lastUpdated && ` · อัปเดตล่าสุด ${fmtDate(lastUpdated)}`}
           </div>
-          <h1 style={{ margin: '0 0 4px', fontSize: 28, fontWeight: 800, color: 'var(--ink)', letterSpacing: '-.02em' }}>บริหารสัญญา</h1>
-          <p style={{ margin: 0, fontSize: 13.5, color: 'var(--muted)' }}>บันทึกการใช้จ่ายรายเดือน · เตือนเมื่อใกล้หมดอายุหรือมูลค่าเหลือต่ำ</p>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.2 }}>บริหารสัญญา</h1>
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--muted)' }}>บันทึกการใช้จ่ายรายเดือน · เตือนเมื่อใกล้หมดอายุหรือมูลค่าเหลือต่ำ</p>
         </div>
         {canEdit && (
           <Button variant="primary" icon="plus" onClick={openCreate} style={{ flexShrink: 0 }}>

@@ -124,10 +124,31 @@ create or replace function get_tat_summary(
       coalesce(round(avg(total_tat_minutes_sample) filter (
         where sample_match <> 'no_match' and total_tat_minutes_sample is not null
       )::numeric, 1), 0)                                                           as avg_total_tat,
+      coalesce(round(avg(total_tat_minutes_sample) filter (
+        where sample_match <> 'no_match'
+          and total_tat_minutes_sample is not null
+          and total_tat_minutes_sample <= 720
+      )::numeric, 1), 0)                                                           as avg_total_tat_cut_720,
       coalesce(round(
         percentile_cont(0.5) within group (order by total_tat_minutes_sample) filter (
           where sample_match <> 'no_match' and total_tat_minutes_sample is not null
         )::numeric, 1), 0)                                                         as median_total_tat,
+      coalesce(round(
+        percentile_cont(0.5) within group (order by total_tat_minutes_sample) filter (
+          where sample_match <> 'no_match'
+            and total_tat_minutes_sample is not null
+            and total_tat_minutes_sample <= 720
+        )::numeric, 1), 0)                                                         as median_total_tat_cut_720,
+      count(*) filter (
+        where sample_match <> 'no_match'
+          and total_tat_minutes_sample is not null
+          and total_tat_minutes_sample <= 720
+      )::int                                                                       as total_tat_cut_720_count,
+      count(*) filter (
+        where sample_match <> 'no_match'
+          and total_tat_minutes_sample is not null
+          and total_tat_minutes_sample > 720
+      )::int                                                                       as total_tat_outlier_720_count,
       coalesce(round(
         100.0 * count(*) filter (
           where sample_match <> 'no_match'
@@ -330,7 +351,11 @@ create or replace function get_tat_summary(
       'pipeline_avg_phleb_draw',  bc.pipeline_avg_phleb_draw,
       'avg_transport',            bc.avg_transport,
       'avg_total_tat',            bc.avg_total_tat,
+      'avg_total_tat_cut_720',    bc.avg_total_tat_cut_720,
       'median_total_tat',         bc.median_total_tat,
+      'median_total_tat_cut_720', bc.median_total_tat_cut_720,
+      'total_tat_cut_720_count',  bc.total_tat_cut_720_count,
+      'total_tat_outlier_720_count', bc.total_tat_outlier_720_count,
       'phleb_match_rate',         mc.phleb_match_rate,
       'pct_total_within_target',  bc.pct_total_within_target,
       'pct_phleb_within_target',  pc.pct_phleb_within_target

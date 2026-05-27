@@ -1,7 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getContracts } from '@/lib/queries/contracts'
 import { getRejectionLogs } from '@/lib/queries/rejection'
-import { readAnalysisCache } from '@/lib/analysis-cache'
 import { Icon } from '@/components/ui/Icon'
 import type { ContractWithUsage } from '@/lib/queries/contracts'
 import Link from 'next/link'
@@ -12,10 +11,111 @@ function fmtMinutes(min: number) {
   if (!min) return '—'
   const h = Math.floor(min / 60)
   const m = min % 60
-  return h > 0 ? `${h}ช ${m}น` : `${m}น`
+  if (h > 0 && m > 0) return `${h} hr ${m} min`
+  if (h > 0) return `${h} hr`
+  return `${m} min`
 }
 
 type HeatCell = { dow: number; hour: number; count: number }
+type StageRow = { stage: string; avg_minutes: number }
+type TatSummaryPayload = {
+  kpi?: {
+    avg_tat?: number
+    avg_total_tat?: number
+    avg_total_tat_cut_720?: number
+    pct_within_target?: number
+    pct_total_within_target?: number
+    total_count?: number
+    sample_count?: number
+    pipeline_avg_phleb_wait?: number
+    pipeline_avg_phleb_draw?: number
+    avg_phleb_wait?: number
+    avg_transport?: number
+    avg_lab_stage?: number
+  }
+  stage_breakdown?: StageRow[]
+  heatmap?: HeatCell[]
+  phleb_heatmap?: HeatCell[]
+}
+
+function tatSummaryCacheKey(year: number, month: number) {
+  return ['v2', year, month, '', '', '', '', ''].join('|')
+}
+
+async function readCompletedTatSummary(year: number, month: number) {
+  const { data, error } = await supabaseAdmin
+    .from('analysis_summary_cache')
+    .select('payload')
+    .eq('endpoint', 'tat-summary')
+    .eq('cache_key', tatSummaryCacheKey(year, month))
+    .eq('year', year)
+    .eq('month', month)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) return null
+  const payload = (data?.payload as TatSummaryPayload | undefined) ?? null
+  if (!payload || payload.kpi?.avg_total_tat_cut_720 != null) return payload
+
+  const avgCut = await computeTotalTatCut720(year, month)
+  if (avgCut == null) return payload
+  return {
+    ...payload,
+    kpi: {
+      ...payload.kpi,
+      avg_total_tat_cut_720: avgCut,
+    },
+  }
+}
+
+async function computeTotalTatCut720(year: number, month: number) {
+  const rows: Array<{
+    id: number
+    ln: string | null
+    register_at: string | null
+    rslt_at: string | null
+    match_confidence: string | null
+  }> = []
+
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabaseAdmin
+      .from('tat_records')
+      .select('id,ln,register_at,rslt_at,match_confidence')
+      .eq('year', year)
+      .eq('month', month)
+      .eq('is_blood_draw', true)
+      .range(from, from + 999)
+
+    if (error) return null
+    rows.push(...(data ?? []))
+    if (!data || data.length < 1000) break
+  }
+
+  const samples = new Map<string, { registerMs: number | null; rsltMs: number | null; matched: boolean }>()
+  for (const row of rows) {
+    const key = row.ln?.trim() || String(row.id)
+    const sample = samples.get(key) ?? { registerMs: null, rsltMs: null, matched: false }
+    if (row.register_at) {
+      const registerMs = new Date(row.register_at).getTime()
+      if (Number.isFinite(registerMs) && (sample.registerMs == null || registerMs < sample.registerMs)) sample.registerMs = registerMs
+    }
+    if (row.rslt_at) {
+      const rsltMs = new Date(row.rslt_at).getTime()
+      if (Number.isFinite(rsltMs) && (sample.rsltMs == null || rsltMs > sample.rsltMs)) sample.rsltMs = rsltMs
+    }
+    if (row.match_confidence && row.match_confidence !== 'no_match') sample.matched = true
+    samples.set(key, sample)
+  }
+
+  const values = Array.from(samples.values())
+    .filter(sample => sample.matched && sample.registerMs != null && sample.rsltMs != null)
+    .map(sample => ((sample.rsltMs as number) - (sample.registerMs as number)) / 60000)
+    .filter(value => Number.isFinite(value) && value >= 0 && value <= 720)
+
+  if (values.length === 0) return null
+  return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1))
+}
 
 // แปลง heatmap cells จาก RPC (hourly) → grid [7][6] (4-hour slots)
 function rpcHeatmapToGrid(cells: HeatCell[]): number[][] {
@@ -25,6 +125,11 @@ function rpcHeatmapToGrid(cells: HeatCell[]): number[][] {
     grid[c.dow][slot] += c.count
   }
   return grid
+}
+
+function stageMinutes(stages: StageRow[] | undefined, stage: string, fallback?: number) {
+  const value = stages?.find(row => row.stage === stage)?.avg_minutes ?? fallback
+  return value && Number.isFinite(value) ? Math.round(value) : null
 }
 
 export default async function StaffDashboardPage() {
@@ -47,7 +152,7 @@ export default async function StaffDashboardPage() {
     testCountResult,
     rejAllResult,
     rejMonthResult,
-    tatRpcResult,
+    tatSummary,
   ] = await Promise.all([
     getContracts(supabaseAdmin),
     supabaseAdmin.from('tests').select('*', { count: 'exact', head: true }).eq('active', true),
@@ -59,44 +164,24 @@ export default async function StaffDashboardPage() {
       .order('spcmdate', { ascending: false })
       .limit(5000),
     getRejectionLogs(supabaseAdmin, { year: prevYear, month: prevMonth, limit: 1 }),
-    // ใช้ RPC เดียวกับ TAT module — ได้ทั้ง KPI + heatmap ครบ
-    supabaseAdmin.rpc('get_tat_summary', {
-      p_year: prevYear, p_month: prevMonth,
-      p_lab_section: null, p_ward: null,
-      p_priority: null, p_test_name: null, p_labzone: null,
-    }),
+    // Read the completed all-month TAT analysis cached by the TAT module.
+    readCompletedTatSummary(prevYear, prevMonth),
   ])
 
   const testCount    = testCountResult.count ?? 0
   const rejThisMonth = rejMonthResult.count ?? 0
   const rejRows      = rejAllResult.data ?? []
 
-  type TatRpcData = {
-    kpi?: {
-      avg_tat?: number
-      avg_total_tat?: number
-      pct_within_target?: number
-      pct_total_within_target?: number
-      total_count?: number
-      sample_count?: number
-      pipeline_avg_phleb_wait?: number
-      avg_phleb_wait?: number
-    }
-    heatmap?: HeatCell[]
-    phleb_heatmap?: HeatCell[]
-  }
-  console.log('[dashboard] tatRpc error:', tatRpcResult.error)
-  console.log('[dashboard] tatRpc data keys:', tatRpcResult.data ? Object.keys(tatRpcResult.data as object) : 'null')
-  console.log('[dashboard] tatRpc kpi:', (tatRpcResult.data as TatRpcData)?.kpi)
-  const tatData = (tatRpcResult.data ?? {}) as TatRpcData
+  const tatData = tatSummary ?? {}
   const kpi     = tatData.kpi ?? {}
 
-  const avgTAT      = Math.round(kpi.avg_total_tat ?? kpi.avg_tat ?? 0)
+  const avgTAT      = Math.round(kpi.avg_total_tat_cut_720 ?? kpi.avg_total_tat ?? kpi.avg_tat ?? 0)
   const pctOnTarget = Math.round(kpi.pct_total_within_target ?? kpi.pct_within_target ?? 0)
   const totalSamples = kpi.sample_count ?? kpi.total_count ?? 0
-  const avgPhlebWait = kpi.pipeline_avg_phleb_wait
-    ? Math.round(kpi.pipeline_avg_phleb_wait)
-    : kpi.avg_phleb_wait ? Math.round(kpi.avg_phleb_wait) : null
+  const avgPhlebWait = stageMinutes(tatData.stage_breakdown, 'รอเจาะเลือด', kpi.pipeline_avg_phleb_wait ?? kpi.avg_phleb_wait)
+  const avgPhlebDraw = stageMinutes(tatData.stage_breakdown, 'เจาะเลือด', kpi.pipeline_avg_phleb_draw)
+  const avgTransport = stageMinutes(tatData.stage_breakdown, 'ขนส่งตัวอย่าง', kpi.avg_transport)
+  const avgLabStage  = stageMinutes(tatData.stage_breakdown, 'วิเคราะห์ในแลป', kpi.avg_lab_stage ?? kpi.avg_tat)
 
   const phlebHeatmap = rpcHeatmapToGrid(tatData.phleb_heatmap ?? [])
   const tatHeatmap   = rpcHeatmapToGrid(tatData.heatmap ?? [])
@@ -117,13 +202,12 @@ export default async function StaffDashboardPage() {
   const todayStr = now.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   const timeStr  = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
 
-  const PIPELINE: { label: string; sublabel: string; icon: string; value: string | null; color: string }[] = [
-    { label: 'ลงทะเบียน',   sublabel: 'แพทย์สั่งตรวจ',         icon: 'doc',     value: null,                                       color: '#0EA5E9' },
-    { label: 'ยืนยันคิว',   sublabel: 'ระบบยืนยันนัดเจาะ',      icon: 'check',   value: null,                                       color: '#6366F1' },
-    { label: 'เจาะเสร็จ',  sublabel: 'รอเฉลี่ย',               icon: 'syringe', value: avgPhlebWait ? fmtMinutes(avgPhlebWait) : null, color: '#8B5CF6' },
-    { label: 'รับ Specimen', sublabel: 'ส่งถึงห้องปฏิบัติการ',  icon: 'cup',     value: null,                                       color: '#10B981' },
-    { label: 'รายงานผล',    sublabel: 'TAT เฉลี่ย',             icon: 'chart',   value: avgTAT ? fmtMinutes(avgTAT) : null,           color: '#F59E0B' },
-  ]
+  const PIPELINE = [
+    { label: 'ยืนยันคิว', from: 'ลงทะเบียน', to: 'ยืนยันคิว', metric: 'รอเจาะเลือดเฉลี่ย', value: avgPhlebWait, icon: 'check', color: '#1E5FAD' },
+    { label: 'เจาะเสร็จ', from: 'ยืนยันคิว', to: 'เจาะเสร็จ', metric: 'เจาะเลือดเฉลี่ย', value: avgPhlebDraw, icon: 'syringe', color: '#9333EA' },
+    { label: 'รับ Specimen', from: 'เจาะเสร็จ', to: 'รับ Specimen', metric: 'ขนส่งตัวอย่างเฉลี่ย', value: avgTransport, icon: 'cup', color: '#D97706' },
+    { label: 'รายงานผล', from: 'รับ Specimen', to: 'รายงานผล', metric: 'วิเคราะห์ในแลปเฉลี่ย', value: avgLabStage, icon: 'chart', color: '#16A34A' },
+  ].filter((step): step is { label: string; from: string; to: string; metric: string; value: number; icon: string; color: string } => typeof step.value === 'number' && step.value > 0)
 
   // Rejection by reason
   const rejByReason: Record<string, number> = {}
@@ -141,15 +225,16 @@ export default async function StaffDashboardPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=DM+Mono:wght@400;500&display=swap');
         .dmono{font-family:'DM Mono',monospace}
-        .syne{font-family:'Syne',sans-serif}
+        .ops-title{font-family:'Rajdhani',sans-serif;text-transform:uppercase}
         @keyframes breathe{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(34,211,238,.45)}50%{opacity:.65;box-shadow:0 0 0 7px rgba(34,211,238,0)}}
         .live-dot{animation:breathe 2.4s ease-in-out infinite}
         .kpi-card{transition:transform .18s ease,box-shadow .18s ease}
         .kpi-card:hover{transform:translateY(-3px);box-shadow:0 10px 36px rgba(30,95,173,.13)!important}
         .rej-bar{transition:width .7s cubic-bezier(.22,1,.36,1)}
-        .pipeline-step:not(:last-child)::after{content:'';position:absolute;right:-1px;top:50%;transform:translateY(-50%);width:2px;height:60%;background:var(--border)}
+        .workflow-step{transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+        .workflow-step:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(15,23,42,.08)}
         .hm-cell{transition:transform .1s}
         .hm-cell:hover{transform:scale(1.15)}
         .contract-card{transition:border-color .15s}
@@ -177,7 +262,7 @@ export default async function StaffDashboardPage() {
                 LIVE · {timeStr} · {todayStr}
               </span>
             </div>
-            <h1 className="syne" style={{ color:'#fff',margin:'0 0 4px',fontSize:24,fontWeight:800,letterSpacing:'-.02em',lineHeight:1.1 }}>
+            <h1 className="ops-title" style={{ color:'#fff',margin:'0 0 4px',fontSize:28,fontWeight:700,letterSpacing:'.06em',lineHeight:1.05 }}>
               Lab Operations Center
             </h1>
             <p style={{ color:'rgba(255,255,255,.45)',margin:0,fontSize:12.5 }}>
@@ -190,7 +275,7 @@ export default async function StaffDashboardPage() {
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
           <KpiCard icon="flask"    label="รายการตรวจทั้งหมด"   value={testCount.toLocaleString()}        sub="รายการที่ใช้งานอยู่"                   accent="#0EA5E9" />
           <KpiCard icon="inbox"    label="Rejection"            value={rejThisMonth.toLocaleString()}     sub={`${prevMonthLabel} · ${topReasons.length} สาเหตุ`} accent="#F59E0B" warn={rejThisMonth > 50} />
-          <KpiCard icon="clock"    label="Total TAT เฉลี่ย"    value={avgTAT ? fmtMinutes(avgTAT) : '—'} sub={totalSamples ? `${prevMonthLabel} · ${pctOnTarget}% ≤ 4ช · ${totalSamples.toLocaleString()} ราย` : `${prevMonthLabel} · ยังไม่มีข้อมูล`} accent={pctOnTarget >= 80 ? '#16A34A' : pctOnTarget >= 60 ? '#D97706' : '#DC2626'} warn={pctOnTarget > 0 && pctOnTarget < 60} />
+          <KpiCard icon="clock"    label="Total TAT เฉลี่ย"    value={avgTAT ? fmtMinutes(avgTAT) : '—'} sub={totalSamples ? `${prevMonthLabel} · ตัด >12 hr · ${pctOnTarget}% ≤ 4 hr · ${totalSamples.toLocaleString()} ราย` : `${prevMonthLabel} · ยังไม่มีข้อมูล`} accent={pctOnTarget >= 80 ? '#16A34A' : pctOnTarget >= 60 ? '#D97706' : '#DC2626'} warn={pctOnTarget > 0 && pctOnTarget < 60} />
           <KpiCard icon="building" label="สัญญาใกล้หมด/งบต่ำ" value={criticalContracts.length.toLocaleString()} sub={`จาก ${contracts.length} สัญญา`}  accent={criticalContracts.length > 0 ? '#DC2626' : '#16A34A'} warn={criticalContracts.length > 0} />
         </div>
 
@@ -205,33 +290,87 @@ export default async function StaffDashboardPage() {
               <div style={{ fontSize:11,color:'var(--muted)',marginTop:1 }}>เวลาเฉลี่ยแต่ละขั้นตอน · {prevMonthLabel}</div>
             </div>
           </div>
-          <div style={{ padding:'18px 20px', overflowX:'auto' }}>
-            <div style={{ display:'flex', alignItems:'stretch', minWidth:640, gap:0 }}>
-              {PIPELINE.map((step, i) => (
-                <div key={i} className="pipeline-step" style={{
-                  flex:1, position:'relative',
-                  padding:'14px 16px',
-                  borderRight: i < PIPELINE.length - 1 ? '1px solid var(--border)' : 'none',
-                }}>
-                  <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:8 }}>
-                    <div style={{ width:28,height:28,borderRadius:8,background:`${step.color}15`,display:'flex',alignItems:'center',justifyContent:'center',color:step.color,flexShrink:0 }}>
-                      <Icon name={step.icon} size={13} />
+          <div style={{ padding:'18px 20px' }}>
+            {PIPELINE.length > 0 ? (
+              <>
+                <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:14,overflowX:'auto',paddingBottom:2 }}>
+                  {['ลงทะเบียน', ...PIPELINE.map(step => step.to)].map((label, index, arr) => (
+                    <div key={`${label}-${index}`} style={{ display:'flex',alignItems:'center',gap:8,flexShrink:0 }}>
+                      <div style={{
+                        padding:'5px 10px',
+                        borderRadius:999,
+                        background:index === 0 ? 'var(--surface-2)' : 'rgba(30,95,173,.08)',
+                        border:'1px solid var(--border)',
+                        color:index === 0 ? 'var(--muted)' : 'var(--ink)',
+                        fontSize:11,
+                        fontWeight:800,
+                        whiteSpace:'nowrap',
+                      }}>
+                        {label}
+                      </div>
+                      {index < arr.length - 1 && <Icon name="chevRight" size={13} style={{ color:'var(--muted)' }} />}
                     </div>
-                    <div style={{ fontSize:12,fontWeight:800,color:'var(--ink)',lineHeight:1.2 }}>{step.label}</div>
-                  </div>
-                  <div style={{ fontSize:10.5,color:'var(--muted)',marginBottom:6 }}>{step.sublabel}</div>
-                  {step.value
-                    ? <div className="dmono" style={{ fontSize:18,fontWeight:500,color:step.color }}>{step.value}</div>
-                    : <div className="dmono" style={{ fontSize:16,color:'var(--border)' }}>—</div>
-                  }
-                  {i < PIPELINE.length - 1 && (
-                    <div style={{ position:'absolute',right:-10,top:'50%',transform:'translateY(-50%)',zIndex:2,width:20,height:20,borderRadius:'50%',background:'var(--surface-2)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)' }}>
-                      <Icon name="chevRight" size={10} />
-                    </div>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
+                <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10 }}>
+                  {PIPELINE.map((step, i) => (
+                    <div key={step.label} className="workflow-step" style={{
+                      padding:'12px 14px',
+                      borderRadius:10,
+                      background:'var(--surface-2)',
+                      border:'1px solid var(--border)',
+                      borderLeft:`4px solid ${step.color}`,
+                      position:'relative',
+                    }}>
+                      {i < PIPELINE.length - 1 && (
+                        <div style={{
+                          position:'absolute',
+                          right:-10,
+                          top:'50%',
+                          transform:'translateY(-50%)',
+                          zIndex:2,
+                          width:20,
+                          height:20,
+                          borderRadius:'50%',
+                          background:'var(--card)',
+                          border:'1px solid var(--border)',
+                          display:'flex',
+                          alignItems:'center',
+                          justifyContent:'center',
+                          color:'var(--muted)',
+                          boxShadow:'0 4px 12px rgba(15,23,42,.08)',
+                        }}>
+                          <Icon name="chevRight" size={10} />
+                        </div>
+                      )}
+                      <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:8 }}>
+                        <div style={{ width:28,height:28,borderRadius:8,background:`${step.color}16`,display:'flex',alignItems:'center',justifyContent:'center',color:step.color,flexShrink:0 }}>
+                          <Icon name={step.icon} size={13} />
+                        </div>
+                        <div style={{ minWidth:0 }}>
+                          <div style={{ fontSize:12,fontWeight:900,color:'var(--ink)',lineHeight:1.2 }}>{step.label}</div>
+                          <div style={{ fontSize:10.5,color:'var(--muted)',marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>
+                            {step.from} → {step.to}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize:10.5,color:'var(--muted)',marginBottom:4 }}>{step.metric}</div>
+                      <div className="dmono" style={{ fontSize:21,fontWeight:500,color:step.color,lineHeight:1 }}>
+                        {fmtMinutes(step.value)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {avgTAT > 0 && (
+                  <div style={{ marginTop:10,padding:'9px 14px',borderRadius:8,background:'rgba(30,95,173,.06)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12 }}>
+                    <span style={{ fontSize:12,color:'var(--muted)',fontWeight:600 }}>Total TAT เฉลี่ยต่อ LN</span>
+                    <span className="dmono" style={{ fontSize:17,fontWeight:500,color:'var(--primary)',whiteSpace:'nowrap' }}>{fmtMinutes(avgTAT)}</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <Empty text="ยังไม่มีข้อมูล Pipeline จาก TAT Module ในเดือนนี้" />
+            )}
           </div>
         </div>
 

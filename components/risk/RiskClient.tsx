@@ -33,14 +33,17 @@ import {
   statusLabel,
 } from '@/lib/risk-utils'
 
-type TabId = 'dashboard' | 'register'
+type TabId = 'dashboard' | 'smart' | 'ior' | 'register'
+type ImportMode = 'smart' | 'ior' | 'register'
 type RiskWithActions = Risk & { actions: RiskAction[] }
 type FormState = Partial<Risk>
 type ActionDraft = Partial<RiskAction>
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'LAB Risk Dashboard', icon: 'chart' },
-  { id: 'register', label: 'ทะเบียนความเสี่ยง (Risk Register)', icon: 'shield' },
+  { id: 'ior', label: 'รายงานอุบัติการณ์ (IOR)', icon: 'shield' },
+  { id: 'register', label: 'ทะเบียนความเสี่ยงในห้องปฏิบัติการ (Risk register)', icon: 'shield' },
+  { id: 'smart', label: 'ความเสี่ยงจาก Smart-RM', icon: 'shield' },
 ]
 
 const SEVERITIES = ['', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
@@ -105,18 +108,45 @@ function fmt(n: number) {
 }
 
 function today() {
-  return new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseDateOnly(value?: string | null) {
+  const match = String(value ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return null
+  return new Date(year, month - 1, day)
 }
 
 function isOverdue(date?: string | null) {
   if (!date) return false
-  const end = new Date(date)
+  const end = parseDateOnly(date)
+  if (!end) return false
   end.setHours(23, 59, 59, 999)
   return end.getTime() < Date.now()
 }
 
 function riskNo(risk: Risk) {
   return risk.external_no || risk.risk_no || `R-${String(risk.id).padStart(5, '0')}`
+}
+
+function isSmartRmRisk(risk: Risk) {
+  return Boolean(String(risk.external_no ?? '').trim())
+}
+
+function isRiskRegisterRisk(risk: Risk) {
+  return !isSmartRmRisk(risk) && risk.event_type === 'risk_assessment'
+}
+
+function isIorRisk(risk: Risk) {
+  return !isSmartRmRisk(risk) && !isRiskRegisterRisk(risk)
 }
 
 function residualTrend(risk: Risk) {
@@ -169,6 +199,14 @@ function latestExternalSortValue(risk: Risk) {
   return match ? Number(match[0]) : 0
 }
 
+function compareLatestRisk(a: Risk, b: Risk) {
+  const dateCompare = latestEventDateKey(b).localeCompare(latestEventDateKey(a))
+  if (dateCompare !== 0) return dateCompare
+  const externalCompare = latestExternalSortValue(b) - latestExternalSortValue(a)
+  if (externalCompare !== 0) return externalCompare
+  return b.id - a.id
+}
+
 function eventTypeGroup(risk: Risk) {
   const value = (risk.risk_type ?? '').toLowerCase()
   if (value.includes('non')) return 'Non-Clinic'
@@ -191,15 +229,15 @@ function topCounts<T>(items: T[], pick: (item: T) => string | null | undefined, 
 
 function formatThaiDate(value?: string | null) {
   if (!value) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return value.slice(0, 10)
+  const d = parseDateOnly(value)
+  if (!d) return value.slice(0, 10)
   return d.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 function formatRiskShortDate(value?: string | null) {
   if (!value) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return value.slice(0, 10)
+  const d = parseDateOnly(value)
+  if (!d) return value.slice(0, 10)
   return `${d.getDate()}/${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`
 }
 
@@ -275,8 +313,10 @@ export function RiskClient() {
   const [severity, setSeverity] = useState('')
   const [department, setDepartment] = useState('')
   const [editing, setEditing] = useState<RiskWithActions | null>(null)
+  const [previewing, setPreviewing] = useState<RiskWithActions | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [importMode, setImportMode] = useState<ImportMode>('smart')
 
   async function load() {
     setLoading(true)
@@ -318,19 +358,25 @@ export function RiskClient() {
     })
   }, [department, query, risks, severity, status])
 
-  const dashboard = useMemo(() => {
-    const open = risks.filter(r => r.status !== 'closed')
-    const actionWait = risks.filter(r => r.status === 'mitigating')
-    const followWait = risks.filter(r => r.status === 'monitoring')
-    const closed = risks.filter(r => r.status === 'closed')
-    const residualHigh = risks.filter(r => r.residual_level === 'high')
-    const overdue = risks.filter(r => isOverdue(r.due_date) || isOverdue(r.follow_up_date) || r.actions.some(a => a.status !== 'done' && isOverdue(a.due_date)))
-    const needsRca = risks.filter(r => r.requires_rca && !r.root_cause)
-    const followItems = risks.filter(r => r.status !== 'closed' && (isOverdue(r.due_date) || isOverdue(r.follow_up_date) || r.actions.some(a => a.status !== 'done' && isOverdue(a.due_date)))).slice(0, 8)
-    return { open, actionWait, followWait, closed, residualHigh, overdue, needsRca, followItems }
-  }, [risks])
+  const dashboardRisks = useMemo(() => risks.filter(r => !isFutureDateKey(latestEventDateKey(r))), [risks])
+  const riskRegisterDashboardRisks = useMemo(() => dashboardRisks.filter(isRiskRegisterRisk), [dashboardRisks])
+  const smartFiltered = useMemo(() => filtered.filter(isSmartRmRisk), [filtered])
+  const iorFiltered = useMemo(() => filtered.filter(isIorRisk), [filtered])
+  const riskRegisterFiltered = useMemo(() => filtered.filter(isRiskRegisterRisk), [filtered])
 
-  const heatInitial = risks.map(r => ({
+  const dashboard = useMemo(() => {
+    const open = dashboardRisks.filter(r => r.status !== 'closed')
+    const actionWait = dashboardRisks.filter(r => r.status === 'mitigating')
+    const followWait = dashboardRisks.filter(r => r.status === 'monitoring')
+    const closed = dashboardRisks.filter(r => r.status === 'closed')
+    const residualHigh = dashboardRisks.filter(r => r.residual_level === 'high')
+    const overdue = dashboardRisks.filter(r => isOverdue(r.due_date) || isOverdue(r.follow_up_date) || r.actions.some(a => a.status !== 'done' && isOverdue(a.due_date)))
+    const needsRca = dashboardRisks.filter(r => r.requires_rca && !r.root_cause)
+    const followItems = dashboardRisks.filter(r => r.status !== 'closed' && (isOverdue(r.due_date) || isOverdue(r.follow_up_date) || r.actions.some(a => a.status !== 'done' && isOverdue(a.due_date)))).slice(0, 8)
+    return { open, actionWait, followWait, closed, residualHigh, overdue, needsRca, followItems }
+  }, [dashboardRisks])
+
+  const heatInitial = riskRegisterDashboardRisks.map(r => ({
     id: riskNo(r),
     name: r.name,
     likelihood: r.likelihood ?? 1,
@@ -339,7 +385,7 @@ export function RiskClient() {
     status: r.status ?? 'open',
   }))
 
-  const heatResidual = risks
+  const heatResidual = riskRegisterDashboardRisks
     .filter(r => r.residual_likelihood && r.residual_impact)
     .map(r => ({
       id: riskNo(r),
@@ -354,13 +400,17 @@ export function RiskClient() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Risk Management</div>
-          <h1 style={{ margin: '5px 0 4px', fontSize: 28, lineHeight: 1.1, color: 'var(--ink)' }}>ทะเบียนความเสี่ยง</h1>
-          <div style={{ fontSize: 13, color: 'var(--muted)' }}>ติดตาม action plan, follow-up และ Residual Risk ตาม WI-G-OV06</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 }}>Risk Management</div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, lineHeight: 1.2, color: 'var(--ink)' }}>ทะเบียนความเสี่ยง</h1>
+          <div style={{ marginTop: 6, fontSize: 13, color: 'var(--muted)' }}>ติดตาม action plan, follow-up และ Residual Risk ตาม WI-G-OV06</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Button variant="secondary" icon="upload" onClick={() => setShowImport(true)}>Import</Button>
-          <Button variant="primary" icon="plus" onClick={() => setShowCreate(true)}>เพิ่มรายการ</Button>
+          {tab !== 'dashboard' && (
+            <Button variant="secondary" icon="upload" onClick={() => { setImportMode(tab === 'smart' ? 'smart' : tab === 'ior' ? 'ior' : 'register'); setShowImport(true) }}>Import</Button>
+          )}
+          {(tab === 'ior' || tab === 'register') && (
+            <Button variant="primary" icon="plus" onClick={() => setShowCreate(true)}>เพิ่มรายการ</Button>
+          )}
         </div>
       </div>
 
@@ -387,12 +437,30 @@ export function RiskClient() {
       {loading && <div style={{ padding: 42, textAlign: 'center', color: 'var(--muted)' }}>กำลังโหลดทะเบียนความเสี่ยง...</div>}
 
       {!loading && tab === 'dashboard' && (
-        <Dashboard risks={risks} dashboard={dashboard} heatInitial={heatInitial} heatResidual={heatResidual} onOpen={setEditing} />
+        <Dashboard risks={risks} dashboard={dashboard} heatInitial={heatInitial} heatResidual={heatResidual} onOpen={setPreviewing} />
       )}
 
-      {!loading && tab === 'register' && (
+      {!loading && tab === 'smart' && (
         <RegisterTable
-          risks={filtered}
+          title="ความเสี่ยงจาก Smart-RM"
+          risks={smartFiltered}
+          query={query}
+          setQuery={setQuery}
+          status={status}
+          setStatus={setStatus}
+          severity={severity}
+          setSeverity={setSeverity}
+          department={department}
+          setDepartment={setDepartment}
+          onOpen={setPreviewing}
+          onDeleted={() => void load()}
+        />
+      )}
+
+      {!loading && tab === 'ior' && (
+        <RegisterTable
+          title="รายงานอุบัติการณ์ (IOR)"
+          risks={iorFiltered}
           query={query}
           setQuery={setQuery}
           status={status}
@@ -406,9 +474,27 @@ export function RiskClient() {
         />
       )}
 
-      {showCreate && <RiskFormModal onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load() }} />}
+      {!loading && tab === 'register' && (
+        <RegisterTable
+          title="ทะเบียนความเสี่ยงในห้องปฏิบัติการ (Risk Register)"
+          risks={riskRegisterFiltered}
+          query={query}
+          setQuery={setQuery}
+          status={status}
+          setStatus={setStatus}
+          severity={severity}
+          setSeverity={setSeverity}
+          department={department}
+          setDepartment={setDepartment}
+          onOpen={setEditing}
+          onDeleted={() => void load()}
+        />
+      )}
+
+      {showCreate && <RiskFormModal initialEventType={tab === 'register' ? 'risk_assessment' : 'near_miss'} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load(); setTab(tab === 'register' ? 'register' : 'ior') }} />}
+      {previewing && <RiskEventPreviewModal risk={previewing} onClose={() => setPreviewing(null)} />}
       {editing && <RiskDetailModal risk={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load() }} />}
-      {showImport && <RiskImportModal onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); void load(); setTab('register') }} />}
+      {showImport && <RiskImportModal mode={importMode} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); void load(); setTab(importMode === 'smart' ? 'smart' : importMode === 'ior' ? 'ior' : 'register') }} />}
     </div>
   )
 }
@@ -430,44 +516,39 @@ function Dashboard({ risks, dashboard, heatInitial, heatResidual, onOpen }: {
     return true
   })
 
-  const monthly = Object.entries(scoped.reduce<Record<string, number>>((acc, r) => {
+  const historicalScoped = scoped.filter(risk => !isFutureDateKey(latestEventDateKey(risk)))
+
+  const monthly = Object.entries(historicalScoped.reduce<Record<string, number>>((acc, r) => {
     const key = eventMonthKey(r) || 'ไม่ระบุ'
     acc[key] = (acc[key] ?? 0) + 1
     return acc
   }, {})).sort(([a], [b]) => a.localeCompare(b)).slice(-12).map(([name, value]) => ({ name, value }))
-  const clinic = scoped.filter(risk => eventTypeGroup(risk) === 'Clinic').length
-  const nonClinic = scoped.filter(risk => eventTypeGroup(risk) === 'Non-Clinic').length
-  const severe = scoped.filter(risk => ['E', 'F', 'G', 'H', 'I'].includes((risk.severity_level ?? '').toUpperCase())).length
-  const monthCount = new Set(scoped.map(eventMonthKey).filter(Boolean)).size
-  const avgMonth = monthCount ? Math.round(scoped.length / monthCount) : scoped.length
+  const clinic = historicalScoped.filter(risk => eventTypeGroup(risk) === 'Clinic').length
+  const nonClinic = historicalScoped.filter(risk => eventTypeGroup(risk) === 'Non-Clinic').length
+  const severe = historicalScoped.filter(risk => ['E', 'F', 'G', 'H', 'I'].includes((risk.severity_level ?? '').toUpperCase())).length
+  const monthCount = new Set(historicalScoped.map(eventMonthKey).filter(Boolean)).size
+  const avgMonth = monthCount ? Math.round(historicalScoped.length / monthCount) : historicalScoped.length
   const typeData = [
     { name: 'Clinic', value: clinic, color: '#0EA5E9' },
     { name: 'Non-Clinic', value: nonClinic, color: '#F59E0B' },
   ].filter(item => item.value > 0)
-  const locationData = topCounts(scoped, risk => risk.department_found, 10)
-  const categoryData = topCounts(scoped, risk => risk.event_main_category ?? risk.event_category, 8)
-  const latest = scoped
-    .filter(risk => !isFutureDateKey(latestEventDateKey(risk)))
+  const locationData = topCounts(historicalScoped, risk => risk.department_found, 10)
+  const categoryData = topCounts(historicalScoped, risk => risk.event_main_category ?? risk.event_category, 8)
+  const latest = historicalScoped
     .slice()
-    .sort((a, b) => {
-      const dateCompare = latestEventDateKey(b).localeCompare(latestEventDateKey(a))
-      if (dateCompare !== 0) return dateCompare
-      const externalCompare = latestExternalSortValue(b) - latestExternalSortValue(a)
-      if (externalCompare !== 0) return externalCompare
-      return b.id - a.id
-    })
+    .sort(compareLatestRisk)
     .slice(0, 10)
   const severityCounts = SEVERITIES.filter(Boolean).map(sev => ({
     sev,
-    value: scoped.filter(risk => (risk.severity_level ?? '').toUpperCase() === sev).length,
+    value: historicalScoped.filter(risk => (risk.severity_level ?? '').toUpperCase() === sev).length,
     color: SEVERITY_COLORS[sev] ?? '#94A3B8',
   }))
   const maxSeverity = Math.max(1, ...severityCounts.map(item => item.value))
   const levelCounts = [
-    ['Initial High', scoped.filter(r => r.level === 'high').length, '#DC2626'],
-    ['Residual High', scoped.filter(r => r.residual_level === 'high').length, '#B91C1C'],
-    ['Residual Medium', scoped.filter(r => r.residual_level === 'medium').length, '#D97706'],
-    ['Residual Low', scoped.filter(r => r.residual_level === 'low').length, '#16A34A'],
+    ['Initial High', historicalScoped.filter(r => r.level === 'high').length, '#DC2626'],
+    ['Residual High', historicalScoped.filter(r => r.residual_level === 'high').length, '#B91C1C'],
+    ['Residual Medium', historicalScoped.filter(r => r.residual_level === 'medium').length, '#D97706'],
+    ['Residual Low', historicalScoped.filter(r => r.residual_level === 'low').length, '#16A34A'],
   ] as const
 
   return (
@@ -498,9 +579,9 @@ function Dashboard({ risks, dashboard, heatInitial, heatResidual, onOpen }: {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(120px, 1fr))', gap: 10 }}>
-        <Kpi label="ทั้งหมด" value={scoped.length} sub="เหตุการณ์" icon="inbox" tone="#0EA5E9" />
-        <Kpi label="Clinic" value={clinic} sub={scoped.length ? `${Math.round(clinic / scoped.length * 100)}% จากทั้งหมด` : '—'} icon="flask" tone="#10B981" />
-        <Kpi label="Non-Clinic" value={nonClinic} sub={scoped.length ? `${Math.round(nonClinic / scoped.length * 100)}% จากทั้งหมด` : '—'} icon="building" tone="#F59E0B" />
+        <Kpi label="ทั้งหมด" value={historicalScoped.length} sub="เหตุการณ์" icon="inbox" tone="#0EA5E9" />
+        <Kpi label="Clinic" value={clinic} sub={historicalScoped.length ? `${Math.round(clinic / historicalScoped.length * 100)}% จากทั้งหมด` : '—'} icon="flask" tone="#10B981" />
+        <Kpi label="Non-Clinic" value={nonClinic} sub={historicalScoped.length ? `${Math.round(nonClinic / historicalScoped.length * 100)}% จากทั้งหมด` : '—'} icon="building" tone="#F59E0B" />
         <Kpi label="รุนแรง E-I" value={severe} sub="ต้องติดตาม" icon="alert" tone="#EF4444" />
         <Kpi label="เฉลี่ย/เดือน" value={avgMonth} sub="เหตุการณ์" icon="chart" tone="#8B5CF6" />
         <Kpi label="เกินกำหนด" value={dashboard.overdue.filter(r => scoped.some(s => s.id === r.id)).length} sub="review/action" icon="clock" tone="#B91C1C" />
@@ -615,10 +696,10 @@ function Dashboard({ risks, dashboard, heatInitial, heatResidual, onOpen }: {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Panel title="Heatmap ก่อนแก้ไข">
-          <RiskHeatmap risks={heatInitial.filter(h => scoped.some(r => riskNo(r) === h.id))} />
+          <RiskHeatmap risks={heatInitial.filter(h => historicalScoped.some(r => riskNo(r) === h.id))} />
         </Panel>
         <Panel title="Heatmap หลังแก้ไข (Residual)">
-          <RiskHeatmap risks={heatResidual.filter(h => scoped.some(r => riskNo(r) === h.id))} />
+          <RiskHeatmap risks={heatResidual.filter(h => historicalScoped.some(r => riskNo(r) === h.id))} />
         </Panel>
       </div>
     </>
@@ -638,7 +719,8 @@ function RiskClientDashboardShape() {
   }
 }
 
-function RegisterTable({ risks, query, setQuery, status, setStatus, severity, setSeverity, department, setDepartment, onOpen, onDeleted }: {
+function RegisterTable({ title, risks, query, setQuery, status, setStatus, severity, setSeverity, department, setDepartment, onOpen, onDeleted }: {
+  title: string
   risks: RiskWithActions[]
   query: string
   setQuery: (v: string) => void
@@ -727,7 +809,7 @@ function RegisterTable({ risks, query, setQuery, status, setStatus, severity, se
   }
 
   return (
-    <Panel title="ทะเบียนความเสี่ยง (Risk Register)">
+    <Panel title={title}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 2fr) 120px 120px 150px 120px minmax(180px, 220px)', gap: 8, marginBottom: 12 }}>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="ค้นหาเลขที่ / เหตุการณ์ / หน่วยงาน" style={inputStyle} />
         <select value={year} onChange={e => setYear(e.target.value)} style={inputStyle}>
@@ -887,8 +969,70 @@ const latestTd: React.CSSProperties = {
   textOverflow: 'ellipsis',
 }
 
-function RiskFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<FormState>({ event_date: today(), event_type: 'near_miss', likelihood: 1, impact: 1, status: 'open' })
+function RiskEventPreviewModal({ risk, onClose }: { risk: RiskWithActions; onClose: () => void }) {
+  const number = riskNo(risk).replace(/^#/, '')
+  const detail = risk.event_detail?.trim() || risk.impact_summary?.trim() || 'ไม่มีรายละเอียด'
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,.48)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 8, overflow: 'auto' }}>
+      <div style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: 16, boxShadow: '0 24px 80px rgba(15,23,42,.3)', overflow: 'hidden', marginTop: 0 }}>
+        <div style={{ background: 'linear-gradient(135deg, #0EA5E9, #1AAFE8)', color: '#fff', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: '.01em' }}>เหตุการณ์ #{number}</div>
+          <button onClick={onClose} aria-label="ปิด" style={{ width: 28, height: 28, borderRadius: 7, border: 'none', background: 'rgba(255,255,255,.22)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+        <div style={{ padding: 20, background: '#fff' }}>
+          <PreviewSection title="ข้อมูลทั่วไป">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <PreviewField label="วันที่เกิดเหตุ" value={formatRiskShortDate(risk.event_date)} />
+              <PreviewField label="วันที่บันทึก" value={formatRiskShortDate(risk.recorded_date)} />
+            </div>
+            <PreviewField label="สถานที่เกิดเหตุ" value={risk.department_found} />
+            <PreviewField label="หน่วยงานที่ต้องการส่งถึง" value={risk.department_target} />
+          </PreviewSection>
+
+          <PreviewSection title="ประเภทเหตุการณ์">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <PreviewField label="ประเภทความเสี่ยง" value={eventTypeGroup(risk)} />
+              <PreviewField label="ระดับความรุนแรง RM" value={risk.severity_level} tone="#BAE6FD" />
+            </div>
+            <PreviewField label="หัวข้อหลัก" value={risk.event_main_category ?? risk.event_category} />
+            <PreviewField label="หัวข้อย่อย" value={risk.event_sub_category} />
+            <PreviewField label="สถานะ IOR" value={risk.ior_status ?? statusLabel(risk.status)} muted />
+          </PreviewSection>
+
+          <PreviewSection title="">
+            <div style={{ border: '1px solid #BAE6FD', borderRadius: 10, overflow: 'hidden', background: '#E0F2FE' }}>
+              <div style={{ padding: '10px 13px', color: '#0074B7', fontSize: 12, fontWeight: 900, background: '#D8EFFC' }}>เกิดเหตุการณ์อย่างไร</div>
+              <div style={{ padding: '14px 13px', color: '#155E85', fontSize: 14, lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>{detail}</div>
+            </div>
+          </PreviewSection>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PreviewSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={{ borderTop: title ? '1px solid #BAE6FD' : 'none', paddingTop: title ? 16 : 0, marginTop: title ? 16 : 0 }}>
+      {title && <div style={{ color: '#0074B7', fontSize: 12, fontWeight: 900, marginBottom: 10 }}>{title}</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{children}</div>
+    </section>
+  )
+}
+
+function PreviewField({ label, value, tone = '#E0F2FE', muted = false }: { label: string; value?: string | null; tone?: string; muted?: boolean }) {
+  return (
+    <div style={{ background: muted ? '#EFF6FB' : tone, borderRadius: 9, padding: '10px 13px', minHeight: 58 }}>
+      <div style={{ color: '#0074B7', fontSize: 12, fontWeight: 900, marginBottom: 5 }}>{label}</div>
+      <div style={{ color: '#155E85', fontSize: 15, lineHeight: 1.35, fontWeight: 500 }}>{value || '—'}</div>
+    </div>
+  )
+}
+
+function RiskFormModal({ initialEventType = 'near_miss', onClose, onSaved }: { initialEventType?: string; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState<FormState>({ event_date: today(), event_type: initialEventType, likelihood: 1, impact: 1, status: 'open' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   async function save() {
@@ -974,8 +1118,17 @@ function RiskDetailModal({ risk, onClose, onSaved }: { risk: RiskWithActions; on
         <div>
           <SectionTitle text="ข้อมูลเหตุการณ์ / Review / RCA" />
           <RiskFields form={form} setForm={setForm} compact />
+          <Field label="ผู้ได้รับผลกระทบ / Impact Summary">
+            <textarea value={form.impact_summary ?? ''} onChange={e => setForm({ ...form, impact_summary: e.target.value })} style={textareaStyle} />
+          </Field>
           <Field label="Root Cause">
             <textarea value={form.root_cause ?? ''} onChange={e => setForm({ ...form, root_cause: e.target.value })} style={textareaStyle} />
+          </Field>
+          <Field label="มาตรการเพิ่มเติม / Review Note">
+            <textarea value={form.review_note ?? ''} onChange={e => setForm({ ...form, review_note: e.target.value })} style={textareaStyle} />
+          </Field>
+          <Field label="เอกสารอ้างอิง / Evidence">
+            <textarea value={form.evidence_note ?? ''} onChange={e => setForm({ ...form, evidence_note: e.target.value })} style={textareaStyle} />
           </Field>
           <Field label="ผลการติดตามประสิทธิผล">
             <textarea value={form.effectiveness_result ?? ''} onChange={e => setForm({ ...form, effectiveness_result: e.target.value })} style={textareaStyle} />
@@ -1041,6 +1194,7 @@ function RiskDetailModal({ risk, onClose, onSaved }: { risk: RiskWithActions; on
 function RiskFields({ form, setForm, compact = false }: { form: FormState; setForm: (form: FormState) => void; compact?: boolean }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+      <Field label="รหัสความเสี่ยง"><input value={form.risk_no ?? ''} onChange={e => setForm({ ...form, risk_no: e.target.value })} style={inputStyle} /></Field>
       <Field label="วันที่เกิดเหตุ"><input type="date" value={form.event_date ?? ''} onChange={e => setForm({ ...form, event_date: e.target.value })} style={inputStyle} /></Field>
       <Field label="ประเภท"><select value={form.event_type ?? ''} onChange={e => setForm({ ...form, event_type: e.target.value })} style={inputStyle}>{RISK_EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></Field>
       <Field label="RM Severity"><select value={form.severity_level ?? ''} onChange={e => setForm({ ...form, severity_level: e.target.value, requires_rca: requiresRca(e.target.value) })} style={inputStyle}>{SEVERITIES.map(s => <option key={s} value={s}>{s || '-'}</option>)}</select></Field>
@@ -1060,7 +1214,7 @@ function RiskFields({ form, setForm, compact = false }: { form: FormState; setFo
   )
 }
 
-function RiskImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+function RiskImportModal({ mode, onClose, onImported }: { mode: ImportMode; onClose: () => void; onImported: () => void }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -1092,7 +1246,69 @@ function RiskImportModal({ onClose, onImported }: { onClose: () => void; onImpor
         const text = String(value ?? '').trim()
         return departmentMap.get(text) ?? text
       }
+      const cell = (row: Record<string, unknown>, ...keys: string[]) => {
+        for (const key of keys) {
+          const value = row[key]
+          if (value !== undefined && value !== null && String(value).trim() !== '') return value
+        }
+        return ''
+      }
       const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+      if (mode === 'ior') {
+        const mapped = raw.map(row => ({
+          external_no: '',
+          event_type: cell(row, 'event_type', 'ประเภท') || 'near_miss',
+          event_date: normalizeIsoDate(cell(row, 'event_date', 'วันที่เกิดเหตุ', 'Date')),
+          department_found: normalizeDept(cell(row, 'department_found', 'หน่วยงานที่พบ', 'สถานที่เกิดเหตุ', 'Department')),
+          department_target: normalizeDept(cell(row, 'department_target', 'ส่งถึง', 'หน่วยงานที่ต้องการส่งถึง')),
+          risk_type: cell(row, 'risk_type', 'ประเภทความเสี่ยง'),
+          event_main_category: cell(row, 'event_main_category', 'หัวข้อหลัก'),
+          event_sub_category: cell(row, 'event_sub_category', 'หัวข้อย่อย'),
+          event_category: cell(row, 'event_category', 'เหตุการณ์'),
+          severity_level: cell(row, 'severity_level', 'RM Severity', 'ระดับความรุนแรง RM'),
+          event_detail: cell(row, 'event_detail', 'รายละเอียดเหตุการณ์', 'เกิดเหตุการณ์อย่างไร'),
+          immediate_correction: cell(row, 'immediate_correction', 'การแก้ไขเฉพาะหน้า'),
+          reporter_name: cell(row, 'reporter_name', 'ผู้รายงาน'),
+          reporter_position: cell(row, 'reporter_position', 'ตำแหน่ง'),
+          owner: cell(row, 'owner', 'Owner'),
+          due_date: normalizeIsoDate(cell(row, 'due_date', 'Due Date')),
+          follow_up_date: normalizeIsoDate(cell(row, 'follow_up_date', 'Follow-up Date')),
+          likelihood: cell(row, 'likelihood', 'Likelihood'),
+          impact: cell(row, 'impact', 'Impact'),
+          recorded_date: normalizeIsoDate(cell(row, 'recorded_date', 'วันที่บันทึก')),
+        })).filter(row => row.event_detail)
+        setRows(mapped)
+        setStatus(`อ่านไฟล์สำเร็จ พร้อมนำเข้า ${mapped.length.toLocaleString()} rows`)
+        return
+      }
+      if (mode === 'register') {
+        const mapped = raw.map(row => ({
+          external_no: '',
+          risk_no: cell(row, 'risk_no', 'รหัสความเสี่ยง (เช่น BIO-01)'),
+          event_type: 'risk_assessment',
+          event_date: normalizeIsoDate(cell(row, 'event_date', 'วันที่ประเมิน', 'วันที่เกิดเหตุ')) ?? today(),
+          department_found: normalizeDept(cell(row, 'department_found', 'หน่วยงาน', 'หน่วยงานที่พบ', 'สถานที่เกิดเหตุ')),
+          risk_type: cell(row, 'risk_type', 'หมวดอันตราย (A–H)', 'หมวดอันตราย (A-H)', 'ประเภทความเสี่ยง'),
+          event_main_category: cell(row, 'event_main_category', 'กิจกรรมที่อาจเป็นความเสี่ยงที่ก่อให้เกิดความไม่ปลอดภัย', 'หัวข้อหลัก'),
+          event_sub_category: cell(row, 'event_sub_category', 'กระบวนการ/จุดงาน (เช่น รับสิ่งส่งตรวจ, ปั่นเหวี่ยง, ย้อมสไลด์, ทิ้งขยะ)', 'หัวข้อย่อย'),
+          event_category: cell(row, 'event_category', 'กิจกรรมที่อาจเป็นความเสี่ยงที่ก่อให้เกิดความไม่ปลอดภัย', 'เหตุการณ์'),
+          severity_level: cell(row, 'severity_level', 'ระดับความเสี่ยง (ต่ำ/กลาง/สูง)', 'RM Severity', 'ระดับความรุนแรง RM'),
+          event_detail: cell(row, 'event_detail', 'เหตุการณ์ความเสี่ยงที่อาจเกิด (Risk statement) (ตัวอย่าง: “ถ้า…จะทำให้…”)', 'Risk statement', 'รายละเอียดเหตุการณ์'),
+          impact_summary: cell(row, 'impact_summary', 'ผู้ได้รับผลกระทบ: เจ้าหน้าที่/ผู้ป่วย/ผู้มาเยี่ยม/สิ่งแวดล้อม'),
+          root_cause: cell(row, 'root_cause', 'สาเหตุหลัก (causes)'),
+          immediate_correction: cell(row, 'immediate_correction', 'มาตรการที่มีอยู่ (Existing controls)', 'Existing controls'),
+          review_note: cell(row, 'review_note', 'มาตรการเพิ่มเติมที่ต้องทำ (Additional controls)', 'Additional controls'),
+          evidence_note: cell(row, 'evidence_note', 'เอกสารอ้างอิง (SOP/WI/แบบฟอร์ม/บันทึกอบรม/SDS)'),
+          effectiveness_result: cell(row, 'effectiveness_result', 'ความเสี่ยงคงเหลือ (Residual risk) หลังทำมาตรการ (L’×S’)'),
+          owner: cell(row, 'owner', 'ผู้รับผิดชอบ', 'Owner'),
+          likelihood: cell(row, 'likelihood', 'L = โอกาสเกิด (1–5)', 'Likelihood'),
+          impact: cell(row, 'impact', 'S = ความรุนแรง (1–5)', 'Impact'),
+          recorded_date: normalizeIsoDate(cell(row, 'recorded_date', 'วันที่บันทึก')) ?? today(),
+        })).filter(row => row.event_detail)
+        setRows(mapped)
+        setStatus(`อ่านไฟล์สำเร็จ พร้อมนำเข้า ${mapped.length.toLocaleString()} rows`)
+        return
+      }
       const mapped = raw.map(row => ({
         external_no: String(row['หมายเลข'] ?? '').trim(),
         event_date: normalizeIsoDate(row['วันที่เกิดเหตุ']),
@@ -1134,12 +1350,12 @@ function RiskImportModal({ onClose, onImported }: { onClose: () => void; onImpor
   }
 
   return (
-    <Modal title="Import LAB Risk Management" onClose={onClose} width={760}>
+    <Modal title={mode === 'smart' ? 'Import Smart-RM' : mode === 'register' ? 'Import Risk Register' : 'Import IOR'} onClose={onClose} width={760}>
       <div onClick={() => inputRef.current?.click()} style={{ border: '2px dashed var(--border)', borderRadius: 12, padding: 26, textAlign: 'center', cursor: 'pointer', background: 'var(--surface-2)' }}>
         <Icon name="upload" size={24} />
-        <div style={{ marginTop: 8, fontWeight: 800, color: 'var(--ink)' }}>เลือกไฟล์ .xlsx / .csv จาก template LAB_Risk Management</div>
-        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 5 }}>อ่าน sheet `All Risk` และใช้ `Sheet1` เพื่อย่อชื่อหน่วยงาน</div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>{SMART_RM_HEADERS.join(' · ')}</div>
+        <div style={{ marginTop: 8, fontWeight: 800, color: 'var(--ink)' }}>{mode === 'smart' ? 'เลือกไฟล์ .xlsx / .csv จาก template Smart-RM' : mode === 'register' ? 'เลือกไฟล์ Risk Register ตาม template วิเคราะห์ความเสี่ยงและความไม่ปลอดภัย' : 'เลือกไฟล์ .xlsx / .csv ที่ใช้หัวคอลัมน์เหมือนฟอร์มเพิ่มรายการ'}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 5 }}>{mode === 'smart' ? 'อ่าน sheet `All Risk` และใช้ `Sheet1` เพื่อย่อชื่อหน่วยงาน' : mode === 'register' ? 'อ่านรหัสความเสี่ยง หมวดอันตราย กิจกรรม Risk statement L S Existing/Additional controls และ Residual risk' : 'รองรับ event_date, department_found, event_detail, likelihood, impact, due_date และชื่อคอลัมน์ภาษาไทยในฟอร์ม'}</div>
+        {mode === 'smart' && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>{SMART_RM_HEADERS.join(' · ')}</div>}
         <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={e => void pick(e.target.files?.[0] ?? null)} />
       </div>
       {rows.length > 0 && (
