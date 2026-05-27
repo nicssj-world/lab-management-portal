@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
-const PAGE_SIZE = 1000
-const UPSERT_SIZE = 500
+const PAGE_SIZE = 100
+const UPSERT_SIZE = 25
 
 interface PhlebRow {
   hn: string | null
@@ -50,6 +50,62 @@ export interface RejoinTatBatchResult {
   ambiguous: number
 }
 
+export interface RejoinTatStepResult extends RejoinTatBatchResult {
+  done: boolean
+  nextCursor: string | null
+}
+
+function isMissingRpcFunction(error: { message?: string; code?: string } | null) {
+  return error?.code === '42883'
+    || (error?.message ?? '').includes('function rejoin_tat')
+    || (error?.message ?? '').includes('Could not find the function')
+}
+
+function isStatementTimeout(error: { message?: string; code?: string } | null) {
+  return error?.code === '57014'
+    || (error?.message ?? '').toLowerCase().includes('statement timeout')
+}
+
+async function countTatRows(year: number, month: number, extra?: Record<string, unknown>) {
+  let query = supabaseAdmin
+    .from('tat_records')
+    .select('id', { count: 'exact', head: true })
+    .eq('year', year)
+    .eq('month', month)
+
+  for (const [key, value] of Object.entries(extra ?? {})) {
+    query = query.eq(key, value)
+  }
+
+  const { count, error } = await query
+  if (error) throw new Error(error.message)
+  return count ?? 0
+}
+
+async function rejoinTatRpc(year: number, month: number): Promise<RejoinTatBatchResult | null> {
+  const { error } = await supabaseAdmin.rpc('rejoin_tat', {
+    p_year: year,
+    p_month: month,
+  })
+
+  if (isMissingRpcFunction(error) || isStatementTimeout(error)) return null
+  if (error) throw new Error(error.message)
+
+  const [processed, exact, ambiguous] = await Promise.all([
+    countTatRows(year, month, { is_blood_draw: true }),
+    countTatRows(year, month, { is_blood_draw: true, match_confidence: 'exact' }),
+    countTatRows(year, month, { is_blood_draw: true, match_confidence: 'ambiguous' }),
+  ])
+
+  return {
+    processed,
+    updated: exact + ambiguous,
+    matched: exact + ambiguous,
+    exact,
+    ambiguous,
+  }
+}
+
 async function fetchAll<T>(table: string, select: string, year: number, month: number, extra?: Record<string, unknown>): Promise<T[]> {
   const rows: T[] = []
 
@@ -73,6 +129,34 @@ async function fetchAll<T>(table: string, select: string, year: number, month: n
   }
 
   return rows
+}
+
+async function fetchTatBloodPage(year: number, month: number, limit: number, afterId?: string | null): Promise<TatBloodRow[]> {
+  let query = supabaseAdmin
+    .from('tat_records')
+    .select('id,year,month,hn,register_at,spcm_at,rslt_at')
+    .eq('year', year)
+    .eq('month', month)
+    .eq('is_blood_draw', true)
+    .order('id', { ascending: true })
+    .limit(limit)
+
+  if (afterId) query = query.gt('id', afterId)
+
+  const { data, error } = await query
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as TatBloodRow[]
+}
+
+async function upsertTatUpdates(updates: TatUpdate[]) {
+  for (let i = 0; i < updates.length; i += UPSERT_SIZE) {
+    const { error } = await supabaseAdmin
+      .from('tat_records')
+      .upsert(updates.slice(i, i + UPSERT_SIZE), { onConflict: 'id' })
+
+    if (error) throw new Error(error.message)
+  }
 }
 
 function toMs(value: string | null): number {
@@ -132,7 +216,7 @@ function findNearestPhleb(rows: PhlebRow[], spcmMs: number): PhlebRow | null {
   return best
 }
 
-export async function rejoinTatBatch(year: number, month: number, resetUnmatched = false): Promise<RejoinTatBatchResult> {
+async function buildPhlebIndex(year: number, month: number) {
   const phlebRows = await fetchAll<PhlebRow>(
     'phlebotomy_records',
     'hn,register_at,queue_confirmed_at,phleb_done_at,wait_minutes,draw_minutes,labzone_name,phlebotomist,phleb_date',
@@ -159,17 +243,22 @@ export async function rejoinTatBatch(year: number, month: number, resetUnmatched
     rows.sort((a, b) => (a._done ?? 0) - (b._done ?? 0))
   }
 
-  const tatRows = await fetchAll<TatBloodRow>(
-    'tat_records',
-    'id,year,month,hn,register_at,spcm_at,rslt_at',
-    year,
-    month,
-    { is_blood_draw: true },
-  )
+  return { byHn, duplicateVisit }
+}
 
-  const updates: TatUpdate[] = []
+async function processTatRows(
+  tatRows: TatBloodRow[],
+  resetUnmatched: boolean,
+  byHn: Map<string, PhlebRow[]>,
+  duplicateVisit: Map<string, number>,
+) {
+  let processed = 0
+  let updated = 0
   let exact = 0
   let ambiguous = 0
+  const updates: TatUpdate[] = []
+
+  processed += tatRows.length
 
   for (const tat of tatRows) {
     const spcmMs = toMs(tat.spcm_at)
@@ -227,17 +316,57 @@ export async function rejoinTatBatch(year: number, month: number, resetUnmatched
     })
   }
 
-  for (let i = 0; i < updates.length; i += UPSERT_SIZE) {
-    const { error } = await supabaseAdmin
-      .from('tat_records')
-      .upsert(updates.slice(i, i + UPSERT_SIZE), { onConflict: 'id' })
+  if (updates.length > 0) {
+    await upsertTatUpdates(updates)
+    updated += updates.length
+  }
 
-    if (error) throw new Error(error.message)
+  return { processed, updated, matched: exact + ambiguous, exact, ambiguous }
+}
+
+export async function rejoinTatBatchStep(
+  year: number,
+  month: number,
+  cursor: string | null,
+  resetUnmatched = false,
+): Promise<RejoinTatStepResult> {
+  const { byHn, duplicateVisit } = await buildPhlebIndex(year, month)
+  const tatRows = await fetchTatBloodPage(year, month, PAGE_SIZE, cursor)
+  const result = await processTatRows(tatRows, resetUnmatched, byHn, duplicateVisit)
+  return {
+    ...result,
+    done: tatRows.length < PAGE_SIZE,
+    nextCursor: tatRows.at(-1)?.id ?? cursor ?? null,
+  }
+}
+
+export async function rejoinTatBatch(year: number, month: number, resetUnmatched = false): Promise<RejoinTatBatchResult> {
+  if (resetUnmatched && process.env.TAT_REJOIN_USE_RPC === '1') {
+    const rpcResult = await rejoinTatRpc(year, month)
+    if (rpcResult) return rpcResult
+  }
+
+  const { byHn, duplicateVisit } = await buildPhlebIndex(year, month)
+  let cursor: string | null = null
+  let processed = 0
+  let updated = 0
+  let exact = 0
+  let ambiguous = 0
+
+  for (;;) {
+    const tatRows = await fetchTatBloodPage(year, month, PAGE_SIZE, cursor)
+    const result = await processTatRows(tatRows, resetUnmatched, byHn, duplicateVisit)
+    processed += result.processed
+    updated += result.updated
+    exact += result.exact
+    ambiguous += result.ambiguous
+    if (tatRows.length < PAGE_SIZE) break
+    cursor = tatRows.at(-1)?.id ?? cursor
   }
 
   return {
-    processed: tatRows.length,
-    updated: updates.length,
+    processed,
+    updated,
     matched: exact + ambiguous,
     exact,
     ambiguous,

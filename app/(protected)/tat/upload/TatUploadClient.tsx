@@ -93,7 +93,7 @@ interface UploadPanelProps {
   chunkUrl: string
   detectYearMonth: (rows: Record<string, string>[]) => { year: number; month: number } | null
   fileLabel: string
-  onDone: (ym: { year: number; month: number }, joined: boolean) => void
+  onDone: (ym: { year: number; month: number }, needsRejoin: boolean) => void
 }
 
 function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel, onDone }: UploadPanelProps) {
@@ -104,6 +104,7 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
   const [stats, setStats] = useState<{ total: number; invalid: number; skipped: number } | null>(null)
   const [detected, setDetected] = useState<{ year: number; month: number } | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
+  const [warningMsg, setWarningMsg] = useState('')
   const [dragOver, setDragOver] = useState(false)
 
   const workerRef = useRef<Worker | null>(null)
@@ -118,6 +119,7 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
     setStats(null)
     setDetected(null)
     setErrorMsg('')
+    setWarningMsg('')
 
     let rows: Record<string, string>[]
     try {
@@ -169,7 +171,7 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
 
       const totalChunks = Math.ceil(rows.length / CHUNK_SIZE)
       setChunkStatus({ current: 0, total: totalChunks })
-      let joined = false
+      let needsRejoin = false
 
       for (let i = 0; i < totalChunks; i++) {
         if (abortRef.current) break
@@ -180,18 +182,21 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
           body: JSON.stringify({ upload_id, rows: chunk, chunk_index: i, is_last_chunk: i === totalChunks - 1 }),
         })
         const chunkJson = await readJsonResponse(chunkRes)
-        if (!chunkRes.ok) throw new Error(chunkJson.error ?? `Chunk ${i} failed`)
+        if (!chunkRes.ok) {
+          const detail = chunkJson.error ? `: ${chunkJson.error}` : ''
+          throw new Error(`Chunk ${i + 1}/${totalChunks} failed (HTTP ${chunkRes.status})${detail}`)
+        }
         if (chunkJson.skipped > 0) {
           setStats(s => s ? { ...s, skipped: s.skipped + chunkJson.skipped } : s)
         }
-        if (chunkJson.joined) joined = true
+        if (chunkJson.needs_rejoin) needsRejoin = true
         setChunkStatus({ current: i + 1, total: totalChunks })
         setUploadProgress(Math.round(((i + 1) / totalChunks) * 100))
       }
 
       if (!abortRef.current) {
         setPhase('done')
-        onDone(ym, joined)
+        onDone(ym, needsRejoin)
       } else {
         setPhase('idle')
       }
@@ -316,6 +321,11 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
                   {stats?.total.toLocaleString()} แถว • chunk {chunkStatus.current}/{chunkStatus.total}
                 </span>
               </div>
+              {warningMsg && (
+                <div style={{ fontSize: 12, color: 'var(--warning)', marginTop: 4, fontWeight: 600 }}>
+                  {warningMsg}
+                </div>
+              )}
             </div>
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)' }}>{uploadProgress}%</span>
           </div>
@@ -380,6 +390,8 @@ export function TatUploadClient() {
   const [uploads, setUploads] = useState<UploadRecord[]>([])
   const [deleting, setDeleting] = useState<string | null>(null)
   const [rejoining, setRejoining] = useState<string | null>(null)
+  const [rejoinProgress, setRejoinProgress] = useState<Record<string, number>>({})
+  const [rejoinedMonths, setRejoinedMonths] = useState<Set<string>>(new Set())
   const { toasts, add: addToast } = useToast()
 
   const loadHistory = useCallback(async () => {
@@ -405,12 +417,13 @@ export function TatUploadClient() {
 
   useEffect(() => { loadHistory() }, [loadHistory])
 
-  function handleDone(ym: { year: number; month: number }, joined: boolean, type: TabType) {
+  async function handleDone(ym: { year: number; month: number }, needsRejoin: boolean, type: TabType) {
     addToast(`บันทึกไฟล์${type === 'lab' ? 'ผลตรวจ' : 'การเจาะเลือด'} เดือน ${getThaiMonthLabel(ym.month)} ${ym.year + 543} สำเร็จ`)
-    if (joined) {
-      addToast(`เชื่อมข้อมูล 2 ไฟล์เดือน ${getThaiMonthLabel(ym.month)} สำเร็จ`)
-    }
     loadHistory()
+    if (needsRejoin) {
+      addToast(`กำลังเชื่อมข้อมูลเดือน ${getThaiMonthLabel(ym.month)}...`)
+      await handleRejoin(ym.year, ym.month)
+    }
   }
 
   async function handleDelete(id: string, type: TabType) {
@@ -418,7 +431,8 @@ export function TatUploadClient() {
     try {
       const url = type === 'lab' ? `/api/admin/tat/upload/${id}` : `/api/admin/phleb/upload/${id}`
       const res = await fetch(url, { method: 'DELETE' })
-      if (!res.ok) throw new Error((await res.json()).error ?? 'Delete failed')
+      const json = await readJsonResponse(res)
+      if (!res.ok) throw new Error(json.error ?? `Delete failed (HTTP ${res.status})`)
       addToast('ลบข้อมูลสำเร็จ')
       loadHistory()
     } catch (err) {
@@ -431,18 +445,44 @@ export function TatUploadClient() {
   async function handleRejoin(year: number, month: number) {
     const key = `${year}-${month}`
     setRejoining(key)
+    setRejoinProgress(prev => ({ ...prev, [key]: 0 }))
     try {
-      const res = await fetch('/api/admin/tat/rejoin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, month }),
-      })
-      if (!res.ok) throw new Error((await res.json()).error ?? 'Rejoin failed')
+      let cursor: string | null = null
+      let processed = 0
+      for (let step = 0; step < 10000; step++) {
+        const res = await fetch('/api/admin/tat/rejoin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year, month, cursor }),
+        })
+        const json = await readJsonResponse(res) as {
+          error?: string
+          done?: boolean
+          nextCursor?: string | null
+          processed?: number
+          warning?: string | null
+        }
+        if (!res.ok) throw new Error(json.error ?? `Rejoin failed (HTTP ${res.status})`)
+        processed += json.processed ?? 0
+        setRejoinProgress(prev => ({ ...prev, [key]: processed }))
+        cursor = json.nextCursor ?? null
+        if (json.done) {
+          if (json.warning) addToast(`Rejoin สำเร็จ แต่มี warning: ${json.warning}`, false)
+          break
+        }
+        if (!cursor) throw new Error('Rejoin stopped without cursor')
+      }
+      setRejoinedMonths(prev => new Set(prev).add(key))
       addToast(`เชื่อมข้อมูลเดือน ${getThaiMonthLabel(month)} ${year + 543} สำเร็จ`)
     } catch (err) {
       addToast((err as Error).message, false)
     } finally {
       setRejoining(null)
+      setRejoinProgress(prev => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
     }
   }
 
@@ -525,7 +565,7 @@ export function TatUploadClient() {
               chunkUrl="/api/admin/tat/upload/chunk"
               detectYearMonth={(rows) => detectYearMonthFromSpcm(rows as { spcm_at: string }[])}
               fileLabel="ผลตรวจ Lab"
-              onDone={(ym, joined) => handleDone(ym, joined, 'lab')}
+              onDone={(ym, needsRejoin) => handleDone(ym, needsRejoin, 'lab')}
             />
           )}
           {activeTab === 'phleb' && (
@@ -535,7 +575,7 @@ export function TatUploadClient() {
               chunkUrl="/api/admin/phleb/upload/chunk"
               detectYearMonth={(rows) => detectYearMonthFromRegister(rows as { register_at: string }[])}
               fileLabel="การเจาะเลือด"
-              onDone={(ym, joined) => handleDone(ym, joined, 'phleb')}
+              onDone={(ym, needsRejoin) => handleDone(ym, needsRejoin, 'phleb')}
             />
           )}
         </div>
@@ -624,6 +664,11 @@ export function TatUploadClient() {
                             size="sm"
                             icon="check"
                             disabled={rejoining === `${u.year}-${u.month}`}
+                            style={rejoinedMonths.has(`${u.year}-${u.month}`) ? {
+                              background: 'var(--success)',
+                              borderColor: 'var(--success)',
+                              color: '#fff',
+                            } : undefined}
                             onClick={() => handleRejoin(u.year, u.month)}
                           >
                             {rejoining === `${u.year}-${u.month}` ? 'กำลังเชื่อม...' : 'Rejoin'}

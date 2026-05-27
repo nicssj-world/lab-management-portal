@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MonthSelector } from '@/components/ui/MonthSelector'
-import { getThaiMonthLabel } from '@/lib/kpi-utils'
+import { getPreviousCalendarMonth, getThaiMonthLabel } from '@/lib/kpi-utils'
 
 interface KpiData {
   avg_tat: number
@@ -416,9 +416,10 @@ function writeTatClientCache(key: string, data: SummaryData) {
 }
 
 export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
+  const defaultMonth = getPreviousCalendarMonth()
   const [activeTab, setActiveTab] = useState<TabId>('overview')
-  const [year, setYear]           = useState(new Date().getFullYear())
-  const [month, setMonth]         = useState(new Date().getMonth() + 1)
+  const [year, setYear]           = useState(defaultMonth.year)
+  const [month, setMonth]         = useState(defaultMonth.month)
   const [labSection, setLabSection] = useState('')
   const [ward, setWard]           = useState('')
   const [priority, setPriority]   = useState('')
@@ -611,11 +612,13 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
         title="Turnaround Time"
         subtitle="วิเคราะห์ระยะเวลารายงานผล"
         marginBottom={0}
-        actions={canEdit ? (
-          <Link href="/tat/upload">
-            <Button variant="primary" icon="upload">อัพโหลดข้อมูล</Button>
-          </Link>
-        ) : undefined}
+        actions={(
+          <>
+            <Link href="/tat/annual">
+              <Button variant="secondary" icon="chart">ภาพรวมทั้งปี</Button>
+            </Link>
+          </>
+        )}
       />
 
       {/* ── Segmented tab control ── */}
@@ -746,15 +749,8 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
           <EmptyState
             icon="clock"
             title="ยังไม่มีข้อมูล TAT สำหรับเดือนนี้"
-            hint={canEdit ? 'อัพโหลดไฟล์จาก LIS เพื่อเริ่มวิเคราะห์ข้อมูล' : undefined}
+            hint={canEdit ? 'รัน npm run tat:local บนเครื่องเพื่อสร้าง cache ของเดือนนี้' : undefined}
           />
-          {canEdit && (
-            <div style={{ textAlign: 'center', paddingBottom: 28 }}>
-              <Link href="/tat/upload">
-                <Button variant="primary" icon="upload">อัพโหลดข้อมูล TAT</Button>
-              </Link>
-            </div>
-          )}
         </div>
       )}
 
@@ -907,15 +903,8 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                   <EmptyState
                     icon="syringe"
                     title="ยังไม่มีข้อมูลการเจาะเลือดสำหรับเดือนนี้"
-                    hint={canEdit ? 'อัพโหลดไฟล์ Phlebotomy เพื่อดูข้อมูล TAT การเจาะเลือด' : undefined}
+                    hint={canEdit ? 'รัน npm run tat:local พร้อมไฟล์ TAT และ Phlebotomy เพื่อสร้าง cache ของเดือนนี้' : undefined}
                   />
-                  {canEdit && (
-                    <div style={{ textAlign: 'center', paddingBottom: 28 }}>
-                      <Link href="/tat/upload">
-                        <Button variant="primary" icon="upload">อัพโหลดไฟล์ Phlebotomy</Button>
-                      </Link>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <>

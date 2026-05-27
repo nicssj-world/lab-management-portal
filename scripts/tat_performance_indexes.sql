@@ -15,5 +15,17 @@ create index if not exists idx_tat_records_summary_heatmap
 create index if not exists idx_phleb_records_summary_hn
   on phlebotomy_records (year, month, labzone_name, hn);
 
+create index if not exists idx_tat_records_rejoin_blood
+  on tat_records (year, month, is_blood_draw, hn)
+  include (id, register_at, spcm_at, rslt_at);
+
+create index if not exists idx_tat_records_rejoin_page
+  on tat_records (year, month, is_blood_draw, id)
+  include (hn, register_at, spcm_at, rslt_at);
+
+create index if not exists idx_phleb_records_rejoin_hn_done
+  on phlebotomy_records (year, month, hn, phleb_done_at)
+  include (register_at, queue_confirmed_at, wait_minutes, draw_minutes, labzone_name, phlebotomist, phleb_date);
+
 analyze tat_records;
 analyze phlebotomy_records;

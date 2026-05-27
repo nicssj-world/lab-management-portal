@@ -1,15 +1,16 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import {
-  Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line,
+  Bar, BarChart, CartesianGrid, Cell,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { MonthSelector } from '@/components/ui/MonthSelector'
-import { getCurrentThaiFiscalYear, getThaiMonthLabel } from '@/lib/kpi-utils'
+import { getCurrentThaiFiscalYear, getPreviousThaiFiscalMonth, getThaiMonthLabel } from '@/lib/kpi-utils'
 
 const DOW_LABELS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 const COLORS = ['#1E5FAD', '#16A34A', '#D97706', '#9333EA', '#0F766E', '#DC2626', '#475569', '#2563EB']
@@ -231,56 +232,6 @@ async function exportOpdXlsx(rows: OpdRow[], months: MonthRef[]) {
   XLSX.writeFile(wb, 'lab-workload-opd.xlsx')
 }
 
-function buildOverviewRows(data: WorkloadData) {
-  const sectionRows = Object.entries(data.section_details)
-    .map(([section, rows]) => {
-      const values = Object.fromEntries(data.months.map(m => {
-        const key = monthKey(m.year, m.month)
-        return [key, rows.reduce((sum, row) => sum + metricValue(row, key, 'ln'), 0)]
-      }))
-      return {
-        section,
-        months: values,
-        total: Object.values(values).reduce((sum, value) => sum + value, 0),
-      }
-    })
-    .filter(row => row.total > 0)
-
-  const opdValues = Object.fromEntries(data.months.map(m => {
-    const key = monthKey(m.year, m.month)
-    return [key, (data.opd_rows ?? []).reduce((sum, row) => sum + (row.months[key] ?? 0), 0)]
-  }))
-  const opdTotal = Object.values(opdValues).reduce((sum, value) => sum + value, 0)
-
-  return [
-    ...sectionRows.sort((a, b) => b.total - a.total),
-    ...(opdTotal > 0 ? [{ section: 'งานบริการผู้ป่วยนอก (HN)', months: opdValues, total: opdTotal }] : []),
-  ]
-}
-
-async function exportOverviewXlsx(data: WorkloadData) {
-  const XLSX = await import('xlsx')
-  const rows = buildOverviewRows(data)
-  const monthTotals = data.months.map(m => rows.reduce((sum, row) => sum + (row.months[monthKey(m.year, m.month)] ?? 0), 0))
-  const grandTotal = monthTotals.reduce((sum, value) => sum + value, 0)
-  const aoa: (string | number)[][] = [
-    [`สรุปรวมภาระงานห้องปฏิบัติการ ปีงบ ${data.fiscal_year}`],
-    ['งาน', ...data.months.map(m => getThaiMonthLabel(m.month)), 'Total'],
-    ...rows.map(row => [
-      row.section,
-      ...data.months.map(m => row.months[monthKey(m.year, m.month)] ?? 0),
-      row.total,
-    ]),
-    ['Total', ...monthTotals, grandTotal],
-  ]
-  const ws = XLSX.utils.aoa_to_sheet(aoa)
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: data.months.length + 1 } }]
-  ws['!cols'] = [{ wch: 34 }, ...data.months.map(() => ({ wch: 12 })), { wch: 14 }]
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Workload Summary')
-  XLSX.writeFile(wb, `lab-workload-summary-${data.fiscal_year}.xlsx`)
-}
-
 const WORKLOAD_CLIENT_CACHE_TTL_MS = 5 * 60 * 1000
 
 function readWorkloadClientCache(key: string): WorkloadData | null {
@@ -318,8 +269,9 @@ async function readJsonResponse(res: Response) {
 }
 
 export default function WorkloadDashboardPage() {
-  const [year, setYear] = useState(getCurrentThaiFiscalYear())
-  const [month, setMonth] = useState(new Date().getMonth() + 1)
+  const defaultMonth = getPreviousThaiFiscalMonth()
+  const [year, setYear] = useState(defaultMonth.fiscalYear)
+  const [month, setMonth] = useState(defaultMonth.month)
   const [activeTab, setActiveTab] = useState('ภาพรวม')
   const metricMode: MetricMode = 'ln'
   const [data, setData] = useState<WorkloadData | null>(null)
@@ -370,27 +322,29 @@ export default function WorkloadDashboardPage() {
   const grandTotal = monthTotals.reduce((sum, value) => sum + value, 0)
   const opdMonthTotals = data?.months.map(m => (data.opd_rows ?? []).reduce((sum, row) => sum + (row.months[monthKey(m.year, m.month)] ?? 0), 0)) ?? []
   const opdGrandTotal = opdMonthTotals.reduce((sum, value) => sum + value, 0)
-  const overviewRows = data ? buildOverviewRows(data) : []
-  const overviewMonthTotals = data?.months.map(m => overviewRows.reduce((sum, row) => sum + (row.months[monthKey(m.year, m.month)] ?? 0), 0)) ?? []
-  const overviewGrandTotal = overviewMonthTotals.reduce((sum, value) => sum + value, 0)
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <PageHeader
         eyebrow="Lab Workload"
         title="ภาระงานห้องปฏิบัติการ"
         subtitle="ใช้ข้อมูลจากไฟล์ TAT และไฟล์เจาะเลือดที่อัพโหลดไว้แล้ว"
-        actions={<Button
-          variant="secondary"
-          icon="download"
-          onClick={() => {
-            if (!data) return
-            if (activeTab === 'ภาพรวม') void exportOverviewXlsx(data)
-            else if (activeTab === OPD_TAB) void exportOpdXlsx(data.opd_rows ?? [], data.months)
-            else if (currentSection) void exportSectionXlsx(currentSection, currentRows, data.months, metricMode)
-          }}
-          disabled={!data || (activeTab === OPD_TAB ? (data.opd_rows ?? []).length === 0 : activeTab === 'ภาพรวม' ? overviewRows.length === 0 : currentRows.length === 0)}
-        >Export</Button>}
+        actions={(
+          <>
+            <Link href="/lab-workload/annual">
+              <Button variant="secondary" icon="chart">ภาพรวมทั้งปี</Button>
+            </Link>
+            <Button
+              variant="secondary"
+              icon="download"
+              onClick={() => {
+                if (!data) return
+                if (activeTab === OPD_TAB) void exportOpdXlsx(data.opd_rows ?? [], data.months)
+                else if (currentSection) void exportSectionXlsx(currentSection, currentRows, data.months, metricMode)
+              }}
+              disabled={!data || activeTab === 'ภาพรวม' || (activeTab === OPD_TAB ? (data.opd_rows ?? []).length === 0 : currentRows.length === 0)}
+            >Export</Button>
+          </>
+        )}
       />
 
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -437,22 +391,7 @@ export default function WorkloadDashboardPage() {
             <StatCard label="บริการผู้ป่วยนอก" value={fmt(data.kpi.opd_hn)} sub="ครั้งบริการเจาะเลือด" icon="syringe" color="rgba(217,119,6,.12)" />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr', gap: 12 }}>
-            <Panel title="Trend รายเดือน" subtitle="จำนวนตัวอย่าง LN ไม่ซ้ำ และจำนวนรายการตรวจ">
-              <ResponsiveContainer width="100%" height={260}>
-                <ComposedChart data={data.trend} margin={{ top: 6, right: 32, bottom: 0, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey={(row: TrendRow) => `${getThaiMonthLabel(row.month)} ${String(row.year + 543).slice(2)}`} tick={{ fontSize: 10.5, fill: 'var(--muted)' }} />
-                  <YAxis yAxisId="left" tick={{ fontSize: 11, fill: 'var(--muted)' }} width={55} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: 'var(--muted)' }} width={55} />
-                  <Tooltip formatter={(value, name) => [fmt(Number(value)), String(name)]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar yAxisId="left" dataKey="ln_count" name="LN ไม่ซ้ำ" fill="#1E5FAD" radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="test_rows" name="รายการตรวจ" stroke="#D97706" strokeWidth={2} dot={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </Panel>
-
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
             <Panel title="แยกตามหน่วยงาน" subtitle="จำนวน LN ไม่ซ้ำในเดือนที่เลือก" accent="#9333EA">
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart layout="vertical" data={data.departments.slice(0, 10)} margin={{ top: 0, right: 50, bottom: 0, left: 12 }}>
@@ -485,50 +424,6 @@ export default function WorkloadDashboardPage() {
             </Panel>
           </div>
 
-          <Panel title="ตารางสรุปรวม" subtitle="ปริมาณ workload รวม แยกตามงานและเดือน ปีงบประมาณ" accent="#FBBF24">
-            <div style={{ overflow: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980, fontSize: 12.5 }}>
-                <thead>
-                  <tr>
-                    <th style={thStyle({ background: '#FFF4CC', minWidth: 260 })}>งาน</th>
-                    {data.months.map(m => (
-                      <th key={monthKey(m.year, m.month)} style={thStyle({ background: '#DCEBFA', textAlign: 'right', minWidth: 88 })}>
-                        {getThaiMonthLabel(m.month)}
-                      </th>
-                    ))}
-                    <th style={thStyle({ background: '#FFF4CC', textAlign: 'right', minWidth: 110 })}>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {overviewRows.map(row => (
-                    <tr key={row.section}>
-                      <td style={tdStyle({ fontWeight: 800, background: '#FFFFFF' })}>{row.section}</td>
-                      {data.months.map(m => (
-                        <td key={`${row.section}-${monthKey(m.year, m.month)}`} style={tdStyle({ textAlign: 'right', background: '#EAF2FD', fontWeight: 700 })}>
-                          {fmt(row.months[monthKey(m.year, m.month)] ?? 0)}
-                        </td>
-                      ))}
-                      <td style={tdStyle({ textAlign: 'right', background: '#FFF4CC', fontWeight: 900 })}>{fmt(row.total)}</td>
-                    </tr>
-                  ))}
-                  {overviewRows.length > 0 && (
-                    <tr>
-                      <td style={tdStyle({ textAlign: 'center', background: '#FBBF24', fontWeight: 900, fontSize: 14 })}>Total</td>
-                      {overviewMonthTotals.map((total, i) => (
-                        <td key={`${data.months[i].year}-${data.months[i].month}-overview-total`} style={tdStyle({ textAlign: 'right', background: '#FBBF24', fontWeight: 900, fontSize: 14 })}>
-                          {fmt(total)}
-                        </td>
-                      ))}
-                      <td style={tdStyle({ textAlign: 'right', background: '#FB923C', fontWeight: 900, fontSize: 14 })}>{fmt(overviewGrandTotal)}</td>
-                    </tr>
-                  )}
-                  {overviewRows.length === 0 && (
-                    <tr><td colSpan={2 + data.months.length} style={{ padding: 28, textAlign: 'center', color: 'var(--muted)' }}>ไม่มีข้อมูล</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
         </>
       )}
 

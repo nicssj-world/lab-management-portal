@@ -240,6 +240,11 @@ export async function GET(req: NextRequest) {
   const key = cacheKey(sp)
   const cached = summaryCache.get(key)
   if (cached && cached.expiresAt > Date.now()) {
+    if (cached.payload.precomputed === true) {
+      return NextResponse.json(cached.payload, {
+        headers: { 'X-TAT-Summary-Cache': 'precomputed-memory' },
+      })
+    }
     const enriched = await enrichWithCutMetrics(cached.payload, year, month, {
       ...requestFilters(sp),
     })
@@ -254,6 +259,12 @@ export async function GET(req: NextRequest) {
 
   const persistent = await readAnalysisCache<SummaryPayload>(CACHE_ENDPOINT, key)
   if (persistent) {
+    if (persistent.precomputed === true) {
+      summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: persistent })
+      return NextResponse.json(persistent, {
+        headers: { 'X-TAT-Summary-Cache': 'precomputed' },
+      })
+    }
     const enriched = await enrichWithCutMetrics(persistent, year, month, requestFilters(sp))
     const withTrend = await enrichWithFilteredTrend(enriched, year, month, requestFilters(sp))
     summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: withTrend })

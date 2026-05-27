@@ -98,6 +98,7 @@ function fmtStatusDate(iso: string | null): string {
 }
 
 const PAGE_SIZE = 30
+const DEFAULT_TYPE_FILTER = 'QP'
 
 // ── Status Change Modal ────────────────────────────────────────
 function StatusModal({ doc, userRole, docRole, onClose, onSaved, toast }: {
@@ -1138,7 +1139,7 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
 
   const [search, setSearch]               = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [activeType, setActiveType]     = useState<string>('All')
+  const [activeType, setActiveType]     = useState<string>(DEFAULT_TYPE_FILTER)
   const [filterStatus, setFilterStatus] = useState<string>('')
   const [visibility, setVisibility]     = useState<string>('')
   const [department, setDepartment]     = useState<string>('')
@@ -1324,7 +1325,7 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
   }
 
   const totalPages = Math.ceil(count / PAGE_SIZE)
-  const hasFilters = !!(search || filterStatus || visibility || department || (activeType && activeType !== 'All'))
+  const hasFilters = !!(search || filterStatus || visibility || department || activeType !== DEFAULT_TYPE_FILTER)
   const typeEntries = (Object.entries(typeCounts) as [string, number][])
     .filter(([k, v]) => k !== 'All' && v > 0).slice(0, 5)
 
@@ -1449,9 +1450,9 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
             </select>
             <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', fontSize: 11 }}>▾</span>
           </div>
-          {(search || department || activeType !== 'All' || filterStatus || visibility) && (
+          {(search || department || activeType !== DEFAULT_TYPE_FILTER || filterStatus || visibility) && (
             <button
-              onClick={() => { setSearch(''); setDepartment(''); setFilterStatus(''); setActiveType('All'); setVisibility(''); setPage(1) }}
+              onClick={() => { setSearch(''); setDepartment(''); setFilterStatus(''); setActiveType(DEFAULT_TYPE_FILTER); setVisibility(''); setPage(1) }}
               style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--muted)', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
             >
               ล้าง
