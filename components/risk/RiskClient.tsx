@@ -360,7 +360,7 @@ export function RiskClient() {
 
   const dashboardRisks = useMemo(() => risks.filter(r => !isFutureDateKey(latestEventDateKey(r))), [risks])
   const riskRegisterDashboardRisks = useMemo(() => dashboardRisks.filter(isRiskRegisterRisk), [dashboardRisks])
-  const smartFiltered = useMemo(() => filtered.filter(isSmartRmRisk), [filtered])
+  const smartFiltered = useMemo(() => filtered.filter(r => isSmartRmRisk(r) && !isFutureDateKey(latestEventDateKey(r))), [filtered])
   const iorFiltered = useMemo(() => filtered.filter(isIorRisk), [filtered])
   const riskRegisterFiltered = useMemo(() => filtered.filter(isRiskRegisterRisk), [filtered])
 
@@ -748,11 +748,7 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
       if (month && eventMonth(risk) !== month) return false
       return true
     })
-    .sort((a, b) => {
-      const dateCompare = latestEventDateKey(b).localeCompare(latestEventDateKey(a))
-      if (dateCompare !== 0) return dateCompare
-      return b.id - a.id
-    }), [month, risks, year])
+    .sort(compareLatestRisk), [month, risks, year])
   const totalPages = Math.max(1, Math.ceil(datedRisks.length / REGISTER_PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pageStart = datedRisks.length ? (safePage - 1) * REGISTER_PAGE_SIZE + 1 : 0
