@@ -843,15 +843,15 @@ export function NewsManageClient({ canEdit }: Props) {
       `}</style>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4, fontWeight: 500 }}>
+          <div style={{ fontSize: 11, color: 'var(--primary)', marginBottom: 5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' }}>
             {stats.total} ข่าว · เผยแพร่ {stats.published}
           </div>
-          <h1 style={{ margin: '0 0 4px', fontSize: 26, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.15 }}>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.2 }}>
             จัดการข่าวสารห้องปฏิบัติการ
           </h1>
-          <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+          <div style={{ marginTop: 6, fontSize: 13, color: 'var(--muted)' }}>
             สร้าง แก้ไข และตั้งป้าย NEW สำหรับข่าวที่แสดงในหน้าเว็บ public
           </div>
         </div>

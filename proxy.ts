@@ -1,6 +1,13 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) {
+  request.cookies
+    .getAll()
+    .filter((cookie) => cookie.name.startsWith('sb-'))
+    .forEach((cookie) => response.cookies.set(cookie.name, '', { path: '/', maxAge: 0 }))
+}
+
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname
 
@@ -34,13 +41,13 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const { data: { user }, error } = await supabase.auth.getUser()
+  const { data: { user }, error } = await supabase.auth.getUser().catch((error) => ({
+    data: { user: null },
+    error,
+  }))
 
   if (error || !user) {
-    request.cookies
-      .getAll()
-      .filter((cookie) => cookie.name.startsWith('sb-') && cookie.name.includes('auth-token'))
-      .forEach((cookie) => response.cookies.set(cookie.name, '', { path: '/', maxAge: 0 }))
+    clearSupabaseAuthCookies(request, response)
 
     if (/\/api\//.test(path)) {
       const unauthorizedResponse = NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

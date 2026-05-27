@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
   ComposedChart, BarChart, Bar, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
   PieChart, Pie, Cell,
 } from 'recharts'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -30,6 +30,10 @@ interface KpiData {
   avg_transport: number
   avg_total_tat: number
   median_total_tat: number
+  avg_total_tat_cut_720?: number
+  median_total_tat_cut_720?: number
+  total_tat_cut_720_count?: number
+  total_tat_outlier_720_count?: number
   phleb_match_rate: number
   pct_total_within_target: number
   pct_phleb_within_target: number
@@ -109,6 +113,16 @@ function aggregatePhlebLabzones(rows: LabzonePhleb[]) {
 
 function formatTrendLabel(year: number, month: number) {
   return `${getThaiMonthLabel(month)} ${String(year + 543).slice(2)}`
+}
+
+function formatDuration(minutes: number) {
+  if (!minutes) return '—'
+  const total = Math.round(minutes)
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  if (h > 0 && m > 0) return `${h} hr ${m} min`
+  if (h > 0) return `${h} hr`
+  return `${m} min`
 }
 
 // ── Design Components ─────────────────────────────────────────────────────
@@ -222,8 +236,7 @@ function PipelineViz({ stages, total }: { stages: StageRow[]; total: number }) {
           <div key={i} style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg)', borderLeft: `3px solid ${s.color}` }}>
             <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 3 }}>{s.label}</div>
             <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--ink)', lineHeight: 1 }}>
-              {values[i].toFixed(1)}
-              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted)', marginLeft: 3 }}>นาที</span>
+              {formatDuration(values[i])}
             </div>
           </div>
         ))}
@@ -231,7 +244,7 @@ function PipelineViz({ stages, total }: { stages: StageRow[]; total: number }) {
       {total > 0 && (
         <div style={{ marginTop: 10, padding: '9px 14px', borderRadius: 8, background: 'rgba(30,95,173,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>Total TAT เฉลี่ยต่อ LN</span>
-          <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--primary)' }}>{Math.round(total)} นาที</span>
+          <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--primary)' }}>{formatDuration(total)}</span>
         </div>
       )}
     </div>
@@ -262,8 +275,7 @@ function LabTatPipeline({ avgTat }: { avgTat: number }) {
         <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg)', borderLeft: '3px solid #16A34A' }}>
           <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 3 }}>รับ specimen → รายงานผล</div>
           <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--ink)', lineHeight: 1 }}>
-            {avgTat.toFixed(1)}
-            <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted)', marginLeft: 3 }}>นาที</span>
+            {formatDuration(avgTat)}
           </div>
         </div>
       </div>
@@ -416,6 +428,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
 
   const [data, setData]     = useState<SummaryData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [urgentLabTrend, setUrgentLabTrend] = useState<TrendRow[]>([])
   const abortRef = useRef<AbortController | null>(null)
 
   const fetchData = useCallback(async (
@@ -456,6 +469,26 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   useEffect(() => {
     fetchData(year, month, labSection, ward, priority, testName, labzone)
   }, [year, month, labSection, ward, priority, testName, labzone, fetchData])
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    const params = new URLSearchParams({ year: String(year), month: String(month), priority: 'ด่วน' })
+    if (labSection) params.set('lab_section', labSection)
+    if (ward) params.set('ward', ward)
+    if (testName) params.set('test_name', testName)
+
+    fetch(`/api/admin/tat/summary?${params}`, { signal: ctrl.signal })
+      .then(async res => {
+        if (!res.ok) throw new Error(await res.text())
+        return res.json() as Promise<SummaryData>
+      })
+      .then(json => setUrgentLabTrend(json.trend ?? []))
+      .catch(err => {
+        if ((err as Error).name !== 'AbortError') setUrgentLabTrend([])
+      })
+
+    return () => ctrl.abort()
+  }, [year, month, labSection, ward, testName])
 
   useEffect(() => {
     if (data && !labzone) {
@@ -524,8 +557,12 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   const mb = data?.match_breakdown
   const matchedBloodSamples = mb ? mb.exact + mb.ambiguous : 0
   const overviewHasTotalTat = (kpi?.avg_total_tat ?? 0) > 0
-  const overviewAvgTat = overviewHasTotalTat ? (kpi?.avg_total_tat ?? 0) : (kpi?.avg_tat ?? 0)
-  const overviewMedianTat = overviewHasTotalTat ? (kpi?.median_total_tat ?? 0) : (kpi?.median_tat ?? 0)
+  const overviewAvgTatAll = overviewHasTotalTat ? (kpi?.avg_total_tat ?? 0) : (kpi?.avg_tat ?? 0)
+  const overviewMedianTatAll = overviewHasTotalTat ? (kpi?.median_total_tat ?? 0) : (kpi?.median_tat ?? 0)
+  const overviewAvgTatCut = kpi?.avg_total_tat_cut_720 ?? overviewAvgTatAll
+  const overviewMedianTatCut = kpi?.median_total_tat_cut_720 ?? overviewMedianTatAll
+  const totalTatCutCount = kpi?.total_tat_cut_720_count ?? matchedBloodSamples
+  const totalTatOutlierCount = kpi?.total_tat_outlier_720_count ?? 0
   const overviewPctWithinTarget = overviewHasTotalTat ? (kpi?.pct_total_within_target ?? 0) : (kpi?.pct_within_target ?? 0)
   const overviewTatLabel = overviewHasTotalTat ? 'Total TAT เฉลี่ย' : 'TAT เฉลี่ย (รับ specimen → รายงานผล)'
   const showPhlebPipeline = overviewHasTotalTat && matchedBloodSamples > 0
@@ -726,14 +763,14 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
           {/* ════════ TAB 1: ภาพรวม ════════ */}
           {activeTab === 'overview' && (
             <div key="overview" className="tat-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
                 <KpiBigStat
-                  label={overviewTatLabel}
-                  value={overviewAvgTat > 0 ? `${overviewAvgTat} นาที` : '—'}
-                  sub={overviewMedianTat > 0
+                  label={`${overviewTatLabel} (ตัด >12 hr)`}
+                  value={overviewAvgTatCut > 0 ? formatDuration(overviewAvgTatCut) : '—'}
+                  sub={overviewMedianTatCut > 0
                     ? (overviewHasTotalTat
-                      ? `LN เจาะเลือดที่จับคู่ได้ ${matchedBloodSamples.toLocaleString()} • มัธยฐาน ${overviewMedianTat} นาที`
-                      : `LN เจาะเลือด 0 • ใช้ TAT ห้องปฏิบัติการ • มัธยฐาน ${overviewMedianTat} นาที`)
+                      ? `คิด ${totalTatCutCount.toLocaleString()} LN • ตัดออก ${totalTatOutlierCount.toLocaleString()} • มัธยฐาน ${formatDuration(overviewMedianTatCut)}`
+                      : `ใช้ TAT ห้องปฏิบัติการ • มัธยฐาน ${formatDuration(overviewMedianTatCut)}`)
                     : (overviewHasTotalTat
                       ? `LN เจาะเลือด ${(kpi.blood_sample_count ?? matchedBloodSamples).toLocaleString()}`
                       : 'ไม่มี LN เจาะเลือดที่จับคู่ได้ในตัวกรองนี้')
@@ -741,8 +778,17 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                   iconBg="rgba(30,95,173,.12)"
                   icon="clock"
                 />
+                <KpiBigStat
+                  label={`${overviewTatLabel} (ไม่ตัด)`}
+                  value={overviewAvgTatAll > 0 ? formatDuration(overviewAvgTatAll) : '—'}
+                  sub={overviewMedianTatAll > 0
+                    ? `ข้อมูลทั้งหมด • มัธยฐาน ${formatDuration(overviewMedianTatAll)}`
+                    : 'ข้อมูลทั้งหมด'}
+                  iconBg="rgba(217,119,6,.12)"
+                  icon="clock"
+                />
                 <KpiRingStat
-                  label={overviewHasTotalTat ? '% Total TAT ≤120 นาที' : `% ตามเป้าหมายราย test (${(kpi.target_count ?? 0).toLocaleString()} มี target)`}
+                  label={overviewHasTotalTat ? '% Total TAT ≤2 hr' : `% ตามเป้าหมายราย test (${(kpi.target_count ?? 0).toLocaleString()} มี target)`}
                   pct={overviewPctWithinTarget}
                   color="#16A34A"
                 />
@@ -795,19 +841,20 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
               )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
-                <SectionCard title="Trend รายเดือน" accentColor="var(--primary)">
+                <SectionCard title="Trend รายเดือนภาพรวม" accentColor="var(--primary)">
                   <ResponsiveContainer width="100%" height={220}>
                     <ComposedChart data={data?.trend ?? []} margin={{ top: 4, right: 40, bottom: 0, left: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                       <XAxis dataKey={({ year: y, month: m }: TrendRow) => formatTrendLabel(y, m)} tick={{ fontSize: 10.5, fill: 'var(--muted)' }} />
-                      <YAxis yAxisId="left"  tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="นาที" width={50} />
+                      <YAxis yAxisId="left"  tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit=" min" width={50} />
                       <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="%" width={36} domain={[0, 100]} />
                       <Tooltip
-                        formatter={(val, name) => name === 'TAT เฉลี่ย' ? [`${val} นาที`, name] : [`${val}%`, name]}
+                        formatter={(val, name) => name === 'TAT เฉลี่ย' ? [formatDuration(Number(val)), name] : [`${val}%`, name]}
                         labelFormatter={(label) => String(label)}
                         contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }}
                       />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <ReferenceLine yAxisId="right" y={95} stroke="#D97706" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Target 95%', fill: '#D97706', fontSize: 10, position: 'insideTopRight' }} />
                       <Line yAxisId="left"  type="monotone" dataKey="avg_tat"          name="TAT เฉลี่ย" stroke="#1E5FAD" strokeWidth={2.5} dot={{ r: 3, fill: '#1E5FAD' }} />
                       <Line yAxisId="right" type="monotone" dataKey="pct_within_target" name="% ตามเป้า"  stroke="#16A34A" strokeWidth={2.5} dot={{ r: 3, fill: '#16A34A' }} />
                     </ComposedChart>
@@ -829,6 +876,26 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                   </ResponsiveContainer>
                 </SectionCard>
               </div>
+
+              <SectionCard title="Trend รายเดือน Lab ด่วน" subtitle="Target 100% ตามเป้าหมายราย test" accentColor="#DC2626">
+                <ResponsiveContainer width="100%" height={220}>
+                  <ComposedChart data={urgentLabTrend} margin={{ top: 4, right: 40, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey={({ year: y, month: m }: TrendRow) => formatTrendLabel(y, m)} tick={{ fontSize: 10.5, fill: 'var(--muted)' }} />
+                    <YAxis yAxisId="left"  tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit=" min" width={50} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="%" width={36} domain={[0, 100]} />
+                    <Tooltip
+                      formatter={(val, name) => name === 'TAT เฉลี่ย' ? [formatDuration(Number(val)), name] : [`${val}%`, name]}
+                      labelFormatter={(label) => String(label)}
+                      contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <ReferenceLine yAxisId="right" y={100} stroke="#DC2626" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Target 100%', fill: '#DC2626', fontSize: 10, position: 'insideTopRight' }} />
+                    <Line yAxisId="left"  type="monotone" dataKey="avg_tat" name="TAT เฉลี่ย" stroke="#1E5FAD" strokeWidth={2.5} dot={{ r: 3, fill: '#1E5FAD' }} />
+                    <Line yAxisId="right" type="monotone" dataKey="pct_within_target" name="% ตามเป้า" stroke="#DC2626" strokeWidth={2.5} dot={{ r: 3, fill: '#DC2626' }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </SectionCard>
             </div>
           )}
 
@@ -862,12 +929,12 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                     />
                     <KpiBigStat
                       label="เวลาเจาะเลือดเฉลี่ย"
-                      value={kpi.avg_phleb_wait > 0 ? `${kpi.avg_phleb_wait} นาที` : '—'}
+                      value={kpi.avg_phleb_wait > 0 ? formatDuration(kpi.avg_phleb_wait) : '—'}
                       iconBg="rgba(217,119,6,.12)"
                       icon="clock"
                     />
                     <KpiRingStat
-                      label="% ตามเป้าหมาย (เจาะ ≤30 นาที)"
+                      label="% ตามเป้าหมาย (เจาะ ≤30 min)"
                       pct={kpi.pct_phleb_within_target}
                       color="#16A34A"
                     />
@@ -927,8 +994,8 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                 />
                 <KpiBigStat
                   label="TAT เฉลี่ย (รับ→ผล)"
-                  value={`${kpi.avg_tat} นาที`}
-                  sub={kpi.median_tat > 0 ? `มัธยฐาน ${kpi.median_tat} นาที` : undefined}
+                  value={formatDuration(kpi.avg_tat)}
+                  sub={kpi.median_tat > 0 ? `มัธยฐาน ${formatDuration(kpi.median_tat)}` : undefined}
                   iconBg="rgba(30,95,173,.12)"
                   icon="clock"
                 />
@@ -950,14 +1017,15 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                     <ComposedChart data={data?.trend ?? []} margin={{ top: 4, right: 40, bottom: 0, left: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                       <XAxis dataKey={({ year: y, month: m }: TrendRow) => formatTrendLabel(y, m)} tick={{ fontSize: 10.5, fill: 'var(--muted)' }} />
-                      <YAxis yAxisId="left"  tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="นาที" width={50} />
+                      <YAxis yAxisId="left"  tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit=" min" width={50} />
                       <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="%" width={36} domain={[0, 100]} />
                       <Tooltip
-                        formatter={(val, name) => name === 'TAT เฉลี่ย' ? [`${val} นาที`, name] : [`${val}%`, name]}
+                        formatter={(val, name) => name === 'TAT เฉลี่ย' ? [formatDuration(Number(val)), name] : [`${val}%`, name]}
                         labelFormatter={(label) => String(label)}
                         contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }}
                       />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <ReferenceLine yAxisId="right" y={95} stroke="#D97706" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Target 95%', fill: '#D97706', fontSize: 10, position: 'insideTopRight' }} />
                       <Line yAxisId="left"  type="monotone" dataKey="avg_tat"           name="TAT เฉลี่ย" stroke="#1E5FAD" strokeWidth={2.5} dot={{ r: 3, fill: '#1E5FAD' }} />
                       <Line yAxisId="right" type="monotone" dataKey="pct_within_target"  name="% ตามเป้า"  stroke="#16A34A" strokeWidth={2.5} dot={{ r: 3, fill: '#16A34A' }} />
                     </ComposedChart>
@@ -968,9 +1036,9 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart layout="vertical" data={sectionData} margin={{ top: 0, right: 20, bottom: 0, left: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit="นาที" />
+                      <XAxis type="number" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} unit=" min" />
                       <YAxis type="category" dataKey="lab_section" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} width={80} />
-                      <Tooltip formatter={(val) => [`${val} นาที`, 'TAT เฉลี่ย']} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }} />
+                      <Tooltip formatter={(val) => [formatDuration(Number(val)), 'TAT เฉลี่ย']} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }} />
                       <Bar dataKey="avg_tat" name="TAT เฉลี่ย" radius={[0, 4, 4, 0]}>
                         {sectionData.map((entry, i) => (
                           <Cell key={i} fill={entry.avg_tat > sectionMedian ? '#DC2626' : '#1E5FAD'} />
