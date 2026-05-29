@@ -29,6 +29,7 @@ export default function TestsPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [deletedCount, setDeletedCount] = useState(0)
   const [purging, setPurging] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null)
   const timer = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
   const testPerm = usePermission('รายการตรวจ')
@@ -48,6 +49,10 @@ export default function TestsPage() {
           .then(d => setDeletedCount(d.count ?? 0))
           .catch(() => {})
       }
+      fetch('/api/admin/tests?sortBy=updated_at&sortDir=desc&pageSize=1&active=true')
+        .then(r => r.json())
+        .then(d => { if (d.data?.[0]?.updated_at) setLastUpdated(d.data[0].updated_at) })
+        .catch(() => {})
       getCategories(supabase, false).then(setCategories)
     }
     init()
@@ -113,9 +118,10 @@ export default function TestsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <PageHeader
-        eyebrow="ค้นหา"
+        eyebrow={lastUpdated
+          ? `ทั้งหมด ${allTotal} รายการ · อัปเดตล่าสุด ${new Date(lastUpdated).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}`
+          : `ทั้งหมด ${allTotal} รายการ`}
         title="รายการตรวจวิเคราะห์"
-        subtitle={`ทั้งหมด ${allTotal} รายการ`}
         actions={canModifyTests
           ? <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {canRemoveTests && deletedCount > 0 && (

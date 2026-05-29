@@ -14,7 +14,7 @@ export interface TestFilters {
   sortDir?: 'asc' | 'desc'
 }
 
-const ALLOWED_SORT = ['code', 'cgd', 'th', 'en', 'price', 'tat_minutes', 'service', 'tube']
+const ALLOWED_SORT = ['code', 'cgd', 'th', 'en', 'price', 'tat_minutes', 'service', 'tube', 'updated_at']
 const CUSTOM_SORT = ['display_name_alpha']
 
 function getDisplayNameSortKey(test: Test): { group: number; key: string } {
