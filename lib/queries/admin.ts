@@ -27,11 +27,15 @@ export async function updateProfile(
 
 export type AuditLogWithUser = AuditLog & { user_name: string | null }
 
-// Actions that represent actual DB mutations (add/edit/delete)
+// Actions that represent actual DB mutations written to audit_log
 const CRUD_ACTIONS = [
   'test.create', 'test.update', 'test.delete', 'test.bulk_delete',
   'test.import', 'test.duplicate', 'test.purge_deleted',
-  'upload', 'edit', 'delete',
+  'create_news', 'update_news', 'delete_news',
+  'permission.update',
+  'settings.update',
+  'phleb_upload_init',
+  'delete',
 ]
 
 export async function getAuditLog(supabase: SupabaseClient, limit = 100): Promise<AuditLogWithUser[]> {
