@@ -9,6 +9,7 @@ export const RESOURCES = [
   'ข่าวสาร',
   'ความเสี่ยง / Rejection',
   'สัญญา',
+  'ทะเบียนเครื่องมือ',
   'Workload',
   'KPI',
   'TAT',

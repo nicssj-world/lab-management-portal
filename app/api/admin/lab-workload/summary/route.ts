@@ -615,8 +615,10 @@ async function fetchPrecomputedPayload(displayFiscalYear: number, fiscalYear: nu
     },
     departments,
     trend,
+    heatmap: [],
     phlebotomy_zones: phlebotomyZones,
     opd_rows: opdRows,
+    phleb_heatmap: [],
     section_details: sectionDetails,
   }
 }
@@ -636,7 +638,7 @@ export async function GET(req: NextRequest) {
     const fiscalYear = toGregorianYear(displayFiscalYear)
     const selectedYear = selectedMonth >= 10 ? fiscalYear - 1 : fiscalYear
     const uploadVersion = await fetchUploadVersion(selectedYear, selectedMonth)
-    const key = `v13|${displayFiscalYear}|${fiscalYear}|${selectedYear}|${selectedMonth}|${uploadVersion}`
+    const key = `v15|${displayFiscalYear}|${fiscalYear}|${selectedYear}|${selectedMonth}|${uploadVersion}`
     const hit = cache.get(key)
     if (hit && hit.expiresAt > Date.now()) {
       return NextResponse.json(hit.payload, { headers: { 'X-Lab-Workload-Cache': 'hit' } })
@@ -647,6 +649,13 @@ export async function GET(req: NextRequest) {
     if (persistent) {
       cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload: persistent })
       return NextResponse.json(persistent, { headers: { 'X-Lab-Workload-Cache': 'persistent' } })
+    }
+
+    const precomputed = await fetchPrecomputedPayload(displayFiscalYear, fiscalYear, selectedYear, selectedMonth, months)
+    if (precomputed) {
+      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload: precomputed })
+      await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, precomputed, PERSISTENT_CACHE_TTL_MS)
+      return NextResponse.json(precomputed, { headers: { 'X-Lab-Workload-Cache': 'precomputed' } })
     }
 
     const [tatRows, phlebRows, phlebRowsAll] = await Promise.all([

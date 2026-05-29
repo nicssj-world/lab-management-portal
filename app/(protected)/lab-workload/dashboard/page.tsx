@@ -98,9 +98,10 @@ function Panel({ title, subtitle, children, accent = 'var(--primary)' }: {
   )
 }
 
-function Heatmap({ cells, tooltipLabel }: { cells: HeatCell[]; tooltipLabel: string }) {
-  const map = new Map(cells.map(c => [`${c.dow}-${c.hour}`, c.count]))
-  const max = Math.max(1, ...cells.map(c => c.count))
+function Heatmap({ cells, tooltipLabel }: { cells: HeatCell[] | undefined; tooltipLabel: string }) {
+  const safeCells = cells ?? []
+  const map = new Map(safeCells.map(c => [`${c.dow}-${c.hour}`, c.count]))
+  const max = Math.max(1, ...safeCells.map(c => c.count))
   return (
     <div style={{ overflowX: 'auto' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '30px repeat(7, minmax(34px, 1fr))', gap: 2, minWidth: 360 }}>
