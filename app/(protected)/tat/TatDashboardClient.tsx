@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MonthSelector } from '@/components/ui/MonthSelector'
-import { getPreviousCalendarMonth, getThaiMonthLabel } from '@/lib/kpi-utils'
+import { getPreviousThaiFiscalMonth, getThaiFiscalYearForMonth, getThaiMonthLabel } from '@/lib/kpi-utils'
 
 interface KpiData {
   avg_tat: number
@@ -112,7 +112,7 @@ function aggregatePhlebLabzones(rows: LabzonePhleb[]) {
 }
 
 function formatTrendLabel(year: number, month: number) {
-  return `${getThaiMonthLabel(month)} ${String(year + 543).slice(2)}`
+  return `${getThaiMonthLabel(month)} ${String(getThaiFiscalYearForMonth(year, month)).slice(2)}`
 }
 
 function formatDuration(minutes: number) {
@@ -416,16 +416,18 @@ function writeTatClientCache(key: string, data: SummaryData) {
 }
 
 export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
-  const defaultMonth = getPreviousCalendarMonth()
+  const defaultMonth = getPreviousThaiFiscalMonth()
   const [activeTab, setActiveTab] = useState<TabId>('overview')
-  const [year, setYear]           = useState(defaultMonth.year)
-  const [month, setMonth]         = useState(defaultMonth.month)
+  const [fiscalYear, setFiscalYear] = useState(defaultMonth.fiscalYear)
+  const [month, setMonth]           = useState(defaultMonth.month)
   const [labSection, setLabSection] = useState('')
   const [ward, setWard]           = useState('')
   const [priority, setPriority]   = useState('')
   const [testName, setTestName]   = useState('')
   const [labzone, setLabzone]     = useState('')
   const [allLabzones, setAllLabzones] = useState<string[]>([])
+
+  const gregorianYear = month >= 10 ? fiscalYear - 543 - 1 : fiscalYear - 543
 
   const [data, setData]     = useState<SummaryData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -468,12 +470,12 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   }, [])
 
   useEffect(() => {
-    fetchData(year, month, labSection, ward, priority, testName, labzone)
-  }, [year, month, labSection, ward, priority, testName, labzone, fetchData])
+    fetchData(gregorianYear, month, labSection, ward, priority, testName, labzone)
+  }, [gregorianYear, month, labSection, ward, priority, testName, labzone, fetchData])
 
   useEffect(() => {
     const ctrl = new AbortController()
-    const params = new URLSearchParams({ year: String(year), month: String(month), priority: 'ด่วน' })
+    const params = new URLSearchParams({ year: String(gregorianYear), month: String(month), priority: 'ด่วน' })
     if (labSection) params.set('lab_section', labSection)
     if (ward) params.set('ward', ward)
     if (testName) params.set('test_name', testName)
@@ -489,7 +491,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
       })
 
     return () => ctrl.abort()
-  }, [year, month, labSection, ward, testName])
+  }, [gregorianYear, month, labSection, ward, testName])
 
   useEffect(() => {
     if (data && !labzone) {
@@ -530,8 +532,8 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   const isEmpty = !loading && (kpi?.total_count ?? 0) === 0
   const hasPhleb = !loading && (data?.has_phleb_data ?? false)
   const canShowPhlebOnly = activeTab === 'phlebotomy' && hasPhleb
-  const thisYear = new Date().getFullYear()
-  const yearOptions = [thisYear, thisYear - 1, thisYear - 2]
+  const currentFiscalYear = getThaiFiscalYearForMonth(new Date().getFullYear(), new Date().getMonth() + 1)
+  const yearOptions = [currentFiscalYear, currentFiscalYear - 1, currentFiscalYear - 2]
 
   const labzoneOptions = allLabzones.length > 0
     ? allLabzones
@@ -659,8 +661,8 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
 
         <div style={{ position: 'relative', display: 'inline-block' }}>
           <select
-            value={year}
-            onChange={e => setYear(Number(e.target.value))}
+            value={fiscalYear}
+            onChange={e => setFiscalYear(Number(e.target.value))}
             style={{
               appearance: 'none', WebkitAppearance: 'none',
               padding: '6px 28px 6px 11px', borderRadius: 8,
@@ -669,7 +671,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
               color: 'var(--ink)', cursor: 'pointer', outline: 'none',
             }}
           >
-            {yearOptions.map(y => <option key={y} value={y}>{y + 543}</option>)}
+            {yearOptions.map(fy => <option key={fy} value={fy}>ปีงบ {fy}</option>)}
           </select>
           <svg style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} width={11} height={11} viewBox="0 0 12 12">
             <path d="M2 4l4 4 4-4" stroke="#64748B" strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round" />
