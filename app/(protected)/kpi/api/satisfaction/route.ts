@@ -24,12 +24,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
-  const { metric_code, metric_name, fiscal_year, value } = body
+  const { metric_code, metric_name, fiscal_year, value, target_val } = body
   if (!metric_code || !fiscal_year) return NextResponse.json({ error: 'metric_code and fiscal_year required' }, { status: 422 })
+
+  const upsertData: Record<string, unknown> = { metric_code, metric_name, fiscal_year, value: value ?? null }
+  if (target_val !== undefined) upsertData.target_val = target_val
 
   const { data, error } = await supabaseAdmin
     .from('kpi_satisfaction')
-    .upsert({ metric_code, metric_name, fiscal_year, value: value ?? null }, { onConflict: 'metric_code,fiscal_year' })
+    .upsert(upsertData, { onConflict: 'metric_code,fiscal_year' })
     .select()
     .single()
 

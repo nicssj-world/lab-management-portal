@@ -34,6 +34,7 @@ export default function KpiDashboardPage() {
   const [deptCode, setDeptCode] = useState('')
   const [tab, setTab]       = useState<Tab>('dashboard')
   const [depts, setDepts]   = useState<Department[]>([])
+  const [satAddOpen, setSatAddOpen] = useState(false)
   const { canEdit }         = usePermission('KPI')
 
   useEffect(() => {
@@ -43,7 +44,6 @@ export default function KpiDashboardPage() {
       .catch(() => {})
   }, [])
 
-  const YEARS = [getCurrentThaiFiscalYear(), getCurrentThaiFiscalYear() - 1, getCurrentThaiFiscalYear() - 2]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -52,7 +52,7 @@ export default function KpiDashboardPage() {
         title="KPI Dashboard"
         subtitle="ภาพรวม KPI ประจำปีงบประมาณ"
         marginBottom={0}
-        actions={canEdit ? (
+        actions={canEdit && tab !== 'satisfaction' ? (
           <Link href="/kpi/input">
             <Button variant="primary" icon="plus">บันทึกข้อมูล</Button>
           </Link>
@@ -62,9 +62,14 @@ export default function KpiDashboardPage() {
       {/* Global selectors (year + dept — visible on annual & compare tabs) */}
       {tab !== 'satisfaction' && (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <select value={year} onChange={e => setYear(Number(e.target.value))} style={selectStyle}>
-            {YEARS.map(y => <option key={y} value={y}>ปีงบ {y}</option>)}
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>ปีงบ</span>
+            <input
+              type="number" value={year} onChange={e => setYear(Number(e.target.value))}
+              min="2560" max="2999" step="1"
+              style={{ ...selectStyle, width: 88 }}
+            />
+          </div>
           {(tab === 'annual' || tab === 'dashboard') && (
             <select value={deptCode} onChange={e => setDeptCode(e.target.value)} style={selectStyle}>
               <option value="">ทุกแผนก (ภาพรวม)</option>
@@ -124,7 +129,12 @@ export default function KpiDashboardPage() {
 
       {tab === 'satisfaction' && (
         <Card padding={24}>
-          <KpiSatisfactionPanel canEdit={canEdit} />
+          {canEdit && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+              <Button variant="primary" icon="plus" onClick={() => setSatAddOpen(true)}>บันทึกข้อมูล</Button>
+            </div>
+          )}
+          <KpiSatisfactionPanel canEdit={canEdit} addOpen={satAddOpen} onAddClose={() => setSatAddOpen(false)} />
         </Card>
       )}
     </div>
