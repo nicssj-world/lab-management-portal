@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/Select'
+import { StickyScroll } from '@/components/ui/StickyScroll'
 import type { Equipment } from '@/lib/queries/equipment'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 
@@ -66,11 +67,11 @@ function formatPrice(n: number | null) {
 // ─── blank form ───────────────────────────────────────────────────────────────
 
 const BLANK: Partial<Equipment> = {
-  item_no: null, cbh_code: '', hospital_asset_no: '', department: '',
+  item_no: null, cbh_code: '', cbh_code_pending: false, hospital_asset_no: '', hospital_asset_no_pending: false, department: '',
   owner: 'รพ', owner_status: '', risk_level: null, classification: '',
   equipment_type: '', manufacturer: '', model: '', serial_number: '',
   vendor: '', purchase_date: null, warranty_exp: null, purchase_price: null,
-  status: 'Active', needs_calibration: true, responsible_person: '', purpose: '', remark: '',
+  status: 'Active', needs_calibration: false, responsible_person: '', purpose: '', remark: '', photo_url: null,
 }
 
 // ─── sub-components ───────────────────────────────────────────────────────────
@@ -110,8 +111,22 @@ function EquipmentModal({
   const [form, setForm] = useState<Partial<Equipment>>(item ?? BLANK)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [removePhoto, setRemovePhoto] = useState(false)
+  const [photoDragOver, setPhotoDragOver] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const set = (k: keyof Equipment, v: unknown) => setForm(f => ({ ...f, [k]: v }))
+
+  function handlePhotoSelect(file: File) {
+    if (file.size > 20 * 1024 * 1024) { setErr('ขนาดรูปเกิน 20 MB'); return }
+    setPhotoFile(file)
+    setRemovePhoto(false)
+    const reader = new FileReader()
+    reader.onload = e => setPhotoPreview(e.target?.result as string)
+    reader.readAsDataURL(file)
+  }
 
   async function handleSave() {
     if (!form.equipment_type?.trim()) { setErr('กรุณาระบุชื่อเครื่องมือ'); return }
@@ -124,6 +139,29 @@ function EquipmentModal({
       )
       const json = await res.json()
       if (!res.ok) { setErr(json.error ?? 'เกิดข้อผิดพลาด'); return }
+
+      // Handle photo upload
+      if (photoFile) {
+        const presignRes = await fetch(`/api/admin/equipment/${json.id}/photo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName: photoFile.name, fileType: photoFile.type, fileSize: photoFile.size }),
+        })
+        const { uploadUrl, key, error: presignErr } = await presignRes.json()
+        if (presignErr) { setErr(presignErr); return }
+        await fetch(uploadUrl, { method: 'PUT', body: photoFile, headers: { 'Content-Type': photoFile.type } })
+        const saveRes = await fetch(`/api/admin/equipment/${json.id}/photo`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key }),
+        })
+        const saveData = await saveRes.json()
+        json.photo_url = saveData.photo_url
+      } else if (removePhoto && isEdit && item?.photo_url) {
+        await fetch(`/api/admin/equipment/${json.id}/photo`, { method: 'DELETE' })
+        json.photo_url = null
+      }
+
       onSaved(json as Equipment)
     } finally { setSaving(false) }
   }
@@ -145,19 +183,31 @@ function EquipmentModal({
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>ข้อมูลทั่วไป</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>ชื่อ / ประเภทเครื่องมือ *</label>
+              <label style={labelStyle}>ชื่อ / ประเภทเครื่องมือ <span style={{ color: 'var(--danger)' }}>*</span></label>
               <input style={inputStyle} value={form.equipment_type ?? ''} onChange={e => set('equipment_type', e.target.value)} placeholder="Equipment Type" />
             </div>
             <div>
-              <label style={labelStyle}>รหัส CBH</label>
-              <input style={inputStyle} value={form.cbh_code ?? ''} onChange={e => set('cbh_code', e.target.value || null)} placeholder="CBH3367" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>รหัส CBH</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: 'var(--warning)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!form.cbh_code_pending} onChange={e => { set('cbh_code_pending', e.target.checked); if (e.target.checked) set('cbh_code', null) }} style={{ accentColor: 'var(--warning)', width: 13, height: 13, cursor: 'pointer' }} />
+                  รอขึ้นทะเบียน
+                </label>
+              </div>
+              <input style={{ ...inputStyle, opacity: form.cbh_code_pending ? 0.4 : 1 }} disabled={!!form.cbh_code_pending} value={form.cbh_code ?? ''} onChange={e => set('cbh_code', e.target.value || null)} placeholder="CBH3367" />
             </div>
             <div>
-              <label style={labelStyle}>เลขทะเบียนสินทรัพย์ รพ.</label>
-              <input style={inputStyle} value={form.hospital_asset_no ?? ''} onChange={e => set('hospital_asset_no', e.target.value || null)} placeholder="6515-047-0001/1/36" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>เลขทะเบียนสินทรัพย์ รพ.</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: 'var(--warning)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!form.hospital_asset_no_pending} onChange={e => { set('hospital_asset_no_pending', e.target.checked); if (e.target.checked) set('hospital_asset_no', null) }} style={{ accentColor: 'var(--warning)', width: 13, height: 13, cursor: 'pointer' }} />
+                  รอขึ้นทะเบียน
+                </label>
+              </div>
+              <input style={{ ...inputStyle, opacity: form.hospital_asset_no_pending ? 0.4 : 1 }} disabled={!!form.hospital_asset_no_pending} value={form.hospital_asset_no ?? ''} onChange={e => set('hospital_asset_no', e.target.value || null)} placeholder="6515-047-0001/1/36" />
             </div>
             <div>
-              <label style={labelStyle}>แผนก *</label>
+              <label style={labelStyle}>แผนก <span style={{ color: 'var(--danger)' }}>*</span></label>
               <select style={inputStyle} value={form.department ?? ''} onChange={e => set('department', e.target.value)}>
                 <option value="">เลือกแผนก</option>
                 {departments.map(d => <option key={d} value={d}>{d}</option>)}
@@ -253,9 +303,67 @@ function EquipmentModal({
           </div>
 
           {/* Remark */}
-          <div>
+          <div style={{ marginBottom: 20 }}>
             <label style={labelStyle}>หมายเหตุ</label>
             <textarea style={{ ...inputStyle, height: 72, resize: 'vertical' }} value={form.remark ?? ''} onChange={e => set('remark', e.target.value || null)} />
+          </div>
+
+          {/* Section: รูปถ่ายเครื่องมือ */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>รูปถ่ายเครื่องมือ</div>
+          <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoSelect(f) }} />
+          <div
+            onDragOver={e => { e.preventDefault(); setPhotoDragOver(true) }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setPhotoDragOver(false) }}
+            onDrop={e => {
+              e.preventDefault(); setPhotoDragOver(false)
+              const f = e.dataTransfer.files?.[0]
+              if (f && f.type.startsWith('image/')) handlePhotoSelect(f)
+              else if (f) setErr('รองรับเฉพาะไฟล์รูปภาพ')
+            }}
+            style={{ borderRadius: 8, border: `2px dashed ${photoDragOver ? 'var(--primary)' : 'var(--border)'}`, background: photoDragOver ? 'var(--primary-soft)' : 'transparent', transition: 'border-color .15s, background .15s' }}
+          >
+          {photoPreview ? (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: 12 }}>
+              <img src={photoPreview} alt="preview" style={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', flexShrink: 0 }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{photoFile?.name}</div>
+                {photoDragOver && <div style={{ fontSize: 11.5, color: 'var(--primary)', fontWeight: 600 }}>วางเพื่อเปลี่ยนรูป</div>}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" onClick={() => photoInputRef.current?.click()} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>เปลี่ยนรูป</button>
+                  <button type="button" onClick={() => { setPhotoFile(null); setPhotoPreview(null) }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--danger)' }}>ยกเลิก</button>
+                </div>
+              </div>
+            </div>
+          ) : isEdit && item?.photo_url && !removePhoto ? (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 14px' }}>
+              <Icon name="eye" size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+              <span style={{ fontSize: 12.5, color: photoDragOver ? 'var(--primary)' : 'var(--ink)', flex: 1, fontWeight: photoDragOver ? 600 : 400 }}>
+                {photoDragOver ? 'วางเพื่อเปลี่ยนรูป' : 'มีรูปถ่ายอยู่แล้ว'}
+              </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" onClick={() => photoInputRef.current?.click()} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>เปลี่ยนรูป</button>
+                <button type="button" onClick={() => setRemovePhoto(true)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--danger)' }}>ลบรูป</button>
+              </div>
+            </div>
+          ) : removePhoto ? (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px' }}>
+              <span style={{ fontSize: 12.5, color: photoDragOver ? 'var(--primary)' : 'var(--danger)', flex: 1, fontWeight: photoDragOver ? 600 : 400 }}>
+                {photoDragOver ? 'วางเพื่ออัพโหลดรูปใหม่' : 'รูปถ่ายจะถูกลบเมื่อบันทึก'}
+              </span>
+              <button type="button" onClick={() => setRemovePhoto(false)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>ยกเลิก</button>
+              <button type="button" onClick={() => photoInputRef.current?.click()} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>อัพโหลดรูปใหม่</button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              style={{ width: '100%', padding: '24px 20px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: photoDragOver ? 'var(--primary)' : 'var(--muted)', fontFamily: 'inherit' }}
+            >
+              <Icon name="upload" size={20} />
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{photoDragOver ? 'วางรูปที่นี่' : 'คลิกหรือลากรูปมาวาง'}</span>
+              <span style={{ fontSize: 11.5 }}>JPG, PNG, WEBP, HEIC · ไม่เกิน 20 MB</span>
+            </button>
+          )}
           </div>
         </div>
 
@@ -432,6 +540,43 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 function SectionTitle({ children }: { children: string }) {
   return <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', letterSpacing: 1, textTransform: 'uppercase', margin: '18px 0 4px' }}>{children}</div>
+}
+
+function PhotoViewModal({ item, onClose }: { item: Equipment; onClose: () => void }) {
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    fetch(`/api/admin/equipment/${item.id}/photo`)
+      .then(r => r.json())
+      .then(d => { if (d.url) setPhotoUrl(d.url); else setErr('ไม่สามารถโหลดรูปได้') })
+      .catch(() => setErr('เกิดข้อผิดพลาด'))
+      .finally(() => setLoading(false))
+  }, [item.id])
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 680, boxShadow: '0 20px 60px rgba(0,0,0,.35)', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{item.equipment_type}</div>
+            {item.cbh_code && <div style={{ fontSize: 11.5, color: 'var(--primary)', fontFamily: 'monospace', marginTop: 2 }}>{item.cbh_code}</div>}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}><Icon name="x" size={18} /></button>
+        </div>
+        <div style={{ padding: 20, minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {loading ? (
+            <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', animation: 'spin 0.7s linear infinite' }} />
+          ) : err ? (
+            <div style={{ color: 'var(--danger)', fontSize: 13 }}>{err}</div>
+          ) : photoUrl ? (
+            <img src={photoUrl} alt={item.equipment_type} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8, objectFit: 'contain' }} />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function EquipmentDetailModal({ item, onClose, onEdit }: {
@@ -1112,11 +1257,11 @@ function AddCalPlanModal({ onClose, onSaved, existingGroups }: {
           {err && <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(220,38,38,.08)', color: 'var(--danger)', fontSize: 13, marginBottom: 16 }}>{err}</div>}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>ชื่อเครื่องมือ / โครงการ *</label>
+              <label style={labelStyle}>ชื่อเครื่องมือ / โครงการ <span style={{ color: 'var(--danger)' }}>*</span></label>
               <input style={inputStyle} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="เช่น เครื่องวัดความดัน" />
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>กลุ่ม *</label>
+              <label style={labelStyle}>กลุ่ม <span style={{ color: 'var(--danger)' }}>*</span></label>
               <select style={inputStyle} value={form.group} onChange={e => setForm(f => ({ ...f, group: e.target.value }))}>
                 {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
                 <option value="อื่นๆ">อื่นๆ</option>
@@ -1357,6 +1502,7 @@ export default function EquipmentClient({
   const [department, setDepartment] = useState('')
   const [riskLevel, setRiskLevel] = useState('')
   const [needsCal, setNeedsCal] = useState('')
+  const [pendingReg, setPendingReg] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const [view, setView] = useState<'list' | 'dashboard' | 'calplan'>('list')
@@ -1366,6 +1512,7 @@ export default function EquipmentClient({
   const [importModal, setImportModal] = useState(false)
   const [pmCalItem, setPmCalItem] = useState<Equipment | null>(null)
   const [detailItem, setDetailItem] = useState<Equipment | null>(null)
+  const [photoViewItem, setPhotoViewItem] = useState<Equipment | null>(null)
 
   const { toasts, add: addToast } = useToast()
 
@@ -1384,13 +1531,14 @@ export default function EquipmentClient({
     if (department) params.set('department', department)
     if (riskLevel) params.set('risk_level', riskLevel)
     if (needsCal) params.set('needs_calibration', needsCal)
+    if (pendingReg) params.set('pending_reg', 'true')
 
     fetch(`/api/admin/equipment?${params}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setItems(d) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [debouncedSearch, statusTab, department, riskLevel, needsCal])
+  }, [debouncedSearch, statusTab, department, riskLevel, needsCal, pendingReg])
 
   // Departments for filter dropdown: merge hardcoded list + actual data (handles import name variants)
   const allDepts = Array.from(new Set([
@@ -1598,6 +1746,21 @@ export default function EquipmentClient({
           <option value="true">ต้องการสอบเทียบ</option>
           <option value="false">ไม่ต้องการ</option>
         </select>
+        <button
+          onClick={() => setPendingReg(v => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
+            border: `1px solid ${pendingReg ? 'var(--warning)' : 'var(--border)'}`,
+            background: pendingReg ? 'rgba(217,119,6,.1)' : 'var(--card)',
+            color: pendingReg ? 'var(--warning)' : 'var(--muted)',
+            fontWeight: pendingReg ? 700 : 400,
+            transition: 'all .15s',
+          }}
+        >
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: pendingReg ? 'var(--warning)' : 'var(--border)', flexShrink: 0, display: 'inline-block' }} />
+          รอขึ้นทะเบียน
+        </button>
       </div>
 
       {/* Table */}
@@ -1625,7 +1788,7 @@ export default function EquipmentClient({
           </div>
         )}
         {!loading && items.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
+          <StickyScroll>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', borderBottom: '2px solid var(--border)' }}>
@@ -1703,6 +1866,15 @@ export default function EquipmentClient({
                           <button onClick={() => setPmCalItem(item)} title="ดู PM/CAL" style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)', fontSize: 11.5, fontFamily: 'inherit', fontWeight: 600 }}>
                             <Icon name="clock" size={12} /> PM/CAL
                           </button>
+                          {item.photo_url && (
+                            <button
+                              title="ดูรูปถ่ายเครื่องมือ"
+                              onClick={() => setPhotoViewItem(item)}
+                              style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}
+                            >
+                              <Icon name="eye" size={13} />
+                            </button>
+                          )}
                           {item.pm_cal_data?.certificate_file_url && (
                             <button
                               title="ดาวน์โหลดใบ Certificate"
@@ -1733,7 +1905,7 @@ export default function EquipmentClient({
                 })}
               </tbody>
             </table>
-          </div>
+          </StickyScroll>
         )}
       </Card>
 
@@ -1751,6 +1923,7 @@ export default function EquipmentClient({
       {deleteItem && <DeleteConfirm item={deleteItem} onClose={() => setDeleteItem(null)} onDeleted={handleDeleted} />}
       {importModal && <ImportModal onClose={() => setImportModal(false)} onImported={handleImported} />}
       {detailItem && <EquipmentDetailModal item={detailItem} onClose={() => setDetailItem(null)} onEdit={canEdit ? (i) => { setDetailItem(null); setEditItem(i) } : undefined} />}
+      {photoViewItem && <PhotoViewModal item={photoViewItem} onClose={() => setPhotoViewItem(null)} />}
       {pmCalItem && (
         <PmCalModal
           item={pmCalItem}

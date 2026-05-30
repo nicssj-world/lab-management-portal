@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get('status') ?? ''
   const risk_level = searchParams.get('risk_level') ?? ''
   const needs_calibration = searchParams.get('needs_calibration')
+  const pending_reg = searchParams.get('pending_reg')
 
   let query = supabaseAdmin
     .from('equipment')
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
   if (risk_level) query = query.eq('risk_level', risk_level)
   if (needs_calibration === 'true') query = query.eq('needs_calibration', true)
   if (needs_calibration === 'false') query = query.eq('needs_calibration', false)
+  if (pending_reg === 'true') query = query.or('cbh_code_pending.eq.true,hospital_asset_no_pending.eq.true')
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -54,12 +56,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
+  if (body.cbh_code !== undefined && body.cbh_code?.trim() === '') body.cbh_code = null
+  if (body.hospital_asset_no !== undefined && body.hospital_asset_no?.trim() === '') body.hospital_asset_no = null
   const { data, error } = await supabaseAdmin
     .from('equipment')
     .insert({ ...body, created_by: actor.id })
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    if (error.code === '23505' && error.message.includes('cbh_code'))
+      return NextResponse.json({ error: 'รหัส CBH นี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น' }, { status: 409 })
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
   return NextResponse.json(data, { status: 201 })
 }

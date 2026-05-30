@@ -27,15 +27,32 @@ export async function PATCH(
   if (body.title !== undefined && !body.title?.trim())
     return NextResponse.json({ error: 'กรุณาระบุหัวข้อ' }, { status: 422 })
 
+  const { date, category, title, description, changed_by, changed_by_id } = body
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (date !== undefined) patch.date = date
+  if (category !== undefined) patch.category = category
+  if (title !== undefined) patch.title = title
+  if (description !== undefined) patch.description = description
+  if (changed_by !== undefined) patch.changed_by = changed_by
+  if (changed_by_id !== undefined) patch.changed_by_id = changed_by_id
+
   const { data, error } = await supabaseAdmin
     .from('system_changelog')
-    .update({ ...body, updated_at: new Date().toISOString() })
+    .update(patch)
     .eq('id', id)
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+
+  let changed_by_avatar: string | null = null
+  if (data.changed_by_id) {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles').select('avatar_url').eq('id', data.changed_by_id).single()
+    changed_by_avatar = profile?.avatar_url ?? null
+  }
+
+  return NextResponse.json({ ...data, changed_by_avatar })
 }
 
 export async function DELETE(

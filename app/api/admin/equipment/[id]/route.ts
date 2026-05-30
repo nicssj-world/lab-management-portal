@@ -24,6 +24,8 @@ export async function PATCH(
 
   const { id } = await params
   const body = await req.json()
+  if (body.cbh_code !== undefined && body.cbh_code?.trim() === '') body.cbh_code = null
+  if (body.hospital_asset_no !== undefined && body.hospital_asset_no?.trim() === '') body.hospital_asset_no = null
   if (body.status === 'Inactive') body.needs_calibration = false
   const { data, error } = await supabaseAdmin
     .from('equipment')
@@ -32,7 +34,11 @@ export async function PATCH(
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    if (error.code === '23505' && error.message.includes('cbh_code'))
+      return NextResponse.json({ error: 'รหัส CBH นี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น' }, { status: 409 })
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
   return NextResponse.json(data)
 }
 
