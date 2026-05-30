@@ -20,6 +20,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/equipment':        { th: 'ทะเบียนเครื่องมือ',           en: 'Equipment Registry' },
   '/staff/admin':            { th: 'จัดการผู้ใช้และสิทธิ์',          en: 'Users & Roles' },
   '/staff/settings':         { th: 'ตั้งค่าระบบ',                  en: 'System Settings' },
+  '/staff/changelog':        { th: 'บันทึกการแก้ไขระบบ',           en: 'System Change Log' },
   '/kpi/dashboard':          { th: 'KPI Dashboard',                en: 'KPI Dashboard' },
   '/kpi/input':              { th: 'บันทึกข้อมูล KPI',             en: 'KPI Data Entry' },
   '/lab-workload/dashboard': { th: 'Lab Workload',                 en: 'Lab Workload' },

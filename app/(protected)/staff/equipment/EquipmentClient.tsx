@@ -183,7 +183,10 @@ function EquipmentModal({
             </div>
             <div>
               <label style={labelStyle}>สถานะ</label>
-              <select style={inputStyle} value={form.status ?? 'Active'} onChange={e => set('status', e.target.value)}>
+              <select style={inputStyle} value={form.status ?? 'Active'} onChange={e => {
+                const s = e.target.value
+                setForm(f => ({ ...f, status: s, ...(s === 'Inactive' ? { needs_calibration: false } : {}) }))
+              }}>
                 {['Active', 'Inactive', 'ชำรุด', 'มาใหม่', 'ย้าย', 'สูญหาย'].map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
@@ -238,10 +241,11 @@ function EquipmentModal({
           {/* Section: การสอบเทียบ */}
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>การสอบเทียบ</div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
-              <input type="checkbox" checked={form.needs_calibration ?? true} onChange={e => set('needs_calibration', e.target.checked)} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: form.status === 'Inactive' ? 'not-allowed' : 'pointer', fontSize: 13, opacity: form.status === 'Inactive' ? 0.45 : 1 }}>
+              <input type="checkbox" checked={form.needs_calibration ?? true} disabled={form.status === 'Inactive'} onChange={e => set('needs_calibration', e.target.checked)} />
               ต้องการสอบเทียบ + PM ปีนี้
             </label>
+            {form.status === 'Inactive' && <span style={{ fontSize: 11.5, color: 'var(--muted)', fontStyle: 'italic' }}>ปิดอัตโนมัติเมื่อสถานะเป็น Inactive</span>}
           </div>
           <div style={{ marginBottom: 20 }}>
             <label style={labelStyle}>จุดประสงค์ของการใช้งาน</label>
