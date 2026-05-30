@@ -4,7 +4,9 @@ export interface Equipment {
   id: string
   item_no: number | null
   cbh_code: string | null
+  cbh_code_pending: boolean
   hospital_asset_no: string | null
+  hospital_asset_no_pending: boolean
   department: string
   owner: string | null
   owner_status: string | null
@@ -23,6 +25,7 @@ export interface Equipment {
   responsible_person: string | null
   purpose: string | null
   remark: string | null
+  photo_url: string | null
   pm_cal_data: {
     tech_group: string | null
     times_pm: number | null
