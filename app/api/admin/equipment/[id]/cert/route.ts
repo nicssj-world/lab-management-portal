@@ -63,6 +63,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     const file = formData.get('file') as File | null
     if (!file) return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
 
+    if (file.size > 50 * 1024 * 1024)
+      return NextResponse.json({ error: 'ขนาดไฟล์เกิน 50 MB' }, { status: 422 })
+
     const mimeType = file.type || 'application/octet-stream'
     if (!ALLOWED_TYPES.includes(mimeType))
       return NextResponse.json({ error: 'รองรับเฉพาะ PDF และรูปภาพ (JPG, PNG, WEBP)' }, { status: 422 })

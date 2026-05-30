@@ -3,8 +3,8 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   serverExternalPackages: ['canvas'],
   experimental: {
-    serverActions: { bodySizeLimit: '10mb' },
-    proxyClientMaxBodySize: '20mb',
+    serverActions: { bodySizeLimit: '50mb' },
+    proxyClientMaxBodySize: '50mb',
   },
   devIndicators: {
     position: 'bottom-right',

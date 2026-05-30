@@ -530,9 +530,11 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const certFileRef = useRef<HTMLInputElement>(null)
 
   async function handleCertUpload(file: File) {
+    if (file.size > 50 * 1024 * 1024) { setErr('ขนาดไฟล์เกิน 50 MB'); return }
     setUploading(true); setErr('')
     try {
       const fd = new FormData()
@@ -776,49 +778,94 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
           </div>
 
           {/* Certificate file */}
-          <div style={{ marginTop: 16, padding: '14px 16px', borderRadius: 10, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Icon name="doc" size={18} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 2 }}>ใบ Certificate</div>
-              {form.certificate_file_url ? (
-                <div style={{ fontSize: 12.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {form.certificate_file_url.split('/').pop()?.replace(/^\d+-/, '') ?? 'ไฟล์แนบ'}
+          <input ref={certFileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleCertUpload(f); e.target.value = '' }} />
+          <div
+            style={{
+              marginTop: 16, borderRadius: 10,
+              border: `2px dashed ${dragOver ? 'var(--primary)' : canEdit ? 'var(--border)' : 'transparent'}`,
+              background: dragOver ? 'var(--primary-soft)' : form.certificate_file_url || !canEdit ? 'var(--surface-2)' : 'transparent',
+              transition: 'background .15s, border-color .15s',
+            }}
+            onDragOver={canEdit ? (e) => { e.preventDefault(); setDragOver(true) } : undefined}
+            onDragLeave={canEdit ? () => setDragOver(false) : undefined}
+            onDrop={canEdit ? (e) => {
+              e.preventDefault(); setDragOver(false)
+              const f = e.dataTransfer.files?.[0]
+              if (f) handleCertUpload(f)
+            } : undefined}
+          >
+            {!form.certificate_file_url && canEdit ? (
+              /* Empty state — full drop zone */
+              <div
+                onClick={() => !uploading && certFileRef.current?.click()}
+                style={{ padding: '22px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: uploading ? 'not-allowed' : 'pointer', userSelect: 'none' }}
+              >
+                <div style={{
+                  width: 44, height: 44, borderRadius: 10,
+                  background: dragOver ? 'rgba(30,95,173,.18)' : 'var(--surface-2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background .15s',
+                }}>
+                  <Icon name="upload" size={22} style={{ color: dragOver ? 'var(--primary)' : 'var(--muted)' }} />
                 </div>
-              ) : (
-                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>ยังไม่มีไฟล์</div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-              {form.certificate_file_url && (
-                <button
-                  onClick={async () => {
-                    const res = await fetch(`/api/admin/equipment/${item.id}/cert`)
-                    const { url } = await res.json()
-                    if (url) window.open(url, '_blank')
-                  }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: 'var(--ink)' }}
-                >
-                  <Icon name="download" size={13} /> ดาวน์โหลด
-                </button>
-              )}
-              {canEdit && (
-                <>
-                  <input ref={certFileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleCertUpload(f); e.target.value = '' }} />
-                  <button
-                    onClick={() => certFileRef.current?.click()}
-                    disabled={uploading}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: uploading ? 'not-allowed' : 'pointer', fontSize: 12, fontFamily: 'inherit', color: uploading ? 'var(--muted)' : 'var(--primary)', opacity: uploading ? 0.6 : 1 }}
-                  >
-                    <Icon name="upload" size={13} /> {uploading ? 'กำลังอัพโหลด...' : form.certificate_file_url ? 'เปลี่ยนไฟล์' : 'อัพโหลดใบ Cer'}
-                  </button>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: dragOver ? 'var(--primary)' : 'var(--ink)' }}>
+                    {uploading ? 'กำลังอัพโหลด...' : dragOver ? 'วางไฟล์ที่นี่' : 'ลากไฟล์มาวาง หรือคลิกเพื่อเลือก'}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>PDF, JPG, PNG, WEBP · ไม่เกิน 50 MB</div>
+                </div>
+              </div>
+            ) : (
+              /* Has file — compact row */
+              <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Icon name="doc" size={18} style={{ color: dragOver ? 'var(--primary)' : 'var(--primary)', flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 2 }}>ใบ Certificate</div>
+                  {dragOver ? (
+                    <div style={{ fontSize: 12.5, color: 'var(--primary)', fontWeight: 600 }}>วางไฟล์เพื่อเปลี่ยน...</div>
+                  ) : form.certificate_file_url ? (
+                    <>
+                      <div style={{ fontSize: 12.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {form.certificate_file_url.split('/').pop()?.replace(/^\d+-/, '') ?? 'ไฟล์แนบ'}
+                      </div>
+                      {canEdit && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>ลากไฟล์มาวางเพื่อเปลี่ยน · ไม่เกิน 50 MB</div>}
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>ยังไม่มีไฟล์</div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   {form.certificate_file_url && (
-                    <button onClick={handleCertDelete} style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)' }}>
-                      <Icon name="trash" size={13} />
+                    <button
+                      onClick={async () => {
+                        const res = await fetch(`/api/admin/equipment/${item.id}/cert`)
+                        const { url } = await res.json()
+                        if (url) window.open(url, '_blank')
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: 'var(--ink)' }}
+                    >
+                      <Icon name="download" size={13} /> ดาวน์โหลด
                     </button>
                   )}
-                </>
-              )}
-            </div>
+                  {canEdit && (
+                    <>
+                      <button
+                        onClick={() => certFileRef.current?.click()}
+                        disabled={uploading}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: uploading ? 'not-allowed' : 'pointer', fontSize: 12, fontFamily: 'inherit', color: uploading ? 'var(--muted)' : 'var(--primary)', opacity: uploading ? 0.6 : 1 }}
+                      >
+                        <Icon name="upload" size={13} /> {uploading ? 'กำลังอัพโหลด...' : 'เปลี่ยนไฟล์'}
+                      </button>
+                      {form.certificate_file_url && (
+                        <button onClick={handleCertDelete} style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)' }}>
+                          <Icon name="trash" size={13} />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
