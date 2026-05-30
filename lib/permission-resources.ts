@@ -10,6 +10,7 @@ export const RESOURCES = [
   'ความเสี่ยง / Rejection',
   'สัญญา',
   'ทะเบียนเครื่องมือ',
+  'บันทึกการแก้ไข',
   'Workload',
   'KPI',
   'TAT',

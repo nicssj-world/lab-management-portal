@@ -19,15 +19,17 @@ export async function PATCH(
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const perms = await getRolePermissions(actor.role)
-  if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') !== 'edit')
+  if ((perms['บันทึกการแก้ไข'] ?? 'none') !== 'edit')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const body = await req.json()
-  if (body.status === 'Inactive') body.needs_calibration = false
+  if (body.title !== undefined && !body.title?.trim())
+    return NextResponse.json({ error: 'กรุณาระบุหัวข้อ' }, { status: 422 })
+
   const { data, error } = await supabaseAdmin
-    .from('equipment')
-    .update(body)
+    .from('system_changelog')
+    .update({ ...body, updated_at: new Date().toISOString() })
     .eq('id', id)
     .select()
     .single()
@@ -43,11 +45,11 @@ export async function DELETE(
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const perms = await getRolePermissions(actor.role)
-  if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') !== 'edit')
+  if ((perms['บันทึกการแก้ไข'] ?? 'none') !== 'edit')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
-  const { error } = await supabaseAdmin.from('equipment').delete().eq('id', id)
+  const { error } = await supabaseAdmin.from('system_changelog').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
