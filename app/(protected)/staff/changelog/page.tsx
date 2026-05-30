@@ -21,15 +21,23 @@ export default async function ChangelogPage() {
   if ((perms['บันทึกการแก้ไข'] ?? 'none') === 'none') redirect('/staff/dashboard')
   const canEdit = perms['บันทึกการแก้ไข'] === 'edit'
 
-  const { data: items } = await supabaseAdmin
+  const { data: raw } = await supabaseAdmin
     .from('system_changelog')
     .select('*')
     .order('date', { ascending: false })
     .order('created_at', { ascending: false })
 
+  const ids = [...new Set((raw ?? []).filter(i => i.changed_by_id).map(i => i.changed_by_id as string))]
+  const avatarMap: Record<string, string | null> = {}
+  if (ids.length) {
+    const { data: profiles } = await supabaseAdmin.from('profiles').select('id, avatar_url').in('id', ids)
+    for (const p of profiles ?? []) avatarMap[p.id] = p.avatar_url ?? null
+  }
+  const items = (raw ?? []).map(i => ({ ...i, changed_by_avatar: i.changed_by_id ? (avatarMap[i.changed_by_id] ?? null) : null }))
+
   return (
     <ChangelogClient
-      initialData={items ?? []}
+      initialData={items}
       canEdit={canEdit}
       currentUserName={actor.name ?? ''}
     />

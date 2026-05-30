@@ -18,6 +18,7 @@ interface ChangelogItem {
   description: string | null
   changed_by: string
   changed_by_id: string | null
+  changed_by_avatar: string | null
   created_at: string
   updated_at: string
 }
@@ -400,11 +401,16 @@ export function ChangelogClient({
                     {/* Changed by */}
                     <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 24, height: 24, borderRadius: 6, background: 'var(--primary-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)' }}>
-                            {item.changed_by.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
+                        {item.changed_by_avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.changed_by_avatar} alt={item.changed_by} style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                        ) : (
+                          <div style={{ width: 24, height: 24, borderRadius: 6, background: 'var(--primary-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)' }}>
+                              {item.changed_by.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                        )}
                         <span style={{ fontSize: 12.5, color: 'var(--ink)' }}>{item.changed_by}</span>
                       </div>
                     </td>

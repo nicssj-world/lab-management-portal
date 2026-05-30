@@ -34,7 +34,15 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+
+  const ids = [...new Set((data ?? []).filter(i => i.changed_by_id).map(i => i.changed_by_id as string))]
+  const avatarMap: Record<string, string | null> = {}
+  if (ids.length) {
+    const { data: profiles } = await supabaseAdmin.from('profiles').select('id, avatar_url').in('id', ids)
+    for (const p of profiles ?? []) avatarMap[p.id] = p.avatar_url ?? null
+  }
+
+  return NextResponse.json((data ?? []).map(i => ({ ...i, changed_by_avatar: i.changed_by_id ? (avatarMap[i.changed_by_id] ?? null) : null })))
 }
 
 export async function POST(req: NextRequest) {
