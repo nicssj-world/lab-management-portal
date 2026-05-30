@@ -184,7 +184,7 @@ function EquipmentModal({
             <div>
               <label style={labelStyle}>สถานะ</label>
               <select style={inputStyle} value={form.status ?? 'Active'} onChange={e => {
-                const s = e.target.value
+                const s = e.target.value as Equipment['status']
                 setForm(f => ({ ...f, status: s, ...(s === 'Inactive' ? { needs_calibration: false } : {}) }))
               }}>
                 {['Active', 'Inactive', 'ชำรุด', 'มาใหม่', 'ย้าย', 'สูญหาย'].map(s => <option key={s} value={s}>{s}</option>)}
