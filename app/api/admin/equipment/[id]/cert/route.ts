@@ -26,15 +26,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
-
     const { data: eq, error } = await supabaseAdmin
-      .from('equipment')
-      .select('pm_cal_data')
-      .eq('id', id)
-      .single()
+      .from('equipment').select('pm_cal_data').eq('id', id).single()
 
     if (error || !eq) return NextResponse.json({ error: 'ไม่พบข้อมูล' }, { status: 404 })
-
     const fileUrl = (eq.pm_cal_data as { certificate_file_url?: string } | null)?.certificate_file_url
     if (!fileUrl) return NextResponse.json({ error: 'ไม่มีไฟล์ใบ Certificate' }, { status: 404 })
 
@@ -49,7 +44,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 }
 
-// POST multipart/form-data → upload file to R2 server-side, save key
+// POST → generate presigned PUT URL for direct browser-to-R2 upload
+// Body: { fileName: string, fileType: string, fileSize: number }
+// Returns: { uploadUrl: string, key: string }
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const actor = await getActor()
@@ -59,43 +56,49 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { id } = await params
-    const formData = await req.formData()
-    const file = formData.get('file') as File | null
-    if (!file) return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
+    const { fileName, fileType, fileSize } = await req.json()
 
-    if (file.size > 50 * 1024 * 1024)
-      return NextResponse.json({ error: 'ขนาดไฟล์เกิน 50 MB' }, { status: 422 })
+    if (!fileName || !fileType) return NextResponse.json({ error: 'ข้อมูลไฟล์ไม่ครบ' }, { status: 422 })
+    if (fileSize > 50 * 1024 * 1024) return NextResponse.json({ error: 'ขนาดไฟล์เกิน 50 MB' }, { status: 422 })
+    if (!ALLOWED_TYPES.includes(fileType)) return NextResponse.json({ error: 'รองรับเฉพาะ PDF และรูปภาพ (JPG, PNG, WEBP)' }, { status: 422 })
 
-    const mimeType = file.type || 'application/octet-stream'
-    if (!ALLOWED_TYPES.includes(mimeType))
-      return NextResponse.json({ error: 'รองรับเฉพาะ PDF และรูปภาพ (JPG, PNG, WEBP)' }, { status: 422 })
+    const safeName = (fileName as string).replace(/[^a-zA-Z0-9._-]/g, '_')
+    const key = `equipment/${id}/cert/${Date.now()}-${safeName}`
 
-    // Delete old cert file if exists
+    const uploadUrl = await getSignedUrl(
+      r2,
+      new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, ContentType: fileType }),
+      { expiresIn: 300 }
+    )
+    return NextResponse.json({ uploadUrl, key })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
+  }
+}
+
+// PATCH → called after browser uploads directly to R2; deletes old file and saves new key to DB
+// Body: { key: string }
+export async function PATCH(req: NextRequest, { params }: Params) {
+  try {
+    const actor = await getActor()
+    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const perms = await getRolePermissions(actor.role)
+    if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') !== 'edit')
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+    const { id } = await params
+    const { key } = await req.json()
+    if (!key) return NextResponse.json({ error: 'ไม่พบ key' }, { status: 422 })
+
     const { data: eq } = await supabaseAdmin.from('equipment').select('pm_cal_data').eq('id', id).single()
     const oldKey = (eq?.pm_cal_data as { certificate_file_url?: string } | null)?.certificate_file_url
-    if (oldKey) {
+    if (oldKey && oldKey !== key) {
       await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: oldKey })).catch(() => {})
     }
 
-    // Upload to R2 server-side
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const key = `equipment/${id}/cert/${Date.now()}-${safeName}`
-    const buffer = Buffer.from(await file.arrayBuffer())
-
-    await r2.send(new PutObjectCommand({
-      Bucket: R2_BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: mimeType,
-      ContentLength: buffer.length,
-    }))
-
-    // Save key to pm_cal_data
     const updatedData = { ...(eq?.pm_cal_data ?? {}), certificate_file_url: key }
     const { error: updateErr } = await supabaseAdmin
-      .from('equipment')
-      .update({ pm_cal_data: updatedData })
-      .eq('id', id)
+      .from('equipment').update({ pm_cal_data: updatedData }).eq('id', id)
 
     if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
     return NextResponse.json({ ok: true, certificate_file_url: key })
