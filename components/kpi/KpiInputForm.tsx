@@ -71,15 +71,16 @@ export function KpiInputForm() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Selectors */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select
-          value={year}
-          onChange={(e) => setYear(Number(e.target.value))}
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: 'var(--card)', cursor: 'pointer' }}
-        >
-          {[getCurrentThaiFiscalYear(), getCurrentThaiFiscalYear() - 1, getCurrentThaiFiscalYear() - 2].map((y) => (
-            <option key={y} value={y}>ปีงบ {y}</option>
-          ))}
-        </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>ปีงบ</span>
+          <input
+            type="number"
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            min="2560" max="2999" step="1"
+            style={{ width: 88, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: 'var(--card)', outline: 'none' }}
+          />
+        </div>
         <select
           value={deptId ?? ''}
           onChange={(e) => setDeptId(Number(e.target.value))}
