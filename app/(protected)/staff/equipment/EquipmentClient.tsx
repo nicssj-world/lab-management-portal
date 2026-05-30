@@ -537,16 +537,33 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
     if (file.size > 50 * 1024 * 1024) { setErr('ขนาดไฟล์เกิน 50 MB'); return }
     setUploading(true); setErr('')
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch(`/api/admin/equipment/${item.id}/cert`, {
+      // Step 1: ขอ presigned PUT URL จาก server (request เล็กมาก ไม่ติด Vercel limit)
+      const presignRes = await fetch(`/api/admin/equipment/${item.id}/cert`, {
         method: 'POST',
-        body: fd,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, fileType: file.type || 'application/octet-stream', fileSize: file.size }),
       })
-      const json = await res.json()
-      if (!res.ok) { setErr(json.error ?? 'อัพโหลดไม่สำเร็จ'); return }
+      const presignJson = await presignRes.json()
+      if (!presignRes.ok) { setErr(presignJson.error ?? 'ไม่สามารถสร้าง URL อัพโหลดได้'); return }
 
-      const updated = { ...form, certificate_file_url: json.certificate_file_url }
+      // Step 2: อัพโหลดไฟล์ตรงไปยัง R2 โดยไม่ผ่าน Vercel
+      const uploadRes = await fetch(presignJson.uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      })
+      if (!uploadRes.ok) { setErr('อัพโหลดไฟล์ไม่สำเร็จ กรุณาลองใหม่'); return }
+
+      // Step 3: แจ้ง server ให้บันทึก key ลง DB
+      const saveRes = await fetch(`/api/admin/equipment/${item.id}/cert`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: presignJson.key }),
+      })
+      const saveJson = await saveRes.json()
+      if (!saveRes.ok) { setErr(saveJson.error ?? 'บันทึกไม่สำเร็จ'); return }
+
+      const updated = { ...form, certificate_file_url: presignJson.key }
       setForm(updated)
       onSaved({ ...item, pm_cal_data: updated })
     } catch (e) {
