@@ -113,7 +113,7 @@ export function KpiInputForm() {
                     type="number"
                     value={v.numerator}
                     onChange={(e) => setValues((prev) => ({ ...prev, [def.id]: { ...prev[def.id], numerator: e.target.value } }))}
-                    placeholder="ตัวเศษ"
+                    placeholder="จำนวน"
                     style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -123,7 +123,7 @@ export function KpiInputForm() {
                       type="number"
                       value={v.denominator}
                       onChange={(e) => setValues((prev) => ({ ...prev, [def.id]: { ...prev[def.id], denominator: e.target.value } }))}
-                      placeholder="ตัวส่วน"
+                      placeholder="จำนวนทั้งหมด"
                       style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }}
                     />
                   ) : (

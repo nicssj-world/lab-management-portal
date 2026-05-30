@@ -370,3 +370,25 @@ export interface VwKpiDashboardRow {
   result_pct: number | null
   is_pass: boolean | null
 }
+
+export interface KpiSatisfaction {
+  id: number
+  metric_code: string
+  metric_name: string
+  fiscal_year: number
+  value: number | null
+  target_val: number
+  created_at: string
+}
+
+export interface AnnualKpiRow {
+  kpi_code: string
+  kpi_name: string
+  category: string
+  sub_code: string | null
+  target_type: 'gte' | 'lte' | 'eq'
+  target_val: number
+  unit: string | null
+  denominator_label: string | null
+  months: Record<number, { numerator: number | null; denominator: number | null; result_pct: number | null; is_pass: boolean | null }>
+}
