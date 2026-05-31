@@ -14,6 +14,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
   { id: 'addon',      th: 'การขอตรวจเพิ่มหรือขอตรวจซ้ำ',           en: 'Add-on / Repeat Requests',           icon: 'plus' },
   { id: 'report',     th: 'การรายงานผลตรวจ / ค่าวิกฤติ',           en: 'Result Reporting · Critical Values', icon: 'alert' },
   { id: 'outlab',     th: 'การใช้บริการ OUT LAB',                  en: 'OUT LAB Service',                    icon: 'biohazard' },
+  { id: 'micro',      th: 'การใช้บริการห้องจุลชีววิทยา',          en: 'Microbiology Service',               icon: 'petri' },
+  { id: 'bloodbank',  th: 'การใช้บริการคลังเลือด',               en: 'Blood Bank Service',                 icon: 'bloodBag' },
 ]
 
 export interface PhoneEntry {
@@ -32,6 +34,7 @@ export const PHONE_DIRECTORY: PhoneEntry[] = [
   { label: 'Biomolecular',ext: '1467' },
   { label: 'Blood Bank',  ext: '1458' },
   { label: 'OUT LAB',     ext: '1461' },
+  { label: 'ศสม.',     ext: '1633-4' },
 ]
 
 export interface TeamMember {
@@ -47,6 +50,8 @@ export const TEAM: TeamMember[] = [
   { name: 'นายศิริวัฒน์ จำปีรัตน์',  role: 'งานอณูชีววิทยา & OUT LAB',                       ext: '1452, 1461, 1467' },
   { name: 'น.ส.ปภัชญา สุขจำรัส',    role: 'งานจุลชีววิทยาคลินิก & คลังน้ำยา',                ext: '1462–63' },
   { name: 'น.ส.ภสพร อินทร์อาสา',    role: 'งานคลังเลือด',                                    ext: '1458' },
+  { name: 'น.ส.ลลิตา เหลืองพิพัฒน์สร',              role: 'หัวหน้างานบริการผู้ป่วยนอก',                          ext: '1606-7' },
+  { name: 'นางนฤมล งามวชิราพร',              role: 'หัวหน้างานห้องปฏิบัติการ ศสม.เมืองชลบุรี',                          ext: '1633-4' },
 ]
 
 export interface Container {

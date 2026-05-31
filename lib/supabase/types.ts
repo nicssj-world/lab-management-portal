@@ -1,4 +1,12 @@
 export type Role = 'Admin' | 'Manager' | 'Medical Technologist' | 'Assistant' | 'Document Controller' | 'Medical Science Technician'
+
+export interface ManualSection {
+  id: string
+  body_html_th: string
+  body_html_en: string
+  updated_at: string
+  updated_by: string | null
+}
 export type UserStatus = 'active' | 'inactive' | 'pending'
 
 export interface Profile {

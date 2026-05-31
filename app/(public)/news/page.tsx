@@ -46,8 +46,19 @@ export default function NewsPage() {
           100% { box-shadow: 0 0 0 0 rgba(220,38,38,0),  0 0 0 0  rgba(220,38,38,0); }
         }
         .news-new-badge { animation: news-badge-ripple 1.4s ease-out infinite; display: inline-flex; }
+        .news-wrapper { max-width: 1280px; margin: 0 auto; padding: 32px 28px 60px; }
+        .news-title { font-size: 34px; font-weight: 800; margin: 0 0 8px; color: var(--ink); line-height: 1.2; letter-spacing: -.02em; }
+        .news-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        @media (max-width: 640px) {
+          .news-wrapper { padding: 20px 16px 48px; }
+          .news-title { font-size: 24px; }
+          .news-grid { grid-template-columns: 1fr; gap: 12px; }
+        }
+        @media (min-width: 641px) and (max-width: 1024px) {
+          .news-grid { grid-template-columns: repeat(2, 1fr); }
+        }
       `}</style>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 28px 60px' }}>
+      <div className="news-wrapper">
 
         {/* Page header */}
         <div style={{ marginBottom: 28 }}>
@@ -71,7 +82,7 @@ export default function NewsPage() {
           )}
 
           {/* Title */}
-          <h1 style={{ margin: '0 0 8px', fontSize: 34, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.2, letterSpacing: '-.02em' }}>
+          <h1 className="news-title">
             ข่าวสารห้องปฏิบัติการ
           </h1>
 
@@ -117,7 +128,7 @@ export default function NewsPage() {
         ) : filtered.length === 0 ? (
           <EmptyState icon="bell" title="ไม่มีข่าวสารในขณะนี้" hint="ลองเลือกหมวดอื่น" />
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          <div className="news-grid">
             {filtered.map((n) => (
               <Link key={n.id} href={`/news/${n.id}`} style={{ textDecoration: 'none' }}>
                 <Card hoverable padding={20} style={{ height: '100%' }}>

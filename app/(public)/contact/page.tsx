@@ -28,19 +28,68 @@ export default function ContactPage() {
   return (
     <main style={{ background: 'var(--bg)', minHeight: '100vh' }}>
       <style>{`
+        /* Table row hover */
         .ct-row { border-bottom: 1px solid var(--border); transition: background .1s; }
         .ct-row:hover { background: #F0F7FF; }
         .ct-row:last-child { border-bottom: none; }
+
+        /* Responsive */
+        .ct-wrapper      { max-width: 1100px; margin: 0 auto; padding: 36px 28px 64px; }
+        .ct-page-title   { font-size: 30px; font-weight: 800; color: var(--ink); margin: 0 0 6px; letter-spacing: -.01em; }
+        .ct-address-grid { display: grid; grid-template-columns: 1fr 280px; gap: 28px; align-items: start; padding: 24px 20px; }
+        .ct-table-wrap   { display: block; }
+        .ct-mobile-cards { display: none; }
+
+        @media (max-width: 768px) {
+          .ct-wrapper      { padding: 20px 16px 48px; }
+          .ct-page-title   { font-size: 22px; }
+          .ct-address-grid { grid-template-columns: 1fr; gap: 16px; padding: 18px 16px; }
+          .ct-table-wrap   { display: none; }
+          .ct-mobile-cards { display: flex; flex-direction: column; }
+
+          /* Make card header padding tighter */
+          .ct-card-header-mobile { padding: 12px 16px !important; }
+        }
+
+        /* Staff card styles (mobile) */
+        .ct-staff-card {
+          padding: 14px 16px;
+          border-bottom: 1px solid var(--border);
+        }
+        .ct-staff-card:last-child { border-bottom: none; }
+        .ct-staff-name {
+          font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 2px;
+        }
+        .ct-staff-position {
+          font-size: 12px; color: #2563EB; margin-bottom: 6px;
+        }
+        .ct-staff-resp {
+          font-size: 12.5px; color: var(--muted); line-height: 1.6; margin-bottom: 8px;
+        }
+        .ct-staff-phones { display: flex; flex-wrap: wrap; gap: 6px; }
+        .ct-phone-badge {
+          background: #DBEAFE; color: #1D4ED8;
+          font-weight: 700; font-size: 12px;
+          padding: 3px 12px; border-radius: 20px;
+          font-family: "IBM Plex Mono", monospace;
+        }
+        .ct-staff-idx {
+          float: right;
+          font-size: 11px; font-weight: 700;
+          color: var(--muted);
+          background: var(--surface-2);
+          border-radius: 20px;
+          padding: 2px 8px;
+          margin-left: 8px;
+        }
       `}</style>
 
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '36px 28px 64px' }}>
+      <div className="ct-wrapper">
 
         {/* Page header */}
         <div style={{ marginBottom: 28 }}>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 8, fontWeight: 500 }}>ติดต่อ</div>
-          <h1 style={{ fontSize: 30, fontWeight: 800, color: 'var(--ink)', margin: '0 0 6px', letterSpacing: '-.01em' }}>
-            ติดต่อกลุ่มงานเทคนิคการแพทย์
-          </h1>
+          <h1 className="ct-page-title">ติดต่อกลุ่มงานเทคนิคการแพทย์</h1>
           <p style={{ fontSize: 14, color: 'var(--muted)', margin: 0 }}>
             สถานที่ติดต่อราชการ และข้อมูลการประสานงาน
           </p>
@@ -48,14 +97,14 @@ export default function ContactPage() {
 
         {/* ── Address card ── */}
         <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', marginBottom: 20, overflow: 'hidden' }}>
-          <div style={CARD_HEADER}>
+          <div style={CARD_HEADER} className="ct-card-header-mobile">
             <div style={SECTION_ICON}>
               <Icon name="building" size={17} style={{ color: '#fff' }} />
             </div>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#1E3A8A' }}>สถานที่ติดต่อราชการ</span>
           </div>
 
-          <div style={{ padding: '24px 20px', display: 'grid', gridTemplateColumns: '1fr 280px', gap: 28, alignItems: 'start' }}>
+          <div className="ct-address-grid">
             {/* Address */}
             <p style={{ fontSize: 14.5, color: 'var(--ink)', lineHeight: 1.85, margin: 0 }}>
               <strong>กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี</strong> ตั้งอยู่ที่{' '}
@@ -66,8 +115,8 @@ export default function ContactPage() {
             {/* Contact tiles */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
-                { icon: 'bell' as const,  label: 'โทรศัพท์', value: '(038) 931-455' },
-                { icon: 'doc'  as const,  label: 'โทรสาร',   value: '(038) 931-455' },
+                { icon: 'bell' as const, label: 'โทรศัพท์', value: '(038) 931-455' },
+                { icon: 'doc'  as const, label: 'โทรสาร',   value: '(038) 931-455' },
               ].map(c => (
                 <div key={c.label} style={{
                   display: 'flex', alignItems: 'center', gap: 13,
@@ -88,7 +137,7 @@ export default function ContactPage() {
 
         {/* ── Staff directory ── */}
         <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
-          <div style={{ ...CARD_HEADER, justifyContent: 'space-between' }}>
+          <div style={{ ...CARD_HEADER, justifyContent: 'space-between' }} className="ct-card-header-mobile">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={SECTION_ICON}>
                 <Icon name="users" size={17} style={{ color: '#fff' }} />
@@ -100,66 +149,84 @@ export default function ContactPage() {
             </span>
           </div>
 
-          <StickyScroll>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-              <thead>
-                <tr style={{ background: 'var(--surface-2)' }}>
-                  {['#', 'ชื่อ – สกุล', 'ตำแหน่ง', 'หน้าที่รับผิดชอบ', 'โทรศัพท์ภายใน'].map((h, i) => (
-                    <th key={h} style={{
-                      padding: '11px 16px', textAlign: i === 0 ? 'center' : 'left',
-                      fontSize: 12.5, fontWeight: 700, color: 'var(--muted)',
-                      borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
-                    }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {STAFF_DIRECTORY.map((s, i) => (
-                  <tr key={i} className="ct-row">
-                    {/* # */}
-                    <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13, width: 44 }}>
-                      {i + 1}
-                    </td>
-
-                    {/* Name */}
-                    <td style={{ padding: '14px 16px', fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
-                      {s.name}
-                    </td>
-
-                    {/* Position */}
-                    <td style={{ padding: '14px 16px', color: '#2563EB', fontSize: 13, whiteSpace: 'nowrap' }}>
-                      {s.position}
-                    </td>
-
-                    {/* Responsibility */}
-                    <td style={{ padding: '14px 16px', color: 'var(--ink)', lineHeight: 1.75, fontSize: 13.5 }}>
-                      {s.responsibility.split('\n').map((line, j, arr) => (
-                        <span key={j}>{line}{j < arr.length - 1 && <br />}</span>
-                      ))}
-                    </td>
-
-                    {/* Phone extensions */}
-                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'center' }}>
-                        {s.phones.map(p => (
-                          <span key={p} style={{
-                            display: 'inline-block',
-                            background: '#DBEAFE', color: '#1D4ED8',
-                            fontWeight: 700, fontSize: 13,
-                            padding: '3px 14px', borderRadius: 20, whiteSpace: 'nowrap',
-                          }}>
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
+          {/* Desktop: table */}
+          <div className="ct-table-wrap">
+            <StickyScroll>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface-2)' }}>
+                    {['#', 'ชื่อ – สกุล', 'ตำแหน่ง', 'หน้าที่รับผิดชอบ', 'โทรศัพท์ภายใน'].map((h, i) => (
+                      <th key={h} style={{
+                        padding: '11px 16px', textAlign: i === 0 ? 'center' : 'left',
+                        fontSize: 12.5, fontWeight: 700, color: 'var(--muted)',
+                        borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
+                      }}>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </StickyScroll>
+                </thead>
+                <tbody>
+                  {STAFF_DIRECTORY.map((s, i) => (
+                    <tr key={i} className="ct-row">
+                      <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13, width: 44 }}>
+                        {i + 1}
+                      </td>
+                      <td style={{ padding: '14px 16px', fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+                        {s.name}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#2563EB', fontSize: 13, whiteSpace: 'nowrap' }}>
+                        {s.position}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: 'var(--ink)', lineHeight: 1.75, fontSize: 13.5 }}>
+                        {s.responsibility.split('\n').map((line, j, arr) => (
+                          <span key={j}>{line}{j < arr.length - 1 && <br />}</span>
+                        ))}
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'center' }}>
+                          {s.phones.map(p => (
+                            <span key={p} style={{
+                              display: 'inline-block',
+                              background: '#DBEAFE', color: '#1D4ED8',
+                              fontWeight: 700, fontSize: 13,
+                              padding: '3px 14px', borderRadius: 20, whiteSpace: 'nowrap',
+                            }}>
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </StickyScroll>
+          </div>
+
+          {/* Mobile: cards */}
+          <div className="ct-mobile-cards">
+            {STAFF_DIRECTORY.map((s, i) => (
+              <div key={i} className="ct-staff-card">
+                <div>
+                  <span className="ct-staff-idx">{i + 1}</span>
+                  <div className="ct-staff-name">{s.name}</div>
+                  <div className="ct-staff-position">{s.position}</div>
+                </div>
+                <div className="ct-staff-resp">
+                  {s.responsibility.split('\n').map((line, j, arr) => (
+                    <span key={j}>{line}{j < arr.length - 1 && <br />}</span>
+                  ))}
+                </div>
+                <div className="ct-staff-phones">
+                  <Icon name="phone" size={13} style={{ color: 'var(--muted)', marginTop: 1, flexShrink: 0 }} />
+                  {s.phones.map(p => (
+                    <span key={p} className="ct-phone-badge">{p}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
 
           {/* Footer note */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '12px 18px', background: '#FFFBEB', borderTop: '1px solid #FDE68A', fontSize: 12.5, color: '#92400E' }}>

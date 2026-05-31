@@ -39,6 +39,14 @@ const taStyle: React.CSSProperties = {
   ...inputStyle, resize: 'vertical', lineHeight: 1.5,
 }
 
+// ─── Color swatches ───────────────────────────────────────────────────────────
+
+const COLOR_SWATCHES = [
+  '#0F172A', '#DC2626', '#D97706', '#16A34A',
+  '#1E5FAD', '#7C3AED', '#0891B2', '#DB2777',
+  '#64748B', '#CA8A04', '#92400E', '#FFFFFF',
+]
+
 // ─── Formatting toolbar helpers ───────────────────────────────────────────────
 
 interface ToolBtnProps { title: string; onClick: () => void; children: React.ReactNode; disabled?: boolean; active?: boolean }
@@ -139,10 +147,11 @@ function NewsFormModal({ item, onClose, onSaved, toast }: ModalProps) {
   const [error, setError] = useState('')
   const pdfRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLInputElement>(null)
-  const colorInputRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const savedSel = useRef<Range | null>(null)
-  const [selectedColor, setSelectedColor] = useState('#1E293B')
+  const colorPickerRef = useRef<HTMLDivElement>(null)
+  const [selectedColor, setSelectedColor] = useState('#0F172A')
+  const [showColorPicker, setShowColorPicker] = useState(false)
   const [fmtState, setFmtState] = useState({ bold: false, italic: false, underline: false })
   const [imgPopover, setImgPopover] = useState<{ top: number; left: number; img: HTMLImageElement } | null>(null)
 
@@ -155,6 +164,26 @@ function NewsFormModal({ item, onClose, onSaved, toast }: ModalProps) {
     document.execCommand(cmd, false, value ?? undefined)
     syncBody()
   }
+
+  function applyColor(c: string) {
+    setSelectedColor(c)
+    const sel = window.getSelection()
+    if (savedSel.current && sel) { sel.removeAllRanges(); sel.addRange(savedSel.current) }
+    bodyRef.current?.focus()
+    document.execCommand('foreColor', false, c)
+    syncBody()
+    setShowColorPicker(false)
+  }
+
+  useEffect(() => {
+    if (!showColorPicker) return
+    function onDown(e: MouseEvent) {
+      if (colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node))
+        setShowColorPicker(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [showColorPicker])
 
   async function handleImageUpload(file: File) {
     if (!file.type.startsWith('image/')) { setError('รองรับเฉพาะไฟล์รูปภาพ'); return }
@@ -369,6 +398,8 @@ function NewsFormModal({ item, onClose, onSaved, toast }: ModalProps) {
               display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap',
               padding: '4px 8px', border: '1px solid var(--border)', borderBottom: 'none',
               borderRadius: '8px 8px 0 0', background: 'var(--surface-2)',
+              position: 'sticky', top: 0, zIndex: 5,
+              boxShadow: '0 2px 6px rgba(0,0,0,.06)',
             }}>
               <ToolBtn title="ตัวหนา" onClick={() => execFmt('bold')} active={fmtState.bold}>
                 <span style={{ fontWeight: 900, fontSize: 13 }}>B</span>
@@ -425,34 +456,59 @@ function NewsFormModal({ item, onClose, onSaved, toast }: ModalProps) {
               <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px', flexShrink: 0 }} />
 
               {/* Color picker */}
-              <ToolBtn
-                title="สีตัวอักษร"
-                onClick={() => {
-                  const sel = window.getSelection()
-                  savedSel.current = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null
-                  colorInputRef.current?.click()
-                }}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: selectedColor, lineHeight: 1 }}>A</span>
-                  <span style={{ width: 14, height: 3, borderRadius: 1, background: selectedColor, display: 'block' }} />
-                </div>
-              </ToolBtn>
-              <input
-                ref={colorInputRef}
-                type="color"
-                value={selectedColor}
-                onChange={e => {
-                  const c = e.target.value
-                  setSelectedColor(c)
-                  const sel = window.getSelection()
-                  if (savedSel.current && sel) { sel.removeAllRanges(); sel.addRange(savedSel.current) }
-                  bodyRef.current?.focus()
-                  document.execCommand('foreColor', false, c)
-                  syncBody()
-                }}
-                style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
-              />
+              <div ref={colorPickerRef} style={{ position: 'relative' }}>
+                <ToolBtn
+                  title="สีตัวอักษร"
+                  active={showColorPicker}
+                  onClick={() => {
+                    const sel = window.getSelection()
+                    savedSel.current = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null
+                    setShowColorPicker(v => !v)
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: selectedColor === '#FFFFFF' ? 'var(--ink)' : selectedColor, lineHeight: 1 }}>A</span>
+                    <span style={{ width: 14, height: 3, borderRadius: 1, background: selectedColor, display: 'block', boxShadow: selectedColor === '#FFFFFF' ? 'inset 0 0 0 1px #CBD5E1' : 'none' }} />
+                  </div>
+                </ToolBtn>
+
+                {showColorPicker && (
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 20,
+                    background: 'var(--card)', border: '1px solid var(--border)',
+                    borderRadius: 10, padding: 10,
+                    boxShadow: '0 8px 24px rgba(0,0,0,.15)',
+                  }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', marginBottom: 7 }}>สีตัวอักษร</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 22px)', gap: 5 }}>
+                      {COLOR_SWATCHES.map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          title={c}
+                          onMouseDown={e => { e.preventDefault(); applyColor(c) }}
+                          style={{
+                            width: 22, height: 22, borderRadius: 5, padding: 0,
+                            border: c === selectedColor ? '2px solid var(--primary)' : '2px solid transparent',
+                            background: c,
+                            cursor: 'pointer', outline: 'none', boxSizing: 'border-box',
+                            boxShadow: c === '#FFFFFF' ? 'inset 0 0 0 1px #CBD5E1' : '0 1px 3px rgba(0,0,0,.2)',
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>กำหนดเอง</span>
+                      <input
+                        type="color"
+                        value={selectedColor === '#FFFFFF' ? '#ffffff' : selectedColor}
+                        onChange={e => applyColor(e.target.value)}
+                        style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', padding: 1, cursor: 'pointer', background: 'none' }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px', flexShrink: 0 }} />
 
