@@ -1,5 +1,5 @@
 import { Icon } from '@/components/ui/Icon'
-import { H2, H3, P, Callout, Section, Th, TblRow } from '../_primitives'
+import { Callout, Section } from '../_primitives'
 import { MANUAL_SECTIONS, TEAM, type Lang } from '../data'
 
 interface Props {
@@ -7,119 +7,177 @@ interface Props {
   goto: (id: string) => void
 }
 
+function initials(name: string) {
+  const parts = name.replace(/^(น\.ส\.|นาย|น\.พ\.|พ\.ญ\.|ดร\.)\s*/u, '').trim().split(/\s+/)
+  return parts.length >= 2
+    ? (parts[0][0] ?? '') + (parts[1][0] ?? '')
+    : (parts[0]?.[0] ?? '') + (parts[0]?.[1] ?? '')
+}
+
+const AVATAR_COLORS = [
+  { bg: 'var(--primary)',  text: '#fff' },
+  { bg: '#0891B2',         text: '#fff' },
+  { bg: '#7C3AED',         text: '#fff' },
+  { bg: '#D97706',         text: '#fff' },
+  { bg: '#065F46',         text: '#fff' },
+  { bg: '#9D174D',         text: '#fff' },
+  { bg: '#1E40AF',         text: '#fff' },
+]
+
 export function ManualHome({ lang, goto }: Props) {
   return (
     <Section>
-      <H2 eyebrow="01 · Overview">{lang === 'th' ? 'หน้าแรก' : 'Home'}</H2>
-      <P>
-        {lang === 'th'
-          ? 'กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี มีบทบาทหน้าที่ในการให้บริการตรวจวิเคราะห์ทางห้องปฏิบัติการสำหรับผู้ป่วยใน ผู้ป่วยนอก และผู้ป่วยฉุกเฉิน ตลอด 24 ชั่วโมง รวมถึงคลินิกนอกเวลาราชการ และการตรวจสุขภาพประจำปีแบบหมู่คณะ'
-          : 'The Medical Technology Department, Chonburi Hospital provides laboratory testing for inpatients, outpatients, and emergency cases 24 hours a day, including after-hours clinics and group annual health checks.'}
-      </P>
+      {/* ── Header ── */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--primary)', letterSpacing: '.1em', textTransform: 'uppercase', opacity: .8, marginBottom: 6 }}>01 · Overview</div>
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--ink)', letterSpacing: '-.02em', lineHeight: 1.2 }}>
+          {lang === 'th' ? 'ยินดีต้อนรับ' : 'Welcome'}
+        </h2>
+        <p style={{ margin: '10px 0 0', fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.8, maxWidth: 640 }}>
+          {lang === 'th'
+            ? 'กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี ให้บริการตรวจวิเคราะห์ทางห้องปฏิบัติการสำหรับผู้ป่วยใน ผู้ป่วยนอก และผู้ป่วยฉุกเฉิน ตลอด 24 ชั่วโมง รวมถึงคลินิกนอกเวลาราชการ และการตรวจสุขภาพประจำปีแบบหมู่คณะ'
+            : 'The Medical Technology Department, Chonburi Hospital provides laboratory testing for inpatients, outpatients, and emergency cases 24 hours a day, including after-hours clinics and group annual health checks.'}
+        </p>
+      </div>
 
-      {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, margin: '14px 0 6px' }}>
+      {/* ── Stats row ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 22 }}>
         {[
-          { label: lang === 'th' ? 'งานบริการ' : 'Service desks',           value: '10',     icon: 'flask',   sub: lang === 'th' ? 'แผนก' : 'sections' },
-          { label: lang === 'th' ? 'ผู้ป่วยใน / ER' : 'Inpatient / ER',     value: '24/7',  icon: 'clock',   sub: lang === 'th' ? 'ทุกวัน' : 'daily' },
-          { label: lang === 'th' ? 'คลินิกนอกเวลา' : 'After-hours clinic',  value: '16–24', icon: 'building',sub: lang === 'th' ? 'น.' : 'hr.' },
+          { label: lang === 'th' ? 'งานบริการ' : 'Service desks',         value: '10',   sub: lang === 'th' ? 'แผนก' : 'sections', icon: 'flask',    color: 'var(--primary)', bg: 'var(--primary-soft)', border: 'rgba(30,95,173,.18)' },
+          { label: lang === 'th' ? 'ผู้ป่วยใน / ER' : 'Inpatient / ER', value: '24/7', sub: lang === 'th' ? 'ทุกวัน' : 'daily',  icon: 'clock',    color: '#0891B2', bg: 'rgba(8,145,178,.08)', border: 'rgba(8,145,178,.2)' },
+          { label: lang === 'th' ? 'คลินิกนอกเวลา' : 'After-hours',     value: '16–24',sub: lang === 'th' ? 'น.' : 'hr.',          icon: 'building', color: '#7C3AED', bg: 'rgba(124,58,237,.07)', border: 'rgba(124,58,237,.18)' },
         ].map((s) => (
-          <div key={s.label} style={{ background: 'var(--surface-2)', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--primary-soft)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Icon name={s.icon} size={18} />
-            </div>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ink)', letterSpacing: '-.01em' }}>
-                {s.value} <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>{s.sub}</span>
+          <div key={s.label} style={{ padding: '14px 16px', border: `1px solid ${s.border}`, borderLeft: `3px solid ${s.color}`, borderRadius: 10, background: s.bg }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 7, background: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name={s.icon as any} size={14} style={{ color: '#fff' }} />
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{s.label}</div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: s.color, letterSpacing: '.04em', textTransform: 'uppercase', opacity: .85 }}>{s.label}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+              <span style={{ fontSize: 30, fontWeight: 900, color: s.color, letterSpacing: '-.03em', lineHeight: 1 }}>{s.value}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: s.color, opacity: .7 }}>{s.sub}</span>
             </div>
           </div>
         ))}
       </div>
 
-      <H3>{lang === 'th' ? 'สถานที่ติดต่อราชการ' : 'Office address'}</H3>
-      <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: 'var(--ink)', lineHeight: 1.7 }}>
-        <div>{lang === 'th' ? 'ชั้น 3 อาคารเฉลิมราชสมบัติ' : '3rd floor, Chalerm Ratchasombat Building'}</div>
-        <div style={{ color: 'var(--muted)' }}>
-          {lang === 'th' ? '69 หมู่ 2 ถนนสุขุมวิท ต.บ้านสวน อ.เมือง จ.ชลบุรี 20000' : '69 Moo 2, Sukhumvit Rd., Ban Suan, Mueang, Chonburi 20000'}
+      {/* ── Address ── */}
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 10 }}>
+          {lang === 'th' ? 'สถานที่ติดต่อ' : 'Office Address'}
         </div>
-        <div style={{ marginTop: 4 }}>
-          <Icon name="phone" size={12} style={{ verticalAlign: -1, color: 'var(--primary)' }} /> 038-931455 &nbsp;·&nbsp;
-          <Icon name="mail" size={12} style={{ verticalAlign: -1, color: 'var(--primary)' }} /> {lang === 'th' ? 'โทรสาร' : 'Fax'} 038-931455
+        <div style={{ display: 'flex', gap: 12, padding: '13px 16px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 9, background: 'var(--primary-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="building" size={18} style={{ color: 'var(--primary)' }} />
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.75 }}>
+            <div style={{ fontWeight: 700 }}>{lang === 'th' ? 'ชั้น 3 อาคารเฉลิมราชสมบัติ' : '3rd Floor, Chalerm Ratchasombat Building'}</div>
+            <div style={{ color: 'var(--muted)', fontSize: 12.5 }}>
+              {lang === 'th' ? '69 หมู่ 2 ถนนสุขุมวิท ต.บ้านสวน อ.เมือง จ.ชลบุรี 20000' : '69 Moo 2, Sukhumvit Rd., Ban Suan, Mueang, Chonburi 20000'}
+            </div>
+            <div style={{ marginTop: 5, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: 'var(--primary)', fontWeight: 600 }}>
+                <Icon name="phone" size={11} /> 038-931455
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: 'var(--muted)', fontWeight: 500 }}>
+                <Icon name="mail" size={11} /> {lang === 'th' ? 'โทรสาร' : 'Fax'} 038-931455
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <H3>{lang === 'th' ? 'หัวหน้างานและทีม' : 'Heads of section'}</H3>
-      <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-          <thead>
-            <tr style={{ background: 'var(--surface-2)' }}>
-              <Th>{lang === 'th' ? 'ชื่อ–สกุล' : 'Name'}</Th>
-              <Th>{lang === 'th' ? 'หน้าที่' : 'Role'}</Th>
-              <Th>{lang === 'th' ? 'ภายใน' : 'Ext.'}</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {TEAM.map((t) => (
-              <TblRow key={t.name}>
-                <td style={{ padding: '10px 12px', color: 'var(--ink)', fontWeight: 600 }}>{t.name}</td>
-                <td style={{ padding: '10px 12px', color: 'var(--muted)' }}>{t.role}</td>
-                <td style={{ padding: '10px 12px', color: 'var(--primary)', fontFamily: '"IBM Plex Mono",monospace', fontWeight: 700, whiteSpace: 'nowrap' }}>{t.ext}</td>
-              </TblRow>
-            ))}
-          </tbody>
-        </table>
+      {/* ── Team ── */}
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 10 }}>
+          {lang === 'th' ? 'หัวหน้างานและทีม' : 'Heads of Section'}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 7 }}>
+          {TEAM.map((t, i) => {
+            const av = AVATAR_COLORS[i % AVATAR_COLORS.length]
+            return (
+              <div key={t.name} style={{ display: 'flex', gap: 10, padding: '10px 13px', border: '1px solid var(--border)', borderRadius: 9, background: 'var(--card)', alignItems: 'center' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: av.bg, color: av.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 800, flexShrink: 0, letterSpacing: '.02em' }}>
+                  {initials(t.name)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 1, lineHeight: 1.4 }}>{t.role}</div>
+                </div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--primary)', fontFamily: '"IBM Plex Mono",monospace', flexShrink: 0 }}>{t.ext}</div>
+              </div>
+            )
+          })}
+        </div>
       </div>
 
-      <H3>{lang === 'th' ? 'หัวข้อในคู่มือ' : 'Contents'}</H3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {MANUAL_SECTIONS.slice(1).map((s, i) => (
-          <button
-            key={s.id}
-            onClick={() => goto(s.id)}
-            style={{
-              display: 'flex', alignItems: 'flex-start', gap: 12, padding: 14,
-              border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)',
-              cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all .15s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'var(--primary-soft)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--card)' }}
-          >
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 12, fontWeight: 700 }}>
-              0{i + 2}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{lang === 'th' ? s.th : s.en}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{lang === 'th' ? s.en : s.th}</div>
-            </div>
-            <Icon name="arrowRight" size={14} style={{ color: 'var(--muted)', alignSelf: 'center', flexShrink: 0 }} />
-          </button>
-        ))}
+      {/* ── Section navigation ── */}
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 10 }}>
+          {lang === 'th' ? 'หัวข้อในคู่มือ' : 'Contents'}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {MANUAL_SECTIONS.slice(1).map((s, i) => (
+            <button
+              key={s.id}
+              onClick={() => goto(s.id)}
+              style={{
+                position: 'relative', overflow: 'hidden',
+                display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px',
+                border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)',
+                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all .15s',
+              }}
+              onMouseEnter={e => { const el = e.currentTarget; el.style.borderColor = 'var(--primary)'; el.style.background = 'var(--primary-soft)'; el.style.transform = 'translateY(-1px)'; el.style.boxShadow = '0 4px 12px rgba(30,95,173,.12)' }}
+              onMouseLeave={e => { const el = e.currentTarget; el.style.borderColor = 'var(--border)'; el.style.background = 'var(--card)'; el.style.transform = 'none'; el.style.boxShadow = 'none' }}
+            >
+              {/* Faded section number watermark */}
+              <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 42, fontWeight: 900, color: 'var(--border)', lineHeight: 1, userSelect: 'none', pointerEvents: 'none', letterSpacing: '-.04em' }}>
+                {String(i + 2).padStart(2, '0')}
+              </span>
+
+              {/* Icon */}
+              <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name={s.icon as any} size={16} style={{ color: '#fff' }} />
+              </div>
+
+              {/* Title */}
+              <div style={{ flex: 1, minWidth: 0, zIndex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.3 }}>{lang === 'th' ? s.th : s.en}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{lang === 'th' ? s.en : s.th}</div>
+              </div>
+
+              <Icon name="arrowRight" size={13} style={{ color: 'var(--muted)', flexShrink: 0, zIndex: 1 }} />
+            </button>
+          ))}
+        </div>
       </div>
 
+      {/* ── Fee note ── */}
       <Callout tone="info" icon="shieldCheck">
         {lang === 'th'
           ? <span><strong>อัตราค่าบริการ</strong> คิดตามเกณฑ์กระทรวงสาธารณสุข พ.ศ. 2549 ผู้ที่ใช้สิทธิบัตรต่างๆ ต้องผ่านการตรวจสอบสิทธิก่อนเก็บสิ่งตัวอย่าง</span>
           : <span><strong>Fees</strong> follow the Ministry of Public Health 2006 schedule. Insurance patients must complete eligibility verification before specimen collection.</span>}
       </Callout>
 
-      {/* PDF download banner */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, padding: 14, background: 'var(--primary-soft)', border: '1px solid rgba(30,95,173,.25)', borderRadius: 12 }}>
-        <div style={{ width: 42, height: 42, borderRadius: 10, background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Icon name="doc" size={20} />
+      {/* ── PDF download ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14, padding: '14px 16px', background: 'var(--primary-soft)', border: '1px solid rgba(30,95,173,.22)', borderRadius: 12 }}>
+        <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon name="doc" size={20} style={{ color: '#fff' }} />
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>{lang === 'th' ? 'คู่มือฉบับเต็ม (PDF)' : 'Full manual (PDF)'}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>{lang === 'th' ? 'คู่มือฉบับเต็ม (PDF)' : 'Full Manual (PDF)'}</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>MN-LAB-01 · พ.ศ. 2569 · 116 หน้า · กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี</div>
         </div>
         <a
           href="/documents/MN-LAB-01.pdf"
           target="_blank"
           rel="noopener noreferrer"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 8, background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0, transition: 'opacity .15s' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '.85' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
         >
-          <Icon name="download" size={15} />
+          <Icon name="download" size={14} style={{ color: '#fff' }} />
           {lang === 'th' ? 'ดาวน์โหลด PDF' : 'Download PDF'}
         </a>
       </div>

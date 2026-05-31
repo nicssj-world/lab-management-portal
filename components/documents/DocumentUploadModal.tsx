@@ -252,9 +252,14 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
   )
   const isEdit = !!doc
   const fileRef = useRef<HTMLInputElement>(null)
+  const wordFileRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [wordDragOver, setWordDragOver] = useState(false)
   const dragCounter = useRef(0)
+  const wordDragCounter = useRef(0)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedWordFile, setSelectedWordFile] = useState<File | null>(null)
+  const [saveRevision, setSaveRevision] = useState(true)
   const [saving, setSaving] = useState(false)
   const [extracting, setExtracting] = useState(false)
   const [error, setError] = useState('')
@@ -288,9 +293,8 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
     : ''
 
   const handleFile = useCallback((file: File) => {
-    const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
-    if (!allowed.includes(file.type) && !file.name.match(/\.(pdf|docx|xlsx)$/i)) {
-      setError('รองรับเฉพาะไฟล์ PDF, DOCX, XLSX เท่านั้น')
+    if (!file.name.match(/\.pdf$/i) && file.type !== 'application/pdf') {
+      setError('ช่องนี้รองรับเฉพาะไฟล์ PDF เท่านั้น')
       return
     }
     if (file.size > 50 * 1024 * 1024) {
@@ -299,6 +303,19 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
     }
     setError('')
     setSelectedFile(file)
+  }, [])
+
+  const handleWordFile = useCallback((file: File) => {
+    if (!file.name.match(/\.(docx|xlsx)$/i)) {
+      setError('ช่องนี้รองรับเฉพาะไฟล์ DOCX, XLSX เท่านั้น')
+      return
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      setError('ไฟล์ต้องไม่เกิน 50 MB')
+      return
+    }
+    setError('')
+    setSelectedWordFile(file)
   }, [])
 
   const onDragEnter = useCallback((e: React.DragEvent) => {
@@ -321,6 +338,27 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
     const file = e.dataTransfer.files[0]
     if (file) handleFile(file)
   }, [handleFile])
+
+  const onWordDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    wordDragCounter.current += 1
+    setWordDragOver(true)
+  }, [])
+
+  const onWordDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    wordDragCounter.current -= 1
+    if (wordDragCounter.current === 0) setWordDragOver(false)
+  }, [])
+
+  const onWordDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    wordDragCounter.current = 0
+    setWordDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleWordFile(file)
+  }, [handleWordFile])
 
   async function extractFromFile() {
     if (!selectedFile) return
@@ -412,13 +450,15 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
       let res: Response
 
       if (isEdit) {
-        if (selectedFile) {
+        const editUrl = `/api/admin/documents/${doc!.id}${!saveRevision ? '?skipRevision=1' : ''}`
+        if (selectedFile || selectedWordFile) {
           const fd = new FormData()
-          fd.append('file', selectedFile)
+          if (selectedFile) fd.append('file', selectedFile)
+          if (selectedWordFile) fd.append('word_file', selectedWordFile)
           fd.append('meta', JSON.stringify(meta))
-          res = await fetch(`/api/admin/documents/${doc!.id}`, { method: 'PATCH', body: fd })
+          res = await fetch(editUrl, { method: 'PATCH', body: fd })
         } else {
-          res = await fetch(`/api/admin/documents/${doc!.id}`, {
+          res = await fetch(editUrl, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(meta),
@@ -427,6 +467,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
       } else {
         const fd = new FormData()
         fd.append('file', selectedFile!)
+        if (selectedWordFile) fd.append('word_file', selectedWordFile)
         fd.append('meta', JSON.stringify(meta))
         res = await fetch('/api/admin/documents', { method: 'POST', body: fd })
       }
@@ -601,83 +642,123 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
             />
           </div>
 
-          {/* File Upload */}
-          <div>
-            <label style={labelStyle}>
-              {isEdit
-                ? 'เปลี่ยนไฟล์ (ไม่บังคับ)'
-                : status === 'Draft'
-                  ? 'ไฟล์เอกสาร (ไม่บังคับสำหรับ Draft) — PDF, DOCX, XLSX ไม่เกิน 50 MB'
-                  : <>ไฟล์เอกสาร<RequiredMark /> (PDF, DOCX, XLSX — ไม่เกิน 50 MB)</>
-              }
-            </label>
-            <div
-              onDragEnter={onDragEnter}
-              onDragOver={(e) => e.preventDefault()}
-              onDragLeave={onDragLeave}
-              onDrop={onDrop}
-              onClick={() => fileRef.current?.click()}
-              style={{
-                border: `2px dashed ${dragOver ? 'var(--primary)' : 'var(--border)'}`,
-                borderRadius: 10, padding: '20px 16px',
-                background: dragOver ? 'var(--primary-soft)' : 'var(--surface-2)',
-                cursor: 'pointer', textAlign: 'center', transition: 'all .15s',
-              }}
-            >
-              {selectedFile ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                  <Icon name="doc" size={18} style={{ color: 'var(--primary)' }} />
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{selectedFile.name}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{fmtSize(selectedFile.size)}</div>
+          {/* File Upload — 2 zones side by side */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {/* PDF zone */}
+            <div style={{ minWidth: 0 }}>
+              <label style={labelStyle}>
+                {isEdit
+                  ? 'เปลี่ยนไฟล์ PDF (ไม่บังคับ)'
+                  : status === 'Draft'
+                    ? 'ไฟล์ PDF (ไม่บังคับสำหรับ Draft)'
+                    : <>ไฟล์ PDF<RequiredMark /></>
+                }
+              </label>
+              <div
+                onDragEnter={onDragEnter}
+                onDragOver={(e) => e.preventDefault()}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+                onClick={() => fileRef.current?.click()}
+                style={{
+                  border: `2px dashed ${dragOver ? '#DC2626' : 'var(--border)'}`,
+                  borderRadius: 10, padding: '12px',
+                  background: dragOver ? 'rgba(220,38,38,.06)' : 'var(--surface-2)',
+                  cursor: 'pointer', transition: 'all .15s', height: 72,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                }}
+              >
+                {selectedFile ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0 }}>
+                    <Icon name="doc" size={16} style={{ color: '#DC2626', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedFile.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtSize(selectedFile.size)}</div>
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); setSelectedFile(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', flexShrink: 0 }}>
+                      <Icon name="x" size={12} />
+                    </button>
                   </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setSelectedFile(null) }}
-                    style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex' }}
-                  >
-                    <Icon name="x" size={14} />
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 20 }}>📄</span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>PDF &nbsp;<span style={{ color: 'var(--primary)', fontWeight: 600 }}>เลือกไฟล์</span></span>
+                  </div>
+                )}
+                <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }} />
+              </div>
+              {selectedFile && (
+                <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={extractFromFile} disabled={extracting}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, cursor: extracting ? 'default' : 'pointer', padding: '4px 10px', borderRadius: 6, fontFamily: 'inherit', background: 'transparent', border: `1px solid ${extracting ? 'var(--border)' : 'var(--primary)'}`, color: extracting ? 'var(--muted)' : 'var(--primary)', transition: 'all .15s' }}>
+                    {extracting ? '⏳ กำลังอ่าน...' : '✦ ดึงข้อมูล'}
                   </button>
                 </div>
-              ) : (
-                <div>
-                  <Icon name="upload" size={22} style={{ color: 'var(--muted)', marginBottom: 8 }} />
-                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                    ลากไฟล์มาวางที่นี่ หรือ <span style={{ color: 'var(--primary)', fontWeight: 600 }}>เลือกไฟล์</span>
-                  </div>
+              )}
+            </div>
+
+            {/* Word / Excel zone */}
+            <div style={{ minWidth: 0 }}>
+              <label style={labelStyle}>
+                {isEdit ? 'เปลี่ยนไฟล์ Word/Excel (ไม่บังคับ)' : 'ไฟล์ Word / Excel (ไม่บังคับ)'}
+              </label>
+              {isEdit && doc?.word_name && !selectedWordFile && (
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  ปัจจุบัน: {doc.word_name}
                 </div>
               )}
-              <input
-                ref={fileRef} type="file"
-                accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                style={{ display: 'none' }}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }}
-              />
-            </div>
-            {selectedFile && (
-              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  onClick={extractFromFile}
-                  disabled={extracting}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    fontSize: 12, fontWeight: 600, cursor: extracting ? 'default' : 'pointer',
-                    padding: '5px 12px', borderRadius: 7, fontFamily: 'inherit',
-                    background: 'transparent',
-                    border: `1px solid ${extracting ? 'var(--border)' : 'var(--primary)'}`,
-                    color: extracting ? 'var(--muted)' : 'var(--primary)',
-                    transition: 'all .15s',
-                  }}
-                >
-                  {extracting ? '⏳ กำลังอ่านไฟล์...' : '✦ ดึงข้อมูลจากไฟล์'}
-                </button>
+              <div
+                onDragEnter={onWordDragEnter}
+                onDragOver={(e) => e.preventDefault()}
+                onDragLeave={onWordDragLeave}
+                onDrop={onWordDrop}
+                onClick={() => wordFileRef.current?.click()}
+                style={{
+                  border: `2px dashed ${wordDragOver ? '#059669' : 'var(--border)'}`,
+                  borderRadius: 10, padding: '12px',
+                  background: wordDragOver ? 'rgba(5,150,105,.06)' : 'var(--surface-2)',
+                  cursor: 'pointer', transition: 'all .15s', height: 72,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                }}
+              >
+                {selectedWordFile ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0 }}>
+                    <Icon name="doc" size={16} style={{ color: '#059669', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedWordFile.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtSize(selectedWordFile.size)}</div>
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); setSelectedWordFile(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', flexShrink: 0 }}>
+                      <Icon name="x" size={12} />
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 20 }}>📝</span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>DOCX / XLSX &nbsp;<span style={{ color: 'var(--primary)', fontWeight: 600 }}>เลือกไฟล์</span></span>
+                  </div>
+                )}
+                <input ref={wordFileRef} type="file" accept=".docx,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{ display: 'none' }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleWordFile(f); e.target.value = '' }} />
               </div>
-            )}
+            </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10, alignItems: 'center' }}>
+          {isEdit && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', cursor: 'pointer', marginRight: 'auto' }}>
+              <input
+                type="checkbox"
+                checked={saveRevision}
+                onChange={(e) => setSaveRevision(e.target.checked)}
+                style={{ cursor: 'pointer', width: 14, height: 14, accentColor: 'var(--primary)' }}
+              />
+              เก็บไฟล์เดิมไว้ในประวัติการแก้ไข
+            </label>
+          )}
           <button
             onClick={onClose}
             style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--ink)' }}

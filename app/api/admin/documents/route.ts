@@ -134,6 +134,24 @@ export async function POST(req: NextRequest) {
       ContentType: file.type,
     }))
 
+    // Optional Word/Excel secondary file
+    const wordFile = form.get('word_file') as File | null
+    let wordFields: { word_url?: string; word_name?: string; word_size?: number } = {}
+    if (wordFile && wordFile.size > 0) {
+      if (wordFile.size > 50 * 1024 * 1024) {
+        return NextResponse.json({ error: 'ไฟล์ Word/Excel ใหญ่เกิน 50 MB' }, { status: 422 })
+      }
+      const safeWordName = wordFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const wordKey = `documents/${meta.type.toLowerCase()}/${year}/${Date.now()}-word-${safeWordName}`
+      await r2.send(new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: wordKey,
+        Body: Buffer.from(await wordFile.arrayBuffer()),
+        ContentType: wordFile.type,
+      }))
+      wordFields = { word_url: wordKey, word_name: wordFile.name, word_size: wordFile.size }
+    }
+
     const { data: doc, error: dbErr } = await supabaseAdmin
       .from('documents')
       .insert({
@@ -144,6 +162,7 @@ export async function POST(req: NextRequest) {
         file_name: file.name,
         file_size: file.size,
         mime_type: file.type,
+        ...wordFields,
       })
       .select()
       .single()

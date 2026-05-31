@@ -52,9 +52,12 @@ export async function PATCH(
     let updates: Record<string, unknown> = {}
     let newFile: File | null = null
 
+    let newWordFile: File | null = null
+
     if (contentType.includes('multipart/form-data')) {
       const form = await req.formData()
       newFile = form.get('file') as File | null
+      newWordFile = form.get('word_file') as File | null
 
       const metaRaw = form.get('meta')
       if (metaRaw) {
@@ -104,9 +107,29 @@ export async function PATCH(
       updates.mime_type = newFile.type
     }
 
+    if (newWordFile && newWordFile.size > 0) {
+      if (newWordFile.size > 50 * 1024 * 1024) {
+        return NextResponse.json({ error: 'ไฟล์ Word/Excel ใหญ่เกิน 50 MB' }, { status: 422 })
+      }
+      const type = (updates.type as string) ?? current?.type ?? 'others'
+      const year = new Date().getFullYear()
+      const safeWordName = newWordFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const wordKey = `documents/${type.toLowerCase()}/${year}/${Date.now()}-word-${safeWordName}`
+      await r2.send(new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: wordKey,
+        Body: Buffer.from(await newWordFile.arrayBuffer()),
+        ContentType: newWordFile.type,
+      }))
+      updates.word_url  = wordKey
+      updates.word_name = newWordFile.name
+      updates.word_size = newWordFile.size
+    }
+
     // Save old revision to history when revision number changes OR file is replaced
+    const skipRevision = req.nextUrl.searchParams.get('skipRevision') === '1'
     const revisionChanged = updates.revision !== undefined && updates.revision !== current?.revision
-    if ((revisionChanged || newFile) && current?.file_url) {
+    if (!skipRevision && (revisionChanged || newFile) && current?.file_url) {
       supabaseAdmin.from('document_revisions').insert({
         document_id:     id,
         revision_number: current.revision ?? '1',

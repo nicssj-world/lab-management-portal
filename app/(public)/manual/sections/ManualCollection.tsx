@@ -22,32 +22,25 @@ export function ManualCollection({ lang }: Props) {
         {lang === 'th' ? 'การเก็บตัวอย่างส่งตรวจ' : 'Specimen Collection'}
       </H2>
 
-      {/* Sub-tab switcher — underline style */}
+      {/* Pill tab switcher */}
       <div style={{
-        display: 'flex', gap: 0, marginBottom: 20,
-        borderBottom: '2px solid var(--border)',
-        overflowX: 'auto', scrollbarWidth: 'none',
+        display: 'flex', gap: 4, marginBottom: 22,
+        padding: 4, background: 'var(--surface-2)',
+        borderRadius: 10, border: '1px solid var(--border)',
+        overflowX: 'auto', scrollbarWidth: 'none', flexShrink: 0,
       }}>
         {COLLECTION_TABS.map((t) => {
           const active = t.id === tab
           return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
+            <button key={t.id} onClick={() => setTab(t.id)}
               style={{
-                padding: '8px 14px',
-                border: 'none',
-                borderBottom: active ? '2px solid var(--primary)' : '2px solid transparent',
-                marginBottom: -2,
-                background: 'transparent',
-                color: active ? 'var(--primary)' : 'var(--muted)',
-                fontWeight: active ? 700 : 500,
-                fontSize: 13,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-                transition: 'color .15s',
-                flexShrink: 0,
+                padding: '7px 14px', borderRadius: 7, border: 'none',
+                background: active ? 'var(--card)' : 'transparent',
+                color: active ? 'var(--ink)' : 'var(--muted)',
+                fontWeight: active ? 700 : 500, fontSize: 12.5,
+                cursor: 'pointer', fontFamily: 'inherit',
+                boxShadow: active ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+                transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0,
               }}
               onMouseEnter={e => { if (!active) e.currentTarget.style.color = 'var(--ink)' }}
               onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--muted)' }}

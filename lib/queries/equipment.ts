@@ -26,6 +26,9 @@ export interface Equipment {
   purpose: string | null
   remark: string | null
   photo_url: string | null
+  method_validation_url: string | null
+  method_correlation_url: string | null
+  manual_url: string | null
   pm_cal_data: {
     tech_group: string | null
     times_pm: number | null
