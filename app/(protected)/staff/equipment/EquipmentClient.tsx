@@ -71,7 +71,8 @@ const BLANK: Partial<Equipment> = {
   owner: 'รพ', owner_status: '', risk_level: null, classification: '',
   equipment_type: '', manufacturer: '', model: '', serial_number: '',
   vendor: '', purchase_date: null, warranty_exp: null, purchase_price: null,
-  status: 'Active', needs_calibration: false, responsible_person: '', purpose: '', remark: '', photo_url: null,
+  status: 'Active', needs_calibration: false, responsible_person: '', purpose: '', remark: '',
+  photo_url: null, method_validation_url: null, method_correlation_url: null, manual_url: null,
 }
 
 // ─── sub-components ───────────────────────────────────────────────────────────
@@ -117,6 +118,19 @@ function EquipmentModal({
   const [photoDragOver, setPhotoDragOver] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
 
+  // Document file states
+  type DocType = 'method_validation' | 'method_correlation' | 'manual'
+  const [docFiles, setDocFiles] = useState<Record<DocType, File | null>>({ method_validation: null, method_correlation: null, manual: null })
+  const [docRemove, setDocRemove] = useState<Record<DocType, boolean>>({ method_validation: false, method_correlation: false, manual: false })
+  const [docDragOver, setDocDragOver] = useState<Record<DocType, boolean>>({ method_validation: false, method_correlation: false, manual: false })
+  const docInputRefs = { method_validation: useRef<HTMLInputElement>(null), method_correlation: useRef<HTMLInputElement>(null), manual: useRef<HTMLInputElement>(null) }
+
+  function handleDocSelect(docType: DocType, file: File) {
+    if (file.size > 50 * 1024 * 1024) { setErr('ขนาดไฟล์เกิน 50 MB'); return }
+    setDocFiles(prev => ({ ...prev, [docType]: file }))
+    setDocRemove(prev => ({ ...prev, [docType]: false }))
+  }
+
   const set = (k: keyof Equipment, v: unknown) => setForm(f => ({ ...f, [k]: v }))
 
   function handlePhotoSelect(file: File) {
@@ -160,6 +174,38 @@ function EquipmentModal({
       } else if (removePhoto && isEdit && item?.photo_url) {
         await fetch(`/api/admin/equipment/${json.id}/photo`, { method: 'DELETE' })
         json.photo_url = null
+      }
+
+      // Handle document uploads
+      const docTypes: DocType[] = ['method_validation', 'method_correlation', 'manual']
+      for (const docType of docTypes) {
+        const file = docFiles[docType]
+        const shouldRemove = docRemove[docType]
+        const colKey = `${docType}_url` as keyof Equipment
+
+        if (file) {
+          const presignRes = await fetch(`/api/admin/equipment/${json.id}/docs`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ doc_type: docType, fileName: file.name, fileType: file.type, fileSize: file.size }),
+          })
+          const { uploadUrl, key, error: presignErr } = await presignRes.json()
+          if (presignErr) { setErr(presignErr); return }
+          await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+          const saveRes = await fetch(`/api/admin/equipment/${json.id}/docs`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ doc_type: docType, key }),
+          })
+          if (!saveRes.ok) {
+            const errData = await saveRes.json()
+            setErr(errData.error ?? `บันทึกไฟล์ ${docType} ไม่สำเร็จ — ตรวจสอบว่ารัน SQL migration แล้ว`)
+            return
+          }
+          const saveData = await saveRes.json()
+          json[colKey] = saveData[`${docType}_url`]
+        } else if (shouldRemove && isEdit && item?.[colKey]) {
+          await fetch(`/api/admin/equipment/${json.id}/docs?doc_type=${docType}`, { method: 'DELETE' })
+          json[colKey] = null
+        }
       }
 
       onSaved(json as Equipment)
@@ -364,6 +410,69 @@ function EquipmentModal({
               <span style={{ fontSize: 11.5 }}>JPG, PNG, WEBP, HEIC · ไม่เกิน 20 MB</span>
             </button>
           )}
+          </div>
+
+          {/* Section: เอกสารประกอบ */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 }}>เอกสารประกอบ</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 4 }}>
+            {([
+              { docType: 'manual' as DocType, label: 'คู่มือการใช้งานเครื่องมือ' },
+            ]).map(({ docType, label }) => {
+              const file = docFiles[docType]
+              const removing = docRemove[docType]
+              const hasExisting = isEdit && !!(item?.[`${docType}_url` as keyof typeof item])
+              const over = docDragOver[docType]
+              return (
+                <div key={docType}>
+                  <input ref={docInputRefs[docType]} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" style={{ display: 'none' }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleDocSelect(docType, f); e.target.value = '' }} />
+                  <label style={labelStyle}>{label}</label>
+                  <div
+                    onDragOver={e => { e.preventDefault(); setDocDragOver(prev => ({ ...prev, [docType]: true })) }}
+                    onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDocDragOver(prev => ({ ...prev, [docType]: false })) }}
+                    onDrop={e => {
+                      e.preventDefault(); setDocDragOver(prev => ({ ...prev, [docType]: false }))
+                      const f = e.dataTransfer.files?.[0]
+                      if (f) handleDocSelect(docType, f)
+                    }}
+                    style={{ borderRadius: 8, border: `2px dashed ${over ? 'var(--primary)' : 'var(--border)'}`, background: over ? 'var(--primary-soft)' : 'transparent', transition: 'border-color .15s, background .15s' }}
+                  >
+                    {file ? (
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px' }}>
+                        <Icon name="doc" size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                        <span style={{ fontSize: 12.5, color: over ? 'var(--primary)' : 'var(--ink)', flex: 1, fontWeight: 500 }}>{over ? 'วางเพื่อเปลี่ยนไฟล์' : file.name}</span>
+                        <button type="button" onClick={() => setDocFiles(prev => ({ ...prev, [docType]: null }))}
+                          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--danger)' }}>ยกเลิก</button>
+                      </div>
+                    ) : hasExisting && !removing ? (
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px' }}>
+                        <Icon name="doc" size={15} style={{ color: 'var(--success)', flexShrink: 0 }} />
+                        <span style={{ fontSize: 12.5, color: over ? 'var(--primary)' : 'var(--ink)', flex: 1 }}>{over ? 'วางเพื่อเปลี่ยนไฟล์' : 'มีไฟล์อยู่แล้ว'}</span>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button type="button" onClick={() => docInputRefs[docType].current?.click()}
+                            style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>เปลี่ยน</button>
+                          <button type="button" onClick={() => setDocRemove(prev => ({ ...prev, [docType]: true }))}
+                            style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--danger)' }}>ลบ</button>
+                        </div>
+                      </div>
+                    ) : removing ? (
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px' }}>
+                        <span style={{ fontSize: 12.5, color: 'var(--danger)', flex: 1 }}>ไฟล์จะถูกลบเมื่อบันทึก</span>
+                        <button type="button" onClick={() => setDocRemove(prev => ({ ...prev, [docType]: false }))}
+                          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>ยกเลิก</button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => docInputRefs[docType].current?.click()}
+                        style={{ width: '100%', padding: '18px 20px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: over ? 'var(--primary)' : 'var(--muted)', fontFamily: 'inherit' }}>
+                        <Icon name="upload" size={16} />
+                        <span style={{ fontSize: 13 }}>{over ? 'วางไฟล์ที่นี่' : 'คลิกหรือลากไฟล์มาวาง'}</span>
+                        <span style={{ fontSize: 11.5 }}>PDF, DOCX, XLSX, JPG, PNG · ไม่เกิน 50 MB</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
 
@@ -585,6 +694,15 @@ function EquipmentDetailModal({ item, onClose, onEdit }: {
   onEdit?: (item: Equipment) => void
 }) {
   const ws = warrantyStatus(item.warranty_exp)
+  const [signedPhotoUrl, setSignedPhotoUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!item.photo_url) return
+    fetch(`/api/admin/equipment/${item.id}/photo`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.url) setSignedPhotoUrl(d.url) })
+      .catch(() => {})
+  }, [item.id, item.photo_url])
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -615,6 +733,16 @@ function EquipmentDetailModal({ item, onClose, onEdit }: {
         {/* Body */}
         <div style={{ padding: '4px 24px 24px', overflow: 'auto', flex: 1 }}>
           <SectionTitle>ข้อมูลทั่วไป</SectionTitle>
+          {item.photo_url && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16, marginTop: 4 }}>
+              {signedPhotoUrl
+                ? <img src={signedPhotoUrl} alt={item.equipment_type} style={{ maxWidth: '100%', maxHeight: 220, objectFit: 'contain', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-2)', padding: 8 }} />
+                : <div style={{ width: 160, height: 100, borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="flask" size={24} style={{ color: 'var(--muted)', opacity: .4 }} />
+                  </div>
+              }
+            </div>
+          )}
           <DetailRow label="แผนก" value={item.department} />
           <DetailRow label="เลขทะเบียนสินทรัพย์" value={item.hospital_asset_no} />
           <DetailRow label="CBH Code" value={item.cbh_code ? <span style={{ fontFamily: 'monospace' }}>{item.cbh_code}</span> : null} />
@@ -649,8 +777,47 @@ function EquipmentDetailModal({ item, onClose, onEdit }: {
               <div style={{ fontSize: 13, color: 'var(--ink)', padding: '8px 0', lineHeight: 1.6 }}>{item.remark}</div>
             </>
           )}
+
+          {item.manual_url && (
+            <>
+              <SectionTitle>เอกสารประกอบ</SectionTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {([
+                  { key: 'manual' as const, label: 'คู่มือการใช้งานเครื่องมือ', url: item.manual_url },
+                ]).filter(d => d.url).map(d => (
+                  <DocDownloadRow key={d.key} label={d.label} equipmentId={item.id} docType={d.key} />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function DocDownloadRow({ label, equipmentId, docType }: { label: string; equipmentId: string; docType: string }) {
+  const [loading, setLoading] = useState(false)
+
+  async function handleDownload() {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/equipment/${equipmentId}/docs?doc_type=${docType}`)
+      if (!res.ok) return
+      const { url } = await res.json()
+      window.open(url, '_blank')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)' }}>
+      <Icon name="doc" size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+      <span style={{ fontSize: 13, color: 'var(--ink)', flex: 1 }}>{label}</span>
+      <button onClick={handleDownload} disabled={loading}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', color: 'var(--primary)', opacity: loading ? .6 : 1 }}>
+        <Icon name="download" size={12} />
+        {loading ? 'กำลังโหลด...' : 'ดาวน์โหลด'}
+      </button>
     </div>
   )
 }

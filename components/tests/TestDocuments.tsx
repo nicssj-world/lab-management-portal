@@ -4,11 +4,14 @@ import { useState, useEffect, useRef } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import type { TestDocument } from '@/lib/supabase/types'
 
-const DOC_TYPES = ['QP', 'WI', 'Form', 'Other'] as const
+const DOC_TYPES = ['QP', 'WI', 'RF', 'Form', 'Method Validation', 'Method Correlation', 'Measurement Uncertainty', 'Other'] as const
 type DocType = typeof DOC_TYPES[number]
 
 const TYPE_COLOR: Record<DocType, string> = {
-  QP: '#2563EB', WI: '#059669', Form: '#D97706', Other: '#6B7280',
+  QP: '#2563EB', WI: '#059669', RF: '#DC2626', Form: '#D97706',
+  'Method Validation': '#7C3AED', 'Method Correlation': '#0891B2',
+  'Measurement Uncertainty': '#065F46',
+  Other: '#6B7280',
 }
 
 interface Props { testId: number }

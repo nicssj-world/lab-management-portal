@@ -1636,13 +1636,22 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
                                 </button>
                               )
                             })()}
-                            {/* Download */}
-                            <button onClick={() => handleDownload(doc.file_url)} title="ดาวน์โหลด"
-                              style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s' }}
-                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                            {/* Download PDF */}
+                            <button onClick={() => handleDownload(doc.file_url)} title="ดาวน์โหลด PDF"
+                              style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#DC2626'; e.currentTarget.style.color = '#DC2626' }}
                               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
-                              <Icon name="download" size={14} />
+                              P
                             </button>
+                            {/* Download Word/Excel */}
+                            {doc.word_url && (
+                              <button onClick={() => handleDownload(doc.word_url!)} title="ดาวน์โหลด Word/Excel"
+                                style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
+                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#059669'; e.currentTarget.style.color = '#059669' }}
+                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                                W
+                              </button>
+                            )}
                             {/* History */}
                             <button onClick={() => setRevDoc(doc)} title="ประวัติการแก้ไข"
                               style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s' }}

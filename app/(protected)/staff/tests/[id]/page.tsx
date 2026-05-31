@@ -16,6 +16,12 @@ import { usePermission } from '@/context/PermissionContext'
 import { canDeleteTests, canEditTests } from '@/lib/tests/permissions'
 import type { TestDetail, Category } from '@/lib/supabase/types'
 
+const DOC_TYPE_COLOR: Record<string, string> = {
+  QP: '#2563EB', WI: '#059669', RF: '#DC2626', Form: '#D97706',
+  'Method Validation': '#7C3AED', 'Method Correlation': '#0891B2',
+  'Measurement Uncertainty': '#065F46', Other: '#6B7280',
+}
+
 export default function TestDetailPage() {
   const { id } = useParams() as { id: string }
   const router = useRouter()
@@ -193,7 +199,11 @@ export default function TestDetailPage() {
                 <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBlock: 8, borderBottom: '1px solid var(--border)' }}>
                   <Icon name="doc" size={14} style={{ color: '#2563EB', flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{doc.name}</span>
-                  <span style={{ fontSize: 11, color: 'var(--muted)', background: 'var(--surface-2)', padding: '1px 6px', borderRadius: 4 }}>{doc.doc_type}</span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, flexShrink: 0,
+                    background: (DOC_TYPE_COLOR[doc.doc_type] ?? '#6B7280') + '18',
+                    color: DOC_TYPE_COLOR[doc.doc_type] ?? '#6B7280',
+                  }}>{doc.doc_type}</span>
                   <DocDownloadButton testId={Number(id)} docId={doc.id} docName={doc.name} />
                 </div>
               ))

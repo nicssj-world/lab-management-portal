@@ -137,6 +137,7 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+  const [savedTestId, setSavedTestId] = useState<number | undefined>(testId)
 
   // Related documents (from quality docs module)
   const [allDocs, setAllDocs] = useState<{ id: string; title: string; document_code: string; type: string }[]>([])
@@ -204,9 +205,14 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'เกิดข้อผิดพลาด')
-      showToast(isEdit ? 'บันทึกการแก้ไขสำเร็จ' : 'เพิ่มรายการตรวจสำเร็จ', 'success')
-      const id = isEdit ? testId : (json as { id: number }).id
-      setTimeout(() => router.push(`/staff/tests/${id}`), 1200)
+      const id = isEdit ? testId! : (json as { id: number }).id
+      if (isEdit) {
+        showToast('บันทึกการแก้ไขสำเร็จ', 'success')
+        setTimeout(() => router.push(`/staff/tests/${id}`), 1200)
+      } else {
+        setSavedTestId(id)
+        showToast('เพิ่มรายการตรวจสำเร็จ — อัพโหลดเอกสารแนบได้ด้านล่าง', 'success')
+      }
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด', 'error')
     } finally {
@@ -572,21 +578,29 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
           </div>
         )}
 
-        {/* File upload area (edit mode only) */}
-        {isEdit && testId != null && (
+        {/* File upload area — shows after test is saved (new or edit) */}
+        {savedTestId != null && (
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
             <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>ไฟล์แนบโดยตรง</div>
-            <TestDocuments testId={testId} />
+            <TestDocuments testId={savedTestId} />
           </div>
         )}
       </Card>
 
       {/* Actions */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingBottom: 40 }}>
-        <Button variant="secondary" onClick={() => router.back()}>ยกเลิก</Button>
-        <Button variant="primary" onClick={handleSubmit} disabled={saving || !!duplicateCodeMsg} icon="check">
-          {saving ? 'กำลังบันทึก...' : (isEdit ? 'บันทึกการแก้ไข' : 'เพิ่มรายการตรวจ')}
-        </Button>
+        {savedTestId != null && !isEdit ? (
+          <Button variant="primary" onClick={() => router.push(`/staff/tests/${savedTestId}`)} icon="arrowRight">
+            ไปหน้ารายละเอียด
+          </Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={() => router.back()}>ยกเลิก</Button>
+            <Button variant="primary" onClick={handleSubmit} disabled={saving || !!duplicateCodeMsg} icon="check">
+              {saving ? 'กำลังบันทึก...' : (isEdit ? 'บันทึกการแก้ไข' : 'เพิ่มรายการตรวจ')}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   )

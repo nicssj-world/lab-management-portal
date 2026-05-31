@@ -123,6 +123,9 @@ export interface Document {
   file_name: string
   file_size: number | null
   mime_type: string | null
+  word_url: string | null
+  word_name: string | null
+  word_size: number | null
   effective_date: string | null
   expiry_date: string | null
   obsolete_date: string | null

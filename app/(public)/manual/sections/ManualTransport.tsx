@@ -19,7 +19,7 @@ const REJECTION_RULES = [
 
 const TEMP_WINDOWS = [
   { icon: '🌡', label: 'Room temp',       range: '20–25 °C', tests: 'CBC · BUN · Cr · LFT · Glucose (NaF)',  window: '≤ 2 hr',   color: '#D97706', bg: 'rgba(217,119,6,.08)',  border: 'rgba(217,119,6,.22)' },
-  { icon: '❄',  label: 'Refrigerated',    range: '2–8 °C',   tests: 'Coagulation · Lipid · Most TDM',        window: '≤ 24 hr',  color: '#0891B2', bg: 'rgba(8,145,178,.08)', border: 'rgba(8,145,178,.22)' },
+  { icon: '❄',  label: 'Refrigerated',    range: '2–8 °C',   tests: ' Alcohol (ethanol), Aldosterone (Blood), BRCA1/2',        window: '≤ 24 hr',  color: '#0891B2', bg: 'rgba(8,145,178,.08)', border: 'rgba(8,145,178,.22)' },
   { icon: '🧊', label: 'Ice pack',        range: '0–4 °C',   tests: 'ABG · NH₃ · Lactate · Renin',           window: '≤ 30 min', color: 'var(--primary)', bg: 'var(--primary-soft)', border: 'rgba(30,95,173,.22)' },
   { icon: '🔆', label: 'Light-protected', range: 'Room',     tests: 'Microbilirubin (เด็ก) — ห่อฟอยล์',     window: '≤ 2 hr',   color: '#7E22CE', bg: 'rgba(126,34,206,.07)', border: 'rgba(126,34,206,.2)' },
 ]
