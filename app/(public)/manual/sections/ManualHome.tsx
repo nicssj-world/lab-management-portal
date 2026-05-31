@@ -20,7 +20,7 @@ export function ManualHome({ lang, goto }: Props) {
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, margin: '14px 0 6px' }}>
         {[
-          { label: lang === 'th' ? 'งานบริการ' : 'Service desks',           value: '8',     icon: 'flask',   sub: lang === 'th' ? 'แผนก' : 'sections' },
+          { label: lang === 'th' ? 'งานบริการ' : 'Service desks',           value: '10',     icon: 'flask',   sub: lang === 'th' ? 'แผนก' : 'sections' },
           { label: lang === 'th' ? 'ผู้ป่วยใน / ER' : 'Inpatient / ER',     value: '24/7',  icon: 'clock',   sub: lang === 'th' ? 'ทุกวัน' : 'daily' },
           { label: lang === 'th' ? 'คลินิกนอกเวลา' : 'After-hours clinic',  value: '16–24', icon: 'building',sub: lang === 'th' ? 'น.' : 'hr.' },
         ].map((s) => (

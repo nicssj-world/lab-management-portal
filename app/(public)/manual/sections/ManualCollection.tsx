@@ -22,8 +22,12 @@ export function ManualCollection({ lang }: Props) {
         {lang === 'th' ? 'การเก็บตัวอย่างส่งตรวจ' : 'Specimen Collection'}
       </H2>
 
-      {/* Sub-tab switcher */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14, padding: 4, background: 'var(--surface-2)', borderRadius: 10 }}>
+      {/* Sub-tab switcher — underline style */}
+      <div style={{
+        display: 'flex', gap: 0, marginBottom: 20,
+        borderBottom: '2px solid var(--border)',
+        overflowX: 'auto', scrollbarWidth: 'none',
+      }}>
         {COLLECTION_TABS.map((t) => {
           const active = t.id === tab
           return (
@@ -31,14 +35,22 @@ export function ManualCollection({ lang }: Props) {
               key={t.id}
               onClick={() => setTab(t.id)}
               style={{
-                padding: '7px 12px', borderRadius: 7, border: 'none',
-                background: active ? 'var(--card)' : 'transparent',
+                padding: '8px 14px',
+                border: 'none',
+                borderBottom: active ? '2px solid var(--primary)' : '2px solid transparent',
+                marginBottom: -2,
+                background: 'transparent',
                 color: active ? 'var(--primary)' : 'var(--muted)',
-                fontWeight: active ? 700 : 500, fontSize: 12.5,
-                cursor: 'pointer', fontFamily: 'inherit',
-                boxShadow: active ? '0 1px 2px rgba(15,23,42,.08)' : 'none',
-                transition: 'all .15s',
+                fontWeight: active ? 700 : 500,
+                fontSize: 13,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                transition: 'color .15s',
+                flexShrink: 0,
               }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.color = 'var(--ink)' }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--muted)' }}
             >
               {lang === 'th' ? t.th : t.en}
             </button>
