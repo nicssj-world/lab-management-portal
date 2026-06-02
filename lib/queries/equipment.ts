@@ -63,8 +63,7 @@ export async function getEquipment(
   let query = supabase
     .from('equipment')
     .select('*')
-    .order('item_no', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: false })
+    .order('equipment_type', { ascending: true })
 
   if (filters.search) {
     query = query.or(
