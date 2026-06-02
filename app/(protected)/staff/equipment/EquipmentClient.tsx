@@ -1775,10 +1775,11 @@ export default function EquipmentClient({
     const theadHtml = `<thead><tr>
       <th class="c" style="width:40px">ลำดับ</th>
       <th class="l col-fill">ชื่อเครื่องมือ</th>
-      <th class="c" style="width:140px">Model</th>
-      <th class="c" style="width:110px">รหัส CBH</th>
-      <th class="c" style="width:130px">วันที่สอบเทียบล่าสุด</th>
-      <th class="c" style="width:130px">ผู้รับผิดชอบ</th>
+      <th class="c" style="width:130px">Model</th>
+      <th class="c" style="width:100px">รหัส CBH</th>
+      <th class="c" style="width:75px">สถานะ</th>
+      <th class="c" style="width:120px">วันที่สอบเทียบล่าสุด</th>
+      <th class="c" style="width:120px">ผู้รับผิดชอบ</th>
     </tr></thead>`
 
     let rowIdx = 1
@@ -1789,12 +1790,13 @@ export default function EquipmentClient({
         while (filledRows.length < ROWS_PER_PAGE) filledRows.push(null)
       }
       const tbodyHtml = filledRows.map((eq) => {
-        if (!eq) return `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`
+        if (!eq) return `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`
         return `<tr>
           <td class="c muted">${rowIdx++}</td>
           <td class="l wrap col-fill">${eq.equipment_type}</td>
           <td class="c muted">${eq.model ?? '—'}</td>
           <td class="c mono">${eq.cbh_code_pending ? 'รอขึ้นทะเบียน' : (eq.cbh_code ?? '—')}</td>
+          <td class="c">${eq.status}</td>
           <td class="c muted">${fmtD(eq.pm_cal_data?.last_cal_date ?? null)}</td>
           <td class="c muted">${eq.responsible_person ?? '—'}</td>
         </tr>`
