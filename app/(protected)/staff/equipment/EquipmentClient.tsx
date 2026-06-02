@@ -1680,6 +1680,9 @@ export default function EquipmentClient({
   const [pmCalItem, setPmCalItem] = useState<Equipment | null>(null)
   const [detailItem, setDetailItem] = useState<Equipment | null>(null)
   const [photoViewItem, setPhotoViewItem] = useState<Equipment | null>(null)
+  const [exportMenu, setExportMenu] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
 
   const { toasts, add: addToast } = useToast()
 
@@ -1737,6 +1740,135 @@ export default function EquipmentClient({
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setItems(d) })
       .catch(() => {})
+  }
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    if (!exportMenu) return
+    function handler(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) setExportMenu(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [exportMenu])
+
+  function buildEquipmentMasterListHTML(data: Equipment[], scope: 'filtered' | 'all'): string {
+    const fmtD = (s: string | null) =>
+      s ? new Date(s).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
+    const today = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+
+    const filterParts: string[] = []
+    if (scope === 'filtered') {
+      if (department) filterParts.push(`แผนก: ${department}`)
+      if (statusTab) filterParts.push(`สถานะ: ${statusTab}`)
+      if (debouncedSearch) filterParts.push(`ค้นหา: "${debouncedSearch}"`)
+    } else if (department) {
+      filterParts.push(`แผนก: ${department}`)
+    }
+
+    const ROWS_PER_PAGE = 20
+    const pages: (Equipment | null)[][] = []
+    for (let i = 0; i < Math.max(data.length, 1); i += ROWS_PER_PAGE) {
+      pages.push(data.slice(i, i + ROWS_PER_PAGE))
+    }
+
+    const theadHtml = `<thead><tr>
+      <th class="c" style="width:40px">ลำดับ</th>
+      <th class="l col-fill">ชื่อเครื่องมือ</th>
+      <th class="c" style="width:140px">Model</th>
+      <th class="c" style="width:110px">รหัส CBH</th>
+      <th class="c" style="width:130px">วันที่สอบเทียบล่าสุด</th>
+      <th class="c" style="width:130px">ผู้รับผิดชอบ</th>
+    </tr></thead>`
+
+    let rowIdx = 1
+    const pagesHtml = pages.map((page, pageIndex) => {
+      const isLastPage = pageIndex === pages.length - 1
+      const filledRows = [...page]
+      if (!isLastPage) {
+        while (filledRows.length < ROWS_PER_PAGE) filledRows.push(null)
+      }
+      const tbodyHtml = filledRows.map((eq) => {
+        if (!eq) return `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`
+        return `<tr>
+          <td class="c muted">${rowIdx++}</td>
+          <td class="l wrap col-fill">${eq.equipment_type}</td>
+          <td class="c muted">${eq.model ?? '—'}</td>
+          <td class="c mono">${eq.cbh_code_pending ? 'รอขึ้นทะเบียน' : (eq.cbh_code ?? '—')}</td>
+          <td class="c muted">${fmtD(eq.pm_cal_data?.last_cal_date ?? null)}</td>
+          <td class="c muted">${eq.responsible_person ?? '—'}</td>
+        </tr>`
+      }).join('')
+      return `
+        <div class="page">
+          <div class="page-header">
+            <div class="main-title">บัญชีรายการเครื่องมือ (Master List)</div>
+            <div class="sub-title">กลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี</div>
+            <div class="meta-row">
+              <span>${filterParts.length ? filterParts.join(' · ') : 'แสดงเครื่องมือทั้งหมด'}</span>
+              <span>วันที่พิมพ์: ${today}</span>
+            </div>
+          </div>
+          <table>${theadHtml}<tbody>${tbodyHtml}</tbody></table>
+          <div class="page-footer">
+            <span class="footer-spacer"></span>
+            <span class="footer-center">เอกสารนี้เป็นสมบัติของกลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี ห้ามนำออกไปใช้ภายนอกหรือทำซ้ำโดยไม่ได้รับอนุญาต</span>
+            <span class="footer-right">Fm-QP-LAB-01/EQ</span>
+          </div>
+        </div>`
+    }).join('')
+
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>บัญชีรายการเครื่องมือ</title><style>
+      @page { size: A4 portrait; margin: 8mm 10mm; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: 'TH Sarabun New','Sarabun','Cordia New',Arial,sans-serif; font-size: 10pt; color: #000; }
+      .page { page-break-after: always; display: flex; flex-direction: column; height: 277mm; }
+      .page:last-child { page-break-after: avoid; }
+      .page-header { text-align: center; margin-bottom: 6px; flex-shrink: 0; }
+      .main-title { font-size: 16pt; font-weight: bold; line-height: 1.5; }
+      .sub-title  { font-size: 13pt; font-weight: bold; line-height: 1.4; }
+      .meta-row   { display: flex; justify-content: space-between; font-size: 9pt; color: #555; margin-top: 3px; padding: 0 4px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 4px; flex-shrink: 0; table-layout: fixed; }
+      .col-fill { width: auto; }
+      th, td { border: 1px solid #000; padding: 3px 5px; font-size: 10pt; height: 23px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      th { background: #f0f0f0; font-weight: bold; text-align: center; }
+      .c { text-align: center; }
+      .l { text-align: left; }
+      .wrap { white-space: normal; overflow: visible; text-overflow: clip; word-break: break-word; height: auto; min-height: 23px; vertical-align: top; padding-top: 4px; padding-bottom: 4px; }
+      .muted { color: #444; }
+      .mono { font-family: monospace; font-size: 9pt; }
+      .page-footer { display: flex; align-items: center; font-size: 9pt; color: #666; margin-top: auto; padding-top: 3px; border-top: 1px solid #bbb; flex-shrink: 0; }
+      .footer-spacer { flex: 1; }
+      .footer-center { flex: 0 1 auto; text-align: center; }
+      .footer-right { flex: 1; text-align: right; white-space: nowrap; }
+    </style></head><body>${pagesHtml}</body></html>`
+  }
+
+  async function downloadEquipmentPDF(scope: 'filtered' | 'all') {
+    setExportMenu(false)
+    setExportLoading(true)
+    try {
+      const params = new URLSearchParams({ pageSize: '9999' })
+      if (scope === 'filtered') {
+        if (debouncedSearch) params.set('search', debouncedSearch)
+        if (statusTab) params.set('status', statusTab)
+        if (department) params.set('department', department)
+        if (riskLevel) params.set('risk_level', riskLevel)
+        if (needsCal) params.set('needs_calibration', needsCal)
+        if (pendingReg) params.set('pending_reg', 'true')
+      }
+      const data = await fetch(`/api/admin/equipment?${params}`).then(r => r.json())
+      const allItems: Equipment[] = Array.isArray(data) ? data : []
+      const html = buildEquipmentMasterListHTML(allItems, scope)
+      const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
+      const win = window.open(blobUrl, '_blank')
+      if (!win) { URL.revokeObjectURL(blobUrl); return }
+      win.addEventListener('load', () => { win.print(); URL.revokeObjectURL(blobUrl) }, { once: true })
+    } catch {
+      addToast('ไม่สามารถ Export PDF ได้', false)
+    } finally {
+      setExportLoading(false)
+    }
   }
 
   // CSV export
@@ -1803,9 +1935,44 @@ export default function EquipmentClient({
         marginBottom={16}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--muted)' }}>
-              <Icon name="download" size={14} /> Export
-            </button>
+            {/* Export PDF split button */}
+            <div ref={exportMenuRef} style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                <button
+                  onClick={() => downloadEquipmentPDF('filtered')}
+                  disabled={exportLoading}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'transparent', border: 'none', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', cursor: exportLoading ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: exportLoading ? .6 : 1 }}
+                >
+                  <Icon name="download" size={13} />
+                  {exportLoading ? 'กำลัง Export...' : 'Export PDF'}
+                </button>
+                <button
+                  onClick={() => setExportMenu(v => !v)}
+                  disabled={exportLoading}
+                  style={{ display: 'flex', alignItems: 'center', padding: '8px 8px', background: 'transparent', border: 'none', borderLeft: '1px solid var(--border)', cursor: exportLoading ? 'not-allowed' : 'pointer', color: 'var(--muted)' }}
+                >
+                  <Icon name="chevDown" size={12} />
+                </button>
+              </div>
+              {exportMenu && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', zIndex: 200, minWidth: 200, overflow: 'hidden' }}>
+                  <button onClick={() => downloadEquipmentPDF('filtered')}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'transparent', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', color: 'var(--ink)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    Export ตามตัวกรองปัจจุบัน
+                  </button>
+                  <button onClick={() => downloadEquipmentPDF('all')}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'transparent', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', color: 'var(--ink)', borderTop: '1px solid var(--border)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    Export ทุกรายการ
+                  </button>
+                </div>
+              )}
+            </div>
             {canEdit && (
               <>
                 <button onClick={() => setImportModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)' }}>
