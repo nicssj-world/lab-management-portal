@@ -44,6 +44,7 @@ export interface Equipment {
     certificate_file_url: string | null
   } | null
   created_at: string
+  updated_at: string
   created_by: string | null
 }
 

@@ -15,7 +15,10 @@ export default async function EquipmentPage() {
   const initialData = await getEquipment(supabase)
 
   const lastUpdated = initialData.length > 0
-    ? initialData.reduce((max, e) => e.created_at > max ? e.created_at : max, initialData[0].created_at)
+    ? initialData.reduce((max, e) => {
+        const t = e.updated_at ?? e.created_at
+        return t > max ? t : max
+      }, initialData[0].updated_at ?? initialData[0].created_at)
     : null
 
   return <EquipmentClient initialData={initialData} canEdit={canEdit} lastUpdated={lastUpdated} />
