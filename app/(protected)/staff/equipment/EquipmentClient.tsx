@@ -64,6 +64,48 @@ function formatPrice(n: number | null) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// Converts yyyy-mm-dd → dd/mm/yyyy for display
+function isoToDmy(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-')
+  if (!y || !m || !d) return ''
+  return `${d}/${m}/${y}`
+}
+
+// Converts dd/mm/yyyy → yyyy-mm-dd for storage; returns null if invalid
+function dmyToIso(dmy: string): string | null {
+  const parts = dmy.trim().split('/')
+  if (parts.length !== 3) return null
+  const [d, m, y] = parts.map(p => p.trim().padStart(2, '0'))
+  if (y.length !== 4 || isNaN(Date.parse(`${y}-${m}-${d}`))) return null
+  return `${y}-${m}-${d}`
+}
+
+function DateInput({ value, onChange, style }: {
+  value: string | null | undefined
+  onChange: (v: string | null) => void
+  style?: React.CSSProperties
+}) {
+  const [display, setDisplay] = useState(isoToDmy(value))
+  useEffect(() => { setDisplay(isoToDmy(value)) }, [value])
+  return (
+    <input
+      type="text"
+      placeholder="วว/ดด/ปปปป"
+      style={style}
+      value={display}
+      onChange={e => setDisplay(e.target.value)}
+      onBlur={() => {
+        const v = display.trim()
+        if (!v) { onChange(null); setDisplay(''); return }
+        const iso = dmyToIso(v)
+        if (iso) { onChange(iso); setDisplay(isoToDmy(iso)) }
+        else setDisplay(isoToDmy(value))
+      }}
+    />
+  )
+}
+
 // ─── blank form ───────────────────────────────────────────────────────────────
 
 const BLANK: Partial<Equipment> = {
@@ -322,11 +364,11 @@ function EquipmentModal({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
             <div>
               <label style={labelStyle}>วันที่ซื้อ</label>
-              <input type="date" style={inputStyle} value={form.purchase_date ?? ''} onChange={e => set('purchase_date', e.target.value || null)} />
+              <DateInput style={inputStyle} value={form.purchase_date} onChange={v => set('purchase_date', v)} />
             </div>
             <div>
               <label style={labelStyle}>วันหมดประกัน</label>
-              <input type="date" style={inputStyle} value={form.warranty_exp ?? ''} onChange={e => set('warranty_exp', e.target.value || null)} />
+              <DateInput style={inputStyle} value={form.warranty_exp} onChange={v => set('warranty_exp', v)} />
             </div>
             <div>
               <label style={labelStyle}>ราคาซื้อ (บาท)</label>
@@ -1044,7 +1086,7 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               {editing ? (
-                <><label style={lbl}>วันที่ PM ล่าสุด</label><input type="date" style={inp} value={form.last_pm_date ?? ''} onChange={e => setForm(f => ({ ...f, last_pm_date: e.target.value || null }))} /></>
+                <><label style={lbl}>วันที่ PM ล่าสุด</label><DateInput style={inp} value={form.last_pm_date} onChange={v => setForm(f => ({ ...f, last_pm_date: v }))} /></>
               ) : (
                 <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px' }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>วันที่ PM ล่าสุด</div>
@@ -1054,7 +1096,7 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
             </div>
             <div>
               {editing ? (
-                <><label style={lbl}>วันที่ CAL ล่าสุด</label><input type="date" style={inp} value={form.last_cal_date ?? ''} onChange={e => setForm(f => ({ ...f, last_cal_date: e.target.value || null }))} /></>
+                <><label style={lbl}>วันที่ CAL ล่าสุด</label><DateInput style={inp} value={form.last_cal_date} onChange={v => setForm(f => ({ ...f, last_cal_date: v }))} /></>
               ) : (
                 <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px' }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>วันที่ CAL ล่าสุด</div>
@@ -1663,6 +1705,7 @@ export default function EquipmentClient({
   lastUpdated: string | null
 }) {
   const [items, setItems] = useState<Equipment[]>(initialData)
+  const [nameSort, setNameSort] = useState<'asc' | 'desc'>('asc')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [statusTab, setStatusTab] = useState('')
@@ -2128,16 +2171,22 @@ export default function EquipmentClient({
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', borderBottom: '2px solid var(--border)' }}>
-                  {[
-                    'ชื่อเครื่องมือ', 'แผนก', 'Manufacturer / Model',
-                    'Serial No.', 'Risk', 'ประกัน', 'ผู้รับผิดชอบ', 'PM/CAL', 'สถานะ', '',
-                  ].map(h => (
+                  <th
+                    onClick={() => setNameSort(s => s === 'asc' ? 'desc' : 'asc')}
+                    style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap', letterSpacing: .6, textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
+                  >
+                    ชื่อเครื่องมือ {nameSort === 'asc' ? '↑' : '↓'}
+                  </th>
+                  {['แผนก', 'Manufacturer / Model', 'Serial No.', 'Risk', 'ประกัน', 'ผู้รับผิดชอบ', 'PM/CAL', 'สถานะ', ''].map(h => (
                     <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap', letterSpacing: .6, textTransform: 'uppercase' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {items.map((item, idx) => {
+                {[...items].sort((a, b) => nameSort === 'asc'
+                  ? a.equipment_type.localeCompare(b.equipment_type, 'th')
+                  : b.equipment_type.localeCompare(a.equipment_type, 'th')
+                ).map((item, idx) => {
                   const ws = warrantyStatus(item.warranty_exp)
                   return (
                     <tr
