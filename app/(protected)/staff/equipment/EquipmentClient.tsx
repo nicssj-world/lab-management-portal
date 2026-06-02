@@ -87,22 +87,42 @@ function DateInput({ value, onChange, style }: {
   style?: React.CSSProperties
 }) {
   const [display, setDisplay] = useState(isoToDmy(value))
+  const pickerRef = useRef<HTMLInputElement>(null)
   useEffect(() => { setDisplay(isoToDmy(value)) }, [value])
   return (
-    <input
-      type="text"
-      placeholder="วว/ดด/ปปปป"
-      style={style}
-      value={display}
-      onChange={e => setDisplay(e.target.value)}
-      onBlur={() => {
-        const v = display.trim()
-        if (!v) { onChange(null); setDisplay(''); return }
-        const iso = dmyToIso(v)
-        if (iso) { onChange(iso); setDisplay(isoToDmy(iso)) }
-        else setDisplay(isoToDmy(value))
-      }}
-    />
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+      <input
+        type="text"
+        placeholder="วว/ดด/ปปปป"
+        style={{ ...style, paddingRight: 32 }}
+        value={display}
+        onChange={e => setDisplay(e.target.value)}
+        onBlur={() => {
+          const v = display.trim()
+          if (!v) { onChange(null); setDisplay(''); return }
+          const iso = dmyToIso(v)
+          if (iso) { onChange(iso); setDisplay(isoToDmy(iso)) }
+          else setDisplay(isoToDmy(value))
+        }}
+      />
+      <input
+        ref={pickerRef}
+        type="date"
+        value={value ?? ''}
+        onChange={e => { onChange(e.target.value || null); setDisplay(isoToDmy(e.target.value)) }}
+        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, right: 0 }}
+        tabIndex={-1}
+      />
+      <button
+        type="button"
+        onClick={() => pickerRef.current?.showPicker()}
+        style={{ position: 'absolute', right: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--muted)', display: 'flex', alignItems: 'center' }}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+      </button>
+    </div>
   )
 }
 
@@ -1706,6 +1726,7 @@ export default function EquipmentClient({
 }) {
   const [items, setItems] = useState<Equipment[]>(initialData)
   const [nameSort, setNameSort] = useState<'asc' | 'desc'>('asc')
+  const [newItemId, setNewItemId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [statusTab, setStatusTab] = useState('')
@@ -1763,6 +1784,7 @@ export default function EquipmentClient({
     setItems(prev => {
       const idx = prev.findIndex(i => i.id === eq.id)
       if (idx >= 0) { const next = [...prev]; next[idx] = eq; return next }
+      setNewItemId(eq.id)
       return [eq, ...prev]
     })
     setAddModal(false); setEditItem(null)
@@ -2172,7 +2194,7 @@ export default function EquipmentClient({
               <thead>
                 <tr style={{ background: 'var(--surface-2)', borderBottom: '2px solid var(--border)' }}>
                   <th
-                    onClick={() => setNameSort(s => s === 'asc' ? 'desc' : 'asc')}
+                    onClick={() => { setNameSort(s => s === 'asc' ? 'desc' : 'asc'); setNewItemId(null) }}
                     style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap', letterSpacing: .6, textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
                   >
                     ชื่อเครื่องมือ {nameSort === 'asc' ? '↑' : '↓'}
@@ -2183,10 +2205,13 @@ export default function EquipmentClient({
                 </tr>
               </thead>
               <tbody>
-                {[...items].sort((a, b) => nameSort === 'asc'
-                  ? a.equipment_type.localeCompare(b.equipment_type, 'th')
-                  : b.equipment_type.localeCompare(a.equipment_type, 'th')
-                ).map((item, idx) => {
+                {[...items].sort((a, b) => {
+                  if (a.id === newItemId) return -1
+                  if (b.id === newItemId) return 1
+                  return nameSort === 'asc'
+                    ? a.equipment_type.localeCompare(b.equipment_type, 'th')
+                    : b.equipment_type.localeCompare(a.equipment_type, 'th')
+                }).map((item, idx) => {
                   const ws = warrantyStatus(item.warranty_exp)
                   return (
                     <tr
