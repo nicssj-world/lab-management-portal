@@ -800,7 +800,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
               {showPhlebPipeline ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 12 }}>
                   <SectionCard title="Pipeline เวลา" subtitle="ลงทะเบียน → ยืนยันคิว → เจาะเสร็จ → รับ specimen → รายงานผล" accentColor="var(--primary)">
-                    <PipelineViz stages={data?.stage_breakdown ?? []} total={totalStageMin} />
+                    <PipelineViz stages={data?.stage_breakdown ?? []} total={overviewAvgTatCut} />
                   </SectionCard>
 
                   <SectionCard title="คุณภาพการจับคู่ข้อมูล" subtitle="ระดับ LN เฉพาะตัวอย่างเจาะเลือด" accentColor="#9333EA">
