@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 
 const CACHE_ENDPOINT = 'lab-workload-summary'
+const WORKLOAD_CACHE_VERSION = 'v18'
 
 type MonthRef = { year: number; month: number }
 type DepartmentRow = { section: string; ln_count: number; test_rows: number; test_count: number }
@@ -12,6 +13,7 @@ type WorkloadPayload = {
   departments?: DepartmentRow[]
   opd_rows?: OpdRow[]
 }
+type SummaryRow = Record<string, any>
 
 function toGregorianFiscalYear(year: number) {
   return year > 2400 ? year - 543 : year
@@ -33,20 +35,89 @@ function num(value: unknown) {
   return Number.isFinite(n) ? n : 0
 }
 
+function hasMeaningfulPayload(payload: WorkloadPayload | null | undefined) {
+  const kpi = payload?.kpi ?? {}
+  if (num(kpi.total_ln) > 0 || num(kpi.total_test_rows) > 0 || num(kpi.opd_hn) > 0) return true
+  return (payload?.departments ?? []).some(row => num(row.ln_count) > 0 || num(row.test_rows) > 0)
+    || (payload?.opd_rows ?? []).some(row => num(row.total) > 0)
+}
+
 async function readLatestPayload(year: number, month: number) {
+  const precomputed = await readPrecomputedPayload(year, month)
+  if (precomputed) return precomputed
+
   const { data, error } = await supabaseAdmin
     .from('analysis_summary_cache')
-    .select('payload')
+    .select('cache_key,payload')
     .eq('endpoint', CACHE_ENDPOINT)
     .eq('year', year)
     .eq('month', month)
     .gt('expires_at', new Date().toISOString())
+    .like('cache_key', `${WORKLOAD_CACHE_VERSION}|%`)
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
   if (error) return null
-  return (data?.payload as WorkloadPayload | undefined) ?? null
+  const payload = (data?.payload as WorkloadPayload | undefined) ?? null
+  return hasMeaningfulPayload(payload) ? payload : null
+}
+
+async function readPrecomputedPayload(year: number, month: number): Promise<WorkloadPayload | null> {
+  const [overallRes, deptRes, phlebRes] = await Promise.all([
+    supabaseAdmin
+      .from('lab_workload_overall_monthly')
+      .select('ln_count,test_rows')
+      .eq('year', year)
+      .eq('month', month)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('lab_workload_department_monthly')
+      .select('lab_section,ln_count,test_rows,test_count')
+      .eq('year', year)
+      .eq('month', month),
+    supabaseAdmin
+      .from('lab_workload_phleb_monthly')
+      .select('labzone_name,service_count')
+      .eq('year', year)
+      .eq('month', month),
+  ])
+
+  const missingTable = [overallRes, deptRes, phlebRes].some(res => res.error?.code === '42P01')
+  if (missingTable) return null
+
+  const departments = ((deptRes.data ?? []) as SummaryRow[])
+    .map(row => ({
+      section: String(row.lab_section ?? ''),
+      ln_count: num(row.ln_count),
+      test_rows: num(row.test_rows),
+      test_count: num(row.test_count),
+    }))
+    .filter(row => row.section)
+
+  const opdRows = ((phlebRes.data ?? []) as SummaryRow[])
+    .map(row => {
+      const value = num(row.service_count)
+      return {
+        labzone_name: String(row.labzone_name ?? ''),
+        months: { [monthKey(year, month)]: value },
+        total: value,
+      }
+    })
+    .filter(row => row.labzone_name && row.total > 0)
+
+  const payload = {
+    kpi: {
+      total_ln: num((overallRes.data as SummaryRow | null)?.ln_count),
+      total_test_rows: num((overallRes.data as SummaryRow | null)?.test_rows),
+      department_count: departments.length,
+      opd_hn: opdRows.reduce((sum, row) => sum + row.total, 0),
+    },
+    departments,
+    opd_rows: opdRows,
+  }
+
+  return hasMeaningfulPayload(payload) ? payload : null
 }
 
 export async function GET(req: NextRequest) {

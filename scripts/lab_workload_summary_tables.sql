@@ -74,6 +74,25 @@ returns text language sql immutable as $$
   end
 $$;
 
+create or replace function workload_effective_section(
+  p_section text,
+  p_ward text,
+  p_name_1 text,
+  p_test_name text
+)
+returns text language sql immutable as $$
+  select case
+    when lower(coalesce(p_ward, '')) like '%ศสม%'
+      or lower(coalesce(p_ward, '')) like '%รพ.เมือง%'
+      or lower(coalesce(p_ward, '')) like '%รพ เมือง%'
+      or lower(coalesce(p_ward, '')) like '%green chanel%'
+      or lower(coalesce(p_name_1, '')) like '%ศสม%'
+      or lower(coalesce(p_test_name, '')) like '%ศสม%'
+    then 'ศสม.'
+    else workload_normalize_section(p_section)
+  end
+$$;
+
 create or replace function workload_normalize_labzone(p_labzone text)
 returns text language sql immutable as $$
   select case
@@ -113,14 +132,14 @@ begin
     workload_fiscal_year(year, month) as fiscal_year,
     year,
     month,
-    workload_normalize_section(lab_section) as lab_section,
+    workload_effective_section(lab_section, ward, name_1, test_name) as lab_section,
     count(distinct nullif(ln, ''))::int as ln_count,
     count(*)::int as test_rows,
     count(distinct nullif(test_name, ''))::int as test_count,
     now()
   from tat_records
   where workload_fiscal_year(year, month) = v_fiscal_year
-  group by year, month, workload_normalize_section(lab_section);
+  group by year, month, workload_effective_section(lab_section, ward, name_1, test_name);
 
   insert into lab_workload_test_monthly (
     fiscal_year, year, month, lab_section, test_name, code, price,
@@ -130,7 +149,7 @@ begin
     workload_fiscal_year(r.year, r.month) as fiscal_year,
     r.year,
     r.month,
-    workload_normalize_section(r.lab_section) as lab_section,
+    workload_effective_section(r.lab_section, r.ward, r.name_1, r.test_name) as lab_section,
     coalesce(nullif(trim(r.test_name), ''), 'ไม่ระบุ') as test_name,
     max(coalesce(t.code, t.lis_code)) as code,
     max(t.price) as price,
@@ -143,7 +162,7 @@ begin
   left join tests t
     on trim(r.test_name) in (trim(t.th), trim(coalesce(t.en, '')), trim(t.code), trim(coalesce(t.lis_code, '')))
   where workload_fiscal_year(r.year, r.month) = v_fiscal_year
-  group by r.year, r.month, workload_normalize_section(r.lab_section), coalesce(nullif(trim(r.test_name), ''), 'ไม่ระบุ');
+  group by r.year, r.month, workload_effective_section(r.lab_section, r.ward, r.name_1, r.test_name), coalesce(nullif(trim(r.test_name), ''), 'ไม่ระบุ');
 
   insert into lab_workload_phleb_monthly (
     fiscal_year, year, month, labzone_name, service_count, hn_count, updated_at
@@ -207,14 +226,14 @@ begin
     v_fiscal_year,
     v_year,
     p_month,
-    workload_normalize_section(lab_section),
+    workload_effective_section(lab_section, ward, name_1, test_name),
     count(distinct nullif(ln, ''))::int,
     count(*)::int,
     count(distinct nullif(test_name, ''))::int,
     now()
   from tat_records
   where year = v_year and month = p_month
-  group by workload_normalize_section(lab_section);
+  group by workload_effective_section(lab_section, ward, name_1, test_name);
 
   insert into lab_workload_test_monthly (
     fiscal_year, year, month, lab_section, test_name, code, price,
@@ -241,7 +260,7 @@ begin
     v_fiscal_year,
     v_year,
     p_month,
-    workload_normalize_section(r.lab_section),
+    workload_effective_section(r.lab_section, r.ward, r.name_1, r.test_name),
     coalesce(nullif(trim(r.test_name), ''), 'ไม่ระบุ'),
     max(t.code),
     max(t.price),
@@ -253,7 +272,7 @@ begin
   from tat_records r
   left join test_catalog t on t.key = trim(r.test_name)
   where r.year = v_year and r.month = p_month
-  group by workload_normalize_section(r.lab_section), coalesce(nullif(trim(r.test_name), ''), 'ไม่ระบุ');
+  group by workload_effective_section(r.lab_section, r.ward, r.name_1, r.test_name), coalesce(nullif(trim(r.test_name), ''), 'ไม่ระบุ');
 
   insert into lab_workload_phleb_monthly (
     fiscal_year, year, month, labzone_name, service_count, hn_count, updated_at
