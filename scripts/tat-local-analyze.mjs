@@ -13,8 +13,12 @@ const CACHE_ENDPOINT = 'tat-summary'
 const CACHE_VERSION = 'v2'
 const CACHE_TTL_DAYS = 365
 const WORKLOAD_CACHE_ENDPOINT = 'lab-workload-summary'
-const WORKLOAD_CACHE_VERSION = 'v15'
+const WORKLOAD_CACHE_VERSION = 'v18'
 const WORKLOAD_MAP_FILE = 'workload-test-map-2569.xlsx'
+const HEALTH_CENTER_SECTION = '\u0e28\u0e2a\u0e21.'
+const CHEMISTRY_SECTION = '\u0e40\u0e04\u0e21\u0e35\u0e04\u0e25\u0e34\u0e19\u0e34\u0e01'
+const MOLECULAR_SECTION = '\u0e2d\u0e13\u0e39\u0e1e\u0e31\u0e19\u0e18\u0e38\u0e28\u0e32\u0e2a\u0e15\u0e23\u0e4c'
+const HEALTH_CENTER_RE = /(\u0e28\u0e2a\u0e21|\u0e23\u0e1e\.\u0e40\u0e21\u0e37\u0e2d\u0e07|\u0e23\u0e1e \u0e40\u0e21\u0e37\u0e2d\u0e07|green chanel)/i
 const CAR_BED_LABZONE = 'ช่องรถนั่ง-นอน'
 const CAR_BED_SOURCE_ZONES = ['ช่อง 10', 'ช่อง 11']
 const PHLEB_ALLOWED_LABZONES = [
@@ -420,6 +424,37 @@ function countSetMap(map, key) {
   return map.get(key)?.size ?? 0
 }
 
+function collectSectionTests(matchers, matchedRows) {
+  const testsBySection = new Map(
+    Array.from(matchers.bySection.entries()).map(([section, tests]) => [section, [...tests]])
+  )
+  const seenBySection = new Map(
+    Array.from(testsBySection.entries()).map(([section, tests]) => [
+      section,
+      new Set(tests.map(test => test.test_name)),
+    ])
+  )
+
+  for (const row of matchedRows) {
+    if (!row.section || !row.test_name) continue
+    if (matchers.bySection.has(row.section)) continue
+    if (!testsBySection.has(row.section)) testsBySection.set(row.section, [])
+    if (!seenBySection.has(row.section)) seenBySection.set(row.section, new Set())
+
+    const seen = seenBySection.get(row.section)
+    if (seen.has(row.test_name)) continue
+    seen.add(row.test_name)
+    testsBySection.get(row.section).push({
+      section: row.section,
+      test_name: row.test_name,
+      code: row.code ?? null,
+      price: row.price ?? null,
+    })
+  }
+
+  return testsBySection
+}
+
 function buildHeatmap(rows, dateField, uniqueField = null) {
   const map = new Map()
   for (const row of rows) {
@@ -571,7 +606,17 @@ function findFuzzySectionMatch(normalized, matchers, preferredSection) {
 }
 
 function isHealthCenterWork(name) {
-  return normalizeMatchText(name).includes('ศสม')
+  return HEALTH_CENTER_RE.test(String(name ?? ''))
+}
+
+function isHealthCenterSection(section) {
+  return HEALTH_CENTER_RE.test(String(section ?? ''))
+}
+
+function chemistryLikeSection(section) {
+  if (isHealthCenterSection(section)) return HEALTH_CENTER_SECTION
+  if (section === CHEMISTRY_SECTION) return CHEMISTRY_SECTION
+  return null
 }
 
 function workloadRule(testName, preferredSection) {
@@ -589,7 +634,7 @@ function workloadRule(testName, preferredSection) {
   }
   if (normalized === 'pregnancy test') {
     return [{
-      section: isHealthCenter || preferredSection === 'ศสม.' ? 'ศสม.' : 'จุลทรรศน์วิทยาคลินิก',
+      section: isHealthCenter || isHealthCenterSection(preferredSection) ? HEALTH_CENTER_SECTION : 'จุลทรรศน์วิทยาคลินิก',
       test_name: 'Pregnancy test',
     }]
   }
@@ -598,6 +643,9 @@ function workloadRule(testName, preferredSection) {
   }
   if (normalized === 'direct antiglobulin test gel method') {
     return [{ section: 'ธนาคารเลือด', test_name: 'DAT(Gel method)' }]
+  }
+  if (preferredSection === MOLECULAR_SECTION && normalized === 'cd34 stem cell enumeration pbsc') {
+    return [{ section: MOLECULAR_SECTION, test_name: 'CD34 Stem cell enumeration(Peripheral blood)' }]
   }
   if (preferredSection === 'เคมีคลินิก' && normalized === 'iron study') {
     return [
@@ -611,25 +659,26 @@ function workloadRule(testName, preferredSection) {
   if (preferredSection === 'โลหิตวิทยา' && normalized === 'pt inr') {
     return [{ section: 'โลหิตวิทยา', test_name: 'PT' }]
   }
-  if (preferredSection === 'เคมีคลินิก' && normalized === 'lipid profile') {
+  const chemistrySection = chemistryLikeSection(preferredSection)
+  if (chemistrySection && normalized === 'lipid profile') {
     return [
-      { section: 'เคมีคลินิก', test_name: 'Cholesterol(total)' },
-      { section: 'เคมีคลินิก', test_name: 'HDL-Cholesterol' },
-      { section: 'เคมีคลินิก', test_name: 'Triglyceride' },
-      { section: 'เคมีคลินิก', test_name: 'LDL Cholesterol (direct)' },
+      { section: chemistrySection, test_name: 'Cholesterol(total)' },
+      { section: chemistrySection, test_name: 'HDL-Cholesterol' },
+      { section: chemistrySection, test_name: 'Triglyceride' },
+      { section: chemistrySection, test_name: 'LDL Cholesterol (direct)' },
     ]
   }
-  if (preferredSection === 'เคมีคลินิก' && normalized === 'liver function') {
+  if (chemistrySection && normalized === 'liver function') {
     return [
-      { section: 'เคมีคลินิก', test_name: 'SGOT' },
-      { section: 'เคมีคลินิก', test_name: 'SGPT' },
-      { section: 'เคมีคลินิก', test_name: 'Alkaline phosphatase' },
+      { section: chemistrySection, test_name: 'SGOT(AST)' },
+      { section: chemistrySection, test_name: 'SGPT(ALT)' },
+      { section: chemistrySection, test_name: 'Alkaline phosphatase' },
     ]
   }
-  if (preferredSection === 'เคมีคลินิก' && normalized === 'kidney function test clotted blood') {
+  if (chemistrySection && normalized === 'kidney function test clotted blood') {
     return [
-      { section: 'เคมีคลินิก', test_name: 'BUN(urea nitrogen)' },
-      { section: 'เคมีคลินิก', test_name: 'Creatinine' },
+      { section: chemistrySection, test_name: 'BUN(urea nitrogen)' },
+      { section: chemistrySection, test_name: 'Creatinine' },
     ]
   }
   if (preferredSection === 'จุลชีววิทยา' && normalized === 'hemoculture 2 ขวด') {
@@ -662,16 +711,21 @@ function findWorkloadMatch(testName, matchers, preferredSection) {
   return pickPreferredMatch(matches, preferredSection) ?? findFuzzySectionMatch(normalized, matchers, preferredSection)
 }
 
+function workloadMetasForTest(testName, matchers, preferredSection) {
+  const rule = workloadRule(testName, preferredSection)
+  if (rule) return getRuleMeta(rule, matchers)
+
+  const meta = findWorkloadMatch(testName, matchers, preferredSection)
+  return meta ? [meta] : []
+}
+
 function toMatchedTatRows(row, matchers, year, month) {
-  const preferredSection = isHealthCenterWork(row.name_1) || isHealthCenterWork(row.test_name)
-    ? 'ศสม.'
+  const preferredSection = isHealthCenterWork(row.ward) || isHealthCenterWork(row.name_1) || isHealthCenterWork(row.test_name)
+    ? HEALTH_CENTER_SECTION
     : normalizeLabSection(row.lab_section)
 
-  const rule = workloadRule(row.test_name, preferredSection)
-  if (rule) return getRuleMeta(rule, matchers).map(meta => ({ ...row, ...meta, year, month }))
-
-  const meta = findWorkloadMatch(row.test_name, matchers, preferredSection)
-  return meta ? [{ ...row, ...meta, year, month }] : []
+  return workloadMetasForTest(row.test_name, matchers, preferredSection)
+    .map(meta => ({ ...row, ...meta, year, month }))
 }
 
 function buildWorkloadSummary(records, phlebRows, year, month) {
@@ -695,7 +749,10 @@ function buildWorkloadSummary(records, phlebRows, year, month) {
     }
   }
 
-  const sectionNames = Array.from(matchers.bySection.keys())
+  const sectionNames = Array.from(new Set([
+    ...matchers.bySection.keys(),
+    ...currentRows.map(row => row.section).filter(Boolean),
+  ]))
 
   const departments = sectionNames
     .map(section => ({
@@ -764,8 +821,9 @@ function buildWorkloadSummary(records, phlebRows, year, month) {
     }
   }
 
+  const sectionTests = collectSectionTests(matchers, matchedRows)
   const sectionDetails = {}
-  for (const [section, workloadTests] of matchers.bySection.entries()) {
+  for (const [section, workloadTests] of sectionTests.entries()) {
     const tests = workloadTests
       .map(test => {
         const monthsData = Object.fromEntries(months.map(ym => {
@@ -1031,13 +1089,19 @@ async function readCachedSummary(supabase, endpoint, cacheKeyValue) {
 }
 
 async function readLatestMonthSummary(supabase, endpoint, year, month) {
-  const { data, error } = await supabase
+  let query = supabase
     .from('analysis_summary_cache')
     .select('payload')
     .eq('endpoint', endpoint)
     .eq('year', year)
     .eq('month', month)
     .gt('expires_at', new Date().toISOString())
+
+  if (endpoint === WORKLOAD_CACHE_ENDPOINT) {
+    query = query.like('cache_key', `${WORKLOAD_CACHE_VERSION}|%`)
+  }
+
+  const { data, error } = await query
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -1069,6 +1133,32 @@ async function enrichTatTrendFromCache(supabase, payload, year, month, filters =
 function selectedMonthValue(row, year, month, field) {
   const value = row?.months?.[monthKey(year, month)]?.[field]
   return Number(value ?? 0)
+}
+
+function collectCachedSectionTests(monthPayloads) {
+  const testsBySection = new Map()
+  const seenBySection = new Map()
+
+  for (const monthPayload of monthPayloads.values()) {
+    for (const [section, rows] of Object.entries(monthPayload?.section_details ?? {})) {
+      if (!Array.isArray(rows)) continue
+      if (!testsBySection.has(section)) testsBySection.set(section, [])
+      if (!seenBySection.has(section)) seenBySection.set(section, new Set())
+
+      const seen = seenBySection.get(section)
+      for (const test of rows) {
+        if (!test?.test_name || seen.has(test.test_name)) continue
+        seen.add(test.test_name)
+        testsBySection.get(section).push({
+          test_name: test.test_name,
+          code: test.code ?? null,
+          price: test.price ?? null,
+        })
+      }
+    }
+  }
+
+  return testsBySection
 }
 
 async function enrichWorkloadFiscalFromCache(supabase, payload, year, month) {
