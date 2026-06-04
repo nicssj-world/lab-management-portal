@@ -31,5 +31,18 @@ export async function GET() {
     uploader_name: r.uploaded_by ? (nameMap[r.uploaded_by] ?? '—') : '—',
   }))
 
-  return NextResponse.json({ uploads })
+  const uploadsWithCounts = await Promise.all(uploads.map(async (upload) => {
+    const { data: sample } = await supabaseAdmin
+      .from('tat_records')
+      .select('id')
+      .eq('upload_id', upload.id)
+      .limit(1)
+    return {
+      ...upload,
+      actual_count: sample?.length ? upload.row_count : 0,
+      has_records: !!sample?.length,
+    }
+  }))
+
+  return NextResponse.json({ uploads: uploadsWithCounts })
 }

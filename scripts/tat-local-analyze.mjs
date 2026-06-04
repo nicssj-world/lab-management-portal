@@ -62,9 +62,14 @@ function usage() {
   console.log(`
 Usage:
   npm run tat:local -- --tat "TAT 0469.txt" --phleb "phe 0469.txt"
+  npm run tat:local -- --from-db --year 2026 --month 4
 
 Optional:
   --year 2026 --month 4
+
+Note:
+  This script publishes analysis cache only. It does not create upload history
+  or import rows into tat_records/phlebotomy_records.
 
 Environment:
   NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL
@@ -77,8 +82,13 @@ function args() {
   for (let i = 2; i < process.argv.length; i++) {
     const key = process.argv[i]
     if (!key.startsWith('--')) continue
-    out[key.slice(2)] = process.argv[i + 1]
-    i += 1
+    const next = process.argv[i + 1]
+    if (!next || next.startsWith('--')) {
+      out[key.slice(2)] = true
+    } else {
+      out[key.slice(2)] = next
+      i += 1
+    }
   }
   return out
 }
@@ -1088,6 +1098,31 @@ async function readCachedSummary(supabase, endpoint, cacheKeyValue) {
   return data?.payload ?? null
 }
 
+function hasMissingWorkloadHeatmapWarning(payload) {
+  return (payload?.warnings ?? []).some(w => String(w).includes('precomputed heatmap') || String(w).includes('API ยังไม่เห็นตาราง'))
+}
+
+function hasWorkloadRulesPayload(payload) {
+  return payload
+    && Array.isArray(payload.departments)
+    && payload.section_details
+    && !hasMissingWorkloadHeatmapWarning(payload)
+}
+
+function hasWorkloadMonthValues(payload, year, month) {
+  if (!hasWorkloadRulesPayload(payload)) return false
+  const key = monthKey(year, month)
+  return Object.values(payload.section_details ?? {}).some(sectionRows =>
+    Array.isArray(sectionRows) && sectionRows.some(row => {
+      const monthValue = row.months?.[key]
+      return Number(monthValue?.total ?? 0) > 0
+        || Number(monthValue?.row_total ?? 0) > 0
+        || (payload.selected_year === year && payload.selected_month === month && Number(row.current_total ?? 0) > 0)
+        || (payload.selected_year === year && payload.selected_month === month && Number(row.current_test_rows ?? 0) > 0)
+    })
+  )
+}
+
 async function readLatestMonthSummary(supabase, endpoint, year, month) {
   let query = supabase
     .from('analysis_summary_cache')
@@ -1103,11 +1138,15 @@ async function readLatestMonthSummary(supabase, endpoint, year, month) {
 
   const { data, error } = await query
     .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .limit(20)
 
   if (error) return null
-  return data?.payload ?? null
+  const rows = data ?? []
+  if (endpoint !== WORKLOAD_CACHE_ENDPOINT) return rows[0]?.payload ?? null
+  const payloads = rows.map(row => row.payload).filter(hasWorkloadRulesPayload)
+  return payloads.find(payload => hasWorkloadMonthValues(payload, year, month))
+    ?? payloads[0]
+    ?? null
 }
 
 async function enrichTatTrendFromCache(supabase, payload, year, month, filters = {}) {
@@ -1233,31 +1272,8 @@ async function enrichWorkloadFiscalFromCache(supabase, payload, year, month) {
   }
 }
 
-async function upsertUploadRow(supabase, table, year, month, fileName, rowCount, uploadedAt) {
-  const { data, error } = await supabase
-    .from(table)
-    .upsert({
-      year,
-      month,
-      file_name: path.basename(fileName),
-      row_count: rowCount,
-      uploaded_at: uploadedAt,
-    }, { onConflict: 'year,month' })
-    .select('row_count,uploaded_at')
-    .single()
-
-  if (error) throw new Error(`${table}: ${error.message}`)
-  return data
-}
-
-async function publishUploadMetadata(supabase, year, month, tatFile, phlebFile, tatRowCount, phlebRowCount) {
-  const uploadedAt = new Date().toISOString()
-  const [tatUpload, phlebUpload] = await Promise.all([
-    upsertUploadRow(supabase, 'tat_uploads', year, month, tatFile, tatRowCount, uploadedAt),
-    upsertUploadRow(supabase, 'phleb_uploads', year, month, phlebFile, phlebRowCount, uploadedAt),
-  ])
-
-  return `tat:${tatUpload.row_count ?? 0}:${tatUpload.uploaded_at ?? 'none'}|phleb:${phlebUpload.row_count ?? 0}:${phlebUpload.uploaded_at ?? 'none'}`
+function localUploadVersion(tatRowCount, phlebRowCount) {
+  return `local-tat:${tatRowCount}|local-phleb:${phlebRowCount}`
 }
 
 async function publishWorkloadSummary(supabase, year, month, uploadVersion, payload) {
@@ -1280,19 +1296,95 @@ async function publishWorkloadSummary(supabase, year, month, uploadVersion, payl
   return key
 }
 
+async function fetchDbRows(supabase, table, select, year, month) {
+  const rows = []
+  let cursor = null
+  for (;;) {
+    let query = supabase
+      .from(table)
+      .select(select)
+      .eq('year', year)
+      .eq('month', month)
+      .order('id', { ascending: true })
+      .limit(1000)
+
+    if (cursor) query = query.gt('id', cursor)
+    const { data, error } = await query
+    if (error) throw new Error(`${table}: ${error.message}`)
+
+    const page = data ?? []
+    rows.push(...page)
+    if (rows.length % 50000 < page.length) {
+      console.log(`${table}: ${rows.length.toLocaleString()} rows...`)
+    }
+    if (page.length < 1000) break
+    cursor = page[page.length - 1]?.id
+    if (!cursor) break
+  }
+  return rows
+}
+
+async function publishDbWorkloadSummary(supabase, year, month) {
+  console.log(`Loading DB records for ${year}-${String(month).padStart(2, '0')}...`)
+  const [tatRows, phlebRows] = await Promise.all([
+    fetchDbRows(
+      supabase,
+      'tat_records',
+      'id,year,month,ln,lab_section,test_name,name_1,within_target,spcm_hour,spcm_dow',
+      year,
+      month,
+    ),
+    fetchDbRows(
+      supabase,
+      'phlebotomy_records',
+      'id,year,month,hn,labzone_name,register_at',
+      year,
+      month,
+    ),
+  ])
+
+  console.log(`Loaded TAT ${tatRows.length.toLocaleString()} rows`)
+  console.log(`Loaded Phlebotomy ${phlebRows.length.toLocaleString()} rows`)
+  console.log('Building workload summary with rule engine...')
+  const workloadPayload = await enrichWorkloadFiscalFromCache(
+    supabase,
+    buildWorkloadSummary(tatRows, phlebRows, year, month),
+    year,
+    month,
+  )
+
+  console.log('Publishing workload cache...')
+  const workloadKey = await publishWorkloadSummary(
+    supabase,
+    year,
+    month,
+    `db-tat:${tatRows.length}|db-phleb:${phlebRows.length}`,
+    workloadPayload,
+  )
+  console.log(`Workload cache key:     ${workloadKey}`)
+}
+
 async function main() {
   const a = args()
-  if (!a.tat || !a.phleb || a.help) {
-    usage()
-    process.exit(a.help ? 0 : 1)
-  }
-
   const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl || !serviceKey) {
     throw new Error('Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
   }
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  if (a['from-db']) {
+    const year = Number(a.year)
+    const month = Number(a.month)
+    if (!year || !month) throw new Error('--from-db requires --year and --month')
+    await publishDbWorkloadSummary(supabase, year, month)
+    return
+  }
+
+  if (!a.tat || !a.phleb || a.help) {
+    usage()
+    process.exit(a.help ? 0 : 1)
+  }
 
   console.log('Reading files...')
   const tat = parseTatFile(a.tat)
@@ -1328,8 +1420,8 @@ async function main() {
     month,
   )
 
-  console.log('Publishing upload metadata and summaries...')
-  const uploadVersion = await publishUploadMetadata(supabase, year, month, a.tat, a.phleb, records.length, phleb.rows.length)
+  console.log('Publishing summary caches...')
+  const uploadVersion = localUploadVersion(records.length, phleb.rows.length)
   await publishSummary(supabase, year, month, mainPayload)
   await publishSummary(supabase, year, month, urgentPayload, { priority: URGENT_PRIORITY })
   const workloadKey = await publishWorkloadSummary(supabase, year, month, uploadVersion, workloadPayload)
