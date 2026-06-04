@@ -7,21 +7,15 @@ interface Props {
   goto: (id: string) => void
 }
 
-function initials(name: string) {
-  const parts = name.replace(/^(น\.ส\.|นาย|น\.พ\.|พ\.ญ\.|ดร\.)\s*/u, '').trim().split(/\s+/)
-  return parts.length >= 2
-    ? (parts[0][0] ?? '') + (parts[1][0] ?? '')
-    : (parts[0]?.[0] ?? '') + (parts[0]?.[1] ?? '')
-}
 
 const AVATAR_COLORS = [
-  { bg: 'var(--primary)',  text: '#fff' },
-  { bg: '#0891B2',         text: '#fff' },
-  { bg: '#7C3AED',         text: '#fff' },
-  { bg: '#D97706',         text: '#fff' },
-  { bg: '#065F46',         text: '#fff' },
-  { bg: '#9D174D',         text: '#fff' },
-  { bg: '#1E40AF',         text: '#fff' },
+  { ring: '#1E5FAD', grad: 'radial-gradient(circle at 38% 32%, #3B82C4, #1A52A0)' },
+  { ring: '#0891B2', grad: 'radial-gradient(circle at 38% 32%, #22B8DA, #066E8A)' },
+  { ring: '#7C3AED', grad: 'radial-gradient(circle at 38% 32%, #9D62F0, #5B21B6)' },
+  { ring: '#C2620A', grad: 'radial-gradient(circle at 38% 32%, #F0A040, #B45309)' },
+  { ring: '#065F46', grad: 'radial-gradient(circle at 38% 32%, #0B9E76, #044332)' },
+  { ring: '#9D174D', grad: 'radial-gradient(circle at 38% 32%, #C2346E, #7B0D37)' },
+  { ring: '#1E40AF', grad: 'radial-gradient(circle at 38% 32%, #4A72D8, #1634A0)' },
 ]
 
 export function ManualHome({ lang, goto }: Props) {
@@ -98,8 +92,8 @@ export function ManualHome({ lang, goto }: Props) {
             const av = AVATAR_COLORS[i % AVATAR_COLORS.length]
             return (
               <div key={t.name} style={{ display: 'flex', gap: 10, padding: '10px 13px', border: '1px solid var(--border)', borderRadius: 9, background: 'var(--card)', alignItems: 'center' }}>
-                <div style={{ width: 34, height: 34, borderRadius: 9, background: av.bg, color: av.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 800, flexShrink: 0, letterSpacing: '.02em' }}>
-                  {initials(t.name)}
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: av.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 0 0 2px var(--card), 0 0 0 3.5px ${av.ring}` }}>
+                  <Icon name="users" size={16} style={{ color: 'rgba(255,255,255,.9)' }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>

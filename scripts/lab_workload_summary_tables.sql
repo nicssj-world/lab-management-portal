@@ -55,10 +55,34 @@ create table if not exists lab_workload_phleb_monthly (
   primary key (fiscal_year, year, month, labzone_name)
 );
 
+create table if not exists lab_workload_heatmap_monthly (
+  fiscal_year int not null,
+  year int not null,
+  month int not null,
+  dow int not null,
+  hour int not null,
+  count int not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (fiscal_year, year, month, dow, hour)
+);
+
+create table if not exists lab_workload_phleb_heatmap_monthly (
+  fiscal_year int not null,
+  year int not null,
+  month int not null,
+  dow int not null,
+  hour int not null,
+  count int not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (fiscal_year, year, month, dow, hour)
+);
+
 create index if not exists idx_lw_dept_monthly_fy_month on lab_workload_department_monthly (fiscal_year, month);
 create index if not exists idx_lw_overall_monthly_fy_month on lab_workload_overall_monthly (fiscal_year, month);
 create index if not exists idx_lw_test_monthly_fy_section on lab_workload_test_monthly (fiscal_year, lab_section);
 create index if not exists idx_lw_phleb_monthly_fy_month on lab_workload_phleb_monthly (fiscal_year, month);
+create index if not exists idx_lw_heatmap_monthly_year_month on lab_workload_heatmap_monthly (year, month);
+create index if not exists idx_lw_phleb_heatmap_monthly_year_month on lab_workload_phleb_heatmap_monthly (year, month);
 
 create or replace function workload_fiscal_year(p_year int, p_month int)
 returns int language sql immutable as $$
@@ -110,6 +134,8 @@ begin
   delete from lab_workload_overall_monthly where fiscal_year = v_fiscal_year;
   delete from lab_workload_test_monthly where fiscal_year = v_fiscal_year;
   delete from lab_workload_phleb_monthly where fiscal_year = v_fiscal_year;
+  delete from lab_workload_heatmap_monthly where fiscal_year = v_fiscal_year;
+  delete from lab_workload_phleb_heatmap_monthly where fiscal_year = v_fiscal_year;
 
   insert into lab_workload_overall_monthly (
     fiscal_year, year, month, ln_count, test_rows, updated_at
@@ -186,6 +212,47 @@ begin
       'ช่องรถนั่ง-นอน'
     )
   group by year, month, workload_normalize_labzone(labzone_name);
+
+  insert into lab_workload_heatmap_monthly (
+    fiscal_year, year, month, dow, hour, count, updated_at
+  )
+  select
+    workload_fiscal_year(year, month),
+    year,
+    month,
+    spcm_dow,
+    spcm_hour,
+    count(distinct nullif(ln, ''))::int,
+    now()
+  from tat_records
+  where workload_fiscal_year(year, month) = v_fiscal_year
+    and spcm_dow is not null
+    and spcm_hour is not null
+  group by year, month, spcm_dow, spcm_hour;
+
+  insert into lab_workload_phleb_heatmap_monthly (
+    fiscal_year, year, month, dow, hour, count, updated_at
+  )
+  select
+    workload_fiscal_year(year, month),
+    year,
+    month,
+    extract(dow from register_at)::int,
+    extract(hour from register_at)::int,
+    count(distinct nullif(trim(hn), ''))::int,
+    now()
+  from phlebotomy_records
+  where workload_fiscal_year(year, month) = v_fiscal_year
+    and register_at is not null
+    and workload_normalize_labzone(labzone_name) in (
+      'ห้องปฏิบัติการ ชั้น G',
+      'ห้องปฏิบัติการ เมือง',
+      'ห้องปฏิบัติการ นอกรพ.Central',
+      'ห้องปฏิบัติการ สูติ-นรีเวชกรรม',
+      'ห้องเจาะเลือด ชั้น 3',
+      'ช่องรถนั่ง-นอน'
+    )
+  group by year, month, extract(dow from register_at)::int, extract(hour from register_at)::int;
 end $$;
 
 create or replace function refresh_lab_workload_summary_month(p_year int, p_month int)
@@ -204,6 +271,12 @@ begin
   where fiscal_year = v_fiscal_year and year = v_year and month = p_month;
 
   delete from lab_workload_phleb_monthly
+  where fiscal_year = v_fiscal_year and year = v_year and month = p_month;
+
+  delete from lab_workload_heatmap_monthly
+  where fiscal_year = v_fiscal_year and year = v_year and month = p_month;
+
+  delete from lab_workload_phleb_heatmap_monthly
   where fiscal_year = v_fiscal_year and year = v_year and month = p_month;
 
   insert into lab_workload_overall_monthly (
@@ -297,4 +370,49 @@ begin
       'ช่องรถนั่ง-นอน'
     )
   group by workload_normalize_labzone(labzone_name);
+
+  insert into lab_workload_heatmap_monthly (
+    fiscal_year, year, month, dow, hour, count, updated_at
+  )
+  select
+    v_fiscal_year,
+    v_year,
+    p_month,
+    spcm_dow,
+    spcm_hour,
+    count(distinct nullif(ln, ''))::int,
+    now()
+  from tat_records
+  where year = v_year
+    and month = p_month
+    and spcm_dow is not null
+    and spcm_hour is not null
+  group by spcm_dow, spcm_hour;
+
+  insert into lab_workload_phleb_heatmap_monthly (
+    fiscal_year, year, month, dow, hour, count, updated_at
+  )
+  select
+    v_fiscal_year,
+    v_year,
+    p_month,
+    extract(dow from register_at)::int,
+    extract(hour from register_at)::int,
+    count(distinct nullif(trim(hn), ''))::int,
+    now()
+  from phlebotomy_records
+  where year = v_year
+    and month = p_month
+    and register_at is not null
+    and workload_normalize_labzone(labzone_name) in (
+      'ห้องปฏิบัติการ ชั้น G',
+      'ห้องปฏิบัติการ เมือง',
+      'ห้องปฏิบัติการ นอกรพ.Central',
+      'ห้องปฏิบัติการ สูติ-นรีเวชกรรม',
+      'ห้องเจาะเลือด ชั้น 3',
+      'ช่องรถนั่ง-นอน'
+    )
+  group by extract(dow from register_at)::int, extract(hour from register_at)::int;
 end $$;
+
+notify pgrst, 'reload schema';

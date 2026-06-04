@@ -48,6 +48,7 @@ interface WorkloadData {
   opd_rows: OpdRow[]
   phleb_heatmap: HeatCell[]
   section_details: Record<string, TestWorkloadRow[]>
+  warnings?: string[]
 }
 
 function monthKey(year: number, month: number) {
@@ -287,7 +288,7 @@ export default function WorkloadDashboardPage() {
     setError('')
     let usedCache = false
     try {
-      const cacheKey = `lab-workload-summary:v22:${year}:${month}`
+      const cacheKey = `lab-workload-summary:v25:${year}:${month}`
       const cached = readWorkloadClientCache(cacheKey)
       if (cached) {
         usedCache = true
@@ -382,6 +383,13 @@ export default function WorkloadDashboardPage() {
 
       {loading && <div style={{ padding: 48, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>กำลังโหลดข้อมูล workload...</div>}
       {!loading && error && <div style={{ padding: 18, borderRadius: 12, border: '1px solid #fecaca', background: '#fef2f2', color: 'var(--danger)' }}>{error}</div>}
+      {!loading && data?.warnings?.length ? (
+        <div style={{ padding: 14, borderRadius: 12, border: '1px solid rgba(217,119,6,.35)', background: 'rgba(217,119,6,.08)', color: 'var(--warning)', fontSize: 13, lineHeight: 1.7 }}>
+          {data.warnings.map((warning, idx) => (
+            <div key={idx} style={{ fontWeight: 700 }}>{warning}</div>
+          ))}
+        </div>
+      ) : null}
 
       {!loading && data && activeTab === 'ภาพรวม' && (
         <>

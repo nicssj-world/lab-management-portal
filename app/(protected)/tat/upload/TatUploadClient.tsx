@@ -18,6 +18,7 @@ interface UploadRecord {
   month: number
   file_name: string
   row_count: number
+  actual_count?: number
   uploaded_at: string
   uploader_name: string
 }
@@ -651,7 +652,14 @@ export function TatUploadClient() {
                     <td style={{ padding: '10px 16px', color: 'var(--muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {u.file_name}
                     </td>
-                    <td style={{ padding: '10px 16px' }}>{u.row_count.toLocaleString()}</td>
+                    <td style={{ padding: '10px 16px' }}>
+                      <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{(u.actual_count ?? u.row_count).toLocaleString()}</div>
+                      {u.actual_count !== undefined && u.actual_count !== u.row_count && (
+                        <div style={{ marginTop: 3, fontSize: 11.5, color: u.actual_count === 0 ? 'var(--danger)' : 'var(--warning)', fontWeight: 700 }}>
+                          {u.actual_count === 0 ? 'นำเข้าไม่สมบูรณ์' : `metadata ${u.row_count.toLocaleString()}`}
+                        </div>
+                      )}
+                    </td>
                     <td style={{ padding: '10px 16px', color: 'var(--muted)' }}>{u.uploader_name}</td>
                     <td style={{ padding: '10px 16px', color: 'var(--muted)' }}>
                       {new Date(u.uploaded_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}

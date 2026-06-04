@@ -28,6 +28,7 @@ const PHLEB_ALLOWED_LABZONES = [
 ]
 
 interface TatRow {
+  id: string
   year: number
   month: number
   ln: string | null
@@ -41,6 +42,7 @@ interface TatRow {
 }
 
 interface PhlebRow {
+  id: string
   hn: string | null
   labzone_name: string | null
   register_at: string | null
@@ -61,6 +63,18 @@ type Payload = Record<string, unknown>
 type SummaryRow = Record<string, any>
 type UploadVersion = { row_count: number | null; uploaded_at: string | null }
 type DepartmentSummary = { section: string; ln_count: number; test_rows: number; test_count: number }
+type HeatCell = { dow: number; hour: number; count: number }
+type HeatmapPayload = {
+  heatmap: HeatCell[]
+  phleb_heatmap: HeatCell[]
+  warnings: string[]
+}
+type UploadHealth = {
+  version: string
+  warnings: string[]
+  hasTatRecords: boolean
+  hasPhlebRecords: boolean
+}
 
 const cache = new Map<string, { expiresAt: number; payload: Payload }>()
 let workloadMatchersCache: ReturnType<typeof buildWorkloadMatchers> | null = null
@@ -76,8 +90,70 @@ function fiscalMonths(fiscalYear: number) {
   }))
 }
 
-async function fetchUploadVersion(year: number, month: number) {
-  const [tatRes, phlebRes] = await Promise.all([
+function mergeWarnings(...items: unknown[]) {
+  return Array.from(new Set(items.flatMap((item) => Array.isArray(item) ? item.map(String) : [])))
+}
+
+function hasMissingHeatmapWarning(payload: Payload | null) {
+  const warnings = payload?.warnings
+  return Array.isArray(warnings) && warnings.some((warning) => {
+    const message = String(warning)
+    return message.includes('precomputed heatmap') || message.includes('API ยังไม่เห็นตาราง')
+  })
+}
+
+function hasWorkloadRulesPayload(payload: Payload | null) {
+  return !!payload
+    && Array.isArray(payload.departments)
+    && typeof payload.section_details === 'object'
+    && payload.section_details !== null
+    && !hasMissingHeatmapWarning(payload)
+}
+
+function hasWorkloadMonthValues(payload: Payload | null, year: number, month: number) {
+  if (!hasWorkloadRulesPayload(payload)) return false
+  const key = monthKey(year, month)
+  const sections = Object.values((payload?.section_details ?? {}) as Record<string, unknown>)
+  return sections.some((sectionRows) => Array.isArray(sectionRows) && sectionRows.some((row) => {
+    const r = row as Record<string, any>
+    const monthValue = r.months?.[key]
+    return Number(monthValue?.total ?? 0) > 0
+      || Number(monthValue?.row_total ?? 0) > 0
+      || (payload?.selected_year === year && payload?.selected_month === month && Number(r.current_total ?? 0) > 0)
+      || (payload?.selected_year === year && payload?.selected_month === month && Number(r.current_test_rows ?? 0) > 0)
+  }))
+}
+
+async function readLatestWorkloadPayload(year: number, month: number): Promise<Payload | null> {
+  const { data, error } = await supabaseAdmin
+    .from('analysis_summary_cache')
+    .select('payload')
+    .eq('endpoint', CACHE_ENDPOINT)
+    .eq('year', year)
+    .eq('month', month)
+    .gt('expires_at', new Date().toISOString())
+    .order('updated_at', { ascending: false })
+    .limit(20)
+
+  if (error) return null
+  const rows = (data ?? []) as { payload: Payload | null }[]
+  const payloads = rows.map(row => row.payload).filter(hasWorkloadRulesPayload)
+  return payloads.find(payload => hasWorkloadMonthValues(payload, year, month))
+    ?? payloads[0]
+    ?? null
+}
+
+function applySelectedHeatmaps(payload: Payload, heatmaps: HeatmapPayload, uploadWarnings: string[]) {
+  return {
+    ...payload,
+    heatmap: heatmaps.heatmap.length ? heatmaps.heatmap : payload.heatmap,
+    phleb_heatmap: heatmaps.phleb_heatmap.length ? heatmaps.phleb_heatmap : payload.phleb_heatmap,
+    warnings: mergeWarnings(payload.warnings, uploadWarnings, heatmaps.heatmap.length || heatmaps.phleb_heatmap.length ? [] : heatmaps.warnings),
+  }
+}
+
+async function fetchUploadHealth(year: number, month: number): Promise<UploadHealth> {
+  const [tatRes, phlebRes, tatCountRes, phlebCountRes] = await Promise.all([
     supabaseAdmin
       .from('tat_uploads')
       .select('row_count,uploaded_at')
@@ -90,42 +166,112 @@ async function fetchUploadVersion(year: number, month: number) {
       .eq('year', year)
       .eq('month', month)
       .maybeSingle(),
+    supabaseAdmin
+      .from('tat_records')
+      .select('id')
+      .eq('year', year)
+      .eq('month', month)
+      .limit(1),
+    supabaseAdmin
+      .from('phlebotomy_records')
+      .select('id')
+      .eq('year', year)
+      .eq('month', month)
+      .limit(1),
   ])
 
   if (tatRes.error) throw new Error(tatRes.error.message)
   if (phlebRes.error) throw new Error(phlebRes.error.message)
+  if (tatCountRes.error) throw new Error(tatCountRes.error.message)
+  if (phlebCountRes.error) throw new Error(phlebCountRes.error.message)
 
   const tat = (tatRes.data ?? { row_count: 0, uploaded_at: 'none' }) as UploadVersion
   const phleb = (phlebRes.data ?? { row_count: 0, uploaded_at: 'none' }) as UploadVersion
-  return `tat:${tat.row_count ?? 0}:${tat.uploaded_at ?? 'none'}|phleb:${phleb.row_count ?? 0}:${phleb.uploaded_at ?? 'none'}`
+  const hasTatRecords = (tatCountRes.data?.length ?? 0) > 0
+  const hasPhlebRecords = (phlebCountRes.data?.length ?? 0) > 0
+  const warnings: string[] = []
+
+  if ((tat.row_count ?? 0) > 0 && !hasTatRecords) {
+    warnings.push('พบประวัติอัปโหลดไฟล์ TAT แต่ยังไม่มี records จริง กรุณาอัปโหลดไฟล์ TAT เดือนนี้ใหม่ให้จบ')
+  }
+  if ((phleb.row_count ?? 0) > 0 && !hasPhlebRecords) {
+    warnings.push('พบประวัติอัปโหลดไฟล์เจาะเลือด แต่ยังไม่มี records จริง กรุณาอัปโหลดไฟล์เจาะเลือดเดือนนี้ใหม่ให้จบ')
+  }
+
+  return {
+    version: `tat:${hasTatRecords ? 'has-records' : 'empty'}:${tat.uploaded_at ?? 'none'}|phleb:${hasPhlebRecords ? 'has-records' : 'empty'}:${phleb.uploaded_at ?? 'none'}`,
+    warnings,
+    hasTatRecords,
+    hasPhlebRecords,
+  }
+}
+
+function emptyPayload(
+  displayFiscalYear: number,
+  selectedYear: number,
+  selectedMonth: number,
+  months: { year: number; month: number }[],
+  warnings: string[],
+): Payload {
+  return {
+    fiscal_year: displayFiscalYear,
+    selected_year: selectedYear,
+    selected_month: selectedMonth,
+    months,
+    kpi: {
+      total_ln: 0,
+      total_test_rows: 0,
+      department_count: 0,
+      opd_hn: 0,
+    },
+    departments: [],
+    trend: months.map(ym => ({ year: ym.year, month: ym.month, ln_count: 0, test_rows: 0 })),
+    heatmap: [],
+    phlebotomy_zones: [],
+    opd_rows: [],
+    phleb_heatmap: [],
+    section_details: {},
+    warnings,
+  }
 }
 
 async function fetchTatRows(months: { year: number; month: number }[]) {
   const rows: TatRow[] = []
 
   for (const ym of months) {
-    for (let from = 0; ; from += PAGE_SIZE) {
-      let { data, error } = await supabaseAdmin
+    let cursor: string | null = null
+    for (;;) {
+      let query = supabaseAdmin
         .from('tat_records')
-        .select('year,month,ln,lab_section,ward,test_name,name_1,within_target,spcm_hour,spcm_dow')
+        .select('id,year,month,ln,lab_section,ward,test_name,name_1,within_target,spcm_hour,spcm_dow')
         .eq('year', ym.year)
         .eq('month', ym.month)
-        .range(from, from + PAGE_SIZE - 1)
+        .order('id', { ascending: true })
+        .limit(PAGE_SIZE)
+      if (cursor) query = query.gt('id', cursor)
+
+      let { data, error } = await query
 
       if (error && error.message.toLowerCase().includes('name_1')) {
-        const fallback = await supabaseAdmin
+        let fallbackQuery = supabaseAdmin
           .from('tat_records')
-          .select('year,month,ln,lab_section,ward,test_name,within_target,spcm_hour,spcm_dow')
+          .select('id,year,month,ln,lab_section,ward,test_name,within_target,spcm_hour,spcm_dow')
           .eq('year', ym.year)
           .eq('month', ym.month)
-          .range(from, from + PAGE_SIZE - 1)
+          .order('id', { ascending: true })
+          .limit(PAGE_SIZE)
+        if (cursor) fallbackQuery = fallbackQuery.gt('id', cursor)
+        const fallback = await fallbackQuery
         data = fallback.data ? fallback.data.map(row => ({ ...row, name_1: null })) : null
         error = fallback.error
       }
 
       if (error) throw new Error(error.message)
-      rows.push(...((data ?? []) as TatRow[]))
-      if (!data || data.length < PAGE_SIZE) break
+      const page = (data ?? []) as TatRow[]
+      rows.push(...page)
+      if (page.length < PAGE_SIZE) break
+      cursor = page[page.length - 1]?.id ?? null
+      if (!cursor) break
     }
   }
 
@@ -135,18 +281,25 @@ async function fetchTatRows(months: { year: number; month: number }[]) {
 async function fetchPhlebRows(year: number, month: number) {
   const rows: PhlebRow[] = []
 
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabaseAdmin
+  let cursor: string | null = null
+  for (;;) {
+    let query = supabaseAdmin
       .from('phlebotomy_records')
-      .select('hn,labzone_name,register_at')
+      .select('id,hn,labzone_name,register_at')
       .eq('year', year)
       .eq('month', month)
       .order('id', { ascending: true })
-      .range(from, from + PAGE_SIZE - 1)
+      .limit(PAGE_SIZE)
+    if (cursor) query = query.gt('id', cursor)
+
+    const { data, error } = await query
 
     if (error) throw new Error(error.message)
-    rows.push(...((data ?? []) as PhlebRow[]))
-    if (!data || data.length < PAGE_SIZE) break
+    const page = (data ?? []) as PhlebRow[]
+    rows.push(...page)
+    if (page.length < PAGE_SIZE) break
+    cursor = page[page.length - 1]?.id ?? null
+    if (!cursor) break
   }
 
   return rows
@@ -156,22 +309,85 @@ async function fetchPhlebRowsForMonths(months: { year: number; month: number }[]
   const rows: (PhlebRow & { year: number; month: number })[] = []
 
   for (const ym of months) {
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data, error } = await supabaseAdmin
+    let cursor: string | null = null
+    for (;;) {
+      let query = supabaseAdmin
         .from('phlebotomy_records')
-        .select('year,month,hn,labzone_name,register_at')
+        .select('id,year,month,hn,labzone_name,register_at')
         .eq('year', ym.year)
         .eq('month', ym.month)
         .order('id', { ascending: true })
-        .range(from, from + PAGE_SIZE - 1)
+        .limit(PAGE_SIZE)
+      if (cursor) query = query.gt('id', cursor)
+
+      const { data, error } = await query
 
       if (error) throw new Error(error.message)
-      rows.push(...((data ?? []) as (PhlebRow & { year: number; month: number })[]))
-      if (!data || data.length < PAGE_SIZE) break
+      const page = (data ?? []) as (PhlebRow & { year: number; month: number })[]
+      rows.push(...page)
+      if (page.length < PAGE_SIZE) break
+      cursor = page[page.length - 1]?.id ?? null
+      if (!cursor) break
     }
   }
 
   return rows
+}
+
+function toHeatCells(value: unknown): HeatCell[] {
+  return Array.isArray(value)
+    ? value
+      .map((row) => {
+        const r = row as Partial<HeatCell>
+        return {
+          dow: Number(r.dow),
+          hour: Number(r.hour),
+          count: Number(r.count),
+        }
+      })
+      .filter((row) => Number.isFinite(row.dow) && Number.isFinite(row.hour) && Number.isFinite(row.count))
+    : []
+}
+
+async function fetchHeatmaps(year: number, month: number): Promise<HeatmapPayload> {
+  const [tatRes, phlebRes] = await Promise.all([
+    supabaseAdmin
+      .from('lab_workload_heatmap_monthly')
+      .select('dow,hour,count')
+      .eq('year', year)
+      .eq('month', month),
+    supabaseAdmin
+      .from('lab_workload_phleb_heatmap_monthly')
+      .select('dow,hour,count')
+      .eq('year', year)
+      .eq('month', month),
+  ])
+
+  const missingTable = [tatRes, phlebRes].some(res => ['42P01', 'PGRST205'].includes(res.error?.code ?? ''))
+  if (missingTable) {
+    return {
+      heatmap: [],
+      phleb_heatmap: [],
+      warnings: ['โหลดข้อมูลหลักสำเร็จ แต่ API ยังไม่เห็นตาราง precomputed heatmap ให้รัน scripts/lab_workload_heatmap_patch.sql แล้ว reload schema'],
+    }
+  }
+  const unexpectedError = [tatRes, phlebRes].find(res => res.error)
+  if (unexpectedError?.error) {
+    if (unexpectedError.error.code === '57014') {
+      return {
+        heatmap: [],
+        phleb_heatmap: [],
+        warnings: ['โหลดข้อมูลหลักสำเร็จ แต่ heatmap ใช้เวลานานเกินไป'],
+      }
+    }
+    throw new Error(unexpectedError.error.message)
+  }
+
+  return {
+    heatmap: toHeatCells(tatRes.data),
+    phleb_heatmap: toHeatCells(phlebRes.data),
+    warnings: [],
+  }
 }
 
 function normalizeLabzone(name: string | null) {
@@ -679,12 +895,13 @@ function mapPrecomputedTestRows(rows: SummaryRow[], matchers: ReturnType<typeof 
   return Array.from(merged.values())
 }
 
-async function fetchPrecomputedPayload(displayFiscalYear: number, fiscalYear: number, selectedYear: number, selectedMonth: number, months: { year: number; month: number }[]) {
-  const [overallRes, deptRes, testRes, phlebRes, cachedPayloads] = await Promise.all([
+async function fetchPrecomputedPayload(displayFiscalYear: number, fiscalYear: number, selectedYear: number, selectedMonth: number, months: { year: number; month: number }[]): Promise<Payload | null> {
+  const [overallRes, deptRes, testRes, phlebRes, heatmaps, cachedPayloads] = await Promise.all([
     fetchPrecomputedRows('lab_workload_overall_monthly', fiscalYear),
     fetchPrecomputedRows('lab_workload_department_monthly', fiscalYear),
     fetchPrecomputedRows('lab_workload_test_monthly', fiscalYear),
     fetchPrecomputedRows('lab_workload_phleb_monthly', fiscalYear),
+    fetchHeatmaps(selectedYear, selectedMonth),
     Promise.all(months.map(ym => readLatestWorkloadCachePayload(ym.year, ym.month))),
   ])
 
@@ -842,11 +1059,12 @@ async function fetchPrecomputedPayload(displayFiscalYear: number, fiscalYear: nu
     },
     departments,
     trend,
-    heatmap: [],
+    heatmap: heatmaps.heatmap,
     phlebotomy_zones: phlebotomyZones,
     opd_rows: opdRows,
-    phleb_heatmap: [],
+    phleb_heatmap: heatmaps.phleb_heatmap,
     section_details: sectionDetails,
+    warnings: heatmaps.warnings,
   }
 }
 
@@ -864,8 +1082,8 @@ export async function GET(req: NextRequest) {
 
     const fiscalYear = toGregorianYear(displayFiscalYear)
     const selectedYear = selectedMonth >= 10 ? fiscalYear - 1 : fiscalYear
-    const uploadVersion = await fetchUploadVersion(selectedYear, selectedMonth)
-    const key = `v22|${displayFiscalYear}|${fiscalYear}|${selectedYear}|${selectedMonth}|${uploadVersion}`
+    const uploadHealth = await fetchUploadHealth(selectedYear, selectedMonth)
+    const key = `v25|${displayFiscalYear}|${fiscalYear}|${selectedYear}|${selectedMonth}|${uploadHealth.version}`
     const hit = cache.get(key)
     if (hit && hit.expiresAt > Date.now()) {
       return NextResponse.json(hit.payload, { headers: { 'X-Lab-Workload-Cache': 'hit' } })
@@ -873,22 +1091,57 @@ export async function GET(req: NextRequest) {
 
     const months = fiscalMonths(fiscalYear)
     const persistent = await readAnalysisCache<Payload>(CACHE_ENDPOINT, key)
-    if (persistent) {
-      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload: persistent })
-      return NextResponse.json(persistent, { headers: { 'X-Lab-Workload-Cache': 'persistent' } })
+    if (persistent && !hasMissingHeatmapWarning(persistent)) {
+      const heatmaps = await fetchHeatmaps(selectedYear, selectedMonth)
+      const payload = applySelectedHeatmaps(persistent, heatmaps, uploadHealth.warnings)
+      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
+      return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'persistent' } })
     }
 
-    const precomputed = await fetchPrecomputedPayload(displayFiscalYear, fiscalYear, selectedYear, selectedMonth, months)
-    if (precomputed) {
-      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload: precomputed })
-      await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, precomputed, PERSISTENT_CACHE_TTL_MS)
-      return NextResponse.json(precomputed, { headers: { 'X-Lab-Workload-Cache': 'precomputed' } })
+    const latestPersistent = await readLatestWorkloadPayload(selectedYear, selectedMonth)
+    if (latestPersistent) {
+      const heatmaps = await fetchHeatmaps(selectedYear, selectedMonth)
+      const payload = applySelectedHeatmaps(latestPersistent, heatmaps, uploadHealth.warnings)
+      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
+      await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
+      return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'latest-persistent' } })
     }
 
-    const [tatRows, phlebRows, phlebRowsAll] = await Promise.all([
+    if (req.nextUrl.searchParams.get('precomputed') === '1') {
+      const precomputed = await fetchPrecomputedPayload(displayFiscalYear, fiscalYear, selectedYear, selectedMonth, months)
+      if (precomputed) {
+        precomputed.warnings = mergeWarnings(precomputed.warnings, uploadHealth.warnings)
+        cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload: precomputed })
+        if (!hasMissingHeatmapWarning(precomputed)) {
+          await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, precomputed, PERSISTENT_CACHE_TTL_MS)
+        }
+        return NextResponse.json(precomputed, { headers: { 'X-Lab-Workload-Cache': 'precomputed' } })
+      }
+    }
+
+    if (!uploadHealth.hasTatRecords && !uploadHealth.hasPhlebRecords) {
+      const warnings = uploadHealth.warnings.length
+        ? uploadHealth.warnings
+        : ['ยังไม่มี records จริงสำหรับเดือนนี้ กรุณาอัปโหลดไฟล์ TAT/Phe ให้จบก่อน']
+      const payload = emptyPayload(displayFiscalYear, selectedYear, selectedMonth, months, warnings)
+      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
+      await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
+      return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'empty' } })
+    }
+
+    if (req.nextUrl.searchParams.get('live') !== '1') {
+      const payload = emptyPayload(displayFiscalYear, selectedYear, selectedMonth, months, [
+        'ยังไม่มี rule-correct workload cache สำหรับเดือนนี้ กรุณา rebuild cache ก่อน ระบบจะไม่คำนวณ raw records ทั้งปีในหน้าเว็บเพื่อเลี่ยง statement timeout',
+      ])
+      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
+      return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'needs-cache' } })
+    }
+
+    const [tatRows, phlebRows, phlebRowsAll, heatmaps] = await Promise.all([
       fetchTatRows(months),
       fetchPhlebRows(selectedYear, selectedMonth),
       fetchPhlebRowsForMonths(months),
+      fetchHeatmaps(selectedYear, selectedMonth),
     ])
 
   const matchers = getWorkloadMatchers()
@@ -1004,6 +1257,15 @@ export async function GET(req: NextRequest) {
     sectionMonthTestInTimeRows
   )
 
+  const liveHeatmap = Array.from(heatmapLn.entries()).map(([key, set]) => {
+    const [dow, hour] = key.split('-').map(Number)
+    return { dow, hour, count: set.size }
+  })
+  const livePhlebHeatmap = Array.from(phlebHeatmap.entries()).map(([key, set]) => {
+    const [dow, hour] = key.split('-').map(Number)
+    return { dow, hour, count: set.size }
+  })
+
   const payload: Payload = {
     fiscal_year: displayFiscalYear,
     selected_year: selectedYear,
@@ -1017,17 +1279,12 @@ export async function GET(req: NextRequest) {
     },
     departments,
     trend,
-    heatmap: Array.from(heatmapLn.entries()).map(([key, set]) => {
-      const [dow, hour] = key.split('-').map(Number)
-      return { dow, hour, count: set.size }
-    }),
+    heatmap: heatmaps.heatmap.length ? heatmaps.heatmap : liveHeatmap,
     phlebotomy_zones: phlebotomyZones,
     opd_rows: opdRows,
-    phleb_heatmap: Array.from(phlebHeatmap.entries()).map(([key, set]) => {
-      const [dow, hour] = key.split('-').map(Number)
-      return { dow, hour, count: set.size }
-    }),
+    phleb_heatmap: heatmaps.phleb_heatmap.length ? heatmaps.phleb_heatmap : livePhlebHeatmap,
     section_details: sectionDetails,
+    warnings: mergeWarnings(uploadHealth.warnings, heatmaps.heatmap.length || heatmaps.phleb_heatmap.length ? [] : heatmaps.warnings),
   }
 
   cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { createClient } from '@/lib/supabase/client'
+import { clearStaleAuthSession, createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
@@ -20,6 +20,7 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
+    clearStaleAuthSession()
     const supabase = createClient()
     const loginEmail = email.includes('@') ? email : `${email}@cbh.go.th`
     const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })

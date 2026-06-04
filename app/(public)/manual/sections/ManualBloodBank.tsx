@@ -292,9 +292,7 @@ export function ManualBloodBank({ lang }: Props) {
                       <div style={{ width: 18, height: 18, borderRadius: 5, background: phase.roleBg, border: `1px solid ${phase.roleColor}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
                         <span style={{ fontSize: 10, fontWeight: 800, color: phase.roleColor }}>{si + 1}</span>
                       </div>
-                      <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.6 }}
-                        dangerouslySetInnerHTML={{ __html: step.replace(/([ก่อนเจาะทุกครั้ง|โดยให้ผู้ป่วยเป็นผู้บอก|ต้องเจาะคนละเวลา|กรณีขอหลายราย.*ทีละราย|ทีละรายโดยเด็ดขาด|1–10°C|30 นาที])/g, '<strong>$1</strong>') }}
-                      />
+                      <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.6 }}>{step}</span>
                     </div>
                   ))}
                 </div>

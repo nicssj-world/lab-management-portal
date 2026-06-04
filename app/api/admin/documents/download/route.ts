@@ -15,6 +15,15 @@ async function getDocumentForDownload(path: string) {
 
   if (doc) return doc
 
+  // Word/Excel secondary file
+  const { data: wordDoc } = await supabaseAdmin
+    .from('documents')
+    .select('id, document_code, title, word_name')
+    .eq('word_url', path)
+    .maybeSingle()
+
+  if (wordDoc) return { ...wordDoc, file_name: wordDoc.word_name }
+
   const { data: revision } = await supabaseAdmin
     .from('document_revisions')
     .select('document_id, file_name')

@@ -18,13 +18,14 @@ export default async function AdminPage() {
 
   const isAdmin = actor?.role?.toLowerCase() === 'admin'
 
-  // .is('deleted_at', null) only works after user-management-migration.sql has been run
-  const countResult = await supabase
+  // Count with the admin client so RLS does not reduce the total to the current profile.
+  // .is('deleted_at', null) only works after user-management-migration.sql has been run.
+  const countResult = await supabaseAdmin
     .from('profiles')
     .select('*', { count: 'exact', head: true })
     .is('deleted_at', null)
   const count = countResult.error
-    ? (await supabase.from('profiles').select('*', { count: 'exact', head: true })).count
+    ? (await supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true })).count
     : countResult.count
 
   const { data: roleRows } = await supabaseAdmin

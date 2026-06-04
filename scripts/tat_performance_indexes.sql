@@ -12,8 +12,14 @@ create index if not exists idx_tat_records_summary_heatmap
   on tat_records (year, month, spcm_dow, spcm_hour)
   where spcm_dow is not null and spcm_hour is not null;
 
+create index if not exists idx_tat_records_year_month_id
+  on tat_records (year, month, id);
+
 create index if not exists idx_phleb_records_summary_hn
   on phlebotomy_records (year, month, labzone_name, hn);
+
+create index if not exists idx_phleb_records_year_month_id
+  on phlebotomy_records (year, month, id);
 
 create index if not exists idx_tat_records_rejoin_blood
   on tat_records (year, month, is_blood_draw, hn)
