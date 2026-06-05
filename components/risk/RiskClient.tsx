@@ -48,6 +48,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ]
 
 const SEVERITIES = ['', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
+const SEVERITY_FILTER_ORDER = ['ต่ำ', 'กลาง', 'ปานกลาง', 'สูง', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
 const SCORE_OPTIONS = ['', '1', '2', '3', '4', '5']
 const REGISTER_PAGE_SIZE = 20
 const THAI_MONTHS = [
@@ -165,6 +166,21 @@ function colorForLevel(level?: string | null) {
   return '#16A34A'
 }
 
+function riskLevelText(level?: string | null) {
+  if (level === 'high') return 'สูง'
+  if (level === 'medium') return 'กลาง'
+  if (level === 'low') return 'ต่ำ'
+  return ''
+}
+
+function riskAssessmentLevel(likelihood?: number | null, impact?: number | null) {
+  return riskLevel(riskScore(likelihood, impact))
+}
+
+function riskAssessmentSeverity(likelihood?: number | null, impact?: number | null) {
+  return riskLevelText(riskAssessmentLevel(likelihood, impact))
+}
+
 function eventYear(risk: Risk) {
   return (risk.event_date ?? risk.recorded_date ?? risk.created_at ?? '').slice(0, 4)
 }
@@ -242,6 +258,13 @@ function formatRiskShortDate(value?: string | null) {
   return `${d.getDate()}/${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`
 }
 
+function compareSeverityFilter(a: string, b: string) {
+  const ai = SEVERITY_FILTER_ORDER.indexOf(a)
+  const bi = SEVERITY_FILTER_ORDER.indexOf(b)
+  if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+  return a.localeCompare(b, 'th')
+}
+
 function badgeStyle(bg: string, color = bg): React.CSSProperties {
   return {
     display: 'inline-flex',
@@ -304,7 +327,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-export function RiskClient({ permission }: { permission: RiskPermission }) {
+export function RiskClient({ permission, canReview }: { permission: RiskPermission; canReview: boolean }) {
   const canEdit = permission === 'edit'
   const [tab, setTab] = useState<TabId>('dashboard')
   const [risks, setRisks] = useState<RiskWithActions[]>([])
@@ -345,7 +368,6 @@ export function RiskClient({ permission }: { permission: RiskPermission }) {
     const q = query.trim().toLowerCase()
     return risks.filter(risk => {
       if (status && risk.status !== status) return false
-      if (severity && risk.severity_level !== severity) return false
       if (department && risk.department_found !== department) return false
       if (!q) return true
       return [
@@ -358,7 +380,7 @@ export function RiskClient({ permission }: { permission: RiskPermission }) {
         risk.event_sub_category,
       ].some(value => String(value ?? '').toLowerCase().includes(q))
     })
-  }, [department, query, risks, severity, status])
+  }, [department, query, risks, status])
 
   const dashboardRisks = useMemo(() => risks.filter(r => !isFutureDateKey(latestEventDateKey(r))), [risks])
   const riskRegisterDashboardRisks = useMemo(() => dashboardRisks.filter(isRiskRegisterRisk), [dashboardRisks])
@@ -472,7 +494,7 @@ export function RiskClient({ permission }: { permission: RiskPermission }) {
           setSeverity={setSeverity}
           department={department}
           setDepartment={setDepartment}
-          onOpen={canEdit ? setEditing : setPreviewing}
+          onOpen={canReview ? setEditing : setPreviewing}
           onDeleted={() => void load()}
           canEdit={canEdit}
         />
@@ -490,7 +512,7 @@ export function RiskClient({ permission }: { permission: RiskPermission }) {
           setSeverity={setSeverity}
           department={department}
           setDepartment={setDepartment}
-          onOpen={canEdit ? setEditing : setPreviewing}
+          onOpen={canReview ? setEditing : setPreviewing}
           onDeleted={() => void load()}
           canEdit={canEdit}
         />
@@ -498,7 +520,7 @@ export function RiskClient({ permission }: { permission: RiskPermission }) {
 
       {canEdit && showCreate && <RiskFormModal initialEventType={tab === 'register' ? 'risk_assessment' : 'near_miss'} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load(); setTab(tab === 'register' ? 'register' : 'ior') }} />}
       {previewing && <RiskEventPreviewModal risk={previewing} onClose={() => setPreviewing(null)} />}
-      {canEdit && editing && <RiskDetailModal risk={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load() }} />}
+      {canReview && editing && <RiskDetailModal risk={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load() }} />}
       {canEdit && showImport && <RiskImportModal mode={importMode} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); void load(); setTab(importMode === 'smart' ? 'smart' : importMode === 'ior' ? 'ior' : 'register') }} />}
     </div>
   )
@@ -748,13 +770,19 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
   const [deleteError, setDeleteError] = useState('')
 
   const years = useMemo(() => Array.from(new Set(risks.map(eventFiscalYear).filter(Boolean))).sort((a, b) => b.localeCompare(a)), [risks])
+  const severityOptions = useMemo(() => Array.from(new Set(
+    risks
+      .map(risk => String(risk.severity_level ?? '').trim())
+      .filter(Boolean)
+  )).sort(compareSeverityFilter), [risks])
   const datedRisks = useMemo(() => risks
     .filter(risk => {
       if (year && eventFiscalYear(risk) !== year) return false
       if (month && eventMonth(risk) !== month) return false
+      if (severity && risk.severity_level !== severity) return false
       return true
     })
-    .sort(compareLatestRisk), [month, risks, year])
+    .sort(compareLatestRisk), [month, risks, severity, year])
   const totalPages = Math.max(1, Math.ceil(datedRisks.length / REGISTER_PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pageStart = datedRisks.length ? (safePage - 1) * REGISTER_PAGE_SIZE + 1 : 0
@@ -766,6 +794,9 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
 
   useEffect(() => { setPage(1) }, [department, month, query, severity, status, year])
   useEffect(() => { setSelected(new Set()) }, [year, month, status, severity, department, query])
+  useEffect(() => {
+    if (severity && !severityOptions.includes(severity)) setSeverity('')
+  }, [severity, severityOptions, setSeverity])
 
   function toggleAll() {
     setSelected(prev => {
@@ -830,7 +861,8 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
           <option value="closed">ปิดแล้ว</option>
         </select>
         <select value={severity} onChange={e => setSeverity(e.target.value)} style={inputStyle}>
-          {SEVERITIES.map(s => <option key={s} value={s}>{s || 'ทุกระดับ'}</option>)}
+          <option value="">ทุกระดับ</option>
+          {severityOptions.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={department} onChange={e => setDepartment(e.target.value)} style={inputStyle}>
           <option value="">ทุกหน่วยงาน</option>
@@ -1038,14 +1070,27 @@ function PreviewField({ label, value, tone = '#E0F2FE', muted = false }: { label
 }
 
 function RiskFormModal({ initialEventType = 'near_miss', onClose, onSaved }: { initialEventType?: string; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<FormState>({ event_date: today(), event_type: initialEventType, likelihood: 1, impact: 1, status: 'open' })
+  const isRiskAssessment = initialEventType === 'risk_assessment'
+  const [form, setForm] = useState<FormState>(() => {
+    const initial: FormState = { event_date: today(), event_type: initialEventType, likelihood: 1, impact: 1, status: 'open' }
+    return isRiskAssessment
+      ? { ...initial, level: 'low', severity_level: riskAssessmentSeverity(1, 1) }
+      : initial
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   async function save() {
     setSaving(true)
     setError('')
     try {
-      const res = await fetch('/api/admin/risks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      const payload = form.event_type === 'risk_assessment'
+        ? {
+          ...form,
+          level: riskAssessmentLevel(form.likelihood, form.impact) ?? form.level,
+          severity_level: riskAssessmentSeverity(form.likelihood, form.impact),
+        }
+        : form
+      const res = await fetch('/api/admin/risks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'บันทึกไม่สำเร็จ')
       onSaved()
@@ -1198,24 +1243,58 @@ function RiskDetailModal({ risk, onClose, onSaved }: { risk: RiskWithActions; on
 }
 
 function RiskFields({ form, setForm, compact = false }: { form: FormState; setForm: (form: FormState) => void; compact?: boolean }) {
+  const isRiskAssessment = form.event_type === 'risk_assessment'
+  const currentLevel = riskAssessmentLevel(form.likelihood, form.impact)
+  const currentSeverity = riskLevelText(currentLevel) || '-'
+  const updateForm = (patch: FormState) => {
+    const next = { ...form, ...patch }
+    if (next.event_type === 'risk_assessment') {
+      const nextLevel = riskAssessmentLevel(next.likelihood, next.impact)
+      setForm({
+        ...next,
+        level: nextLevel ?? next.level,
+        severity_level: riskLevelText(nextLevel) || next.severity_level,
+      })
+      return
+    }
+    setForm(next)
+  }
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
-      <Field label="รหัสความเสี่ยง"><input value={form.risk_no ?? ''} onChange={e => setForm({ ...form, risk_no: e.target.value })} style={inputStyle} /></Field>
-      <Field label="วันที่เกิดเหตุ"><input type="date" value={form.event_date ?? ''} onChange={e => setForm({ ...form, event_date: e.target.value })} style={inputStyle} /></Field>
-      <Field label="ประเภท"><select value={form.event_type ?? ''} onChange={e => setForm({ ...form, event_type: e.target.value })} style={inputStyle}>{RISK_EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></Field>
-      <Field label="RM Severity"><select value={form.severity_level ?? ''} onChange={e => setForm({ ...form, severity_level: e.target.value, requires_rca: requiresRca(e.target.value) })} style={inputStyle}>{SEVERITIES.map(s => <option key={s} value={s}>{s || '-'}</option>)}</select></Field>
-      <Field label="ผู้รายงาน"><input value={form.reporter_name ?? ''} onChange={e => setForm({ ...form, reporter_name: e.target.value })} style={inputStyle} /></Field>
-      <Field label="ตำแหน่ง"><select value={form.reporter_position ?? ''} onChange={e => setForm({ ...form, reporter_position: e.target.value })} style={inputStyle}><option value="">-</option>{REPORTER_POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}</select></Field>
-      <Field label="หน่วยงานที่พบ"><select value={form.department_found ?? ''} onChange={e => setForm({ ...form, department_found: e.target.value })} style={inputStyle}><option value="">-</option>{LAB_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></Field>
-      <Field label="ส่งถึง"><input value={form.department_target ?? ''} onChange={e => setForm({ ...form, department_target: e.target.value })} style={inputStyle} /></Field>
-      <Field label="Likelihood"><select value={form.likelihood ?? ''} onChange={e => setForm({ ...form, likelihood: Number(e.target.value), level: riskLevel(riskScore(Number(e.target.value), form.impact)) ?? 'low' })} style={inputStyle}>{SCORE_OPTIONS.map(v => <option key={v} value={v}>{v || '-'}</option>)}</select></Field>
-      <Field label="Impact"><select value={form.impact ?? ''} onChange={e => setForm({ ...form, impact: Number(e.target.value), level: riskLevel(riskScore(form.likelihood, Number(e.target.value))) ?? 'low' })} style={inputStyle}>{SCORE_OPTIONS.map(v => <option key={v} value={v}>{v || '-'}</option>)}</select></Field>
-      <Field label="Owner"><input value={form.owner ?? ''} onChange={e => setForm({ ...form, owner: e.target.value })} style={inputStyle} /></Field>
-      <Field label="Due Date"><input type="date" value={form.due_date ?? ''} onChange={e => setForm({ ...form, due_date: e.target.value })} style={inputStyle} /></Field>
-      <Field label="Follow-up Date"><input type="date" value={form.follow_up_date ?? ''} onChange={e => setForm({ ...form, follow_up_date: e.target.value })} style={inputStyle} /></Field>
-      <div style={{ gridColumn: compact ? '1 / -1' : 'span 2' }}><Field label="เหตุการณ์"><select value={form.event_category ?? ''} onChange={e => setForm({ ...form, event_category: e.target.value, name: e.target.value })} style={inputStyle}><option value="">-</option>{NEAR_MISS_EVENTS.map(e => <option key={e} value={e}>{e}</option>)}</select></Field></div>
-      <div style={{ gridColumn: '1 / -1' }}><Field label="รายละเอียดเหตุการณ์"><textarea value={form.event_detail ?? ''} onChange={e => setForm({ ...form, event_detail: e.target.value, name: form.name || e.target.value.slice(0, 120) })} style={textareaStyle} /></Field></div>
-      <div style={{ gridColumn: '1 / -1' }}><Field label="การแก้ไขเฉพาะหน้า"><textarea value={form.immediate_correction ?? ''} onChange={e => setForm({ ...form, immediate_correction: e.target.value })} style={textareaStyle} /></Field></div>
+      <Field label="รหัสความเสี่ยง"><input value={form.risk_no ?? ''} onChange={e => updateForm({ risk_no: e.target.value })} style={inputStyle} /></Field>
+      <Field label={isRiskAssessment ? 'วันที่ประเมิน' : 'วันที่เกิดเหตุ'}><input type="date" value={form.event_date ?? ''} onChange={e => updateForm({ event_date: e.target.value })} style={inputStyle} /></Field>
+      <Field label="ประเภท"><select value={form.event_type ?? ''} onChange={e => updateForm({ event_type: e.target.value })} style={inputStyle}>{RISK_EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></Field>
+      {isRiskAssessment ? (
+        <Field label="ระดับความเสี่ยง">
+          <div style={{ ...inputStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface-2)' }}>
+            <span>{currentSeverity}</span>
+            <span style={badgeStyle(colorForLevel(currentLevel))}>Score {riskScore(form.likelihood, form.impact) ?? '-'}</span>
+          </div>
+        </Field>
+      ) : (
+        <Field label="RM Severity"><select value={form.severity_level ?? ''} onChange={e => updateForm({ severity_level: e.target.value, requires_rca: requiresRca(e.target.value) })} style={inputStyle}>{SEVERITIES.map(s => <option key={s} value={s}>{s || '-'}</option>)}</select></Field>
+      )}
+      <Field label="ผู้รายงาน"><input value={form.reporter_name ?? ''} onChange={e => updateForm({ reporter_name: e.target.value })} style={inputStyle} /></Field>
+      <Field label="ตำแหน่ง"><select value={form.reporter_position ?? ''} onChange={e => updateForm({ reporter_position: e.target.value })} style={inputStyle}><option value="">-</option>{REPORTER_POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}</select></Field>
+      <Field label={isRiskAssessment ? 'หน่วยงาน' : 'หน่วยงานที่พบ'}><select value={form.department_found ?? ''} onChange={e => updateForm({ department_found: e.target.value })} style={inputStyle}><option value="">-</option>{LAB_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></Field>
+      <Field label="ส่งถึง"><input value={form.department_target ?? ''} onChange={e => updateForm({ department_target: e.target.value })} style={inputStyle} /></Field>
+      <Field label="Likelihood"><select value={form.likelihood ?? ''} onChange={e => updateForm({ likelihood: Number(e.target.value) })} style={inputStyle}>{SCORE_OPTIONS.map(v => <option key={v} value={v}>{v || '-'}</option>)}</select></Field>
+      <Field label="Impact"><select value={form.impact ?? ''} onChange={e => updateForm({ impact: Number(e.target.value) })} style={inputStyle}>{SCORE_OPTIONS.map(v => <option key={v} value={v}>{v || '-'}</option>)}</select></Field>
+      <Field label="Owner"><input value={form.owner ?? ''} onChange={e => updateForm({ owner: e.target.value })} style={inputStyle} /></Field>
+      <Field label="Due Date"><input type="date" value={form.due_date ?? ''} onChange={e => updateForm({ due_date: e.target.value })} style={inputStyle} /></Field>
+      <Field label="Follow-up Date"><input type="date" value={form.follow_up_date ?? ''} onChange={e => updateForm({ follow_up_date: e.target.value })} style={inputStyle} /></Field>
+      <div style={{ gridColumn: compact ? '1 / -1' : 'span 2' }}>
+        <Field label={isRiskAssessment ? 'กิจกรรม/ความเสี่ยง' : 'เหตุการณ์'}>
+          {isRiskAssessment ? (
+            <input value={form.event_category ?? ''} onChange={e => updateForm({ event_category: e.target.value, name: e.target.value })} style={inputStyle} />
+          ) : (
+            <select value={form.event_category ?? ''} onChange={e => updateForm({ event_category: e.target.value, name: e.target.value })} style={inputStyle}><option value="">-</option>{NEAR_MISS_EVENTS.map(e => <option key={e} value={e}>{e}</option>)}</select>
+          )}
+        </Field>
+      </div>
+      <div style={{ gridColumn: '1 / -1' }}><Field label={isRiskAssessment ? 'Risk statement' : 'รายละเอียดเหตุการณ์'}><textarea value={form.event_detail ?? ''} onChange={e => updateForm({ event_detail: e.target.value, name: form.name || e.target.value.slice(0, 120) })} style={textareaStyle} /></Field></div>
+      <div style={{ gridColumn: '1 / -1' }}><Field label={isRiskAssessment ? 'Existing controls' : 'การแก้ไขเฉพาะหน้า'}><textarea value={form.immediate_correction ?? ''} onChange={e => updateForm({ immediate_correction: e.target.value })} style={textareaStyle} /></Field></div>
     </div>
   )
 }

@@ -25,11 +25,24 @@ export async function canEditRisk(actor: { role: string } | null) {
   return await getRiskPermission(actor.role) === 'edit'
 }
 
+export function canReviewRisk(actor: { role: string } | null) {
+  return actor?.role === 'Admin' || actor?.role === 'Manager'
+}
+
+function riskLevelText(level?: string | null) {
+  if (level === 'high') return 'สูง'
+  if (level === 'medium') return 'กลาง'
+  if (level === 'low') return 'ต่ำ'
+  return null
+}
+
 export function normalizeRiskPayload(input: Record<string, unknown>) {
   const likelihood = toInt(input.likelihood)
   const impact = toInt(input.impact)
   const score = riskScore(likelihood, impact)
   const severity = toText(input.severity_level)
+  const level = riskLevel(score) ?? input.level ?? 'low'
+  const isRiskAssessment = toText(input.event_type) === 'risk_assessment'
   const residualLikelihood = toInt(input.residual_likelihood)
   const residualImpact = toInt(input.residual_impact)
   const residualScore = riskScore(residualLikelihood, residualImpact)
@@ -38,8 +51,9 @@ export function normalizeRiskPayload(input: Record<string, unknown>) {
     ...input,
     likelihood,
     impact,
-    level: riskLevel(score) ?? input.level ?? 'low',
-    requires_rca: Boolean(input.requires_rca) || requiresRca(severity),
+    level,
+    severity_level: isRiskAssessment ? (severity || riskLevelText(level as string)) : severity,
+    requires_rca: Boolean(input.requires_rca) || (!isRiskAssessment && requiresRca(severity)),
     residual_likelihood: residualLikelihood,
     residual_impact: residualImpact,
     residual_score: residualScore,
