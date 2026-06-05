@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { canManageRisk, getRiskActor, getRiskPermission, normalizeRiskPayload } from '@/lib/risk-server'
+import { canEditRisk, getRiskActor, getRiskPermission, normalizeRiskPayload } from '@/lib/risk-server'
 
 const PAGE_SIZE = 1000
 const ACTION_ID_CHUNK_SIZE = 300
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canManageRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!await canEditRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const ids: number[] = Array.isArray(body.ids) ? body.ids.map(Number).filter(Number.isFinite) : []
@@ -124,7 +124,7 @@ export async function DELETE(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canManageRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!await canEditRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const parsed = riskSchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 422 })

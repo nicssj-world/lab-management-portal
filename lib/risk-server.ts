@@ -20,8 +20,9 @@ export async function getRiskPermission(role: string) {
   return perms['ความเสี่ยง / Rejection'] ?? 'none'
 }
 
-export function canManageRisk(actor: { role: string } | null) {
-  return actor?.role === 'Admin' || actor?.role === 'Manager'
+export async function canEditRisk(actor: { role: string } | null) {
+  if (!actor) return false
+  return await getRiskPermission(actor.role) === 'edit'
 }
 
 export function normalizeRiskPayload(input: Record<string, unknown>) {

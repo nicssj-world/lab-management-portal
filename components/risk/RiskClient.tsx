@@ -35,6 +35,7 @@ import {
 
 type TabId = 'dashboard' | 'smart' | 'ior' | 'register'
 type ImportMode = 'smart' | 'ior' | 'register'
+type RiskPermission = 'none' | 'view' | 'edit'
 type RiskWithActions = Risk & { actions: RiskAction[] }
 type FormState = Partial<Risk>
 type ActionDraft = Partial<RiskAction>
@@ -303,7 +304,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-export function RiskClient() {
+export function RiskClient({ permission }: { permission: RiskPermission }) {
+  const canEdit = permission === 'edit'
   const [tab, setTab] = useState<TabId>('dashboard')
   const [risks, setRisks] = useState<RiskWithActions[]>([])
   const [loading, setLoading] = useState(true)
@@ -405,10 +407,10 @@ export function RiskClient() {
           <div style={{ marginTop: 6, fontSize: 13, color: 'var(--muted)' }}>ติดตาม action plan, follow-up และ Residual Risk ตาม WI-G-OV06</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {tab !== 'dashboard' && (
+          {canEdit && tab !== 'dashboard' && (
             <Button variant="secondary" icon="upload" onClick={() => { setImportMode(tab === 'smart' ? 'smart' : tab === 'ior' ? 'ior' : 'register'); setShowImport(true) }}>Import</Button>
           )}
-          {(tab === 'ior' || tab === 'register') && (
+          {canEdit && (tab === 'ior' || tab === 'register') && (
             <Button variant="primary" icon="plus" onClick={() => setShowCreate(true)}>เพิ่มรายการ</Button>
           )}
         </div>
@@ -454,6 +456,7 @@ export function RiskClient() {
           setDepartment={setDepartment}
           onOpen={setPreviewing}
           onDeleted={() => void load()}
+          canEdit={canEdit}
         />
       )}
 
@@ -469,8 +472,9 @@ export function RiskClient() {
           setSeverity={setSeverity}
           department={department}
           setDepartment={setDepartment}
-          onOpen={setEditing}
+          onOpen={canEdit ? setEditing : setPreviewing}
           onDeleted={() => void load()}
+          canEdit={canEdit}
         />
       )}
 
@@ -486,15 +490,16 @@ export function RiskClient() {
           setSeverity={setSeverity}
           department={department}
           setDepartment={setDepartment}
-          onOpen={setEditing}
+          onOpen={canEdit ? setEditing : setPreviewing}
           onDeleted={() => void load()}
+          canEdit={canEdit}
         />
       )}
 
-      {showCreate && <RiskFormModal initialEventType={tab === 'register' ? 'risk_assessment' : 'near_miss'} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load(); setTab(tab === 'register' ? 'register' : 'ior') }} />}
+      {canEdit && showCreate && <RiskFormModal initialEventType={tab === 'register' ? 'risk_assessment' : 'near_miss'} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load(); setTab(tab === 'register' ? 'register' : 'ior') }} />}
       {previewing && <RiskEventPreviewModal risk={previewing} onClose={() => setPreviewing(null)} />}
-      {editing && <RiskDetailModal risk={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load() }} />}
-      {showImport && <RiskImportModal mode={importMode} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); void load(); setTab(importMode === 'smart' ? 'smart' : importMode === 'ior' ? 'ior' : 'register') }} />}
+      {canEdit && editing && <RiskDetailModal risk={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load() }} />}
+      {canEdit && showImport && <RiskImportModal mode={importMode} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); void load(); setTab(importMode === 'smart' ? 'smart' : importMode === 'ior' ? 'ior' : 'register') }} />}
     </div>
   )
 }
@@ -719,7 +724,7 @@ function RiskClientDashboardShape() {
   }
 }
 
-function RegisterTable({ title, risks, query, setQuery, status, setStatus, severity, setSeverity, department, setDepartment, onOpen, onDeleted }: {
+function RegisterTable({ title, risks, query, setQuery, status, setStatus, severity, setSeverity, department, setDepartment, onOpen, onDeleted, canEdit }: {
   title: string
   risks: RiskWithActions[]
   query: string
@@ -732,6 +737,7 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
   setDepartment: (v: string) => void
   onOpen: (risk: RiskWithActions) => void
   onDeleted: () => void
+  canEdit: boolean
 }) {
   const [year, setYear] = useState('')
   const [month, setMonth] = useState('')
@@ -837,7 +843,7 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
           <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>
             แสดง {fmt(pageStart)}-{fmt(pageEnd)} จาก {fmt(datedRisks.length)} เหตุการณ์
           </div>
-          {selected.size > 0 && (
+          {canEdit && selected.size > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA' }}>
               <span style={{ fontSize: 12, fontWeight: 800, color: '#B91C1C' }}>เลือก {fmt(selected.size)} รายการ</span>
               <button
@@ -868,15 +874,17 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1120, fontSize: 12.5 }}>
           <thead>
             <tr style={{ background: 'var(--surface-2)' }}>
-              <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', width: 40 }}>
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  ref={el => { if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected }}
-                  onChange={toggleAll}
-                  style={{ cursor: 'pointer', width: 15, height: 15, accentColor: 'var(--primary)' }}
-                />
-              </th>
+              {canEdit && (
+                <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', width: 40 }}>
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    ref={el => { if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected }}
+                    onChange={toggleAll}
+                    style={{ cursor: 'pointer', width: 15, height: 15, accentColor: 'var(--primary)' }}
+                  />
+                </th>
+              )}
               {['เลขที่', 'วันที่', 'เหตุการณ์', 'หน่วยงาน', 'RM', 'Initial', 'Residual', 'Trend', 'Owner', 'สถานะ'].map(h => (
                 <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--muted)', fontSize: 11, fontWeight: 900, borderBottom: '1px solid var(--border)' }}>{h}</th>
               ))}
@@ -895,14 +903,16 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
                   onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--surface-2)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = isSelected ? 'var(--primary-soft)' : 'transparent' }}
                 >
-                  <td style={{ ...td, width: 40 }} onClick={e => toggleOne(risk.id, e)}>
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => {}}
-                      style={{ cursor: 'pointer', width: 15, height: 15, accentColor: 'var(--primary)' }}
-                    />
-                  </td>
+                  {canEdit && (
+                    <td style={{ ...td, width: 40 }} onClick={e => toggleOne(risk.id, e)}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}}
+                        style={{ cursor: 'pointer', width: 15, height: 15, accentColor: 'var(--primary)' }}
+                      />
+                    </td>
+                  )}
                   <td style={td}>{riskNo(risk)}</td>
                   <td style={td}>{risk.event_date ?? risk.recorded_date ?? '—'}</td>
                   <td style={{ ...td, maxWidth: 340 }}>
@@ -919,7 +929,7 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
                 </tr>
               )
             })}
-            {datedRisks.length === 0 && <tr><td colSpan={11} style={{ padding: 34, textAlign: 'center', color: 'var(--muted)' }}>ไม่มีข้อมูล</td></tr>}
+            {datedRisks.length === 0 && <tr><td colSpan={canEdit ? 11 : 10} style={{ padding: 34, textAlign: 'center', color: 'var(--muted)' }}>ไม่มีข้อมูล</td></tr>}
           </tbody>
         </table>
       </div>

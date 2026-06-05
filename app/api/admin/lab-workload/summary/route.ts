@@ -124,6 +124,11 @@ function hasWorkloadMonthValues(payload: Payload | null, year: number, month: nu
   }))
 }
 
+function uploadWarningsForPayload(payload: Payload, uploadWarnings: string[], year: number, month: number) {
+  if (payload.source === 'local-etl' && hasWorkloadMonthValues(payload, year, month)) return []
+  return uploadWarnings
+}
+
 async function readLatestWorkloadPayload(year: number, month: number): Promise<Payload | null> {
   const { data, error } = await supabaseAdmin
     .from('analysis_summary_cache')
@@ -143,12 +148,12 @@ async function readLatestWorkloadPayload(year: number, month: number): Promise<P
     ?? null
 }
 
-function applySelectedHeatmaps(payload: Payload, heatmaps: HeatmapPayload, uploadWarnings: string[]) {
+function applySelectedHeatmaps(payload: Payload, heatmaps: HeatmapPayload, uploadWarnings: string[], year: number, month: number) {
   return {
     ...payload,
     heatmap: heatmaps.heatmap.length ? heatmaps.heatmap : payload.heatmap,
     phleb_heatmap: heatmaps.phleb_heatmap.length ? heatmaps.phleb_heatmap : payload.phleb_heatmap,
-    warnings: mergeWarnings(payload.warnings, uploadWarnings, heatmaps.heatmap.length || heatmaps.phleb_heatmap.length ? [] : heatmaps.warnings),
+    warnings: mergeWarnings(payload.warnings, uploadWarningsForPayload(payload, uploadWarnings, year, month), heatmaps.heatmap.length || heatmaps.phleb_heatmap.length ? [] : heatmaps.warnings),
   }
 }
 
@@ -1083,7 +1088,7 @@ export async function GET(req: NextRequest) {
     const fiscalYear = toGregorianYear(displayFiscalYear)
     const selectedYear = selectedMonth >= 10 ? fiscalYear - 1 : fiscalYear
     const uploadHealth = await fetchUploadHealth(selectedYear, selectedMonth)
-    const key = `v25|${displayFiscalYear}|${fiscalYear}|${selectedYear}|${selectedMonth}|${uploadHealth.version}`
+    const key = `v26|${displayFiscalYear}|${fiscalYear}|${selectedYear}|${selectedMonth}|${uploadHealth.version}`
     const hit = cache.get(key)
     if (hit && hit.expiresAt > Date.now()) {
       return NextResponse.json(hit.payload, { headers: { 'X-Lab-Workload-Cache': 'hit' } })
@@ -1091,9 +1096,9 @@ export async function GET(req: NextRequest) {
 
     const months = fiscalMonths(fiscalYear)
     const persistent = await readAnalysisCache<Payload>(CACHE_ENDPOINT, key)
-    if (persistent && !hasMissingHeatmapWarning(persistent)) {
+    if (persistent && !hasMissingHeatmapWarning(persistent) && hasWorkloadMonthValues(persistent, selectedYear, selectedMonth)) {
       const heatmaps = await fetchHeatmaps(selectedYear, selectedMonth)
-      const payload = applySelectedHeatmaps(persistent, heatmaps, uploadHealth.warnings)
+      const payload = applySelectedHeatmaps(persistent, heatmaps, uploadHealth.warnings, selectedYear, selectedMonth)
       cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
       return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'persistent' } })
     }
@@ -1101,7 +1106,7 @@ export async function GET(req: NextRequest) {
     const latestPersistent = await readLatestWorkloadPayload(selectedYear, selectedMonth)
     if (latestPersistent) {
       const heatmaps = await fetchHeatmaps(selectedYear, selectedMonth)
-      const payload = applySelectedHeatmaps(latestPersistent, heatmaps, uploadHealth.warnings)
+      const payload = applySelectedHeatmaps(latestPersistent, heatmaps, uploadHealth.warnings, selectedYear, selectedMonth)
       cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
       await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
       return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'latest-persistent' } })

@@ -18,7 +18,8 @@ export default async function RiskPage() {
   if (!profile) redirect('/login')
 
   const perms = await getRolePermissions(profile.role)
-  if ((perms['ความเสี่ยง / Rejection'] ?? 'none') === 'none') redirect('/staff/dashboard')
+  const permission = perms['ความเสี่ยง / Rejection'] ?? 'none'
+  if (permission === 'none') redirect('/staff/dashboard')
 
-  return <RiskClient />
+  return <RiskClient permission={permission} />
 }
