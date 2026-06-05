@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { canManageRisk, getRiskActor, normalizeRiskPayload } from '@/lib/risk-server'
+import { canEditRisk, getRiskActor, normalizeRiskPayload } from '@/lib/risk-server'
 import { mapIorStatusToStatus, normalizeIsoDate, requiresRca } from '@/lib/risk-utils'
 
 const rowSchema = z.object({
@@ -37,7 +37,7 @@ const rowSchema = z.object({
 export async function POST(req: NextRequest) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canManageRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!await canEditRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
   const rows = z.array(rowSchema).safeParse(body.rows)

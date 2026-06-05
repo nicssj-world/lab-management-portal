@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { canManageRisk, getRiskActor } from '@/lib/risk-server'
+import { canEditRisk, getRiskActor } from '@/lib/risk-server'
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canManageRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!await canEditRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const riskId = Number(id)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { canManageRisk, getRiskActor } from '@/lib/risk-server'
+import { canEditRisk, getRiskActor } from '@/lib/risk-server'
 
 const actionSchema = z.object({
   id: z.number().optional(),
@@ -25,7 +25,7 @@ type Params = { params: Promise<{ id: string }> }
 export async function POST(req: NextRequest, { params }: Params) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canManageRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!await canEditRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const parsed = actionSchema.safeParse(await req.json())
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 export async function PATCH(req: NextRequest, { params }: Params) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canManageRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!await canEditRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const parsed = actionSchema.partial().extend({ id: z.number() }).safeParse(await req.json())
@@ -68,7 +68,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canManageRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!await canEditRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const actionId = Number(req.nextUrl.searchParams.get('action_id'))
