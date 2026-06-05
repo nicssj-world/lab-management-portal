@@ -21,5 +21,5 @@ export default async function RiskPage() {
   const permission = perms['ความเสี่ยง / Rejection'] ?? 'none'
   if (permission === 'none') redirect('/staff/dashboard')
 
-  return <RiskClient permission={permission} />
+  return <RiskClient permission={permission} canReview={profile.role === 'Admin' || profile.role === 'Manager'} />
 }

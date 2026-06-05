@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { canEditRisk, getRiskActor, getRiskPermission, normalizeRiskPayload } from '@/lib/risk-server'
+import { canEditRisk, canReviewRisk, getRiskActor, getRiskPermission, normalizeRiskPayload } from '@/lib/risk-server'
 
 const patchSchema = z.record(z.string(), z.unknown())
 
@@ -21,7 +21,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!await canEditRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canReviewRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const parsed = patchSchema.safeParse(await req.json())
