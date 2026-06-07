@@ -1,19 +1,9 @@
-import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getRolePermissions } from '@/lib/permissions'
 import { DocumentSchema } from '@/lib/validations/document'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
-
-async function getActor() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data } = await supabaseAdmin
-    .from('profiles').select('id, role, doc_role').eq('id', user.id).single()
-  return data as { id: string; role: string; doc_role: string | null } | null
-}
+import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
@@ -24,27 +14,47 @@ function isDuplicateDocumentCodeError(err: { code?: string; message?: string }) 
     || (err.message ?? '').includes('documents_document_code_key')
 }
 
-const DOC_UPLOAD_ROLES = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer']
+const ALLOWED_SORT = new Set([
+  'document_code',
+  'title',
+  'type',
+  'status',
+  'visibility',
+  'department',
+  'revision',
+  'effective_date',
+  'review_date',
+  'created_at',
+  'updated_at',
+])
 
-async function canUploadDocument(role: string, docRole: string | null) {
-  if (role === 'Admin') return true
-  if (DOC_UPLOAD_ROLES.includes(docRole ?? role)) return true
-  const perms = await getRolePermissions(role)
-  return (perms['เอกสารคุณภาพ'] ?? 'none') === 'edit'
+function parsePositiveInt(value: string | null, fallback: number, max: number) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(Math.max(1, Math.trunc(parsed)), max)
+}
+
+function safeSearchTerm(value: string) {
+  return value.replace(/[%,()]/g, ' ').trim().slice(0, 100)
 }
 
 export async function GET(req: NextRequest) {
   try {
+    const actor = await getActor()
+    if (!actor) return jsonUnauthorized()
+    if (!(await canAccessDocuments(actor, 'view'))) return jsonForbidden()
+
     const sp = req.nextUrl.searchParams
     const type       = sp.get('type') ?? undefined
     const status     = sp.get('status') ?? undefined
     const visibility = sp.get('visibility') ?? undefined
     const department = sp.get('department') ?? undefined
-    const search     = sp.get('search') ?? undefined
-    const page       = Number(sp.get('page') ?? 1)
-    const pageSize   = Number(sp.get('pageSize') ?? 50)
-    const sortBy     = sp.get('sortBy') ?? 'updated_at'
-    const sortDir    = (sp.get('sortDir') ?? 'desc') as 'asc' | 'desc'
+    const search     = safeSearchTerm(sp.get('search') ?? '')
+    const page       = parsePositiveInt(sp.get('page'), 1, 100000)
+    const pageSize   = parsePositiveInt(sp.get('pageSize'), 50, 200)
+    const sortParam  = sp.get('sortBy') ?? 'updated_at'
+    const sortBy     = ALLOWED_SORT.has(sortParam) ? sortParam : 'updated_at'
+    const sortDir    = sp.get('sortDir') === 'asc' ? 'asc' : 'desc'
 
     const code = sp.get('code') ?? undefined
 
@@ -76,11 +86,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const actor = await getActor()
-  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!actor) return jsonUnauthorized()
 
-  if (!(await canUploadDocument(actor.role, actor.doc_role))) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  if (!(await canAccessDocuments(actor, 'edit'))) return jsonForbidden()
 
   try {
     const form = await req.formData()

@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 let browserClient: SupabaseClient | undefined
 let staleAuthHandlerInstalled = false
 
-function isInvalidRefreshTokenError(reason: unknown) {
+export function isInvalidRefreshTokenError(reason: unknown) {
   const message = reason instanceof Error
     ? reason.message
     : typeof reason === 'object' && reason && 'message' in reason
@@ -12,6 +12,12 @@ function isInvalidRefreshTokenError(reason: unknown) {
       : String(reason ?? '')
 
   return message.includes('Invalid Refresh Token') || message.includes('Refresh Token Not Found')
+}
+
+export function recoverStaleAuthSession(reason: unknown) {
+  if (!isInvalidRefreshTokenError(reason)) return false
+  clearStaleAuthSession()
+  return true
 }
 
 export function clearStaleAuthSession() {
@@ -36,9 +42,8 @@ function installStaleAuthHandler() {
   staleAuthHandlerInstalled = true
 
   window.addEventListener('unhandledrejection', (event) => {
-    if (!isInvalidRefreshTokenError(event.reason)) return
+    if (!recoverStaleAuthSession(event.reason)) return
     event.preventDefault()
-    clearStaleAuthSession()
     if (window.location.pathname !== '/login') {
       window.location.assign('/login')
     }

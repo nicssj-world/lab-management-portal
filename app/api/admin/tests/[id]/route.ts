@@ -1,20 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { testSchema } from '@/lib/validations/test-schema'
 import { getTestDetail, updateTest, upsertReferenceRanges } from '@/lib/queries/tests'
 import { referenceRangeSchema } from '@/lib/validations/test-schema'
-import { getRolePermissions } from '@/lib/permissions'
 import { canDeleteTests, canEditTests } from '@/lib/tests/permissions'
 import { z } from 'zod'
-
-async function getActor() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data } = await supabaseAdmin.from('profiles').select('id, role, doc_role').eq('id', user.id).single()
-  return data as { id: string; role: string; doc_role: string | null } | null
-}
+import { getActor, getPermissionLevel, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 
 function toMsg(err: unknown): string {
   if (err && typeof err === 'object') {
@@ -32,6 +23,10 @@ type Params = { params: Promise<{ id: string }> }
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
+    const actor = await getActor()
+    if (!actor) return jsonUnauthorized()
+    if ((await getPermissionLevel(actor, 'รายการตรวจ')) === 'none') return jsonForbidden()
+
     const { id } = await params
     const detail = await getTestDetail(supabaseAdmin, Number(id))
     return NextResponse.json(detail)
@@ -43,9 +38,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const actor = await getActor()
-    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const perms = await getRolePermissions(actor.role)
-    if (!canEditTests(actor, perms['รายการตรวจ'] ?? 'none')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!actor) return jsonUnauthorized()
+    const permissionLevel = await getPermissionLevel(actor, 'รายการตรวจ')
+    if (!canEditTests(actor, permissionLevel)) return jsonForbidden()
 
     const { id } = await params
     const body = await req.json()
@@ -105,9 +100,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
     const actor = await getActor()
-    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const perms = await getRolePermissions(actor.role)
-    if (!canDeleteTests(actor, perms['รายการตรวจ'] ?? 'none')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!actor) return jsonUnauthorized()
+    const permissionLevel = await getPermissionLevel(actor, 'รายการตรวจ')
+    if (!canDeleteTests(actor, permissionLevel)) return jsonForbidden()
 
     const { id } = await params
     const { data: test } = await supabaseAdmin.from('tests').select('code').eq('id', Number(id)).single()

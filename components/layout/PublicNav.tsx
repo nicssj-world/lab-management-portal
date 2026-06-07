@@ -7,7 +7,7 @@ import { Logo } from '@/components/lab/Logo'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
-import { createClient } from '@/lib/supabase/client'
+import { clearStaleAuthSession, createClient, recoverStaleAuthSession } from '@/lib/supabase/client'
 
 const NAV_ITEMS = [
   { href: '/',        th: 'หน้าแรก',              en: 'Home' },
@@ -31,15 +31,15 @@ export function PublicNav() {
     supabase.auth.getUser()
       .then(async ({ data: { user }, error }) => {
         if (error) {
-          await supabase.auth.signOut({ scope: 'local' })
+          if (!recoverStaleAuthSession(error)) clearStaleAuthSession()
           return
         }
         if (!user) return
         const { data } = await supabase.from('profiles').select('name, role, avatar_url').eq('id', user.id).single()
         if (data) setSessionUser({ name: data.name, role: data.role, avatar_url: data.avatar_url ?? null })
       })
-      .catch(async () => {
-        await supabase.auth.signOut({ scope: 'local' })
+      .catch((error) => {
+        if (!recoverStaleAuthSession(error)) clearStaleAuthSession()
       })
   }, [])
 

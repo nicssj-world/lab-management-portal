@@ -7,6 +7,7 @@ import { Icon } from '@/components/ui/Icon'
 import { NewsShareButton } from '@/components/news/NewsShareButton'
 import { CAT_MAP, CATEGORIES } from '@/lib/validations/news'
 import type { News } from '@/lib/supabase/types'
+import { sanitizeRichHtml } from '@/lib/html-sanitize'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,7 +79,8 @@ export default async function NewsDetailPage({ params }: Props) {
   }
 
   const cat = CAT_MAP[news.cat as keyof typeof CAT_MAP]
-  const tags = extractTags(news.body, news.cat)
+  const safeBody = sanitizeRichHtml(news.body)
+  const tags = extractTags(safeBody, news.cat)
   const initial = (news.author ?? 'ก').charAt(0).toUpperCase()
   const code = newsCode(news.id, news.created_at)
 
@@ -205,10 +207,10 @@ export default async function NewsDetailPage({ params }: Props) {
         </div>
 
         {/* Body */}
-        {news.body ? (
+        {safeBody ? (
           <div
             style={{ fontSize: 15, lineHeight: 1.9, color: 'var(--ink)', marginBottom: 32, whiteSpace: 'pre-wrap' }}
-            dangerouslySetInnerHTML={{ __html: news.body }}
+            dangerouslySetInnerHTML={{ __html: safeBody }}
           />
         ) : (
           <div style={{ height: 32 }} />

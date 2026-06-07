@@ -48,6 +48,9 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 
   // Default: presigned download URL
+  const perms = await getRolePermissions(actor.role)
+  if ((perms['สัญญา'] ?? 'none') === 'none') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const { data, error } = await supabaseAdmin
     .from('contracts').select('file_url').eq('id', Number(id)).single()
 
@@ -72,6 +75,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params
   const { key } = await req.json()
   if (!key || typeof key !== 'string') return NextResponse.json({ error: 'ไม่พบ key' }, { status: 422 })
+  if (!key.startsWith(`contracts/${id}/`)) return NextResponse.json({ error: 'key ไม่ถูกต้อง' }, { status: 422 })
 
   // Delete old file from R2 if exists
   const { data: existing } = await supabaseAdmin.from('contracts').select('file_url').eq('id', Number(id)).single()

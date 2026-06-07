@@ -1,23 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
-
-async function getActor() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data } = await supabaseAdmin.from('profiles').select('id, role').eq('id', user.id).single()
-  return data as { id: string; role: string } | null
-}
+import { canEditTests } from '@/lib/tests/permissions'
+import { getActor, getPermissionLevel, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 
 type Params = { params: Promise<{ id: string }> }
+const MAX_FILE_SIZE = 50 * 1024 * 1024
 
 export async function GET(_req: NextRequest, { params }: Params) {
+  const actor = await getActor()
+  if (!actor) return jsonUnauthorized()
+  if ((await getPermissionLevel(actor, 'รายการตรวจ')) === 'none') return jsonForbidden()
+
   const { id } = await params
+  const testId = Number(id)
+  if (!Number.isInteger(testId) || testId <= 0) return NextResponse.json({ error: 'Invalid test id' }, { status: 422 })
+
   const { data, error } = await supabaseAdmin
-    .from('test_documents').select('*').eq('test_id', Number(id)).order('created_at')
+    .from('test_documents').select('*').eq('test_id', testId).order('created_at')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data ?? [])
 }
@@ -25,18 +26,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const actor = await getActor()
-    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    if (!['Admin', 'Manager'].includes(actor.role))
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!actor) return jsonUnauthorized()
+    const permissionLevel = await getPermissionLevel(actor, 'รายการตรวจ')
+    if (!canEditTests(actor, permissionLevel)) return jsonForbidden()
 
     const { id } = await params
     const testId = Number(id)
+    if (!Number.isInteger(testId) || testId <= 0) return NextResponse.json({ error: 'Invalid test id' }, { status: 422 })
 
     const formData = await req.formData()
     const file = formData.get('file') as File | null
     const docType = (formData.get('doc_type') as string) || 'Other'
 
     if (!file) return NextResponse.json({ error: 'ไม่มีไฟล์' }, { status: 422 })
+    if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'ขนาดไฟล์เกิน 50 MB' }, { status: 422 })
 
     const ext = file.name.split('.').pop() ?? ''
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')

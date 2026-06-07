@@ -4,8 +4,8 @@ import { insertTATBatch } from '@/lib/queries/tat'
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
   const year = parseInt(searchParams.get('year') ?? '')
@@ -33,13 +33,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
-    .eq('id', session.user.id)
+    .eq('id', user.id)
     .single()
 
   if (!['Manager', 'Admin'].includes(profile?.role ?? '')) {
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       }[]
     }
 
-    const result = await insertTATBatch(supabase, { ...batchMeta, imported_by: session.user.id }, entries)
+    const result = await insertTATBatch(supabase, { ...batchMeta, imported_by: user.id }, entries)
     return NextResponse.json(result)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'

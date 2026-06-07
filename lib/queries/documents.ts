@@ -15,6 +15,20 @@ export interface DocumentFilters {
   sortDir?:    'asc' | 'desc'
 }
 
+const ALLOWED_SORT = new Set([
+  'document_code',
+  'title',
+  'type',
+  'status',
+  'visibility',
+  'department',
+  'revision',
+  'effective_date',
+  'review_date',
+  'created_at',
+  'updated_at',
+])
+
 export async function getDocuments(
   _supabase: SupabaseClient,
   filters: DocumentFilters = {}
@@ -24,6 +38,7 @@ export async function getDocuments(
     page = 1, pageSize = 50,
     sortBy = 'updated_at', sortDir = 'desc',
   } = filters
+  const sortColumn = ALLOWED_SORT.has(sortBy) ? sortBy : 'updated_at'
 
   let query = supabaseAdmin
     .from('documents')
@@ -39,7 +54,7 @@ export async function getDocuments(
   const to   = from + pageSize - 1
 
   const { data, error, count } = await query
-    .order(sortBy, { ascending: sortDir === 'asc' })
+    .order(sortColumn, { ascending: sortDir === 'asc' })
     .range(from, to)
 
   if (error) throw error

@@ -10,8 +10,8 @@ import { CAT_MAP } from '@/lib/validations/news'
 export default async function PublicHome() {
   const supabase = await createClient()
   const [categories, featuredNews] = await Promise.all([
-    getCategories(supabase),
-    getNews(supabase, { publishedOnly: true, limit: 5 }),
+    getCategories(supabase).catch(() => []),
+    getNews(supabase, { publishedOnly: true, limit: 5 }).catch(() => []),
   ])
 
   const outLabCat = categories.find(c =>

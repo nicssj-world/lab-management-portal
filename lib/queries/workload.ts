@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { WorkloadDepartment, WorkloadEntry } from '@/lib/supabase/types'
+import { getFiscalMonths } from '@/lib/kpi-utils'
 
 export interface WorkloadSummaryRow {
   dept_id: number
@@ -21,11 +22,38 @@ export interface WorkloadDetailRow {
   pct: number
 }
 
+export interface WorkloadAnnualDetailMonth {
+  in_time_count: number
+  total_count: number
+  pct: number
+}
+
+export interface WorkloadAnnualDetailRow {
+  test_id: number
+  ephis_code: string | null
+  test_name: string
+  price: number | null
+  months: Record<number, WorkloadAnnualDetailMonth>
+  in_time_count: number
+  total_count: number
+  pct: number
+}
+
 export interface WorkloadTrendRow {
   month: number
   dept_code: string
   pct: number
   total_count: number
+}
+
+function calcPct(inTime: number, total: number) {
+  return total > 0 ? Math.round((inTime / total) * 100 * 10) / 10 : 0
+}
+
+function emptyAnnualMonths(): Record<number, WorkloadAnnualDetailMonth> {
+  return Object.fromEntries(
+    getFiscalMonths().map((month) => [month, { in_time_count: 0, total_count: 0, pct: 0 }])
+  ) as Record<number, WorkloadAnnualDetailMonth>
 }
 
 export async function getWorkloadSummary(
@@ -100,6 +128,79 @@ export async function getDeptDetail(
     total_count: row.total_count,
     pct: row.total_count > 0 ? Math.round((row.in_time_count / row.total_count) * 100 * 10) / 10 : 0,
   }))
+}
+
+export async function getDeptAnnualDetail(
+  supabase: SupabaseClient,
+  deptCode: string,
+  year: number
+): Promise<WorkloadAnnualDetailRow[]> {
+  const { data: tests, error: testsError } = await supabase
+    .from('workload_tests')
+    .select(`
+      id,
+      ephis_code,
+      test_name,
+      price,
+      workload_departments!inner(code)
+    `)
+    .eq('workload_departments.code', deptCode)
+    .order('test_name')
+  if (testsError) throw testsError
+
+  const testRows = (tests ?? []) as {
+    id: number
+    ephis_code: string | null
+    test_name: string
+    price: number | null
+  }[]
+  const testIds = testRows.map((row) => row.id)
+  if (testIds.length === 0) return []
+
+  const rowMap = new Map<number, WorkloadAnnualDetailRow>()
+  for (const test of testRows) {
+    rowMap.set(test.id, {
+      test_id: test.id,
+      ephis_code: test.ephis_code,
+      test_name: test.test_name,
+      price: test.price,
+      months: emptyAnnualMonths(),
+      in_time_count: 0,
+      total_count: 0,
+      pct: 0,
+    })
+  }
+
+  const { data: entries, error: entriesError } = await supabase
+    .from('workload_entries')
+    .select('test_id, month, in_time_count, total_count')
+    .eq('fiscal_year', year)
+    .in('test_id', testIds)
+  if (entriesError) throw entriesError
+
+  for (const entry of entries ?? []) {
+    const row = rowMap.get(Number(entry.test_id))
+    if (!row) continue
+    const month = Number(entry.month)
+    const current = row.months[month] ?? { in_time_count: 0, total_count: 0, pct: 0 }
+    current.in_time_count += Number(entry.in_time_count ?? 0)
+    current.total_count += Number(entry.total_count ?? 0)
+    row.months[month] = current
+    row.in_time_count += Number(entry.in_time_count ?? 0)
+    row.total_count += Number(entry.total_count ?? 0)
+  }
+
+  return Array.from(rowMap.values())
+    .map((row) => {
+      for (const month of getFiscalMonths()) {
+        const value = row.months[month]
+        value.pct = calcPct(value.in_time_count, value.total_count)
+      }
+      row.pct = calcPct(row.in_time_count, row.total_count)
+      return row
+    })
+    .filter((row) => row.total_count > 0)
+    .sort((a, b) => b.total_count - a.total_count || a.test_name.localeCompare(b.test_name))
 }
 
 export async function getMonthlyTrend(
