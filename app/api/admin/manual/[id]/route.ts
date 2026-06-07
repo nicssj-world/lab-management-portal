@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-
-async function getActor() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data } = await supabaseAdmin
-    .from('profiles').select('id, role').eq('id', user.id).single()
-  return data as { id: string; role: string } | null
-}
+import { getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
+import { sanitizeRichHtml } from '@/lib/html-sanitize'
 
 export async function GET(
   _req: NextRequest,
@@ -30,9 +22,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const actor = await getActor()
-  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!actor) return jsonUnauthorized()
   if (!['Admin', 'Manager'].includes(actor.role))
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return jsonForbidden()
 
   const { id } = await params
   const body = await req.json()
@@ -40,7 +32,13 @@ export async function PATCH(
 
   const { data, error } = await supabaseAdmin
     .from('manual_sections')
-    .upsert({ id, body_html_th, body_html_en, updated_at: new Date().toISOString(), updated_by: actor.id })
+    .upsert({
+      id,
+      body_html_th: sanitizeRichHtml(body_html_th),
+      body_html_en: sanitizeRichHtml(body_html_en),
+      updated_at: new Date().toISOString(),
+      updated_by: actor.id,
+    })
     .select('id, body_html_th, body_html_en, updated_at')
     .single()
 

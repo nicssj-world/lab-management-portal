@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
+import { sanitizeRichHtml } from '@/lib/html-sanitize'
 import { MANUAL_SECTIONS, PHONE_DIRECTORY } from './data'
 import { ManualHome } from './sections/ManualHome'
 import { ManualCollection } from './sections/ManualCollection'
@@ -128,7 +129,7 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
   useEffect(() => {
     if (!editMode || !bodyRef.current) return
     const db = localSections[activeSection]
-    bodyRef.current.innerHTML = editLang === 'th' ? (db?.th ?? '') : (db?.en ?? '')
+    bodyRef.current.innerHTML = sanitizeRichHtml(editLang === 'th' ? (db?.th ?? '') : (db?.en ?? ''))
   }, [editMode, editLang, activeSection]) // eslint-disable-line
 
   function syncBody() {
@@ -203,12 +204,18 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
     setSaving(true)
     try {
       const sec = localSections[activeSection] ?? { th: '', en: '' }
+      const clean = {
+        th: sanitizeRichHtml(sec.th),
+        en: sanitizeRichHtml(sec.en),
+      }
       const res = await fetch(`/api/admin/manual/${activeSection}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body_html_th: sec.th, body_html_en: sec.en }),
+        body: JSON.stringify({ body_html_th: clean.th, body_html_en: clean.en }),
       })
       if (!res.ok) { toast((await res.json()).error ?? 'บันทึกไม่สำเร็จ', false); return }
+      setLocalSections(prev => ({ ...prev, [activeSection]: clean }))
+      if (bodyRef.current) bodyRef.current.innerHTML = editLang === 'th' ? clean.th : clean.en
       toast('บันทึกเรียบร้อยแล้ว')
       setEditMode(false)
     } catch { toast('เกิดข้อผิดพลาด', false) }
@@ -223,7 +230,7 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
 
   // What to show in the content area
   const db = localSections[activeSection]
-  const displayHtml = lang === 'th' ? db?.th : db?.en
+  const displayHtml = sanitizeRichHtml(lang === 'th' ? db?.th : db?.en)
   const hasCustomContent = !!(db?.th?.trim() || db?.en?.trim())
 
   return (
@@ -508,6 +515,13 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
               {/* Editable body */}
               <div ref={bodyRef} contentEditable suppressContentEditableWarning
                 onInput={syncBody}
+                onPaste={e => {
+                  const html = e.clipboardData.getData('text/html')
+                  if (!html) return
+                  e.preventDefault()
+                  document.execCommand('insertHTML', false, sanitizeRichHtml(html))
+                  syncBody()
+                }}
                 onKeyUp={() => setFmtState({ bold: document.queryCommandState('bold'), italic: document.queryCommandState('italic'), underline: document.queryCommandState('underline') })}
                 data-placeholder="พิมพ์เนื้อหาที่นี่..."
                 style={{ minHeight: 300, padding: '16px 20px', fontSize: 14, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', outline: 'none', lineHeight: 1.75, cursor: 'text' }}

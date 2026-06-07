@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { RESOURCES } from '@/lib/permission-resources'
+import { normalizeRole } from '@/lib/roles'
 
 export type { ResourceKey } from '@/lib/permission-resources'
 export { RESOURCES } from '@/lib/permission-resources'
@@ -8,14 +9,15 @@ export type PermLevel = 'none' | 'view' | 'edit'
 export type Permissions = Record<string, PermLevel>
 
 export async function getRolePermissions(role: string): Promise<Permissions> {
-  if (role === 'Admin') {
+  const normalizedRole = normalizeRole(role)
+  if (normalizedRole === 'Admin') {
     return Object.fromEntries(RESOURCES.map(r => [r, 'edit' as PermLevel]))
   }
 
   const { data } = await supabaseAdmin
     .from('role_permissions')
     .select('resource')
-    .eq('role', role)
+    .eq('role', normalizedRole)
 
   const perms: Permissions = {}
   for (const row of (data ?? [])) {

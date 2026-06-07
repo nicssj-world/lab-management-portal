@@ -40,9 +40,11 @@ function isValidDocType(t: unknown): t is DocType {
 
 // GET ?doc_type=... → presigned download URL
 export async function GET(req: NextRequest, { params }: Params) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const actor = await getActor()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const perms = await getRolePermissions(actor.role)
+  if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') === 'none')
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const docType = req.nextUrl.searchParams.get('doc_type')
@@ -98,6 +100,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params
   const { doc_type, key } = await req.json()
   if (!isValidDocType(doc_type) || !key) return NextResponse.json({ error: 'ข้อมูลไม่ครบ' }, { status: 422 })
+  if (typeof key !== 'string') return NextResponse.json({ error: 'key ไม่ถูกต้อง' }, { status: 422 })
+  if (!key.startsWith(`equipment/${id}/docs/${doc_type}/`)) return NextResponse.json({ error: 'key ไม่ถูกต้อง' }, { status: 422 })
 
   const col = DOC_COLUMN[doc_type]
   const { data: eq } = await supabaseAdmin.from('equipment').select(col).eq('id', id).single()

@@ -4,8 +4,8 @@ import { getDashboard, upsertEntries } from '@/lib/queries/kpi'
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
   const year = parseInt(searchParams.get('year') ?? '0', 10)
@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { entries } = await request.json()
   if (!Array.isArray(entries)) return NextResponse.json({ error: 'entries must be an array' }, { status: 400 })

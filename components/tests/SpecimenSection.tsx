@@ -1,4 +1,5 @@
 import type { Test } from '@/lib/supabase/types'
+import { sanitizeRichHtml } from '@/lib/html-sanitize'
 
 interface Props { test: Test }
 
@@ -36,6 +37,7 @@ function Row({ label, value }: { label: string; value: string | null | undefined
 export function SpecimenSection({ test }: Props) {
   const hasData = test.tube || test.stability || test.reject || test.transport_condition || test.specimen_note
   const showTubeIcon = test.tube ? TUBE_ICON_NAMES.includes(test.tube) : false
+  const safeSpecimenNote = sanitizeRichHtml(test.specimen_note)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -67,10 +69,10 @@ export function SpecimenSection({ test }: Props) {
       <Row label="การเก็บรักษาหลังตรวจ" value={test.stability} />
       <Row label="เงื่อนไขปฏิเสธ" value={test.reject} />
       <Row label="เงื่อนไขการขนส่ง" value={test.transport_condition} />
-      {test.specimen_note && (
+      {safeSpecimenNote && (
         <div className="specimen-detail-row" style={{ display: 'flex', gap: 12, paddingBottom: 10, marginBottom: 10, borderBottom: '1px solid var(--border)' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)', minWidth: 140, flexShrink: 0 }}>รายละเอียดอื่นๆ</span>
-          <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: test.specimen_note }} />
+          <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: safeSpecimenNote }} />
         </div>
       )}
       {!hasData && (

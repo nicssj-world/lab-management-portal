@@ -65,6 +65,7 @@ interface SummaryData {
   trend: TrendRow[]
   filter_options: FilterOptions
 }
+type SummaryView = 'overview' | 'phlebotomy' | 'lab'
 
 const DOW_LABELS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 const HIDDEN_ZONES = new Set(['ช่อง 21', 'ช่อง 2', 'ช่อง 5', 'ช่อง 7', 'ช่อง 3', 'ช่อง 8', 'ช่อง 9'])
@@ -132,7 +133,8 @@ function KpiRingStat({ label, pct, avgValue, avgUnit, color }: {
 }) {
   const r = 32
   const circ = 2 * Math.PI * r
-  const clamped = Math.max(0, Math.min(100, pct))
+  const safePct = Number.isFinite(pct) ? pct : 0
+  const clamped = Math.max(0, Math.min(100, safePct))
   const offset = circ * (1 - clamped / 100)
   return (
     <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 18px' }}>
@@ -435,7 +437,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   const abortRef = useRef<AbortController | null>(null)
 
   const fetchData = useCallback(async (
-    y: number, m: number, ls: string, w: string, p: string, tn: string, lz: string
+    view: SummaryView, y: number, m: number, ls: string, w: string, p: string, tn: string, lz: string
   ) => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
@@ -443,12 +445,13 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
     let usedCache = false
     try {
       const params = new URLSearchParams({ year: String(y), month: String(m) })
+      params.set('view', view)
       if (ls) params.set('lab_section', ls)
       if (w)  params.set('ward', w)
       if (p)  params.set('priority', p)
       if (tn) params.set('test_name', tn)
       if (lz) params.set('labzone_name', lz)
-      const cacheKey = `tat-summary:v2:${params.toString()}`
+      const cacheKey = `tat-summary:v5:${params.toString()}`
       const cached = readTatClientCache(cacheKey)
       if (cached) {
         usedCache = true
@@ -469,13 +472,24 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
     }
   }, [])
 
-  useEffect(() => {
-    fetchData(gregorianYear, month, labSection, ward, priority, testName, labzone)
-  }, [gregorianYear, month, labSection, ward, priority, testName, labzone, fetchData])
+  const requestView: SummaryView =
+    activeTab === 'lab' && (labSection || ward || priority || testName) ? 'lab' :
+    activeTab === 'phlebotomy' && labzone ? 'phlebotomy' :
+    'overview'
 
   useEffect(() => {
+    fetchData(requestView, gregorianYear, month, labSection, ward, priority, testName, labzone)
+  }, [requestView, gregorianYear, month, labSection, ward, priority, testName, labzone, fetchData])
+
+  useEffect(() => {
+    if (activeTab !== 'overview') {
+      setUrgentLabTrend([])
+      return
+    }
+
     const ctrl = new AbortController()
     const params = new URLSearchParams({ year: String(gregorianYear), month: String(month), priority: 'ด่วน' })
+    params.set('view', 'overview')
     if (labSection) params.set('lab_section', labSection)
     if (ward) params.set('ward', ward)
     if (testName) params.set('test_name', testName)
@@ -491,13 +505,13 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
       })
 
     return () => ctrl.abort()
-  }, [gregorianYear, month, labSection, ward, testName])
+  }, [activeTab, gregorianYear, month, labSection, ward, testName])
 
   useEffect(() => {
     if (data && !labzone) {
       const src = activeTab === 'phlebotomy'
-        ? (data.filter_options.phleb_labzone_names ?? [])
-        : (data.filter_options.labzone_names ?? [])
+        ? (data.filter_options?.phleb_labzone_names ?? [])
+        : (data.filter_options?.labzone_names ?? [])
       setAllLabzones(activeTab === 'phlebotomy'
         ? toPhlebLabzoneOptions(src)
         : src.filter(lz => !HIDDEN_ZONES.has(lz))
@@ -538,8 +552,8 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   const labzoneOptions = allLabzones.length > 0
     ? allLabzones
     : activeTab === 'phlebotomy'
-      ? toPhlebLabzoneOptions(data?.filter_options.phleb_labzone_names ?? [])
-      : (data?.filter_options.labzone_names ?? []).filter(lz => !HIDDEN_ZONES.has(lz))
+      ? toPhlebLabzoneOptions(data?.filter_options?.phleb_labzone_names ?? [])
+      : (data?.filter_options?.labzone_names ?? []).filter(lz => !HIDDEN_ZONES.has(lz))
 
   const labzoneData = (data?.by_labzone ?? []).filter(r => !HIDDEN_ZONES.has(r.labzone_name))
   const phlebLabzoneData = aggregatePhlebLabzones(data?.by_labzone_phleb ?? [])
@@ -593,7 +607,6 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   }
 
   const activeFilterCount = [labSection, ward, priority, testName, labzone].filter(Boolean).length
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <style>{`
@@ -683,14 +696,14 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
         {activeTab !== 'phlebotomy' && (
           <FilterSelect value={labSection} onChange={handleLabSectionChange}>
             <option value="">แผนก Lab ทั้งหมด</option>
-            {(data?.filter_options.lab_sections ?? []).map(s => <option key={s} value={s}>{s}</option>)}
+            {(data?.filter_options?.lab_sections ?? []).map(s => <option key={s} value={s}>{s}</option>)}
           </FilterSelect>
         )}
 
         {activeTab === 'lab' && (
           <FilterSelect value={ward} onChange={handleWardChange}>
             <option value="">หอผู้ป่วยทั้งหมด</option>
-            {(data?.filter_options.wards ?? []).map(w => <option key={w} value={w}>{w}</option>)}
+            {(data?.filter_options?.wards ?? []).map(w => <option key={w} value={w}>{w}</option>)}
           </FilterSelect>
         )}
 
@@ -705,7 +718,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
         {activeTab === 'lab' && (
           <FilterSelect value={testName} onChange={setTestName}>
             <option value="">ทุกประเภทการตรวจ</option>
-            {(data?.filter_options.test_names ?? []).map(t => <option key={t} value={t}>{t}</option>)}
+            {(data?.filter_options?.test_names ?? []).map(t => <option key={t} value={t}>{t}</option>)}
           </FilterSelect>
         )}
 
@@ -979,25 +992,25 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
                 <KpiBigStat
                   label="จำนวนตัวอย่าง (LN)"
-                  value={(kpi.sample_count ?? kpi.total_count).toLocaleString()}
+                  value={(kpi.sample_count ?? kpi.total_count ?? 0).toLocaleString()}
                   iconBg="rgba(147,51,234,.12)"
                   icon="beaker"
                 />
                 <KpiBigStat
                   label="TAT เฉลี่ย (รับ→ผล)"
-                  value={formatDuration(kpi.avg_tat)}
-                  sub={kpi.median_tat > 0 ? `มัธยฐาน ${formatDuration(kpi.median_tat)}` : undefined}
+                  value={formatDuration(kpi.avg_tat ?? 0)}
+                  sub={(kpi.median_tat ?? 0) > 0 ? `มัธยฐาน ${formatDuration(kpi.median_tat)}` : undefined}
                   iconBg="rgba(30,95,173,.12)"
                   icon="clock"
                 />
                 <KpiRingStat
                   label={`% ตามเป้าหมายราย test (${(kpi.target_count ?? 0).toLocaleString()} มี target)`}
-                  pct={kpi.pct_within_target}
+                  pct={kpi.pct_within_target ?? 0}
                   color="#16A34A"
                 />
                 <KpiRingStat
                   label="% ไม่ผ่านตามเป้าหมาย"
-                  pct={Math.max(0, +(100 - kpi.pct_within_target).toFixed(1))}
+                  pct={Math.max(0, +(100 - (kpi.pct_within_target ?? 0)).toFixed(1))}
                   color="#DC2626"
                 />
               </div>

@@ -1,19 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { testSchema, referenceRangeSchema } from '@/lib/validations/test-schema'
 import { getTests, createTest, upsertReferenceRanges } from '@/lib/queries/tests'
-import { getRolePermissions } from '@/lib/permissions'
 import { canEditTests } from '@/lib/tests/permissions'
 import { z } from 'zod'
-
-async function getActor() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data } = await supabaseAdmin.from('profiles').select('id, role, doc_role').eq('id', user.id).single()
-  return data as { id: string; role: string; doc_role: string | null } | null
-}
+import { getActor, getPermissionLevel, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 
 function toMsg(err: unknown): string {
   if (err && typeof err === 'object') {
@@ -29,6 +20,10 @@ function norm(v: string | null | undefined) {
 
 export async function GET(req: NextRequest) {
   try {
+    const actor = await getActor()
+    if (!actor) return jsonUnauthorized()
+    if ((await getPermissionLevel(actor, 'รายการตรวจ')) === 'none') return jsonForbidden()
+
     const sp = req.nextUrl.searchParams
     const activeParam = sp.get('active')
     const sortDir = sp.get('sortDir')
@@ -51,9 +46,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const actor = await getActor()
-    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const perms = await getRolePermissions(actor.role)
-    if (!canEditTests(actor, perms['รายการตรวจ'] ?? 'none')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!actor) return jsonUnauthorized()
+    const permissionLevel = await getPermissionLevel(actor, 'รายการตรวจ')
+    if (!canEditTests(actor, permissionLevel)) return jsonForbidden()
 
     const body = await req.json()
     const { referenceRanges: rawRanges, ...rest } = body

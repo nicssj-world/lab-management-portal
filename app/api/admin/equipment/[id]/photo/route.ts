@@ -20,9 +20,11 @@ interface Params { params: Promise<{ id: string }> }
 // GET → presigned download URL
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const actor = await getActor()
+    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const perms = await getRolePermissions(actor.role)
+    if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') === 'none')
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { id } = await params
     const { data: eq, error } = await supabaseAdmin.from('equipment').select('photo_url').eq('id', id).single()
@@ -80,7 +82,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const { id } = await params
     const { key } = await req.json()
-    if (!key) return NextResponse.json({ error: 'ไม่พบ key' }, { status: 422 })
+    if (!key || typeof key !== 'string') return NextResponse.json({ error: 'ไม่พบ key' }, { status: 422 })
+    if (!key.startsWith(`equipment/${id}/photo/`)) return NextResponse.json({ error: 'key ไม่ถูกต้อง' }, { status: 422 })
 
     const { data: eq } = await supabaseAdmin.from('equipment').select('photo_url').eq('id', id).single()
     const oldKey = eq?.photo_url

@@ -1,6 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { redirect } from 'next/navigation'
 import { getAuditLog, type AuditLogWithUser } from '@/lib/queries/admin'
+import { getRolePermissions } from '@/lib/permissions'
+import { normalizeRole } from '@/lib/roles'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { StickyScroll } from '@/components/ui/StickyScroll'
@@ -10,13 +13,18 @@ import { PermissionsMatrix } from './PermissionsMatrix'
 export default async function AdminPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
   const { data: actor } = await supabase
     .from('profiles')
     .select('role')
-    .eq('id', user!.id)
+    .eq('id', user.id)
     .single()
 
-  const isAdmin = actor?.role?.toLowerCase() === 'admin'
+  const role = normalizeRole(actor?.role)
+  const permissions = role ? await getRolePermissions(role) : {}
+  const isAdmin = (permissions['User Management'] ?? 'none') === 'edit'
+  if (!isAdmin) redirect('/staff/dashboard')
 
   // Count with the admin client so RLS does not reduce the total to the current profile.
   // .is('deleted_at', null) only works after user-management-migration.sql has been run.

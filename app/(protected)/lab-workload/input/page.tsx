@@ -10,12 +10,12 @@ import { TabsClient } from './TabsClient'
 
 export default async function WorkloadInputPage() {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
   const [depts, profileResult] = await Promise.all([
     getWorkloadDepts(supabase),
-    session
-      ? supabase.from('profiles').select('role').eq('id', session.user.id).single()
+    user
+      ? supabase.from('profiles').select('role').eq('id', user.id).single()
       : Promise.resolve({ data: null }),
   ])
 

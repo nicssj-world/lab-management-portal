@@ -288,7 +288,7 @@ export default function WorkloadDashboardPage() {
     setError('')
     let usedCache = false
     try {
-      const cacheKey = `lab-workload-summary:v26:${year}:${month}`
+      const cacheKey = `lab-workload-summary:v27:${year}:${month}`
       const cached = readWorkloadClientCache(cacheKey)
       if (cached) {
         usedCache = true
@@ -297,7 +297,7 @@ export default function WorkloadDashboardPage() {
       } else {
         setLoading(true)
       }
-      const res = await fetch(`/api/admin/lab-workload/summary?year=${year}&month=${month}`, { signal: ctrl.signal })
+      const res = await fetch(`/api/admin/lab-workload/summary?year=${year}&month=${month}&precomputed=1`, { signal: ctrl.signal })
       const json = await readJsonResponse(res)
       if (!res.ok) throw new Error(json.error ?? 'โหลดข้อมูลไม่สำเร็จ')
       const nextData = json as WorkloadData
@@ -317,6 +317,7 @@ export default function WorkloadDashboardPage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   const tabs = useMemo(() => ['ภาพรวม', OPD_TAB, ...(data?.departments.map(d => d.section) ?? [])], [data])
+  const showsMonthFilter = activeTab === 'ภาพรวม'
   const currentSection = activeTab === 'ภาพรวม' ? null : activeTab
   const currentRows = currentSection && currentSection !== OPD_TAB ? (data?.section_details[currentSection] ?? []) : []
   const currentDept = currentSection && currentSection !== OPD_TAB ? data?.departments.find(d => d.section === currentSection) : null
@@ -324,6 +325,11 @@ export default function WorkloadDashboardPage() {
   const grandTotal = monthTotals.reduce((sum, value) => sum + value, 0)
   const opdMonthTotals = data?.months.map(m => (data.opd_rows ?? []).reduce((sum, row) => sum + (row.months[monthKey(m.year, m.month)] ?? 0), 0)) ?? []
   const opdGrandTotal = opdMonthTotals.reduce((sum, value) => sum + value, 0)
+  const opdDataMonthCount = opdMonthTotals.filter(value => value > 0).length
+  const opdMonthlyAverage = Math.round(opdGrandTotal / Math.max(opdDataMonthCount, 1))
+  const sectionDataMonthCount = monthTotals.filter(value => value > 0).length
+  const sectionAnnualTestRows = currentRows.reduce((sum, row) => sum + row.fiscal_test_rows, 0)
+  const sectionActiveTestCount = currentRows.filter(row => rowFiscalTotal(row, data?.months ?? [], metricMode) > 0 || row.fiscal_test_rows > 0).length
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <PageHeader
@@ -358,7 +364,13 @@ export default function WorkloadDashboardPage() {
         >
           {[getCurrentThaiFiscalYear(), getCurrentThaiFiscalYear() - 1, getCurrentThaiFiscalYear() - 2].map(y => <option key={y} value={y}>ปีงบ {y}</option>)}
         </select>
-        <MonthSelector value={month} onChange={setMonth} />
+        {showsMonthFilter ? (
+          <MonthSelector value={month} onChange={setMonth} />
+        ) : (
+          <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
+            แสดงตารางรายปีครบ 12 เดือน · ต.ค.-ก.ย.
+          </span>
+        )}
       </div>
 
       {data && (
@@ -441,8 +453,8 @@ export default function WorkloadDashboardPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
             <StatCard label="ครั้งบริการผู้ป่วยนอก" value={fmt(opdGrandTotal)} sub="รวมรายเดือนตามหน่วยหลัก" icon="syringe" color="rgba(30,95,173,.12)" />
             <StatCard label="หน่วยเจาะเลือด" value={fmt(data.opd_rows.length)} sub="แสดงเฉพาะหน่วยหลัก" icon="building" color="rgba(22,163,74,.12)" />
-            <StatCard label="เดือนที่เลือก" value={getThaiMonthLabel(month)} sub={`ปีงบ ${year}`} icon="clock" color="rgba(217,119,6,.12)" />
-            <StatCard label="ครั้งบริการเดือนนี้" value={fmt(opdMonthTotals[data.months.findIndex(m => m.month === month)] ?? 0)} sub="รวมทุกหน่วยหลัก" icon="users" color="rgba(147,51,234,.12)" />
+            <StatCard label="ปีงบ" value={String(year)} sub={`${opdDataMonthCount}/12 เดือนที่มีข้อมูล`} icon="clock" color="rgba(217,119,6,.12)" />
+            <StatCard label="เฉลี่ย/เดือน" value={fmt(opdMonthlyAverage)} sub="คิดจากเดือนที่มีข้อมูล" icon="users" color="rgba(147,51,234,.12)" />
           </div>
 
           <Panel title="ตารางงานบริการผู้ป่วยนอก" subtitle="จำนวนครั้งบริการ แยกตามหน่วยเจาะเลือดหลักและเดือน" accent="#D97706">
@@ -496,10 +508,10 @@ export default function WorkloadDashboardPage() {
       {!loading && data && currentSection && currentSection !== OPD_TAB && currentDept && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-            <StatCard label="จำนวนตัวอย่างของงาน" value={fmt(currentDept.ln_count)} sub="LN ไม่ซ้ำ" icon="flask" color="rgba(30,95,173,.12)" />
-            <StatCard label="จำนวนรายการตรวจ" value={fmt(currentDept.test_rows)} sub="test rows" icon="beaker" color="rgba(147,51,234,.12)" />
-            <StatCard label="รายการตรวจ" value={fmt(currentDept.test_count)} sub="test name ไม่ซ้ำ" icon="doc" color="rgba(22,163,74,.12)" />
-            <StatCard label="เดือนที่เลือก" value={getThaiMonthLabel(month)} sub={`ปีงบ ${year}`} icon="clock" color="rgba(217,119,6,.12)" />
+            <StatCard label="จำนวนตัวอย่างของงาน" value={fmt(grandTotal)} sub="LN ไม่ซ้ำ รวม 12 เดือน" icon="flask" color="rgba(30,95,173,.12)" />
+            <StatCard label="จำนวนรายการตรวจ" value={fmt(sectionAnnualTestRows)} sub="test rows รวม 12 เดือน" icon="beaker" color="rgba(147,51,234,.12)" />
+            <StatCard label="รายการตรวจ" value={fmt(sectionActiveTestCount)} sub="มีข้อมูลในปีงบนี้" icon="doc" color="rgba(22,163,74,.12)" />
+            <StatCard label="ปีงบ" value={String(year)} sub={`${sectionDataMonthCount}/12 เดือนที่มีข้อมูล`} icon="clock" color="rgba(217,119,6,.12)" />
           </div>
 
           <Panel title={`ตารางปริมาณงาน: ${currentSection}`} subtitle="จำนวนตัวอย่างแบบ LN ไม่ซ้ำ แยกตามรายการตรวจและเดือน" accent="#1E5FAD">

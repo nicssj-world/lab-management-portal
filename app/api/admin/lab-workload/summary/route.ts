@@ -1088,7 +1088,8 @@ export async function GET(req: NextRequest) {
     const fiscalYear = toGregorianYear(displayFiscalYear)
     const selectedYear = selectedMonth >= 10 ? fiscalYear - 1 : fiscalYear
     const uploadHealth = await fetchUploadHealth(selectedYear, selectedMonth)
-    const key = `v26|${displayFiscalYear}|${fiscalYear}|${selectedYear}|${selectedMonth}|${uploadHealth.version}`
+    const selectedMonthHasRecords = uploadHealth.hasTatRecords || uploadHealth.hasPhlebRecords
+    const key = `v27|${displayFiscalYear}|${fiscalYear}|${selectedYear}|${selectedMonth}|${uploadHealth.version}`
     const hit = cache.get(key)
     if (hit && hit.expiresAt > Date.now()) {
       return NextResponse.json(hit.payload, { headers: { 'X-Lab-Workload-Cache': 'hit' } })
@@ -1096,20 +1097,11 @@ export async function GET(req: NextRequest) {
 
     const months = fiscalMonths(fiscalYear)
     const persistent = await readAnalysisCache<Payload>(CACHE_ENDPOINT, key)
-    if (persistent && !hasMissingHeatmapWarning(persistent) && hasWorkloadMonthValues(persistent, selectedYear, selectedMonth)) {
+    if (selectedMonthHasRecords && persistent && !hasMissingHeatmapWarning(persistent) && hasWorkloadMonthValues(persistent, selectedYear, selectedMonth)) {
       const heatmaps = await fetchHeatmaps(selectedYear, selectedMonth)
       const payload = applySelectedHeatmaps(persistent, heatmaps, uploadHealth.warnings, selectedYear, selectedMonth)
       cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
       return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'persistent' } })
-    }
-
-    const latestPersistent = await readLatestWorkloadPayload(selectedYear, selectedMonth)
-    if (latestPersistent) {
-      const heatmaps = await fetchHeatmaps(selectedYear, selectedMonth)
-      const payload = applySelectedHeatmaps(latestPersistent, heatmaps, uploadHealth.warnings, selectedYear, selectedMonth)
-      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
-      await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
-      return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'latest-persistent' } })
     }
 
     if (req.nextUrl.searchParams.get('precomputed') === '1') {
@@ -1124,7 +1116,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (!uploadHealth.hasTatRecords && !uploadHealth.hasPhlebRecords) {
+    if (!selectedMonthHasRecords) {
       const warnings = uploadHealth.warnings.length
         ? uploadHealth.warnings
         : ['ยังไม่มี records จริงสำหรับเดือนนี้ กรุณาอัปโหลดไฟล์ TAT/Phe ให้จบก่อน']
@@ -1132,6 +1124,15 @@ export async function GET(req: NextRequest) {
       cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
       await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
       return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'empty' } })
+    }
+
+    const latestPersistent = await readLatestWorkloadPayload(selectedYear, selectedMonth)
+    if (latestPersistent) {
+      const heatmaps = await fetchHeatmaps(selectedYear, selectedMonth)
+      const payload = applySelectedHeatmaps(latestPersistent, heatmaps, uploadHealth.warnings, selectedYear, selectedMonth)
+      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
+      await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
+      return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'latest-persistent' } })
     }
 
     if (req.nextUrl.searchParams.get('live') !== '1') {
