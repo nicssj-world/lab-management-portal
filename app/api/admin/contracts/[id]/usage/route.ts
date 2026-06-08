@@ -13,6 +13,15 @@ async function getActor() {
 
 interface Params { params: Promise<{ id: string }> }
 
+function normalizeUsageMonth(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const match = value.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/)
+  if (!match) return null
+  const month = Number(match[2])
+  if (month < 1 || month > 12) return null
+  return `${match[1]}-${match[2]}-01`
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -22,7 +31,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .from('contract_usage')
     .select('*')
     .eq('contract_id', Number(id))
-    .order('usage_date', { ascending: false })
+    .order('usage_month', { ascending: false, nullsFirst: false })
+    .order('usage_date', { ascending: false, nullsFirst: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data ?? [])
 }
@@ -35,9 +45,12 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { id } = await params
   const body = await req.json()
-  const { amount, note, usage_date } = body
+  const { amount, note, usage_date, usage_month } = body
   const numericAmount = Number(amount)
+  const month = normalizeUsageMonth(usage_month)
   if (!amount || isNaN(numericAmount)) return NextResponse.json({ error: 'amount จำเป็น' }, { status: 422 })
+
+  if (!month) return NextResponse.json({ error: 'usage_month is required' }, { status: 422 })
 
   const { data: contract, error: contractErr } = await supabaseAdmin
     .from('contracts')
@@ -57,7 +70,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const date = usage_date || new Date().toISOString().split('T')[0]
   const { data, error } = await supabaseAdmin
     .from('contract_usage')
-    .insert({ contract_id: Number(id), amount: numericAmount, note: note || null, usage_date: date, recorded_by: actor.name })
+    .insert({ contract_id: Number(id), amount: numericAmount, note: note || null, usage_date: date, usage_month: month, recorded_by: actor.name })
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
