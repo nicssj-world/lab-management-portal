@@ -24,7 +24,7 @@ const REVIEWER_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   Review:    ['Draft'],
   Approved:  ['Draft', 'Review'],
   Published: [],
-  Obsolete:  ['Draft', 'Review'],
+  Obsolete:  [],
 }
 
 export function allowedTransitions(current: DocStatus, role: string, docRole?: string): DocStatus[] {
