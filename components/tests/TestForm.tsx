@@ -271,7 +271,7 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
             />
           </Field>
           <Field label="รหัสกรมบัญชีกลาง (CGD)">
-            <input style={inp} value={form.cgd ?? ''} onChange={(e) => set('cgd', e.target.value || undefined)} placeholder="รหัส CGD" />
+            <input style={inp} value={form.cgd ?? ''} onChange={(e) => set('cgd', e.target.value || null)} placeholder="รหัส CGD" />
           </Field>
           <Field label="หมวดหมู่" required error={errors.category_id}>
             <Select
@@ -289,7 +289,7 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
             />
           </Field>
           <Field label="รหัส LOINC">
-            <input style={inp} value={form.loinc ?? ''} onChange={(e) => set('loinc', e.target.value || undefined)} placeholder="เช่น 58410-2" />
+            <input style={inp} value={form.loinc ?? ''} onChange={(e) => set('loinc', e.target.value || null)} placeholder="เช่น 58410-2" />
           </Field>
           <div style={{ gridColumn: '1 / -1' }}>
             <Field label="ชื่อรายการตรวจวิเคราะห์" required error={errors.th}>
@@ -298,7 +298,7 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <Field label="ชื่อเต็ม/ชื่ออื่นๆ">
-              <input style={inp} value={form.en ?? ''} onChange={(e) => set('en', e.target.value)} placeholder="Full name / Alias" />
+              <input style={inp} value={form.en ?? ''} onChange={(e) => set('en', e.target.value || '')} placeholder="Full name / Alias" />
             </Field>
           </div>
         </div>
@@ -319,13 +319,13 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
         <SectionHeader title="B. ราคา & TAT" />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
           <Field label="ราคา (บาท)">
-            <input type="number" min={0} style={inp} value={form.price ?? ''} onChange={(e) => set('price', e.target.value ? Number(e.target.value) : undefined)} placeholder="0" />
+            <input type="number" min={0} style={inp} value={form.price ?? ''} onChange={(e) => set('price', e.target.value ? Number(e.target.value) : null)} placeholder="0" />
           </Field>
           <Field label="TAT">
-            <input type="text" style={inp} value={form.tat_minutes ?? ''} onChange={(e) => set('tat_minutes', e.target.value || undefined)} placeholder="เช่น 60 นาที, 1-2 ชั่วโมง" />
+            <input type="text" style={inp} value={form.tat_minutes ?? ''} onChange={(e) => set('tat_minutes', e.target.value || null)} placeholder="เช่น 60 นาที, 1-2 ชั่วโมง" />
           </Field>
           <Field label="TAT เร่งด่วน">
-            <input type="text" style={inp} value={form.urgent_tat_minutes ?? ''} onChange={(e) => set('urgent_tat_minutes', e.target.value || undefined)} placeholder="เช่น 30 นาที" />
+            <input type="text" style={inp} value={form.urgent_tat_minutes ?? ''} onChange={(e) => set('urgent_tat_minutes', e.target.value || null)} placeholder="เช่น 30 นาที" />
           </Field>
         </div>
         <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -335,7 +335,7 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
           </label>
           {!form.available_24hr && (
             <Field label="วัน-เวลาที่ตรวจวิเคราะห์">
-              <input style={inp} value={form.service ?? ''} onChange={(e) => set('service', e.target.value || undefined)} placeholder="เช่น จันทร์–ศุกร์ 08:00–16:00 น." />
+              <input style={inp} value={form.service ?? ''} onChange={(e) => set('service', e.target.value || null)} placeholder="เช่น จันทร์–ศุกร์ 08:00–16:00 น." />
             </Field>
           )}
         </div>
@@ -346,10 +346,10 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
         <SectionHeader title="C. วิธีการตรวจวิเคราะห์" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Field label="วิธีการตรวจ (Method)">
-            <input style={inp} value={form.method ?? ''} onChange={(e) => set('method', e.target.value || undefined)} placeholder="เช่น Flow Cytometry, HPLC" />
+            <input style={inp} value={form.method ?? ''} onChange={(e) => set('method', e.target.value || null)} placeholder="เช่น Flow Cytometry, HPLC" />
           </Field>
 <Field label="วัตถุประสงค์ของการตรวจ/ข้อบ่งชี้ (Indication)">
-            <textarea style={ta} value={form.methodology_note ?? ''} onChange={(e) => set('methodology_note', e.target.value || undefined)} placeholder="คำอธิบายเพิ่มเติม..." />
+            <textarea style={ta} value={form.methodology_note ?? ''} onChange={(e) => set('methodology_note', e.target.value || null)} placeholder="คำอธิบายเพิ่มเติม..." />
           </Field>
         </div>
       </Card>
@@ -368,11 +368,11 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
                   onChange={(val) => {
                     setTubeSelect(val)
                     if (val === 'อื่นๆ') {
-                      set('tube', undefined)
+                      set('tube', null)
                       set('tube_color', '#000000')
                     } else if (val === '') {
-                      set('tube', undefined)
-                      set('tube_color', undefined)
+                      set('tube', null)
+                      set('tube_color', null)
                     } else {
                       set('tube', val)
                       const color = TUBE_OPTIONS.find(o => o.label === val)?.color
@@ -387,7 +387,7 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
                 <input
                   style={inp}
                   value={form.tube ?? ''}
-                  onChange={(e) => set('tube', e.target.value || undefined)}
+                  onChange={(e) => set('tube', e.target.value || null)}
                   placeholder="ระบุชนิด Specimen..."
                 />
               )}
@@ -395,31 +395,31 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
           </Field>
           <Field label="สีหลอด (Hex color)">
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input style={{ ...inp, flex: 1 }} value={form.tube_color ?? ''} onChange={(e) => set('tube_color', e.target.value || undefined)} placeholder="#9333EA" />
+              <input style={{ ...inp, flex: 1 }} value={form.tube_color ?? ''} onChange={(e) => set('tube_color', e.target.value || null)} placeholder="#9333EA" />
               <input type="color" value={form.tube_color ?? '#94A3B8'} onChange={(e) => set('tube_color', e.target.value)} style={{ width: 36, height: 36, borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', padding: 2 }} />
             </div>
           </Field>
           <Field label="ปริมาตร (Volume)">
-            <input style={inp} value={form.volume ?? ''} onChange={(e) => set('volume', e.target.value || undefined)} placeholder="เช่น 3 mL" />
+            <input style={inp} value={form.volume ?? ''} onChange={(e) => set('volume', e.target.value || null)} placeholder="เช่น 3 mL" />
           </Field>
-          <Field label="เงื่อนไขการขนส่ง">
-            <input style={inp} value={form.transport_condition ?? ''} onChange={(e) => set('transport_condition', e.target.value || undefined)} placeholder="เช่น ส่งทันทีหลังเก็บ" />
+          <Field label="การเก็บรักษาตัวอย่างก่อนนำส่ง">
+            <input style={inp} value={form.transport_condition ?? ''} onChange={(e) => set('transport_condition', e.target.value || null)} placeholder="เช่น ส่งทันทีหลังเก็บ" />
           </Field>
           <div style={{ gridColumn: '1 / -1' }}>
             <Field label="การเก็บรักษาตัวอย่างหลังการตรวจวิเคราะห์">
-              <textarea style={ta} value={form.stability ?? ''} onChange={(e) => set('stability', e.target.value || undefined)} placeholder="เงื่อนไขการเก็บรักษาตัวอย่าง..." />
+              <textarea style={ta} value={form.stability ?? ''} onChange={(e) => set('stability', e.target.value || null)} placeholder="เงื่อนไขการเก็บรักษาตัวอย่าง..." />
             </Field>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <Field label="เงื่อนไขปฏิเสธ (Rejection Criteria)">
-              <textarea style={ta} value={form.reject ?? ''} onChange={(e) => set('reject', e.target.value || undefined)} placeholder="เหตุผลที่ตัวอย่างถูกปฏิเสธ..." />
+              <textarea style={ta} value={form.reject ?? ''} onChange={(e) => set('reject', e.target.value || null)} placeholder="เหตุผลที่ตัวอย่างถูกปฏิเสธ..." />
             </Field>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <Field label="รายละเอียดอื่นๆ">
               <RichTextEditor
                 value={form.specimen_note ?? ''}
-                onChange={v => set('specimen_note', v || undefined)}
+                onChange={v => set('specimen_note', v || null)}
                 placeholder="ข้อมูลเพิ่มเติมเกี่ยวกับตัวอย่าง..."
               />
             </Field>
@@ -452,10 +452,10 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
         {refMode === 'text' ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <Field label="ค่าอ้างอิง">
-              <textarea style={ta} value={form.ref ?? ''} onChange={(e) => set('ref', e.target.value || undefined)} placeholder="เช่น 4.0–11.0 × 10⁹/L (WBC)" />
+              <textarea style={ta} value={form.ref ?? ''} onChange={(e) => set('ref', e.target.value || null)} placeholder="เช่น 4.0–11.0 × 10⁹/L (WBC)" />
             </Field>
             <Field label="หมายเหตุ">
-              <textarea style={ta} value={form.ref_note ?? ''} onChange={(e) => set('ref_note', e.target.value || undefined)} placeholder="เช่น ค่าอ้างอิงนี้ใช้สำหรับผู้ใหญ่ทั่วไป กรณีเด็ก ตั้งครรภ์ หรือสูงอายุ กรุณาดูเอกสารคู่มือฉบับเต็ม" />
+              <textarea style={ta} value={form.ref_note ?? ''} onChange={(e) => set('ref_note', e.target.value || null)} placeholder="เช่น ค่าอ้างอิงนี้ใช้สำหรับผู้ใหญ่ทั่วไป กรณีเด็ก ตั้งครรภ์ หรือสูงอายุ กรุณาดูเอกสารคู่มือฉบับเต็ม" />
             </Field>
           </div>
         ) : (
@@ -474,18 +474,18 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <Field label="ชื่อหน่วยงาน">
-              <input style={inp} value={form.contact_name ?? ''} onChange={(e) => set('contact_name', e.target.value || undefined)} placeholder="เช่น กลุ่มงานเทคนิคการแพทย์" />
+              <input style={inp} value={form.contact_name ?? ''} onChange={(e) => set('contact_name', e.target.value || null)} placeholder="เช่น กลุ่มงานเทคนิคการแพทย์" />
             </Field>
           </div>
           <Field label="โทรศัพท์">
-            <input style={inp} value={form.contact_phone ?? ''} onChange={(e) => set('contact_phone', e.target.value || undefined)} placeholder="เช่น 038-931-XXX" />
+            <input style={inp} value={form.contact_phone ?? ''} onChange={(e) => set('contact_phone', e.target.value || null)} placeholder="เช่น 038-931-XXX" />
           </Field>
           <Field label="อีเมล">
-            <input style={inp} value={form.contact_email ?? ''} onChange={(e) => set('contact_email', e.target.value || undefined)} placeholder="เช่น lab@hospital.go.th" />
+            <input style={inp} value={form.contact_email ?? ''} onChange={(e) => set('contact_email', e.target.value || null)} placeholder="เช่น lab@hospital.go.th" />
           </Field>
           <div style={{ gridColumn: '1 / -1' }}>
             <Field label="ที่อยู่ / หมายเหตุ">
-              <textarea style={ta} value={form.contact_note ?? ''} onChange={(e) => set('contact_note', e.target.value || undefined)} placeholder="เช่น ชั้น 1 อาคารผู้ป่วยนอก" />
+              <textarea style={ta} value={form.contact_note ?? ''} onChange={(e) => set('contact_note', e.target.value || null)} placeholder="เช่น ชั้น 1 อาคารผู้ป่วยนอก" />
             </Field>
           </div>
         </div>
