@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseServiceEnv } from './lib/env.mjs'
 
-const supabaseUrl = 'https://fslagsuorkcckvvtrmyi.supabase.co'
-const serviceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzbGFnc3VvcmtjY2t2dnRybXlpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTE4MDc1OSwiZXhwIjoyMDk0NzU2NzU5fQ.6OwSnEAaMWpwQ52QaubLxIHDcqRVE-pj0qJWNGaFYdY'
+const { url: supabaseUrl, serviceRoleKey } = getSupabaseServiceEnv()
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false }
@@ -33,7 +33,6 @@ async function resetPassword() {
 
   console.log(`✅ Reset password สำเร็จ`)
   console.log(`   E-Phis  : ${ephisId}`)
-  console.log(`   Password: ${newPassword}`)
 }
 
 resetPassword()

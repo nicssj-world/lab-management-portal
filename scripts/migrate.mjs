@@ -1,14 +1,18 @@
 import postgres from 'postgres'
+import { optionalEnv, requiredEnv } from './lib/env.mjs'
 
-const sql = postgres({
-  host: 'db.fslagsuorkcckvvtrmyi.supabase.co',
-  port: 5432,
-  database: 'postgres',
-  username: 'postgres',
-  password: 'cLH4HyWz8Rh&VF8',
-  ssl: 'require',
-  max: 1,
-})
+const connectionString = optionalEnv('DATABASE_URL', 'POSTGRES_URL', 'SUPABASE_DB_URL')
+const sql = connectionString
+  ? postgres(connectionString, { ssl: 'require', max: 1 })
+  : postgres({
+      host: requiredEnv('SUPABASE_DB_HOST', 'POSTGRES_HOST'),
+      port: Number(optionalEnv('SUPABASE_DB_PORT', 'POSTGRES_PORT') ?? 5432),
+      database: optionalEnv('SUPABASE_DB_NAME', 'POSTGRES_DATABASE') ?? 'postgres',
+      username: optionalEnv('SUPABASE_DB_USER', 'POSTGRES_USER') ?? 'postgres',
+      password: requiredEnv('SUPABASE_DB_PASSWORD', 'POSTGRES_PASSWORD'),
+      ssl: 'require',
+      max: 1,
+    })
 
 const migration = `
 -- ── profiles ────────────────────────────────────────────────────────────────

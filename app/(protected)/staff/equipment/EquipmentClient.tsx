@@ -42,6 +42,25 @@ const DEPARTMENTS = [
   'ตรวจพิเศษและปฏิบัติการตรวจต่อ', 'ไม่มีเจ้าของ',
 ]
 
+const EQUIPMENT_PAGE_SIZE = 50
+
+type EquipmentListPayload = {
+  items?: Equipment[]
+  count?: number
+  page?: number
+  pageSize?: number
+  totalPages?: number
+  statusCounts?: Record<string, number>
+}
+
+function parseEquipmentPayload(payload: unknown): EquipmentListPayload {
+  if (Array.isArray(payload)) {
+    return { items: payload as Equipment[], count: payload.length, page: 1, pageSize: payload.length, totalPages: 1 }
+  }
+  if (payload && typeof payload === 'object') return payload as EquipmentListPayload
+  return { items: [], count: 0, page: 1, pageSize: EQUIPMENT_PAGE_SIZE, totalPages: 1 }
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 function warrantyStatus(exp: string | null): 'ok' | 'warn' | 'danger' | null {
@@ -1312,7 +1331,7 @@ function EquipmentDashboard({ data }: { data: Equipment[] }) {
 
   const card: React.CSSProperties = {
     background: 'var(--card)', borderRadius: 12, border: '1px solid var(--border)',
-    padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,.04)',
+    padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,.04)', minWidth: 0,
   }
   const lbl: React.CSSProperties = {
     fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase',
@@ -1713,14 +1732,25 @@ function CalibrationPlanTab({ canEdit }: { canEdit: boolean }) {
 
 export default function EquipmentClient({
   initialData,
+  initialTotal,
+  initialPageSize,
+  departments,
+  statusCounts,
   canEdit,
   lastUpdated,
 }: {
   initialData: Equipment[]
+  initialTotal: number
+  initialPageSize: number
+  departments: string[]
+  statusCounts: Record<string, number>
   canEdit: boolean
   lastUpdated: string | null
 }) {
   const [items, setItems] = useState<Equipment[]>(initialData)
+  const [total, setTotal] = useState(initialTotal)
+  const [pageSize, setPageSize] = useState(initialPageSize || EQUIPMENT_PAGE_SIZE)
+  const [page, setPage] = useState(1)
   const [nameSort, setNameSort] = useState<'asc' | 'desc'>('asc')
   const [newItemId, setNewItemId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -1731,6 +1761,11 @@ export default function EquipmentClient({
   const [needsCal, setNeedsCal] = useState('')
   const [pendingReg, setPendingReg] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [counts, setCounts] = useState<Record<string, number>>({ '': initialTotal, ...statusCounts })
+  const [dashboardItems, setDashboardItems] = useState<Equipment[] | null>(null)
+  const [dashboardLoading, setDashboardLoading] = useState(false)
+  const [dashboardError, setDashboardError] = useState('')
 
   const [view, setView] = useState<'list' | 'dashboard' | 'calplan'>('list')
   const [addModal, setAddModal] = useState(false)
@@ -1752,43 +1787,86 @@ export default function EquipmentClient({
     return () => clearTimeout(t)
   }, [search])
 
-  // Fetch when filters change
-  useEffect(() => {
-    setLoading(true)
+  const buildFilterParams = useCallback((includePaging: boolean) => {
     const params = new URLSearchParams()
+    if (includePaging) {
+      params.set('page', String(page))
+      params.set('pageSize', String(pageSize || EQUIPMENT_PAGE_SIZE))
+    }
+    params.set('sortDir', nameSort)
     if (debouncedSearch) params.set('search', debouncedSearch)
     if (statusTab) params.set('status', statusTab)
     if (department) params.set('department', department)
     if (riskLevel) params.set('risk_level', riskLevel)
     if (needsCal) params.set('needs_calibration', needsCal)
     if (pendingReg) params.set('pending_reg', 'true')
+    return params
+  }, [debouncedSearch, department, nameSort, needsCal, page, pageSize, pendingReg, riskLevel, statusTab])
 
-    fetch(`/api/admin/equipment?${params}`)
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setItems(d) })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [debouncedSearch, statusTab, department, riskLevel, needsCal, pendingReg])
+  const loadEquipmentList = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/equipment?${buildFilterParams(true)}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'โหลดข้อมูลไม่สำเร็จ')
+      const parsed = parseEquipmentPayload(json)
+      setItems(parsed.items ?? [])
+      setTotal(Number(parsed.count ?? 0))
+      setPageSize(Number(parsed.pageSize ?? EQUIPMENT_PAGE_SIZE))
+      if (parsed.statusCounts) setCounts({ '': Number(parsed.statusCounts[''] ?? 0), ...parsed.statusCounts })
+    } catch {
+      setItems([])
+      setTotal(0)
+    } finally {
+      setLoading(false)
+    }
+  }, [buildFilterParams])
+
+  useEffect(() => {
+    setPage(1)
+    setNewItemId(null)
+  }, [debouncedSearch, statusTab, department, riskLevel, needsCal, pendingReg, nameSort])
+
+  useEffect(() => {
+    void loadEquipmentList()
+  }, [loadEquipmentList, reloadKey])
+
+  useEffect(() => {
+    if (view !== 'dashboard' || dashboardItems) return
+    setDashboardLoading(true)
+    setDashboardError('')
+    fetch('/api/admin/equipment?all=1&sortDir=asc')
+      .then(async r => {
+        const json = await r.json()
+        if (!r.ok) throw new Error(json.error ?? 'โหลด Dashboard ไม่สำเร็จ')
+        setDashboardItems(parseEquipmentPayload(json).items ?? [])
+      })
+      .catch(err => {
+        setDashboardItems([])
+        setDashboardError((err as Error).message)
+      })
+      .finally(() => setDashboardLoading(false))
+  }, [dashboardItems, view])
 
   // Departments for filter dropdown: merge hardcoded list + actual data (handles import name variants)
   const allDepts = Array.from(new Set([
     ...DEPARTMENTS,
+    ...departments,
     ...initialData.map(i => i.department),
   ])).sort()
 
   function handleSaved(eq: Equipment) {
-    setItems(prev => {
-      const idx = prev.findIndex(i => i.id === eq.id)
-      if (idx >= 0) { const next = [...prev]; next[idx] = eq; return next }
-      setNewItemId(eq.id)
-      return [eq, ...prev]
-    })
+    setNewItemId(eq.id)
+    setDashboardItems(null)
+    setReloadKey(k => k + 1)
     setAddModal(false); setEditItem(null)
     addToast(editItem ? 'บันทึกการแก้ไขแล้ว' : 'เพิ่มเครื่องมือแล้ว')
   }
 
   function handleDeleted(id: string) {
     setItems(prev => prev.filter(i => i.id !== id))
+    setDashboardItems(null)
+    setReloadKey(k => k + 1)
     setDeleteItem(null)
     addToast('ลบเครื่องมือแล้ว')
   }
@@ -1796,11 +1874,9 @@ export default function EquipmentClient({
   function handleImported() {
     setImportModal(false)
     addToast('นำเข้าข้อมูลสำเร็จ')
-    // Reload full list
-    fetch('/api/admin/equipment')
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setItems(d) })
-      .catch(() => {})
+    setPage(1)
+    setDashboardItems(null)
+    setReloadKey(k => k + 1)
   }
 
   // Close export dropdown on outside click
@@ -1911,7 +1987,7 @@ export default function EquipmentClient({
     setExportMenu(false)
     setExportLoading(true)
     try {
-      const params = new URLSearchParams({ pageSize: '9999' })
+      const params = new URLSearchParams({ all: '1', sortDir: nameSort })
       if (scope === 'filtered') {
         if (debouncedSearch) params.set('search', debouncedSearch)
         if (statusTab) params.set('status', statusTab)
@@ -1921,7 +1997,7 @@ export default function EquipmentClient({
         if (pendingReg) params.set('pending_reg', 'true')
       }
       const data = await fetch(`/api/admin/equipment?${params}`).then(r => r.json())
-      const allItems: Equipment[] = Array.isArray(data) ? data : []
+      const allItems = parseEquipmentPayload(data).items ?? []
       const html = buildEquipmentMasterListHTML(allItems, scope)
       const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
       const win = window.open(blobUrl, '_blank')
@@ -1955,11 +2031,15 @@ export default function EquipmentClient({
 
   // Counts for tabs
   const tabCounts = STATUS_TABS.reduce<Record<string, number>>((acc, t) => {
-    acc[t.value] = t.value ? initialData.filter(i => i.status === t.value).length : initialData.length
+    acc[t.value] = counts[t.value] ?? 0
     return acc
   }, {})
 
-  const activeCount = items.filter(i => i.status === 'Active').length
+  const totalPages = Math.max(1, Math.ceil(total / Math.max(pageSize, 1)))
+  const safePage = Math.min(page, totalPages)
+  const pageStart = total ? (safePage - 1) * pageSize + 1 : 0
+  const pageEnd = Math.min(safePage * pageSize, total)
+  const activeCount = statusTab ? items.filter(i => i.status === 'Active').length : (counts.Active ?? 0)
   const highRiskCount = items.filter(i => i.risk_level === 'High').length
   const warrantyAlertCount = items.filter(i => { const ws = warrantyStatus(i.warranty_exp); return ws === 'warn' || ws === 'danger' }).length
   const calCount = items.filter(i => i.needs_calibration).length
@@ -1970,6 +2050,10 @@ export default function EquipmentClient({
     { label: 'ประกันใกล้หมด', value: warrantyAlertCount, color: 'var(--warning)', bg: 'rgba(217,119,6,.07)', border: 'rgba(217,119,6,.2)' },
     { label: 'ต้องการ PM/CAL', value: calCount, color: 'var(--primary)', bg: 'var(--primary-soft)', border: 'rgba(30,95,173,.2)' },
   ]
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
 
   const TAB_DOT: Record<string, string> = {
     Active: 'var(--success)', Inactive: 'var(--muted)', ชำรุด: 'var(--danger)',
@@ -1994,7 +2078,7 @@ export default function EquipmentClient({
 
       <PageHeader
         title="ทะเบียนเครื่องมือ"
-        eyebrow={lastUpdated ? `${items.length} รายการ · อัปเดตล่าสุด ${new Date(lastUpdated).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}` : `${items.length} รายการ`}
+        eyebrow={lastUpdated ? `${total.toLocaleString('th-TH')} รายการ · อัปเดตล่าสุด ${new Date(lastUpdated).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}` : `${total.toLocaleString('th-TH')} รายการ`}
         marginBottom={16}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
@@ -2065,7 +2149,15 @@ export default function EquipmentClient({
         ))}
       </div>
 
-      {view === 'dashboard' && <EquipmentDashboard data={initialData} />}
+      {view === 'dashboard' && (
+        dashboardLoading || dashboardItems === null ? (
+          <div style={{ padding: 42, textAlign: 'center', color: 'var(--muted)' }}>กำลังโหลด Dashboard...</div>
+        ) : dashboardError ? (
+          <div style={{ padding: 16, borderRadius: 12, border: '1px solid #FCA5A5', color: '#B91C1C', background: '#FEF2F2' }}>{dashboardError}</div>
+        ) : (
+          <EquipmentDashboard data={dashboardItems ?? []} />
+        )
+      )}
 
       {view === 'calplan' && <CalibrationPlanTab canEdit={canEdit} />}
 
@@ -2158,6 +2250,19 @@ export default function EquipmentClient({
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: pendingReg ? 'var(--warning)' : 'var(--border)', flexShrink: 0, display: 'inline-block' }} />
           รอขึ้นทะเบียน
         </button>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>
+          แสดง {pageStart.toLocaleString('th-TH')}-{pageEnd.toLocaleString('th-TH')} จาก {total.toLocaleString('th-TH')} รายการ
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Button variant="secondary" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage <= 1 || loading}>ก่อนหน้า</Button>
+          <span style={{ minWidth: 92, textAlign: 'center', color: 'var(--muted)', fontSize: 12, fontWeight: 800 }}>
+            หน้า {safePage.toLocaleString('th-TH')} / {totalPages.toLocaleString('th-TH')}
+          </span>
+          <Button variant="secondary" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages || loading}>ถัดไป</Button>
+        </div>
       </div>
 
       {/* Table */}

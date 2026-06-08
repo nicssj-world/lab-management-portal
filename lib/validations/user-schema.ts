@@ -48,6 +48,12 @@ export const createUserSchema = z.object({
   name: z.string().min(2, 'ชื่อต้องมีอย่างน้อย 2 ตัวอักษร').max(100),
   role: z.enum(ROLES, { errorMap: () => ({ message: 'กรุณาเลือกบทบาท' }) }),
   dept: z.enum(DEPARTMENTS, { errorMap: () => ({ message: 'กรุณาเลือกแผนก' }) }),
+  password: z
+    .string()
+    .min(8, 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร')
+    .max(72, 'รหัสผ่านยาวเกินไป')
+    .optional()
+    .or(z.literal('')),
 })
 
 export const updateUserSchema = z.object({

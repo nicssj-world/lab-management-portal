@@ -1,7 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseServiceEnv, optionalEnv } from './lib/env.mjs'
 
-const supabaseUrl = 'https://fslagsuorkcckvvtrmyi.supabase.co'
-const serviceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzbGFnc3VvcmtjY2t2dnRybXlpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTE4MDc1OSwiZXhwIjoyMDk0NzU2NzU5fQ.6OwSnEAaMWpwQ52QaubLxIHDcqRVE-pj0qJWNGaFYdY'
+const { url: supabaseUrl, serviceRoleKey } = getSupabaseServiceEnv()
+const adminEmail = process.argv[2] ?? optionalEnv('ADMIN_EMAIL')
+const adminPassword = process.argv[3] ?? optionalEnv('ADMIN_PASSWORD')
+const adminName = optionalEnv('ADMIN_NAME') ?? 'Admin User'
+const adminRole = optionalEnv('ADMIN_ROLE') ?? 'Admin'
+const adminDept = optionalEnv('ADMIN_DEPT') ?? 'Medical Technology'
+
+if (!adminEmail || !adminPassword) {
+  console.error('Usage: node scripts/create-admin.mjs <admin_email> <admin_password>')
+  console.error('Or set ADMIN_EMAIL and ADMIN_PASSWORD in .env.local')
+  process.exit(1)
+}
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false }
@@ -11,10 +22,10 @@ async function createAdmin() {
   try {
     // Create auth user
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: 'admin@cbh.go.th',
-      password: 'AdminPassword123!',
+      email: adminEmail,
+      password: adminPassword,
       email_confirm: true,
-      user_metadata: { name: 'Admin User' }
+      user_metadata: { name: adminName }
     })
 
     if (authError) {
@@ -29,9 +40,9 @@ async function createAdmin() {
       .from('profiles')
       .insert({
         id: authData.user.id,
-        name: 'Admin User',
-        role: 'admin',
-        dept: 'Medical Technology',
+        name: adminName,
+        role: adminRole,
+        dept: adminDept,
         status: 'active'
       })
 
@@ -42,8 +53,7 @@ async function createAdmin() {
 
     console.log('✅ Admin profile created')
     console.log('\n📋 Admin credentials:')
-    console.log('   Email: admin@cbh.go.th')
-    console.log('   Password: AdminPassword123!')
+    console.log(`   Email: ${adminEmail}`)
   } catch (error) {
     console.error('❌ Error:', error)
   }

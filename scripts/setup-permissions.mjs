@@ -3,12 +3,10 @@
  * Works with the existing granted-boolean schema via service role (HTTPS).
  */
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseServiceEnv } from './lib/env.mjs'
 
-const supabase = createClient(
-  'https://fslagsuorkcckvvtrmyi.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzbGFnc3VvcmtjY2t2dnRybXlpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTE4MDc1OSwiZXhwIjoyMDk0NzU2NzU5fQ.6OwSnEAaMWpwQ52QaubLxIHDcqRVE-pj0qJWNGaFYdY',
-  { auth: { persistSession: false } },
-)
+const { url: supabaseUrl, serviceRoleKey } = getSupabaseServiceEnv()
+const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
 
 // [role, resource, level]  — 'none' entries omitted (absence = no permission)
 const SEED = [
@@ -20,7 +18,7 @@ const SEED = [
   ['Admin', 'สัญญา',                  'edit'],
   ['Admin', 'Workload',               'edit'],
   ['Admin', 'KPI',                    'edit'],
-  ['Admin', 'TAT (นำเข้า)',           'edit'],
+  ['Admin', 'TAT',                    'edit'],
   ['Admin', 'User Management',        'edit'],
   // Manager
   ['Manager', 'รายการตรวจ',              'edit'],
@@ -30,7 +28,7 @@ const SEED = [
   ['Manager', 'สัญญา',                  'edit'],
   ['Manager', 'Workload',               'view'],
   ['Manager', 'KPI',                    'edit'],
-  ['Manager', 'TAT (นำเข้า)',           'edit'],
+  ['Manager', 'TAT',                    'edit'],
   // Medical Technologist
   ['Medical Technologist', 'รายการตรวจ',              'view'],
   ['Medical Technologist', 'เอกสารคุณภาพ',           'view'],
@@ -44,6 +42,11 @@ const SEED = [
 ]
 
 async function main() {
+  if (process.env.CONFIRM_RESET_PERMISSIONS !== '1') {
+    console.error('Refusing to reset permissions. Set CONFIRM_RESET_PERMISSIONS=1 to continue.')
+    process.exit(1)
+  }
+
   console.log('▶ ลบข้อมูลเก่าทั้งหมด …')
   const { error: delErr } = await supabase.from('role_permissions').delete().neq('id', '00000000-0000-0000-0000-000000000000')
   if (delErr) {

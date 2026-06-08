@@ -112,12 +112,12 @@ function Stat({ label, value, sub, icon, color }: { label: string; value: string
 
 function Panel({ title, subtitle, children, accent = 'var(--primary)' }: { title: string; subtitle?: string; children: React.ReactNode; accent?: string }) {
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', minWidth: 0 }}>
       <div style={{ padding: '13px 18px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${accent}` }}>
         <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ink)' }}>{title}</div>
         {subtitle && <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{subtitle}</div>}
       </div>
-      <div style={{ padding: 18 }}>{children}</div>
+      <div style={{ padding: 18, minWidth: 0 }}>{children}</div>
     </div>
   )
 }
@@ -196,7 +196,7 @@ export default function WorkloadAnnualPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(280px, .9fr)', gap: 12 }}>
             <Panel title="แนวโน้มภาระงานรายเดือน" subtitle="ปีงบประมาณเรียงจาก ต.ค. ถึง ก.ย." accent="#1E5FAD">
               <div style={{ height: 320 }}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height={320}>
                   <ComposedChart data={data.trend} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey={(row: TrendRow) => monthLabel(row)} tick={{ fontSize: 11, fill: 'var(--muted)' }} />
@@ -291,7 +291,7 @@ export default function WorkloadAnnualPage() {
 
             <Panel title="OPD service" subtitle="หน่วยเจาะเลือดตามปีงบ" accent="#9333EA">
               <div style={{ height: 330 }}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height={330}>
                   <BarChart data={data.opd_rows.slice(0, 8)} layout="vertical" margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--muted)' }} />

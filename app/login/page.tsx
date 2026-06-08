@@ -55,9 +55,9 @@ export default function LoginPage() {
               alt="โรงพยาบาลชลบุรี"
               width={64}
               height={64}
-              priority
+              preload
               quality={100}
-              style={{ height: 64, width: 'auto', objectFit: 'contain' }}
+              style={{ width: 64, height: 64, objectFit: 'contain' }}
             />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>กลุ่มงานเทคนิคการแพทย์</div>

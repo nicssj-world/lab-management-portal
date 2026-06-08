@@ -54,6 +54,54 @@ export interface EquipmentFilters {
   status?: string
   risk_level?: string
   needs_calibration?: boolean
+  pending_reg?: boolean
+}
+
+export interface EquipmentPageOptions extends EquipmentFilters {
+  page?: number
+  pageSize?: number
+  sortDir?: 'asc' | 'desc'
+}
+
+export interface EquipmentPageResult {
+  items: Equipment[]
+  count: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, match => `\\${match}`)
+}
+
+function normalizeSearch(value: string) {
+  return value.trim().replace(/[(),]/g, ' ')
+}
+
+function applyEquipmentFilters(query: any, filters: EquipmentFilters) {
+  const search = normalizeSearch(filters.search ?? '')
+
+  if (search) {
+    const pattern = `%${escapeLike(search)}%`
+    query = query.or([
+      `equipment_type.ilike.${pattern}`,
+      `cbh_code.ilike.${pattern}`,
+      `hospital_asset_no.ilike.${pattern}`,
+      `serial_number.ilike.${pattern}`,
+      `manufacturer.ilike.${pattern}`,
+      `model.ilike.${pattern}`,
+      `responsible_person.ilike.${pattern}`,
+    ].join(','))
+  }
+  if (filters.department) query = query.eq('department', filters.department)
+  if (filters.status) query = query.eq('status', filters.status)
+  if (filters.risk_level) query = query.eq('risk_level', filters.risk_level)
+  if (filters.needs_calibration !== undefined)
+    query = query.eq('needs_calibration', filters.needs_calibration)
+  if (filters.pending_reg) query = query.or('cbh_code_pending.eq.true,hospital_asset_no_pending.eq.true')
+
+  return query
 }
 
 export async function getEquipment(
@@ -65,20 +113,41 @@ export async function getEquipment(
     .select('*')
     .order('equipment_type', { ascending: true })
 
-  if (filters.search) {
-    query = query.or(
-      `equipment_type.ilike.%${filters.search}%,cbh_code.ilike.%${filters.search}%,hospital_asset_no.ilike.%${filters.search}%,serial_number.ilike.%${filters.search}%,manufacturer.ilike.%${filters.search}%,model.ilike.%${filters.search}%,responsible_person.ilike.%${filters.search}%`
-    )
-  }
-  if (filters.department) query = query.eq('department', filters.department)
-  if (filters.status) query = query.eq('status', filters.status)
-  if (filters.risk_level) query = query.eq('risk_level', filters.risk_level)
-  if (filters.needs_calibration !== undefined)
-    query = query.eq('needs_calibration', filters.needs_calibration)
+  query = applyEquipmentFilters(query, filters)
 
   const { data, error } = await query
   if (error) throw new Error(error.message)
   return (data ?? []) as Equipment[]
+}
+
+export async function getEquipmentPage(
+  supabase: SupabaseClient,
+  options: EquipmentPageOptions = {}
+): Promise<EquipmentPageResult> {
+  const page = Math.max(1, options.page ?? 1)
+  const pageSize = Math.min(Math.max(1, options.pageSize ?? 50), 100)
+  const from = (page - 1) * pageSize
+
+  let query: any = supabase
+    .from('equipment')
+    .select('*', { count: 'exact' })
+    .order('equipment_type', { ascending: options.sortDir !== 'desc' })
+    .order('item_no', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false })
+
+  query = applyEquipmentFilters(query, options)
+  query = query.range(from, from + pageSize - 1)
+
+  const { data, error, count } = await query
+  if (error) throw new Error(error.message)
+  const total = count ?? 0
+  return {
+    items: (data ?? []) as Equipment[],
+    count: total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  }
 }
 
 export async function getEquipmentDepartments(supabase: SupabaseClient): Promise<string[]> {
@@ -89,4 +158,29 @@ export async function getEquipmentDepartments(supabase: SupabaseClient): Promise
   if (error) throw new Error(error.message)
   const unique = Array.from(new Set((data ?? []).map((r: { department: string }) => r.department)))
   return unique
+}
+
+export async function getEquipmentStatusCounts(supabase: SupabaseClient): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from('equipment')
+    .select('status')
+  if (error) throw new Error(error.message)
+  const counts: Record<string, number> = { '': data?.length ?? 0 }
+  for (const row of data ?? []) {
+    const status = (row as { status: string | null }).status ?? ''
+    counts[status] = (counts[status] ?? 0) + 1
+  }
+  return counts
+}
+
+export async function getEquipmentLastUpdated(supabase: SupabaseClient): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('equipment')
+    .select('updated_at, created_at')
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data?.updated_at ?? data?.created_at ?? null
 }

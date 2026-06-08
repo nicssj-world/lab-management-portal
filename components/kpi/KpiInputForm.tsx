@@ -57,11 +57,15 @@ export function KpiInputForm() {
         const den = def.denominator !== null ? (parseFloat(v.denominator) || null) : null
         return { dept_id: deptId, kpi_id: def.id, fiscal_year: year, month, numerator: num, denominator: den }
       }).filter((e) => values[e.kpi_id]?.numerator !== '')
-      await fetch('/kpi/api/entries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }) })
+      const res = await fetch('/kpi/api/entries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }) })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json.error ?? 'บันทึกไม่สำเร็จ')
+      }
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (e) {
-      setError('เกิดข้อผิดพลาด ลองใหม่อีกครั้ง')
+      setError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง')
     } finally {
       setLoading(false)
     }

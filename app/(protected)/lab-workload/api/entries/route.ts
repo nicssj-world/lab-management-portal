@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireResource } from '@/lib/auth/guards'
 import { getWorkloadSummary, getDeptDetail, getMonthlyTrend, upsertWorkload } from '@/lib/queries/workload'
 
 export async function GET(request: NextRequest) {
+  const guard = await requireResource('Workload', 'view')
+  if (guard.response) return guard.response
+
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
   const year = parseInt(searchParams.get('year') ?? '0', 10)
@@ -29,14 +31,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = await requireResource('Workload', 'edit')
+  if (guard.response) return guard.response
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (!profile || !['Medical Technologist', 'Admin'].includes(profile.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const supabase = await createClient()
 
   const { entries } = await request.json()
   if (!Array.isArray(entries)) return NextResponse.json({ error: 'entries must be an array' }, { status: 400 })

@@ -1,8 +1,15 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getRolePermissions } from '@/lib/permissions'
-import { getEquipment } from '@/lib/queries/equipment'
+import {
+  getEquipmentDepartments,
+  getEquipmentLastUpdated,
+  getEquipmentPage,
+  getEquipmentStatusCounts,
+} from '@/lib/queries/equipment'
 import EquipmentClient from './EquipmentClient'
+
+const INITIAL_PAGE_SIZE = 50
 
 export default async function EquipmentPage() {
   const supabase = await createClient()
@@ -12,14 +19,22 @@ export default async function EquipmentPage() {
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') === 'none') redirect('/staff/dashboard')
   const canEdit = perms['ทะเบียนเครื่องมือ'] === 'edit'
 
-  const initialData = await getEquipment(supabase)
+  const [initialPage, departments, statusCounts, lastUpdated] = await Promise.all([
+    getEquipmentPage(supabase, { page: 1, pageSize: INITIAL_PAGE_SIZE }),
+    getEquipmentDepartments(supabase),
+    getEquipmentStatusCounts(supabase),
+    getEquipmentLastUpdated(supabase),
+  ])
 
-  const lastUpdated = initialData.length > 0
-    ? initialData.reduce((max, e) => {
-        const t = e.updated_at ?? e.created_at
-        return t > max ? t : max
-      }, initialData[0].updated_at ?? initialData[0].created_at)
-    : null
-
-  return <EquipmentClient initialData={initialData} canEdit={canEdit} lastUpdated={lastUpdated} />
+  return (
+    <EquipmentClient
+      initialData={initialPage.items}
+      initialTotal={initialPage.count}
+      initialPageSize={initialPage.pageSize}
+      departments={departments}
+      statusCounts={statusCounts}
+      canEdit={canEdit}
+      lastUpdated={lastUpdated}
+    />
+  )
 }

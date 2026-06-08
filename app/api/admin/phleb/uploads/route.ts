@@ -28,20 +28,9 @@ export async function GET() {
   const uploads = (data ?? []).map(r => ({
     ...r,
     uploader_name: r.uploaded_by ? (nameMap[r.uploaded_by] ?? '—') : '—',
+    actual_count: r.row_count ?? 0,
+    has_records: (r.row_count ?? 0) > 0,
   }))
 
-  const uploadsWithCounts = await Promise.all(uploads.map(async (upload) => {
-    const { data: sample } = await supabaseAdmin
-      .from('phlebotomy_records')
-      .select('id')
-      .eq('upload_id', upload.id)
-      .limit(1)
-    return {
-      ...upload,
-      actual_count: sample?.length ? upload.row_count : 0,
-      has_records: !!sample?.length,
-    }
-  }))
-
-  return NextResponse.json({ uploads: uploadsWithCounts })
+  return NextResponse.json({ uploads })
 }

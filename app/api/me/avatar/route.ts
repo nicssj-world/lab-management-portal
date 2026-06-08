@@ -2,6 +2,14 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024
+const AVATAR_EXT_BY_TYPE: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -10,8 +18,14 @@ export async function POST(req: NextRequest) {
   const form = await req.formData()
   const file = form.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'No file' }, { status: 422 })
+  if (!AVATAR_EXT_BY_TYPE[file.type]) {
+    return NextResponse.json({ error: 'Only JPG, PNG, WebP, or GIF images are allowed' }, { status: 415 })
+  }
+  if (file.size > MAX_AVATAR_BYTES) {
+    return NextResponse.json({ error: 'Avatar image must be 2 MB or smaller' }, { status: 413 })
+  }
 
-  const ext = file.name.split('.').pop() ?? 'jpg'
+  const ext = AVATAR_EXT_BY_TYPE[file.type]
   const path = `${user.id}.${ext}`
   const buffer = Buffer.from(await file.arrayBuffer())
 

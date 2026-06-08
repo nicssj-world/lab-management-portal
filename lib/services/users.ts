@@ -80,11 +80,14 @@ export async function createUser(
   let authUserId: string
   let freshAuthUser = false
 
-  const DEFAULT_PASSWORD = 'Lab12345'
+  const initialPassword = input.password?.trim() || process.env.DEFAULT_USER_PASSWORD
+  if (!initialPassword) {
+    throw new Error('กรุณากรอกรหัสผ่านเริ่มต้น หรือกำหนด DEFAULT_USER_PASSWORD ใน environment')
+  }
 
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email,
-    password: DEFAULT_PASSWORD,
+    password: initialPassword,
     email_confirm: true,
     user_metadata: { name: input.name },
   })
@@ -111,7 +114,7 @@ export async function createUser(
 
     authUserId = existingAuth.id
     await supabaseAdmin.auth.admin.updateUserById(existingAuth.id, {
-      password: DEFAULT_PASSWORD,
+      password: initialPassword,
       user_metadata: { name: input.name },
     })
   } else {
