@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -39,6 +39,12 @@ type RiskPermission = 'none' | 'view' | 'edit'
 type RiskWithActions = Risk & { actions: RiskAction[] }
 type FormState = Partial<Risk>
 type ActionDraft = Partial<RiskAction>
+type RiskListScope = 'smart' | 'ior' | 'register'
+type RiskListMeta = {
+  count: number
+  page: number
+  pageSize: number
+}
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'LAB Risk Dashboard', icon: 'chart' },
@@ -342,12 +348,13 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
   const [showCreate, setShowCreate] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [importMode, setImportMode] = useState<ImportMode>('smart')
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/admin/risks')
+      const res = await fetch('/api/admin/risks?view=dashboard')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'โหลดข้อมูลไม่สำเร็จ')
       const actions = (json.actions ?? []) as RiskAction[]
@@ -360,33 +367,35 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => { void load() }, [load])
+
+  function refreshRiskData() {
+    setRefreshKey(value => value + 1)
+    void load()
   }
 
-  useEffect(() => { void load() }, [])
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return risks.filter(risk => {
-      if (status && risk.status !== status) return false
-      if (department && risk.department_found !== department) return false
-      if (!q) return true
-      return [
-        riskNo(risk),
-        risk.name,
-        risk.event_detail,
-        risk.department_found,
-        risk.department_target,
-        risk.event_main_category,
-        risk.event_sub_category,
-      ].some(value => String(value ?? '').toLowerCase().includes(q))
-    })
-  }, [department, query, risks, status])
+  async function openPreview(risk: RiskWithActions) {
+    if (risk.event_detail) {
+      setPreviewing(risk)
+      return
+    }
+    try {
+      const res = await fetch(`/api/admin/risks/${risk.id}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'โหลดรายละเอียดไม่สำเร็จ')
+      setPreviewing({
+        ...json.data,
+        actions: json.actions ?? [],
+      })
+    } catch {
+      setPreviewing(risk)
+    }
+  }
 
   const dashboardRisks = useMemo(() => risks.filter(r => !isFutureDateKey(latestEventDateKey(r))), [risks])
   const riskRegisterDashboardRisks = useMemo(() => dashboardRisks.filter(isRiskRegisterRisk), [dashboardRisks])
-  const smartFiltered = useMemo(() => filtered.filter(r => isSmartRmRisk(r) && !isFutureDateKey(latestEventDateKey(r))), [filtered])
-  const iorFiltered = useMemo(() => filtered.filter(isIorRisk), [filtered])
-  const riskRegisterFiltered = useMemo(() => filtered.filter(isRiskRegisterRisk), [filtered])
 
   const dashboard = useMemo(() => {
     const open = dashboardRisks.filter(r => r.status !== 'closed')
@@ -461,13 +470,13 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
       {loading && <div style={{ padding: 42, textAlign: 'center', color: 'var(--muted)' }}>กำลังโหลดทะเบียนความเสี่ยง...</div>}
 
       {!loading && tab === 'dashboard' && (
-        <Dashboard risks={risks} dashboard={dashboard} heatInitial={heatInitial} heatResidual={heatResidual} onOpen={setPreviewing} />
+        <Dashboard risks={risks} dashboard={dashboard} heatInitial={heatInitial} heatResidual={heatResidual} onOpen={(risk) => { void openPreview(risk) }} />
       )}
 
       {!loading && tab === 'smart' && (
         <RegisterTable
           title="ความเสี่ยงจาก Smart-RM"
-          risks={smartFiltered}
+          scope="smart"
           query={query}
           setQuery={setQuery}
           status={status}
@@ -477,15 +486,16 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
           department={department}
           setDepartment={setDepartment}
           onOpen={setPreviewing}
-          onDeleted={() => void load()}
+          onMutated={refreshRiskData}
           canEdit={canEdit}
+          refreshKey={refreshKey}
         />
       )}
 
       {!loading && tab === 'ior' && (
         <RegisterTable
           title="รายงานอุบัติการณ์ (IOR)"
-          risks={iorFiltered}
+          scope="ior"
           query={query}
           setQuery={setQuery}
           status={status}
@@ -495,15 +505,16 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
           department={department}
           setDepartment={setDepartment}
           onOpen={canReview ? setEditing : setPreviewing}
-          onDeleted={() => void load()}
+          onMutated={refreshRiskData}
           canEdit={canEdit}
+          refreshKey={refreshKey}
         />
       )}
 
       {!loading && tab === 'register' && (
         <RegisterTable
           title="ทะเบียนความเสี่ยงในห้องปฏิบัติการ (Risk Register)"
-          risks={riskRegisterFiltered}
+          scope="register"
           query={query}
           setQuery={setQuery}
           status={status}
@@ -513,15 +524,16 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
           department={department}
           setDepartment={setDepartment}
           onOpen={canReview ? setEditing : setPreviewing}
-          onDeleted={() => void load()}
+          onMutated={refreshRiskData}
           canEdit={canEdit}
+          refreshKey={refreshKey}
         />
       )}
 
-      {canEdit && showCreate && <RiskFormModal initialEventType={tab === 'register' ? 'risk_assessment' : 'near_miss'} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load(); setTab(tab === 'register' ? 'register' : 'ior') }} />}
+      {canEdit && showCreate && <RiskFormModal initialEventType={tab === 'register' ? 'risk_assessment' : 'near_miss'} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); refreshRiskData(); setTab(tab === 'register' ? 'register' : 'ior') }} />}
       {previewing && <RiskEventPreviewModal risk={previewing} onClose={() => setPreviewing(null)} />}
-      {canReview && editing && <RiskDetailModal risk={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load() }} />}
-      {canEdit && showImport && <RiskImportModal mode={importMode} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); void load(); setTab(importMode === 'smart' ? 'smart' : importMode === 'ior' ? 'ior' : 'register') }} />}
+      {canReview && editing && <RiskDetailModal risk={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refreshRiskData() }} />}
+      {canEdit && showImport && <RiskImportModal mode={importMode} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); refreshRiskData(); setTab(importMode === 'smart' ? 'smart' : importMode === 'ior' ? 'ior' : 'register') }} />}
     </div>
   )
 }
@@ -617,8 +629,8 @@ function Dashboard({ risks, dashboard, heatInitial, heatResidual, onOpen }: {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.15fr .85fr', gap: 12 }}>
         <Panel title="แนวโน้มรายเดือน">
-          <div style={{ height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
+          <div style={{ height: 280, minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height={280}>
               <AreaChart data={monthly} margin={{ top: 8, right: 18, bottom: 0, left: 0 }}>
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--muted)' }} />
                 <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} width={34} />
@@ -630,8 +642,8 @@ function Dashboard({ risks, dashboard, heatInitial, heatResidual, onOpen }: {
         </Panel>
 
         <Panel title="Clinic vs Non-Clinic">
-          <div style={{ height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
+          <div style={{ height: 280, minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie data={typeData} dataKey="value" nameKey="name" innerRadius={62} outerRadius={96} paddingAngle={3}>
                   {typeData.map(item => <Cell key={item.name} fill={item.color} />)}
@@ -746,9 +758,26 @@ function RiskClientDashboardShape() {
   }
 }
 
-function RegisterTable({ title, risks, query, setQuery, status, setStatus, severity, setSeverity, department, setDepartment, onOpen, onDeleted, canEdit }: {
+function currentThaiFiscalYear() {
+  const now = new Date()
+  const thaiYear = now.getFullYear() + 543
+  return now.getMonth() + 1 >= 10 ? thaiYear + 1 : thaiYear
+}
+
+function riskYearOptions(selectedYear: string) {
+  const current = currentThaiFiscalYear()
+  return Array.from(new Set([
+    current,
+    current - 1,
+    current - 2,
+    current - 3,
+    selectedYear ? Number(selectedYear) : 0,
+  ].filter(Boolean))).sort((a, b) => b - a)
+}
+
+function RegisterTable({ title, scope, query, setQuery, status, setStatus, severity, setSeverity, department, setDepartment, onOpen, onMutated, canEdit, refreshKey }: {
   title: string
-  risks: RiskWithActions[]
+  scope: RiskListScope
   query: string
   setQuery: (v: string) => void
   status: string
@@ -758,45 +787,78 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
   department: string
   setDepartment: (v: string) => void
   onOpen: (risk: RiskWithActions) => void
-  onDeleted: () => void
+  onMutated: () => void
   canEdit: boolean
+  refreshKey: number
 }) {
   const [year, setYear] = useState('')
   const [month, setMonth] = useState('')
   const [page, setPage] = useState(1)
+  const [risks, setRisks] = useState<RiskWithActions[]>([])
+  const [meta, setMeta] = useState<RiskListMeta>({ count: 0, page: 1, pageSize: REGISTER_PAGE_SIZE })
+  const [listLoading, setListLoading] = useState(true)
+  const [listError, setListError] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
 
-  const years = useMemo(() => Array.from(new Set(risks.map(eventFiscalYear).filter(Boolean))).sort((a, b) => b.localeCompare(a)), [risks])
-  const severityOptions = useMemo(() => Array.from(new Set(
-    risks
-      .map(risk => String(risk.severity_level ?? '').trim())
-      .filter(Boolean)
-  )).sort(compareSeverityFilter), [risks])
-  const datedRisks = useMemo(() => risks
-    .filter(risk => {
-      if (year && eventFiscalYear(risk) !== year) return false
-      if (month && eventMonth(risk) !== month) return false
-      if (severity && risk.severity_level !== severity) return false
-      return true
-    })
-    .sort(compareLatestRisk), [month, risks, severity, year])
-  const totalPages = Math.max(1, Math.ceil(datedRisks.length / REGISTER_PAGE_SIZE))
+  const years = useMemo(() => riskYearOptions(year), [year])
+  const severityOptions = useMemo(() => Array.from(new Set(SEVERITY_FILTER_ORDER)).sort(compareSeverityFilter), [])
+  const totalPages = Math.max(1, Math.ceil(meta.count / meta.pageSize))
   const safePage = Math.min(page, totalPages)
-  const pageStart = datedRisks.length ? (safePage - 1) * REGISTER_PAGE_SIZE + 1 : 0
-  const pageEnd = Math.min(safePage * REGISTER_PAGE_SIZE, datedRisks.length)
-  const visibleRisks = datedRisks.slice((safePage - 1) * REGISTER_PAGE_SIZE, safePage * REGISTER_PAGE_SIZE)
+  const pageStart = meta.count ? (safePage - 1) * meta.pageSize + 1 : 0
+  const pageEnd = Math.min(safePage * meta.pageSize, meta.count)
+  const visibleRisks = risks
   const visibleIds = visibleRisks.map(r => r.id)
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selected.has(id))
   const someVisibleSelected = visibleIds.some(id => selected.has(id))
+
+  const loadList = useCallback(async () => {
+    setListLoading(true)
+    setListError('')
+    try {
+      const params = new URLSearchParams({
+        view: 'list',
+        scope,
+        page: String(page),
+        pageSize: String(REGISTER_PAGE_SIZE),
+      })
+      if (query.trim()) params.set('q', query.trim())
+      if (year) params.set('year', year)
+      if (month) params.set('month', month)
+      if (status) params.set('status', status)
+      if (severity) params.set('severity', severity)
+      if (department) params.set('department', department)
+
+      const res = await fetch(`/api/admin/risks?${params.toString()}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'โหลดข้อมูลไม่สำเร็จ')
+      const actions = (json.actions ?? []) as RiskAction[]
+      setRisks((json.data ?? []).map((risk: Risk) => ({
+        ...risk,
+        actions: actions.filter(action => action.risk_id === risk.id),
+      })))
+      setMeta({
+        count: Number(json.count ?? 0),
+        page: Number(json.page ?? page),
+        pageSize: Number(json.pageSize ?? REGISTER_PAGE_SIZE),
+      })
+    } catch (err) {
+      setRisks([])
+      setMeta({ count: 0, page, pageSize: REGISTER_PAGE_SIZE })
+      setListError((err as Error).message)
+    } finally {
+      setListLoading(false)
+    }
+  }, [department, month, page, query, scope, severity, status, year])
 
   useEffect(() => { setPage(1) }, [department, month, query, severity, status, year])
   useEffect(() => { setSelected(new Set()) }, [year, month, status, severity, department, query])
   useEffect(() => {
     if (severity && !severityOptions.includes(severity)) setSeverity('')
   }, [severity, severityOptions, setSeverity])
+  useEffect(() => { void loadList() }, [loadList, refreshKey])
 
   function toggleAll() {
     setSelected(prev => {
@@ -833,7 +895,7 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
       if (!res.ok) throw new Error(json.error ?? 'ลบไม่สำเร็จ')
       setSelected(new Set())
       setConfirmDelete(false)
-      onDeleted()
+      onMutated()
     } catch (err) {
       setDeleteError((err as Error).message)
     } finally {
@@ -873,7 +935,7 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>
-            แสดง {fmt(pageStart)}-{fmt(pageEnd)} จาก {fmt(datedRisks.length)} เหตุการณ์
+            แสดง {fmt(pageStart)}-{fmt(pageEnd)} จาก {fmt(meta.count)} เหตุการณ์
           </div>
           {canEdit && selected.size > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA' }}>
@@ -902,6 +964,12 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
         </div>
       </div>
 
+      {listError && (
+        <div style={{ marginBottom: 10, padding: 11, borderRadius: 9, background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', fontSize: 12.5 }}>
+          {listError}
+        </div>
+      )}
+
       <div style={{ overflow: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1120, fontSize: 12.5 }}>
           <thead>
@@ -923,7 +991,12 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
             </tr>
           </thead>
           <tbody>
-            {visibleRisks.map(risk => {
+            {listLoading && (
+              <tr>
+                <td colSpan={canEdit ? 11 : 10} style={{ padding: 34, textAlign: 'center', color: 'var(--muted)' }}>กำลังโหลดข้อมูล...</td>
+              </tr>
+            )}
+            {!listLoading && visibleRisks.map(risk => {
               const initial = riskScore(risk.likelihood, risk.impact)
               const residual = risk.residual_score ?? riskScore(risk.residual_likelihood, risk.residual_impact)
               const isSelected = selected.has(risk.id)
@@ -961,7 +1034,7 @@ function RegisterTable({ title, risks, query, setQuery, status, setStatus, sever
                 </tr>
               )
             })}
-            {datedRisks.length === 0 && <tr><td colSpan={canEdit ? 11 : 10} style={{ padding: 34, textAlign: 'center', color: 'var(--muted)' }}>ไม่มีข้อมูล</td></tr>}
+            {!listLoading && visibleRisks.length === 0 && <tr><td colSpan={canEdit ? 11 : 10} style={{ padding: 34, textAlign: 'center', color: 'var(--muted)' }}>ไม่มีข้อมูล</td></tr>}
           </tbody>
         </table>
       </div>
@@ -1473,8 +1546,8 @@ function RiskImportModal({ mode, onClose, onImported }: { mode: ImportMode; onCl
 
 function RiskBarChart({ data, color = '#0EA5E9', palette = false }: { data: { name: string; value: number }[]; color?: string; palette?: boolean }) {
   return (
-    <div style={{ height: 280 }}>
-      <ResponsiveContainer width="100%" height="100%">
+    <div style={{ height: 280, minWidth: 0 }}>
+      <ResponsiveContainer width="100%" height={280}>
         <BarChart layout="vertical" data={data} margin={{ top: 2, right: 24, bottom: 0, left: 8 }}>
           <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--muted)' }} />
           <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 10, fill: 'var(--muted)' }} />
@@ -1507,7 +1580,7 @@ function Kpi({ label, value, icon, tone, sub }: { label: string; value: number; 
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+    <section style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, minWidth: 0 }}>
       <div style={{ fontSize: 14, color: 'var(--ink)', fontWeight: 900, marginBottom: 12 }}>{title}</div>
       {children}
     </section>

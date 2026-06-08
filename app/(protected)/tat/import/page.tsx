@@ -1,25 +1,22 @@
-import { PageHeader } from '@/components/ui/PageHeader'
-import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { TATImportForm } from '@/components/tat/TATImportForm'
-import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getRolePermissions } from '@/lib/permissions'
 
-export default function TATImportPage() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Link href="/tat/dashboard">
-          <Button variant="ghost" size="sm" icon="arrowLeft">กลับ</Button>
-        </Link>
-        <PageHeader
-          eyebrow="TAT"
-          title="นำเข้าข้อมูล TAT"
-          subtitle="อัปโหลดไฟล์ Excel หรือ CSV จาก LIS"
-        />
-      </div>
-      <Card padding={24}>
-        <TATImportForm />
-      </Card>
-    </div>
-  )
+export default async function TATImportPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  const perms = profile?.role ? await getRolePermissions(profile.role) : {}
+  if ((perms['TAT'] ?? 'none') === 'none') redirect('/staff/dashboard')
+  if (perms['TAT'] === 'view') redirect('/tat')
+  redirect('/tat/upload')
+  return null
 }

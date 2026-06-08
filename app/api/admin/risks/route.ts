@@ -3,8 +3,42 @@ import { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { canEditRisk, getRiskActor, getRiskPermission, normalizeRiskPayload } from '@/lib/risk-server'
 
-const PAGE_SIZE = 1000
+const FETCH_CHUNK_SIZE = 1000
+const DEFAULT_PAGE_SIZE = 20
+const MAX_PAGE_SIZE = 100
 const ACTION_ID_CHUNK_SIZE = 300
+
+const DASHBOARD_SELECT = [
+  'id',
+  'risk_no',
+  'external_no',
+  'event_type',
+  'event_date',
+  'recorded_date',
+  'created_at',
+  'name',
+  'department_found',
+  'department_target',
+  'risk_type',
+  'event_main_category',
+  'event_sub_category',
+  'event_category',
+  'severity_level',
+  'ior_status',
+  'likelihood',
+  'impact',
+  'level',
+  'status',
+  'requires_rca',
+  'root_cause',
+  'due_date',
+  'follow_up_date',
+  'residual_likelihood',
+  'residual_impact',
+  'residual_score',
+  'residual_level',
+  'owner',
+].join(',')
 
 const riskSchema = z.object({
   risk_no: z.string().nullable().optional(),
@@ -40,31 +74,97 @@ const riskSchema = z.object({
   effectiveness_result: z.string().nullable().optional(),
 })
 
-async function fetchAllRisks(sp: URLSearchParams) {
-  const rows: unknown[] = []
+function parsePositiveInt(value: string | null, fallback: number) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function fiscalYearRange(value: string | null) {
+  if (!value) return null
+  const displayYear = Number(value)
+  if (!Number.isInteger(displayYear)) return null
+  const fiscalYear = displayYear > 2400 ? displayYear - 543 : displayYear
+  return {
+    fiscalYear,
+    start: `${fiscalYear - 1}-10-01`,
+    end: `${fiscalYear}-09-30`,
+  }
+}
+
+function monthDateRange(range: ReturnType<typeof fiscalYearRange>, monthValue: string | null) {
+  if (!range || !monthValue || !/^\d{2}$/.test(monthValue)) return null
+  const month = Number(monthValue)
+  if (month < 1 || month > 12) return null
+  const year = month >= 10 ? range.fiscalYear - 1 : range.fiscalYear
+  const lastDay = new Date(year, month, 0).getDate()
+  return {
+    start: `${year}-${monthValue}-01`,
+    end: `${year}-${monthValue}-${String(lastDay).padStart(2, '0')}`,
+  }
+}
+
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, match => `\\${match}`)
+}
+
+function applyRiskFilters(query: any, sp: URLSearchParams) {
+  const scope = sp.get('scope') ?? sp.get('tab') ?? 'all'
   const status = sp.get('status')
   const severity = sp.get('severity')
   const department = sp.get('department')
-  const year = sp.get('year')
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const to = from + PAGE_SIZE - 1
+  const month = sp.get('month')
+  const q = (sp.get('q') ?? sp.get('query') ?? '').trim()
+  const range = fiscalYearRange(sp.get('year'))
+
+  if (scope === 'smart') {
+    query = query.not('external_no', 'is', null).neq('external_no', '')
+  } else if (scope === 'register') {
+    query = query.or('external_no.is.null,external_no.eq.').eq('event_type', 'risk_assessment')
+  } else if (scope === 'ior') {
+    query = query.or('external_no.is.null,external_no.eq.').or('event_type.is.null,event_type.neq.risk_assessment')
+  }
+
+  if (status) query = query.eq('status', status)
+  if (severity) query = query.eq('severity_level', severity)
+  if (department) query = query.eq('department_found', department)
+  const monthRange = monthDateRange(range, month)
+  if (monthRange) query = query.gte('event_date', monthRange.start).lte('event_date', monthRange.end)
+  else if (range) query = query.gte('event_date', range.start).lte('event_date', range.end)
+  if (q) {
+    const pattern = `%${escapeLike(q)}%`
+    query = query.or([
+      `risk_no.ilike.${pattern}`,
+      `external_no.ilike.${pattern}`,
+      `name.ilike.${pattern}`,
+      `event_detail.ilike.${pattern}`,
+      `department_found.ilike.${pattern}`,
+      `department_target.ilike.${pattern}`,
+      `event_main_category.ilike.${pattern}`,
+      `event_sub_category.ilike.${pattern}`,
+    ].join(','))
+  }
+
+  return query
+}
+
+async function fetchDashboardRisks() {
+  const rows: unknown[] = []
+  for (let from = 0; ; from += FETCH_CHUNK_SIZE) {
+    const to = from + FETCH_CHUNK_SIZE - 1
     let query = supabaseAdmin
       .from('risks')
-      .select('*')
+      .select(DASHBOARD_SELECT)
       .order('event_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
-
-    if (status) query = query.eq('status', status)
-    if (severity) query = query.eq('severity_level', severity)
-    if (department) query = query.eq('department_found', department)
-    if (year && /^\d{4}$/.test(year)) {
-      query = query.gte('event_date', `${year}-01-01`).lte('event_date', `${year}-12-31`)
-    }
 
     const { data, error } = await query.range(from, to)
     if (error) throw error
     rows.push(...(data ?? []))
-    if (!data || data.length < PAGE_SIZE) break
+    if (!data || data.length < FETCH_CHUNK_SIZE) break
   }
   return rows
 }
@@ -73,8 +173,8 @@ async function fetchAllRiskActions(riskIds: number[]) {
   const actions: unknown[] = []
   for (let i = 0; i < riskIds.length; i += ACTION_ID_CHUNK_SIZE) {
     const ids = riskIds.slice(i, i + ACTION_ID_CHUNK_SIZE)
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const to = from + PAGE_SIZE - 1
+    for (let from = 0; ; from += FETCH_CHUNK_SIZE) {
+      const to = from + FETCH_CHUNK_SIZE - 1
       const { data, error } = await supabaseAdmin
         .from('risk_actions')
         .select('*')
@@ -84,10 +184,37 @@ async function fetchAllRiskActions(riskIds: number[]) {
         .range(from, to)
       if (error) throw error
       actions.push(...(data ?? []))
-      if (!data || data.length < PAGE_SIZE) break
+      if (!data || data.length < FETCH_CHUNK_SIZE) break
     }
   }
   return actions
+}
+
+async function fetchPagedRisks(sp: URLSearchParams) {
+  const page = parsePositiveInt(sp.get('page'), 1)
+  const pageSize = clamp(parsePositiveInt(sp.get('pageSize'), DEFAULT_PAGE_SIZE), 1, MAX_PAGE_SIZE)
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+  let query = supabaseAdmin
+    .from('risks')
+    .select('*', { count: 'exact' })
+    .order('event_date', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
+
+  query = applyRiskFilters(query, sp)
+
+  const { data, error, count } = await query.range(from, to)
+  if (error) throw error
+  const ids = (data ?? []).map(row => Number((row as { id: unknown }).id)).filter(Number.isFinite)
+  const actions = ids.length > 0 ? await fetchAllRiskActions(ids) : []
+
+  return {
+    data: data ?? [],
+    actions,
+    count: count ?? 0,
+    page,
+    pageSize,
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -98,7 +225,11 @@ export async function GET(req: NextRequest) {
 
   const sp = req.nextUrl.searchParams
   try {
-    const data = await fetchAllRisks(sp)
+    if (sp.get('view') === 'list') {
+      return NextResponse.json(await fetchPagedRisks(sp))
+    }
+
+    const data = await fetchDashboardRisks()
     const ids = data.map(row => Number((row as { id: unknown }).id)).filter(Number.isFinite)
     const actions = ids.length > 0 ? await fetchAllRiskActions(ids) : []
     return NextResponse.json({ data, actions })

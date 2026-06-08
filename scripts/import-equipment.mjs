@@ -1,8 +1,8 @@
 // Run: node scripts/import-equipment.mjs
 import XLSX from 'xlsx'
+import { getSupabaseServiceEnv } from './lib/env.mjs'
 
-const SUPABASE_URL = 'https://fslagsuorkcckvvtrmyi.supabase.co'
-const SERVICE_KEY = '[REDACTED_SUPABASE_SERVICE_ROLE_KEY]'
+const { url: SUPABASE_URL, serviceRoleKey: SERVICE_KEY } = getSupabaseServiceEnv()
 
 // Sheets to process (skip summary/graph sheets)
 const DEPT_SHEETS = [

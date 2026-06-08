@@ -2,9 +2,9 @@
 // Run AFTER: ALTER TABLE equipment ADD COLUMN IF NOT EXISTS pm_cal_data jsonb;
 // Run: node scripts/import-pmcal.mjs
 import XLSX from 'xlsx'
+import { getSupabaseServiceEnv } from './lib/env.mjs'
 
-const SUPABASE_URL = 'https://fslagsuorkcckvvtrmyi.supabase.co'
-const SERVICE_KEY = '[REDACTED_SUPABASE_SERVICE_ROLE_KEY]'
+const { url: SUPABASE_URL, serviceRoleKey: SERVICE_KEY } = getSupabaseServiceEnv()
 
 // Month name → index 0-11
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']

@@ -24,9 +24,9 @@ export function Logo({ size = 32, showText = true, lang = 'th', variant = 'publi
       <Image
         src="/images/logo-chonburi.png"
         alt="โรงพยาบาลชลบุรี"
-        width={size * 3}
-        height={size * 2}
-        priority
+        width={size}
+        height={size}
+        preload
         quality={100}
         sizes={`${size}px`}
         style={{ width: size, height: size, borderRadius: 8, flexShrink: 0, objectFit: 'contain' }}

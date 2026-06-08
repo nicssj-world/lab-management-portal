@@ -85,12 +85,12 @@ function Stat({ label, value, sub, icon, color }: { label: string; value: string
 
 function Panel({ title, subtitle, children, accent = 'var(--primary)' }: { title: string; subtitle?: string; children: React.ReactNode; accent?: string }) {
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', minWidth: 0 }}>
       <div style={{ padding: '13px 18px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${accent}` }}>
         <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ink)' }}>{title}</div>
         {subtitle && <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{subtitle}</div>}
       </div>
-      <div style={{ padding: 18 }}>{children}</div>
+      <div style={{ padding: 18, minWidth: 0 }}>{children}</div>
     </div>
   )
 }
@@ -169,7 +169,7 @@ export function TatAnnualClient() {
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(280px, .9fr)', gap: 12 }}>
             <Panel title="แนวโน้มรายเดือนในปีงบ" subtitle="TAT เฉลี่ยและ % ตามเป้าหมาย" accent="#1E5FAD">
               <div style={{ height: 320 }}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height={320}>
                   <ComposedChart data={monthData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey={(row: MonthRow) => monthLabel(row)} tick={{ fontSize: 11, fill: 'var(--muted)' }} />
@@ -185,7 +185,7 @@ export function TatAnnualClient() {
 
             <Panel title="การกระจาย TAT ทั้งปี" subtitle="รวม test rows ทุกเดือน" accent="#D97706">
               <div style={{ height: 320 }}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height={320}>
                   <BarChart data={data.tat_distribution} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="bin" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} />

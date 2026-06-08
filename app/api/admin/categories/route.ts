@@ -22,6 +22,9 @@ function toMsg(err: unknown): string {
 // GET — list categories with test count
 export async function GET() {
   try {
+    const actor = await getActor()
+    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
     const [{ data: cats, error }, { data: testRows }] = await Promise.all([
       supabaseAdmin.from('categories').select('*').order('sort_order'),
       supabaseAdmin.from('tests').select('category_id').not('category_id', 'is', null).eq('active', true),

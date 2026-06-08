@@ -1,10 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseServiceEnv } from './lib/env.mjs'
 
-const supabase = createClient(
-  'https://fslagsuorkcckvvtrmyi.supabase.co',
-  '[REDACTED_SUPABASE_SERVICE_ROLE_KEY]',
-  { auth: { persistSession: false } },
-)
+const { url: supabaseUrl, serviceRoleKey } = getSupabaseServiceEnv()
+const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
 
 const CATEGORIES = [
   { id: 'immu', th: 'ภูมิคุ้มกันวิทยาคลินิก',            en: 'IMMUNOLOGY',          color: '#9333EA', icon: 'shieldCheck', sort_order: 0 },

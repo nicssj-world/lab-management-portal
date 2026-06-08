@@ -128,6 +128,7 @@ function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModa
     dept:     (user?.dept    ?? DEPARTMENTS[0]) as typeof DEPARTMENTS[number],
     status:   (user?.status  ?? 'active') as UserStatus,
     doc_role: user?.doc_role ?? '',
+    password: '',
   })
 
   const set = (k: keyof typeof form) => (v: string) => {
@@ -205,6 +206,15 @@ function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModa
           <Field label="E-Phis" error={errors.ephis_id}>
             <Input type="number" value={form.ephis_id} onChange={(v) => set('ephis_id')(v.replace(/\D/g, ''))} placeholder="รหัสพนักงาน" required />
           </Field>
+
+          {!isEdit && (
+            <Field label="รหัสผ่านเริ่มต้น" error={errors.password}>
+              <Input type="password" value={form.password} onChange={set('password')} placeholder="อย่างน้อย 8 ตัวอักษร" />
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
+                ถ้าเว้นว่าง ระบบจะใช้ DEFAULT_USER_PASSWORD จาก environment
+              </div>
+            </Field>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="บทบาท" error={errors.role}>
@@ -301,6 +311,7 @@ type ImportRow = {
   ephis_id: string
   role: string
   dept: string
+  password?: string
   error?: string
 }
 
@@ -309,13 +320,13 @@ function downloadTemplate() {
     const wb = utils.book_new()
 
     // Sheet 1: Users (template)
-    const headers = ['ชื่อ-นามสกุล', 'E-Phis', 'บทบาท', 'แผนก']
+    const headers = ['ชื่อ-นามสกุล', 'E-Phis', 'บทบาท', 'แผนก', 'รหัสผ่านเริ่มต้น']
     const examples = [
-      ['สมศรี ใจดี', '10001', 'Medical Technologist', DEPARTMENTS[0]],
-      ['วิชัย มานะ', '10002', 'Assistant', DEPARTMENTS[1]],
+      ['สมศรี ใจดี', '10001', 'Medical Technologist', DEPARTMENTS[0], ''],
+      ['วิชัย มานะ', '10002', 'Assistant', DEPARTMENTS[1], ''],
     ]
     const wsUsers = utils.aoa_to_sheet([headers, ...examples])
-    wsUsers['!cols'] = [{ wch: 28 }, { wch: 10 }, { wch: 26 }, { wch: 44 }]
+    wsUsers['!cols'] = [{ wch: 28 }, { wch: 10 }, { wch: 26 }, { wch: 44 }, { wch: 18 }]
     utils.book_append_sheet(wb, wsUsers, 'Users')
 
     // Sheet 2: บทบาท
@@ -361,16 +372,18 @@ function parseXlsx(file: File): Promise<ImportRow[]> {
         const iEphis = col('E-Phis')
         const iRole = col('บทบาท')
         const iDept = col('แผนก')
+        const iPassword = col('รหัสผ่านเริ่มต้น')
 
         const rows: ImportRow[] = dataRows.map((r, i) => {
           const name     = String(r[iName]  ?? '').trim()
           const ephis_id = String(r[iEphis] ?? '').trim()
           const role     = String(r[iRole]  ?? '').trim()
           const dept     = String(r[iDept]  ?? '').trim()
-          const parsed = createUserSchema.safeParse({ name, ephis_id, role, dept })
+          const password = iPassword >= 0 ? String(r[iPassword] ?? '').trim() : ''
+          const parsed = createUserSchema.safeParse({ name, ephis_id, role, dept, password })
           return {
             row: i + 2,
-            name, ephis_id, role, dept,
+            name, ephis_id, role, dept, password,
             error: parsed.success ? undefined : parsed.error.issues[0]?.message,
           }
         })
@@ -417,7 +430,7 @@ function ImportModal({ onClose, onDone, showToast }: {
     const res = await fetch('/api/admin/users/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ users: valid.map(({ name, ephis_id, role, dept }) => ({ name, ephis_id, role, dept })) }),
+      body: JSON.stringify({ users: valid.map(({ name, ephis_id, role, dept, password }) => ({ name, ephis_id, role, dept, password })) }),
     })
     const data = await res.json()
     setImporting(false)

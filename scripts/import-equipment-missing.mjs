@@ -1,9 +1,9 @@
 // Import missing equipment records from the new combined sheet
 // Run: node scripts/import-equipment-missing.mjs
 import XLSX from 'xlsx'
+import { getSupabaseServiceEnv } from './lib/env.mjs'
 
-const SUPABASE_URL = 'https://fslagsuorkcckvvtrmyi.supabase.co'
-const SERVICE_KEY = '[REDACTED_SUPABASE_SERVICE_ROLE_KEY]'
+const { url: SUPABASE_URL, serviceRoleKey: SERVICE_KEY } = getSupabaseServiceEnv()
 
 const VALID_RISK = ['High', 'Medium', 'Low']
 

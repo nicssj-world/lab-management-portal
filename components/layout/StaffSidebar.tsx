@@ -122,11 +122,11 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
           <Image
             src="/images/logo-chonburi.png"
             alt="รพ.ชลบุรี"
-            width={80}
-            height={80}
-            priority
+            width={44}
+            height={44}
+            preload
             quality={100}
-            style={{ height: 44, width: 'auto', objectFit: 'contain', flexShrink: 0 }}
+            style={{ width: 44, height: 44, objectFit: 'contain', flexShrink: 0 }}
           />
           {!collapsed && (
             <div style={{ lineHeight: 1.25, overflow: 'hidden', flex: 1 }}>

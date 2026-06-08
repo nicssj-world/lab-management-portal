@@ -188,7 +188,7 @@ function SectionCard({ title, subtitle, accentColor = 'var(--primary)', children
   title: string; subtitle?: string; accentColor?: string; children: React.ReactNode; style?: React.CSSProperties
 }) {
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', ...style }}>
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', minWidth: 0, ...style }}>
       <div style={{
         padding: '13px 20px', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: 10,
@@ -199,7 +199,7 @@ function SectionCard({ title, subtitle, accentColor = 'var(--primary)', children
           {subtitle && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{subtitle}</div>}
         </div>
       </div>
-      <div style={{ padding: 20 }}>{children}</div>
+      <div style={{ padding: 20, minWidth: 0 }}>{children}</div>
     </div>
   )
 }

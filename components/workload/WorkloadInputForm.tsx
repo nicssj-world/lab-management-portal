@@ -23,12 +23,10 @@ interface DeptOption {
 
 interface Props {
   departments: DeptOption[]
-  userRole: string
+  canEdit: boolean
 }
 
-export function WorkloadInputForm({ departments, userRole }: Props) {
-  const canEdit = userRole === 'Medical Technologist' || userRole === 'Admin'
-
+export function WorkloadInputForm({ departments, canEdit }: Props) {
   const [year, setYear] = useState(getCurrentThaiFiscalYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const [deptId, setDeptId] = useState<number | null>(departments[0]?.id ?? null)

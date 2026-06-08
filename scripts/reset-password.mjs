@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseServiceEnv } from './lib/env.mjs'
 
-const supabaseUrl = 'https://fslagsuorkcckvvtrmyi.supabase.co'
-const serviceRoleKey = '[REDACTED_SUPABASE_SERVICE_ROLE_KEY]'
+const { url: supabaseUrl, serviceRoleKey } = getSupabaseServiceEnv()
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false }
@@ -33,7 +33,6 @@ async function resetPassword() {
 
   console.log(`✅ Reset password สำเร็จ`)
   console.log(`   E-Phis  : ${ephisId}`)
-  console.log(`   Password: ${newPassword}`)
 }
 
 resetPassword()
