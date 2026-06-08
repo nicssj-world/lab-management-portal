@@ -7,10 +7,10 @@ export { isJsonTable, decodeTable } from '@/lib/utils/refTable'
 export type { RawTable } from '@/lib/utils/refTable'
 
 interface Props {
-  value: string | undefined
-  onChange: (v: string | undefined) => void
-  note: string | undefined
-  onNoteChange: (v: string | undefined) => void
+  value: string | null | undefined
+  onChange: (v: string | null | undefined) => void
+  note: string | null | undefined
+  onNoteChange: (v: string | null | undefined) => void
 }
 
 const ta: React.CSSProperties = {
@@ -121,7 +121,7 @@ export function ReferenceRangePaste({ value, onChange, note, onNoteChange }: Pro
         <textarea
           style={ta}
           value={note ?? ''}
-          onChange={(e) => onNoteChange(e.target.value || undefined)}
+          onChange={(e) => onNoteChange(e.target.value || null)}
           placeholder="เช่น ค่าอ้างอิงนี้ใช้สำหรับผู้ใหญ่ทั่วไป กรณีเด็ก ตั้งครรภ์ หรือสูงอายุ กรุณาดูเอกสารคู่มือฉบับเต็ม"
         />
       </div>

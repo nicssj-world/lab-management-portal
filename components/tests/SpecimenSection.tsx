@@ -68,7 +68,7 @@ export function SpecimenSection({ test }: Props) {
       )}
       <Row label="การเก็บรักษาหลังตรวจ" value={test.stability} />
       <Row label="เงื่อนไขปฏิเสธ" value={test.reject} />
-      <Row label="เงื่อนไขการขนส่ง" value={test.transport_condition} />
+      <Row label="การเก็บรักษาตัวอย่างก่อนนำส่ง" value={test.transport_condition} />
       {safeSpecimenNote && (
         <div className="specimen-detail-row" style={{ display: 'flex', gap: 12, paddingBottom: 10, marginBottom: 10, borderBottom: '1px solid var(--border)' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)', minWidth: 140, flexShrink: 0 }}>รายละเอียดอื่นๆ</span>
