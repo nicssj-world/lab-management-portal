@@ -124,8 +124,14 @@ function hasWorkloadMonthValues(payload: Payload | null, year: number, month: nu
   }))
 }
 
+function hasHeatmapCells(payload: Payload | null) {
+  return !!payload
+    && ((Array.isArray(payload.heatmap) && payload.heatmap.length > 0)
+      || (Array.isArray(payload.phleb_heatmap) && payload.phleb_heatmap.length > 0))
+}
+
 function uploadWarningsForPayload(payload: Payload, uploadWarnings: string[], year: number, month: number) {
-  if (payload.source === 'local-etl' && hasWorkloadMonthValues(payload, year, month)) return []
+  if (hasWorkloadMonthValues(payload, year, month)) return []
   return uploadWarnings
 }
 
@@ -142,8 +148,14 @@ async function readLatestWorkloadPayload(year: number, month: number): Promise<P
 
   if (error) return null
   const rows = (data ?? []) as { payload: Payload | null }[]
-  const payloads = rows.map(row => row.payload).filter(hasWorkloadRulesPayload)
-  return payloads.find(payload => hasWorkloadMonthValues(payload, year, month))
+  const payloads = rows
+    .map(row => row.payload)
+    .filter((payload): payload is Payload => hasWorkloadRulesPayload(payload))
+  const payloadsWithMonthValues = payloads.filter(payload => hasWorkloadMonthValues(payload, year, month))
+  return payloadsWithMonthValues.find(payload => payload.source === 'local-etl' && hasHeatmapCells(payload))
+    ?? payloadsWithMonthValues.find(payload => payload.source === 'local-etl')
+    ?? payloadsWithMonthValues.find(hasHeatmapCells)
+    ?? payloadsWithMonthValues[0]
     ?? payloads[0]
     ?? null
 }
@@ -158,7 +170,7 @@ function applySelectedHeatmaps(payload: Payload, heatmaps: HeatmapPayload, uploa
 }
 
 async function fetchUploadHealth(year: number, month: number): Promise<UploadHealth> {
-  const [tatRes, phlebRes, tatCountRes, phlebCountRes] = await Promise.all([
+  const [tatRes, phlebRes] = await Promise.all([
     supabaseAdmin
       .from('tat_uploads')
       .select('row_count,uploaded_at')
@@ -171,29 +183,15 @@ async function fetchUploadHealth(year: number, month: number): Promise<UploadHea
       .eq('year', year)
       .eq('month', month)
       .maybeSingle(),
-    supabaseAdmin
-      .from('tat_records')
-      .select('id')
-      .eq('year', year)
-      .eq('month', month)
-      .limit(1),
-    supabaseAdmin
-      .from('phlebotomy_records')
-      .select('id')
-      .eq('year', year)
-      .eq('month', month)
-      .limit(1),
   ])
 
   if (tatRes.error) throw new Error(tatRes.error.message)
   if (phlebRes.error) throw new Error(phlebRes.error.message)
-  if (tatCountRes.error) throw new Error(tatCountRes.error.message)
-  if (phlebCountRes.error) throw new Error(phlebCountRes.error.message)
 
   const tat = (tatRes.data ?? { row_count: 0, uploaded_at: 'none' }) as UploadVersion
   const phleb = (phlebRes.data ?? { row_count: 0, uploaded_at: 'none' }) as UploadVersion
-  const hasTatRecords = (tatCountRes.data?.length ?? 0) > 0
-  const hasPhlebRecords = (phlebCountRes.data?.length ?? 0) > 0
+  const hasTatRecords = (tat.row_count ?? 0) > 0
+  const hasPhlebRecords = (phleb.row_count ?? 0) > 0
   const warnings: string[] = []
 
   if ((tat.row_count ?? 0) > 0 && !hasTatRecords) {
@@ -1097,11 +1095,28 @@ export async function GET(req: NextRequest) {
 
     const months = fiscalMonths(fiscalYear)
     const persistent = await readAnalysisCache<Payload>(CACHE_ENDPOINT, key)
-    if (selectedMonthHasRecords && persistent && !hasMissingHeatmapWarning(persistent) && hasWorkloadMonthValues(persistent, selectedYear, selectedMonth)) {
+    const latestPersistent = await readLatestWorkloadPayload(selectedYear, selectedMonth)
+    if (
+      selectedMonthHasRecords
+      && persistent
+      && !hasMissingHeatmapWarning(persistent)
+      && hasWorkloadMonthValues(persistent, selectedYear, selectedMonth)
+      && (hasHeatmapCells(persistent) || !hasHeatmapCells(latestPersistent))
+    ) {
       const heatmaps = await fetchHeatmaps(selectedYear, selectedMonth)
       const payload = applySelectedHeatmaps(persistent, heatmaps, uploadHealth.warnings, selectedYear, selectedMonth)
       cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
       return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'persistent' } })
+    }
+
+    if (latestPersistent && hasWorkloadMonthValues(latestPersistent, selectedYear, selectedMonth)) {
+      const heatmaps = await fetchHeatmaps(selectedYear, selectedMonth)
+      const payload = applySelectedHeatmaps(latestPersistent, heatmaps, uploadHealth.warnings, selectedYear, selectedMonth)
+      cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
+      await writeAnalysisCache(CACHE_ENDPOINT, key, selectedYear, selectedMonth, payload, PERSISTENT_CACHE_TTL_MS)
+      return NextResponse.json(payload, {
+        headers: { 'X-Lab-Workload-Cache': selectedMonthHasRecords ? 'latest-persistent' : 'local-persistent' },
+      })
     }
 
     if (req.nextUrl.searchParams.get('precomputed') === '1') {
@@ -1126,7 +1141,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(payload, { headers: { 'X-Lab-Workload-Cache': 'empty' } })
     }
 
-    const latestPersistent = await readLatestWorkloadPayload(selectedYear, selectedMonth)
     if (latestPersistent) {
       const heatmaps = await fetchHeatmaps(selectedYear, selectedMonth)
       const payload = applySelectedHeatmaps(latestPersistent, heatmaps, uploadHealth.warnings, selectedYear, selectedMonth)
