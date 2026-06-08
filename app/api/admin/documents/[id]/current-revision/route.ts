@@ -3,16 +3,20 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
 
+const DOC_UPLOAD_ROLES = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer']
+
 async function getActor() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data } = await supabaseAdmin
-    .from('profiles').select('id, role').eq('id', user.id).single()
-  return data as { id: string; role: string } | null
+    .from('profiles').select('id, role, doc_role').eq('id', user.id).single()
+  return data as { id: string; role: string; doc_role: string | null } | null
 }
 
-async function canEditDocuments(role: string) {
+async function canEditDocuments(role: string, docRole: string | null) {
+  if (role === 'Admin') return true
+  if (DOC_UPLOAD_ROLES.includes(docRole ?? role)) return true
   const perms = await getRolePermissions(role)
   return (perms['เอกสารคุณภาพ'] ?? 'none') === 'edit'
 }
@@ -23,7 +27,7 @@ export async function DELETE(
 ) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await canEditDocuments(actor.role))) {
+  if (!(await canEditDocuments(actor.role, actor.doc_role))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

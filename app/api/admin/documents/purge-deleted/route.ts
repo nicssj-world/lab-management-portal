@@ -37,7 +37,7 @@ export async function DELETE() {
 
   const { data: rows, error: fetchErr } = await supabaseAdmin
     .from('documents')
-    .select('id, file_url')
+    .select('id, file_url, word_url')
     .not('deleted_at', 'is', null)
 
   if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
@@ -46,6 +46,9 @@ export async function DELETE() {
   for (const row of rows ?? []) {
     if (row.file_url) {
       r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: row.file_url })).catch(() => {})
+    }
+    if (row.word_url) {
+      r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: row.word_url })).catch(() => {})
     }
   }
 

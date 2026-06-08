@@ -46,10 +46,9 @@ export async function POST(
     { expiresIn: 3600 }
   )
 
-  const { error: logErr } = await supabaseAdmin.from('document_access_logs')
+  supabaseAdmin.from('document_access_logs')
     .insert({ document_id: id, user_id: actor.id, action: 'view' })
-
-  if (logErr) return NextResponse.json({ error: logErr.message }, { status: 500 })
+    .then(undefined, () => {})
 
   return NextResponse.json({ url, mime_type: doc.mime_type, read_logged: true })
 }
