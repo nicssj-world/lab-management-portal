@@ -262,6 +262,7 @@ export interface ContractUsage {
   note: string | null
   recorded_by: string | null
   usage_date: string | null
+  usage_month: string | null
   created_at: string
 }
 

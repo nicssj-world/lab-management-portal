@@ -13,9 +13,10 @@ interface InputProps {
   disabled?: boolean
   name?: string
   required?: boolean
+  rightElement?: React.ReactNode
 }
 
-export function Input({ value, onChange, placeholder, icon, type = 'text', size = 'md', style, disabled, name, required }: InputProps) {
+export function Input({ value, onChange, placeholder, icon, type = 'text', size = 'md', style, disabled, name, required, rightElement }: InputProps) {
   const heights: Record<string, number> = { sm: 32, md: 38, lg: 44 }
   return (
     <div style={{ position: 'relative', ...style }}>
@@ -32,7 +33,8 @@ export function Input({ value, onChange, placeholder, icon, type = 'text', size 
         onChange={e => onChange?.(e.target.value)}
         style={{
           width: '100%', height: heights[size],
-          padding: icon ? '0 12px 0 36px' : '0 12px',
+          paddingLeft: icon ? 36 : 12,
+          paddingRight: rightElement ? 44 : 12,
           borderRadius: 8, border: '1px solid var(--border)',
           background: 'var(--card)', color: 'var(--ink)', fontSize: 13,
           fontFamily: 'inherit', outline: 'none', transition: 'border-color .15s',
@@ -41,6 +43,11 @@ export function Input({ value, onChange, placeholder, icon, type = 'text', size 
         onFocus={e => { e.currentTarget.style.borderColor = 'var(--primary)' }}
         onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
       />
+      {rightElement && (
+        <div style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)' }}>
+          {rightElement}
+        </div>
+      )}
     </div>
   )
 }

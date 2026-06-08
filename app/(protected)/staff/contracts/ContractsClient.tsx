@@ -6,27 +6,77 @@ import { Button } from '@/components/ui/Button'
 import type { ContractWithUsage } from '@/lib/queries/contracts'
 import type { ContractUsage } from '@/lib/supabase/types'
 
-const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function getCurrentMonthKey(): string {
+  return monthKey(new Date())
+}
+
+function usageMonthKey(u: ContractUsage): string {
+  return (u.usage_month ?? u.usage_date ?? '').slice(0, 7)
+}
+
+function fmtExpenseMonth(value: string | null | undefined): string {
+  if (!value) return '—'
+  const [year, month] = value.slice(0, 7).split('-').map(Number)
+  if (!year || !month) return '—'
+  return new Date(year, month - 1, 1).toLocaleDateString('th-TH', { month: 'short', year: 'numeric' })
+}
+
+function getExpenseMonthOptions(startDate: string | null, endDate: string | null): { value: string; label: string }[] {
+  const now = new Date()
+  const fallbackStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+  const fallbackEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const start = startDate ? new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth(), 1) : fallbackStart
+  const end = endDate ? new Date(new Date(endDate).getFullYear(), new Date(endDate).getMonth(), 1) : fallbackEnd
+  const first = start <= end ? start : end
+  const last = start <= end ? end : start
+  const options: { value: string; label: string }[] = []
+  for (let d = new Date(first); d <= last; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+    options.push({ value: monthKey(d), label: fmtExpenseMonth(monthKey(d)) })
+  }
+  return options.length > 0 ? options : [{ value: getCurrentMonthKey(), label: fmtExpenseMonth(getCurrentMonthKey()) }]
+}
+
+function defaultUsageMonth(c: ContractWithUsage): string {
+  const current = getCurrentMonthKey()
+  const options = getExpenseMonthOptions(c.start_date, c.end_date)
+  return options.some(o => o.value === current) ? current : (options.at(-1)?.value ?? current)
+}
 
 function getMonthlyData(history: ContractUsage[], startDate: string | null) {
   const now = new Date()
   const contractStart = startDate ? new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth(), 1) : null
-  const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1)
-  // Use contract start if it's within the last 12 months, otherwise fall back to 12 months ago
-  const start = contractStart && contractStart >= twelveMonthsAgo ? contractStart : twelveMonthsAgo
-  return Array.from({ length: 12 }, (_, i) => {
+  const latestUsageMonth = history
+    .map(usageMonthKey)
+    .filter(Boolean)
+    .map(key => {
+      const [year, month] = key.split('-').map(Number)
+      return new Date(year, month - 1, 1)
+    })
+    .sort((a, b) => a.getTime() - b.getTime())
+    .at(-1)
+  const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const fallbackStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+  const start = contractStart ?? fallbackStart
+  const end = latestUsageMonth && latestUsageMonth > currentMonth ? latestUsageMonth : currentMonth
+  const length = Math.max(1, ((end.getFullYear() - start.getFullYear()) * 12) + end.getMonth() - start.getMonth() + 1)
+  return Array.from({ length }, (_, i) => {
     const d = new Date(start.getFullYear(), start.getMonth() + i, 1)
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const amount = history.filter(h => h.usage_date?.startsWith(key)).reduce((s, h) => s + h.amount, 0)
-    return { label: THAI_MONTHS_SHORT[d.getMonth()], amount }
+    const key = monthKey(d)
+    const amount = history.filter(h => usageMonthKey(h) === key).reduce((s, h) => s + h.amount, 0)
+    return { label: fmtExpenseMonth(key), amount }
   })
 }
 
 function exportCSV(history: ContractUsage[], vendor: string, product: string) {
   const rows = [
     ['วันที่', 'จำนวน (บาท)', 'หมายเหตุ', 'บันทึกโดย'],
-    ...history.map(u => [u.usage_date ?? '', u.amount, u.note ?? '', u.recorded_by ?? '']),
+    ...history.map(u => [u.usage_date ?? '', usageMonthKey(u), u.amount, u.note ?? '', u.recorded_by ?? '']),
   ]
+  rows[0] = ['วันที่บันทึก', 'เดือนค่าใช้จ่าย', 'จำนวนเงิน (บาท)', 'หมายเหตุ', 'บันทึกโดย']
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
@@ -166,10 +216,11 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
   const [usageAmount, setUsageAmount] = useState('')
   const [usageNote, setUsageNote] = useState('')
   const [usageDate, setUsageDate] = useState('')
+  const [usageMonth, setUsageMonth] = useState('')
   const [saving, setSaving] = useState(false)
   const [formErr, setFormErr] = useState('')
   const [editUsage, setEditUsage] = useState<ContractUsage | null>(null)
-  const [editUsageForm, setEditUsageForm] = useState({ amount: '', note: '', usage_date: '' })
+  const [editUsageForm, setEditUsageForm] = useState({ amount: '', note: '', usage_date: '', usage_month: '' })
   const [filterExpiring, setFilterExpiring] = useState(false)
   const [filterLowBudget, setFilterLowBudget] = useState(false)
   const [filterDept, setFilterDept] = useState('')
@@ -201,6 +252,9 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
     if (filterDept && c.department !== filterDept) return false
     return true
   })
+  const editUsageMonthOptions = historyModal
+    ? getExpenseMonthOptions(historyModal.contract.start_date, historyModal.contract.end_date)
+    : [{ value: getCurrentMonthKey(), label: fmtExpenseMonth(getCurrentMonthKey()) }]
 
   // ── open modals ─────────────────────────────────────────────────────────────
 
@@ -238,6 +292,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
     setUsageAmount('')
     setUsageNote('')
     setUsageDate(new Date().toISOString().split('T')[0])
+    setUsageMonth(defaultUsageMonth(c))
     setUsageModal(c)
   }
 
@@ -248,7 +303,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
   }
 
   function openEditUsage(u: ContractUsage) {
-    setEditUsageForm({ amount: String(u.amount), note: u.note ?? '', usage_date: u.usage_date ?? '' })
+    setEditUsageForm({ amount: String(u.amount), note: u.note ?? '', usage_date: u.usage_date ?? '', usage_month: usageMonthKey(u) || getCurrentMonthKey() })
     setEditUsage(u)
   }
 
@@ -260,7 +315,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
       const res = await fetch(`/api/admin/contracts/${contractId}/usage/${editUsage.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: parseFloat(editUsageForm.amount), note: editUsageForm.note, usage_date: editUsageForm.usage_date }),
+        body: JSON.stringify({ amount: parseFloat(editUsageForm.amount), note: editUsageForm.note, usage_date: editUsageForm.usage_date, usage_month: editUsageForm.usage_month }),
       })
       const json = await res.json()
       if (!res.ok) { toast(json.error ?? 'เกิดข้อผิดพลาด', false); return }
@@ -317,7 +372,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
         const contractId: number = isNew ? json.id : (editModal as ContractWithUsage).id
         const uploadErrMsg = async (label: string) => {
           toast(`บันทึกสัญญาแล้ว แต่อัปโหลดไฟล์ไม่สำเร็จ: ${label}`, false)
-          setContracts(prev => isNew ? [{ ...finalData, used: 0, lastUsageDate: null }, ...prev] : prev.map(c => c.id === (editModal as ContractWithUsage).id ? { ...c, ...finalData } : c))
+          setContracts(prev => isNew ? [{ ...finalData, used: 0, lastUsageDate: null, lastUsageMonth: null }, ...prev] : prev.map(c => c.id === (editModal as ContractWithUsage).id ? { ...c, ...finalData } : c))
           setSelectedFile(null)
           setEditModal(null)
         }
@@ -359,7 +414,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
       }
 
       if (isNew) {
-        setContracts(prev => [{ ...finalData, used: 0, lastUsageDate: null }, ...prev])
+        setContracts(prev => [{ ...finalData, used: 0, lastUsageDate: null, lastUsageMonth: null }, ...prev])
       } else {
         setContracts(prev => prev.map(c => c.id === (editModal as ContractWithUsage).id ? { ...c, ...finalData } : c))
       }
@@ -400,7 +455,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
   // ── log usage ───────────────────────────────────────────────────────────────
 
   async function handleLogUsage() {
-    if (!usageModal || !usageAmount) return
+    if (!usageModal || !usageAmount || !usageMonth) return
     const amount = parseFloat(usageAmount)
     const remaining = (usageModal.total ?? 0) - usageModal.used
     if (Number.isFinite(amount) && amount > remaining) {
@@ -412,11 +467,11 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
       const res = await fetch(`/api/admin/contracts/${usageModal.id}/usage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, note: usageNote, usage_date: usageDate }),
+        body: JSON.stringify({ amount, note: usageNote, usage_date: usageDate, usage_month: usageMonth }),
       })
       const json = await res.json()
       if (!res.ok) { toast(json.error ?? 'เกิดข้อผิดพลาด', false); return }
-      setContracts(prev => prev.map(c => c.id === usageModal.id ? { ...c, used: c.used + json.amount, lastUsageDate: usageDate || new Date().toISOString().split('T')[0] } : c))
+      setContracts(prev => prev.map(c => c.id === usageModal.id ? { ...c, used: c.used + json.amount, lastUsageDate: json.usage_date ?? usageDate, lastUsageMonth: usageMonthKey(json) || usageMonth } : c))
       toast('บันทึกการใช้จ่ายสำเร็จ')
       setUsageModal(null)
     } catch { toast('เกิดข้อผิดพลาด', false) }
@@ -661,7 +716,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                   {(() => {
                     const now = new Date()
                     const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-                    const hasLog = c.lastUsageDate?.startsWith(thisMonth) ?? false
+                    const hasLog = c.lastUsageMonth === thisMonth
                     return (
                       <div style={{ fontSize: 11.5, marginBottom: 12, fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 4, color: hasLog ? 'var(--success)' : 'var(--muted)' }}>
                         {hasLog ? (
@@ -883,6 +938,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
         const mAmount = parseFloat(usageAmount)
         const usageOverRemaining = Number.isFinite(mAmount) && mAmount > mRemaining
         const usageWarning = usageOverRemaining ? `จำนวนเงินเกินมูลค่าคงเหลือ (${fmtMoney(mRemaining)})` : ''
+        const usageMonthOptions = getExpenseMonthOptions(usageModal.start_date, usageModal.end_date)
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
             <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden' }}>
@@ -918,6 +974,12 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
 
                 {/* Date + Amount in 2 cols */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>ยอดค่าใช้จ่ายเดือน <span style={{ color: 'var(--danger)' }}>*</span></label>
+                    <select value={usageMonth} onChange={e => setUsageMonth(e.target.value)} style={inputStyle}>
+                      {usageMonthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                  </div>
                   <div>
                     <label style={labelStyle}>วันที่บันทึก <span style={{ color: 'var(--danger)' }}>*</span></label>
                     <input type="date" value={usageDate} onChange={e => setUsageDate(e.target.value)} style={inputStyle} />
@@ -960,7 +1022,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
               {/* Footer */}
               <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <Button variant="secondary" onClick={() => setUsageModal(null)} disabled={saving}>ยกเลิก</Button>
-                <Button variant="primary" onClick={handleLogUsage} disabled={!usageAmount || !usageDate || saving || usageOverRemaining} icon="check">
+                <Button variant="primary" onClick={handleLogUsage} disabled={!usageAmount || !usageDate || !usageMonth || saving || usageOverRemaining} icon="check">
                   {saving ? 'กำลังบันทึก...' : 'บันทึกการใช้จ่าย'}
                 </Button>
               </div>
@@ -1013,11 +1075,14 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                 {history.length > 0 && (() => {
                   const maxV = Math.max(...monthlyData.map(m => m.amount), 1)
                   return (
-                    <div style={{ padding: '18px 20px 8px', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ padding: '18px 20px 8px', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>
+                        แนวโน้มรายเดือนตามเดือนค่าใช้จ่าย
+                      </div>
+                      <div style={{ display: 'none' }}>
                         แนวโน้มรายเดือน – 12 เดือนย้อนหลัง
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 130, padding: '0 2px' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 130, padding: '0 2px', minWidth: Math.max(560, monthlyData.length * 46) }}>
                         {monthlyData.map((m, i) => {
                           const barH = (m.amount / maxV) * 106
                           const label = m.amount > 0
@@ -1061,7 +1126,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                     {/* vertical connector line */}
                     <div style={{ position: 'absolute', left: 34, top: 6, bottom: 26, width: 2, background: 'var(--border)' }} />
                     {[...history]
-                      .sort((a, b) => (b.usage_date ?? '').localeCompare(a.usage_date ?? ''))
+                      .sort((a, b) => (usageMonthKey(b) || '').localeCompare(usageMonthKey(a) || '') || (b.usage_date ?? '').localeCompare(a.usage_date ?? ''))
                       .map(u => (
                         <div key={u.id} style={{ display: 'flex', gap: 14, marginBottom: 10, position: 'relative' }}>
                           {/* circle icon */}
@@ -1073,7 +1138,8 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 2 }}>
                               <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink)' }}>฿{u.amount.toLocaleString()}</div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8, flexShrink: 0 }}>
-                                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                                <div style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'right' }}>
+                                  <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{fmtExpenseMonth(usageMonthKey(u))}</div>
                                   {u.usage_date ? new Date(u.usage_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                                 </div>
                                 {canEdit && <>
@@ -1116,6 +1182,12 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
+                  <label style={labelStyle}>ยอดค่าใช้จ่ายเดือน <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <select value={editUsageForm.usage_month} onChange={e => setEditUsageForm(f => ({ ...f, usage_month: e.target.value }))} style={inputStyle}>
+                    {editUsageMonthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
+                </div>
+                <div>
                   <label style={labelStyle}>วันที่บันทึก</label>
                   <input type="date" value={editUsageForm.usage_date} onChange={e => setEditUsageForm(f => ({ ...f, usage_date: e.target.value }))} style={inputStyle} />
                 </div>
@@ -1131,7 +1203,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
             </div>
             <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <Button variant="secondary" onClick={() => setEditUsage(null)} disabled={saving}>ยกเลิก</Button>
-              <Button variant="primary" onClick={handleSaveEditUsage} disabled={!editUsageForm.amount || saving} icon="check">
+              <Button variant="primary" onClick={handleSaveEditUsage} disabled={!editUsageForm.amount || !editUsageForm.usage_month || saving} icon="check">
                 {saving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
               </Button>
             </div>

@@ -112,6 +112,7 @@ create table contract_usage (
   note         text,
   recorded_by  text,
   usage_date   date,
+  usage_month  date,
   created_at   timestamptz default now()
 );
 

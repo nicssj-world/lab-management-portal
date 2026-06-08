@@ -12,6 +12,7 @@ export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -108,12 +109,43 @@ export default function LoginPage() {
               </label>
               <Input
                 icon="lock"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={setPassword}
                 placeholder="••••••••"
                 required
                 name="password"
+                rightElement={
+                  <button
+                    type="button"
+                    aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                    title={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                    onClick={() => setShowPassword(v => !v)}
+                    style={{
+                      width: 30,
+                      height: 30,
+                      border: 'none',
+                      borderRadius: 7,
+                      background: 'transparent',
+                      color: 'var(--muted)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 0,
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = 'var(--surface-2)'
+                      e.currentTarget.style.color = 'var(--primary)'
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 'transparent'
+                      e.currentTarget.style.color = 'var(--muted)'
+                    }}
+                  >
+                    <Icon name={showPassword ? 'eyeOff' : 'eye'} size={16} />
+                  </button>
+                }
               />
             </div>
 

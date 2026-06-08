@@ -24,6 +24,7 @@ function CatalogContent() {
   const [allTotal, setAllTotal] = useState(0)
   const [sortBy, setSortBy] = useState('display_name_alpha')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [error, setError] = useState('')
   const timer = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
 
@@ -33,16 +34,23 @@ function CatalogContent() {
 
   const doLoad = useCallback(async (s: string, cat: string, tb: string, pg: number, sb: string, sd: 'asc' | 'desc') => {
     setLoading(true)
+    setError('')
     try {
-      const params = new URLSearchParams({ page: String(pg), pageSize: String(PAGE_SIZE), active: 'true', sortBy: sb, sortDir: sd })
+      const params = new URLSearchParams({ page: String(pg), pageSize: String(PAGE_SIZE), sortBy: sb, sortDir: sd })
       if (s) params.set('search', s)
       if (cat) params.set('category', cat)
       if (tb) params.set('tube', tb)
-      const j = await fetch(`/api/admin/tests?${params}`).then(r => r.json())
+      const res = await fetch(`/api/tests?${params}`)
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error ?? 'Failed to load tests')
       setTests(j.data ?? [])
       const cnt = j.count ?? 0
       setTotal(cnt)
       if (pg === 0 && !s && !cat && !tb) setAllTotal(cnt)
+    } catch (err) {
+      setTests([])
+      setTotal(0)
+      setError(err instanceof Error ? err.message : 'Failed to load tests')
     } finally {
       setLoading(false)
     }
@@ -85,6 +93,12 @@ function CatalogContent() {
           total={allTotal || total}
           filtered={total}
         />
+
+        {error && (
+          <div style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid var(--danger)', color: 'var(--danger)', background: 'rgba(220,38,38,.06)', fontSize: 13, fontWeight: 600 }}>
+            {error}
+          </div>
+        )}
 
         <TestTable
           tests={tests}
