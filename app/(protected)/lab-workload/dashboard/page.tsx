@@ -288,7 +288,7 @@ export default function WorkloadDashboardPage() {
     setError('')
     let usedCache = false
     try {
-      const cacheKey = `lab-workload-summary:v27:${year}:${month}`
+      const cacheKey = `lab-workload-summary:v28:${year}:${month}`
       const cached = readWorkloadClientCache(cacheKey)
       if (cached) {
         usedCache = true
