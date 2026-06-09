@@ -39,5 +39,11 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     .single()
 
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+  supabaseAdmin.from('audit_log').insert({
+    action: 'risk.close',
+    user_id: actor.id,
+    target: data.risk_no ?? String(riskId),
+    detail: `ปิดประเด็น${data.risk_no ? ' · ' + data.risk_no : ''}`,
+  }).then(undefined, () => {})
   return NextResponse.json(data)
 }

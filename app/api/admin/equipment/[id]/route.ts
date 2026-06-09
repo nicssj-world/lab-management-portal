@@ -39,6 +39,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'รหัส CBH นี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น' }, { status: 409 })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+  supabaseAdmin.from('audit_log').insert({
+    action: 'equipment.update',
+    user_id: actor.id,
+    target: data.cbh_code ?? id,
+    detail: `${data.equipment_type}${data.cbh_code ? ' · ' + data.cbh_code : ''}`,
+  }).then(undefined, () => {})
   return NextResponse.json(data)
 }
 
@@ -53,7 +59,13 @@ export async function DELETE(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
-  const { error } = await supabaseAdmin.from('equipment').delete().eq('id', id)
+  const { data: deleted, error } = await supabaseAdmin.from('equipment').delete().eq('id', id).select('equipment_type, cbh_code').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  supabaseAdmin.from('audit_log').insert({
+    action: 'equipment.delete',
+    user_id: actor.id,
+    target: deleted?.cbh_code ?? id,
+    detail: `${deleted?.equipment_type ?? ''}${deleted?.cbh_code ? ' · ' + deleted.cbh_code : ''}`,
+  }).then(undefined, () => {})
   return NextResponse.json({ ok: true })
 }

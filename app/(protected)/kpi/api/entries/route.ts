@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireResource } from '@/lib/auth/guards'
 import { getDashboard, upsertEntries } from '@/lib/queries/kpi'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export async function GET(request: NextRequest) {
   const guard = await requireResource('KPI', 'view')
@@ -30,5 +31,11 @@ export async function POST(request: NextRequest) {
   if (!Array.isArray(entries)) return NextResponse.json({ error: 'entries must be an array' }, { status: 400 })
 
   await upsertEntries(supabase, entries)
+  supabaseAdmin.from('audit_log').insert({
+    action: 'kpi.entry',
+    user_id: guard.actor.id,
+    target: entries[0] ? `${entries[0].fiscal_year}/${String(entries[0].month).padStart(2, '0')}` : undefined,
+    detail: `บันทึก KPI ${entries.length} รายการ`,
+  }).then(undefined, () => {})
   return NextResponse.json({ ok: true })
 }

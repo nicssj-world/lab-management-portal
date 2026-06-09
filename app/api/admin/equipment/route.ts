@@ -125,5 +125,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'รหัส CBH นี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น' }, { status: 409 })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+  supabaseAdmin.from('audit_log').insert({
+    action: 'equipment.create',
+    user_id: actor.id,
+    target: data.cbh_code ?? data.equipment_type,
+    detail: `${data.equipment_type}${data.cbh_code ? ' · ' + data.cbh_code : ''}`,
+  }).then(undefined, () => {})
   return NextResponse.json(data, { status: 201 })
 }
