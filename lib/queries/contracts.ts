@@ -5,6 +5,7 @@ export interface ContractWithUsage extends Contract {
   used: number
   lastUsageDate: string | null
   lastUsageMonth: string | null
+  usageMonths: string[]
 }
 
 export async function getContracts(supabase: SupabaseClient): Promise<ContractWithUsage[]> {
@@ -29,11 +30,17 @@ export async function getContracts(supabase: SupabaseClient): Promise<ContractWi
       .map(d => d.slice(0, 7))
       .sort()
       .at(-1) ?? null
+    const usageMonths = Array.from(new Set((usages ?? [])
+      .map(u => u.usage_month ?? u.usage_date)
+      .filter((d): d is string => Boolean(d))
+      .map(d => d.slice(0, 7))))
+      .sort()
     return {
       ...c,
       used: (usages ?? []).reduce((sum, u) => sum + (u.amount ?? 0), 0),
       lastUsageDate,
       lastUsageMonth,
+      usageMonths,
     }
   })
 }
