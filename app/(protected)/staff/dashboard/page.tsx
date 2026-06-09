@@ -197,6 +197,7 @@ export default async function StaffDashboardPage() {
     docNewResult,
     docReviewResult,
     docDraftResult,
+    docObsoleteResult,
     auditLogResult,
   ] = await Promise.all([
     getContracts(supabaseAdmin),
@@ -212,12 +213,13 @@ export default async function StaffDashboardPage() {
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).gte('created_at', prevMonthStart).lt('created_at', nextMonthStart),
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Review'),
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Draft'),
+    supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Obsolete'),
     supabaseAdmin
       .from('audit_log')
       .select('id, action, target, detail, created_at, user_id')
       .not('action', 'in', '("permission.update","settings.update","user.update","user.create")')
       .order('created_at', { ascending: false })
-      .limit(15),
+      .limit(20),
   ])
 
   const testCount    = testActiveResult.count ?? 0
@@ -229,6 +231,7 @@ export default async function StaffDashboardPage() {
   const docNew       = docNewResult.count ?? 0
   const docReview    = docReviewResult.count ?? 0
   const docDraft     = docDraftResult.count ?? 0
+  const docObsolete  = docObsoleteResult.count ?? 0
 
   const auditLogs: AuditEntry[] = (auditLogResult.data ?? []) as AuditEntry[]
   const profileMap: Record<string, string> = {}
@@ -313,6 +316,17 @@ export default async function StaffDashboardPage() {
         .activity-timeline::before{content:'';position:absolute;left:3px;top:18px;bottom:18px;width:1px;background:var(--border);z-index:0}
         .more-link{display:block;text-align:center;font-size:12px;font-weight:600;color:var(--muted);padding:9px 0;border-radius:8px;background:var(--surface-2);transition:all .15s;text-decoration:none}
         .more-link:hover{background:var(--primary-soft);color:var(--primary)}
+        @media(max-width:640px){
+          .dash-kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important}
+          .dash-main-grid{grid-template-columns:1fr!important;align-items:start!important}
+          .dash-heat-grid{grid-template-columns:1fr!important}
+          .dash-hero{padding:16px 18px!important}
+          .dash-hero .ops-title{font-size:20px!important}
+          .dash-hero .live-label{font-size:9px!important}
+          .dash-pipeline-steps{overflow-x:auto!important;padding-bottom:6px!important}
+          .dash-pipeline-steps>*{min-width:140px!important}
+          .kpi-card{padding:14px 16px!important}
+        }
       `}</style>
 
       <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
@@ -323,7 +337,7 @@ export default async function StaffDashboardPage() {
           borderRadius:18, padding:'22px 28px',
           display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:16,
           position:'relative', overflow:'hidden',
-        }}>
+        }} className="dash-hero">
           {[160,240,320].map((s,i)=>(
             <div key={i} style={{ position:'absolute',right:-40,top:'50%',transform:'translateY(-50%)',width:s,height:s,borderRadius:'50%',border:`1px solid rgba(255,255,255,${.05-i*.01})`,pointerEvents:'none' }}/>
           ))}
@@ -345,7 +359,7 @@ export default async function StaffDashboardPage() {
         </div>
 
         {/* ══ KPI ROW ══ */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
+        <div className="dash-kpi-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
           <KpiCard
             icon="flask" label="รายการตรวจทั้งหมด" accent="#0EA5E9"
             value={testCount.toLocaleString()} sub="รายการที่ใช้งานอยู่"
@@ -381,10 +395,10 @@ export default async function StaffDashboardPage() {
         </div>
 
         {/* ══ ACTIVITY + CONTRACTS ══ */}
-        <div style={{ display:'grid', gridTemplateColumns:'7fr 3fr', gap:16, alignItems:'stretch' }}>
+        <div className="dash-main-grid" style={{ display:'grid', gridTemplateColumns:'7fr 3fr', gap:16, alignItems:'stretch' }}>
 
           {/* Recent Activity — custom card with timeline */}
-          <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
+          <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', display:'flex', flexDirection:'column' }}>
             <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                 <div style={{ width:30,height:30,borderRadius:8,background:'rgba(30,95,173,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--primary)',flexShrink:0 }}>
@@ -395,34 +409,27 @@ export default async function StaffDashboardPage() {
                   <div style={{ fontSize:11,color:'var(--muted)',marginTop:1 }}>อัปเดตวันนี้</div>
                 </div>
               </div>
-              <Link href="/staff/activity" style={{ textDecoration:'none' }}>
-                <span style={{ fontSize:12.5,fontWeight:600,color:'var(--primary)',whiteSpace:'nowrap' }}>ดูทั้งหมด →</span>
-              </Link>
             </div>
-            <div style={{ padding:'8px 20px 16px' }}>
+            <div style={{ padding:'8px 20px 0', flex:1, display:'flex', flexDirection:'column' }}>
               {auditLogs.length > 0 ? (
-                <>
-                  <div className="activity-timeline">
-                    {auditLogs.slice(0, 7).map((entry, i) => (
-                      <ActivityFeedItem
-                        key={entry.id}
-                        entry={entry}
-                        profileName={entry.user_id ? (profileMap[entry.user_id] ?? '') : ''}
-                        isLast={i === Math.min(6, auditLogs.length - 1)}
-                      />
-                    ))}
-                  </div>
-                  {auditLogs.length > 7 && (
-                    <div style={{ marginTop:10 }}>
-                      <Link href="/staff/activity" className="more-link">
-                        + {auditLogs.length - 7} รายการเพิ่มเติม
-                      </Link>
-                    </div>
-                  )}
-                </>
+                <div className="activity-timeline">
+                  {auditLogs.slice(0, 10).map((entry, i) => (
+                    <ActivityFeedItem
+                      key={entry.id}
+                      entry={entry}
+                      profileName={entry.user_id ? (profileMap[entry.user_id] ?? '') : ''}
+                      isLast={i === Math.min(9, auditLogs.length - 1)}
+                    />
+                  ))}
+                </div>
               ) : (
                 <Empty text="ยังไม่มีกิจกรรมในระบบ" icon="clock" />
               )}
+              <div style={{ marginTop:'auto', padding:'12px 0 16px' }}>
+                <Link href="/staff/activity" className="more-link">
+                  ดูกิจกรรมทั้งหมด →
+                </Link>
+              </div>
             </div>
           </div>
 
@@ -441,7 +448,7 @@ export default async function StaffDashboardPage() {
             </SectionCard>
 
             {/* Quick Actions + Doc Status */}
-            <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
+            <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', flex:1, display:'flex', flexDirection:'column' }}>
               <div style={{ padding:'13px 16px 11px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)' }}>
                 <div style={{ fontSize:13, fontWeight:800, color:'var(--ink)' }}>Quick Actions</div>
               </div>
@@ -479,6 +486,7 @@ export default async function StaffDashboardPage() {
                   { label:'Published', count:docPublished, color:'#16A34A' },
                   { label:'Review',    count:docReview,    color:'#1E5FAD' },
                   { label:'Draft',     count:docDraft,     color:'#D97706' },
+                  { label:'Obsolete',  count:docObsolete,  color:'#DC2626' },
                 ] as const).map(({ label, count, color }) => {
                   const pct = docTotal > 0 ? Math.round((count / docTotal) * 100) : 0
                   return (
@@ -532,7 +540,7 @@ export default async function StaffDashboardPage() {
                     </div>
                   ))}
                 </div>
-                <div style={{ display:'flex', gap:0, alignItems:'stretch' }}>
+                <div className="dash-pipeline-steps" style={{ display:'flex', gap:0, alignItems:'stretch' }}>
                   {PIPELINE.map((step, i) => (
                     <div key={step.label} style={{ flex:1, display:'flex', alignItems:'center', minWidth:0 }}>
                       <div className="workflow-step" style={{
@@ -582,7 +590,7 @@ export default async function StaffDashboardPage() {
         </div>
 
         {/* ══ HEATMAPS ══ */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+        <div className="dash-heat-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
           <HeatmapCard
             title="Heatmap การเจาะเลือด"
             sub={`${phlebCount.toLocaleString()} ราย · ${prevMonthLabel}`}
