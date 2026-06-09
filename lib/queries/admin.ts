@@ -32,10 +32,13 @@ const CRUD_ACTIONS = [
   'test.create', 'test.update', 'test.delete', 'test.bulk_delete',
   'test.import', 'test.duplicate', 'test.purge_deleted',
   'create_news', 'update_news', 'delete_news',
-  'permission.update',
-  'settings.update',
   'phleb_upload_init',
   'delete',
+  'document.upload', 'document.edit', 'document.delete', 'document.status_change',
+  'equipment.create', 'equipment.update', 'equipment.delete',
+  'contract.create', 'contract.update', 'contract.delete', 'contract.usage_add',
+  'risk.create', 'risk.update', 'risk.delete', 'risk.close',
+  'kpi.entry',
 ]
 
 export async function getAuditLog(supabase: SupabaseClient, limit = 100): Promise<AuditLogWithUser[]> {

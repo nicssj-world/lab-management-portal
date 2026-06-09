@@ -39,6 +39,7 @@ const NAV_ITEMS: (NavItem | null)[] = [
   null,
   { href: '/staff/admin',      th: 'จัดการผู้ใช้',         en: 'Users & Roles',  icon: 'users',    resource: 'User Management' },
   { href: '/staff/settings',   th: 'ตั้งค่าระบบ',          en: 'Settings',       icon: 'settings', role: 'Admin' },
+  { href: '/staff/activity',   th: 'กิจกรรมทั้งหมด',       en: 'Activity Log',   icon: 'inbox',    resource: 'Activity Log' },
   { href: '/staff/changelog',  th: 'บันทึกการแก้ไขระบบ',   en: 'Change Log',     icon: 'edit',     resource: 'บันทึกการแก้ไข' },
 ]
 

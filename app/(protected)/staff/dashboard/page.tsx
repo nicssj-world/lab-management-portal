@@ -132,6 +132,37 @@ function stageMinutes(stages: StageRow[] | undefined, stage: string, fallback?: 
   return value && Number.isFinite(value) ? Math.round(value) : null
 }
 
+type AuditEntry = {
+  id: string | number
+  action: string | null
+  target: string | null
+  detail: string | null
+  created_at: string | null
+  user_id: string | null
+}
+
+function fmtActivityTime(isoStr: string | null) {
+  if (!isoStr) return ''
+  const d = new Date(isoStr)
+  const diffDays = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+  if (diffDays === 1) return 'เมื่อวาน'
+  if (diffDays < 7) return `${diffDays} วันที่แล้ว`
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+}
+
+function actionDotColor(action: string | null): string {
+  const a = action ?? ''
+  if (a.startsWith('document.'))                                   return '#0D9488' // teal — เอกสาร
+  if (a.startsWith('test.') || a.startsWith('category.'))         return '#1E5FAD' // blue — รายการตรวจ
+  if (a.startsWith('equipment.'))                                  return '#EA580C' // orange — เครื่องมือ
+  if (a.startsWith('contract.'))                                   return '#7C3AED' // purple — สัญญา
+  if (a.startsWith('risk.') || a.startsWith('rejection.'))        return '#DC2626' // red — ความเสี่ยง
+  if (a.startsWith('kpi.'))                                        return '#16A34A' // green — KPI
+  if (a.includes('news'))                                          return '#D97706' // amber — ข่าวสาร
+  return '#64748B' // gray — อื่นๆ
+}
+
 export default async function StaffDashboardPage() {
   const now = new Date()
   const year  = now.getFullYear()
@@ -140,37 +171,77 @@ export default async function StaffDashboardPage() {
   // เดือนที่แล้ว
   const prevMonth = month === 1 ? 12 : month - 1
   const prevYear  = month === 1 ? year - 1 : year
-  const prevStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`
-  const prevEnd   = new Date(prevYear, prevMonth, 0).toISOString().split('T')[0]
-
   const prevMonthLabel = new Date(prevYear, prevMonth - 1, 1)
     .toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
 
+  // สองเดือนที่แล้ว (สำหรับ rejection rate change)
+  const prevPrevMonth = prevMonth === 1 ? 12 : prevMonth - 1
+  const prevPrevYear  = prevMonth === 1 ? prevYear - 1 : prevYear
+
   // ── ดึงข้อมูลทั้งหมดพร้อมกัน ──
+  const prevMonthStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01T00:00:00`
+  const nextMonthStart = prevMonth === 12
+    ? `${prevYear + 1}-01-01T00:00:00`
+    : `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-01T00:00:00`
+
   const [
     contracts,
-    testCountResult,
-    rejAllResult,
+    testActiveResult,
+    testTotalResult,
     rejMonthResult,
+    rejPrevResult,
     tatSummary,
+    tatPrevSummary,
+    docTotalResult,
+    docPublishedResult,
+    docNewResult,
+    docReviewResult,
+    docDraftResult,
+    auditLogResult,
   ] = await Promise.all([
     getContracts(supabaseAdmin),
     supabaseAdmin.from('tests').select('*', { count: 'exact', head: true }).eq('active', true),
-    supabaseAdmin
-      .from('rejection_logs')
-      .select('reject,reason,spcmdate')
-      .gte('spcmdate', prevStart)
-      .lte('spcmdate', prevEnd)
-      .order('spcmdate', { ascending: false })
-      .limit(5000),
+    supabaseAdmin.from('tests').select('*', { count: 'exact', head: true }),
     getRejectionLogs(supabaseAdmin, { year: prevYear, month: prevMonth, limit: 1 }),
+    getRejectionLogs(supabaseAdmin, { year: prevPrevYear, month: prevPrevMonth, limit: 1 }),
     // Read the completed all-month TAT analysis cached by the TAT module.
     readCompletedTatSummary(prevYear, prevMonth),
+    readCompletedTatSummary(prevPrevYear, prevPrevMonth),
+    supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+    supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Published'),
+    supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).gte('created_at', prevMonthStart).lt('created_at', nextMonthStart),
+    supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Review'),
+    supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Draft'),
+    supabaseAdmin
+      .from('audit_log')
+      .select('id, action, target, detail, created_at, user_id')
+      .not('action', 'in', '("permission.update","settings.update","user.update","user.create")')
+      .order('created_at', { ascending: false })
+      .limit(15),
   ])
 
-  const testCount    = testCountResult.count ?? 0
+  const testCount    = testActiveResult.count ?? 0
+  const testTotal    = testTotalResult.count ?? 0
   const rejThisMonth = rejMonthResult.count ?? 0
-  const rejRows      = rejAllResult.data ?? []
+  const rejPrevMonth = rejPrevResult.count ?? 0
+  const docTotal     = docTotalResult.count ?? 0
+  const docPublished = docPublishedResult.count ?? 0
+  const docNew       = docNewResult.count ?? 0
+  const docReview    = docReviewResult.count ?? 0
+  const docDraft     = docDraftResult.count ?? 0
+
+  const auditLogs: AuditEntry[] = (auditLogResult.data ?? []) as AuditEntry[]
+  const profileMap: Record<string, string> = {}
+  const userIds = [...new Set(auditLogs.map(l => l.user_id).filter((id): id is string => !!id))]
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name')
+      .in('id', userIds)
+    for (const p of profiles ?? []) {
+      if (p.id && p.name) profileMap[p.id] = p.name
+    }
+  }
 
   const tatData = tatSummary ?? {}
   const kpi     = tatData.kpi ?? {}
@@ -178,6 +249,12 @@ export default async function StaffDashboardPage() {
   const avgTAT      = Math.round(kpi.avg_total_tat_cut_720 ?? kpi.avg_total_tat ?? kpi.avg_tat ?? 0)
   const pctOnTarget = Math.round(kpi.pct_total_within_target ?? kpi.pct_within_target ?? 0)
   const totalSamples = kpi.sample_count ?? kpi.total_count ?? 0
+
+  const prevKpi        = (tatPrevSummary ?? {})?.kpi ?? {}
+  const prevSamples    = prevKpi.sample_count ?? prevKpi.total_count ?? 0
+  const rejRate        = totalSamples > 0 ? (rejThisMonth / totalSamples) * 100 : null
+  const rejRatePrev    = prevSamples > 0 ? (rejPrevMonth / prevSamples) * 100 : null
+  const rejRateChange  = rejRate != null && rejRatePrev != null ? rejRate - rejRatePrev : null
   const avgPhlebWait = stageMinutes(tatData.stage_breakdown, 'รอเจาะเลือด', kpi.pipeline_avg_phleb_wait ?? kpi.avg_phleb_wait)
   const avgPhlebDraw = stageMinutes(tatData.stage_breakdown, 'เจาะเลือด', kpi.pipeline_avg_phleb_draw)
   const avgTransport = stageMinutes(tatData.stage_breakdown, 'ขนส่งตัวอย่าง', kpi.avg_transport)
@@ -209,16 +286,6 @@ export default async function StaffDashboardPage() {
     { label: 'รายงานผล', from: 'รับ Specimen', to: 'รายงานผล', metric: 'วิเคราะห์ในแลปเฉลี่ย', value: avgLabStage, icon: 'chart', color: '#16A34A' },
   ].filter((step): step is { label: string; from: string; to: string; metric: string; value: number; icon: string; color: string } => typeof step.value === 'number' && step.value > 0)
 
-  // Rejection by reason
-  const rejByReason: Record<string, number> = {}
-  for (const r of rejRows) {
-    const key = r.reject ?? r.reason ?? 'ไม่ระบุ'
-    rejByReason[key] = (rejByReason[key] ?? 0) + 1
-  }
-  const topReasons = Object.entries(rejByReason).sort((a, b) => b[1] - a[1]).slice(0, 8)
-  const maxRej = topReasons[0]?.[1] ?? 1
-
-  const ACCENT = ['#1E5FAD','#0EA5E9','#06B6D4','#10B981','#6366F1','#8B5CF6','#EC4899','#F59E0B']
   const DOW_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
   const SLOTS   = ['00','04','08','12','16','20']
 
@@ -230,8 +297,8 @@ export default async function StaffDashboardPage() {
         .ops-title{font-family:'Rajdhani',sans-serif;text-transform:uppercase}
         @keyframes breathe{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(34,211,238,.45)}50%{opacity:.65;box-shadow:0 0 0 7px rgba(34,211,238,0)}}
         .live-dot{animation:breathe 2.4s ease-in-out infinite}
-        .kpi-card{transition:transform .18s ease,box-shadow .18s ease}
-        .kpi-card:hover{transform:translateY(-3px);box-shadow:0 10px 36px rgba(30,95,173,.13)!important}
+        .kpi-card{transition:transform .18s ease,box-shadow .18s ease;box-shadow:0 1px 4px rgba(15,23,42,.05),0 4px 16px rgba(15,23,42,.04)}
+        .kpi-card:hover{transform:translateY(-3px);box-shadow:0 8px 32px rgba(30,95,173,.14)!important}
         .rej-bar{transition:width .7s cubic-bezier(.22,1,.36,1)}
         .workflow-step{transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
         .workflow-step:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(15,23,42,.08)}
@@ -240,9 +307,15 @@ export default async function StaffDashboardPage() {
         .contract-card{transition:border-color .15s}
         .contract-card:hover{border-color:var(--primary)!important}
         .section-link:hover{background:var(--primary-soft)!important;color:var(--primary)!important}
+        .qa-tile{transition:background .15s,border-color .15s}
+        .qa-tile:hover{background:var(--primary-soft)!important;border-color:var(--primary)!important}
+        .activity-timeline{position:relative}
+        .activity-timeline::before{content:'';position:absolute;left:3px;top:18px;bottom:18px;width:1px;background:var(--border);z-index:0}
+        .more-link{display:block;text-align:center;font-size:12px;font-weight:600;color:var(--muted);padding:9px 0;border-radius:8px;background:var(--surface-2);transition:all .15s;text-decoration:none}
+        .more-link:hover{background:var(--primary-soft);color:var(--primary)}
       `}</style>
 
-      <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
 
         {/* ══ HERO ══ */}
         <div style={{
@@ -273,17 +346,164 @@ export default async function StaffDashboardPage() {
 
         {/* ══ KPI ROW ══ */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
-          <KpiCard icon="flask"    label="รายการตรวจทั้งหมด"   value={testCount.toLocaleString()}        sub="รายการที่ใช้งานอยู่"                   accent="#0EA5E9" />
-          <KpiCard icon="inbox"    label="Rejection"            value={rejThisMonth.toLocaleString()}     sub={`${prevMonthLabel} · ${topReasons.length} สาเหตุ`} accent="#F59E0B" warn={rejThisMonth > 50} />
-          <KpiCard icon="clock"    label="Total TAT เฉลี่ย"    value={avgTAT ? fmtMinutes(avgTAT) : '—'} sub={totalSamples ? `${prevMonthLabel} · ตัด >12 hr · ${pctOnTarget}% ≤ 4 hr · ${totalSamples.toLocaleString()} ราย` : `${prevMonthLabel} · ยังไม่มีข้อมูล`} accent={pctOnTarget >= 80 ? '#16A34A' : pctOnTarget >= 60 ? '#D97706' : '#DC2626'} warn={pctOnTarget > 0 && pctOnTarget < 60} />
-          <KpiCard icon="building" label="สัญญาใกล้หมด/งบต่ำ" value={criticalContracts.length.toLocaleString()} sub={`จาก ${contracts.length} สัญญา`}  accent={criticalContracts.length > 0 ? '#DC2626' : '#16A34A'} warn={criticalContracts.length > 0} />
+          <KpiCard
+            icon="flask" label="รายการตรวจทั้งหมด" accent="#0EA5E9"
+            value={testCount.toLocaleString()} sub="รายการที่ใช้งานอยู่"
+            barLabel="Active" barValue={`${testCount}/${testTotal}`}
+            barPct={testTotal ? (testCount / testTotal) * 100 : 0}
+          />
+          <KpiCard
+            icon="doc" label="เอกสารคุณภาพ" accent="#0D9488"
+            value={docTotal.toLocaleString()} sub={prevMonthLabel}
+            change={docNew > 0 ? `+${docNew} ฉบับ` : undefined}
+            changeDir="up"
+            barLabel="Published" barValue={`${docPublished}/${docTotal}`}
+            barPct={docTotal > 0 ? (docPublished / docTotal) * 100 : 0}
+          />
+          <KpiCard
+            icon="alert" label="Rejection Rate" accent="#F59E0B"
+            value={rejRate != null ? `${rejRate.toFixed(2)}%` : `${rejThisMonth.toLocaleString()} ราย`}
+            sub={rejRate != null ? 'เป้าหมาย: <3%' : prevMonthLabel}
+            warn={rejRate != null ? rejRate >= 3 : rejThisMonth > 50}
+            change={rejRateChange != null ? `${Math.abs(rejRateChange).toFixed(2)}% ${rejRateChange <= 0 ? 'ดีขึ้น' : 'แย่ลง'}` : undefined}
+            changeDir={rejRateChange != null ? (rejRateChange <= 0 ? 'down' : 'up') : undefined}
+            barLabel="Rate" barValue={rejRate != null ? `${rejRate.toFixed(2)}%` : `${rejThisMonth}`}
+            barPct={rejRate != null ? Math.min(100, (rejRate / 3) * 100) : Math.min(100, (rejThisMonth / 200) * 100)}
+          />
+          <KpiCard
+            icon="building" label="สัญญาใกล้หมด/งบต่ำ"
+            accent={criticalContracts.length > 0 ? '#DC2626' : '#16A34A'}
+            value={criticalContracts.length.toLocaleString()} sub={`จาก ${contracts.length} สัญญา`}
+            warn={criticalContracts.length > 0}
+            barLabel="ต้องดูแล" barValue={`${criticalContracts.length}/${contracts.length}`}
+            barPct={contracts.length ? (criticalContracts.length / contracts.length) * 100 : 0}
+          />
+        </div>
+
+        {/* ══ ACTIVITY + CONTRACTS ══ */}
+        <div style={{ display:'grid', gridTemplateColumns:'7fr 3fr', gap:16, alignItems:'stretch' }}>
+
+          {/* Recent Activity — custom card with timeline */}
+          <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
+            <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ width:30,height:30,borderRadius:8,background:'rgba(30,95,173,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--primary)',flexShrink:0 }}>
+                  <Icon name="bell" size={14} />
+                </div>
+                <div>
+                  <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>กิจกรรมล่าสุด</div>
+                  <div style={{ fontSize:11,color:'var(--muted)',marginTop:1 }}>อัปเดตวันนี้</div>
+                </div>
+              </div>
+              <Link href="/staff/activity" style={{ textDecoration:'none' }}>
+                <span style={{ fontSize:12.5,fontWeight:600,color:'var(--primary)',whiteSpace:'nowrap' }}>ดูทั้งหมด →</span>
+              </Link>
+            </div>
+            <div style={{ padding:'8px 20px 16px' }}>
+              {auditLogs.length > 0 ? (
+                <>
+                  <div className="activity-timeline">
+                    {auditLogs.slice(0, 7).map((entry, i) => (
+                      <ActivityFeedItem
+                        key={entry.id}
+                        entry={entry}
+                        profileName={entry.user_id ? (profileMap[entry.user_id] ?? '') : ''}
+                        isLast={i === Math.min(6, auditLogs.length - 1)}
+                      />
+                    ))}
+                  </div>
+                  {auditLogs.length > 7 && (
+                    <div style={{ marginTop:10 }}>
+                      <Link href="/staff/activity" className="more-link">
+                        + {auditLogs.length - 7} รายการเพิ่มเติม
+                      </Link>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Empty text="ยังไม่มีกิจกรรมในระบบ" icon="clock" />
+              )}
+            </div>
+          </div>
+
+          {/* Right column */}
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+
+            {/* Contracts */}
+            <SectionCard title="สัญญาใกล้หมดอายุ/งบต่ำ" sub="งบเหลือ < 30% หรือใกล้หมดอายุ" href="/staff/contracts" hrefLabel="ดูทั้งหมด" icon="building" iconColor="#D97706" plainLink>
+              {criticalContracts.length > 0 ? (
+                <div style={{ display:'flex',flexDirection:'column',gap:9 }}>
+                  {criticalContracts.slice(0, 6).map(c => <ContractCard key={c.id} contract={c} />)}
+                </div>
+              ) : (
+                <Empty text="ไม่มีสัญญาใกล้หมดอายุหรืองบต่ำ" icon="shieldCheck" />
+              )}
+            </SectionCard>
+
+            {/* Quick Actions + Doc Status */}
+            <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
+              <div style={{ padding:'13px 16px 11px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)' }}>
+                <div style={{ fontSize:13, fontWeight:800, color:'var(--ink)' }}>Quick Actions</div>
+              </div>
+              <div style={{ padding:'12px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                {([
+                  { href:'/staff/tests',    icon:'plus',   accent:'#1E5FAD', th:'เพิ่มรายการตรวจ',  en:'Add new test item' },
+                  { href:'/staff/documents',icon:'upload',  accent:'#0D9488', th:'Upload เอกสาร',    en:'SOP / WI / Form' },
+                  { href:'/staff/rejection',icon:'alert',   accent:'#DC2626', th:'บันทึก Rejection', en:'Log specimen rejection' },
+                  { href:'/kpi/dashboard',  icon:'chart',  accent:'#16A34A', th:'รายงาน KPI',        en:'Monthly report' },
+                ] as const).map(item => (
+                  <Link key={item.href} href={item.href} style={{ textDecoration:'none' }}>
+                    <div className="qa-tile" style={{
+                      padding:'11px 10px', borderRadius:10,
+                      border:'1px solid var(--border)',
+                      background:'var(--surface-2)',
+                      cursor:'pointer',
+                      display:'flex', flexDirection:'column', gap:6,
+                    }}>
+                      <div style={{ width:28,height:28,borderRadius:7,background:`${item.accent}18`,display:'flex',alignItems:'center',justifyContent:'center',color:item.accent }}>
+                        <Icon name={item.icon} size={14} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize:12,fontWeight:700,color:'var(--ink)',lineHeight:1.3 }}>{item.th}</div>
+                        <div style={{ fontSize:10.5,color:'var(--muted)',marginTop:2 }}>{item.en}</div>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+
+              {/* Document status bars */}
+              <div style={{ padding:'0 14px 14px' }}>
+                <div style={{ fontSize:10.5,fontWeight:700,color:'var(--muted)',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:10,paddingTop:10,borderTop:'1px solid var(--border)' }}>เอกสารตามสถานะ</div>
+                {([
+                  { label:'Published', count:docPublished, color:'#16A34A' },
+                  { label:'Review',    count:docReview,    color:'#1E5FAD' },
+                  { label:'Draft',     count:docDraft,     color:'#D97706' },
+                ] as const).map(({ label, count, color }) => {
+                  const pct = docTotal > 0 ? Math.round((count / docTotal) * 100) : 0
+                  return (
+                    <div key={label} style={{ marginBottom:9 }}>
+                      <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
+                        <span style={{ fontSize:12,color:'var(--ink)',fontWeight:600 }}>{label}</span>
+                        <span style={{ fontSize:12,color,fontWeight:700 }}>{pct}%</span>
+                      </div>
+                      <div style={{ height:4,background:'var(--border)',borderRadius:99,overflow:'hidden' }}>
+                        <div style={{ height:'100%',width:`${pct}%`,background:color,borderRadius:99 }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+          </div>
         </div>
 
         {/* ══ PIPELINE ══ */}
         <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
-          <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:28,height:28,borderRadius:7,background:'rgba(30,95,173,.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--primary)' }}>
-              <Icon name="trending" size={13} />
+          <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ width:30,height:30,borderRadius:8,background:'rgba(30,95,173,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--primary)' }}>
+              <Icon name="trending" size={14} />
             </div>
             <div>
               <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>Lab Workflow Pipeline</div>
@@ -312,52 +532,39 @@ export default async function StaffDashboardPage() {
                     </div>
                   ))}
                 </div>
-                <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10 }}>
+                <div style={{ display:'flex', gap:0, alignItems:'stretch' }}>
                   {PIPELINE.map((step, i) => (
-                    <div key={step.label} className="workflow-step" style={{
-                      padding:'12px 14px',
-                      borderRadius:10,
-                      background:'var(--surface-2)',
-                      border:'1px solid var(--border)',
-                      borderLeft:`4px solid ${step.color}`,
-                      position:'relative',
-                    }}>
-                      {i < PIPELINE.length - 1 && (
-                        <div style={{
-                          position:'absolute',
-                          right:-10,
-                          top:'50%',
-                          transform:'translateY(-50%)',
-                          zIndex:2,
-                          width:20,
-                          height:20,
-                          borderRadius:'50%',
-                          background:'var(--card)',
-                          border:'1px solid var(--border)',
-                          display:'flex',
-                          alignItems:'center',
-                          justifyContent:'center',
-                          color:'var(--muted)',
-                          boxShadow:'0 4px 12px rgba(15,23,42,.08)',
-                        }}>
-                          <Icon name="chevRight" size={10} />
-                        </div>
-                      )}
-                      <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:8 }}>
-                        <div style={{ width:28,height:28,borderRadius:8,background:`${step.color}16`,display:'flex',alignItems:'center',justifyContent:'center',color:step.color,flexShrink:0 }}>
-                          <Icon name={step.icon} size={13} />
-                        </div>
-                        <div style={{ minWidth:0 }}>
-                          <div style={{ fontSize:12,fontWeight:900,color:'var(--ink)',lineHeight:1.2 }}>{step.label}</div>
-                          <div style={{ fontSize:10.5,color:'var(--muted)',marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>
-                            {step.from} → {step.to}
+                    <div key={step.label} style={{ flex:1, display:'flex', alignItems:'center', minWidth:0 }}>
+                      <div className="workflow-step" style={{
+                        flex:1,
+                        padding:'14px 16px',
+                        borderRadius:10,
+                        background:`linear-gradient(135deg,${step.color}0A 0%,var(--surface-2) 100%)`,
+                        border:'1px solid var(--border)',
+                        borderLeft:`3px solid ${step.color}`,
+                        minWidth:0,
+                      }}>
+                        <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:10 }}>
+                          <div style={{ width:30,height:30,borderRadius:8,background:`${step.color}18`,display:'flex',alignItems:'center',justifyContent:'center',color:step.color,flexShrink:0 }}>
+                            <Icon name={step.icon} size={14} />
+                          </div>
+                          <div style={{ minWidth:0 }}>
+                            <div style={{ fontSize:12.5,fontWeight:800,color:'var(--ink)',lineHeight:1.2 }}>{step.label}</div>
+                            <div style={{ fontSize:10,color:'var(--muted)',marginTop:1.5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>
+                              {step.from} → {step.to}
+                            </div>
                           </div>
                         </div>
+                        <div style={{ fontSize:10.5,color:'var(--muted)',marginBottom:3 }}>{step.metric}</div>
+                        <div className="dmono" style={{ fontSize:22,fontWeight:700,color:step.color,lineHeight:1 }}>
+                          {fmtMinutes(step.value)}
+                        </div>
                       </div>
-                      <div style={{ fontSize:10.5,color:'var(--muted)',marginBottom:4 }}>{step.metric}</div>
-                      <div className="dmono" style={{ fontSize:21,fontWeight:500,color:step.color,lineHeight:1 }}>
-                        {fmtMinutes(step.value)}
-                      </div>
+                      {i < PIPELINE.length - 1 && (
+                        <div style={{ padding:'0 8px', color:'var(--muted)', flexShrink:0 }}>
+                          <Icon name="chevRight" size={14} />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -396,41 +603,6 @@ export default async function StaffDashboardPage() {
           />
         </div>
 
-        {/* ══ BOTTOM GRID ══ */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 360px', gap:16, alignItems:'start' }}>
-
-          {/* Rejection bars */}
-          <SectionCard title="การปฏิเสธตัวอย่าง — แยกตามสาเหตุ" sub={`รวม ${rejThisMonth.toLocaleString()} ครั้ง · ${prevMonthLabel}`} href="/staff/rejection" hrefLabel="Rejection Log" icon="alert" iconColor="#F59E0B">
-            {topReasons.length > 0 ? (
-              <div style={{ display:'flex',flexDirection:'column',gap:11 }}>
-                {topReasons.map(([reason, count], i) => (
-                  <div key={reason}>
-                    <div style={{ display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:5 }}>
-                      <span style={{ fontSize:12.5,color:'var(--ink)',fontWeight:600,maxWidth:380,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{reason}</span>
-                      <span className="dmono" style={{ fontSize:11.5,color:'var(--muted)',marginLeft:8,flexShrink:0 }}>{count}</span>
-                    </div>
-                    <div style={{ height:6,background:'var(--surface-2)',borderRadius:99,overflow:'hidden' }}>
-                      <div className="rej-bar" style={{ height:'100%',width:`${(count/maxRej)*100}%`,background:ACCENT[i%ACCENT.length],borderRadius:99 }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <Empty text="ไม่มีข้อมูล Rejection เดือนนี้" />
-            )}
-          </SectionCard>
-
-          {/* Contracts */}
-          <SectionCard title="สัญญาใกล้หมดอายุ/งบต่ำ" sub={`ใกล้หมดอายุ หรือ งบเหลือ < 30%`} href="/staff/contracts" hrefLabel="ดูทั้งหมด" icon="building" iconColor="#D97706">
-            {criticalContracts.length > 0 ? (
-              <div style={{ display:'flex',flexDirection:'column',gap:9 }}>
-                {criticalContracts.slice(0, 7).map(c => <ContractCard key={c.id} contract={c} />)}
-              </div>
-            ) : (
-              <Empty text="ไม่มีสัญญาใกล้หมดอายุหรืองบต่ำ" icon="shieldCheck" />
-            )}
-          </SectionCard>
-        </div>
 
       </div>
     </>
@@ -439,21 +611,41 @@ export default async function StaffDashboardPage() {
 
 /* ──────────────── COMPONENTS ──────────────── */
 
-function KpiCard({ icon, label, value, sub, accent, warn = false }: {
+function KpiCard({ icon, label, value, sub, accent, warn = false, change, changeDir, barPct, barLabel, barValue }: {
   icon: string; label: string; value: string; sub: string; accent: string; warn?: boolean
+  change?: string; changeDir?: 'up' | 'down'
+  barPct?: number; barLabel?: string; barValue?: string
 }) {
   return (
-    <div className="kpi-card" style={{ background:'var(--card)', border:`1px solid ${warn?`${accent}40`:'var(--border)'}`, borderRadius:14, padding:'18px 20px', position:'relative', overflow:'hidden' }}>
-      <div style={{ position:'absolute',top:0,right:0,width:72,height:72,borderRadius:'0 14px 0 100%',background:`${accent}0C`,pointerEvents:'none' }} />
-      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12 }}>
-        <div style={{ width:34,height:34,borderRadius:9,background:`${accent}18`,display:'flex',alignItems:'center',justifyContent:'center',color:accent }}>
-          <Icon name={icon} size={16} />
+    <div className="kpi-card" style={{ background:'var(--card)', border:`1px solid ${warn?`${accent}40`:'var(--border)'}`, borderTop:`3px solid ${accent}`, borderRadius:14, padding:'18px 20px', overflow:'hidden', display:'flex', flexDirection:'column' }}>
+      {/* Label + Icon row */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+        <span style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em' }}>{label}</span>
+        <div style={{ width:32, height:32, borderRadius:8, background:`${accent}18`, display:'flex', alignItems:'center', justifyContent:'center', color:accent, flexShrink:0 }}>
+          <Icon name={icon} size={15} />
         </div>
-        {warn && <div style={{ width:7,height:7,borderRadius:'50%',background:accent,boxShadow:`0 0 0 3px ${accent}30` }} />}
       </div>
-      <div className="dmono" style={{ fontSize:28,fontWeight:500,color:'var(--ink)',lineHeight:1,letterSpacing:'-.01em' }}>{value}</div>
-      <div style={{ fontSize:12,fontWeight:800,color:'var(--ink)',marginTop:6 }}>{label}</div>
-      <div style={{ fontSize:11,color:'var(--muted)',marginTop:3 }}>{sub}</div>
+      {/* Value */}
+      <div className="dmono" style={{ fontSize:30, fontWeight:700, color:'var(--ink)', lineHeight:1, letterSpacing:'-.02em' }}>{value}</div>
+      {/* Change badge */}
+      {change && (
+        <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11.5, fontWeight:600, marginTop:8, padding:'3px 8px', borderRadius:20, width:'fit-content', background: changeDir === 'up' ? 'rgba(22,163,74,.1)' : 'rgba(220,38,38,.1)', color: changeDir === 'up' ? '#16A34A' : '#DC2626' }}>
+          {changeDir === 'up' ? '▲' : '▼'} {change}
+        </span>
+      )}
+      {/* Sub */}
+      <div style={{ fontSize:11.5, color:'var(--muted)', marginTop: change ? 6 : 8, flex: barPct != null ? undefined : 1 }}>{sub}</div>
+      {/* Mini bar */}
+      {barPct != null && (
+        <div style={{ marginTop:'auto', paddingTop:14 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--muted)', marginBottom:5 }}>
+            <span>{barLabel}</span><span>{barValue}</span>
+          </div>
+          <div style={{ height:4, borderRadius:4, background:'var(--surface-2)', overflow:'hidden' }}>
+            <div style={{ height:'100%', borderRadius:4, background:accent, width:`${Math.min(100, barPct)}%` }} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -467,10 +659,10 @@ function HeatmapCard({ title, sub, grid, color, dowLabels, slotLabels, href }: {
   const ordered = [1,2,3,4,5,6,0]
   return (
     <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
-      <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-          <div style={{ width:28,height:28,borderRadius:7,background:`${color}15`,display:'flex',alignItems:'center',justifyContent:'center',color }}>
-            <Icon name="beaker" size={13} />
+          <div style={{ width:30,height:30,borderRadius:8,background:`${color}18`,display:'flex',alignItems:'center',justifyContent:'center',color }}>
+            <Icon name="beaker" size={14} />
           </div>
           <div>
             <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>{title}</div>
@@ -528,15 +720,15 @@ function HeatmapCard({ title, sub, grid, color, dowLabels, slotLabels, href }: {
   )
 }
 
-function SectionCard({ title, sub, href, hrefLabel, icon, iconColor, children }: {
-  title: string; sub: string; href: string; hrefLabel: string; icon: string; iconColor: string; children: React.ReactNode
+function SectionCard({ title, sub, href, hrefLabel, icon, iconColor, children, plainLink = false }: {
+  title: string; sub: string; href: string; hrefLabel: string; icon: string; iconColor: string; children: React.ReactNode; plainLink?: boolean
 }) {
   return (
     <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
-      <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+      <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
         <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-          <div style={{ width:28,height:28,borderRadius:7,background:`${iconColor}15`,display:'flex',alignItems:'center',justifyContent:'center',color:iconColor,flexShrink:0 }}>
-            <Icon name={icon} size={13} />
+          <div style={{ width:30,height:30,borderRadius:8,background:`${iconColor}18`,display:'flex',alignItems:'center',justifyContent:'center',color:iconColor,flexShrink:0 }}>
+            <Icon name={icon} size={14} />
           </div>
           <div>
             <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>{title}</div>
@@ -544,9 +736,13 @@ function SectionCard({ title, sub, href, hrefLabel, icon, iconColor, children }:
           </div>
         </div>
         <Link href={href} style={{ textDecoration:'none' }}>
-          <div className="section-link" style={{ display:'flex',alignItems:'center',gap:4,fontSize:11.5,fontWeight:700,color:'var(--muted)',padding:'5px 10px',borderRadius:7,background:'var(--surface-2)',whiteSpace:'nowrap' }}>
-            {hrefLabel} <Icon name="arrowRight" size={11} />
-          </div>
+          {plainLink ? (
+            <span style={{ fontSize:12.5,fontWeight:600,color:'var(--primary)',whiteSpace:'nowrap' }}>{hrefLabel} →</span>
+          ) : (
+            <div className="section-link" style={{ display:'flex',alignItems:'center',gap:4,fontSize:11.5,fontWeight:700,color:'var(--muted)',padding:'5px 10px',borderRadius:7,background:'var(--surface-2)',whiteSpace:'nowrap' }}>
+              {hrefLabel} <Icon name="arrowRight" size={11} />
+            </div>
+          )}
         </Link>
       </div>
       <div style={{ padding:'16px 20px' }}>{children}</div>
@@ -572,8 +768,8 @@ function ContractCard({ contract }: { contract: ContractWithUsage }) {
     <div className="contract-card" style={{ padding:'10px 12px', borderRadius:9, border:`1px solid ${isExpiry?'#FECACA':isLowBudget?'#FDE68A':'var(--border)'}`, background:isExpiry?'rgba(220,38,38,.04)':isLowBudget?'rgba(217,119,6,.04)':'var(--surface-2)' }}>
       <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6 }}>
         <div style={{ minWidth:0 }}>
-          <div style={{ fontSize:12.5,fontWeight:700,color:'var(--ink)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:210 }}>{contract.vendor}</div>
-          <div style={{ fontSize:11,color:'var(--muted)',marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:210 }}>{contract.product}</div>
+          <div style={{ fontSize:12.5,fontWeight:700,color:'var(--ink)',wordBreak:'break-word' }}>{contract.vendor}</div>
+          <div style={{ fontSize:11,color:'var(--muted)',marginTop:1,wordBreak:'break-word' }}>{contract.product}</div>
         </div>
         <div style={{ display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,flexShrink:0,marginLeft:8 }}>
           {tags.map(tag => (
@@ -587,6 +783,84 @@ function ContractCard({ contract }: { contract: ContractWithUsage }) {
       <div className="dmono" style={{ fontSize:10.5,color:'var(--muted)',marginTop:4 }}>
         ใช้ {contract.used.toLocaleString()} / {total.toLocaleString()} {contract.unit ?? ''}
       </div>
+    </div>
+  )
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  'test.update':           'แก้ไขรายการตรวจ',
+  'test.create':           'เพิ่มรายการตรวจ',
+  'test.delete':           'ลบรายการตรวจ',
+  'permission.update':     'อัปเดต Permission',
+  'user.update':           'อัปเดตผู้ใช้',
+  'user.create':           'เพิ่มผู้ใช้',
+  'document.upload':       'อัปโหลดเอกสาร',
+  'document.edit':         'แก้ไขเอกสาร',
+  'document.delete':       'ลบเอกสาร',
+  'document.status_change':'เปลี่ยนสถานะเอกสาร',
+  'document.download':     'ดาวน์โหลดเอกสาร',
+  'category.update':       'แก้ไขหมวดหมู่',
+  'category.create':       'เพิ่มหมวดหมู่',
+  'rejection.create':      'บันทึก Rejection',
+  'equipment.create':      'เพิ่มเครื่องมือ',
+  'equipment.update':      'แก้ไขเครื่องมือ',
+  'equipment.delete':      'ลบเครื่องมือ',
+  'contract.create':       'เพิ่มสัญญา',
+  'contract.update':       'แก้ไขสัญญา',
+  'contract.delete':       'ลบสัญญา',
+  'contract.usage_add':    'บันทึกค่าใช้จ่ายสัญญา',
+  'risk.create':           'บันทึกความเสี่ยง',
+  'risk.update':           'แก้ไขความเสี่ยง',
+  'risk.delete':           'ลบความเสี่ยง',
+  'risk.close':            'ปิดประเด็นความเสี่ยง',
+  'kpi.entry':             'บันทึก KPI',
+}
+
+function parseActivityTitle(action: string | null, target: string | null, detail: string | null): string {
+  const a = action ?? ''
+  const verbLabel = ACTION_LABELS[a] ?? a
+
+  // detail is a JSON blob → extract human-readable name
+  if (detail && detail.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(detail) as Record<string, unknown>
+      // test records have th/en name
+      if (a.startsWith('test.')) {
+        const name = (parsed.th as string) || (parsed.en as string) || (parsed.code as string)
+        return name ? `${verbLabel}: ${name}` : verbLabel
+      }
+      // document records
+      if (a.startsWith('document.')) {
+        const name = (parsed.doc_number as string) || (parsed.title as string) || (parsed.file_name as string)
+        return name ? `${verbLabel}: ${name}` : verbLabel
+      }
+      // user records
+      if (a.startsWith('user.')) {
+        const name = (parsed.full_name as string) || (parsed.name as string)
+        return name ? `${verbLabel}: ${name}` : verbLabel
+      }
+    } catch { /* ignore parse error */ }
+    return verbLabel
+  }
+
+  // detail is plain text (short human-readable string)
+  if (detail && detail.length <= 120) return detail
+  if (target) return `${verbLabel}: ${target}`
+  return verbLabel || 'กิจกรรม'
+}
+
+function ActivityFeedItem({ entry, profileName, isLast }: { entry: AuditEntry; profileName: string; isLast: boolean }) {
+  const dotColor = actionDotColor(entry.action)
+  const title = parseActivityTitle(entry.action, entry.target, entry.detail)
+  const meta = profileName ? `โดย ${profileName}` : (ACTION_LABELS[entry.action ?? ''] ?? entry.action ?? '')
+  return (
+    <div style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'11px 0', borderBottom: isLast ? 'none' : '1px solid var(--border)' }}>
+      <div style={{ width:8, height:8, borderRadius:'50%', background:dotColor, marginTop:4, flexShrink:0, position:'relative', zIndex:1, boxShadow:`0 0 0 2px var(--card)` }} />
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:13, fontWeight:600, color:'var(--ink)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{title}</div>
+        {meta && <div style={{ fontSize:11.5, color:'var(--muted)', marginTop:1.5 }}>{meta}</div>}
+      </div>
+      <div style={{ fontSize:11, color:'var(--muted)', flexShrink:0, marginTop:2, whiteSpace:'nowrap' }}>{fmtActivityTime(entry.created_at)}</div>
     </div>
   )
 }

@@ -15,6 +15,7 @@ export const RESOURCES = [
   'KPI',
   'TAT',
   'User Management',
+  'Activity Log',
 ] as const
 
 export type ResourceKey = typeof RESOURCES[number]

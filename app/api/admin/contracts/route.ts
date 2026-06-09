@@ -59,5 +59,11 @@ export async function POST(req: NextRequest) {
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  supabaseAdmin.from('audit_log').insert({
+    action: 'contract.create',
+    user_id: actor.id,
+    target: data.contract_number,
+    detail: `${data.contract_number} · ${data.product}`,
+  }).then(undefined, () => {})
   return NextResponse.json({ ...data, used: 0 }, { status: 201 })
 }

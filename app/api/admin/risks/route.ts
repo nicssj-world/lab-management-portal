@@ -249,6 +249,12 @@ export async function DELETE(req: NextRequest) {
 
   const { error } = await supabaseAdmin.from('risks').delete().in('id', ids)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  supabaseAdmin.from('audit_log').insert({
+    action: 'risk.delete',
+    user_id: actor.id,
+    target: ids.join(', '),
+    detail: `ลบ ${ids.length} รายการ`,
+  }).then(undefined, () => {})
   return NextResponse.json({ ok: true, deleted: ids.length })
 }
 
@@ -272,5 +278,11 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  supabaseAdmin.from('audit_log').insert({
+    action: 'risk.create',
+    user_id: actor.id,
+    target: data.risk_no ?? String(data.id),
+    detail: [data.event_main_category, data.department_found].filter(Boolean).join(' · ') || data.risk_no || String(data.id),
+  }).then(undefined, () => {})
   return NextResponse.json(data)
 }

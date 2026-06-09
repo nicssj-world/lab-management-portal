@@ -36,6 +36,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  supabaseAdmin.from('audit_log').insert({
+    action: 'risk.update',
+    user_id: actor.id,
+    target: data.risk_no ?? id,
+    detail: `สถานะ: ${data.status}`,
+  }).then(undefined, () => {})
   return NextResponse.json(data)
 }
 
@@ -45,7 +51,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!await canEditRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
-  const { error } = await supabaseAdmin.from('risks').delete().eq('id', Number(id))
+  const { data: deleted, error } = await supabaseAdmin.from('risks').delete().eq('id', Number(id)).select('risk_no').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  supabaseAdmin.from('audit_log').insert({
+    action: 'risk.delete',
+    user_id: actor.id,
+    target: deleted?.risk_no ?? id,
+    detail: deleted?.risk_no ?? id,
+  }).then(undefined, () => {})
   return NextResponse.json({ ok: true })
 }

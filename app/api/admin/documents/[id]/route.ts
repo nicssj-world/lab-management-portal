@@ -79,7 +79,7 @@ export async function PATCH(
     // Always fetch current doc (needed for revision history + R2 key)
     const { data: current } = await supabaseAdmin
       .from('documents')
-      .select('file_url, file_name, revision, type, description, owner_name, approver_name, status')
+      .select('file_url, file_name, revision, type, description, owner_name, approver_name, status, document_code, title')
       .eq('id', id)
       .single()
 
@@ -181,6 +181,17 @@ export async function PATCH(
       .insert({ document_id: id, user_id: actor.id, action: 'edit' })
       .then(undefined, () => {})
 
+    const auditAction = (typeof newStatus === 'string' && newStatus !== current?.status) ? 'document.status_change' : 'document.edit'
+    const auditDetail = auditAction === 'document.status_change'
+      ? `${doc.document_code} · ${current?.status ?? '?'} → ${newStatus}`
+      : `${doc.document_code} · ${doc.title}`
+    supabaseAdmin.from('audit_log').insert({
+      action: auditAction,
+      user_id: actor.id,
+      target: doc.document_code,
+      detail: auditDetail,
+    }).then(undefined, () => {})
+
     return NextResponse.json(doc)
   } catch (err) {
     return NextResponse.json({ error: toMsg(err) }, { status: 500 })
@@ -201,16 +212,25 @@ export async function DELETE(
   const { id } = await params
 
   try {
-    const { error: dbErr } = await supabaseAdmin
+    const { data: deletedDoc, error: dbErr } = await supabaseAdmin
       .from('documents')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)
+      .select('document_code, title')
+      .single()
 
     if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
 
     supabaseAdmin.from('document_access_logs')
       .insert({ document_id: id, user_id: actor.id, action: 'delete' })
       .then(undefined, () => {})
+
+    supabaseAdmin.from('audit_log').insert({
+      action: 'document.delete',
+      user_id: actor.id,
+      target: deletedDoc?.document_code ?? id,
+      detail: deletedDoc ? `${deletedDoc.document_code} · ${deletedDoc.title}` : id,
+    }).then(undefined, () => {})
 
     return new NextResponse(null, { status: 204 })
   } catch (err) {

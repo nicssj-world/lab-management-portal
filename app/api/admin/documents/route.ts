@@ -191,6 +191,13 @@ export async function POST(req: NextRequest) {
       .insert({ document_id: doc.id, user_id: actor.id, action: 'upload' })
       .then(undefined, () => {})
 
+    supabaseAdmin.from('audit_log').insert({
+      action: 'document.upload',
+      user_id: actor.id,
+      target: doc.document_code,
+      detail: `${doc.document_code} · ${doc.title}`,
+    }).then(undefined, () => {})
+
     supabaseAdmin.from('document_status_history')
       .insert({
         document_id: doc.id,
