@@ -1,35 +1,9 @@
 import React from 'react'
 import { H3, Callout, Th, TblRow } from '../../_primitives'
 import { CONTAINERS, type Lang } from '../../data'
+import { ORDER_OF_DRAW, SITES_TO_AVOID, PATIENT_PREP } from '../collection-data'
 
 interface Props { lang: Lang }
-
-const ORDER_OF_DRAW = [
-  { color: '#fbbf24', cap: 'Yellow',  name: 'Blood culture',    num: 1 },
-  { color: '#0891b2', cap: 'Blue',    name: 'Citrate · PT/PTT', num: 2 },
-  { color: '#dc2626', cap: 'Red',     name: 'SST · Chemistry',  num: 3 },
-  { color: '#16a34a', cap: 'Green',   name: 'Li-Heparin',       num: 4 },
-  { color: '#7c3aed', cap: 'Purple',  name: 'EDTA · CBC',       num: 5 },
-  { color: '#6b7280', cap: 'Gray',    name: 'NaF · Glucose',    num: 6 },
-]
-
-const SITES_TO_AVOID = [
-  { th: 'บริเวณที่เป็นแผลเป็น เนื้อเยื่อหนา ทำให้เจาะยาก',                                       en: 'Scarred tissue — thick and hard to puncture.' },
-  { th: 'บริเวณที่มีเส้นเลือดดำขอด (Thrombosis vein)',                                              en: 'Areas with thrombosed or varicose veins.' },
-  { th: 'บริเวณที่มีรอยช้ำ หรือเลือดออกใต้ผิวหนัง',                                                en: 'Bruised areas with subcutaneous bleeding.' },
-  { th: 'แขนข้างเดียวกับหน้าอกที่ผ่าตัด (Mastectomy) — ต้องได้รับความยินยอมจากแพทย์',                en: 'Arm ipsilateral to mastectomy — requires physician consent.' },
-  { th: 'แขนที่ทำ AV shunt (Dialysis) — เสี่ยงต่อการติดเชื้อ',                                     en: 'Arm with AV shunt (dialysis) — infection risk.' },
-  { th: 'แขนที่กำลังให้ IV — เลือดอาจปนเปื้อน Glucose สูง / Hct ต่ำ',                               en: 'Arm receiving IV — contamination causes falsely high glucose, low Hct.' },
-]
-
-const PATIENT_PREP = [
-  { th: 'FBS · น้ำตาลในเลือด',          en: 'Fasting Blood Sugar', prepTh: 'งดอาหารและเครื่องดื่มทุกชนิด ≥ 8 ชั่วโมง (ดื่มน้ำเปล่าได้)',              prepEn: 'NPO ≥ 8 hr (water permitted)' },
-  { th: 'Lipid profile · Triglyceride',  en: 'Lipid Profile',       prepTh: 'งดอาหารและเครื่องดื่มทุกชนิด ≥ 12 ชั่วโมง (ดื่มน้ำเปล่าได้)',             prepEn: 'NPO ≥ 12 hr (water permitted)' },
-  { th: 'OGTT · ผู้ใหญ่',               en: 'OGTT — Adult',        prepTh: 'NPO ≥ 8 ชม. ดื่ม Glucose 75 g ใน 250–300 mL ภายใน 5 นาที เจาะ 0 ชม. และ 2 ชม.', prepEn: 'NPO ≥ 8 hr. Drink 75 g glucose in 250–300 mL within 5 min. Draw at 0 hr and 2 hr.' },
-  { th: 'OGTT · เด็ก',                  en: 'OGTT — Pediatric',    prepTh: 'กลูโคส 1.75 g/kg น้ำหนัก ไม่เกิน 75 g รวม',                               prepEn: 'Glucose 1.75 g/kg, max 75 g total.' },
-  { th: 'GCT · หญิงมีครรภ์',            en: 'GCT — Pregnancy',     prepTh: 'ไม่ต้องงดอาหาร ดื่ม Glucose 50 g ใน 100–150 mL ใน 5 นาที เจาะที่ 1 ชม.',     prepEn: 'No fasting. Drink 50 g glucose in 100–150 mL within 5 min. Draw at 1 hr.' },
-  { th: 'OGTT · หญิงมีครรภ์',           en: 'OGTT — Pregnancy',    prepTh: 'NPO ≥ 8 ชม. ดื่ม Glucose 100 g เจาะที่ 0, 1, 2, 3 ชม.',                     prepEn: 'NPO ≥ 8 hr. Drink 100 g glucose. Draw at 0, 1, 2, 3 hr.' },
-]
 
 export function CollectionOverview({ lang }: Props) {
   return (
@@ -52,11 +26,9 @@ export function CollectionOverview({ lang }: Props) {
         {ORDER_OF_DRAW.map((t, i) => (
           <React.Fragment key={t.cap}>
             <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flex: 1, minWidth: 70 }}>
-              {/* Step number */}
               <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', width: 18, height: 18, borderRadius: '50%', background: t.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9.5, fontWeight: 900, color: '#fff', zIndex: 1 }}>
                 {t.num}
               </div>
-              {/* Tube */}
               <div style={{ marginTop: 22, width: 18, height: 50, borderRadius: 4, background: `linear-gradient(180deg, ${t.color} 28%, #fff 28%, #f3f4f6 100%)`, border: '1px solid rgba(0,0,0,.1)' }} />
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink)', textAlign: 'center' }}>{t.cap}</div>
               <div style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.35 }}>{t.name}</div>
