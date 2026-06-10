@@ -144,11 +144,14 @@ type AuditEntry = {
 function fmtActivityTime(isoStr: string | null) {
   if (!isoStr) return ''
   const d = new Date(isoStr)
-  const diffDays = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24))
-  if (diffDays === 0) return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+  const tz = 'Asia/Bangkok'
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz })
+  const dStr = d.toLocaleDateString('en-CA', { timeZone: tz })
+  const diffDays = Math.round((new Date(todayStr).getTime() - new Date(dStr).getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: tz })
   if (diffDays === 1) return 'เมื่อวาน'
   if (diffDays < 7) return `${diffDays} วันที่แล้ว`
-  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: tz })
 }
 
 function actionDotColor(action: string | null): string {
