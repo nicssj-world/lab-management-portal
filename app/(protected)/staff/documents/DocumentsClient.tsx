@@ -14,7 +14,7 @@ import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document } from '@/lib/supabase/types'
 
 // ── Constants ─────────────────────────────────────────────────
-const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Others'] as const
+const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'] as const
 
 const DEPARTMENTS = [
   'กลุ่มงานเทคนิคการแพทย์',
@@ -29,17 +29,17 @@ const DEPARTMENTS = [
   'งานตรวจพิเศษและปฏิบัติการตรวจต่อ',
 ] as const
 
-const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray'> = {
-  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray', Others: 'gray',
+const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray' | 'red'> = {
+  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray', Reference: 'red', 'Card file': 'amber', Others: 'gray',
 }
 const TYPE_ICON_BG: Record<string, string> = {
   QP: 'rgba(30,95,173,.10)', WI: 'rgba(13,148,136,.10)', Form: 'rgba(147,51,234,.10)',
   Policy: 'rgba(217,119,6,.10)', Manual: 'rgba(22,163,74,.10)',
-  Record: 'rgba(100,116,139,.10)', Others: 'rgba(100,116,139,.10)',
+  Record: 'rgba(100,116,139,.10)', Reference: 'rgba(234,88,12,.10)', 'Card file': 'rgba(245,158,11,.10)', Others: 'rgba(100,116,139,.10)',
 }
 const TYPE_ICON_FG: Record<string, string> = {
   QP: '#1E5FAD', WI: '#0D9488', Form: '#9333EA',
-  Policy: '#D97706', Manual: '#16A34A', Record: '#64748B', Others: '#64748B',
+  Policy: '#D97706', Manual: '#16A34A', Record: '#64748B', Reference: '#EA580C', 'Card file': '#F59E0B', Others: '#64748B',
 }
 
 const STATUS_COLOR: Record<DocStatus, 'gray' | 'amber' | 'blue' | 'green' | 'red'> = {
@@ -54,6 +54,36 @@ const ALL_STATUSES: DocStatus[] = ['Draft', 'Review', 'Approved', 'Published', '
 interface StatusHistoryRow {
   to_status: string
   changed_at: string
+}
+
+// ── Linked document type ──────────────────────────────────────
+interface LinkedDoc {
+  id: string
+  linked_doc_id: string
+  created_by: string | null
+  created_at: string
+  documents: {
+    id: string
+    document_code: string
+    title: string
+    type: string
+    status: string
+    file_url: string
+    file_name: string
+    file_size: number | null
+  } | null
+}
+
+// ── Attachment type ───────────────────────────────────────────
+interface Attachment {
+  id: string
+  file_url: string
+  file_name: string
+  file_size: number | null
+  mime_type: string | null
+  uploaded_by: string | null
+  created_at: string
+  profiles: { name: string } | null
 }
 
 // ── Revision type ─────────────────────────────────────────────
@@ -253,10 +283,13 @@ function StatusModal({ doc, userRole, docRole, onClose, onSaved, toast }: {
 }
 
 // ── Document Detail Modal ──────────────────────────────────────
-function DocDetailModal({ doc, hasRead, canUpload, onClose, onRead, onHistory, onEdit, onDownload }: {
+function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, onClose, onRead, onHistory, onEdit, onDownload }: {
   doc: Document
   hasRead: boolean
   canUpload: boolean
+  userRole: string
+  docRole: string | null
+  userId: string
   onClose: () => void
   onRead: () => void
   onHistory: () => void
@@ -266,6 +299,137 @@ function DocDetailModal({ doc, hasRead, canUpload, onClose, onRead, onHistory, o
   const docStatus = doc.status as DocStatus
   const typeColor = TYPE_ICON_FG[doc.type] ?? '#64748B'
   const typeBg    = TYPE_ICON_BG[doc.type] ?? 'rgba(100,116,139,.1)'
+
+  const [attachments, setAttachments]     = useState<Attachment[]>([])
+  const [attachLoading, setAttachLoading] = useState(true)
+  const [uploading, setUploading]         = useState(false)
+  const [attachErr, setAttachErr]         = useState('')
+  const [attachDragOver, setAttachDragOver] = useState(false)
+  const [downloadingAll, setDownloadingAll] = useState(false)
+  const attachFileRef    = useRef<HTMLInputElement>(null)
+  const attachDragCounter = useRef(0)
+
+  const [links, setLinks]           = useState<LinkedDoc[]>([])
+  const [linksLoading, setLinksLoading] = useState(true)
+  const [linkSearch, setLinkSearch] = useState('')
+  const [linkResults, setLinkResults] = useState<Document[]>([])
+  const [linkSearching, setLinkSearching] = useState(false)
+  const [showLinkResults, setShowLinkResults] = useState(false)
+  const linkSearchRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetch(`/api/admin/documents/${doc.id}/attachments`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setAttachments(d) })
+      .catch(() => {})
+      .finally(() => setAttachLoading(false))
+  }, [doc.id])
+
+  useEffect(() => {
+    fetch(`/api/admin/documents/${doc.id}/links`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setLinks(d) })
+      .catch(() => {})
+      .finally(() => setLinksLoading(false))
+  }, [doc.id])
+
+  useEffect(() => {
+    if (!linkSearch.trim()) { setLinkResults([]); setShowLinkResults(false); return }
+    const t = setTimeout(async () => {
+      setLinkSearching(true)
+      try {
+        const res = await fetch(`/api/admin/documents?search=${encodeURIComponent(linkSearch)}&pageSize=8`)
+        const json = await res.json()
+        const linkedIds = new Set(links.map(l => l.linked_doc_id))
+        const filtered = (json.data ?? [] as Document[]).filter(
+          (d: Document) => d.id !== doc.id && !linkedIds.has(d.id)
+        )
+        setLinkResults(filtered)
+        setShowLinkResults(true)
+      } catch { setLinkResults([]) } finally { setLinkSearching(false) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [linkSearch, doc.id, links])
+
+  async function handleLinkDoc(linked: Document) {
+    setShowLinkResults(false)
+    setLinkSearch('')
+    const res = await fetch(`/api/admin/documents/${doc.id}/links`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linked_doc_id: linked.id }),
+    })
+    const json = await res.json()
+    if (res.ok) setLinks(prev => [...prev, json])
+  }
+
+  async function handleUnlinkDoc(linkId: string) {
+    const res = await fetch(`/api/admin/documents/${doc.id}/links/${linkId}`, { method: 'DELETE' })
+    if (res.ok) setLinks(prev => prev.filter(l => l.id !== linkId))
+  }
+
+  async function handleAttachUpload(files: FileList) {
+    setUploading(true)
+    setAttachErr('')
+    const fd = new FormData()
+    for (const f of Array.from(files)) fd.append('files', f)
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}/attachments`, { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) { setAttachErr(json.error ?? 'เกิดข้อผิดพลาด'); return }
+      setAttachments(prev => [...prev, ...(Array.isArray(json) ? json : [])])
+    } catch { setAttachErr('เกิดข้อผิดพลาด') } finally { setUploading(false) }
+  }
+
+  async function handleAttachDelete(attachId: string) {
+    const res = await fetch(`/api/admin/documents/${doc.id}/attachments/${attachId}`, { method: 'DELETE' })
+    if (res.ok) setAttachments(prev => prev.filter(a => a.id !== attachId))
+  }
+
+  async function handleDownloadAll() {
+    setDownloadingAll(true)
+    const paths = [
+      doc.file_url,
+      ...(doc.word_url ? [doc.word_url] : []),
+      ...links.filter(l => l.documents?.file_url).map(l => l.documents!.file_url),
+      ...attachments.map(a => a.file_url),
+    ]
+    for (let i = 0; i < paths.length; i++) {
+      if (i > 0) await new Promise(res => setTimeout(res, 500))
+      try {
+        const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(paths[i])}`)
+        const json = await res.json()
+        if (json.url) window.open(json.url, '_blank')
+      } catch { /* continue */ }
+    }
+    setDownloadingAll(false)
+  }
+
+  async function openLinkedDocRead(docId: string, fileUrl: string, fileName: string) {
+    try {
+      const res = await fetch(`/api/admin/documents/${docId}/read`, { method: 'POST' })
+      const json = await res.json()
+      if (json.url) { window.open(json.url, '_blank'); return }
+    } catch { /* ignore */ }
+    // fallback: inline download
+    openAttachmentInline(fileUrl, fileName)
+  }
+
+  async function openAttachmentInline(fileUrl: string, fileName: string) {
+    const isPdf = /\.pdf$/i.test(fileName)
+    const qs = isPdf ? '&inline=1' : ''
+    try {
+      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(fileUrl)}${qs}`)
+      const json = await res.json()
+      if (json.url) window.open(json.url, '_blank')
+    } catch { /* ignore */ }
+  }
+
+  function canDeleteAttach(uploadedBy: string | null) {
+    if (['Admin', 'Manager'].includes(userRole)) return true
+    if (docRole === 'Document Controller') return true
+    return userId === uploadedBy
+  }
 
   const STATUS_CHIP: Record<DocStatus, { bg: string; color: string }> = {
     Draft:     { bg: 'rgba(100,116,139,.12)', color: '#475569' },
@@ -378,13 +542,170 @@ function DocDetailModal({ doc, hasRead, canUpload, onClose, onRead, onHistory, o
 
             {/* Downloadable file cards */}
             <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.07em' }}>ดาวน์โหลดไฟล์</div>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', flex: 1 }}>ดาวน์โหลดไฟล์</div>
+                {(attachments.length > 0 || doc.word_url) && (
+                  <button
+                    onClick={handleDownloadAll}
+                    disabled={downloadingAll || attachLoading}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: downloadingAll ? 'default' : 'pointer', fontSize: 11.5, color: 'var(--muted)', fontFamily: 'inherit', opacity: downloadingAll ? .6 : 1, transition: 'all .15s' }}
+                    onMouseEnter={e => { if (!downloadingAll) { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' } }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}
+                  >
+                    <Icon name="download" size={11} />
+                    {downloadingAll ? 'กำลังดาวน์โหลด...' : 'ดาวน์โหลดทั้งหมด'}
+                  </button>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <FileCard name={doc.file_name} size={doc.file_size} accentColor="#DC2626" path={doc.file_url} />
                 {doc.word_name && doc.word_url && (
                   <FileCard name={doc.word_name} size={doc.word_size} accentColor="#059669" path={doc.word_url} />
                 )}
               </div>
+            </div>
+
+            {/* Related docs + Attachments */}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>เอกสารที่เกี่ยวข้อง / เอกสารอ้างอิง</div>
+
+              {/* Linked existing docs */}
+              {canUpload && ['Draft', 'Review', 'Approved', 'Published'].includes(doc.status) && (
+                <div ref={linkSearchRef} style={{ position: 'relative', marginBottom: 8 }}>
+                  <div style={{ position: 'relative' }}>
+                    <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
+                    <input
+                      value={linkSearch}
+                      onChange={e => setLinkSearch(e.target.value)}
+                      onFocus={() => { if (linkResults.length) setShowLinkResults(true) }}
+                      placeholder="ค้นหาเอกสารในระบบเพื่อเชื่อมโยง..."
+                      style={{ width: '100%', padding: '8px 12px 8px 32px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12.5, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                    {linkSearching && <div style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, border: '2px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />}
+                  </div>
+                  {showLinkResults && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,.12)', marginTop: 4, overflow: 'hidden' }}>
+                      {linkResults.length === 0 ? (
+                        <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--muted)' }}>ไม่พบเอกสาร</div>
+                      ) : linkResults.map(r => (
+                        <button key={r.id} onClick={() => handleLinkDoc(r)}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', borderBottom: '1px solid var(--border)' }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                        >
+                          <div style={{ width: 28, height: 28, borderRadius: 6, background: TYPE_ICON_BG[r.type] ?? 'rgba(100,116,139,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Icon name="doc" size={13} style={{ color: TYPE_ICON_FG[r.type] ?? '#64748B' }} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{r.document_code} · {r.type}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!linksLoading && links.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 }}>
+                  {links.map(l => {
+                    const d = l.documents
+                    if (!d) return null
+                    return (
+                      <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                        <div
+                          onClick={() => openLinkedDocRead(d.id, d.file_url, d.file_name)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, cursor: 'pointer' }}
+                        >
+                          <div style={{ width: 28, height: 28, borderRadius: 6, background: TYPE_ICON_BG[d.type] ?? 'rgba(100,116,139,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Icon name="doc" size={13} style={{ color: TYPE_ICON_FG[d.type] ?? '#64748B' }} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{d.document_code} · {d.type} · {fmtSize(d.file_size)}</div>
+                          </div>
+                        </div>
+                        <button onClick={() => onDownload(d.file_url)} title="ดาวน์โหลด"
+                          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', flexShrink: 0 }}
+                          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                          <Icon name="download" size={12} />
+                        </button>
+                        {canDeleteAttach(l.created_by) && (['Draft', 'Review'].includes(doc.status) || ['Admin', 'Manager'].includes(userRole) || docRole === 'Document Controller') && (
+                          <button onClick={() => handleUnlinkDoc(l.id)} title="ยกเลิกการเชื่อมโยง"
+                            style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', flexShrink: 0 }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--danger)'; e.currentTarget.style.color = 'var(--danger)' }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                            <Icon name="x" size={12} />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Uploaded attachments */}
+              {canUpload && ['Draft', 'Review', 'Approved', 'Published'].includes(doc.status) && (
+                <>
+                  <div
+                    onClick={() => !uploading && attachFileRef.current?.click()}
+                    onDragEnter={e => { e.preventDefault(); attachDragCounter.current += 1; setAttachDragOver(true) }}
+                    onDragOver={e => e.preventDefault()}
+                    onDragLeave={e => { e.preventDefault(); attachDragCounter.current -= 1; if (attachDragCounter.current === 0) setAttachDragOver(false) }}
+                    onDrop={e => { e.preventDefault(); attachDragCounter.current = 0; setAttachDragOver(false); if (e.dataTransfer.files.length && !uploading) handleAttachUpload(e.dataTransfer.files) }}
+                    style={{ border: `2px dashed ${attachDragOver ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 10, padding: '14px 16px', background: attachDragOver ? 'var(--primary-soft)' : 'var(--surface-2)', cursor: uploading ? 'default' : 'pointer', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10, opacity: uploading ? .7 : 1 }}
+                  >
+                    <Icon name="upload" size={14} style={{ color: attachDragOver ? 'var(--primary)' : 'var(--muted)', flexShrink: 0 }} />
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: attachDragOver ? 'var(--primary)' : 'var(--ink)' }}>
+                        {uploading ? 'กำลังอัพโหลด...' : 'ลากไฟล์มาวางที่นี่ หรือ คลิกเพื่อเลือก'}
+                      </div>
+                      {!uploading && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>รองรับทุกประเภทไฟล์ · เลือกได้หลายไฟล์พร้อมกัน</div>}
+                    </div>
+                  </div>
+                  <input ref={attachFileRef} type="file" multiple style={{ display: 'none' }}
+                    onChange={e => { if (e.target.files?.length) { handleAttachUpload(e.target.files); e.target.value = '' } }} />
+                </>
+              )}
+              {attachErr && <div style={{ fontSize: 11.5, color: 'var(--danger)', marginBottom: 6 }}>{attachErr}</div>}
+              {attachLoading ? (
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>กำลังโหลด...</div>
+              ) : attachments.length === 0 && links.length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>ยังไม่มีไฟล์แนบ</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {attachments.map(a => (
+                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                      <div
+                        onClick={() => openAttachmentInline(a.file_url, a.file_name)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, cursor: 'pointer' }}
+                      >
+                        <Icon name="doc" size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.file_name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{fmtSize(a.file_size)} · {a.profiles?.name ?? '—'} · {fmtDate(a.created_at)}</div>
+                        </div>
+                      </div>
+                      <button onClick={() => onDownload(a.file_url)} title="ดาวน์โหลด"
+                        style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', flexShrink: 0 }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                        <Icon name="download" size={12} />
+                      </button>
+                      {canDeleteAttach(a.uploaded_by) && (['Draft', 'Review'].includes(doc.status) || ['Admin', 'Manager'].includes(userRole) || docRole === 'Document Controller') && (
+                        <button onClick={() => handleAttachDelete(a.id)} title="ลบ"
+                          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', flexShrink: 0 }}
+                          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--danger)'; e.currentTarget.style.color = 'var(--danger)' }}
+                          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                          <Icon name="trash" size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -521,7 +842,8 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
   function downloadRevisionHistory() {
     const TYPE_LABEL: Record<string, string> = {
       QP: 'ระเบียบปฏิบัติ QP', WI: 'วิธีปฏิบัติ (WI)', Manual: 'คู่มือคุณภาพ (QM)',
-      Form: 'แบบฟอร์ม (Form)', Policy: 'นโยบาย (Policy)', Record: 'บันทึกคุณภาพ (Record)', Others: 'เอกสารอื่นๆ',
+      Form: 'แบบฟอร์ม (Form)', Policy: 'นโยบาย (Policy)', Record: 'บันทึกคุณภาพ (Record)',
+      Reference: 'เอกสารอ้างอิง (Reference)', 'Card file': 'Card file', Others: 'เอกสารอื่นๆ',
     }
     const fmtD = (s: string) =>
       s ? new Date(s).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
@@ -1039,6 +1361,8 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
       Form: 'แบบฟอร์ม (Form)',
       Policy: 'นโยบาย (Policy)',
       Record: 'บันทึกคุณภาพ (Record)',
+      Reference: 'เอกสารอ้างอิง (Reference)',
+      'Card file': 'Card file',
       Others: 'เอกสารอื่นๆ',
     }
     const posLabel = (role: string | undefined) => {
@@ -1300,9 +1624,9 @@ const DOC_ROLE_COLOR: Record<string, { bg: string; color: string; dot: string }>
   'Viewer':              { bg: 'rgba(100,116,139,.09)',color: '#64748B', dot: '#94A3B8' },
 }
 
-interface Props { userRole?: string; docRole?: string; userName?: string }
+interface Props { userRole?: string; docRole?: string; userName?: string; userId?: string }
 
-export function DocumentsClient({ userRole, docRole, userName }: Props) {
+export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Props) {
   const isAdmin = userRole === 'Admin'
   const workflowRole = docRole ?? userRole
   const canUpload = isAdmin
@@ -1389,7 +1713,8 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
 
     const sp = new URLSearchParams()
     if (activeType && activeType !== 'All') sp.set('type', activeType)
-    if (filterStatus) sp.set('status', filterStatus)
+    if (docRole === 'Viewer') sp.set('status', 'Published')
+    else if (filterStatus) sp.set('status', filterStatus)
     if (visibility)   sp.set('visibility', visibility)
     if (department)   sp.set('department', department)
     if (debouncedSearch) sp.set('search', debouncedSearch)
@@ -1645,7 +1970,7 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
         </div>
         {/* Row 2: Status pills + visibility pills */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          {([
+          {docRole !== 'Viewer' && ([
             ['', 'All'],
             ['Draft',     '#64748B'],
             ['Review',    '#D97706'],
@@ -1817,15 +2142,6 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
                               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
                               P
                             </button>
-                            {/* Download Word/Excel */}
-                            {doc.word_url && (
-                              <button onClick={() => handleDownload(doc.word_url!)} title="ดาวน์โหลด Word/Excel"
-                                style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
-                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#059669'; e.currentTarget.style.color = '#059669' }}
-                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
-                                W
-                              </button>
-                            )}
                             {/* History */}
                             <button onClick={() => setRevDoc(doc)} title="ประวัติการแก้ไข"
                               style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s' }}
@@ -1897,6 +2213,9 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
           doc={detailDoc}
           hasRead={readDocIds.has(detailDoc.id)}
           canUpload={canUpload}
+          userRole={userRole ?? ''}
+          docRole={docRole ?? null}
+          userId={userId}
           onClose={() => setDetailDoc(null)}
           onRead={() => { setDetailDoc(null); setReadDoc(detailDoc) }}
           onHistory={() => { setDetailDoc(null); setRevDoc(detailDoc) }}

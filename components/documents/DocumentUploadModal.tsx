@@ -69,6 +69,8 @@ const TYPE_BY_PREFIX: Record<string, string> = {
   FM: 'Form', FR: 'Form',
   PL: 'Policy', PO: 'Policy',
   RC: 'Record', RD: 'Record',
+  RF: 'Reference',
+  CF: 'Card file',
 }
 
 function typeFromCode(code: string): string | null {
@@ -86,7 +88,7 @@ function deptFromCode(code: string): string | null {
 }
 
 function isFormFile(filename: string): boolean {
-  return /^(?:Fm|FR)-/i.test(filename)
+  return /^(?:Fm|FR|Rf|Cf)-/i.test(filename)
 }
 
 function extractFormDocumentCode(filename: string): string | null {
@@ -104,8 +106,8 @@ function extractFormTitle(filename: string): string | null {
 }
 
 function extractParentCode(filename: string): string | null {
-  // Take the code token right after Fm-/FR- (stop at first space or extension)
-  const m = filename.match(/^(?:Fm|FR)-([^\s.]+)/i)
+  // Take the code token right after Fm-/FR-/Rf-/Cf- (stop at first space or extension)
+  const m = filename.match(/^(?:Fm|FR|Rf|Cf)-([^\s.]+)/i)
   if (!m) return null
   let code = m[1]
   // Strip underscore variant: Fm-QP-LAB-01_01 → QP-LAB-01
@@ -262,6 +264,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
   const [saveRevision, setSaveRevision] = useState(true)
   const [saving, setSaving] = useState(false)
   const [extracting, setExtracting] = useState(false)
+  const [extractingWord, setExtractingWord] = useState(false)
   const [error, setError] = useState('')
 
   const [title, setTitle]               = useState(doc?.title ?? '')
@@ -306,8 +309,8 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
   }, [])
 
   const handleWordFile = useCallback((file: File) => {
-    if (!file.name.match(/\.(docx|xlsx)$/i)) {
-      setError('ช่องนี้รองรับเฉพาะไฟล์ DOCX, XLSX เท่านั้น')
+    if (!file.name.match(/\.(doc|docx|xlsx)$/i)) {
+      setError('ช่องนี้รองรับเฉพาะไฟล์ DOC, DOCX, XLSX เท่านั้น')
       return
     }
     if (file.size > 50 * 1024 * 1024) {
@@ -416,6 +419,39 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
       setError(err instanceof Error ? err.message : 'ดึงข้อมูลไม่สำเร็จ')
     } finally {
       setExtracting(false)
+    }
+  }
+
+  async function extractFromWordFile() {
+    if (!selectedWordFile || !selectedWordFile.name.match(/\.docx$/i)) return
+    setExtractingWord(true)
+    setError('')
+    try {
+      const fd = new FormData()
+      fd.append('file', selectedWordFile)
+      const res = await fetch('/api/admin/documents/extract', { method: 'POST', body: fd })
+      const json = await readJsonOrError(res)
+      if (!res.ok) throw new Error(json.error ?? 'ไม่สามารถอ่านไฟล์ได้')
+      const fields = parseExtractedText(json.text as string)
+      if (fields.title)        setTitle(fields.title)
+      if (fields.documentCode) {
+        const code = fields.documentCode.toUpperCase()
+        setDocumentCode(code)
+        const dept = deptFromCode(code)
+        if (dept) setDepartment(dept)
+        const docType = typeFromCode(code)
+        if (docType) setType(docType)
+      }
+      if (fields.revision)     setRevision(fields.revision)
+      if (fields.ownerName)    setOwnerName(fields.ownerName)
+      if (fields.reviewerName) setReviewerName(fields.reviewerName)
+      if (fields.approverName) setApproverName(fields.approverName)
+      if (fields.expiryDate)   setExpiryDate(fields.expiryDate)
+      if (fields.effectiveDate) setEffectiveDate(fields.effectiveDate)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ดึงข้อมูลไม่สำเร็จ')
+    } finally {
+      setExtractingWord(false)
     }
   }
 
@@ -749,9 +785,17 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
                     <span style={{ fontSize: 12, color: 'var(--muted)' }}>DOCX / XLSX &nbsp;<span style={{ color: 'var(--primary)', fontWeight: 600 }}>เลือกไฟล์</span></span>
                   </div>
                 )}
-                <input ref={wordFileRef} type="file" accept=".docx,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{ display: 'none' }}
+                <input ref={wordFileRef} type="file" accept=".doc,.docx,.xlsx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{ display: 'none' }}
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleWordFile(f); e.target.value = '' }} />
               </div>
+              {selectedWordFile && selectedWordFile.name.match(/\.docx$/i) && (
+                <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={extractFromWordFile} disabled={extractingWord}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, cursor: extractingWord ? 'default' : 'pointer', padding: '4px 10px', borderRadius: 6, fontFamily: 'inherit', background: 'transparent', border: `1px solid ${extractingWord ? 'var(--border)' : '#059669'}`, color: extractingWord ? 'var(--muted)' : '#059669', transition: 'all .15s' }}>
+                    {extractingWord ? '⏳ กำลังอ่าน...' : '✦ ดึงข้อมูล'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

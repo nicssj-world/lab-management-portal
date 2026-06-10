@@ -3,7 +3,7 @@ import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { NextRequest, NextResponse } from 'next/server'
-import { buildDocumentDownloadFilename, contentDispositionForDownload } from '@/lib/documents/download-filename'
+import { buildDocumentDownloadFilename, contentDispositionForDownload, contentDispositionForInline } from '@/lib/documents/download-filename'
 import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 
 type DownloadDocument = {
@@ -41,18 +41,34 @@ async function getDocumentForDownload(path: string) {
     .eq('file_url', path)
     .maybeSingle()
 
-  if (!revision?.document_id) return null
+  if (revision?.document_id) {
+    const { data: revisionDoc } = await supabaseAdmin
+      .from('documents')
+      .select('id, document_code, title, visibility, deleted_at')
+      .eq('id', revision.document_id)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (revisionDoc) return { ...revisionDoc, file_name: revision.file_name } as DownloadDocument
+  }
 
-  const { data: revisionDoc } = await supabaseAdmin
-    .from('documents')
-    .select('id, document_code, title, visibility, deleted_at')
-    .eq('id', revision.document_id)
-    .is('deleted_at', null)
+  // Attachment file
+  const { data: attachment } = await supabaseAdmin
+    .from('document_attachments')
+    .select('id, file_name, document_id')
+    .eq('file_url', path)
     .maybeSingle()
 
-  return revisionDoc
-    ? { ...revisionDoc, file_name: revision.file_name } as DownloadDocument
-    : null
+  if (attachment?.document_id) {
+    const { data: attachDoc } = await supabaseAdmin
+      .from('documents')
+      .select('id, document_code, title, visibility, deleted_at')
+      .eq('id', attachment.document_id)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (attachDoc) return { id: attachDoc.id, file_name: attachment.file_name, visibility: attachDoc.visibility, deleted_at: attachDoc.deleted_at } as unknown as DownloadDocument
+  }
+
+  return null
 }
 
 export async function GET(req: NextRequest) {
@@ -61,6 +77,7 @@ export async function GET(req: NextRequest) {
 
   const path = req.nextUrl.searchParams.get('path')
   if (!path) return NextResponse.json({ error: 'Missing path' }, { status: 422 })
+  const inline = req.nextUrl.searchParams.get('inline') === '1'
 
   const docRow = await getDocumentForDownload(path)
   if (!docRow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -68,14 +85,16 @@ export async function GET(req: NextRequest) {
 
   const filename = buildDocumentDownloadFilename(docRow)
 
+  const disposition = filename
+    ? (inline ? contentDispositionForInline(filename) : contentDispositionForDownload(filename))
+    : undefined
+
   const url = await getSignedUrl(
     r2,
     new GetObjectCommand({
       Bucket: R2_BUCKET,
       Key: path,
-      ...(filename
-        ? { ResponseContentDisposition: contentDispositionForDownload(filename) }
-        : {}),
+      ...(disposition ? { ResponseContentDisposition: disposition } : {}),
     }),
     { expiresIn: 3600 }
   )
