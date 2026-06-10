@@ -249,6 +249,27 @@ export default async function StaffDashboardPage() {
     }
   }
 
+  // Enrich contract.usage_add entries with product/vendor for old records that lack it
+  const usageContractIds = [...new Set(
+    auditLogs.filter(l => l.action === 'contract.usage_add' && l.target).map(l => l.target as string)
+  )]
+  if (usageContractIds.length > 0) {
+    const numIds = usageContractIds.map(Number).filter(n => !isNaN(n))
+    if (numIds.length > 0) {
+      const { data: ctrs } = await supabaseAdmin.from('contracts').select('id, vendor, product').in('id', numIds)
+      const contractNames: Record<string, string> = {}
+      for (const c of ctrs ?? []) contractNames[String(c.id)] = (c.product || c.vendor) ?? ''
+      for (const log of auditLogs) {
+        if (log.action === 'contract.usage_add' && log.target) {
+          const name = contractNames[log.target]
+          if (name && log.detail && !log.detail.startsWith(name)) {
+            log.detail = `${name} · ${log.detail}`
+          }
+        }
+      }
+    }
+  }
+
   const tatData = tatSummary ?? {}
   const kpi     = tatData.kpi ?? {}
 
@@ -854,6 +875,20 @@ function parseActivityTitle(action: string | null, target: string | null, detail
     return verbLabel
   }
 
+  // document.*: prepend short verb to plain-text detail
+  if (a.startsWith('document.') && detail && detail.length <= 120) {
+    const verbShort: Record<string, string> = {
+      'document.upload': 'อัปโหลด',
+      'document.edit': 'แก้ไข',
+      'document.delete': 'ลบ',
+      'document.status_change': 'เปลี่ยนสถานะ',
+    }
+    return `${verbShort[a] ?? verbLabel} ${detail}`
+  }
+  // contract.usage_add: prepend verb to plain-text detail
+  if (a === 'contract.usage_add' && detail && detail.length <= 120) {
+    return `บันทึกค่าใช้จ่ายสัญญา ${detail}`
+  }
   // detail is plain text (short human-readable string)
   if (detail && detail.length <= 120) return detail
   if (target) return `${verbLabel}: ${target}`

@@ -54,7 +54,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: contract, error: contractErr } = await supabaseAdmin
     .from('contracts')
-    .select('total, contract_usage(amount)')
+    .select('total, vendor, product, contract_usage(amount)')
     .eq('id', Number(id))
     .single()
 
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     action: 'contract.usage_add',
     user_id: actor.id,
     target: id,
-    detail: `${numericAmount.toLocaleString('th-TH')} บาท${note ? ' · ' + note : ''}`,
+    detail: `${(contract.product || contract.vendor) ? (contract.product || contract.vendor) + ' · ' : ''}${numericAmount.toLocaleString('th-TH')} บาท${note ? ' · ' + note : ''}`,
   }).then(undefined, () => {})
   return NextResponse.json(data, { status: 201 })
 }
