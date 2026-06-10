@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { r2, R2_BUCKET } from '@/lib/r2/client'
+import { DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getActor() {
@@ -61,11 +63,24 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   const { revId } = await params
 
+  const { data: rev, error: fetchErr } = await supabaseAdmin
+    .from('document_revisions')
+    .select('file_url')
+    .eq('id', revId)
+    .single()
+
+  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
+
   const { error } = await supabaseAdmin
     .from('document_revisions')
     .delete()
     .eq('id', revId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (rev?.file_url) {
+    r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: rev.file_url })).catch(() => {})
+  }
+
   return new NextResponse(null, { status: 204 })
 }

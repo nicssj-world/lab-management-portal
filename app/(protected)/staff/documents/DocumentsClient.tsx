@@ -253,14 +253,17 @@ function StatusModal({ doc, userRole, docRole, onClose, onSaved, toast }: {
 }
 
 // ── Revision History Panel ─────────────────────────────────────
-function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, canAdd }: {
+function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole, canAdd }: {
   doc: Document
   onClose: () => void
   onDownload: (path: string) => void
   onPromoted: (updated: Document) => void
   userRole: string
+  docRole?: string
   canAdd: boolean
 }) {
+
+  const canDownloadRevision = userRole === 'Admin' || docRole === 'Document Controller'
 
   const [revisions, setRevisions] = useState<RevisionRow[]>([])
   const [loading, setLoading]     = useState(true)
@@ -752,7 +755,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, canAdd 
                               </button>
                             </>
                           )}
-                          {rev.file_url && (
+                          {rev.file_url && canDownloadRevision && (
                             <button onClick={() => onDownload(rev.file_url)} title="ดาวน์โหลด"
                               style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}
                               onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
@@ -1757,6 +1760,7 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
           onDownload={handleDownload}
           onPromoted={handleRevisionPromoted}
           userRole={userRole ?? ''}
+          docRole={docRole}
           canAdd={canUpload}
         />
       )}
