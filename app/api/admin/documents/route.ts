@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
 
     const sp = req.nextUrl.searchParams
     const type       = sp.get('type') ?? undefined
-    const status     = sp.get('status') ?? undefined
+    const status     = actor.doc_role === 'Viewer' ? 'Published' : (sp.get('status') ?? undefined)
     const visibility = sp.get('visibility') ?? undefined
     const department = sp.get('department') ?? undefined
     const search     = safeSearchTerm(sp.get('search') ?? '')

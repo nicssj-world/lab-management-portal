@@ -40,9 +40,15 @@ export async function POST(
   if (docErr || !doc) return NextResponse.json({ error: 'ไม่พบเอกสาร' }, { status: 404 })
 
   // Generate R2 presigned URL (1 hour)
+  const ext = doc.file_url.split('.').pop() ?? 'pdf'
+  const displayName = `${doc.document_code} ${doc.title}.${ext}`
   const url = await getSignedUrl(
     r2,
-    new GetObjectCommand({ Bucket: R2_BUCKET, Key: doc.file_url }),
+    new GetObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: doc.file_url,
+      ResponseContentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(displayName)}`,
+    }),
     { expiresIn: 3600 }
   )
 

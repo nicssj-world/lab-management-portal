@@ -12,7 +12,7 @@ import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import type { Document } from '@/lib/supabase/types'
 
 // ── Constants ─────────────────────────────────────────────────
-const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Others'] as const
+const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'] as const
 
 const DEPARTMENTS = [
   'กลุ่มงานเทคนิคการแพทย์',
@@ -27,12 +27,14 @@ const DEPARTMENTS = [
   'งานตรวจพิเศษและปฏิบัติการตรวจต่อ',
 ] as const
 
-const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray'> = {
-  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray', Others: 'gray',
+const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray' | 'red'> = {
+  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray',
+  Reference: 'red', 'Card file': 'amber', Others: 'gray',
 }
 const TYPE_DOT_FG: Record<string, string> = {
   QP: '#1E5FAD', WI: '#0D9488', Form: '#9333EA',
-  Policy: '#D97706', Manual: '#16A34A', Record: '#64748B', Others: '#64748B',
+  Policy: '#D97706', Manual: '#16A34A', Record: '#64748B',
+  Reference: '#EA580C', 'Card file': '#F59E0B', Others: '#64748B',
 }
 
 type DocStatus = 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolete'

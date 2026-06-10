@@ -38,3 +38,13 @@ export function contentDispositionForDownload(filename: string) {
 
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`
 }
+
+export function contentDispositionForInline(filename: string) {
+  const fallback = filename
+    .replace(/[^\x20-\x7E]/g, '_')
+    .replace(/["\\]/g, '_')
+    .trim()
+    || 'document'
+
+  return `inline; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+}

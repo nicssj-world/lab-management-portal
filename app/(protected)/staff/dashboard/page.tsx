@@ -5,6 +5,8 @@ import { Icon } from '@/components/ui/Icon'
 import type { ContractWithUsage } from '@/lib/queries/contracts'
 import Link from 'next/link'
 
+export const dynamic = 'force-dynamic'
+
 
 /* ─── helpers ─── */
 function fmtMinutes(min: number) {
@@ -512,15 +514,16 @@ export default async function StaffDashboardPage() {
                   { label:'Draft',     count:docDraft,     color:'#D97706' },
                   { label:'Obsolete',  count:docObsolete,  color:'#DC2626' },
                 ] as const).map(({ label, count, color }) => {
-                  const pct = docTotal > 0 ? Math.round((count / docTotal) * 100) : 0
+                  const pct = docTotal > 0 ? (count / docTotal) * 100 : 0
+                  const barWidth = Math.max(pct, count > 0 ? 2 : 0)
                   return (
                     <div key={label} style={{ marginBottom:9 }}>
                       <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
                         <span style={{ fontSize:12,color:'var(--ink)',fontWeight:600 }}>{label}</span>
-                        <span style={{ fontSize:12,color,fontWeight:700 }}>{pct}%</span>
+                        <span style={{ fontSize:12,color,fontWeight:700 }}>{count} ฉบับ</span>
                       </div>
                       <div style={{ height:4,background:'var(--border)',borderRadius:99,overflow:'hidden' }}>
-                        <div style={{ height:'100%',width:`${pct}%`,background:color,borderRadius:99 }} />
+                        <div style={{ height:'100%',width:`${barWidth}%`,background:color,borderRadius:99 }} />
                       </div>
                     </div>
                   )

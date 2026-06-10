@@ -5,6 +5,8 @@ import { DocumentSchema } from '@/lib/validations/document'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
+import { canAccessDocuments } from '@/lib/auth/guards'
+import { allowedTransitions, type DocStatus } from '@/lib/documents/transitions'
 
 async function getActor() {
   const supabase = await createClient()
@@ -32,6 +34,21 @@ async function canUploadDocument(role: string, docRole: string | null) {
 function canDeleteDocument(role: string, docRole: string | null) {
   if (role === 'Admin') return true
   return DOC_DELETE_ROLES.includes(docRole ?? role)
+}
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const actor = await getActor()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await canAccessDocuments(actor, 'view'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { id } = await params
+  const { data, error } = await supabaseAdmin
+    .from('documents').select('*').eq('id', id).is('deleted_at', null).single()
+  if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  return NextResponse.json(data)
 }
 
 export async function PATCH(
@@ -82,6 +99,15 @@ export async function PATCH(
       .select('file_url, file_name, revision, type, description, owner_name, approver_name, status, document_code, title')
       .eq('id', id)
       .single()
+
+    // Enforce status transition rules server-side
+    const requestedStatus = updates.status as string | undefined
+    if (requestedStatus && current?.status && requestedStatus !== current.status) {
+      const allowed = allowedTransitions(current.status as DocStatus, actor.role, actor.doc_role ?? undefined)
+      if (!allowed.includes(requestedStatus as DocStatus)) {
+        return NextResponse.json({ error: 'สถานะที่เปลี่ยนไม่ได้รับอนุญาต' }, { status: 403 })
+      }
+    }
 
     if (newFile) {
       if (newFile.size > 50 * 1024 * 1024) {

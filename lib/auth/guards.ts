@@ -75,6 +75,7 @@ export async function canAccessDocuments(
   actor: Actor,
   minimum: 'view' | 'edit' = 'view',
 ): Promise<boolean> {
+  if (actor.doc_role === 'Viewer' && minimum === 'view') return true
   if (DOC_WORKFLOW_ROLES.includes((actor.doc_role ?? actor.role) as (typeof DOC_WORKFLOW_ROLES)[number])) {
     return true
   }

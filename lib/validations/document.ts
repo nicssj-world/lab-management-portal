@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const DOC_TYPES = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Others'] as const
+export const DOC_TYPES = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'] as const
 export const DOC_STATUSES = ['Draft', 'Review', 'Approved', 'Published', 'Obsolete'] as const
 export const DOC_VISIBILITIES = ['Public', 'Internal'] as const
 
