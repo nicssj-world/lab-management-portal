@@ -92,11 +92,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const form = await req.formData()
-    const file = form.get('file') as File | null
-    if (!file) return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
+    const fileRaw = form.get('file')
+    const file = fileRaw instanceof File && fileRaw.size > 0 ? fileRaw : null
+    if (!file) return NextResponse.json({ error: 'ไม่พบไฟล์ PDF' }, { status: 422 })
 
     if (file.size > 50 * 1024 * 1024) {
-      return NextResponse.json({ error: 'ไฟล์ใหญ่เกิน 50 MB' }, { status: 422 })
+      return NextResponse.json({ error: 'ไฟล์ PDF ใหญ่เกิน 50 MB' }, { status: 422 })
     }
 
     const metaRaw = form.get('meta')

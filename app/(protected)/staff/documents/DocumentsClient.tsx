@@ -252,6 +252,172 @@ function StatusModal({ doc, userRole, docRole, onClose, onSaved, toast }: {
   )
 }
 
+// ── Document Detail Modal ──────────────────────────────────────
+function DocDetailModal({ doc, hasRead, canUpload, onClose, onRead, onHistory, onEdit, onDownload }: {
+  doc: Document
+  hasRead: boolean
+  canUpload: boolean
+  onClose: () => void
+  onRead: () => void
+  onHistory: () => void
+  onEdit: () => void
+  onDownload: (path: string) => void
+}) {
+  const docStatus = doc.status as DocStatus
+  const typeColor = TYPE_ICON_FG[doc.type] ?? '#64748B'
+  const typeBg    = TYPE_ICON_BG[doc.type] ?? 'rgba(100,116,139,.1)'
+
+  const STATUS_CHIP: Record<DocStatus, { bg: string; color: string }> = {
+    Draft:     { bg: 'rgba(100,116,139,.12)', color: '#475569' },
+    Review:    { bg: 'rgba(217,119,6,.12)',   color: '#B45309' },
+    Approved:  { bg: 'rgba(30,95,173,.12)',   color: '#1E5FAD' },
+    Published: { bg: 'rgba(22,163,74,.12)',   color: '#15803D' },
+    Obsolete:  { bg: 'rgba(220,38,38,.12)',   color: '#DC2626' },
+  }
+  const chip = STATUS_CHIP[docStatus]
+
+  function MetaItem({ label, value, danger }: { label: string; value?: string | null; danger?: boolean }) {
+    if (!value) return null
+    return (
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: danger ? 'var(--danger)' : 'var(--muted)', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '.07em' }}>{label}</div>
+        <div style={{ fontSize: 13, fontWeight: 500, color: danger ? 'var(--danger)' : 'var(--ink)', lineHeight: 1.4 }}>{value}</div>
+      </div>
+    )
+  }
+
+  function FileCard({ name, size, accentColor, path }: { name: string; size: number | null; accentColor: string; path: string }) {
+    return (
+      <button
+        onClick={() => onDownload(path)}
+        style={{ flex: 1, minWidth: 180, padding: '11px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'all .14s', textAlign: 'left', fontFamily: 'inherit' }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${accentColor}55`; e.currentTarget.style.background = `${accentColor}08` }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface-2)' }}
+      >
+        <div style={{ width: 34, height: 34, borderRadius: 8, background: `${accentColor}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon name="doc" size={16} style={{ color: accentColor }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{name.split('.').pop()?.toUpperCase()} · {fmtSize(size)}</div>
+        </div>
+        <Icon name="download" size={13} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+      </button>
+    )
+  }
+
+  return (
+    <>
+      <style>{`
+        @keyframes ddm-back { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes ddm-card { from { opacity: 0; transform: scale(.97) translateY(10px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+      `}</style>
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', animation: 'ddm-back .16s ease' }}>
+        <div style={{ background: 'var(--card)', borderRadius: 20, width: '100%', maxWidth: 620, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(15,23,42,.2), 0 0 0 1px rgba(15,23,42,.05)', animation: 'ddm-card .22s cubic-bezier(.22,.68,0,1.15)' }}>
+
+          {/* Type-color accent rule */}
+          <div style={{ height: 3, background: `linear-gradient(90deg, ${typeColor} 0%, ${typeColor}44 60%, transparent 100%)`, flexShrink: 0 }} />
+
+          {/* Header — gradient wash from type color */}
+          <div style={{ padding: '22px 26px 18px', flexShrink: 0, background: `linear-gradient(150deg, ${typeBg} 0%, transparent 55%)` }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+
+              <div style={{ width: 50, height: 50, borderRadius: 14, background: typeBg, border: `1.5px solid ${typeColor}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 4px 14px ${typeColor}18` }}>
+                <Icon name="doc" size={22} style={{ color: typeColor }} />
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
+                <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.3, marginBottom: 9, letterSpacing: '-.01em' }}>{doc.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: typeColor, background: typeBg, padding: '2px 9px', borderRadius: 6, border: `1px solid ${typeColor}28`, fontFamily: 'monospace', letterSpacing: '.02em' }}>{doc.document_code}</span>
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>Rev.{doc.revision}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: chip.color, background: chip.bg, padding: '2px 9px', borderRadius: 99 }}>{STATUS_LABEL[docStatus]}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: doc.visibility === 'Public' ? '#15803D' : '#92400E', background: doc.visibility === 'Public' ? 'rgba(22,163,74,.1)' : 'rgba(217,119,6,.1)', padding: '2px 8px', borderRadius: 99 }}>
+                    {doc.visibility === 'Public' ? '● เผยแพร่' : '● ภายใน'}
+                  </span>
+                </div>
+              </div>
+
+              <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .12s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div style={{ height: 1, background: 'var(--border)', flexShrink: 0 }} />
+
+          {/* Scrollable body */}
+          <div style={{ padding: '20px 26px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1 }}>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 24px' }}>
+              <MetaItem label="แผนก" value={doc.department} />
+              <MetaItem label="ผู้จัดทำ" value={doc.owner_name} />
+              <MetaItem label="ผู้รับรอง" value={doc.reviewer_name} />
+              <MetaItem label="ผู้อนุมัติ" value={doc.approver_name} />
+              <MetaItem label="วันที่มีผลบังคับใช้" value={doc.effective_date ? fmtDate(doc.effective_date) : null} />
+              <MetaItem label="วันที่ทบทวน" value={doc.expiry_date ? fmtDate(doc.expiry_date) : null} />
+              <MetaItem label="วันที่ยกเลิก" value={doc.obsolete_date ? fmtDate(doc.obsolete_date) : null} danger />
+              <MetaItem label="อัปเดตล่าสุด" value={fmtDate(doc.updated_at)} />
+            </div>
+
+            {doc.description && (
+              <div style={{ padding: '12px 16px', background: 'var(--surface-2)', borderRadius: 10, borderLeft: '3px solid var(--border)' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.07em' }}>รายละเอียดการแก้ไข</div>
+                <div style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.65 }}>{doc.description}</div>
+              </div>
+            )}
+
+            {doc.obsolete_reason && (
+              <div style={{ padding: '12px 16px', background: 'rgba(220,38,38,.04)', borderLeft: '3px solid var(--danger)', border: '1px solid rgba(220,38,38,.1)', borderRadius: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--danger)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.07em' }}>เหตุผลการยกเลิก</div>
+                <div style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.65 }}>{doc.obsolete_reason}</div>
+              </div>
+            )}
+
+            {/* Downloadable file cards */}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.07em' }}>ดาวน์โหลดไฟล์</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <FileCard name={doc.file_name} size={doc.file_size} accentColor="#DC2626" path={doc.file_url} />
+                {doc.word_name && doc.word_url && (
+                  <FileCard name={doc.word_name} size={doc.word_size} accentColor="#059669" path={doc.word_url} />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ height: 1, background: 'var(--border)', flexShrink: 0 }} />
+
+          {/* Footer */}
+          <div style={{ padding: '14px 26px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={onRead} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 20px', borderRadius: 10, background: 'var(--primary)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', transition: 'all .12s', boxShadow: '0 2px 10px rgba(30,95,173,.28)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#1750a0'; e.currentTarget.style.boxShadow = '0 4px 18px rgba(30,95,173,.38)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(30,95,173,.28)' }}>
+              <Icon name="eye" size={14} />{hasRead ? 'อ่านอีกครั้ง' : 'Read เอกสาร'}
+            </button>
+            <button onClick={onHistory} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--ink)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all .12s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--ink)' }}>
+              <Icon name="clock" size={14} />ประวัติการแก้ไข
+            </button>
+            <div style={{ flex: 1 }} />
+            {canUpload && (
+              <button onClick={onEdit} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--muted)', fontFamily: 'inherit', transition: 'all .12s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                <Icon name="edit" size={13} />แก้ไข
+              </button>
+            )}
+          </div>
+
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ── Revision History Panel ─────────────────────────────────────
 function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole, canAdd }: {
   doc: Document
@@ -1172,9 +1338,10 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
   const [deletedCount, setDeletedCount] = useState(0)
   const [purging, setPurging]           = useState(false)
 
-  const [statusDoc, setStatusDoc] = useState<Document | null>(null)
-  const [revDoc, setRevDoc]       = useState<Document | null>(null)
-  const [readDoc, setReadDoc]     = useState<Document | null>(null)
+  const [statusDoc, setStatusDoc]   = useState<Document | null>(null)
+  const [revDoc, setRevDoc]         = useState<Document | null>(null)
+  const [readDoc, setReadDoc]       = useState<Document | null>(null)
+  const [detailDoc, setDetailDoc]   = useState<Document | null>(null)
 
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({})
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
@@ -1570,14 +1737,18 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
                         onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
                         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                       >
-                        {/* 1. Name + Code */}
-                        <td style={{ padding: '13px 16px', minWidth: 240 }}>
+                        {/* 1. Name + Code — click to open detail */}
+                        <td style={{ padding: '13px 16px', minWidth: 240, cursor: 'pointer' }} onClick={() => setDetailDoc(doc)}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                             <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, background: TYPE_ICON_BG[doc.type] ?? 'rgba(100,116,139,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <Icon name="doc" size={16} style={{ color: TYPE_ICON_FG[doc.type] ?? 'var(--muted)' }} />
                             </div>
                             <div>
-                              <div style={{ fontWeight: 600, color: 'var(--ink)', lineHeight: 1.35, fontSize: 13 }}>{doc.title}</div>
+                              <div style={{ fontWeight: 600, color: 'var(--primary)', lineHeight: 1.35, fontSize: 13, textDecoration: 'underline', textDecorationColor: 'transparent', textUnderlineOffset: 3, transition: 'text-decoration-color .12s' }}
+                                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecorationColor = 'var(--primary)' }}
+                                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecorationColor = 'transparent' }}>
+                                {doc.title}
+                              </div>
                               <div style={{ fontSize: 11, color: 'var(--primary)', fontFamily: 'monospace', marginTop: 2, fontWeight: 600 }}>{doc.document_code}</div>
                             </div>
                           </div>
@@ -1718,6 +1889,20 @@ export function DocumentsClient({ userRole, docRole, userName }: Props) {
             </div>
           )}
         </Card>
+      )}
+
+      {/* Document Detail Modal */}
+      {detailDoc && (
+        <DocDetailModal
+          doc={detailDoc}
+          hasRead={readDocIds.has(detailDoc.id)}
+          canUpload={canUpload}
+          onClose={() => setDetailDoc(null)}
+          onRead={() => { setDetailDoc(null); setReadDoc(detailDoc) }}
+          onHistory={() => { setDetailDoc(null); setRevDoc(detailDoc) }}
+          onEdit={() => { setDetailDoc(null); setEditDoc(detailDoc); setModalOpen(true) }}
+          onDownload={handleDownload}
+        />
       )}
 
       {/* Read Modal */}
