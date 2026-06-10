@@ -422,7 +422,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
   async function handleSave() {
     if (!title.trim())         { setError('กรุณากรอกชื่อเอกสาร'); return }
     if (!documentCode.trim())  { setError('กรุณากรอกรหัสเอกสาร'); return }
-    if (!isEdit && !selectedFile && status !== 'Draft') { setError('กรุณาเลือกไฟล์'); return }
+    if (!isEdit && !selectedFile && !selectedWordFile && status !== 'Draft') { setError('กรุณาเลือกไฟล์'); return }
     if (revisionWarning) { setError(revisionWarning); return }
 
     setSaving(true)
@@ -453,8 +453,13 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
         const editUrl = `/api/admin/documents/${doc!.id}${!saveRevision ? '?skipRevision=1' : ''}`
         if (selectedFile || selectedWordFile) {
           const fd = new FormData()
-          if (selectedFile) fd.append('file', selectedFile)
-          if (selectedWordFile) fd.append('word_file', selectedWordFile)
+          if (selectedFile) {
+            fd.append('file', selectedFile)
+            if (selectedWordFile) fd.append('word_file', selectedWordFile)
+          } else if (selectedWordFile) {
+            // Word/Excel only — promote to primary slot
+            fd.append('file', selectedWordFile)
+          }
           fd.append('meta', JSON.stringify(meta))
           res = await fetch(editUrl, { method: 'PATCH', body: fd })
         } else {
@@ -466,8 +471,13 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
         }
       } else {
         const fd = new FormData()
-        fd.append('file', selectedFile!)
-        if (selectedWordFile) fd.append('word_file', selectedWordFile)
+        if (selectedFile) {
+          fd.append('file', selectedFile)
+          if (selectedWordFile) fd.append('word_file', selectedWordFile)
+        } else if (selectedWordFile) {
+          // Word/Excel only — promote to primary slot
+          fd.append('file', selectedWordFile)
+        }
         fd.append('meta', JSON.stringify(meta))
         res = await fetch('/api/admin/documents', { method: 'POST', body: fd })
       }
@@ -651,7 +661,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
                   ? 'เปลี่ยนไฟล์ PDF (ไม่บังคับ)'
                   : status === 'Draft'
                     ? 'ไฟล์ PDF (ไม่บังคับสำหรับ Draft)'
-                    : <>ไฟล์ PDF<RequiredMark /></>
+                    : 'ไฟล์ PDF (หรืออัพโหลด Word/Excel แทนได้)'
                 }
               </label>
               <div
