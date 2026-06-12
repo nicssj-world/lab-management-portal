@@ -12,6 +12,7 @@ interface Props {
   docRole?: string
   onClose: () => void
   onSaved: (doc: Document) => void
+  onDuplicateOpen?: (documentId: string) => void
 }
 
 const inputStyle: React.CSSProperties = {
@@ -218,6 +219,9 @@ function parseExtractedText(text: string) {
     'หน้า\\/จำนวนหน้า',
     'Page\\s+No\\.?',
     'ผู้เกี่ยวข้อง',
+    'แก้ไขครั้งที่',
+    'ครั้งที่แก้ไข',
+    'Revision',
     'จัดทำโดย',
     'รับรองโดย',
     'อนุมัติโดย',
@@ -244,7 +248,7 @@ function parseExtractedText(text: string) {
       /(?:เรื่อง|ชื่อเอกสาร)\s*:\s*([^\n\r{][^\n\r]+)/,
     ], stopLabelPattern.split('|')),
     documentCode:  get([/(?:หมายเลขเอกสาร|Document\s+No\.?)\s*:\s*([^\n\r{]+)/], ['หน้า\\/จำนวนหน้า', 'Page\\s+No\\.?', 'วันที่']),
-    revision:      get([/(?:ครั้งที่แก้ไข|Revision)\s*:\s*([^\n\r{]+)/], ['หมายเลขเอกสาร', 'Document\\s+No\\.?']),
+    revision:      get([/(?:แก้ไขครั้งที่|ครั้งที่แก้ไข|Revision)\s*:\s*([^\n\r{]+)/], ['หมายเลขเอกสาร', 'Document\\s+No\\.?']),
     ownerName:     ownerRaw   ? stripThaiTitle(ownerRaw)   : undefined,
     reviewerName:  reviewRaw  ? stripThaiTitle(reviewRaw)  : undefined,
     approverName:  approveRaw ? stripThaiTitle(approveRaw) : undefined,
@@ -253,7 +257,7 @@ function parseExtractedText(text: string) {
   }
 }
 
-export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
+export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: Props) {
   const isEdit = !!doc
   const availableStatuses = isEdit ? [doc?.status ?? 'Draft'] : ['Draft']
   const fileRef = useRef<HTMLInputElement>(null)
@@ -269,6 +273,8 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
   const [extracting, setExtracting] = useState(false)
   const [extractingWord, setExtractingWord] = useState(false)
   const [error, setError] = useState('')
+  const [duplicateDocumentId, setDuplicateDocumentId] = useState<string | null>(null)
+  const [coverDetailsOpen, setCoverDetailsOpen] = useState(isEdit)
 
   const [title, setTitle]               = useState(doc?.title ?? '')
   const [documentCode, setDocumentCode] = useState(doc?.document_code ?? '')
@@ -397,6 +403,9 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
         if (parent.approver_name)  setApproverName(parent.approver_name)
         if (parent.expiry_date)    setExpiryDate(parent.expiry_date)
         if (parent.effective_date) setEffectiveDate(parent.effective_date)
+        if (parent.owner_name || parent.reviewer_name || parent.approver_name || parent.expiry_date || parent.effective_date) {
+          setCoverDetailsOpen(true)
+        }
       } else {
         const fd = new FormData()
         fd.append('file', selectedFile)
@@ -419,6 +428,9 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
         if (fields.approverName)  setApproverName(fields.approverName)
         if (fields.expiryDate)    setExpiryDate(fields.expiryDate)
         if (fields.effectiveDate) setEffectiveDate(fields.effectiveDate)
+        if (fields.ownerName || fields.reviewerName || fields.approverName || fields.expiryDate || fields.effectiveDate) {
+          setCoverDetailsOpen(true)
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ดึงข้อมูลไม่สำเร็จ')
@@ -453,6 +465,9 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
       if (fields.approverName) setApproverName(fields.approverName)
       if (fields.expiryDate)   setExpiryDate(fields.expiryDate)
       if (fields.effectiveDate) setEffectiveDate(fields.effectiveDate)
+      if (fields.ownerName || fields.reviewerName || fields.approverName || fields.expiryDate || fields.effectiveDate) {
+        setCoverDetailsOpen(true)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ดึงข้อมูลไม่สำเร็จ')
     } finally {
@@ -461,6 +476,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
   }
 
   async function handleSave() {
+    setDuplicateDocumentId(null)
     if (!title.trim())         { setError('กรุณากรอกชื่อเอกสาร'); return }
     if (!documentCode.trim())  { setError('กรุณากรอกรหัสเอกสาร'); return }
     if (!isEdit && !selectedFile && !selectedWordFile && status !== 'Draft') { setError('กรุณาเลือกไฟล์'); return }
@@ -514,9 +530,15 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
       }
 
       const json = await readJsonOrError(res)
-      if (!res.ok) { setError(json.error ?? 'เกิดข้อผิดพลาด'); setSaving(false); return }
+      if (!res.ok) {
+        setDuplicateDocumentId(typeof json.documentId === 'string' ? json.documentId : null)
+        setError(json.error ?? 'เกิดข้อผิดพลาด')
+        setSaving(false)
+        return
+      }
       onSaved(json as unknown as Document)
     } catch {
+      setDuplicateDocumentId(null)
       setError('เกิดข้อผิดพลาด กรุณาลองใหม่')
       setSaving(false)
     }
@@ -531,7 +553,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
         {/* Header */}
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>
-            {isEdit ? 'แก้ไขเอกสาร' : 'Upload เอกสาร'}
+            {isEdit ? 'แก้ไขเอกสาร' : 'สร้าง Draft เอกสาร'}
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'flex' }}>
             <Icon name="x" size={16} />
@@ -542,7 +564,16 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {error && (
             <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(220,38,38,.08)', color: '#B91C1C', fontSize: 13, border: '1px solid rgba(220,38,38,.2)' }}>
-              {error}
+              <div>{error}</div>
+              {duplicateDocumentId && onDuplicateOpen && (
+                <button
+                  type="button"
+                  onClick={() => onDuplicateOpen(duplicateDocumentId)}
+                  style={{ marginTop: 8, padding: '5px 10px', borderRadius: 6, border: '1px solid rgba(185,28,28,.35)', background: 'var(--card)', color: '#B91C1C', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600 }}
+                >
+                  เปิดเอกสารเดิม
+                </button>
+              )}
             </div>
           )}
 
@@ -629,34 +660,6 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          {/* ผู้จัดทำ + ผู้รับรอง + ผู้อนุมัติ */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>ผู้จัดทำ</label>
-              <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} style={inputStyle} placeholder="ชื่อผู้จัดทำ" />
-            </div>
-            <div>
-              <label style={labelStyle}>ผู้รับรอง</label>
-              <input value={reviewerName} onChange={(e) => setReviewerName(e.target.value)} style={inputStyle} placeholder="ชื่อผู้รับรอง" />
-            </div>
-            <div>
-              <label style={labelStyle}>ผู้อนุมัติ</label>
-              <input value={approverName} onChange={(e) => setApproverName(e.target.value)} style={inputStyle} placeholder="ชื่อผู้อนุมัติ" />
-            </div>
-          </div>
-
-          {/* วันที่ทบทวน + วันที่มีผลบังคับใช้ */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>วันที่ทบทวน</label>
-              <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>วันที่มีผลบังคับใช้</label>
-              <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} style={inputStyle} />
-            </div>
-          </div>
-
           {/* วันที่ยกเลิก + เหตุผล (เฉพาะ Obsolete) */}
           {isObsolete && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: '14px 16px', borderRadius: 10, background: 'rgba(220,38,38,.05)', border: '1px solid rgba(220,38,38,.15)' }}>
@@ -681,6 +684,51 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
               placeholder="สรุปสิ่งที่เปลี่ยนแปลงในฉบับนี้ (ไม่บังคับ)"
               style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
             />
+          </div>
+
+          {/* Cover metadata */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--card)' }}>
+            <button
+              type="button"
+              onClick={() => setCoverDetailsOpen((v) => !v)}
+              style={{ width: '100%', padding: '11px 14px', border: 'none', background: coverDetailsOpen ? 'var(--surface-2)' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontFamily: 'inherit', textAlign: 'left' }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)' }}>ข้อมูลสำหรับหน้าปก</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>กรอกได้ภายหลัง ก่อน Publish</div>
+              </div>
+              <Icon name={coverDetailsOpen ? 'chevDown' : 'chevRight'} size={16} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+            </button>
+
+            {coverDetailsOpen && (
+              <div style={{ padding: 14, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>ผู้จัดทำ</label>
+                    <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} style={inputStyle} placeholder="ชื่อผู้จัดทำ" />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>ผู้รับรอง</label>
+                    <input value={reviewerName} onChange={(e) => setReviewerName(e.target.value)} style={inputStyle} placeholder="ชื่อผู้รับรอง" />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>ผู้อนุมัติ</label>
+                    <input value={approverName} onChange={(e) => setApproverName(e.target.value)} style={inputStyle} placeholder="ชื่อผู้อนุมัติ" />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>วันที่ทบทวน</label>
+                    <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>วันที่มีผลบังคับใช้</label>
+                    <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} style={inputStyle} />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* File Upload — 2 zones side by side */}
@@ -782,11 +830,14 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 20 }}>📝</span>
-                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>DOCX / XLSX &nbsp;<span style={{ color: 'var(--primary)', fontWeight: 600 }}>เลือกไฟล์</span></span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>DOC / DOCX / XLSX &nbsp;<span style={{ color: 'var(--primary)', fontWeight: 600 }}>เลือกไฟล์</span></span>
                   </div>
                 )}
                 <input ref={wordFileRef} type="file" accept=".doc,.docx,.xlsx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{ display: 'none' }}
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleWordFile(f); e.target.value = '' }} />
+              </div>
+              <div style={{ marginTop: 5, fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
+                รองรับ DOC, DOCX, XLSX; ดึงข้อมูลอัตโนมัติได้เฉพาะไฟล์ DOCX
               </div>
               {selectedWordFile && selectedWordFile.name.match(/\.docx$/i) && (
                 <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
@@ -820,7 +871,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
             ยกเลิก
           </button>
           <Button variant="primary" onClick={handleSave} disabled={saving || !!revisionWarning}>
-            {saving ? (isEdit ? 'กำลังบันทึก...' : 'กำลัง Upload...') : (isEdit ? 'บันทึกการแก้ไข' : 'Upload เอกสาร')}
+            {saving ? (isEdit ? 'กำลังบันทึก...' : 'กำลังสร้าง Draft...') : (isEdit ? 'บันทึกการแก้ไข' : 'บันทึกเป็น Draft')}
           </Button>
         </div>
       </div>

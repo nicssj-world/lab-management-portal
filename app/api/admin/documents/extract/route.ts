@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { extractDocxHeaderMetadata } from '@/lib/documents/docx-header'
 
 const EXTRACT_MAX_BYTES = 20 * 1024 * 1024
 
@@ -47,7 +48,8 @@ export async function POST(req: NextRequest) {
     } else if (ext === 'docx') {
       const mammoth = await import('mammoth')
       const result = await mammoth.extractRawText({ buffer })
-      text = result.value
+      const header = await extractDocxHeaderMetadata(buffer)
+      text = [header.text, result.value].filter(Boolean).join('\n\n')
     } else if (ext === 'xlsx') {
       const XLSX = await import('xlsx')
       const wb = XLSX.read(buffer, { type: 'buffer' })

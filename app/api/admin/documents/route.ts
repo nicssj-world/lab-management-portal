@@ -5,6 +5,7 @@ import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 import { canMoveToStatus, isCoverRequiredType, isPdfFile, isSourceFile } from '@/lib/documents/workflow'
+import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/lib/documents/docx-header'
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
@@ -39,17 +40,21 @@ function safeSearchTerm(value: string) {
   return value.replace(/[%,()]/g, ' ').trim().slice(0, 100)
 }
 
-async function uploadDocumentObject(file: File, type: string, prefix = '') {
+async function uploadDocumentObject(file: File, type: string, prefix = '', headerMetadata?: DocxHeaderMetadata) {
   const year = new Date().getFullYear()
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${prefix}${safeName}`
+  let body: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer())
+  if (headerMetadata && isDocxFile(file)) {
+    body = await patchDocxHeaderMetadata(body, headerMetadata)
+  }
   await r2.send(new PutObjectCommand({
     Bucket: R2_BUCKET,
     Key: r2Key,
-    Body: Buffer.from(await file.arrayBuffer()),
+    Body: body,
     ContentType: file.type || 'application/octet-stream',
   }))
-  return r2Key
+  return { key: r2Key, size: body.length }
 }
 
 export async function GET(req: NextRequest) {
@@ -174,20 +179,30 @@ export async function POST(req: NextRequest) {
       mime_type: null,
     }
     const uploadedKeys: string[] = []
+    const resolvedEditDate = meta.edit_date || (wordFile ? new Date().toISOString().split('T')[0] : undefined)
+    const headerMetadata: DocxHeaderMetadata = {
+      documentCode,
+      title: meta.title,
+      revision: meta.revision,
+      effectiveDate: meta.effective_date,
+      reviewDate: meta.expiry_date,
+      editDate: resolvedEditDate,
+    }
 
     if (file) {
-      const r2Key = await uploadDocumentObject(file, meta.type)
+      const uploaded = await uploadDocumentObject(file, meta.type, '', headerMetadata)
+      const r2Key = uploaded.key
       uploadedKeys.push(r2Key)
       officialFields = {
         file_url: r2Key,
         file_name: file.name,
-        file_size: file.size,
+        file_size: uploaded.size,
         mime_type: file.type || 'application/octet-stream',
         ...(isCoverRequiredType(meta.type)
           ? {
               source_pdf_url: r2Key,
               source_pdf_name: file.name,
-              source_pdf_size: file.size,
+              source_pdf_size: uploaded.size,
               source_pdf_mime_type: file.type || 'application/pdf',
             }
           : {}),
@@ -196,13 +211,14 @@ export async function POST(req: NextRequest) {
 
     let wordFields: { word_url?: string; word_name?: string; word_size?: number; edit_date?: string } = {}
     if (wordFile) {
-      const wordKey = await uploadDocumentObject(wordFile, meta.type, 'source-')
+      const uploaded = await uploadDocumentObject(wordFile, meta.type, 'source-', headerMetadata)
+      const wordKey = uploaded.key
       uploadedKeys.push(wordKey)
       wordFields = {
         word_url: wordKey,
         word_name: wordFile.name,
-        word_size: wordFile.size,
-        edit_date: meta.edit_date || new Date().toISOString().split('T')[0],
+        word_size: uploaded.size,
+        edit_date: resolvedEditDate,
       }
     }
 

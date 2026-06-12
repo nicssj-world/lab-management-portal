@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PutObjectCommand } from '@aws-sdk/client-s3'
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { getActor, canAccessDocuments, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
@@ -7,6 +7,7 @@ import { allowedTransitions, type DocStatus } from '@/lib/documents/transitions'
 import { DocumentSchema } from '@/lib/validations/document'
 import { buildPublishedPdfFields } from '@/lib/documents/publish'
 import { canMoveToStatus, isCoverRequiredType, isPdfFile, isSourceFile } from '@/lib/documents/workflow'
+import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/lib/documents/docx-header'
 
 type Params = { params: Promise<{ id: string; draftId: string }> }
 
@@ -14,17 +15,48 @@ function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
 }
 
-async function uploadDocumentObject(file: File, type: string, prefix = '') {
+async function uploadDocumentObject(file: File, type: string, prefix = '', headerMetadata?: DocxHeaderMetadata) {
   const year = new Date().getFullYear()
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${prefix}${safeName}`
+  let body: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer())
+  if (headerMetadata && isDocxFile(file)) {
+    body = await patchDocxHeaderMetadata(body, headerMetadata)
+  }
   await r2.send(new PutObjectCommand({
     Bucket: R2_BUCKET,
     Key: r2Key,
-    Body: Buffer.from(await file.arrayBuffer()),
+    Body: body,
     ContentType: file.type || 'application/octet-stream',
   }))
-  return r2Key
+  return { key: r2Key, size: body.length }
+}
+
+async function getObjectBuffer(key: string) {
+  const object = await r2.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+  const body = object.Body
+  if (!body) throw new Error('ไม่พบไฟล์ต้นฉบับใน R2')
+  if ('transformToByteArray' in body && typeof body.transformToByteArray === 'function') {
+    return Buffer.from(await body.transformToByteArray())
+  }
+  const chunks: Uint8Array[] = []
+  for await (const chunk of body as AsyncIterable<Uint8Array | Buffer>) {
+    chunks.push(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk))
+  }
+  return Buffer.concat(chunks)
+}
+
+async function patchR2DocxObject(key: string, metadata: DocxHeaderMetadata) {
+  const original = await getObjectBuffer(key)
+  const patched = await patchDocxHeaderMetadata(original, metadata)
+  if (patched.equals(original)) return null
+  await r2.send(new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    Body: patched,
+    ContentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  }))
+  return patched.length
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
@@ -44,6 +76,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (draftErr || !draft) return NextResponse.json({ error: draftErr?.message ?? 'Draft not found' }, { status: 404 })
     if (draft.status === 'Published') return NextResponse.json({ error: 'Revision draft นี้ถูก Published แล้ว' }, { status: 409 })
+
+    const { data: parentDoc } = await supabaseAdmin
+      .from('documents')
+      .select('document_code, file_url, word_url')
+      .eq('id', id)
+      .single()
+    if (!parentDoc) return NextResponse.json({ error: 'Current document not found' }, { status: 404 })
 
     const contentType = req.headers.get('content-type') ?? ''
     let updates: Record<string, unknown> = {}
@@ -85,15 +124,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (!isCoverRequiredType(targetType) && !isPdfFile(officialFile) && !isSourceFile(officialFile)) {
         return NextResponse.json({ error: 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
       }
-      const key = await uploadDocumentObject(officialFile, targetType, 'draft-official-')
+      const headerMetadata: DocxHeaderMetadata = {
+        documentCode: parentDoc.document_code,
+        title: (updates.title as string | undefined) ?? draft.title,
+        revision: (updates.revision as string | undefined) ?? draft.revision,
+        effectiveDate: (updates.effective_date as string | undefined) ?? draft.effective_date,
+        reviewDate: (updates.expiry_date as string | undefined) ?? draft.expiry_date,
+        editDate: (updates.edit_date as string | undefined) ?? draft.edit_date,
+      }
+      const uploaded = await uploadDocumentObject(officialFile, targetType, 'draft-official-', headerMetadata)
+      const key = uploaded.key
       updates.file_url = key
       updates.file_name = officialFile.name
-      updates.file_size = officialFile.size
+      updates.file_size = uploaded.size
       updates.mime_type = officialFile.type || 'application/octet-stream'
       if (isCoverRequiredType(targetType)) {
         updates.source_pdf_url = key
         updates.source_pdf_name = officialFile.name
-        updates.source_pdf_size = officialFile.size
+        updates.source_pdf_size = uploaded.size
         updates.source_pdf_mime_type = officialFile.type || 'application/pdf'
       }
     }
@@ -101,10 +149,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (sourceFile) {
       if (sourceFile.size > 50 * 1024 * 1024) return NextResponse.json({ error: 'ไฟล์ต้นฉบับใหญ่เกิน 50 MB' }, { status: 422 })
       if (!isSourceFile(sourceFile)) return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
-      const key = await uploadDocumentObject(sourceFile, targetType, 'draft-source-')
+      const headerMetadata: DocxHeaderMetadata = {
+        documentCode: parentDoc.document_code,
+        title: (updates.title as string | undefined) ?? draft.title,
+        revision: (updates.revision as string | undefined) ?? draft.revision,
+        effectiveDate: (updates.effective_date as string | undefined) ?? draft.effective_date,
+        reviewDate: (updates.expiry_date as string | undefined) ?? draft.expiry_date,
+        editDate: (updates.edit_date as string | undefined) ?? draft.edit_date,
+      }
+      const uploaded = await uploadDocumentObject(sourceFile, targetType, 'draft-source-', headerMetadata)
+      const key = uploaded.key
       updates.word_url = key
       updates.word_name = sourceFile.name
-      updates.word_size = sourceFile.size
+      updates.word_size = uploaded.size
       if (!updates.edit_date) updates.edit_date = new Date().toISOString().split('T')[0]
     }
 
@@ -130,6 +187,43 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const merged = { ...draft, ...updates }
+    const finalHeaderMetadata: DocxHeaderMetadata = {
+      documentCode: parentDoc.document_code,
+      title: merged.title as string | null | undefined,
+      revision: merged.revision as string | null | undefined,
+      effectiveDate: merged.effective_date as string | null | undefined,
+      reviewDate: merged.expiry_date as string | null | undefined,
+      editDate: merged.edit_date as string | null | undefined,
+    }
+    const patchedKeys = new Set<string>()
+    const patchDraftTarget = async (
+      key: string | null | undefined,
+      name: string | null | undefined,
+      sizeField: 'file_size' | 'word_size',
+      draftOwnsFile: boolean,
+    ) => {
+      if (!draftOwnsFile || !key || patchedKeys.has(key) || !isDocxFile({ name: name ?? '' })) return
+      patchedKeys.add(key)
+      const patchedSize = await patchR2DocxObject(key, finalHeaderMetadata)
+      if (patchedSize !== null) {
+        updates[sizeField] = patchedSize
+        merged[sizeField] = patchedSize
+      }
+    }
+
+    await patchDraftTarget(
+      merged.word_url as string | null | undefined,
+      merged.word_name as string | null | undefined,
+      'word_size',
+      Boolean(updates.word_url) || merged.word_url !== parentDoc.word_url,
+    )
+    await patchDraftTarget(
+      merged.file_url as string | null | undefined,
+      merged.file_name as string | null | undefined,
+      'file_size',
+      Boolean(updates.file_url) || merged.file_url !== parentDoc.file_url,
+    )
+
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'ไม่มีข้อมูลที่จะอัปเดต' }, { status: 422 })
     }
