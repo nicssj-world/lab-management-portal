@@ -2018,6 +2018,30 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
     setEditDoc(null)
   }
 
+  async function handleDuplicateOpen(documentId: string) {
+    const existing = docs.find((doc) => doc.id === documentId)
+    if (existing) {
+      setModalOpen(false)
+      setEditDoc(null)
+      setDetailDoc(existing)
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/admin/documents/${documentId}`)
+      const json = await res.json()
+      if (!res.ok) {
+        toast(json.error ?? 'เปิดเอกสารเดิมไม่สำเร็จ', false)
+        return
+      }
+      setModalOpen(false)
+      setEditDoc(null)
+      setDetailDoc(json as Document)
+    } catch {
+      toast('เปิดเอกสารเดิมไม่สำเร็จ', false)
+    }
+  }
+
   async function handleCreateRevisionDraft(doc: Document) {
     try {
       const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts`, { method: 'POST' })
@@ -2133,7 +2157,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
           )}
           {canUpload && (
             <Button variant="primary" icon="upload" onClick={() => { setEditDoc(null); setModalOpen(true) }}>
-              Upload เอกสาร
+              สร้าง Draft เอกสาร
             </Button>
           )}
         </div>
@@ -2260,7 +2284,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
                   ))
                 ) : docs.length === 0 ? (
                   <tr><td colSpan={9} style={{ padding: 56 }}>
-                    <EmptyState icon="doc" title="ไม่มีเอกสาร" hint={hasFilters ? 'ลองเปลี่ยนตัวกรองหรือล้างคำค้นหา' : 'กดปุ่ม Upload เอกสารเพื่อเริ่มต้น'} />
+                    <EmptyState icon="doc" title="ไม่มีเอกสาร" hint={hasFilters ? 'ลองเปลี่ยนตัวกรองหรือล้างคำค้นหา' : 'กดปุ่มสร้าง Draft เอกสารเพื่อเริ่มต้น'} />
                   </td></tr>
                 ) : (
                   docs.map((doc) => {
@@ -2459,7 +2483,14 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
 
       {/* Upload / Edit Modal */}
       {modalOpen && (
-        <DocumentUploadModal doc={editDoc} userRole={userRole} docRole={docRole} onClose={() => { setModalOpen(false); setEditDoc(null) }} onSaved={handleSaved} />
+        <DocumentUploadModal
+          doc={editDoc}
+          userRole={userRole}
+          docRole={docRole}
+          onClose={() => { setModalOpen(false); setEditDoc(null) }}
+          onSaved={handleSaved}
+          onDuplicateOpen={handleDuplicateOpen}
+        />
       )}
 
       {/* Status Change Modal */}

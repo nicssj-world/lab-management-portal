@@ -95,10 +95,13 @@ function drawLabelValue(page: PDFPage, label: string, value: string, x: number, 
 
 async function loadFonts(pdf: PDFDocument): Promise<Fonts> {
   pdf.registerFontkit(fontkit)
-  const base = path.join(process.cwd(), 'node_modules', '@fontsource', 'noto-sans-thai', 'files')
+  const sarabunBase = path.join(process.cwd(), 'node_modules', 'font-th-sarabun-new', 'fonts')
+  const fallbackBase = path.join(process.cwd(), 'node_modules', '@fontsource', 'noto-sans-thai', 'files')
   const [regularBytes, boldBytes] = await Promise.all([
-    readFile(path.join(base, 'noto-sans-thai-thai-400-normal.woff')),
-    readFile(path.join(base, 'noto-sans-thai-thai-700-normal.woff')),
+    readFile(path.join(sarabunBase, 'THSarabunNew-webfont.ttf'))
+      .catch(() => readFile(path.join(fallbackBase, 'noto-sans-thai-thai-400-normal.woff'))),
+    readFile(path.join(sarabunBase, 'THSarabunNew_bold-webfont.ttf'))
+      .catch(() => readFile(path.join(fallbackBase, 'noto-sans-thai-thai-700-normal.woff'))),
   ])
   return {
     regular: await pdf.embedFont(regularBytes),
