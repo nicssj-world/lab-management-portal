@@ -38,6 +38,7 @@ export async function POST(
     .single()
 
   if (docErr || !doc) return NextResponse.json({ error: 'ไม่พบเอกสาร' }, { status: 404 })
+  if (!doc.file_url) return NextResponse.json({ error: 'เอกสารนี้ยังไม่มีไฟล์ทางการสำหรับอ่าน' }, { status: 409 })
 
   // Generate R2 presigned URL (1 hour)
   const ext = doc.file_url.split('.').pop() ?? 'pdf'
@@ -73,7 +74,7 @@ export async function GET(
 
   const { data, error } = await supabaseAdmin
     .from('document_access_logs')
-    .select('id, user_id, action, created_at, profiles(name, role)')
+    .select('id, user_id, action, created_at, profiles(name, role, document_position)')
     .eq('document_id', id)
     .eq('action', 'view')
     .order('created_at', { ascending: false })

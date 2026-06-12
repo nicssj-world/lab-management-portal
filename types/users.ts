@@ -11,6 +11,10 @@ export interface UserProfile {
   dept: string | null
   status: UserStatus
   doc_role: string | null
+  document_position: string | null
+  signature_url: string | null
+  signature_updated_at: string | null
+  signature_updated_by: string | null
   created_at: string
   updated_at: string | null
   deleted_at: string | null
@@ -49,4 +53,5 @@ export interface UpdateUserPayload {
   role?: UserRole
   dept?: string
   status?: UserStatus
+  document_position?: string | null
 }

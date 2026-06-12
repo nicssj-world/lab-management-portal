@@ -28,6 +28,7 @@ export function ManualClient({ docs }: Props) {
   const filtered = activeType === 'All' ? docs : docs.filter((d) => d.type === activeType)
 
   async function handleDownload(doc: Document) {
+    if (!doc.file_url) return
     setDownloading(doc.id)
     try {
       const res = await fetch(`/api/documents/download?path=${encodeURIComponent(doc.file_url)}`)

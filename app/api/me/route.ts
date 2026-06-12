@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
+import { createSignatureSignedUrl } from '@/lib/signatures'
 
 async function getUser() {
   const supabase = await createClient()
@@ -14,20 +15,23 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('id, name, role, dept, avatar_url, doc_role')
+    .select('id, name, role, dept, avatar_url, doc_role, document_position, signature_url, signature_updated_at')
     .eq('id', user.id)
     .single()
 
   if (error) {
     const { data: basic } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, role, dept, doc_role')
+      .select('id, name, role, dept, doc_role, document_position')
       .eq('id', user.id)
       .single()
-    return NextResponse.json(basic ? { ...basic, avatar_url: null } : { error: 'Not found' })
+    return NextResponse.json(basic ? { ...basic, avatar_url: null, signature_url: null, signature_signed_url: null } : { error: 'Not found' })
   }
 
-  return NextResponse.json(data)
+  return NextResponse.json({
+    ...data,
+    signature_signed_url: await createSignatureSignedUrl(data.signature_url),
+  })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -35,7 +39,7 @@ export async function PATCH(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const allowed = ['name', 'avatar_url'] as const
+  const allowed = ['name', 'avatar_url', 'document_position'] as const
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]

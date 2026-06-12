@@ -116,6 +116,13 @@ interface UserFormModalProps {
   showToast: (msg: string, type?: 'success' | 'error') => void
 }
 
+interface DocumentProfileModalProps {
+  user: UserProfile
+  onClose: () => void
+  onSaved: () => void
+  showToast: (msg: string, type?: 'success' | 'error') => void
+}
+
 function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModalProps) {
   const isEdit = mode === 'edit'
   const [loading, setLoading] = useState(false)
@@ -255,6 +262,159 @@ function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModa
           </div>
         </form>
       </Card>
+      </div>
+    </div>
+  )
+}
+
+function DocumentProfileModal({ user, onClose, onSaved, showToast }: DocumentProfileModalProps) {
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const [position, setPosition] = useState(user.document_position ?? '')
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    let active = true
+    async function load() {
+      setLoading(true)
+      const res = await fetch(`/api/admin/users/${user.id}/document-profile`)
+      const data = await res.json().catch(() => ({}))
+      if (!active) return
+      setLoading(false)
+      if (!res.ok) {
+        showToast(data.error ?? 'โหลดข้อมูลเอกสารไม่สำเร็จ', 'error')
+        return
+      }
+      setPosition(data.document_position ?? '')
+      setSignatureUrl(data.signature_signed_url ?? null)
+    }
+    load()
+    return () => { active = false }
+  }, [showToast, user.id])
+
+  async function savePosition() {
+    setSaving(true)
+    const res = await fetch(`/api/admin/users/${user.id}/document-profile`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_position: position.trim() || null }),
+    })
+    const data = await res.json().catch(() => ({}))
+    setSaving(false)
+    if (!res.ok) {
+      showToast(data.error ?? 'บันทึกตำแหน่งไม่สำเร็จ', 'error')
+      return
+    }
+    setPosition(data.document_position ?? '')
+    setSignatureUrl(data.signature_signed_url ?? null)
+    showToast('บันทึกข้อมูลเอกสารคุณภาพแล้ว')
+    onSaved()
+  }
+
+  async function uploadSignature(file: File | null) {
+    if (!file) return
+    const form = new FormData()
+    form.append('file', file)
+    setUploading(true)
+    const res = await fetch(`/api/admin/users/${user.id}/signature`, { method: 'POST', body: form })
+    const data = await res.json().catch(() => ({}))
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+    if (!res.ok) {
+      showToast(data.error ?? 'อัปโหลดลายเซ็นไม่สำเร็จ', 'error')
+      return
+    }
+    setSignatureUrl(data.signature_signed_url ?? null)
+    showToast('อัปโหลดลายเซ็นแล้ว')
+    onSaved()
+  }
+
+  async function removeSignature() {
+    setRemoving(true)
+    const res = await fetch(`/api/admin/users/${user.id}/signature`, { method: 'DELETE' })
+    const data = await res.json().catch(() => ({}))
+    setRemoving(false)
+    if (!res.ok) {
+      showToast(data.error ?? 'ลบลายเซ็นไม่สำเร็จ', 'error')
+      return
+    }
+    setSignatureUrl(null)
+    showToast('ลบลายเซ็นแล้ว')
+    onSaved()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 55 }}>
+      <div style={{ maxWidth: 520, width: '94%' }}>
+        <Card padding={26} style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>
+            <div>
+              <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>ข้อมูลสำหรับเอกสารคุณภาพ</h2>
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>{user.name}</div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--muted)' }}
+            >
+              ×
+            </button>
+          </div>
+
+          {loading ? (
+            <div style={{ padding: 28, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>กำลังโหลด...</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Field label="ตำแหน่งที่แสดงในเอกสารคุณภาพ">
+                <Input
+                  type="text"
+                  value={position}
+                  onChange={setPosition}
+                  placeholder="เช่น นักเทคนิคการแพทย์ชำนาญการ"
+                />
+              </Field>
+
+              <div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6, color: 'var(--ink)' }}>ลายเซ็นสำหรับ stamp ลงเอกสาร</div>
+                <div style={{ border: '1px dashed var(--border)', borderRadius: 8, minHeight: 118, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-2)', overflow: 'hidden' }}>
+                  {signatureUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={signatureUrl} alt="Signature preview" style={{ maxWidth: '100%', maxHeight: 112, objectFit: 'contain', padding: 12 }} />
+                  ) : (
+                    <span style={{ color: 'var(--muted)', fontSize: 13 }}>ยังไม่มีลายเซ็น</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={(e) => uploadSignature(e.target.files?.[0] ?? null)}
+                  />
+                  <Button variant="secondary" type="button" icon="upload" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                    {uploading ? 'กำลังอัปโหลด...' : 'อัปโหลดลายเซ็น'}
+                  </Button>
+                  <Button variant="ghost" type="button" onClick={removeSignature} disabled={!signatureUrl || removing}>
+                    {removing ? 'กำลังลบ...' : 'ลบลายเซ็น'}
+                  </Button>
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>รองรับ PNG, JPG, WebP ขนาดไม่เกิน 2 MB</div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
+                <Button variant="ghost" type="button" onClick={onClose}>ยกเลิก</Button>
+                <Button variant="primary" type="button" onClick={savePosition} disabled={saving}>
+                  {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   )
@@ -595,7 +755,12 @@ function SortTh({ label, field, sortField, sortDir, onClick }: {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export function AdminUserClient() {
+interface AdminUserClientProps {
+  canAdminUsers: boolean
+  canManageDocumentProfiles: boolean
+}
+
+export function AdminUserClient({ canAdminUsers, canManageDocumentProfiles }: AdminUserClientProps) {
   const { toasts, show: showToast } = useToast()
 
   const [users, setUsers]       = useState<UserProfile[]>([])
@@ -608,6 +773,7 @@ export function AdminUserClient() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   const [modal, setModal]         = useState<{ mode: ModalMode; user?: UserProfile } | null>(null)
+  const [documentProfileUser, setDocumentProfileUser] = useState<UserProfile | null>(null)
   const [confirm, setConfirm]     = useState<{ msg: string; onConfirm: () => void } | null>(null)
   const [importOpen, setImportOpen] = useState(false)
 
@@ -662,6 +828,7 @@ export function AdminUserClient() {
   }
 
   async function toggleStatus(user: UserProfile) {
+    if (!canAdminUsers) return
     const newStatus = user.status === 'active' ? 'inactive' : 'active'
     const label = newStatus === 'active' ? 'เปิดใช้งาน' : 'ปิดใช้งาน'
     setConfirm({
@@ -680,6 +847,7 @@ export function AdminUserClient() {
   }
 
   async function handleDelete(user: UserProfile) {
+    if (!canAdminUsers) return
     setConfirm({
       msg: `ต้องการลบผู้ใช้ "${user.name}" ออกจากระบบ? การลบนี้ไม่สามารถกู้คืนได้`,
       onConfirm: async () => {
@@ -703,6 +871,14 @@ export function AdminUserClient() {
           user={modal.user}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); fetchUsers(filters, pagination.page, sortField, sortDir) }}
+          showToast={showToast}
+        />
+      )}
+      {documentProfileUser && (
+        <DocumentProfileModal
+          user={documentProfileUser}
+          onClose={() => setDocumentProfileUser(null)}
+          onSaved={() => fetchUsers(filters, pagination.page, sortField, sortDir)}
           showToast={showToast}
         />
       )}
@@ -749,14 +925,16 @@ export function AdminUserClient() {
           </button>
         )}
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <Button variant="secondary" icon="upload" onClick={() => setImportOpen(true)}>
-            นำเข้า Excel
-          </Button>
-          <Button variant="primary" icon="plus" onClick={() => setModal({ mode: 'create' })}>
-            เพิ่มผู้ใช้งาน
-          </Button>
-        </div>
+        {canAdminUsers && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <Button variant="secondary" icon="upload" onClick={() => setImportOpen(true)}>
+              นำเข้า Excel
+            </Button>
+            <Button variant="primary" icon="plus" onClick={() => setModal({ mode: 'create' })}>
+              เพิ่มผู้ใช้งาน
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -821,21 +999,32 @@ export function AdminUserClient() {
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button
-                          onClick={() => setModal({ mode: 'edit', user: u })}
-                          title="แก้ไข"
-                          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--ink)', fontFamily: 'inherit' }}
-                        >แก้ไข</button>
-                        <button
-                          onClick={() => toggleStatus(u)}
-                          title={u.status === 'active' ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
-                          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: u.status === 'active' ? '#B45309' : '#15803D' }}
-                        >{u.status === 'active' ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}</button>
-                        <button
-                          onClick={() => handleDelete(u)}
-                          title="ลบ"
-                          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #FECACA', background: 'transparent', cursor: 'pointer', fontSize: 12, color: '#B91C1C', fontFamily: 'inherit' }}
-                        >ลบ</button>
+                        {canManageDocumentProfiles && (
+                          <button
+                            onClick={() => setDocumentProfileUser(u)}
+                            title="ข้อมูลเอกสารคุณภาพ"
+                            style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--primary)', fontFamily: 'inherit' }}
+                          >เอกสาร</button>
+                        )}
+                        {canAdminUsers && (
+                          <>
+                            <button
+                              onClick={() => setModal({ mode: 'edit', user: u })}
+                              title="แก้ไข"
+                              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--ink)', fontFamily: 'inherit' }}
+                            >แก้ไข</button>
+                            <button
+                              onClick={() => toggleStatus(u)}
+                              title={u.status === 'active' ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+                              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: u.status === 'active' ? '#B45309' : '#15803D' }}
+                            >{u.status === 'active' ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}</button>
+                            <button
+                              onClick={() => handleDelete(u)}
+                              title="ลบ"
+                              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #FECACA', background: 'transparent', cursor: 'pointer', fontSize: 12, color: '#B91C1C', fontFamily: 'inherit' }}
+                            >ลบ</button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

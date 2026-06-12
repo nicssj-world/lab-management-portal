@@ -16,6 +16,10 @@ export interface Profile {
   dept: string | null
   status: UserStatus
   avatar_url: string | null
+  document_position: string | null
+  signature_url: string | null
+  signature_updated_at: string | null
+  signature_updated_by: string | null
   created_at: string
 }
 
@@ -110,7 +114,7 @@ export interface Document {
   id: string
   document_code: string
   title: string
-  type: 'QP' | 'WI' | 'Form' | 'Policy' | 'Manual' | 'Record' | 'Others'
+  type: 'QP' | 'WI' | 'Form' | 'Policy' | 'Manual' | 'Record' | 'Reference' | 'Card file' | 'Others'
   department: string | null
   revision: string
   status: 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolete'
@@ -119,14 +123,29 @@ export interface Document {
   owner_name: string | null
   description: string | null
   tags: string[] | null
-  file_url: string
-  file_name: string
+  file_url: string | null
+  file_name: string | null
   file_size: number | null
   mime_type: string | null
+  source_pdf_url: string | null
+  source_pdf_name: string | null
+  source_pdf_size: number | null
+  source_pdf_mime_type: string | null
   word_url: string | null
   word_name: string | null
   word_size: number | null
+  edit_date: string | null
   effective_date: string | null
+  approved_at: string | null
+  published_at: string | null
+  approved_by_id: string | null
+  published_by_id: string | null
+  reviewer_id: string | null
+  approver_id: string | null
+  audience_text: string | null
+  cover_template_version: string | null
+  cover_generated_at: string | null
+  cover_metadata: Record<string, unknown> | null
   expiry_date: string | null
   obsolete_date: string | null
   obsolete_reason: string | null
@@ -264,6 +283,51 @@ export interface ContractUsage {
   usage_date: string | null
   usage_month: string | null
   created_at: string
+}
+
+export interface DocumentRevisionDraft {
+  id: string
+  document_id: string
+  revision: string
+  title: string
+  type: Document['type']
+  department: string | null
+  description: string | null
+  status: Document['status']
+  visibility: Document['visibility']
+  owner_name: string | null
+  reviewer_name: string | null
+  approver_name: string | null
+  reviewer_id: string | null
+  approver_id: string | null
+  audience_text: string | null
+  file_url: string | null
+  file_name: string | null
+  file_size: number | null
+  mime_type: string | null
+  source_pdf_url: string | null
+  source_pdf_name: string | null
+  source_pdf_size: number | null
+  source_pdf_mime_type: string | null
+  word_url: string | null
+  word_name: string | null
+  word_size: number | null
+  edit_date: string | null
+  effective_date: string | null
+  expiry_date: string | null
+  approved_at: string | null
+  published_at: string | null
+  approved_by_id: string | null
+  published_by_id: string | null
+  cover_template_version: string | null
+  cover_generated_at: string | null
+  cover_metadata: Record<string, unknown> | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  cancelled_at: string | null
+  cancelled_by: string | null
+  cancel_reason: string | null
 }
 
 export interface RejectionLog {

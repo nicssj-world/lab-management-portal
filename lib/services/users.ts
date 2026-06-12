@@ -104,13 +104,13 @@ export async function createUser(
     const existingAuth = listData?.users.find((u) => u.email === email)
     if (!existingAuth) throw new Error(authError.message)
 
-    // If a complete profile already exists this is a genuine duplicate.
+    // If a complete, non-deleted profile already exists this is a genuine duplicate.
     const { data: existingProfile } = await supabaseAdmin
       .from('profiles')
-      .select('id, name')
+      .select('id, name, deleted_at')
       .eq('id', existingAuth.id)
       .single()
-    if (existingProfile?.name) throw new Error('ผู้ใช้งาน E-Phis นี้มีอยู่ในระบบแล้ว')
+    if (existingProfile?.name && !existingProfile.deleted_at) throw new Error('ผู้ใช้งาน E-Phis นี้มีอยู่ในระบบแล้ว')
 
     authUserId = existingAuth.id
     await supabaseAdmin.auth.admin.updateUserById(existingAuth.id, {
@@ -126,12 +126,13 @@ export async function createUser(
     .from('profiles')
     .upsert(
       {
-        id:       authUserId,
-        ephis_id: input.ephis_id,
-        name:     input.name,
-        role:     input.role,
-        dept:     input.dept,
-        status:   'active',
+        id:         authUserId,
+        ephis_id:   input.ephis_id,
+        name:       input.name,
+        role:       input.role,
+        dept:       input.dept,
+        status:     'active',
+        deleted_at: null,
       },
       { onConflict: 'id' },
     )
@@ -221,7 +222,7 @@ export async function softDeleteUser(
 ): Promise<void> {
   const { error } = await supabase
     .from('profiles')
-    .update({ deleted_at: new Date().toISOString(), status: 'inactive' })
+    .update({ deleted_at: new Date().toISOString(), status: 'inactive', ephis_id: null })
     .eq('id', id)
 
   if (error) throw error

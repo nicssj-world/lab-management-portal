@@ -11,7 +11,7 @@ import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import { allowedTransitions } from '@/lib/documents/transitions'
 import type { DocStatus } from '@/lib/documents/transitions'
-import type { Document } from '@/lib/supabase/types'
+import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
 
 // ── Constants ─────────────────────────────────────────────────
 const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'] as const
@@ -68,8 +68,8 @@ interface LinkedDoc {
     title: string
     type: string
     status: string
-    file_url: string
-    file_name: string
+    file_url: string | null
+    file_name: string | null
     file_size: number | null
   } | null
 }
@@ -93,8 +93,8 @@ interface RevisionRow {
   revision_note: string | null
   revised_by: string | null
   approved_by: string | null
-  file_url: string
-  file_name: string
+  file_url: string | null
+  file_name: string | null
   created_at: string
 }
 
@@ -388,12 +388,12 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
 
   async function handleDownloadAll() {
     setDownloadingAll(true)
-    const paths = [
-      doc.file_url,
+    const paths: string[] = [
+      ...(doc.file_url ? [doc.file_url] : []),
       ...(doc.word_url ? [doc.word_url] : []),
-      ...links.filter(l => l.documents?.file_url).map(l => l.documents!.file_url),
+      ...links.map(l => l.documents?.file_url).filter((path): path is string => Boolean(path)),
       ...attachments.map(a => a.file_url),
-    ]
+    ].filter((path): path is string => Boolean(path))
     for (let i = 0; i < paths.length; i++) {
       if (i > 0) await new Promise(res => setTimeout(res, 500))
       try {
@@ -405,7 +405,8 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
     setDownloadingAll(false)
   }
 
-  async function openLinkedDocRead(docId: string, fileUrl: string, fileName: string) {
+  async function openLinkedDocRead(docId: string, fileUrl: string | null, fileName: string | null) {
+    if (!fileUrl || !fileName) return
     try {
       const res = await fetch(`/api/admin/documents/${docId}/read`, { method: 'POST' })
       const json = await res.json()
@@ -450,7 +451,8 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
     )
   }
 
-  function FileCard({ name, size, accentColor, path }: { name: string; size: number | null; accentColor: string; path: string }) {
+  function FileCard({ name, size, accentColor, path }: { name: string | null; size: number | null; accentColor: string; path: string }) {
+    if (!name) return null
     return (
       <button
         onClick={() => onDownload(path)}
@@ -558,7 +560,7 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
                 )}
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <FileCard name={doc.file_name} size={doc.file_size} accentColor="#DC2626" path={doc.file_url} />
+                {doc.file_url && <FileCard name={doc.file_name} size={doc.file_size} accentColor="#DC2626" path={doc.file_url} />}
                 {doc.word_name && doc.word_url && (
                   <FileCard name={doc.word_name} size={doc.word_size} accentColor="#059669" path={doc.word_url} />
                 )}
@@ -626,9 +628,9 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
                             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{d.document_code} · {d.type} · {fmtSize(d.file_size)}</div>
                           </div>
                         </div>
-                        <button onClick={() => onDownload(d.file_url)} title="ดาวน์โหลด"
-                          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', flexShrink: 0 }}
-                          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                        <button disabled={!d.file_url} onClick={() => d.file_url && onDownload(d.file_url)} title={d.file_url ? 'ดาวน์โหลด' : 'ยังไม่มีไฟล์ทางการ'}
+                          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: d.file_url ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', flexShrink: 0, opacity: d.file_url ? 1 : 0.45 }}
+                          onMouseEnter={e => { if (d.file_url) { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' } }}
                           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
                           <Icon name="download" size={12} />
                         </button>
@@ -753,6 +755,8 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
   const canDownloadRevision = userRole === 'Admin' || docRole === 'Document Controller'
 
   const [revisions, setRevisions] = useState<RevisionRow[]>([])
+  const [activeDraft, setActiveDraft] = useState<DocumentRevisionDraft | null>(null)
+  const [draftBusy, setDraftBusy] = useState(false)
   const [loading, setLoading]     = useState(true)
   const [deletingCurrent, setDeletingCurrent] = useState(false)
 
@@ -767,6 +771,8 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
   const [formSaving, setFormSaving]         = useState(false)
   const [formError, setFormError]           = useState('')
   const formFileRef = useRef<HTMLInputElement>(null)
+  const draftOfficialRef = useRef<HTMLInputElement>(null)
+  const draftSourceRef = useRef<HTMLInputElement>(null)
 
   // Edit revision state
   const [editingId, setEditingId]           = useState<string | null>(null)
@@ -944,7 +950,94 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadRevisions() }, [doc.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  function loadActiveDraft() {
+    fetch(`/api/admin/documents/${doc.id}/revision-drafts`)
+      .then((r) => r.json())
+      .then((d) => setActiveDraft(d?.id ? d : null))
+      .catch(() => setActiveDraft(null))
+  }
+
+  useEffect(() => {
+    loadRevisions()
+    loadActiveDraft()
+  }, [doc.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleCreateDraftFromPanel() {
+    setDraftBusy(true)
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) { alert(json.error ?? 'สร้าง working revision ไม่สำเร็จ'); return }
+      setActiveDraft(json)
+    } catch {
+      alert('สร้าง working revision ไม่สำเร็จ')
+    } finally {
+      setDraftBusy(false)
+    }
+  }
+
+  async function handleDraftFile(kind: 'official' | 'source', file: File | null) {
+    if (!activeDraft || !file) return
+    setDraftBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append(kind === 'official' ? 'file' : 'word_file', file)
+      const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}`, { method: 'PATCH', body: fd })
+      const json = await res.json()
+      if (!res.ok) { alert(json.error ?? 'อัปโหลดไฟล์ไม่สำเร็จ'); return }
+      setActiveDraft(json)
+    } catch {
+      alert('อัปโหลดไฟล์ไม่สำเร็จ')
+    } finally {
+      if (draftOfficialRef.current) draftOfficialRef.current.value = ''
+      if (draftSourceRef.current) draftSourceRef.current.value = ''
+      setDraftBusy(false)
+    }
+  }
+
+  async function handleDraftStatus(next: DocStatus) {
+    if (!activeDraft) return
+    setDraftBusy(true)
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      })
+      const json = await res.json()
+      if (!res.ok) { alert(json.error ?? 'เปลี่ยนสถานะ working revision ไม่สำเร็จ'); return }
+      if (next === 'Published') {
+        setActiveDraft(null)
+        loadRevisions()
+        onPromoted(json as Document)
+      } else {
+        setActiveDraft(json)
+      }
+    } catch {
+      alert('เปลี่ยนสถานะ working revision ไม่สำเร็จ')
+    } finally {
+      setDraftBusy(false)
+    }
+  }
+
+  async function handleCancelDraft() {
+    if (!activeDraft) return
+    if (!confirm(`ยกเลิก working revision Rev. ${activeDraft.revision}?`)) return
+    setDraftBusy(true)
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json()
+        alert(json.error ?? 'ยกเลิก working revision ไม่สำเร็จ')
+        return
+      }
+      setActiveDraft(null)
+    } catch {
+      alert('ยกเลิก working revision ไม่สำเร็จ')
+    } finally {
+      setDraftBusy(false)
+    }
+  }
 
   async function handleAddRevision() {
     if (!formRev.trim()) { setFormError('กรุณากรอกหมายเลข Revision'); return }
@@ -1035,9 +1128,10 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                   </button>
                 )}
                 <button
-                  onClick={() => onDownload(doc.file_url)}
-                  title="ดาวน์โหลด"
-                  style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid rgba(30,95,173,.3)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}
+                  disabled={!doc.file_url}
+                  onClick={() => doc.file_url && onDownload(doc.file_url)}
+                  title={doc.file_url ? 'ดาวน์โหลด' : 'ยังไม่มีไฟล์ทางการ'}
+                  style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid rgba(30,95,173,.3)', background: 'transparent', cursor: doc.file_url ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', opacity: doc.file_url ? 1 : 0.45 }}
                 >
                   <Icon name="download" size={14} />
                 </button>
@@ -1067,6 +1161,94 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
             </div>
           </div>
         </div>
+
+        {/* Working revision */}
+        {canAdd && doc.status === 'Published' && (
+          <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            {!activeDraft ? (
+              <button
+                onClick={handleCreateDraftFromPanel}
+                disabled={draftBusy}
+                style={{ width: '100%', minHeight: 38, borderRadius: 9, border: '1px dashed var(--primary)', background: 'var(--primary-soft)', cursor: draftBusy ? 'not-allowed' : 'pointer', color: 'var(--primary)', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit' }}
+              >
+                {draftBusy ? 'กำลังสร้าง working revision...' : 'สร้าง Revision ใหม่'}
+              </button>
+            ) : (
+              <div style={{ border: '1px solid rgba(217,119,6,.28)', background: 'rgba(217,119,6,.06)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: '#B45309' }}>Working Rev. {activeDraft.revision}</span>
+                    <Badge color={STATUS_COLOR[activeDraft.status as DocStatus] ?? 'amber'} size="sm">{activeDraft.status}</Badge>
+                  </div>
+                  <button
+                    onClick={handleCancelDraft}
+                    disabled={draftBusy}
+                    title="ยกเลิก working revision"
+                    style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(220,38,38,.25)', background: 'transparent', cursor: draftBusy ? 'not-allowed' : 'pointer', color: 'var(--danger)' }}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <button
+                    onClick={() => draftSourceRef.current?.click()}
+                    disabled={draftBusy}
+                    style={{ minHeight: 34, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: draftBusy ? 'not-allowed' : 'pointer', color: 'var(--ink)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}
+                  >
+                    {activeDraft.word_name ? 'เปลี่ยน Word/Excel' : 'อัปโหลด Word/Excel'}
+                  </button>
+                  <button
+                    onClick={() => draftOfficialRef.current?.click()}
+                    disabled={draftBusy}
+                    style={{ minHeight: 34, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: draftBusy ? 'not-allowed' : 'pointer', color: 'var(--ink)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}
+                  >
+                    {activeDraft.file_name ? 'เปลี่ยนไฟล์ทางการ' : 'อัปโหลดไฟล์ทางการ'}
+                  </button>
+                  <input
+                    ref={draftSourceRef}
+                    type="file"
+                    accept=".doc,.docx,.xls,.xlsx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    style={{ display: 'none' }}
+                    onChange={(e) => handleDraftFile('source', e.target.files?.[0] ?? null)}
+                  />
+                  <input
+                    ref={draftOfficialRef}
+                    type="file"
+                    accept={activeDraft.type === 'QP' || activeDraft.type === 'WI' ? '.pdf,application/pdf' : '.pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+                    style={{ display: 'none' }}
+                    onChange={(e) => handleDraftFile('official', e.target.files?.[0] ?? null)}
+                  />
+                </div>
+
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.45 }}>
+                  {activeDraft.word_name && <div>Source: {activeDraft.word_name}</div>}
+                  {activeDraft.file_name && <div>Official: {activeDraft.file_name}</div>}
+                  {!activeDraft.word_name && !activeDraft.file_name && <div>อัปโหลดไฟล์ต้นฉบับก่อน แล้วให้ DC อัปโหลดไฟล์ทางการ/PDF เนื้อหา</div>}
+                </div>
+
+                {(() => {
+                  const transitions = allowedTransitions(activeDraft.status as DocStatus, userRole, docRole)
+                  if (transitions.length === 0) return null
+                  return (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {transitions.map((next) => (
+                        <button
+                          key={next}
+                          onClick={() => handleDraftStatus(next)}
+                          disabled={draftBusy}
+                          style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: draftBusy ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--ink)', fontFamily: 'inherit' }}
+                        >
+                          → {next}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Revision history list */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1244,7 +1426,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                             </>
                           )}
                           {rev.file_url && canDownloadRevision && (
-                            <button onClick={() => onDownload(rev.file_url)} title="ดาวน์โหลด"
+                            <button onClick={() => rev.file_url && onDownload(rev.file_url)} title="ดาวน์โหลด"
                               style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}
                               onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
                               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
@@ -1291,7 +1473,12 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
 }
 
 // ── Read Modal ────────────────────────────────────────────────
-interface ReadLog { id: string; user_id: string; created_at: string; profiles: { name: string; role: string } | null }
+interface ReadLog {
+  id: string
+  user_id: string
+  created_at: string
+  profiles: { name: string; role: string; document_position: string | null } | null
+}
 
 function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadLogged }: {
   doc: Document
@@ -1314,6 +1501,11 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
   useEffect(() => {
     if (didLog.current) return
     didLog.current = true
+    if (!doc.file_url) {
+      setErrMsg('เอกสารนี้ยังไม่มีไฟล์ทางการสำหรับอ่าน')
+      setLoading(false)
+      return
+    }
     fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
       .then((r) => r.json())
       .then((d) => {
@@ -1322,7 +1514,7 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
       })
       .catch(() => setErrMsg('เกิดข้อผิดพลาด'))
       .finally(() => setLoading(false))
-  }, [doc.id, onReadLogged])
+  }, [doc.id, doc.file_url, onReadLogged])
 
   function loadLogs() {
     if (!canViewLog) return
@@ -1334,6 +1526,7 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
   }
 
   async function downloadCurrentFile() {
+    if (!doc.file_url) return
     try {
       const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(doc.file_url)}`)
       const json = await res.json()
@@ -1410,7 +1603,7 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
       }
       const tbodyHtml = filledRows.map((log) =>
         log
-          ? `<tr><td class="center">${rowIdx++}</td><td>${log.profiles?.name ?? ''}</td><td class="center">${posLabel(log.profiles?.role)}</td><td class="center">${fmtDate(log.created_at)}</td></tr>`
+          ? `<tr><td class="center">${rowIdx++}</td><td>${log.profiles?.name ?? ''}</td><td class="center">${log.profiles?.document_position || posLabel(log.profiles?.role)}</td><td class="center">${fmtDate(log.created_at)}</td></tr>`
           : `<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>`
       ).join('')
       return `
@@ -1759,7 +1952,11 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
   }
 
   // ── Download ─────────────────────────────────────────────────
-  async function handleDownload(path: string) {
+  async function handleDownload(path: string | null | undefined) {
+    if (!path) {
+      toast('เอกสารนี้ยังไม่มีไฟล์ทางการ', false)
+      return
+    }
     try {
       const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(path)}`)
       const json = await res.json()
@@ -1819,6 +2016,18 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
     }
     setModalOpen(false)
     setEditDoc(null)
+  }
+
+  async function handleCreateRevisionDraft(doc: Document) {
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'สร้าง Revision draft ไม่สำเร็จ')
+      toast(`สร้าง working revision Rev. ${json.revision} แล้ว`)
+      setRevDoc(doc)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'สร้าง Revision draft ไม่สำเร็จ', false)
+    }
   }
 
   // ── Status saved callback ────────────────────────────────────
@@ -2126,19 +2335,20 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
                               const hasRead = readDocIds.has(doc.id)
                               return (
                                 <button
-                                  onClick={() => setReadDoc(doc)}
-                                  title="อ่านเอกสาร"
-                                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px', height: 32, borderRadius: 7, border: `1px solid ${hasRead ? 'var(--success)' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: hasRead ? 'var(--success)' : 'var(--muted)', fontFamily: 'inherit', transition: 'all .12s' }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--success)'; e.currentTarget.style.color = 'var(--success)' }}
+                                  disabled={!doc.file_url}
+                                  onClick={() => doc.file_url ? setReadDoc(doc) : toast('เอกสารนี้ยังไม่มีไฟล์ทางการ', false)}
+                                  title={doc.file_url ? 'อ่านเอกสาร' : 'ยังไม่มีไฟล์ทางการ'}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px', height: 32, borderRadius: 7, border: `1px solid ${hasRead ? 'var(--success)' : 'var(--border)'}`, background: 'transparent', cursor: doc.file_url ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600, color: hasRead ? 'var(--success)' : 'var(--muted)', fontFamily: 'inherit', transition: 'all .12s', opacity: doc.file_url ? 1 : 0.45 }}
+                                  onMouseEnter={(e) => { if (doc.file_url) { e.currentTarget.style.borderColor = 'var(--success)'; e.currentTarget.style.color = 'var(--success)' } }}
                                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = hasRead ? 'var(--success)' : 'var(--border)'; e.currentTarget.style.color = hasRead ? 'var(--success)' : 'var(--muted)' }}>
                                   <Icon name="eye" size={13} /> Read
                                 </button>
                               )
                             })()}
                             {/* Download PDF */}
-                            <button onClick={() => handleDownload(doc.file_url)} title="ดาวน์โหลด PDF"
-                              style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
-                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#DC2626'; e.currentTarget.style.color = '#DC2626' }}
+                            <button disabled={!doc.file_url} onClick={() => handleDownload(doc.file_url)} title={doc.file_url ? 'ดาวน์โหลดไฟล์ทางการ' : 'ยังไม่มีไฟล์ทางการ'}
+                              style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: doc.file_url ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit', opacity: doc.file_url ? 1 : 0.4 }}
+                              onMouseEnter={(e) => { if (doc.file_url) { e.currentTarget.style.borderColor = '#DC2626'; e.currentTarget.style.color = '#DC2626' } }}
                               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
                               P
                             </button>
@@ -2149,8 +2359,16 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
                               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
                               <Icon name="clock" size={14} />
                             </button>
+                            {canUpload && doc.status === 'Published' && (
+                              <button onClick={() => handleCreateRevisionDraft(doc)} title="สร้าง Revision ใหม่"
+                                style={{ width: 42, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
+                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                                Rev+
+                              </button>
+                            )}
                             {/* Edit */}
-                            {canUpload && (
+                            {canUpload && (doc.status !== 'Published' || userRole === 'Admin' || docRole === 'Document Controller') && (
                               <button onClick={() => { setEditDoc(doc); setModalOpen(true) }} title="แก้ไข"
                                 style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s' }}
                                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}

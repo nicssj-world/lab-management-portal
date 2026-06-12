@@ -155,6 +155,10 @@ const { toasts, add: toast } = useToast()
   }
 
   async function handleDownload(doc: Document) {
+    if (!doc.file_url) {
+      toast('เอกสารนี้ยังไม่มีไฟล์ทางการ', false)
+      return
+    }
     try {
       const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(doc.file_url)}`)
       const { url } = await res.json()
@@ -567,8 +571,9 @@ const { toasts, add: toast } = useToast()
                     <td style={{ ...tdStyle, textAlign: 'center' }}>
                       <button
                         onClick={() => handleDownload(doc)}
-                        title={doc.file_name}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        disabled={!doc.file_url}
+                        title={doc.file_name ?? 'ยังไม่มีไฟล์ทางการ'}
+                        style={{ background: 'none', border: 'none', cursor: doc.file_url ? 'pointer' : 'not-allowed', color: 'var(--muted)', padding: 4, display: 'inline-flex', alignItems: 'center', gap: 4, opacity: doc.file_url ? 1 : 0.45 }}
                       >
                         <Icon name="download" size={14} />
                       </button>
