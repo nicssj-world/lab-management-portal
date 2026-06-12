@@ -155,7 +155,8 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
           }
           if (item.resource) {
             const level = userPermissions?.[item.resource] ?? 'none'
-            if (level === 'none') return null
+            const managerDocumentProfileAccess = item.href === '/staff/admin' && userRole === 'Manager'
+            if (level === 'none' && !managerDocumentProfileAccess) return null
             if (item.requireEdit && level !== 'edit') return null
           }
           const active = bestMatch?.href === item.href

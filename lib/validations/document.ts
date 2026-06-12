@@ -15,11 +15,17 @@ export const DocumentSchema = z.object({
   owner_name:     z.string().optional(),
   reviewer_name:  z.string().optional(),
   approver_name:  z.string().optional(),
+  reviewer_id:    z.string().uuid().nullable().optional(),
+  approver_id:    z.string().uuid().nullable().optional(),
   description:    z.string().optional(),
   effective_date:  z.string().optional(),
+  edit_date:       z.string().optional(),
+  approved_at:     z.string().optional(),
+  published_at:    z.string().optional(),
   expiry_date:     z.string().optional(),
   obsolete_date:   z.string().optional(),
   obsolete_reason: z.string().optional(),
+  audience_text:   z.string().optional(),
 })
 
 export type DocumentInput = z.infer<typeof DocumentSchema>

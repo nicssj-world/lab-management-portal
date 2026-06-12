@@ -67,7 +67,13 @@ export const updateUserSchema = z.object({
   dept: z.enum(DEPARTMENTS).optional(),
   status: z.enum(['active', 'inactive', 'pending']).optional(),
   doc_role: z.enum(DOC_ROLES).nullable().optional(),
+  document_position: z.string().max(120).nullable().optional(),
+})
+
+export const documentProfileSchema = z.object({
+  document_position: z.string().max(120).nullable().optional(),
 })
 
 export type CreateUserInput = z.infer<typeof createUserSchema>
 export type UpdateUserInput = z.infer<typeof updateUserSchema>
+export type DocumentProfileInput = z.infer<typeof documentProfileSchema>

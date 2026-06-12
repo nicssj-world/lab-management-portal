@@ -4,6 +4,7 @@ import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
+import { canMoveToStatus, isCoverRequiredType, isPdfFile, isSourceFile } from '@/lib/documents/workflow'
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
@@ -36,6 +37,19 @@ function parsePositiveInt(value: string | null, fallback: number, max: number) {
 
 function safeSearchTerm(value: string) {
   return value.replace(/[%,()]/g, ' ').trim().slice(0, 100)
+}
+
+async function uploadDocumentObject(file: File, type: string, prefix = '') {
+  const year = new Date().getFullYear()
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${prefix}${safeName}`
+  await r2.send(new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: r2Key,
+    Body: Buffer.from(await file.arrayBuffer()),
+    ContentType: file.type || 'application/octet-stream',
+  }))
+  return r2Key
 }
 
 export async function GET(req: NextRequest) {
@@ -94,11 +108,8 @@ export async function POST(req: NextRequest) {
     const form = await req.formData()
     const fileRaw = form.get('file')
     const file = fileRaw instanceof File && fileRaw.size > 0 ? fileRaw : null
-    if (!file) return NextResponse.json({ error: 'ไม่พบไฟล์ PDF' }, { status: 422 })
-
-    if (file.size > 50 * 1024 * 1024) {
-      return NextResponse.json({ error: 'ไฟล์ PDF ใหญ่เกิน 50 MB' }, { status: 422 })
-    }
+    const wordRaw = form.get('word_file')
+    const wordFile = wordRaw instanceof File && wordRaw.size > 0 ? wordRaw : null
 
     const metaRaw = form.get('meta')
     if (!metaRaw) return NextResponse.json({ error: 'ไม่พบข้อมูลเอกสาร' }, { status: 422 })
@@ -109,6 +120,22 @@ export async function POST(req: NextRequest) {
     }
     const meta = parsed.data
     const documentCode = meta.document_code.toUpperCase()
+
+    if (file && file.size > 50 * 1024 * 1024) {
+      return NextResponse.json({ error: 'ไฟล์ทางการใหญ่เกิน 50 MB' }, { status: 422 })
+    }
+    if (wordFile && wordFile.size > 50 * 1024 * 1024) {
+      return NextResponse.json({ error: 'ไฟล์ Word/Excel ใหญ่เกิน 50 MB' }, { status: 422 })
+    }
+    if (file && isCoverRequiredType(meta.type) && !isPdfFile(file)) {
+      return NextResponse.json({ error: 'QP/WI ต้องใช้ PDF เนื้อหาในช่องไฟล์ทางการ' }, { status: 422 })
+    }
+    if (file && !isCoverRequiredType(meta.type) && !isPdfFile(file) && !isSourceFile(file)) {
+      return NextResponse.json({ error: 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
+    }
+    if (wordFile && !isSourceFile(wordFile)) {
+      return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
+    }
 
     const { data: existingDoc, error: existingErr } = await supabaseAdmin
       .from('documents')
@@ -131,34 +158,68 @@ export async function POST(req: NextRequest) {
       }, { status: 409 })
     }
 
-    const year = new Date().getFullYear()
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const r2Key = `documents/${meta.type.toLowerCase()}/${year}/${Date.now()}-${safeName}`
+    let officialFields: {
+      file_url?: string | null
+      file_name?: string | null
+      file_size?: number | null
+      mime_type?: string | null
+      source_pdf_url?: string | null
+      source_pdf_name?: string | null
+      source_pdf_size?: number | null
+      source_pdf_mime_type?: string | null
+    } = {
+      file_url: null,
+      file_name: null,
+      file_size: null,
+      mime_type: null,
+    }
+    const uploadedKeys: string[] = []
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-    await r2.send(new PutObjectCommand({
-      Bucket: R2_BUCKET,
-      Key: r2Key,
-      Body: buffer,
-      ContentType: file.type,
-    }))
-
-    // Optional Word/Excel secondary file
-    const wordFile = form.get('word_file') as File | null
-    let wordFields: { word_url?: string; word_name?: string; word_size?: number } = {}
-    if (wordFile && wordFile.size > 0) {
-      if (wordFile.size > 50 * 1024 * 1024) {
-        return NextResponse.json({ error: 'ไฟล์ Word/Excel ใหญ่เกิน 50 MB' }, { status: 422 })
+    if (file) {
+      const r2Key = await uploadDocumentObject(file, meta.type)
+      uploadedKeys.push(r2Key)
+      officialFields = {
+        file_url: r2Key,
+        file_name: file.name,
+        file_size: file.size,
+        mime_type: file.type || 'application/octet-stream',
+        ...(isCoverRequiredType(meta.type)
+          ? {
+              source_pdf_url: r2Key,
+              source_pdf_name: file.name,
+              source_pdf_size: file.size,
+              source_pdf_mime_type: file.type || 'application/pdf',
+            }
+          : {}),
       }
-      const safeWordName = wordFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const wordKey = `documents/${meta.type.toLowerCase()}/${year}/${Date.now()}-word-${safeWordName}`
-      await r2.send(new PutObjectCommand({
-        Bucket: R2_BUCKET,
-        Key: wordKey,
-        Body: Buffer.from(await wordFile.arrayBuffer()),
-        ContentType: wordFile.type,
-      }))
-      wordFields = { word_url: wordKey, word_name: wordFile.name, word_size: wordFile.size }
+    }
+
+    let wordFields: { word_url?: string; word_name?: string; word_size?: number; edit_date?: string } = {}
+    if (wordFile) {
+      const wordKey = await uploadDocumentObject(wordFile, meta.type, 'source-')
+      uploadedKeys.push(wordKey)
+      wordFields = {
+        word_url: wordKey,
+        word_name: wordFile.name,
+        word_size: wordFile.size,
+        edit_date: meta.edit_date || new Date().toISOString().split('T')[0],
+      }
+    }
+
+    const workflowCheck = canMoveToStatus(
+      {
+        type: meta.type,
+        status: 'Draft',
+        file_url: officialFields.file_url ?? null,
+        source_pdf_url: officialFields.source_pdf_url ?? null,
+      },
+      meta.status,
+    )
+    if (!workflowCheck.ok) {
+      for (const key of uploadedKeys) {
+        r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key })).catch(() => {})
+      }
+      return NextResponse.json({ error: workflowCheck.error }, { status: 422 })
     }
 
     const { data: doc, error: dbErr } = await supabaseAdmin
@@ -167,10 +228,7 @@ export async function POST(req: NextRequest) {
         ...meta,
         document_code: documentCode,
         owner_id:  actor.id,
-        file_url:  r2Key,
-        file_name: file.name,
-        file_size: file.size,
-        mime_type: file.type,
+        ...officialFields,
         ...wordFields,
       })
       .select()
@@ -178,8 +236,9 @@ export async function POST(req: NextRequest) {
 
     if (dbErr) {
       // Best-effort cleanup on DB error
-      r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: r2Key }))
-        .catch(() => {})
+      for (const key of uploadedKeys) {
+        r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key })).catch(() => {})
+      }
       if (isDuplicateDocumentCodeError(dbErr)) {
         return NextResponse.json({
           error: `รหัสเอกสารนี้มีอยู่ในระบบแล้ว (${documentCode}) หากต้องการอัปโหลดฉบับแก้ไข ให้เปิดเอกสารเดิมแล้วเพิ่ม Revision แทน`,

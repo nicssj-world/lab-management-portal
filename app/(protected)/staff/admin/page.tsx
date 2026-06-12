@@ -24,7 +24,8 @@ export default async function AdminPage() {
   const role = normalizeRole(actor?.role)
   const permissions = role ? await getRolePermissions(role) : {}
   const isAdmin = (permissions['User Management'] ?? 'none') === 'edit'
-  if (!isAdmin) redirect('/staff/dashboard')
+  const isDocumentProfileManager = role === 'Manager'
+  if (!isAdmin && !isDocumentProfileManager) redirect('/staff/dashboard')
 
   // Count with the admin client so RLS does not reduce the total to the current profile.
   // .is('deleted_at', null) only works after user-management-migration.sql has been run.
@@ -91,10 +92,10 @@ export default async function AdminPage() {
       })()}
 
       {/* User table — full client-side CRUD */}
-      <AdminUserClient />
+      <AdminUserClient canAdminUsers={isAdmin} canManageDocumentProfiles={isAdmin || isDocumentProfileManager} />
 
       {/* Permissions matrix — editable by Admin */}
-      <PermissionsMatrix isAdmin={isAdmin} />
+      {isAdmin && <PermissionsMatrix isAdmin={isAdmin} />}
 
       {/* Audit log */}
       <Card padding={0}>

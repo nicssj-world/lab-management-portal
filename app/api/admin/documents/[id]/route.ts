@@ -7,6 +7,15 @@ import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 import { canAccessDocuments } from '@/lib/auth/guards'
 import { allowedTransitions, type DocStatus } from '@/lib/documents/transitions'
+import {
+  canCorrectPublishedMetadata,
+  canMoveToStatus,
+  isCoverRequiredType,
+  isPdfFile,
+  isPublishedMetadataField,
+  isSourceFile,
+} from '@/lib/documents/workflow'
+import { buildPublishedPdfFields } from '@/lib/documents/publish'
 
 async function getActor() {
   const supabase = await createClient()
@@ -19,6 +28,19 @@ async function getActor() {
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
+}
+
+async function uploadDocumentObject(file: File, type: string, prefix = '') {
+  const year = new Date().getFullYear()
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${prefix}${safeName}`
+  await r2.send(new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: r2Key,
+    Body: Buffer.from(await file.arrayBuffer()),
+    ContentType: file.type || 'application/octet-stream',
+  }))
+  return r2Key
 }
 
 const DOC_UPLOAD_ROLES = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer']
@@ -73,8 +95,10 @@ export async function PATCH(
 
     if (contentType.includes('multipart/form-data')) {
       const form = await req.formData()
-      newFile = form.get('file') as File | null
-      newWordFile = form.get('word_file') as File | null
+      const fileRaw = form.get('file')
+      newFile = fileRaw instanceof File && fileRaw.size > 0 ? fileRaw : null
+      const wordRaw = form.get('word_file')
+      newWordFile = wordRaw instanceof File && wordRaw.size > 0 ? wordRaw : null
 
       const metaRaw = form.get('meta')
       if (metaRaw) {
@@ -96,9 +120,11 @@ export async function PATCH(
     // Always fetch current doc (needed for revision history + R2 key)
     const { data: current } = await supabaseAdmin
       .from('documents')
-      .select('file_url, file_name, revision, type, description, owner_name, approver_name, status, document_code, title')
+      .select('file_url, file_name, file_size, mime_type, source_pdf_url, source_pdf_name, source_pdf_size, source_pdf_mime_type, word_url, word_name, word_size, revision, type, description, owner_name, approver_name, status, document_code, title, edit_date, effective_date, approved_at, published_at')
       .eq('id', id)
       .single()
+
+    if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     // Enforce status transition rules server-side
     const requestedStatus = updates.status as string | undefined
@@ -109,47 +135,88 @@ export async function PATCH(
       }
     }
 
+    if (current.status === 'Published') {
+      if (newFile || (newWordFile && newWordFile.size > 0)) {
+        return NextResponse.json({ error: 'เอกสาร Published ต้องสร้าง Revision ใหม่ก่อนเปลี่ยนไฟล์เนื้อหา' }, { status: 409 })
+      }
+
+      const requestedKeys = Object.keys(updates)
+      const protectedKeys = new Set([
+        'revision',
+        'file_url',
+        'file_name',
+        'file_size',
+        'mime_type',
+        'source_pdf_url',
+        'source_pdf_name',
+        'source_pdf_size',
+        'source_pdf_mime_type',
+        'word_url',
+        'word_name',
+        'word_size',
+        'edit_date',
+        'approved_at',
+        'published_at',
+        'approved_by_id',
+        'published_by_id',
+      ])
+
+      if (requestedKeys.some((key) => protectedKeys.has(key))) {
+        return NextResponse.json({ error: 'เอกสาร Published ห้ามแก้ไฟล์, revision หรือวันที่ workflow โดยตรง' }, { status: 409 })
+      }
+
+      const metadataKeys = requestedKeys.filter((key) => key !== 'status' && key !== 'obsolete_date' && key !== 'obsolete_reason')
+      if (metadataKeys.length > 0) {
+        if (!canCorrectPublishedMetadata(actor)) {
+          return NextResponse.json({ error: 'เฉพาะ Admin หรือ Document Controller เท่านั้นที่แก้ metadata ของ Published document ได้' }, { status: 403 })
+        }
+        const invalid = metadataKeys.find((key) => !isPublishedMetadataField(key))
+        if (invalid) {
+          return NextResponse.json({ error: `field ${invalid} ไม่อนุญาตให้แก้หลัง Published` }, { status: 422 })
+        }
+      }
+    }
+
     if (newFile) {
       if (newFile.size > 50 * 1024 * 1024) {
         return NextResponse.json({ error: 'ไฟล์ใหญ่เกิน 50 MB' }, { status: 422 })
       }
 
       const type = (updates.type as string) ?? current?.type ?? 'others'
-      const year = new Date().getFullYear()
-      const safeName = newFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${safeName}`
+      if (isCoverRequiredType(type) && !isPdfFile(newFile)) {
+        return NextResponse.json({ error: 'QP/WI ต้องใช้ PDF เนื้อหาในช่องไฟล์ทางการ' }, { status: 422 })
+      }
+      if (!isCoverRequiredType(type) && !isPdfFile(newFile) && !isSourceFile(newFile)) {
+        return NextResponse.json({ error: 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
+      }
 
-      const buffer = Buffer.from(await newFile.arrayBuffer())
-      await r2.send(new PutObjectCommand({
-        Bucket: R2_BUCKET,
-        Key: r2Key,
-        Body: buffer,
-        ContentType: newFile.type,
-      }))
+      const r2Key = await uploadDocumentObject(newFile, type)
 
       updates.file_url  = r2Key
       updates.file_name = newFile.name
       updates.file_size = newFile.size
-      updates.mime_type = newFile.type
+      updates.mime_type = newFile.type || 'application/octet-stream'
+      if (isCoverRequiredType(type)) {
+        updates.source_pdf_url = r2Key
+        updates.source_pdf_name = newFile.name
+        updates.source_pdf_size = newFile.size
+        updates.source_pdf_mime_type = newFile.type || 'application/pdf'
+      }
     }
 
     if (newWordFile && newWordFile.size > 0) {
       if (newWordFile.size > 50 * 1024 * 1024) {
         return NextResponse.json({ error: 'ไฟล์ Word/Excel ใหญ่เกิน 50 MB' }, { status: 422 })
       }
+      if (!isSourceFile(newWordFile)) {
+        return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
+      }
       const type = (updates.type as string) ?? current?.type ?? 'others'
-      const year = new Date().getFullYear()
-      const safeWordName = newWordFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const wordKey = `documents/${type.toLowerCase()}/${year}/${Date.now()}-word-${safeWordName}`
-      await r2.send(new PutObjectCommand({
-        Bucket: R2_BUCKET,
-        Key: wordKey,
-        Body: Buffer.from(await newWordFile.arrayBuffer()),
-        ContentType: newWordFile.type,
-      }))
+      const wordKey = await uploadDocumentObject(newWordFile, type, 'source-')
       updates.word_url  = wordKey
       updates.word_name = newWordFile.name
       updates.word_size = newWordFile.size
+      if (!updates.edit_date) updates.edit_date = new Date().toISOString().split('T')[0]
     }
 
     // Save old revision to history when revision number changes OR file is replaced
@@ -177,6 +244,51 @@ export async function PATCH(
     } else if (newStatus && newStatus !== 'Obsolete') {
       (updates as Record<string, unknown>).obsolete_date   = null
       ;(updates as Record<string, unknown>).obsolete_reason = null
+    }
+
+    const targetStatus = (typeof newStatus === 'string' ? newStatus : current.status) as string
+    const targetType = ((updates.type as string | undefined) ?? current.type) as string
+    const workflowCheck = canMoveToStatus(
+      {
+        type: targetType,
+        status: current.status,
+        file_url: (updates.file_url as string | null | undefined) ?? current.file_url ?? null,
+        source_pdf_url: (updates.source_pdf_url as string | null | undefined) ?? current.source_pdf_url ?? null,
+      },
+      targetStatus,
+    )
+    if (!workflowCheck.ok) {
+      return NextResponse.json({ error: workflowCheck.error }, { status: 422 })
+    }
+
+    if (typeof newStatus === 'string' && newStatus !== current.status) {
+      if (newStatus === 'Approved') {
+        updates.approved_at = new Date().toISOString()
+        updates.approved_by_id = actor.id
+      }
+      if (newStatus === 'Published') {
+        const now = new Date().toISOString()
+        updates.published_at = now
+        updates.published_by_id = actor.id
+        if (!updates.effective_date && !current.effective_date) {
+          updates.effective_date = now.split('T')[0]
+        }
+      }
+    }
+
+    const publishedMetadataChanged = current.status === 'Published'
+      && targetStatus === 'Published'
+      && Object.keys(updates).some((key) => isPublishedMetadataField(key))
+    const shouldBuildFinalPdf = isCoverRequiredType(targetType)
+      && (newStatus === 'Published' || publishedMetadataChanged)
+    if (shouldBuildFinalPdf) {
+      const finalFields = await buildPublishedPdfFields(id, {
+        ...updates,
+        type: targetType,
+        file_url: (updates.file_url as string | null | undefined) ?? current.file_url,
+        source_pdf_url: (updates.source_pdf_url as string | null | undefined) ?? current.source_pdf_url,
+      })
+      if (finalFields) Object.assign(updates, finalFields)
     }
 
     if (Object.keys(updates).length === 0) {
@@ -217,6 +329,15 @@ export async function PATCH(
       target: doc.document_code,
       detail: auditDetail,
     }).then(undefined, () => {})
+
+    if (shouldBuildFinalPdf) {
+      supabaseAdmin.from('audit_log').insert({
+        action: current.status === 'Published' ? 'document.cover_regenerate' : 'document.cover_generate',
+        user_id: actor.id,
+        target: doc.document_code,
+        detail: `${doc.document_code} · ${doc.title}`,
+      }).then(undefined, () => {})
+    }
 
     return NextResponse.json(doc)
   } catch (err) {

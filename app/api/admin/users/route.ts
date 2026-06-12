@@ -16,14 +16,27 @@ async function requireAdmin(supabase: Awaited<ReturnType<typeof createClient>>) 
   return profile as { id: string; role: string }
 }
 
+async function requireUserDocumentManager(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, role')
+    .eq('id', user.id)
+    .single()
+  const role = profile?.role?.toLowerCase()
+  if (!profile || (role !== 'admin' && role !== 'manager')) return null
+  return profile as { id: string; role: string }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient()
-    const actor = await requireAdmin(supabase)
+    const actor = await requireUserDocumentManager(supabase)
     if (!actor) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const sp = req.nextUrl.searchParams
-    // Use admin client to bypass RLS — actor has already been verified as Admin above
+    // Use admin client to bypass RLS after verifying the actor can manage document identity.
     const result = await listUsers(
       supabaseAdmin,
       {

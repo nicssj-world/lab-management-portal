@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
+import { Badge } from '@/components/ui/Badge'
 
 interface ProfileData {
   id: string
@@ -12,6 +13,10 @@ interface ProfileData {
   dept: string | null
   avatar_url: string | null
   doc_role: string | null
+  document_position: string | null
+  signature_url: string | null
+  signature_signed_url: string | null
+  signature_updated_at: string | null
 }
 
 const DOC_ROLE_SCHEME: Record<string, { color: string; bg: string; border: string; label: string }> = {
@@ -30,12 +35,17 @@ const ROLE_SCHEME: Record<string, string> = {
 
 export default function ProfilePage() {
   const fileRef = useRef<HTMLInputElement>(null)
+  const signatureRef = useRef<HTMLInputElement>(null)
 
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [documentPosition, setDocumentPosition] = useState('')
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadingSignature, setUploadingSignature] = useState(false)
   const [savingName, setSavingName] = useState(false)
+  const [savingDocumentProfile, setSavingDocumentProfile] = useState(false)
   const [editingName, setEditingName] = useState(false)
 
   const [oldPassword, setOldPassword] = useState('')
@@ -60,6 +70,8 @@ export default function ProfilePage() {
         setProfile(data)
         setDisplayName(data.name ?? '')
         setAvatarUrl(data.avatar_url ?? null)
+        setDocumentPosition(data.document_position ?? '')
+        setSignatureUrl(data.signature_signed_url ?? null)
       })
   }, [])
 
@@ -119,6 +131,55 @@ export default function ProfilePage() {
     showToast('ลบรูปแล้ว')
   }
 
+  async function handleSaveDocumentProfile() {
+    if (!profile) return
+    setSavingDocumentProfile(true)
+    const res = await fetch('/api/me/document-profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_position: documentPosition.trim() || null }),
+    })
+    setSavingDocumentProfile(false)
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      showToast(json.error ?? 'บันทึกข้อมูลเอกสารคุณภาพไม่สำเร็จ', false)
+      return
+    }
+    setProfile((p) => p ? { ...p, document_position: json.document_position ?? null } : p)
+    showToast('บันทึกข้อมูลเอกสารคุณภาพแล้ว')
+  }
+
+  async function handleSignatureUpload(file: File) {
+    setUploadingSignature(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/me/signature', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'อัปโหลดลายเซ็นไม่สำเร็จ')
+      setSignatureUrl(json.signature_signed_url ?? null)
+      setProfile((p) => p ? { ...p, signature_url: json.signature_url ?? null, signature_signed_url: json.signature_signed_url ?? null } : p)
+      showToast('อัปโหลดลายเซ็นแล้ว')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'อัปโหลดลายเซ็นไม่สำเร็จ', false)
+    } finally {
+      setUploadingSignature(false)
+      if (signatureRef.current) signatureRef.current.value = ''
+    }
+  }
+
+  async function handleRemoveSignature() {
+    const res = await fetch('/api/me/signature', { method: 'DELETE' })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      showToast(json.error ?? 'ลบลายเซ็นไม่สำเร็จ', false)
+      return
+    }
+    setSignatureUrl(null)
+    setProfile((p) => p ? { ...p, signature_url: null, signature_signed_url: null } : p)
+    showToast('ลบลายเซ็นแล้ว')
+  }
+
   async function handleChangePassword() {
     if (!newPassword || newPassword !== confirmPassword) {
       showToast('รหัสผ่านไม่ตรงกัน', false); return
@@ -147,6 +208,7 @@ export default function ProfilePage() {
   const initial = profile?.name?.charAt(0).toUpperCase() ?? 'U'
   const roleColor = profile?.role ? (ROLE_SCHEME[profile.role] ?? '#64748B') : '#64748B'
   const docScheme = profile?.doc_role ? DOC_ROLE_SCHEME[profile.doc_role] : null
+  const canEditDocumentProfile = profile?.role === 'Admin' || profile?.role === 'Manager' || profile?.doc_role === 'Reviewer'
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '9px 12px', borderRadius: 8,
@@ -328,6 +390,72 @@ export default function ProfilePage() {
             Role และ Department ถูกจัดการโดย Admin ใน User Management
           </div>
         )}
+      </Card>
+
+      {/* ── Quality document identity ───────────────────────────────────── */}
+      <Card padding={0}>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>ข้อมูลสำหรับเอกสารคุณภาพ</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>ตำแหน่งและลายเซ็นที่ระบบใช้บนหน้าปก QP/WI</div>
+          </div>
+          {!canEditDocumentProfile && (
+            <Badge color="gray" size="sm">ดูอย่างเดียว</Badge>
+          )}
+        </div>
+        <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: '1fr 220px', gap: 18, alignItems: 'start' }}>
+          <div>
+            <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 5, display: 'block' }}>ตำแหน่งที่แสดงในเอกสาร</label>
+            <input
+              value={documentPosition}
+              onChange={(e) => setDocumentPosition(e.target.value)}
+              disabled={!canEditDocumentProfile}
+              placeholder="เช่น นักเทคนิคการแพทย์"
+              style={inputStyle}
+            />
+            <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+              <Button
+                variant="primary"
+                onClick={handleSaveDocumentProfile}
+                disabled={!canEditDocumentProfile || savingDocumentProfile}
+              >
+                {savingDocumentProfile ? 'กำลังบันทึก...' : 'บันทึกตำแหน่ง'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 5, display: 'block' }}>ลายเซ็น</label>
+            <div style={{ height: 92, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, marginBottom: 8 }}>
+              {signatureUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={signatureUrl} alt="signature" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+              ) : (
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>ยังไม่มีลายเซ็น</span>
+              )}
+            </div>
+            <input ref={signatureRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleSignatureUpload(f) }}
+            />
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => signatureRef.current?.click()}
+                disabled={!canEditDocumentProfile || uploadingSignature}
+                style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: canEditDocumentProfile ? 'pointer' : 'not-allowed', fontFamily: 'inherit', color: 'var(--ink)' }}
+              >
+                {uploadingSignature ? 'กำลังอัปโหลด...' : 'อัปโหลด'}
+              </button>
+              {signatureUrl && (
+                <button
+                  onClick={handleRemoveSignature}
+                  disabled={!canEditDocumentProfile}
+                  style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #FEE2E2', background: 'transparent', cursor: canEditDocumentProfile ? 'pointer' : 'not-allowed', fontFamily: 'inherit', color: '#DC2626' }}
+                >
+                  ลบ
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       </Card>
 
       {/* ── Change password ───────────────────────────────────── */}

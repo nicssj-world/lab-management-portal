@@ -3,9 +3,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
-import { DOC_TYPES, DOC_STATUSES, DOC_VISIBILITIES } from '@/lib/validations/document'
-import { availableEditStatuses } from '@/lib/documents/transitions'
-import type { DocStatus } from '@/lib/documents/transitions'
+import { DOC_TYPES, DOC_VISIBILITIES } from '@/lib/validations/document'
 import type { Document } from '@/lib/supabase/types'
 
 interface Props {
@@ -34,6 +32,15 @@ function RequiredMark() {
 function fmtSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function requiresCover(type: string): boolean {
+  return type === 'QP' || type === 'WI'
+}
+
+function isOfficialFileAllowed(type: string, file: File): boolean {
+  if (requiresCover(type)) return file.name.match(/\.pdf$/i) !== null || file.type === 'application/pdf'
+  return file.name.match(/\.(pdf|doc|docx|xls|xlsx)$/i) !== null
 }
 
 async function readJsonOrError(res: Response): Promise<{ error?: string; [key: string]: unknown }> {
@@ -246,13 +253,9 @@ function parseExtractedText(text: string) {
   }
 }
 
-export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }: Props) {
-  const availableStatuses = availableEditStatuses(
-    userRole ?? '',
-    docRole,
-    doc?.status as DocStatus | undefined,
-  )
+export function DocumentUploadModal({ doc, onClose, onSaved }: Props) {
   const isEdit = !!doc
+  const availableStatuses = isEdit ? [doc?.status ?? 'Draft'] : ['Draft']
   const fileRef = useRef<HTMLInputElement>(null)
   const wordFileRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -296,8 +299,10 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
     : ''
 
   const handleFile = useCallback((file: File) => {
-    if (!file.name.match(/\.pdf$/i) && file.type !== 'application/pdf') {
-      setError('ช่องนี้รองรับเฉพาะไฟล์ PDF เท่านั้น')
+    if (!isOfficialFileAllowed(type, file)) {
+      setError(requiresCover(type)
+        ? 'QP/WI ต้องใช้ไฟล์ PDF เนื้อหาในช่องไฟล์ทางการ'
+        : 'ช่องไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX')
       return
     }
     if (file.size > 50 * 1024 * 1024) {
@@ -306,7 +311,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
     }
     setError('')
     setSelectedFile(file)
-  }, [])
+  }, [type])
 
   const handleWordFile = useCallback((file: File) => {
     if (!file.name.match(/\.(doc|docx|xlsx)$/i)) {
@@ -489,13 +494,8 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
         const editUrl = `/api/admin/documents/${doc!.id}${!saveRevision ? '?skipRevision=1' : ''}`
         if (selectedFile || selectedWordFile) {
           const fd = new FormData()
-          if (selectedFile) {
-            fd.append('file', selectedFile)
-            if (selectedWordFile) fd.append('word_file', selectedWordFile)
-          } else if (selectedWordFile) {
-            // Word/Excel only — promote to primary slot
-            fd.append('file', selectedWordFile)
-          }
+          if (selectedFile) fd.append('file', selectedFile)
+          if (selectedWordFile) fd.append('word_file', selectedWordFile)
           fd.append('meta', JSON.stringify(meta))
           res = await fetch(editUrl, { method: 'PATCH', body: fd })
         } else {
@@ -507,13 +507,8 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
         }
       } else {
         const fd = new FormData()
-        if (selectedFile) {
-          fd.append('file', selectedFile)
-          if (selectedWordFile) fd.append('word_file', selectedWordFile)
-        } else if (selectedWordFile) {
-          // Word/Excel only — promote to primary slot
-          fd.append('file', selectedWordFile)
-        }
+        if (selectedFile) fd.append('file', selectedFile)
+        if (selectedWordFile) fd.append('word_file', selectedWordFile)
         fd.append('meta', JSON.stringify(meta))
         res = await fetch('/api/admin/documents', { method: 'POST', body: fd })
       }
@@ -593,7 +588,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
             </div>
             <div>
               <label style={labelStyle}>สถานะ</label>
-              <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ ...inputStyle }}>
+              <select value={status} onChange={(e) => setStatus(e.target.value)} disabled style={{ ...inputStyle, opacity: 0.72, cursor: 'not-allowed' }}>
                 {availableStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
@@ -690,15 +685,14 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
 
           {/* File Upload — 2 zones side by side */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {/* PDF zone */}
+            {/* Official file zone */}
             <div style={{ minWidth: 0 }}>
               <label style={labelStyle}>
-                {isEdit
-                  ? 'เปลี่ยนไฟล์ PDF (ไม่บังคับ)'
-                  : status === 'Draft'
-                    ? 'ไฟล์ PDF (ไม่บังคับสำหรับ Draft)'
-                    : 'ไฟล์ PDF (หรืออัพโหลด Word/Excel แทนได้)'
+                {requiresCover(type)
+                  ? (isEdit ? 'เปลี่ยน PDF เนื้อหา (ไม่มีหน้าปก)' : 'PDF เนื้อหา (ไม่มีหน้าปก)')
+                  : (isEdit ? 'เปลี่ยนไฟล์ทางการ' : 'ไฟล์ทางการ')
                 }
+                {!isEdit && status !== 'Draft' && <RequiredMark />}
               </label>
               <div
                 onDragEnter={onDragEnter}
@@ -728,13 +722,19 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 20 }}>📄</span>
-                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>PDF &nbsp;<span style={{ color: 'var(--primary)', fontWeight: 600 }}>เลือกไฟล์</span></span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                      {requiresCover(type) ? 'PDF' : 'PDF / Office'} &nbsp;<span style={{ color: 'var(--primary)', fontWeight: 600 }}>เลือกไฟล์</span>
+                    </span>
                   </div>
                 )}
-                <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept={requiresCover(type) ? '.pdf,application/pdf' : '.pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+                  style={{ display: 'none' }}
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }} />
               </div>
-              {selectedFile && (
+              {selectedFile && (selectedFile.type === 'application/pdf' || /\.pdf$/i.test(selectedFile.name)) && (
                 <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
                   <button type="button" onClick={extractFromFile} disabled={extracting}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, cursor: extracting ? 'default' : 'pointer', padding: '4px 10px', borderRadius: 6, fontFamily: 'inherit', background: 'transparent', border: `1px solid ${extracting ? 'var(--border)' : 'var(--primary)'}`, color: extracting ? 'var(--muted)' : 'var(--primary)', transition: 'all .15s' }}>
@@ -747,7 +747,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved }
             {/* Word / Excel zone */}
             <div style={{ minWidth: 0 }}>
               <label style={labelStyle}>
-                {isEdit ? 'เปลี่ยนไฟล์ Word/Excel (ไม่บังคับ)' : 'ไฟล์ Word / Excel (ไม่บังคับ)'}
+                {isEdit ? 'เปลี่ยนไฟล์ต้นฉบับ Word/Excel' : 'ไฟล์ต้นฉบับ Word/Excel'}
               </label>
               {isEdit && doc?.word_name && !selectedWordFile && (
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
