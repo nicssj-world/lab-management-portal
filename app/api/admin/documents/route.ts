@@ -6,6 +6,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 import { canMoveToStatus, isCoverRequiredType, isPdfFile, isSourceFile } from '@/lib/documents/workflow'
 import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/lib/documents/docx-header'
+import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
+import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
+import { resolveDocumentSortColumn } from '@/lib/documents/sort'
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
@@ -15,20 +18,6 @@ function isDuplicateDocumentCodeError(err: { code?: string; message?: string }) 
   return err.code === '23505'
     || (err.message ?? '').includes('documents_document_code_key')
 }
-
-const ALLOWED_SORT = new Set([
-  'document_code',
-  'title',
-  'type',
-  'status',
-  'visibility',
-  'department',
-  'revision',
-  'effective_date',
-  'review_date',
-  'created_at',
-  'updated_at',
-])
 
 function parsePositiveInt(value: string | null, fallback: number, max: number) {
   const parsed = Number(value)
@@ -40,13 +29,25 @@ function safeSearchTerm(value: string) {
   return value.replace(/[%,()]/g, ' ').trim().slice(0, 100)
 }
 
+function todayIsoDate() {
+  return new Date().toISOString().split('T')[0]
+}
+
+function canImportCurrentDocument(actor: { role: string; doc_role?: string | null }) {
+  return actor.role === 'Admin' || actor.role === 'Document Controller' || actor.doc_role === 'Document Controller'
+}
+
 async function uploadDocumentObject(file: File, type: string, prefix = '', headerMetadata?: DocxHeaderMetadata) {
   const year = new Date().getFullYear()
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${prefix}${safeName}`
   let body: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer())
-  if (headerMetadata && isDocxFile(file)) {
-    body = await patchDocxHeaderMetadata(body, headerMetadata)
+  if (headerMetadata) {
+    if (isDocxFile(file)) {
+      body = await patchDocxHeaderMetadata(body, headerMetadata)
+    } else if (isXlsxFile(file)) {
+      body = await patchXlsxHeaderMetadata(body, headerMetadata)
+    }
   }
   await r2.send(new PutObjectCommand({
     Bucket: R2_BUCKET,
@@ -71,8 +72,7 @@ export async function GET(req: NextRequest) {
     const search     = safeSearchTerm(sp.get('search') ?? '')
     const page       = parsePositiveInt(sp.get('page'), 1, 100000)
     const pageSize   = parsePositiveInt(sp.get('pageSize'), 50, 200)
-    const sortParam  = sp.get('sortBy') ?? 'updated_at'
-    const sortBy     = ALLOWED_SORT.has(sortParam) ? sortParam : 'updated_at'
+    const sortBy     = resolveDocumentSortColumn(sp.get('sortBy'))
     const sortDir    = sp.get('sortDir') === 'asc' ? 'asc' : 'desc'
 
     const code = sp.get('code') ?? undefined
@@ -123,7 +123,17 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.errors[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
     }
-    const meta = parsed.data
+    const { import_mode: importMode, ...meta } = parsed.data
+    const isImportCurrent = importMode === 'current'
+    if (isImportCurrent && !canImportCurrentDocument(actor)) {
+      return NextResponse.json({ error: 'เฉพาะ Admin หรือ Document Controller เท่านั้นที่นำเข้าเอกสารเดิมเป็น Published ได้' }, { status: 403 })
+    }
+    if (!isImportCurrent && meta.status !== 'Draft') {
+      return NextResponse.json({ error: 'เอกสารใหม่ต้องเริ่มที่สถานะ Draft' }, { status: 422 })
+    }
+    if (isImportCurrent && meta.status !== 'Published') {
+      return NextResponse.json({ error: 'โหมดนำเข้าเอกสารเดิมต้องสร้างเป็นสถานะ Published' }, { status: 422 })
+    }
     const documentCode = meta.document_code.toUpperCase()
 
     if (file && file.size > 50 * 1024 * 1024) {
@@ -140,6 +150,12 @@ export async function POST(req: NextRequest) {
     }
     if (wordFile && !isSourceFile(wordFile)) {
       return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
+    }
+    if (isImportCurrent && !file) {
+      return NextResponse.json({ error: 'โหมดนำเข้าเอกสารเดิม Rev.>0 ต้องแนบไฟล์ทางการ Rev ปัจจุบัน' }, { status: 422 })
+    }
+    if (isImportCurrent && isCoverRequiredType(meta.type) && !meta.legacy_cover_included) {
+      return NextResponse.json({ error: 'QP/WI ที่นำเข้าเป็น Rev.>0 ต้องใช้ PDF ทางการเดิมที่มีหน้าปกอยู่แล้ว หากเป็น PDF เนื้อหาไม่มีหน้าปกให้ใช้ Flow Draft ปกติ' }, { status: 422 })
     }
 
     const { data: existingDoc, error: existingErr } = await supabaseAdmin
@@ -179,15 +195,30 @@ export async function POST(req: NextRequest) {
       mime_type: null,
     }
     const uploadedKeys: string[] = []
-    const resolvedEditDate = meta.edit_date || (wordFile ? new Date().toISOString().split('T')[0] : undefined)
-    const headerMetadata: DocxHeaderMetadata = {
-      documentCode,
-      title: meta.title,
-      revision: meta.revision,
-      effectiveDate: meta.effective_date,
-      reviewDate: meta.expiry_date,
-      editDate: resolvedEditDate,
+    const now = new Date().toISOString()
+    const editReviewDate = wordFile && !isImportCurrent ? todayIsoDate() : (meta.edit_date || meta.expiry_date)
+    const resolvedMeta = {
+      ...meta,
+      owner_name: meta.owner_name || (wordFile ? actor.name ?? undefined : meta.owner_name),
+      edit_date: editReviewDate,
+      expiry_date: editReviewDate,
+      ...(isImportCurrent
+        ? {
+            status: 'Published',
+            published_at: now,
+            published_by_id: actor.id,
+            effective_date: meta.effective_date || todayIsoDate(),
+            imported_current_at: now,
+            imported_current_by: actor.id,
+            imported_current_note: meta.imported_current_note || null,
+            legacy_cover_included: Boolean(meta.legacy_cover_included),
+          }
+        : {}),
     }
+    const headerMetadata: DocxHeaderMetadata = buildDocxHeaderMetadata({
+      ...resolvedMeta,
+      document_code: documentCode,
+    })
 
     if (file) {
       const uploaded = await uploadDocumentObject(file, meta.type, '', headerMetadata)
@@ -198,7 +229,7 @@ export async function POST(req: NextRequest) {
         file_name: file.name,
         file_size: uploaded.size,
         mime_type: file.type || 'application/octet-stream',
-        ...(isCoverRequiredType(meta.type)
+        ...(isCoverRequiredType(meta.type) && !resolvedMeta.legacy_cover_included
           ? {
               source_pdf_url: r2Key,
               source_pdf_name: file.name,
@@ -209,7 +240,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let wordFields: { word_url?: string; word_name?: string; word_size?: number; edit_date?: string } = {}
+    let wordFields: { word_url?: string; word_name?: string; word_size?: number } = {}
     if (wordFile) {
       const uploaded = await uploadDocumentObject(wordFile, meta.type, 'source-', headerMetadata)
       const wordKey = uploaded.key
@@ -218,7 +249,6 @@ export async function POST(req: NextRequest) {
         word_url: wordKey,
         word_name: wordFile.name,
         word_size: uploaded.size,
-        edit_date: resolvedEditDate,
       }
     }
 
@@ -228,8 +258,9 @@ export async function POST(req: NextRequest) {
         status: 'Draft',
         file_url: officialFields.file_url ?? null,
         source_pdf_url: officialFields.source_pdf_url ?? null,
+        word_url: wordFields.word_url ?? null,
       },
-      meta.status,
+      'Draft',
     )
     if (!workflowCheck.ok) {
       for (const key of uploadedKeys) {
@@ -241,8 +272,10 @@ export async function POST(req: NextRequest) {
     const { data: doc, error: dbErr } = await supabaseAdmin
       .from('documents')
       .insert({
-        ...meta,
+        ...resolvedMeta,
         document_code: documentCode,
+        status: 'Draft',
+        ...(isImportCurrent ? { status: 'Published' } : {}),
         owner_id:  actor.id,
         ...officialFields,
         ...wordFields,
@@ -268,10 +301,12 @@ export async function POST(req: NextRequest) {
       .then(undefined, () => {})
 
     supabaseAdmin.from('audit_log').insert({
-      action: 'document.upload',
+      action: isImportCurrent ? 'document.import_current' : 'document.upload',
       user_id: actor.id,
       target: doc.document_code,
-      detail: `${doc.document_code} · ${doc.title}`,
+      detail: isImportCurrent
+        ? `${doc.document_code} · imported current Rev. ${doc.revision}${doc.legacy_cover_included ? ' · legacy cover included' : ''}`
+        : `${doc.document_code} · ${doc.title}`,
     }).then(undefined, () => {})
 
     supabaseAdmin.from('document_status_history')

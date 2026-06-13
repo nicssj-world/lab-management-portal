@@ -8,8 +8,11 @@ import { DocumentSchema } from '@/lib/validations/document'
 import { buildPublishedPdfFields } from '@/lib/documents/publish'
 import { canMoveToStatus, isCoverRequiredType, isPdfFile, isSourceFile } from '@/lib/documents/workflow'
 import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/lib/documents/docx-header'
+import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
+import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
 
 type Params = { params: Promise<{ id: string; draftId: string }> }
+const STATUS_CHANGE_INPUT_FIELDS = new Set(['status', 'obsolete_reason'])
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
@@ -20,8 +23,12 @@ async function uploadDocumentObject(file: File, type: string, prefix = '', heade
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${prefix}${safeName}`
   let body: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer())
-  if (headerMetadata && isDocxFile(file)) {
-    body = await patchDocxHeaderMetadata(body, headerMetadata)
+  if (headerMetadata) {
+    if (isDocxFile(file)) {
+      body = await patchDocxHeaderMetadata(body, headerMetadata)
+    } else if (isXlsxFile(file)) {
+      body = await patchXlsxHeaderMetadata(body, headerMetadata)
+    }
   }
   await r2.send(new PutObjectCommand({
     Bucket: R2_BUCKET,
@@ -57,6 +64,23 @@ async function patchR2DocxObject(key: string, metadata: DocxHeaderMetadata) {
     ContentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   }))
   return patched.length
+}
+
+async function patchR2XlsxObject(key: string, metadata: DocxHeaderMetadata) {
+  const original = await getObjectBuffer(key)
+  const patched = await patchXlsxHeaderMetadata(original, metadata)
+  if (patched.equals(original)) return null
+  await r2.send(new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    Body: patched,
+    ContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  }))
+  return patched.length
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().split('T')[0]
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
@@ -109,6 +133,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const nextStatus = updates.status as string | undefined
     if (nextStatus && nextStatus !== draft.status) {
+      if (officialFile || sourceFile) {
+        return NextResponse.json({ error: 'การเปลี่ยนสถานะต้องทำแยกจากการอัปโหลดไฟล์' }, { status: 422 })
+      }
+      const invalidStatusField = Object.keys(updates).find((key) => !STATUS_CHANGE_INPUT_FIELDS.has(key))
+      if (invalidStatusField) {
+        return NextResponse.json({ error: `การเปลี่ยนสถานะไม่อนุญาตให้แก้ field ${invalidStatusField} พร้อมกัน` }, { status: 422 })
+      }
       const allowed = allowedTransitions(draft.status as DocStatus, actor.role, actor.doc_role ?? undefined)
       if (!allowed.includes(nextStatus as DocStatus)) {
         return NextResponse.json({ error: 'สถานะที่เปลี่ยนไม่ได้รับอนุญาต' }, { status: 403 })
@@ -116,6 +147,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const targetType = ((updates.type as string | undefined) ?? draft.type) as string
+    const sourceUploadDate = sourceFile ? todayIsoDate() : undefined
+    if (sourceUploadDate) {
+      updates.edit_date = sourceUploadDate
+      updates.expiry_date = sourceUploadDate
+      if (!updates.owner_name && !draft.owner_name && actor.name) updates.owner_name = actor.name
+    } else if (typeof updates.edit_date === 'string' && !updates.expiry_date) {
+      updates.expiry_date = updates.edit_date
+    } else if (typeof updates.expiry_date === 'string' && !updates.edit_date) {
+      updates.edit_date = updates.expiry_date
+    }
+
     if (officialFile) {
       if (officialFile.size > 50 * 1024 * 1024) return NextResponse.json({ error: 'ไฟล์ทางการใหญ่เกิน 50 MB' }, { status: 422 })
       if (isCoverRequiredType(targetType) && !isPdfFile(officialFile)) {
@@ -124,14 +166,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (!isCoverRequiredType(targetType) && !isPdfFile(officialFile) && !isSourceFile(officialFile)) {
         return NextResponse.json({ error: 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
       }
-      const headerMetadata: DocxHeaderMetadata = {
-        documentCode: parentDoc.document_code,
-        title: (updates.title as string | undefined) ?? draft.title,
-        revision: (updates.revision as string | undefined) ?? draft.revision,
-        effectiveDate: (updates.effective_date as string | undefined) ?? draft.effective_date,
-        reviewDate: (updates.expiry_date as string | undefined) ?? draft.expiry_date,
-        editDate: (updates.edit_date as string | undefined) ?? draft.edit_date,
-      }
+      const headerMetadata: DocxHeaderMetadata = buildDocxHeaderMetadata({
+        ...draft,
+        ...updates,
+        document_code: parentDoc.document_code,
+      })
       const uploaded = await uploadDocumentObject(officialFile, targetType, 'draft-official-', headerMetadata)
       const key = uploaded.key
       updates.file_url = key
@@ -149,20 +188,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (sourceFile) {
       if (sourceFile.size > 50 * 1024 * 1024) return NextResponse.json({ error: 'ไฟล์ต้นฉบับใหญ่เกิน 50 MB' }, { status: 422 })
       if (!isSourceFile(sourceFile)) return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
-      const headerMetadata: DocxHeaderMetadata = {
-        documentCode: parentDoc.document_code,
-        title: (updates.title as string | undefined) ?? draft.title,
-        revision: (updates.revision as string | undefined) ?? draft.revision,
-        effectiveDate: (updates.effective_date as string | undefined) ?? draft.effective_date,
-        reviewDate: (updates.expiry_date as string | undefined) ?? draft.expiry_date,
-        editDate: (updates.edit_date as string | undefined) ?? draft.edit_date,
-      }
+      const headerMetadata: DocxHeaderMetadata = buildDocxHeaderMetadata({
+        ...draft,
+        ...updates,
+        document_code: parentDoc.document_code,
+      })
       const uploaded = await uploadDocumentObject(sourceFile, targetType, 'draft-source-', headerMetadata)
       const key = uploaded.key
       updates.word_url = key
       updates.word_name = sourceFile.name
       updates.word_size = uploaded.size
-      if (!updates.edit_date) updates.edit_date = new Date().toISOString().split('T')[0]
     }
 
     const statusAfter = (nextStatus ?? draft.status) as string
@@ -170,6 +205,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       type: targetType,
       file_url: (updates.file_url as string | null | undefined) ?? draft.file_url ?? null,
       source_pdf_url: (updates.source_pdf_url as string | null | undefined) ?? draft.source_pdf_url ?? null,
+      word_url: (updates.word_url as string | null | undefined) ?? draft.word_url ?? null,
     }, statusAfter)
     if (!workflowCheck.ok) return NextResponse.json({ error: workflowCheck.error }, { status: 422 })
 
@@ -187,14 +223,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const merged = { ...draft, ...updates }
-    const finalHeaderMetadata: DocxHeaderMetadata = {
-      documentCode: parentDoc.document_code,
-      title: merged.title as string | null | undefined,
-      revision: merged.revision as string | null | undefined,
-      effectiveDate: merged.effective_date as string | null | undefined,
-      reviewDate: merged.expiry_date as string | null | undefined,
-      editDate: merged.edit_date as string | null | undefined,
-    }
+    const finalHeaderMetadata: DocxHeaderMetadata = buildDocxHeaderMetadata({
+      ...merged,
+      document_code: parentDoc.document_code,
+    })
     const patchedKeys = new Set<string>()
     const patchDraftTarget = async (
       key: string | null | undefined,
@@ -202,9 +234,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       sizeField: 'file_size' | 'word_size',
       draftOwnsFile: boolean,
     ) => {
-      if (!draftOwnsFile || !key || patchedKeys.has(key) || !isDocxFile({ name: name ?? '' })) return
+      if (!draftOwnsFile || !key || patchedKeys.has(key)) return
+      const fileRef = { name: name ?? '' }
+      const canPatchDocx = isDocxFile(fileRef)
+      const canPatchXlsx = isXlsxFile(fileRef)
+      if (!canPatchDocx && !canPatchXlsx) return
       patchedKeys.add(key)
-      const patchedSize = await patchR2DocxObject(key, finalHeaderMetadata)
+      const patchedSize = canPatchDocx
+        ? await patchR2DocxObject(key, finalHeaderMetadata)
+        : await patchR2XlsxObject(key, finalHeaderMetadata)
       if (patchedSize !== null) {
         updates[sizeField] = patchedSize
         merged[sizeField] = patchedSize
@@ -235,6 +273,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         .select()
         .single()
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      if (nextStatus && nextStatus !== draft.status) {
+        supabaseAdmin.from('audit_log').insert({
+          action: 'document.revision_draft_status',
+          user_id: actor.id,
+          target: parentDoc.document_code ?? id,
+          detail: `Rev. ${data.revision} · ${draft.status} → ${data.status}`,
+        }).then(undefined, () => {})
+      }
       return NextResponse.json(data)
     }
 
@@ -255,18 +301,31 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         approved_by: current.approver_name ?? null,
         file_url: current.file_url ?? '',
         file_name: current.file_name ?? '',
+        file_size: current.file_size ?? null,
+        mime_type: current.mime_type ?? null,
         source_pdf_url: current.source_pdf_url ?? null,
         source_pdf_name: current.source_pdf_name ?? null,
+        source_pdf_size: current.source_pdf_size ?? null,
+        source_pdf_mime_type: current.source_pdf_mime_type ?? null,
         word_url: current.word_url ?? null,
         word_name: current.word_name ?? null,
+        word_size: current.word_size ?? null,
         edit_date: current.edit_date ?? null,
         effective_date: current.effective_date ?? null,
         approved_at: current.approved_at ?? null,
         published_at: current.published_at ?? null,
         approved_by_id: current.approved_by_id ?? null,
         published_by_id: current.published_by_id ?? null,
+        reviewer_id: current.reviewer_id ?? null,
+        approver_id: current.approver_id ?? null,
+        audience_text: current.audience_text ?? null,
         cover_template_version: current.cover_template_version ?? null,
+        cover_generated_at: current.cover_generated_at ?? null,
         cover_metadata: current.cover_metadata ?? null,
+        imported_current_at: current.imported_current_at ?? null,
+        imported_current_by: current.imported_current_by ?? null,
+        imported_current_note: current.imported_current_note ?? null,
+        legacy_cover_included: current.legacy_cover_included ?? false,
         uploaded_by: actor.id,
       })
 
@@ -307,6 +366,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       cover_template_version: null,
       cover_generated_at: null,
       cover_metadata: null,
+      imported_current_at: null,
+      imported_current_by: null,
+      imported_current_note: null,
+      legacy_cover_included: false,
     }
 
     if (isCoverRequiredType(merged.type)) {

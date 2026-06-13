@@ -9,6 +9,7 @@ export type DocumentFileFields = {
   status?: string | null
   file_url?: string | null
   source_pdf_url?: string | null
+  word_url?: string | null
 }
 
 export const DOCUMENT_TYPE_LABELS: Record<string, { th: string; en: string }> = {
@@ -54,8 +55,12 @@ export function isSourceFile(file: File | { name?: string } | null | undefined) 
 
 export function canMoveToStatus(doc: DocumentFileFields, nextStatus: string) {
   if (!isReviewOrLater(nextStatus)) return { ok: true as const }
+  if (doc.status === 'Published' && nextStatus === 'Published') return { ok: true as const }
 
   if (isCoverRequiredType(doc.type)) {
+    if (!doc.word_url) {
+      return { ok: false as const, error: 'QP/WI ต้องมีไฟล์ต้นฉบับ Word/Excel ก่อนส่งเข้า Review' }
+    }
     if (!doc.source_pdf_url && !doc.file_url) {
       return { ok: false as const, error: 'QP/WI ต้องมีไฟล์ PDF ก่อนส่งเข้า Review' }
     }
@@ -90,6 +95,19 @@ export function isPublishedMetadataField(field: string) {
     'audience_text',
     'visibility',
     'description',
+  ].includes(field)
+}
+
+export function isPublishedCoverMetadataField(field: string) {
+  return [
+    'title',
+    'department',
+    'owner_name',
+    'reviewer_name',
+    'approver_name',
+    'reviewer_id',
+    'approver_id',
+    'audience_text',
   ].includes(field)
 }
 

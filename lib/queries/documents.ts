@@ -4,6 +4,7 @@ import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import type { Document } from '@/lib/supabase/types'
+import { resolveDocumentSortColumn } from '@/lib/documents/sort'
 
 export interface DocumentFilters {
   type?:       string
@@ -15,20 +16,6 @@ export interface DocumentFilters {
   sortDir?:    'asc' | 'desc'
 }
 
-const ALLOWED_SORT = new Set([
-  'document_code',
-  'title',
-  'type',
-  'status',
-  'visibility',
-  'department',
-  'revision',
-  'effective_date',
-  'review_date',
-  'created_at',
-  'updated_at',
-])
-
 export async function getDocuments(
   _supabase: SupabaseClient,
   filters: DocumentFilters = {}
@@ -38,7 +25,7 @@ export async function getDocuments(
     page = 1, pageSize = 50,
     sortBy = 'updated_at', sortDir = 'desc',
   } = filters
-  const sortColumn = ALLOWED_SORT.has(sortBy) ? sortBy : 'updated_at'
+  const sortColumn = resolveDocumentSortColumn(sortBy)
 
   let query = supabaseAdmin
     .from('documents')

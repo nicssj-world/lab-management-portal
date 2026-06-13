@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import { allowedTransitions } from '@/lib/documents/transitions'
+import { canMoveToStatus } from '@/lib/documents/workflow'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
 
@@ -96,6 +97,7 @@ interface RevisionRow {
   file_url: string | null
   file_name: string | null
   created_at: string
+  history_source?: string | null
 }
 
 // ── Toast ─────────────────────────────────────────────────────
@@ -255,22 +257,35 @@ function StatusModal({ doc, userRole, docRole, onClose, onSaved, toast }: {
               </div>
             )}
             {transitions.map((next) => (
-              <button
-                key={next}
-                disabled={saving}
-                onClick={() => handleChange(next)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)',
-                  background: 'var(--card)', cursor: saving ? 'not-allowed' : 'pointer',
-                  fontFamily: 'inherit', transition: 'all .12s', opacity: saving ? 0.6 : 1,
-                }}
-                onMouseEnter={(e) => { if (!saving) e.currentTarget.style.borderColor = 'var(--primary)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)' }}
-              >
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{STATUS_LABEL[next]}</span>
-                <Badge color={STATUS_COLOR[next]} size="sm">{next}</Badge>
-              </button>
+              (() => {
+                const workflowCheck = canMoveToStatus({
+                  type: doc.type,
+                  status: doc.status,
+                  file_url: doc.file_url,
+                  source_pdf_url: doc.source_pdf_url,
+                  word_url: doc.word_url,
+                }, next)
+                const disabled = saving || !workflowCheck.ok
+                return (
+                  <button
+                    key={next}
+                    disabled={disabled}
+                    title={!workflowCheck.ok ? workflowCheck.error : undefined}
+                    onClick={() => workflowCheck.ok && handleChange(next)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)',
+                      background: 'var(--card)', cursor: disabled ? 'not-allowed' : 'pointer',
+                      fontFamily: 'inherit', transition: 'all .12s', opacity: disabled ? 0.55 : 1,
+                    }}
+                    onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.borderColor = 'var(--primary)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)' }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{STATUS_LABEL[next]}</span>
+                    <Badge color={STATUS_COLOR[next]} size="sm">{next}</Badge>
+                  </button>
+                )
+              })()
             ))}
           </div>
         )}
@@ -753,10 +768,20 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
 }) {
 
   const canDownloadRevision = userRole === 'Admin' || docRole === 'Document Controller'
+  const allowRevisionHistoryBackfill = canAdd && (userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller')
+  const allowCurrentRevisionRollback = false
 
   const [revisions, setRevisions] = useState<RevisionRow[]>([])
   const [activeDraft, setActiveDraft] = useState<DocumentRevisionDraft | null>(null)
   const [draftBusy, setDraftBusy] = useState(false)
+  const [draftFormOpen, setDraftFormOpen] = useState(false)
+  const [draftTitle, setDraftTitle] = useState('')
+  const [draftDepartment, setDraftDepartment] = useState('')
+  const [draftOwnerName, setDraftOwnerName] = useState('')
+  const [draftReviewerName, setDraftReviewerName] = useState('')
+  const [draftApproverName, setDraftApproverName] = useState('')
+  const [draftEffectiveDate, setDraftEffectiveDate] = useState('')
+  const [draftDescription, setDraftDescription] = useState('')
   const [loading, setLoading]     = useState(true)
   const [deletingCurrent, setDeletingCurrent] = useState(false)
 
@@ -962,6 +987,20 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     loadActiveDraft()
   }, [doc.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!activeDraft) {
+      setDraftFormOpen(false)
+      return
+    }
+    setDraftTitle(activeDraft.title ?? '')
+    setDraftDepartment(activeDraft.department ?? '')
+    setDraftOwnerName(activeDraft.owner_name ?? '')
+    setDraftReviewerName(activeDraft.reviewer_name ?? '')
+    setDraftApproverName(activeDraft.approver_name ?? '')
+    setDraftEffectiveDate(activeDraft.effective_date ?? '')
+    setDraftDescription(activeDraft.description ?? '')
+  }, [activeDraft])
+
   async function handleCreateDraftFromPanel() {
     setDraftBusy(true)
     try {
@@ -991,6 +1030,41 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     } finally {
       if (draftOfficialRef.current) draftOfficialRef.current.value = ''
       if (draftSourceRef.current) draftSourceRef.current.value = ''
+      setDraftBusy(false)
+    }
+  }
+
+  async function handleSaveDraftMetadata() {
+    if (!activeDraft) return
+    if (!draftTitle.trim()) {
+      alert('กรุณากรอกชื่อเอกสารของ working revision')
+      return
+    }
+    setDraftBusy(true)
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: draftTitle.trim(),
+          department: draftDepartment.trim() || undefined,
+          owner_name: draftOwnerName.trim() || undefined,
+          reviewer_name: draftReviewerName.trim() || undefined,
+          approver_name: draftApproverName.trim() || undefined,
+          effective_date: draftEffectiveDate || undefined,
+          description: draftDescription.trim() || undefined,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        alert(json.error ?? 'บันทึก metadata ของ working revision ไม่สำเร็จ')
+        return
+      }
+      setActiveDraft(json)
+      setDraftFormOpen(false)
+    } catch {
+      alert('บันทึก metadata ของ working revision ไม่สำเร็จ')
+    } finally {
       setDraftBusy(false)
     }
   }
@@ -1115,7 +1189,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                 </Badge>
               </div>
               <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                {canAdd && revisions.length > 0 && (
+                {allowCurrentRevisionRollback && canAdd && revisions.length > 0 && (
                   <button
                     onClick={handleDeleteCurrentRevision}
                     disabled={deletingCurrent}
@@ -1181,6 +1255,14 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                     <Badge color={STATUS_COLOR[activeDraft.status as DocStatus] ?? 'amber'} size="sm">{activeDraft.status}</Badge>
                   </div>
                   <button
+                    onClick={() => setDraftFormOpen((v) => !v)}
+                    disabled={draftBusy}
+                    title="แก้ไขรายละเอียด working revision"
+                    style={{ height: 28, padding: '0 9px', borderRadius: 7, border: '1px solid rgba(180,83,9,.25)', background: 'var(--card)', cursor: draftBusy ? 'not-allowed' : 'pointer', color: '#92400E', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', marginRight: 6 }}
+                  >
+                    Metadata
+                  </button>
+                  <button
                     onClick={handleCancelDraft}
                     disabled={draftBusy}
                     title="ยกเลิก working revision"
@@ -1189,6 +1271,71 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                     ×
                   </button>
                 </div>
+
+                {draftFormOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, background: 'rgba(255,255,255,.62)', border: '1px solid rgba(180,83,9,.18)' }}>
+                    <input
+                      value={draftTitle}
+                      onChange={(e) => setDraftTitle(e.target.value)}
+                      placeholder="ชื่อเอกสาร"
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 12.5, fontFamily: 'inherit' }}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <input
+                        value={draftDepartment}
+                        onChange={(e) => setDraftDepartment(e.target.value)}
+                        placeholder="แผนก"
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 12.5, fontFamily: 'inherit' }}
+                      />
+                      <input
+                        type="date"
+                        value={draftEffectiveDate}
+                        onChange={(e) => setDraftEffectiveDate(e.target.value)}
+                        title="วันที่บังคับใช้"
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 12.5, fontFamily: 'inherit' }}
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                      <input
+                        value={draftOwnerName}
+                        onChange={(e) => setDraftOwnerName(e.target.value)}
+                        placeholder="ผู้จัดทำ"
+                        style={{ minWidth: 0, padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 12.5, fontFamily: 'inherit' }}
+                      />
+                      <input
+                        value={draftReviewerName}
+                        onChange={(e) => setDraftReviewerName(e.target.value)}
+                        placeholder="ผู้รับรอง"
+                        style={{ minWidth: 0, padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 12.5, fontFamily: 'inherit' }}
+                      />
+                      <input
+                        value={draftApproverName}
+                        onChange={(e) => setDraftApproverName(e.target.value)}
+                        placeholder="ผู้อนุมัติ"
+                        style={{ minWidth: 0, padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 12.5, fontFamily: 'inherit' }}
+                      />
+                    </div>
+                    <textarea
+                      value={draftDescription}
+                      onChange={(e) => setDraftDescription(e.target.value)}
+                      placeholder="รายละเอียดการแก้ไข"
+                      rows={2}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 12.5, fontFamily: 'inherit', resize: 'vertical' }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                        วันที่แก้ไข/ทบทวนจะอัปเดตจากวันที่อัปโหลด Word/Excel
+                      </div>
+                      <button
+                        onClick={handleSaveDraftMetadata}
+                        disabled={draftBusy}
+                        style={{ padding: '6px 12px', borderRadius: 7, border: 'none', background: '#B45309', color: '#fff', cursor: draftBusy ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                      >
+                        บันทึก
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <button
@@ -1222,6 +1369,12 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                 </div>
 
                 <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.45 }}>
+                  {activeDraft.title && <div>Title: {activeDraft.title}</div>}
+                  {activeDraft.owner_name && <div>Owner: {activeDraft.owner_name}</div>}
+                  {activeDraft.reviewer_name && <div>Reviewer: {activeDraft.reviewer_name}</div>}
+                  {activeDraft.approver_name && <div>Approver: {activeDraft.approver_name}</div>}
+                  {activeDraft.edit_date && <div>Edit/Review date: {fmtDate(activeDraft.edit_date)}</div>}
+                  {activeDraft.effective_date && <div>Effective date: {fmtDate(activeDraft.effective_date)}</div>}
                   {activeDraft.word_name && <div>Source: {activeDraft.word_name}</div>}
                   {activeDraft.file_name && <div>Official: {activeDraft.file_name}</div>}
                   {!activeDraft.word_name && !activeDraft.file_name && <div>อัปโหลดไฟล์ต้นฉบับก่อน แล้วให้ DC อัปโหลดไฟล์ทางการ/PDF เนื้อหา</div>}
@@ -1230,18 +1383,30 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                 {(() => {
                   const transitions = allowedTransitions(activeDraft.status as DocStatus, userRole, docRole)
                   if (transitions.length === 0) return null
+                  const transitionCheck = (next: DocStatus) => canMoveToStatus({
+                    type: activeDraft.type,
+                    status: activeDraft.status,
+                    file_url: activeDraft.file_url,
+                    source_pdf_url: activeDraft.source_pdf_url,
+                    word_url: activeDraft.word_url,
+                  }, next)
                   return (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {transitions.map((next) => (
+                      {transitions.map((next) => {
+                        const check = transitionCheck(next)
+                        const disabled = draftBusy || !check.ok
+                        return (
                         <button
                           key={next}
-                          onClick={() => handleDraftStatus(next)}
-                          disabled={draftBusy}
-                          style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: draftBusy ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--ink)', fontFamily: 'inherit' }}
+                          onClick={() => check.ok && handleDraftStatus(next)}
+                          disabled={disabled}
+                          title={!check.ok ? check.error : undefined}
+                          style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--ink)', fontFamily: 'inherit', opacity: disabled ? 0.55 : 1 }}
                         >
                           → {next}
                         </button>
-                      ))}
+                        )
+                      })}
                     </div>
                   )
                 })()}
@@ -1258,7 +1423,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
               เวอร์ชันก่อนหน้า ({revisions.length})
             </div>
-            {canAdd && (
+            {allowRevisionHistoryBackfill && (
               <button
                 onClick={() => setShowForm(f => !f)}
                 style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: showForm ? 'var(--surface-2)' : 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--muted)', fontFamily: 'inherit' }}
@@ -1270,7 +1435,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
           </div>
 
           {/* Add form */}
-          {showForm && (
+          {allowRevisionHistoryBackfill && showForm && (
             <div style={{ padding: 14, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {formError && (
                 <div style={{ fontSize: 12, color: '#B91C1C', padding: '6px 10px', borderRadius: 6, background: 'rgba(220,38,38,.07)', border: '1px solid rgba(220,38,38,.2)' }}>{formError}</div>
@@ -1313,10 +1478,10 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                   </button>
                   {formFile && (
                     <span style={{ fontSize: 11.5, color: 'var(--ink)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {formFile.name}
+                      {formFile?.name}
                     </span>
                   )}
-                  <input ref={formFileRef} type="file" accept=".pdf,.docx,.xlsx" style={{ display: 'none' }}
+                  <input ref={formFileRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" style={{ display: 'none' }}
                     onChange={e => { const f = e.target.files?.[0]; if (f) setFormFile(f); e.target.value = '' }} />
                 </div>
               </div>
@@ -1409,7 +1574,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                           </span>
                         </div>
                         <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                          {canAdd && (
+                          {allowRevisionHistoryBackfill && rev.history_source === 'backfill' && (
                             <>
                               <button onClick={() => startEdit(rev)} title="แก้ไข"
                                 style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}

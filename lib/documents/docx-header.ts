@@ -45,8 +45,8 @@ const HEADER_FIELDS: HeaderField[] = [
   },
   {
     key: 'editDate',
-    canonicalLabel: 'วันที่แก้ไขเอกสาร',
-    labels: [/วันที่\s*แก้ไข\s*เอกสาร/i, /Edit\s*Date/i],
+    canonicalLabel: 'วันที่แก้ไข/ทบทวนเอกสาร',
+    labels: [/วันที่\s*แก้ไข\s*\/?\s*ทบทวน\s*เอกสาร/i, /วันที่\s*แก้ไข\s*เอกสาร/i, /Edit\s*\/?\s*Review\s*Date/i, /Edit\s*Date/i],
   },
   {
     key: 'title',

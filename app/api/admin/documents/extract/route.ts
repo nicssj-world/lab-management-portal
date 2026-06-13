@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { extractDocxHeaderMetadata } from '@/lib/documents/docx-header'
+import { extractXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
 
 const EXTRACT_MAX_BYTES = 20 * 1024 * 1024
 
@@ -55,7 +56,8 @@ export async function POST(req: NextRequest) {
       const wb = XLSX.read(buffer, { type: 'buffer' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][]
-      text = rows.flat().filter(Boolean).join('\n')
+      const header = await extractXlsxHeaderMetadata(buffer)
+      text = [header.text, rows.flat().filter(Boolean).join('\n')].filter(Boolean).join('\n\n')
     } else {
       return NextResponse.json({ error: 'ไม่รองรับไฟล์ประเภทนี้' }, { status: 422 })
     }

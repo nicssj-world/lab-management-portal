@@ -32,7 +32,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { data: current, error: currentErr } = await supabaseAdmin
     .from('documents')
-    .select('id, title, type, department, description, status, visibility, revision, owner_name, reviewer_name, approver_name, reviewer_id, approver_id, audience_text, word_url, word_name, word_size, expiry_date')
+    .select('id, title, type, department, description, status, visibility, revision, owner_name, reviewer_name, approver_name, reviewer_id, approver_id, audience_text')
     .eq('id', id)
     .is('deleted_at', null)
     .single()
@@ -69,10 +69,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
       reviewer_id: current.reviewer_id,
       approver_id: current.approver_id,
       audience_text: current.audience_text,
-      word_url: current.word_url,
-      word_name: current.word_name,
-      word_size: current.word_size,
-      expiry_date: current.expiry_date,
       created_by: actor.id,
     })
     .select()

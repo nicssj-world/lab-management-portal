@@ -36,10 +36,18 @@ alter table documents
   add column if not exists audience_text text,
   add column if not exists cover_template_version text,
   add column if not exists cover_generated_at timestamptz,
-  add column if not exists cover_metadata jsonb;
+  add column if not exists cover_metadata jsonb,
+  add column if not exists imported_current_at timestamptz,
+  add column if not exists imported_current_by uuid references profiles(id) on delete set null,
+  add column if not exists imported_current_note text,
+  add column if not exists legacy_cover_included boolean not null default false;
 
 -- Revision history archive expansion ---------------------------------------
 alter table document_revisions
+  alter column file_url drop not null,
+  alter column file_name drop not null,
+  add column if not exists revised_by text,
+  add column if not exists approved_by text,
   add column if not exists file_size bigint,
   add column if not exists mime_type text,
   add column if not exists source_pdf_url text,
@@ -60,7 +68,13 @@ alter table document_revisions
   add column if not exists audience_text text,
   add column if not exists cover_template_version text,
   add column if not exists cover_generated_at timestamptz,
-  add column if not exists cover_metadata jsonb;
+  add column if not exists cover_metadata jsonb,
+  add column if not exists imported_current_at timestamptz,
+  add column if not exists imported_current_by uuid references profiles(id) on delete set null,
+  add column if not exists imported_current_note text,
+  add column if not exists legacy_cover_included boolean not null default false,
+  add column if not exists history_source text not null default 'workflow'
+    check (history_source in ('workflow','backfill','legacy'));
 
 -- Working revisions ---------------------------------------------------------
 create table if not exists document_revision_drafts (
@@ -127,3 +141,31 @@ alter table document_revision_drafts enable row level security;
 drop policy if exists "Service role full access document_revision_drafts" on document_revision_drafts;
 create policy "Service role full access document_revision_drafts"
   on document_revision_drafts for all to service_role using (true) with check (true);
+
+-- Status transition history ------------------------------------------------
+create table if not exists document_status_history (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references documents(id) on delete cascade,
+  from_status text check (from_status is null or from_status in ('Draft','Review','Approved','Published','Obsolete')),
+  to_status text not null check (to_status in ('Draft','Review','Approved','Published','Obsolete')),
+  changed_by uuid references profiles(id) on delete set null,
+  changed_at timestamptz not null default now()
+);
+
+create index if not exists idx_document_status_history_document_id_changed_at
+  on document_status_history(document_id, changed_at);
+
+alter table document_status_history enable row level security;
+
+drop policy if exists "authenticated read document status history" on document_status_history;
+create policy "authenticated read document status history"
+  on document_status_history for select to authenticated using (true);
+
+insert into document_status_history (document_id, from_status, to_status, changed_at)
+select d.id, null, d.status, coalesce(d.created_at, now())
+from documents d
+where not exists (
+  select 1
+  from document_status_history h
+  where h.document_id = d.id
+);

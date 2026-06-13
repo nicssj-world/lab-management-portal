@@ -29,6 +29,11 @@ export async function POST(req: NextRequest) {
   }
 
   await ensureSignatureBucket()
+  const { data: currentProfile } = await supabaseAdmin
+    .from('profiles')
+    .select('signature_url')
+    .eq('id', actor.id)
+    .single()
   const path = `${actor.id}.${ext}`
   const buffer = Buffer.from(await file.arrayBuffer())
   const { error: uploadErr } = await supabaseAdmin.storage
@@ -44,6 +49,9 @@ export async function POST(req: NextRequest) {
     .eq('id', actor.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (currentProfile?.signature_url && currentProfile.signature_url !== path) {
+    supabaseAdmin.storage.from(SIGNATURE_BUCKET).remove([currentProfile.signature_url]).then(undefined, () => {})
+  }
 
   supabaseAdmin.from('audit_log').insert({
     action: 'document_profile.signature_upload_self',
