@@ -220,8 +220,8 @@ export async function generateQualityCoverPdf(input: CoverInput) {
   y = drawFullWidthRows(page, identityRows, x, y, width, mm(14), fonts)
 
   const dateRows: [string, string][] = [
-    ['วันที่แก้ไขเอกสาร', fmtThaiDate(input.editDate)],
-    ['(Edit Date)', fmtEnDate(input.editDate)],
+    ['วันที่แก้ไข/ทบทวนเอกสาร', fmtThaiDate(input.editDate)],
+    ['(Edit/Review Date)', fmtEnDate(input.editDate)],
     ['วันที่อนุมัติเอกสาร', fmtThaiDate(input.approvedAt)],
     ['(Approved Date)', fmtEnDate(input.approvedAt)],
     ['วันที่บังคับใช้เอกสาร', fmtThaiDate(input.effectiveDate)],

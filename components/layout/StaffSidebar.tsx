@@ -31,6 +31,7 @@ const NAV_ITEMS: (NavItem | null)[] = [
   { href: '/staff/risk',       th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',  icon: 'shield',   resource: 'ความเสี่ยง / Rejection' },
   { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building', resource: 'สัญญา' },
   { href: '/staff/equipment',  th: 'ทะเบียนเครื่องมือ',   en: 'Equipment',      icon: 'microscope', resource: 'ทะเบียนเครื่องมือ' },
+  { href: '/staff/personnel',  th: 'บุคลากร',             en: 'MT-CBH Staff',   icon: 'shieldCheck', resource: 'บุคลากร' },
   null,
   { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',    resource: 'KPI' },
   { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker',   resource: 'Workload' },

@@ -15,6 +15,7 @@ INSERT INTO role_permissions (role, resource, granted) VALUES
 ('Manager', 'Workload:edit',               true),
 ('Manager', 'KPI:view',                    true),
 ('Manager', 'TAT (นำเข้า):edit',           true),
+('Manager', 'บุคลากร:edit',                true),
 
 -- Medical Technologist: view on most, none on ข่าวสาร and User Management
 ('Medical Technologist', 'รายการตรวจ:view',             true),
@@ -24,6 +25,7 @@ INSERT INTO role_permissions (role, resource, granted) VALUES
 ('Medical Technologist', 'Workload:view',               true),
 ('Medical Technologist', 'KPI:view',                    true),
 ('Medical Technologist', 'TAT (นำเข้า):view',           true),
+('Medical Technologist', 'บุคลากร:view',                true),
 
 -- Assistant: same as Medical Technologist
 ('Assistant', 'รายการตรวจ:view',             true),
@@ -32,4 +34,5 @@ INSERT INTO role_permissions (role, resource, granted) VALUES
 ('Assistant', 'สัญญา:view',                  true),
 ('Assistant', 'Workload:view',               true),
 ('Assistant', 'KPI:view',                    true),
-('Assistant', 'TAT (นำเข้า):view',           true);
+('Assistant', 'TAT (นำเข้า):view',           true),
+('Assistant', 'บุคลากร:view',                true);

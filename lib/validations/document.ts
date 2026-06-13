@@ -26,6 +26,10 @@ export const DocumentSchema = z.object({
   obsolete_date:   z.string().optional(),
   obsolete_reason: z.string().optional(),
   audience_text:   z.string().optional(),
+  imported_current_at:   z.string().optional(),
+  imported_current_note: z.string().optional(),
+  legacy_cover_included: z.boolean().optional(),
+  import_mode: z.enum(['current']).optional(),
 })
 
 export type DocumentInput = z.infer<typeof DocumentSchema>

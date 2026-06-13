@@ -16,6 +16,7 @@ export const RESOURCES = [
   'TAT',
   'User Management',
   'Activity Log',
+  'บุคลากร',
 ] as const
 
 export type ResourceKey = typeof RESOURCES[number]

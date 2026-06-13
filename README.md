@@ -1,4 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lab Management Portal
+
+Internal laboratory management portal for Chonburi Hospital. The app includes the staff portal, quality document control, test catalog, equipment, workload, TAT, risk/rejection, contracts, user/role management, and personnel modules.
+
+## Quality Document Workflow V2
+
+Run the schema script before using the workflow in a real environment:
+
+```sql
+-- Supabase Dashboard -> SQL Editor
+scripts/quality-document-workflow-v2.sql
+```
+
+### Core Rules
+
+- `file_url` means the current official file.
+- Word/Excel source uploads must never auto-promote into `file_url`.
+- `Published` documents must not be edited directly for file/status/revision/date changes.
+- Published content changes must create a working revision draft.
+- Admin and Document Controller can correct small Published metadata. For QP/WI, cover-impacting metadata changes regenerate the final PDF and create an audit log.
+
+### QP/WI Flow
+
+- QP and WI use the full workflow with system cover page and signature stamp.
+- Reviewer creates Draft and can upload Word/Excel source only.
+- Normal Draft workflow can be used for Rev.00 or Rev.>0 when the document should start from DOCX/XLSX and pass Draft -> Review -> Approved -> Published.
+- Edit/Review date is the date the source draft is uploaded.
+- DC uploads the content PDF without cover.
+- For QP/WI Rev.>0 in normal Draft workflow, the later PDF upload must be the content PDF without the old cover; the system will generate the new cover at Published.
+- Draft can move to Review only after the required source/content files are present.
+- Review -> Approved sets approval date and approver.
+- Approved -> Published sets effective/published date, generates the cover page, merges cover + content PDF, and stores the generated final PDF as `file_url`.
+
+### Legacy Import Flow Rev.>0
+
+- Use this for existing controlled documents imported from Google Drive or an old system.
+- Admin and Document Controller can choose "import current" when creating a document.
+- The imported current revision is created as `Published` immediately and must include the current official file.
+- QP/WI imports must use the existing official PDF that already has the old cover page.
+- Imported QP/WI records set `legacy_cover_included = true`; the system does not regenerate or merge a new cover for that imported current file.
+- Add old revision rows afterward as retroactive history/backfill.
+- The next content change must use the working revision workflow; the next Published revision will use the new system cover.
+- When a legacy-covered document is revised later, the old covered PDF is archived with the previous revision, imported-current markers are cleared from the current document, and the newly Published revision becomes a system-generated cover + content PDF.
+
+### Form/Record/Reference/Card File Flow
+
+- Non-cover document types still use status/revision/history.
+- They do not generate a cover page and do not stamp signatures into files.
+- Their official file can be PDF/DOC/DOCX/XLS/XLSX according to document type needs.
+
+### Working Revisions
+
+- Published documents are updated through "Create Revision" only.
+- The system creates one active working revision draft per current document.
+- When the draft is Published, the previous current version is archived into `document_revisions`, then the draft is promoted to the current document.
+- Legacy revision rollback and direct workflow-history edits are intentionally blocked.
+
+### Retroactive Revision History
+
+- Old documents migrated from other systems can have retroactive history entries.
+- Only Admin and Document Controller can add retroactive history.
+- Retroactive entries use `document_revisions.history_source = 'backfill'`.
+- Backfilled entries do not change the current document, `file_url`, status, or revision.
+- Backfilled entries can be edited/deleted by Admin/Document Controller; workflow-generated revision history remains immutable.
 
 ## Getting Started
 

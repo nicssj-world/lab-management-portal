@@ -35,6 +35,10 @@ function fmtSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+function todayIsoDate(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
 function requiresCover(type: string): boolean {
   return type === 'QP' || type === 'WI'
 }
@@ -133,6 +137,16 @@ function revisionNumber(v: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function revisionOrderNumber(v: string): number | null {
+  const trimmed = v.trim()
+  const direct = Number(trimmed)
+  if (Number.isFinite(direct)) return direct
+  const m = trimmed.match(/(\d+)/)
+  if (!m) return null
+  const parsed = Number(m[1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function stripThaiTitle(name: string): string {
   return name
     .replace(/^(นาย|นางสาว|นาง|ดร\.|นพ\.|พญ\.|ภก\.|ภญ\.)\s*/g, '')
@@ -214,6 +228,8 @@ function parseExtractedText(text: string) {
     'Issue\\s+Date',
     'วันที่แก้ไขเอกสาร',
     'Edit\\s+Date',
+    'วันที่ทบทวน',
+    'Review\\s+Date',
     'วันที่บังคับใช้เอกสาร',
     'Effective\\s+Date',
     'หน้า\\/จำนวนหน้า',
@@ -252,14 +268,19 @@ function parseExtractedText(text: string) {
     ownerName:     ownerRaw   ? stripThaiTitle(ownerRaw)   : undefined,
     reviewerName:  reviewRaw  ? stripThaiTitle(reviewRaw)  : undefined,
     approverName:  approveRaw ? stripThaiTitle(approveRaw) : undefined,
-    expiryDate:    findDateNear(text, ['วันที่แก้ไขเอกสาร', 'Edit Date', 'Edit\xa0Date']),
+    editDate:      findDateNear(text, ['วันที่แก้ไขเอกสาร', 'วันที่แก้ไข', 'Edit Date', 'Edit\xa0Date'])
+      ?? findDateNear(text, ['วันที่ทบทวน', 'Review Date', 'Review\xa0Date']),
     effectiveDate: findDateNear(text, ['วันที่บังคับใช้เอกสาร', 'วันที่บังคับใช้', 'Effective Date', 'Effective\xa0Date']),
   }
 }
 
-export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: Props) {
+export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, onDuplicateOpen }: Props) {
   const isEdit = !!doc
-  const availableStatuses = isEdit ? [doc?.status ?? 'Draft'] : ['Draft']
+  const isPublishedCorrection = isEdit && doc?.status === 'Published'
+  const canImportCurrent = !isEdit && (userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller')
+  const [createMode, setCreateMode] = useState<'draft' | 'import-current'>('draft')
+  const isImportCurrent = canImportCurrent && createMode === 'import-current'
+  const availableStatuses = isEdit ? [doc?.status ?? 'Draft'] : (isImportCurrent ? ['Published'] : ['Draft'])
   const fileRef = useRef<HTMLInputElement>(null)
   const wordFileRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -280,13 +301,15 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
   const [documentCode, setDocumentCode] = useState(doc?.document_code ?? '')
   const [type, setType]                 = useState<string>(doc?.type ?? 'QP')
   const [visibility, setVisibility]     = useState<string>(doc?.visibility ?? 'Internal')
-  const [status, setStatus]             = useState<string>(doc?.status ?? 'Draft')
+  const status                          = isImportCurrent ? 'Published' : (doc?.status ?? 'Draft')
   const [revision, setRevision]         = useState(doc?.revision ?? '1')
+  const [legacyCoverIncluded, setLegacyCoverIncluded] = useState(true)
+  const [importedCurrentNote, setImportedCurrentNote] = useState('')
   const [ownerName, setOwnerName]       = useState(doc?.owner_name ?? '')
   const [reviewerName, setReviewerName] = useState(doc?.reviewer_name ?? '')
   const [approverName, setApproverName] = useState(doc?.approver_name ?? '')
   const [department, setDepartment]     = useState(doc?.department ?? '')
-  const [expiryDate, setExpiryDate]     = useState(doc?.expiry_date ?? '')
+  const [editDate, setEditDate]         = useState(doc?.edit_date ?? doc?.expiry_date ?? '')
   const [effectiveDate, setEffectiveDate] = useState(doc?.effective_date ?? '')
   const [obsoleteDate, setObsoleteDate] = useState(doc?.obsolete_date ?? '')
   const [obsoleteReason, setObsoleteReason] = useState(doc?.obsolete_reason ?? '')
@@ -303,6 +326,12 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
   const revisionWarning = revisionMustIncrease
     ? `Revision ใหม่ต้องเป็นตัวเลขที่สูงกว่า Rev. ${originalRevision}`
     : ''
+  const lockedInputStyle: React.CSSProperties = {
+    ...inputStyle,
+    opacity: 0.72,
+    cursor: 'not-allowed',
+    background: 'var(--surface-2)',
+  }
 
   const handleFile = useCallback((file: File) => {
     if (!isOfficialFileAllowed(type, file)) {
@@ -330,6 +359,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
     }
     setError('')
     setSelectedWordFile(file)
+    setEditDate((current) => current || todayIsoDate())
   }, [])
 
   const onDragEnter = useCallback((e: React.DragEvent) => {
@@ -401,9 +431,9 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
         if (parent.owner_name)     setOwnerName(parent.owner_name)
         if (parent.reviewer_name)  setReviewerName(parent.reviewer_name)
         if (parent.approver_name)  setApproverName(parent.approver_name)
-        if (parent.expiry_date)    setExpiryDate(parent.expiry_date)
+        if (parent.edit_date || parent.expiry_date) setEditDate(parent.edit_date ?? parent.expiry_date ?? '')
         if (parent.effective_date) setEffectiveDate(parent.effective_date)
-        if (parent.owner_name || parent.reviewer_name || parent.approver_name || parent.expiry_date || parent.effective_date) {
+        if (parent.owner_name || parent.reviewer_name || parent.approver_name || parent.edit_date || parent.expiry_date || parent.effective_date) {
           setCoverDetailsOpen(true)
         }
       } else {
@@ -426,9 +456,9 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
         if (fields.ownerName)     setOwnerName(fields.ownerName)
         if (fields.reviewerName)  setReviewerName(fields.reviewerName)
         if (fields.approverName)  setApproverName(fields.approverName)
-        if (fields.expiryDate)    setExpiryDate(fields.expiryDate)
+        if (fields.editDate)      setEditDate(fields.editDate)
         if (fields.effectiveDate) setEffectiveDate(fields.effectiveDate)
-        if (fields.ownerName || fields.reviewerName || fields.approverName || fields.expiryDate || fields.effectiveDate) {
+        if (fields.ownerName || fields.reviewerName || fields.approverName || fields.editDate || fields.effectiveDate) {
           setCoverDetailsOpen(true)
         }
       }
@@ -440,7 +470,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
   }
 
   async function extractFromWordFile() {
-    if (!selectedWordFile || !selectedWordFile.name.match(/\.docx$/i)) return
+    if (!selectedWordFile || !selectedWordFile.name.match(/\.(docx|xlsx)$/i)) return
     setExtractingWord(true)
     setError('')
     try {
@@ -463,9 +493,9 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
       if (fields.ownerName)    setOwnerName(fields.ownerName)
       if (fields.reviewerName) setReviewerName(fields.reviewerName)
       if (fields.approverName) setApproverName(fields.approverName)
-      if (fields.expiryDate)   setExpiryDate(fields.expiryDate)
+      if (fields.editDate)     setEditDate(fields.editDate)
       if (fields.effectiveDate) setEffectiveDate(fields.effectiveDate)
-      if (fields.ownerName || fields.reviewerName || fields.approverName || fields.expiryDate || fields.effectiveDate) {
+      if (fields.ownerName || fields.reviewerName || fields.approverName || fields.editDate || fields.effectiveDate) {
         setCoverDetailsOpen(true)
       }
     } catch (err) {
@@ -479,36 +509,59 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
     setDuplicateDocumentId(null)
     if (!title.trim())         { setError('กรุณากรอกชื่อเอกสาร'); return }
     if (!documentCode.trim())  { setError('กรุณากรอกรหัสเอกสาร'); return }
-    if (!isEdit && !selectedFile && !selectedWordFile && status !== 'Draft') { setError('กรุณาเลือกไฟล์'); return }
     if (revisionWarning) { setError(revisionWarning); return }
+    if (isImportCurrent) {
+      const revNo = revisionOrderNumber(revision)
+      if (revNo === null || revNo <= 0) {
+        setError('โหมดนำเข้าเอกสารเดิมต้องระบุ Revision ปัจจุบันมากกว่า 0 เช่น 1 หรือ Rev.01')
+        return
+      }
+      if (!selectedFile) {
+        setError('โหมดนำเข้าเอกสารเดิมต้องแนบไฟล์ทางการ Rev ปัจจุบัน')
+        return
+      }
+      if (requiresCover(type) && !legacyCoverIncluded) {
+        setError('QP/WI ที่นำเข้า Rev.>0 ต้องใช้ PDF ทางการเดิมที่มีหน้าปกอยู่แล้ว หากไม่มีหน้าปกให้สร้าง Draft ปกติ')
+        return
+      }
+    }
 
     setSaving(true)
     setError('')
 
     try {
-      const meta: Record<string, string | undefined> = {
+      const baseMetadata = {
         title:          title.trim(),
-        document_code:  documentCode.trim().toUpperCase(),
-        type,
         visibility,
-        status,
-        revision:       revision.trim() || '1',
         owner_name:     ownerName.trim()     || undefined,
         reviewer_name:  reviewerName.trim()  || undefined,
         approver_name:  approverName.trim()  || undefined,
         department:     department.trim()    || undefined,
-        expiry_date:    expiryDate           || undefined,
-        effective_date: effectiveDate        || undefined,
-        obsolete_date:  isObsolete ? (obsoleteDate || new Date().toISOString().split('T')[0]) : undefined,
-        obsolete_reason: isObsolete ? (obsoleteReason.trim() || undefined) : undefined,
         description:    description.trim() || undefined,
       }
+      const meta: Record<string, string | boolean | undefined> = isPublishedCorrection
+        ? baseMetadata
+        : {
+            ...baseMetadata,
+            document_code:  documentCode.trim().toUpperCase(),
+            type,
+            revision:       revision.trim() || '1',
+            status:         isImportCurrent ? 'Published' : 'Draft',
+            edit_date:      editDate             || undefined,
+            expiry_date:    editDate             || undefined,
+            effective_date: effectiveDate        || undefined,
+            obsolete_date:  isObsolete ? (obsoleteDate || new Date().toISOString().split('T')[0]) : undefined,
+            obsolete_reason: isObsolete ? (obsoleteReason.trim() || undefined) : undefined,
+            import_mode:    isImportCurrent ? 'current' : undefined,
+            legacy_cover_included: isImportCurrent && requiresCover(type) ? legacyCoverIncluded : false,
+            imported_current_note: isImportCurrent ? (importedCurrentNote.trim() || undefined) : undefined,
+          }
 
       let res: Response
 
       if (isEdit) {
         const editUrl = `/api/admin/documents/${doc!.id}${!saveRevision ? '?skipRevision=1' : ''}`
-        if (selectedFile || selectedWordFile) {
+        if (!isPublishedCorrection && (selectedFile || selectedWordFile)) {
           const fd = new FormData()
           if (selectedFile) fd.append('file', selectedFile)
           if (selectedWordFile) fd.append('word_file', selectedWordFile)
@@ -553,7 +606,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
         {/* Header */}
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>
-            {isEdit ? 'แก้ไขเอกสาร' : 'สร้าง Draft เอกสาร'}
+            {isEdit ? 'แก้ไขเอกสาร' : (isImportCurrent ? 'นำเข้าเอกสารเดิม Rev.>0' : 'สร้าง Draft เอกสาร')}
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'flex' }}>
             <Icon name="x" size={16} />
@@ -577,6 +630,33 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
             </div>
           )}
 
+          {!isEdit && canImportCurrent && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>โหมดการสร้างเอกสาร</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setCreateMode('draft')}
+                  style={{ padding: '9px 10px', borderRadius: 8, border: `1px solid ${!isImportCurrent ? 'var(--primary)' : 'var(--border)'}`, background: !isImportCurrent ? 'var(--primary-soft)' : 'var(--card)', color: !isImportCurrent ? 'var(--primary)' : 'var(--ink)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700 }}
+                >
+                  สร้าง Draft ตาม workflow ปกติ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateMode('import-current')}
+                  style={{ padding: '9px 10px', borderRadius: 8, border: `1px solid ${isImportCurrent ? '#D97706' : 'var(--border)'}`, background: isImportCurrent ? 'rgba(217,119,6,.10)' : 'var(--card)', color: isImportCurrent ? '#B45309' : 'var(--ink)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700 }}
+                >
+                  นำเข้าเอกสารเดิม Rev.&gt;0
+                </button>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.45 }}>
+                {isImportCurrent
+                  ? 'ใช้กับเอกสารเก่าที่ใช้งานอยู่แล้วในระบบเดิม ระบบจะสร้างเป็น Published ทันที แล้วค่อยเพิ่มประวัติย้อนหลัง'
+                  : 'ใช้กับเอกสารที่ต้องเริ่มจาก Word/Excel และผ่าน Draft → Review → Approved → Published ใช้ได้ทั้ง Rev.00 และ Rev.>0'}
+              </div>
+            </div>
+          )}
+
           {/* ชื่อเอกสาร */}
           <div>
             <label style={labelStyle}>ชื่อเอกสาร<RequiredMark /></label>
@@ -589,6 +669,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
               <label style={labelStyle}>รหัสเอกสาร<RequiredMark /></label>
               <input
                 value={documentCode}
+                disabled={isPublishedCorrection}
                 onChange={(e) => {
                   const val = e.target.value.toUpperCase()
                   setDocumentCode(val)
@@ -597,13 +678,18 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
                   const docType = typeFromCode(val)
                   if (docType) setType(docType)
                 }}
-                style={inputStyle}
+                style={isPublishedCorrection ? lockedInputStyle : inputStyle}
                 placeholder="เช่น QM-LAB-01"
               />
             </div>
             <div>
               <label style={labelStyle}>ประเภทเอกสาร<RequiredMark /></label>
-              <select value={type} onChange={(e) => setType(e.target.value)} style={{ ...inputStyle }}>
+              <select
+                value={type}
+                disabled={isPublishedCorrection}
+                onChange={(e) => setType(e.target.value)}
+                style={isPublishedCorrection ? lockedInputStyle : { ...inputStyle }}
+              >
                 {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
@@ -619,7 +705,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
             </div>
             <div>
               <label style={labelStyle}>สถานะ</label>
-              <select value={status} onChange={(e) => setStatus(e.target.value)} disabled style={{ ...inputStyle, opacity: 0.72, cursor: 'not-allowed' }}>
+              <select value={status} disabled style={{ ...inputStyle, opacity: 0.72, cursor: 'not-allowed' }}>
                 {availableStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
@@ -631,6 +717,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
               <label style={labelStyle}>Revision</label>
               <input
                 value={revision}
+                disabled={isPublishedCorrection}
                 onChange={(e) => {
                   setRevision(e.target.value)
                   if (error === revisionWarning) setError('')
@@ -644,7 +731,9 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
                 style={{
                   ...inputStyle,
                   borderColor: revisionWarning ? 'rgba(220,38,38,.55)' : 'var(--border)',
-                  background: revisionWarning ? 'rgba(220,38,38,.04)' : 'var(--card)',
+                  background: isPublishedCorrection ? 'var(--surface-2)' : revisionWarning ? 'rgba(220,38,38,.04)' : 'var(--card)',
+                  opacity: isPublishedCorrection ? 0.72 : 1,
+                  cursor: isPublishedCorrection ? 'not-allowed' : 'text',
                 }}
                 placeholder="1"
               />
@@ -719,12 +808,24 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
-                    <label style={labelStyle}>วันที่ทบทวน</label>
-                    <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} style={inputStyle} />
+                    <label style={labelStyle}>วันที่แก้ไข/ทบทวน</label>
+                    <input
+                      type="date"
+                      value={editDate}
+                      disabled={isPublishedCorrection}
+                      onChange={(e) => setEditDate(e.target.value)}
+                      style={isPublishedCorrection ? lockedInputStyle : inputStyle}
+                    />
                   </div>
                   <div>
                     <label style={labelStyle}>วันที่มีผลบังคับใช้</label>
-                    <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} style={inputStyle} />
+                    <input
+                      type="date"
+                      value={effectiveDate}
+                      disabled={isPublishedCorrection}
+                      onChange={(e) => setEffectiveDate(e.target.value)}
+                      style={isPublishedCorrection ? lockedInputStyle : inputStyle}
+                    />
                   </div>
                 </div>
               </div>
@@ -732,15 +833,17 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
           </div>
 
           {/* File Upload — 2 zones side by side */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {!isPublishedCorrection && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {/* Official file zone */}
             <div style={{ minWidth: 0 }}>
               <label style={labelStyle}>
-                {requiresCover(type)
+                {isImportCurrent
+                  ? (requiresCover(type) ? 'PDF ทางการเดิม Rev ปัจจุบัน (มีหน้าปก)' : 'ไฟล์ทางการ Rev ปัจจุบัน')
+                  : requiresCover(type)
                   ? (isEdit ? 'เปลี่ยน PDF เนื้อหา (ไม่มีหน้าปก)' : 'PDF เนื้อหา (ไม่มีหน้าปก)')
                   : (isEdit ? 'เปลี่ยนไฟล์ทางการ' : 'ไฟล์ทางการ')
                 }
-                {!isEdit && status !== 'Draft' && <RequiredMark />}
+                {isImportCurrent && <RequiredMark />}
               </label>
               <div
                 onDragEnter={onDragEnter}
@@ -795,7 +898,7 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
             {/* Word / Excel zone */}
             <div style={{ minWidth: 0 }}>
               <label style={labelStyle}>
-                {isEdit ? 'เปลี่ยนไฟล์ต้นฉบับ Word/Excel' : 'ไฟล์ต้นฉบับ Word/Excel'}
+                {isImportCurrent ? 'ไฟล์ต้นฉบับ Word/Excel (ถ้ามี)' : (isEdit ? 'เปลี่ยนไฟล์ต้นฉบับ Word/Excel' : 'ไฟล์ต้นฉบับ Word/Excel')}
               </label>
               {isEdit && doc?.word_name && !selectedWordFile && (
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -837,9 +940,9 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleWordFile(f); e.target.value = '' }} />
               </div>
               <div style={{ marginTop: 5, fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
-                รองรับ DOC, DOCX, XLSX; ดึงข้อมูลอัตโนมัติได้เฉพาะไฟล์ DOCX
+                รองรับ DOC, DOCX, XLSX; ดึงข้อมูลอัตโนมัติได้จาก DOCX/XLSX
               </div>
-              {selectedWordFile && selectedWordFile.name.match(/\.docx$/i) && (
+              {selectedWordFile && selectedWordFile.name.match(/\.(docx|xlsx)$/i) && (
                 <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
                   <button type="button" onClick={extractFromWordFile} disabled={extractingWord}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, cursor: extractingWord ? 'default' : 'pointer', padding: '4px 10px', borderRadius: 6, fontFamily: 'inherit', background: 'transparent', border: `1px solid ${extractingWord ? 'var(--border)' : '#059669'}`, color: extractingWord ? 'var(--muted)' : '#059669', transition: 'all .15s' }}>
@@ -848,7 +951,37 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
                 </div>
               )}
             </div>
-          </div>
+          </div>}
+
+          {!isPublishedCorrection && isImportCurrent && requiresCover(type) && (
+            <div style={{ border: '1px solid rgba(217,119,6,.25)', borderRadius: 10, background: 'rgba(217,119,6,.07)', padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12.5, color: '#92400E', lineHeight: 1.45, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={legacyCoverIncluded}
+                  onChange={(e) => setLegacyCoverIncluded(e.target.checked)}
+                  style={{ marginTop: 3, accentColor: '#D97706' }}
+                />
+                <span>
+                  ไฟล์ QP/WI นี้เป็น PDF ทางการเดิมที่มีหน้าปกอยู่แล้ว
+                  <br />
+                  <span style={{ color: 'var(--muted)' }}>ระบบจะไม่สร้างหน้าปกซ้ำให้เอกสารนำเข้า Rev ปัจจุบันนี้ การสร้างหน้าปกระบบจะเริ่มใน revision ถัดไป</span>
+                </span>
+              </label>
+            </div>
+          )}
+
+          {!isPublishedCorrection && isImportCurrent && (
+            <div>
+              <label style={labelStyle}>หมายเหตุการนำเข้า</label>
+              <input
+                value={importedCurrentNote}
+                onChange={(e) => setImportedCurrentNote(e.target.value)}
+                style={inputStyle}
+                placeholder="เช่น นำเข้า Rev ปัจจุบันจาก Google Drive / ระบบเดิม"
+              />
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -871,7 +1004,9 @@ export function DocumentUploadModal({ doc, onClose, onSaved, onDuplicateOpen }: 
             ยกเลิก
           </button>
           <Button variant="primary" onClick={handleSave} disabled={saving || !!revisionWarning}>
-            {saving ? (isEdit ? 'กำลังบันทึก...' : 'กำลังสร้าง Draft...') : (isEdit ? 'บันทึกการแก้ไข' : 'บันทึกเป็น Draft')}
+            {saving
+              ? (isEdit ? 'กำลังบันทึก...' : (isImportCurrent ? 'กำลังนำเข้า...' : 'กำลังสร้าง Draft...'))
+              : (isEdit ? 'บันทึกการแก้ไข' : (isImportCurrent ? 'นำเข้าเป็น Published' : 'บันทึกเป็น Draft'))}
           </Button>
         </div>
       </div>

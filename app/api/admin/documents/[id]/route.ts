@@ -12,19 +12,22 @@ import {
   canMoveToStatus,
   isCoverRequiredType,
   isPdfFile,
+  isPublishedCoverMetadataField,
   isPublishedMetadataField,
   isSourceFile,
 } from '@/lib/documents/workflow'
 import { buildPublishedPdfFields } from '@/lib/documents/publish'
 import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/lib/documents/docx-header'
+import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
+import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
 
 async function getActor() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data } = await supabaseAdmin
-    .from('profiles').select('id, role, doc_role').eq('id', user.id).single()
-  return data as { id: string; role: string; doc_role: string | null } | null
+    .from('profiles').select('id, role, doc_role, name').eq('id', user.id).single()
+  return data as { id: string; role: string; doc_role: string | null; name: string | null } | null
 }
 
 function toMsg(err: unknown) {
@@ -36,8 +39,12 @@ async function uploadDocumentObject(file: File, type: string, prefix = '', heade
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${prefix}${safeName}`
   let body: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer())
-  if (headerMetadata && isDocxFile(file)) {
-    body = await patchDocxHeaderMetadata(body, headerMetadata)
+  if (headerMetadata) {
+    if (isDocxFile(file)) {
+      body = await patchDocxHeaderMetadata(body, headerMetadata)
+    } else if (isXlsxFile(file)) {
+      body = await patchXlsxHeaderMetadata(body, headerMetadata)
+    }
   }
   await r2.send(new PutObjectCommand({
     Bucket: R2_BUCKET,
@@ -75,8 +82,26 @@ async function patchR2DocxObject(key: string, metadata: DocxHeaderMetadata) {
   return patched.length
 }
 
+async function patchR2XlsxObject(key: string, metadata: DocxHeaderMetadata) {
+  const original = await getObjectBuffer(key)
+  const patched = await patchXlsxHeaderMetadata(original, metadata)
+  if (patched.equals(original)) return null
+  await r2.send(new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    Body: patched,
+    ContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  }))
+  return patched.length
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().split('T')[0]
+}
+
 const DOC_UPLOAD_ROLES = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer']
 const DOC_DELETE_ROLES = ['Laboratory Director', 'Document Controller']
+const STATUS_CHANGE_INPUT_FIELDS = new Set(['status', 'obsolete_reason'])
 
 async function canUploadDocument(role: string, docRole: string | null) {
   if (role === 'Admin') return true
@@ -161,7 +186,7 @@ export async function PATCH(
     // Always fetch current doc (needed for revision history + R2 key)
     const { data: current } = await supabaseAdmin
       .from('documents')
-      .select('file_url, file_name, file_size, mime_type, source_pdf_url, source_pdf_name, source_pdf_size, source_pdf_mime_type, word_url, word_name, word_size, revision, type, description, owner_name, approver_name, status, document_code, title, edit_date, effective_date, expiry_date, approved_at, published_at')
+      .select('file_url, file_name, file_size, mime_type, source_pdf_url, source_pdf_name, source_pdf_size, source_pdf_mime_type, word_url, word_name, word_size, revision, type, description, owner_name, approver_name, status, document_code, title, edit_date, effective_date, expiry_date, approved_at, published_at, approved_by_id, published_by_id, reviewer_id, approver_id, audience_text, cover_template_version, cover_generated_at, cover_metadata, imported_current_at, imported_current_by, imported_current_note, legacy_cover_included')
       .eq('id', id)
       .single()
 
@@ -170,6 +195,13 @@ export async function PATCH(
     // Enforce status transition rules server-side
     const requestedStatus = updates.status as string | undefined
     if (requestedStatus && current?.status && requestedStatus !== current.status) {
+      if (newFile || (newWordFile && newWordFile.size > 0)) {
+        return NextResponse.json({ error: 'การเปลี่ยนสถานะต้องทำแยกจากการอัปโหลดไฟล์' }, { status: 422 })
+      }
+      const invalidStatusField = Object.keys(updates).find((key) => !STATUS_CHANGE_INPUT_FIELDS.has(key))
+      if (invalidStatusField) {
+        return NextResponse.json({ error: `การเปลี่ยนสถานะไม่อนุญาตให้แก้ field ${invalidStatusField} พร้อมกัน` }, { status: 422 })
+      }
       const allowed = allowedTransitions(current.status as DocStatus, actor.role, actor.doc_role ?? undefined)
       if (!allowed.includes(requestedStatus as DocStatus)) {
         return NextResponse.json({ error: 'สถานะที่เปลี่ยนไม่ได้รับอนุญาต' }, { status: 403 })
@@ -196,10 +228,16 @@ export async function PATCH(
         'word_name',
         'word_size',
         'edit_date',
+        'expiry_date',
+        'effective_date',
         'approved_at',
         'published_at',
         'approved_by_id',
         'published_by_id',
+        'imported_current_at',
+        'imported_current_by',
+        'imported_current_note',
+        'legacy_cover_included',
       ])
 
       if (requestedKeys.some((key) => protectedKeys.has(key))) {
@@ -218,6 +256,17 @@ export async function PATCH(
       }
     }
 
+    const sourceUploadDate = newWordFile && newWordFile.size > 0 ? todayIsoDate() : undefined
+    if (sourceUploadDate) {
+      updates.edit_date = sourceUploadDate
+      updates.expiry_date = sourceUploadDate
+      if (!updates.owner_name && !current.owner_name && actor.name) updates.owner_name = actor.name
+    } else if (typeof updates.edit_date === 'string' && !updates.expiry_date) {
+      updates.expiry_date = updates.edit_date
+    } else if (typeof updates.expiry_date === 'string' && !updates.edit_date) {
+      updates.edit_date = updates.expiry_date
+    }
+
     if (newFile) {
       if (newFile.size > 50 * 1024 * 1024) {
         return NextResponse.json({ error: 'ไฟล์ใหญ่เกิน 50 MB' }, { status: 422 })
@@ -231,14 +280,10 @@ export async function PATCH(
         return NextResponse.json({ error: 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
       }
 
-      const headerMetadata: DocxHeaderMetadata = {
-        documentCode: (updates.document_code as string | undefined) ?? current.document_code,
-        title: (updates.title as string | undefined) ?? current.title,
-        revision: (updates.revision as string | undefined) ?? current.revision,
-        effectiveDate: (updates.effective_date as string | undefined) ?? current.effective_date,
-        reviewDate: (updates.expiry_date as string | undefined) ?? current.expiry_date,
-        editDate: (updates.edit_date as string | undefined) ?? current.edit_date,
-      }
+      const headerMetadata: DocxHeaderMetadata = buildDocxHeaderMetadata({
+        ...current,
+        ...updates,
+      })
       const uploaded = await uploadDocumentObject(newFile, type, '', headerMetadata)
       const r2Key = uploaded.key
 
@@ -262,20 +307,15 @@ export async function PATCH(
         return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
       }
       const type = (updates.type as string) ?? current?.type ?? 'others'
-      const headerMetadata: DocxHeaderMetadata = {
-        documentCode: (updates.document_code as string | undefined) ?? current.document_code,
-        title: (updates.title as string | undefined) ?? current.title,
-        revision: (updates.revision as string | undefined) ?? current.revision,
-        effectiveDate: (updates.effective_date as string | undefined) ?? current.effective_date,
-        reviewDate: (updates.expiry_date as string | undefined) ?? current.expiry_date,
-        editDate: (updates.edit_date as string | undefined) ?? current.edit_date,
-      }
+      const headerMetadata: DocxHeaderMetadata = buildDocxHeaderMetadata({
+        ...current,
+        ...updates,
+      })
       const uploaded = await uploadDocumentObject(newWordFile, type, 'source-', headerMetadata)
       const wordKey = uploaded.key
       updates.word_url  = wordKey
       updates.word_name = newWordFile.name
       updates.word_size = uploaded.size
-      if (!updates.edit_date) updates.edit_date = new Date().toISOString().split('T')[0]
     }
 
     // Save old revision to history when revision number changes OR file is replaced
@@ -290,6 +330,31 @@ export async function PATCH(
         approved_by:     current.approver_name ?? null,
         file_url:        current.file_url,
         file_name:       current.file_name ?? '',
+        file_size:       current.file_size ?? null,
+        mime_type:       current.mime_type ?? null,
+        source_pdf_url:  current.source_pdf_url ?? null,
+        source_pdf_name: current.source_pdf_name ?? null,
+        source_pdf_size: current.source_pdf_size ?? null,
+        source_pdf_mime_type: current.source_pdf_mime_type ?? null,
+        word_url:        current.word_url ?? null,
+        word_name:       current.word_name ?? null,
+        word_size:       current.word_size ?? null,
+        edit_date:       current.edit_date ?? null,
+        effective_date:  current.effective_date ?? null,
+        approved_at:     current.approved_at ?? null,
+        published_at:    current.published_at ?? null,
+        approved_by_id:  current.approved_by_id ?? null,
+        published_by_id: current.published_by_id ?? null,
+        reviewer_id:     current.reviewer_id ?? null,
+        approver_id:     current.approver_id ?? null,
+        audience_text:   current.audience_text ?? null,
+        cover_template_version: current.cover_template_version ?? null,
+        cover_generated_at: current.cover_generated_at ?? null,
+        cover_metadata:  current.cover_metadata ?? null,
+        imported_current_at: current.imported_current_at ?? null,
+        imported_current_by: current.imported_current_by ?? null,
+        imported_current_note: current.imported_current_note ?? null,
+        legacy_cover_included: current.legacy_cover_included ?? false,
         uploaded_by:     actor.id,
       }).then(undefined, () => {})
     }
@@ -313,6 +378,7 @@ export async function PATCH(
         status: current.status,
         file_url: (updates.file_url as string | null | undefined) ?? current.file_url ?? null,
         source_pdf_url: (updates.source_pdf_url as string | null | undefined) ?? current.source_pdf_url ?? null,
+        word_url: (updates.word_url as string | null | undefined) ?? current.word_url ?? null,
       },
       targetStatus,
     )
@@ -336,19 +402,21 @@ export async function PATCH(
     }
 
     if (current.status !== 'Published') {
-      const finalHeaderMetadata: DocxHeaderMetadata = {
-        documentCode: (updates.document_code as string | undefined) ?? current.document_code,
-        title: (updates.title as string | undefined) ?? current.title,
-        revision: (updates.revision as string | undefined) ?? current.revision,
-        effectiveDate: (updates.effective_date as string | undefined) ?? current.effective_date,
-        reviewDate: (updates.expiry_date as string | undefined) ?? current.expiry_date,
-        editDate: (updates.edit_date as string | undefined) ?? current.edit_date,
-      }
+      const finalHeaderMetadata: DocxHeaderMetadata = buildDocxHeaderMetadata({
+        ...current,
+        ...updates,
+      })
       const patchedKeys = new Set<string>()
       const patchTarget = async (key: string | null | undefined, name: string | null | undefined, sizeField: 'file_size' | 'word_size') => {
-        if (!key || patchedKeys.has(key) || !isDocxFile({ name: name ?? '' })) return
+        if (!key || patchedKeys.has(key)) return
+        const fileRef = { name: name ?? '' }
+        const canPatchDocx = isDocxFile(fileRef)
+        const canPatchXlsx = isXlsxFile(fileRef)
+        if (!canPatchDocx && !canPatchXlsx) return
         patchedKeys.add(key)
-        const patchedSize = await patchR2DocxObject(key, finalHeaderMetadata)
+        const patchedSize = canPatchDocx
+          ? await patchR2DocxObject(key, finalHeaderMetadata)
+          : await patchR2XlsxObject(key, finalHeaderMetadata)
         if (patchedSize !== null) updates[sizeField] = patchedSize
       }
 
@@ -364,11 +432,16 @@ export async function PATCH(
       )
     }
 
-    const publishedMetadataChanged = current.status === 'Published'
+    const publishedMetadataFields = Object.keys(updates).filter((key) => isPublishedMetadataField(key))
+    const isPublishedCorrectionRequest = current.status === 'Published'
       && targetStatus === 'Published'
-      && Object.keys(updates).some((key) => isPublishedMetadataField(key))
+      && publishedMetadataFields.length > 0
+    const publishedCoverMetadataChanged = current.status === 'Published'
+      && targetStatus === 'Published'
+      && publishedMetadataFields.some((key) => isPublishedCoverMetadataField(key))
     const shouldBuildFinalPdf = isCoverRequiredType(targetType)
-      && (newStatus === 'Published' || publishedMetadataChanged)
+      && !current.legacy_cover_included
+      && (newStatus === 'Published' || publishedCoverMetadataChanged)
     if (shouldBuildFinalPdf) {
       const finalFields = await buildPublishedPdfFields(id, {
         ...updates,
@@ -410,6 +483,8 @@ export async function PATCH(
     const auditAction = (typeof newStatus === 'string' && newStatus !== current?.status) ? 'document.status_change' : 'document.edit'
     const auditDetail = auditAction === 'document.status_change'
       ? `${doc.document_code} · ${current?.status ?? '?'} → ${newStatus}`
+      : isPublishedCorrectionRequest
+        ? `${doc.document_code} · published metadata: ${publishedMetadataFields.join(', ')}`
       : `${doc.document_code} · ${doc.title}`
     supabaseAdmin.from('audit_log').insert({
       action: auditAction,
@@ -423,7 +498,9 @@ export async function PATCH(
         action: current.status === 'Published' ? 'document.cover_regenerate' : 'document.cover_generate',
         user_id: actor.id,
         target: doc.document_code,
-        detail: `${doc.document_code} · ${doc.title}`,
+        detail: current.status === 'Published'
+          ? `${doc.document_code} · cover metadata: ${publishedMetadataFields.filter(isPublishedCoverMetadataField).join(', ')}`
+          : `${doc.document_code} · ${doc.title}`,
       }).then(undefined, () => {})
     }
 

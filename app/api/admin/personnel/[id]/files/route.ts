@@ -1,0 +1,45 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { requireResource } from '@/lib/auth/guards'
+import {
+  MAX_STAFF_FILE_BYTES,
+  staffFileExtForType,
+  uploadStaffFile,
+  createStaffSignedUrl,
+} from '@/lib/personnel/storage'
+import { toMsg } from '@/lib/personnel/crud'
+
+// GET a fresh signed URL for an attachment (?path=...)
+export async function GET(req: NextRequest) {
+  const { actor, response } = await requireResource('บุคลากร', 'view')
+  if (!actor) return response
+  const path = req.nextUrl.searchParams.get('path')
+  if (!path) return NextResponse.json({ error: 'missing path' }, { status: 422 })
+  return NextResponse.json({ signed_url: await createStaffSignedUrl(path) })
+}
+
+// POST a file (cert / license / training evidence). Returns the storage path;
+// the client then saves it in the record's file_url / evidence_url field.
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { actor, response } = await requireResource('บุคลากร', 'edit')
+  if (!actor) return response
+  const { id } = await ctx.params
+  try {
+    const form = await req.formData()
+    const file = form.get('file')
+    if (!(file instanceof File) || file.size === 0) {
+      return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
+    }
+    const ext = staffFileExtForType(file.type)
+    if (!ext) return NextResponse.json({ error: 'รองรับเฉพาะ PDF, PNG, JPG หรือ WebP' }, { status: 415 })
+    if (file.size > MAX_STAFF_FILE_BYTES) {
+      return NextResponse.json({ error: 'ไฟล์ต้องไม่เกิน 10 MB' }, { status: 413 })
+    }
+    const kind = (form.get('kind') as string | null) ?? 'doc'
+    const safeKind = kind.replace(/[^a-z0-9_-]/gi, '')
+    const path = `${id}/${safeKind}/${Date.now()}.${ext}`
+    await uploadStaffFile(path, file)
+    return NextResponse.json({ file_url: path, signed_url: await createStaffSignedUrl(path) }, { status: 201 })
+  } catch (err) {
+    return NextResponse.json({ error: toMsg(err) }, { status: 500 })
+  }
+}

@@ -105,7 +105,7 @@ async function loadSignature(profile: PersonProfile | null) {
 async function coverPerson(profile: PersonProfile | null, fallbackName: string | null | undefined): Promise<CoverPerson> {
   const signature = await loadSignature(profile)
   return {
-    name: profile?.name ?? fallbackName ?? '',
+    name: fallbackName ?? profile?.name ?? '',
     position: profile?.document_position ?? rolePositionFallback(profile),
     signatureBytes: signature.bytes,
     signatureType: signature.type,
@@ -127,7 +127,7 @@ export async function buildPublishedPdfFields(documentId: string, overrides: Rec
   if (!contentKey) throw new Error('QP/WI ต้องมี PDF เนื้อหาก่อน Published')
   const contentBytes = await getObjectBytes(contentKey)
 
-  const ownerProfile = await loadProfile(doc.owner_id) || await loadProfileByName(doc.owner_name)
+  const ownerProfile = await loadProfileByName(doc.owner_name) || (!doc.owner_name ? await loadProfile(doc.owner_id) : null)
   const reviewerProfile = await loadProfile(doc.reviewer_id) || await loadProfileByName(doc.reviewer_name)
   const approverProfile = await loadProfile(doc.approver_id || doc.approved_by_id) || await loadProfileByName(doc.approver_name)
   const [owner, reviewer, approver] = await Promise.all([

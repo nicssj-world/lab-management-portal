@@ -21,6 +21,162 @@ export interface Profile {
   signature_updated_at: string | null
   signature_updated_by: string | null
   created_at: string
+  // personnel-record fields (added by scripts/personnel-module.sql)
+  position_title?: string | null
+  unit?: string | null
+  employment_type?: string | null
+  start_date?: string | null
+  education?: string | null
+  mt_license_no?: string | null
+  mt_license_expiry?: string | null
+}
+
+// ── MT-CBH Staff / Personnel module (ISO 15189 clause 6.2) ──
+export interface StaffCertification {
+  id: string
+  profile_id: string
+  cert_type: string | null
+  cert_name: string
+  cert_no: string | null
+  issuer: string | null
+  issue_date: string | null
+  expiry_date: string | null
+  file_url: string | null
+  status: 'active' | 'expired' | 'revoked'
+  remark: string | null
+  created_at: string
+  created_by: string | null
+  deleted_at: string | null
+}
+
+export interface StaffTraining {
+  id: string
+  profile_id: string
+  topic: string
+  training_date: string | null
+  hours: number | null
+  provider: string | null
+  location: string | null
+  training_type: 'internal' | 'external' | 'CME' | 'CPD' | null
+  cpd_credits: number | null
+  evidence_url: string | null
+  notes: string | null
+  created_at: string
+  created_by: string | null
+  deleted_at: string | null
+}
+
+export interface StaffCompetency {
+  id: string
+  profile_id: string
+  assessment_type: 'initial' | 'periodic'
+  area: string | null
+  test_id: number | null
+  assessor_id: string | null
+  assessment_date: string | null
+  next_due_date: string | null
+  score_knowledge: number | null
+  score_safety: number | null
+  score_practical: number | null
+  result: 'pass' | 'fail' | null
+  evidence_url: string | null
+  notes: string | null
+  created_at: string
+  created_by: string | null
+  deleted_at: string | null
+  // peer-assessment sign-off (Phase 2)
+  assessor_signoff?: boolean
+  assessor_signoff_at?: string | null
+  assessee_ack?: boolean
+  assessee_ack_at?: string | null
+}
+
+export interface StaffJd {
+  id: string
+  profile_id: string
+  jd_code: string | null
+  position_title: string | null
+  version: string
+  content: string | null
+  file_url: string | null
+  effective_date: string | null
+  approver_id: string | null
+  approver_name: string | null
+  status: 'Draft' | 'Active' | 'Obsolete'
+  created_at: string
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface StaffJdRevision {
+  id: string
+  jd_id: string
+  version: string
+  content: string | null
+  file_url: string | null
+  effective_date: string | null
+  approver_name: string | null
+  revision_note: string | null
+  revised_by: string | null
+  created_at: string
+}
+
+export interface StaffTrainingPlan {
+  id: string
+  profile_id: string
+  year: number
+  topic: string
+  source: string | null
+  status: 'planned' | 'done' | 'cancelled'
+  training_id: string | null
+  notes: string | null
+  created_at: string
+  created_by: string | null
+  deleted_at: string | null
+}
+
+export interface OrientationItem { key: string; label: string; done: boolean }
+export interface StaffOrientation {
+  id: string
+  profile_id: string
+  items: OrientationItem[]
+  completed_by: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface OrgChartNode {
+  id: string
+  parent_id: string | null
+  title: string
+  person_name: string | null
+  profile_id: string | null
+  photo_url: string | null
+  node_type: 'leadership' | 'position' | 'unit'
+  is_linkable: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface StaffAuthorization {
+  id: string
+  profile_id: string
+  test_id: number | null
+  category: string | null
+  role_type: 'performer' | 'reporter' | 'approver' | 'authorized_signatory' | 'deputy'
+  competency_id: string | null
+  authorized_date: string | null
+  authorized_by: string | null
+  status: 'active' | 'revoked'
+  revoked_date: string | null
+  notes: string | null
+  created_at: string
+  created_by: string | null
+  deleted_at: string | null
 }
 
 export interface Category {
@@ -146,6 +302,10 @@ export interface Document {
   cover_template_version: string | null
   cover_generated_at: string | null
   cover_metadata: Record<string, unknown> | null
+  imported_current_at: string | null
+  imported_current_by: string | null
+  imported_current_note: string | null
+  legacy_cover_included: boolean
   expiry_date: string | null
   obsolete_date: string | null
   obsolete_reason: string | null
@@ -160,8 +320,13 @@ export interface DocumentRevision {
   document_id: string
   revision_number: string
   revision_note: string | null
-  file_url: string
-  file_name: string
+  revised_by: string | null
+  approved_by: string | null
+  file_url: string | null
+  file_name: string | null
+  file_size: number | null
+  mime_type: string | null
+  history_source?: string | null
   uploaded_by: string | null
   created_at: string
 }
