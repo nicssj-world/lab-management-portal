@@ -5,9 +5,8 @@ import { getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 import {
   createSignatureSignedUrl,
   ensureSignatureBucket,
-  MAX_SIGNATURE_BYTES,
+  normalizeSignatureImage,
   SIGNATURE_BUCKET,
-  signatureExtForType,
 } from '@/lib/signatures'
 
 type Params = { params: Promise<{ id: string }> }
@@ -22,10 +21,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   const file = form.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'No file' }, { status: 422 })
 
-  const ext = signatureExtForType(file.type)
-  if (!ext) return NextResponse.json({ error: 'รองรับเฉพาะ PNG, JPG หรือ WebP' }, { status: 415 })
-  if (file.size > MAX_SIGNATURE_BYTES) {
-    return NextResponse.json({ error: 'ไฟล์ลายเซ็นต้องไม่เกิน 2 MB' }, { status: 413 })
+  let normalized: Awaited<ReturnType<typeof normalizeSignatureImage>>
+  try {
+    normalized = await normalizeSignatureImage(file)
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'ไฟล์ลายเซ็นไม่ถูกต้อง' }, { status: 422 })
   }
 
   await ensureSignatureBucket()
@@ -34,10 +34,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     .select('signature_url')
     .eq('id', id)
     .single()
-  const path = `${id}.${ext}`
+  const path = `${id}.${normalized.ext}`
   const { error: uploadErr } = await supabaseAdmin.storage
     .from(SIGNATURE_BUCKET)
-    .upload(path, Buffer.from(await file.arrayBuffer()), { contentType: file.type, upsert: true })
+    .upload(path, normalized.buffer, { contentType: normalized.contentType, upsert: true })
 
   if (uploadErr) return NextResponse.json({ error: uploadErr.message }, { status: 500 })
 
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     action: 'document_profile.signature_upload',
     user_id: actor.id,
     target: id,
-    detail: path,
+    detail: `${path} · normalized ${normalized.width}x${normalized.height}`,
   }).then(undefined, () => {})
 
   return NextResponse.json({ signature_url: path, signature_signed_url: await createSignatureSignedUrl(path) })

@@ -28,7 +28,7 @@ export async function GET(
 
   const { data: doc, error } = await supabaseAdmin
     .from('documents')
-    .select('id, visibility, file_url, document_code, title, file_name')
+    .select('id, visibility, file_url, document_code, title, file_name, file_size, mime_type, type, status, revision, effective_date, cover_metadata')
     .in('document_code', candidates)
     .is('deleted_at', null)
     .maybeSingle()

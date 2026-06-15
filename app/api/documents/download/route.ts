@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   // Verify document is public before serving
   const { data: doc } = await supabaseAdmin
     .from('documents')
-    .select('id, visibility, document_code, title, file_name')
+    .select('id, visibility, file_url, document_code, title, file_name, file_size, mime_type, type, status, revision, effective_date, cover_metadata')
     .eq('file_url', path)
     .maybeSingle()
 

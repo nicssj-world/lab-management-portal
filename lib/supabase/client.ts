@@ -14,8 +14,21 @@ export function isInvalidRefreshTokenError(reason: unknown) {
   return message.includes('Invalid Refresh Token') || message.includes('Refresh Token Not Found')
 }
 
+export function isRecoverableAuthSessionError(reason: unknown) {
+  const message = reason instanceof Error
+    ? reason.message
+    : typeof reason === 'object' && reason && 'message' in reason
+      ? String((reason as { message?: unknown }).message)
+      : String(reason ?? '')
+
+  return isInvalidRefreshTokenError(reason)
+    || message.includes('Failed to fetch')
+    || message.includes('NetworkError')
+    || message.includes('Load failed')
+}
+
 export function recoverStaleAuthSession(reason: unknown) {
-  if (!isInvalidRefreshTokenError(reason)) return false
+  if (!isRecoverableAuthSessionError(reason)) return false
   clearStaleAuthSession()
   return true
 }

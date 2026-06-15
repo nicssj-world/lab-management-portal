@@ -2,6 +2,7 @@ export type DocStatus = 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolet
 type WorkflowRole = 'Laboratory Director' | 'Quality Manager' | 'Document Controller' | 'Reviewer' | 'Viewer'
 
 const WORKFLOW_ROLES: WorkflowRole[] = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer', 'Viewer']
+const MANAGER_ROLE = 'Manager'
 
 export const FULL_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   Draft:     ['Review'],
@@ -11,15 +12,7 @@ export const FULL_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   Obsolete:  [],
 }
 
-const QM_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
-  Draft:     ['Review'],
-  Review:    ['Approved', 'Draft'],
-  Approved:  ['Review'],
-  Published: [],
-  Obsolete:  [],
-}
-
-const REVIEWER_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
+const DCC_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   Draft:     ['Review'],
   Review:    ['Draft'],
   Approved:  [],
@@ -27,19 +20,63 @@ const REVIEWER_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   Obsolete:  [],
 }
 
+const APPROVER_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
+  Draft:     [],
+  Review:    ['Approved', 'Draft'],
+  Approved:  ['Published', 'Review'],
+  Published: ['Obsolete'],
+  Obsolete:  [],
+}
+
+const MANAGER_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
+  Draft:     [],
+  Review:    ['Approved'],
+  Approved:  [],
+  Published: [],
+  Obsolete:  [],
+}
+
+const NO_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
+  Draft:     [],
+  Review:    [],
+  Approved:  [],
+  Published: [],
+  Obsolete:  [],
+}
+
+function resolveWorkflowRole(role: string, docRole?: string | null): WorkflowRole | undefined {
+  const cleanDocRole = docRole?.trim()
+  if (cleanDocRole && WORKFLOW_ROLES.includes(cleanDocRole as WorkflowRole)) {
+    return cleanDocRole as WorkflowRole
+  }
+
+  const cleanRole = role.trim()
+  return WORKFLOW_ROLES.includes(cleanRole as WorkflowRole) ? cleanRole as WorkflowRole : undefined
+}
+
+function mergeTransitions(...sets: DocStatus[][]) {
+  return Array.from(new Set(sets.flat()))
+}
+
 export function allowedTransitions(current: DocStatus, role: string, docRole?: string): DocStatus[] {
   if (role === 'Admin') return FULL_TRANSITIONS[current] ?? []
-  const workflowRole = docRole ?? (WORKFLOW_ROLES.includes(role as WorkflowRole) ? role : undefined)
+  const roleTransitions = role.trim() === MANAGER_ROLE ? MANAGER_TRANSITIONS[current] ?? [] : []
+  const workflowRole = resolveWorkflowRole(role, docRole)
+  let workflowTransitions: DocStatus[] = []
   switch (workflowRole) {
     case 'Laboratory Director':
-    case 'Document Controller':
-      return FULL_TRANSITIONS[current] ?? []
     case 'Quality Manager':
-      return QM_TRANSITIONS[current] ?? []
+      workflowTransitions = APPROVER_TRANSITIONS[current] ?? []
+      break
+    case 'Document Controller':
+      workflowTransitions = DCC_TRANSITIONS[current] ?? []
+      break
     case 'Reviewer':
-      return REVIEWER_TRANSITIONS[current] ?? []
+      workflowTransitions = NO_TRANSITIONS[current] ?? []
+      break
     default:
-      return []
+      workflowTransitions = []
   }
+  return mergeTransitions(roleTransitions, workflowTransitions)
 }
 

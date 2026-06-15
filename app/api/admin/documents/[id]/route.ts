@@ -186,7 +186,7 @@ export async function PATCH(
     // Always fetch current doc (needed for revision history + R2 key)
     const { data: current } = await supabaseAdmin
       .from('documents')
-      .select('file_url, file_name, file_size, mime_type, source_pdf_url, source_pdf_name, source_pdf_size, source_pdf_mime_type, word_url, word_name, word_size, revision, type, description, owner_name, approver_name, status, document_code, title, edit_date, effective_date, expiry_date, approved_at, published_at, approved_by_id, published_by_id, reviewer_id, approver_id, audience_text, cover_template_version, cover_generated_at, cover_metadata, imported_current_at, imported_current_by, imported_current_note, legacy_cover_included')
+      .select('file_url, file_name, file_size, mime_type, source_pdf_url, source_pdf_name, source_pdf_size, source_pdf_mime_type, word_url, word_name, word_size, revision, type, description, owner_name, reviewer_name, approver_name, status, document_code, title, edit_date, effective_date, expiry_date, approved_at, published_at, approved_by_id, published_by_id, reviewer_id, approver_id, audience_text, cover_template_version, cover_generated_at, cover_metadata, imported_current_at, imported_current_by, imported_current_note, legacy_cover_included')
       .eq('id', id)
       .single()
 
@@ -390,6 +390,8 @@ export async function PATCH(
       if (newStatus === 'Approved') {
         updates.approved_at = new Date().toISOString()
         updates.approved_by_id = actor.id
+        if (!updates.reviewer_id && !current.reviewer_id) updates.reviewer_id = actor.id
+        if (!updates.reviewer_name && !current.reviewer_name && actor.name) updates.reviewer_name = actor.name
       }
       if (newStatus === 'Published') {
         const now = new Date().toISOString()

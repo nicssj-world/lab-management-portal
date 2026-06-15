@@ -455,10 +455,10 @@ QP/WI:
 - QP/WI use system cover page and signature stamp.
 - Draft can have Word/Excel source without official PDF.
 - Edit/Review date is the source draft upload date.
-- DC uploads content PDF without cover.
-- QP/WI cannot move to Review unless required source/content files are present.
-- Review -> Approved sets `approved_at` and `approved_by_id`.
-- Approved -> Published sets effective/published fields, generates cover PDF, merges cover + content PDF, stores the generated final PDF in R2, then points `documents.file_url` to that generated PDF.
+- DCC/Admin reviews the draft, uploads content PDF without cover, then moves Draft -> Review.
+- QP/WI cannot move Draft -> Review unless both the Word/Excel source file and the content PDF are present.
+- Manager/Admin can move Review -> Approved; this sets `approved_at` and `approved_by_id`.
+- Only Quality Manager, Laboratory Director, and Admin can move Approved -> Published; this sets effective/published fields, generates cover PDF, merges cover + content PDF, stores the generated final PDF in R2, then points `documents.file_url` to that generated PDF.
 
 Legacy import Rev.>0:
 - Use for existing controlled documents migrated from Google Drive or an old system.

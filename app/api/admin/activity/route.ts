@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
 
-const EXCLUDED = ['permission.update', 'settings.update', 'user.update', 'user.create']
+const EXCLUDED = ['permission.update', 'settings.update', 'user.update', 'user.create', 'document.cover_generate', 'document.cover_regenerate']
 
 const CATEGORY_ACTIONS: Record<string, string[]> = {
   document: ['document.upload', 'document.edit', 'document.delete', 'document.status_change'],
@@ -68,4 +68,20 @@ export async function GET(req: NextRequest) {
     page,
     pageSize: PAGE_SIZE,
   })
+}
+
+export async function DELETE(req: NextRequest) {
+  const actor = await getActor()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const perms = await getRolePermissions(actor.role)
+  if ((perms['Activity Log'] ?? 'none') !== 'edit') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const body = await req.json().catch(() => ({}))
+  const ids: unknown[] = Array.isArray(body?.ids) ? body.ids : []
+  if (ids.length === 0) return NextResponse.json({ error: 'No ids provided' }, { status: 400 })
+
+  const { error } = await supabaseAdmin.from('audit_log').delete().in('id', ids)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ deleted: ids.length })
 }

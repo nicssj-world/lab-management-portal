@@ -9,6 +9,26 @@ const A4 = { width: 210 * MM, height: 297 * MM }
 const BLACK = rgb(0, 0, 0)
 const BLUE = rgb(0.02, 0.12, 0.86)
 
+const DEPARTMENT_EN: Record<string, string> = {
+  'กลุ่มงานเทคนิคการแพทย์': 'Medical Technology Department',
+  'งานคลังเลือด': 'Blood Bank',
+  'งานจุลชีววิทยาคลินิก': 'Microbiology',
+  'งานจุลชีววิทยา': 'Microbiology',
+  'งานโลหิตวิทยาคลินิก': 'Hematology',
+  'งานโลหิตวิทยา': 'Hematology',
+  'งานภูมิคุ้มกันวิทยาคลินิก': 'Immunology',
+  'งานภูมิคุ้มกันวิทยา': 'Immunology',
+  'งานจุลทรรศน์ศาสตร์คลินิก': 'Clinical Microscopy',
+  'งานจุลทรรศนศาสตร์คลินิก': 'Clinical Microscopy',
+  'งานจุลทรรศน์ศาสตร์': 'Clinical Microscopy',
+  'งานจุลทรรศนศาสตร์': 'Clinical Microscopy',
+  'งานเคมีคลินิก': 'Clinical Chemistry',
+  'งานอณูชีววิทยาคลินิก': 'Molecular Biology',
+  'งานอณูชีววิทยา': 'Molecular Biology',
+  'งานตรวจพิเศษและปฏิบัติการตรวจต่อ': 'Special Testing and Referral Laboratory',
+  'ห้องปฏิบัติการศูนย์สุขภาพชุมชนเมืองชลบุรี': 'Community Health Center Laboratory',
+}
+
 export type CoverPerson = {
   name?: string | null
   position?: string | null
@@ -62,12 +82,29 @@ function drawCentered(page: PDFPage, text: string, x: number, y: number, width: 
   drawText(page, text, x + Math.max(0, (width - textWidth) / 2), y, font, size, color)
 }
 
+function drawCenteredFit(page: PDFPage, text: string, x: number, y: number, width: number, font: PDFFont, size: number, minSize: number, color = BLACK) {
+  let fitSize = size
+  while (fitSize > minSize && font.widthOfTextAtSize(text, fitSize) > width) {
+    fitSize -= 0.25
+  }
+  drawCentered(page, text, x, y, width, font, fitSize, color)
+}
+
 function line(page: PDFPage, x1: number, y1: number, x2: number, y2: number, width = 0.6) {
   page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: width, color: BLACK })
 }
 
 function rect(page: PDFPage, x: number, y: number, width: number, height: number, thickness = 0.7) {
   page.drawRectangle({ x, y, width, height, borderWidth: thickness, borderColor: BLACK })
+}
+
+function departmentEnglish(value?: string | null) {
+  const clean = value?.replace(/\s+/g, '').trim()
+  if (!clean) return ''
+  for (const [th, en] of Object.entries(DEPARTMENT_EN)) {
+    if (clean === th.replace(/\s+/g, '') || clean.includes(th.replace(/\s+/g, ''))) return en
+  }
+  return ''
 }
 
 function wrapText(text: string, font: PDFFont, size: number, width: number) {
@@ -149,8 +186,28 @@ function drawFullWidthRows(page: PDFPage, rows: [string, string][], x: number, t
   let y = topY
   for (const [label, value] of rows) {
     y -= rowHeight
-    line(page, x, y, x + width, y)
+    rect(page, x, y, width, rowHeight, 0.6)
     drawLabelValue(page, label, value, x + mm(4), y + mm(4.5), labelW, fonts)
+  }
+  return y
+}
+
+function drawTwoLineGroupedRows(
+  page: PDFPage,
+  rows: [string, string, string, string][],
+  x: number,
+  topY: number,
+  width: number,
+  groupHeight: number,
+  fonts: Fonts,
+) {
+  const labelW = mm(47)
+  let y = topY
+  for (const [labelTh, valueTh, labelEn, valueEn] of rows) {
+    y -= groupHeight
+    rect(page, x, y, width, groupHeight, 0.6)
+    drawLabelValue(page, labelTh, valueTh, x + mm(4), y + groupHeight - mm(8.2), labelW, fonts)
+    drawLabelValue(page, labelEn, valueEn, x + mm(4), y + mm(5.2), labelW, fonts)
   }
   return y
 }
@@ -169,12 +226,12 @@ async function drawSignatureRow(
   fonts: Fonts,
 ) {
   const bottom = y - height
-  line(page, x, bottom, x + leftW + rightW, bottom)
+  rect(page, x, bottom, leftW + rightW, height, 0.6)
   line(page, x + leftW, y, x + leftW, bottom)
   drawText(page, `${roleLabel} : ${person?.name ?? ''}`, x + mm(4), y - mm(11), fonts.regular, 11)
   drawText(page, `ตำแหน่ง : ${person?.position ?? ''}`, x + mm(4), y - mm(22), fonts.regular, 11)
   drawText(page, 'ลายมือชื่อ', x + leftW + mm(4), y - mm(9), fonts.regular, 11)
-  await drawSignature(pdf, page, person, x + leftW + mm(28), bottom + mm(14), mm(54), mm(16))
+  await drawSignature(pdf, page, person, x + leftW + mm(24), bottom + mm(8.5), rightW - mm(32), mm(11))
   drawText(page, `วันที่ ${dateValue}`, x + leftW + mm(4), bottom + mm(5), fonts.regular, 11)
 }
 
@@ -192,8 +249,9 @@ export async function generateQualityCoverPdf(input: CoverInput) {
   const rightW = width - leftW
   rect(page, x, top - headerH, width, headerH)
   line(page, x + leftW, top, x + leftW, top - headerH)
-  await drawLogo(pdf, page, x + mm(12), top - mm(52), leftW - mm(24), mm(38))
-  drawCentered(page, 'กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี', x, top - mm(59), leftW, fonts.regular, 7.8)
+  await drawLogo(pdf, page, x + mm(8), top - mm(52), leftW - mm(16), mm(45))
+  drawCenteredFit(page, 'กลุ่มงานเทคนิคการแพทย์', x + mm(4), top - mm(59), leftW - mm(8), fonts.regular, 9.4, 8)
+  drawCenteredFit(page, 'โรงพยาบาลชลบุรี', x + mm(4), top - mm(65), leftW - mm(8), fonts.regular, 9.4, 8)
 
   const titleH = mm(15)
   line(page, x + leftW, top - titleH, x + width, top - titleH)
@@ -205,8 +263,9 @@ export async function generateQualityCoverPdf(input: CoverInput) {
   drawLabelValue(page, 'ประเภทเอกสาร', docType.th, rightX, top - mm(22), labelW, fonts, 9.7)
   drawLabelValue(page, '(Document Type)', docType.en, rightX, top - mm(30), labelW, fonts, 9.7)
   line(page, x + leftW, top - mm(33), x + width, top - mm(33))
+  const departmentEn = input.departmentEn ?? departmentEnglish(input.department)
   drawLabelValue(page, 'แผนก', input.department ?? '', rightX, top - mm(40), labelW, fonts, 9.7)
-  drawLabelValue(page, '(Department)', input.departmentEn ?? '', rightX, top - mm(47), labelW, fonts, 9.7)
+  drawLabelValue(page, '(Department)', departmentEn, rightX, top - mm(47), labelW, fonts, 9.7)
   line(page, x + leftW, top - mm(51), x + width, top - mm(51))
   drawLabelValue(page, 'ครั้งที่แก้ไข', input.revision ?? '', rightX, top - mm(58), labelW, fonts, 9.7)
   drawLabelValue(page, '(Revision)', input.revision ? `Rev. ${input.revision}` : '', rightX, top - mm(65), labelW, fonts, 9.7)
@@ -219,23 +278,40 @@ export async function generateQualityCoverPdf(input: CoverInput) {
   ]
   y = drawFullWidthRows(page, identityRows, x, y, width, mm(14), fonts)
 
-  const dateRows: [string, string][] = [
-    ['วันที่แก้ไข/ทบทวนเอกสาร', fmtThaiDate(input.editDate)],
-    ['(Edit/Review Date)', fmtEnDate(input.editDate)],
-    ['วันที่อนุมัติเอกสาร', fmtThaiDate(input.approvedAt)],
-    ['(Approved Date)', fmtEnDate(input.approvedAt)],
-    ['วันที่บังคับใช้เอกสาร', fmtThaiDate(input.effectiveDate)],
-    ['(Effective Date)', fmtEnDate(input.effectiveDate)],
+  const dateRows: [string, string, string, string][] = [
+    ['วันที่แก้ไข/ทบทวนเอกสาร', fmtThaiDate(input.editDate), '(Edit/Review Date)', fmtEnDate(input.editDate)],
+    ['วันที่อนุมัติเอกสาร', fmtThaiDate(input.approvedAt), '(Approved Date)', fmtEnDate(input.approvedAt)],
+    ['วันที่บังคับใช้เอกสาร', fmtThaiDate(input.effectiveDate), '(Effective Date)', fmtEnDate(input.effectiveDate)],
   ]
-  y = drawFullWidthRows(page, dateRows, x, y, width, mm(11.5), fonts)
+  y = drawTwoLineGroupedRows(page, dateRows, x, y, width, mm(23), fonts)
 
   const audienceH = mm(21)
   y -= audienceH
-  line(page, x, y, x + width, y)
-  const audience = `ผู้เกี่ยวข้องที่ต้องรับทราบ : ${input.audienceText || DEFAULT_DOCUMENT_AUDIENCE}`
-  const lines = wrapText(audience, fonts.regular, 10.5, width - mm(8))
+  rect(page, x, y, width, audienceH, 0.6)
+  const audienceLabel = 'ผู้เกี่ยวข้องที่ต้องรับทราบ :'
+  const audienceBody = input.audienceText || DEFAULT_DOCUMENT_AUDIENCE
+  const audienceLabelX = x + mm(4)
+  const audienceTopY = y + audienceH - mm(8)
+  drawText(page, audienceLabel, audienceLabelX, audienceTopY, fonts.bold, 10.5)
+  const bodyX = audienceLabelX + fonts.bold.widthOfTextAtSize(audienceLabel, 10.5) + mm(2)
+  const firstLineWidth = width - (bodyX - x) - mm(4)
+  const firstLineWords = audienceBody.replace(/\s+/g, ' ').trim().split(' ')
+  const lines: string[] = []
+  let current = ''
+  let currentWidth = firstLineWidth
+  for (const word of firstLineWords) {
+    const next = current ? `${current} ${word}` : word
+    if (fonts.regular.widthOfTextAtSize(next, 10.5) <= currentWidth || !current) {
+      current = next
+    } else {
+      lines.push(current)
+      current = word
+      currentWidth = width - mm(8)
+    }
+  }
+  if (current) lines.push(current)
   lines.slice(0, 2).forEach((lineText, idx) => {
-    drawText(page, lineText, x + mm(4), y + audienceH - mm(8 + idx * 7), fonts.regular, 10.5)
+    drawText(page, lineText, idx === 0 ? bodyX : x + mm(4), y + audienceH - mm(8 + idx * 7), fonts.regular, 10.5)
   })
 
   await drawSignatureRow(pdf, page, 'จัดทำโดย', fmtThaiDate(input.editDate), input.owner, x, y, width * 0.52, width * 0.48, mm(25), fonts)

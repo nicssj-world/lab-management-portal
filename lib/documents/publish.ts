@@ -6,6 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { downloadSignature } from '@/lib/signatures'
 import { DEFAULT_DOCUMENT_AUDIENCE, isCoverRequiredType } from '@/lib/documents/workflow'
 import { generateQualityCoverPdf, mergeCoverWithPdf, type CoverPerson } from '@/lib/documents/cover-pdf'
+import { detectPdfHeader } from '@/lib/documents/detect-header'
 
 const COVER_TEMPLATE_VERSION = 'quality-cover-v1'
 
@@ -29,6 +30,7 @@ type PublishDocument = {
   reviewer_id: string | null
   approver_id: string | null
   approved_by_id: string | null
+  published_by_id: string | null
   owner_name: string | null
   reviewer_name: string | null
   approver_name: string | null
@@ -102,10 +104,21 @@ async function loadSignature(profile: PersonProfile | null) {
   }
 }
 
+function parseDateOnly(value: string | null | undefined) {
+  const clean = value?.trim()
+  if (!clean) return null
+  const iso = clean.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) {
+    return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+  }
+  const parsed = new Date(clean)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 async function coverPerson(profile: PersonProfile | null, fallbackName: string | null | undefined): Promise<CoverPerson> {
   const signature = await loadSignature(profile)
   return {
-    name: fallbackName ?? profile?.name ?? '',
+    name: fallbackName?.trim() || profile?.name || '',
     position: profile?.document_position ?? rolePositionFallback(profile),
     signatureBytes: signature.bytes,
     signatureType: signature.type,
@@ -115,7 +128,7 @@ async function coverPerson(profile: PersonProfile | null, fallbackName: string |
 export async function buildPublishedPdfFields(documentId: string, overrides: Record<string, unknown> = {}) {
   const { data, error } = await supabaseAdmin
     .from('documents')
-    .select('id, document_code, title, type, department, revision, owner_id, reviewer_id, approver_id, approved_by_id, owner_name, reviewer_name, approver_name, file_url, file_name, source_pdf_url, source_pdf_name, edit_date, approved_at, effective_date, audience_text')
+    .select('id, document_code, title, type, department, revision, owner_id, reviewer_id, approver_id, approved_by_id, published_by_id, owner_name, reviewer_name, approver_name, file_url, file_name, source_pdf_url, source_pdf_name, edit_date, approved_at, effective_date, audience_text')
     .eq('id', documentId)
     .single()
 
@@ -127,16 +140,22 @@ export async function buildPublishedPdfFields(documentId: string, overrides: Rec
   if (!contentKey) throw new Error('QP/WI ต้องมี PDF เนื้อหาก่อน Published')
   const contentBytes = await getObjectBytes(contentKey)
 
+  const detected = await detectPdfHeader(Buffer.from(contentBytes))
+  const revision = detected.revision ?? doc.revision
+  const effectiveDateStr = detected.effectiveDate ?? doc.effective_date
+
+  const stampedContentBytes = Buffer.from(contentBytes)
+
   const ownerProfile = await loadProfileByName(doc.owner_name) || (!doc.owner_name ? await loadProfile(doc.owner_id) : null)
-  const reviewerProfile = await loadProfile(doc.reviewer_id) || await loadProfileByName(doc.reviewer_name)
-  const approverProfile = await loadProfile(doc.approver_id || doc.approved_by_id) || await loadProfileByName(doc.approver_name)
+  const reviewerProfile = await loadProfile(doc.reviewer_id) || await loadProfileByName(doc.reviewer_name) || (!doc.reviewer_name ? await loadProfile(doc.approved_by_id) : null)
+  const approverProfile = await loadProfile(doc.approver_id) || await loadProfileByName(doc.approver_name) || (!doc.approver_name ? await loadProfile(doc.published_by_id || doc.approved_by_id) : null)
   const [owner, reviewer, approver] = await Promise.all([
     coverPerson(ownerProfile, doc.owner_name),
     coverPerson(reviewerProfile, doc.reviewer_name),
     coverPerson(approverProfile, doc.approver_name),
   ])
 
-  const pageCount = (await PDFDocument.load(contentBytes)).getPageCount() + 1
+  const pageCount = (await PDFDocument.load(stampedContentBytes)).getPageCount() + 1
 
   const coverMetadata = {
     template_version: COVER_TEMPLATE_VERSION,
@@ -145,11 +164,12 @@ export async function buildPublishedPdfFields(documentId: string, overrides: Rec
     title: doc.title,
     type: doc.type,
     department: doc.department,
-    revision: doc.revision,
+    revision,
     edit_date: doc.edit_date,
     approved_at: doc.approved_at,
-    effective_date: doc.effective_date,
+    effective_date: effectiveDateStr,
     audience_text: doc.audience_text || DEFAULT_DOCUMENT_AUDIENCE,
+    ...(Object.keys(detected).length > 0 ? { detected_header: detected } : {}),
     owner: { id: ownerProfile?.id ?? null, name: owner.name, position: owner.position, signature_url: ownerProfile?.signature_url ?? null },
     reviewer: { id: reviewerProfile?.id ?? null, name: reviewer.name, position: reviewer.position, signature_url: reviewerProfile?.signature_url ?? null },
     approver: { id: approverProfile?.id ?? null, name: approver.name, position: approver.position, signature_url: approverProfile?.signature_url ?? null },
@@ -160,17 +180,17 @@ export async function buildPublishedPdfFields(documentId: string, overrides: Rec
     title: doc.title,
     type: doc.type,
     department: doc.department,
-    revision: doc.revision,
+    revision,
     pageCount,
     editDate: doc.edit_date,
     approvedAt: doc.approved_at,
-    effectiveDate: doc.effective_date,
+    effectiveDate: effectiveDateStr,
     audienceText: doc.audience_text,
     owner,
     reviewer,
     approver,
   })
-  const finalPdf = await mergeCoverWithPdf(coverPdf, contentBytes)
+  const finalPdf = await mergeCoverWithPdf(coverPdf, stampedContentBytes)
   const safeCode = doc.document_code.replace(/[^a-zA-Z0-9._-]/g, '_')
   const key = `documents/generated/${doc.id}/${Date.now()}-${safeCode}-final.pdf`
 

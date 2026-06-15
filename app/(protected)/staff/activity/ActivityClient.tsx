@@ -105,6 +105,8 @@ export function ActivityClient() {
   const [data, setData]         = useState<LogEntry[]>([])
   const [count, setCount]       = useState(0)
   const [loading, setLoading]   = useState(true)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
   const fetchData = useCallback(async (p: number, cat: string, f: string, t: string) => {
@@ -112,6 +114,7 @@ export function ActivityClient() {
     const ctrl = new AbortController()
     abortRef.current = ctrl
     setLoading(true)
+    setSelected(new Set())
     const params = new URLSearchParams({ page: String(p) })
     if (cat) params.set('category', cat)
     if (f)   params.set('from', f)
@@ -132,8 +135,34 @@ export function ActivityClient() {
     setCategory(cat); setFrom(f); setTo(t); setPage(1)
   }
 
+  function toggleRow(id: string) {
+    setSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  }
+
+  function toggleAll() {
+    if (selected.size === data.length) setSelected(new Set())
+    else setSelected(new Set(data.map(r => r.id)))
+  }
+
+  async function deleteSelected() {
+    if (selected.size === 0 || deleting) return
+    if (!confirm(`ลบ ${selected.size} รายการที่เลือก?`)) return
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/admin/activity', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [...selected] }),
+      })
+      if (res.ok) fetchData(page, category, from, to)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE))
   const hasFilters = category !== '' || from !== '' || to !== ''
+  const allSelected = data.length > 0 && selected.size === data.length
 
   const inputStyle: React.CSSProperties = {
     padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)',
@@ -151,6 +180,11 @@ export function ActivityClient() {
           marginBottom={0}
         />
         <div style={{ display: 'flex', gap: 8 }}>
+          {selected.size > 0 && (
+            <Button variant="danger" size="sm" onClick={deleteSelected} disabled={deleting}>
+              {deleting ? 'กำลังลบ...' : `ลบ ${selected.size} รายการ`}
+            </Button>
+          )}
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={() => applyFilter('', '', '')}>
               ล้างตัวกรอง
@@ -196,6 +230,9 @@ export function ActivityClient() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)' }}>
+                <th style={{ padding: '9px 12px 9px 16px', width: 36 }}>
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ cursor: 'pointer' }} />
+                </th>
                 {['เวลา', 'กิจกรรม', 'รายละเอียด', 'ผู้ดำเนินการ'].map(h => (
                   <th key={h} style={{ padding: '9px 16px', textAlign: 'left', fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                     {h}
@@ -207,7 +244,7 @@ export function ActivityClient() {
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i}>
-                    {[120, 160, 280, 130].map((w, j) => (
+                    {[36, 120, 160, 280, 130].map((w, j) => (
                       <td key={j} style={{ padding: '10px 16px' }}>
                         <div style={{ height: 13, borderRadius: 4, background: 'var(--surface-2)', width: w }} />
                       </td>
@@ -216,7 +253,7 @@ export function ActivityClient() {
                 ))
               ) : data.length === 0 ? (
                 <tr>
-                  <td colSpan={4} style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+                  <td colSpan={5} style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
                     ไม่พบกิจกรรม
                   </td>
                 </tr>
@@ -224,10 +261,13 @@ export function ActivityClient() {
                 data.map(row => (
                   <tr
                     key={row.id}
-                    style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s', background: selected.has(row.id) ? 'var(--primary-soft, rgba(30,95,173,.06))' : 'transparent' }}
+                    onMouseEnter={e => { if (!selected.has(row.id)) e.currentTarget.style.background = 'var(--surface-2)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = selected.has(row.id) ? 'var(--primary-soft, rgba(30,95,173,.06))' : 'transparent' }}
                   >
+                    <td style={{ padding: '9px 12px 9px 16px' }}>
+                      <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleRow(row.id)} style={{ cursor: 'pointer' }} />
+                    </td>
                     <td style={{ padding: '9px 16px', fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                       {fmtTime(row.created_at)}
                     </td>

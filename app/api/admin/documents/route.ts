@@ -9,6 +9,7 @@ import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/
 import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
 import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
 import { resolveDocumentSortColumn } from '@/lib/documents/sort'
+import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
@@ -33,11 +34,26 @@ function todayIsoDate() {
   return new Date().toISOString().split('T')[0]
 }
 
+function parseDateOnly(value: string | null | undefined) {
+  const clean = value?.trim()
+  if (!clean) return null
+  const iso = clean.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+  const parsed = new Date(clean)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 function canImportCurrentDocument(actor: { role: string; doc_role?: string | null }) {
   return actor.role === 'Admin' || actor.role === 'Document Controller' || actor.doc_role === 'Document Controller'
 }
 
-async function uploadDocumentObject(file: File, type: string, prefix = '', headerMetadata?: DocxHeaderMetadata) {
+async function uploadDocumentObject(
+  file: File,
+  type: string,
+  prefix = '',
+  headerMetadata?: DocxHeaderMetadata,
+  bodyTransform?: (body: Buffer<ArrayBufferLike>) => Promise<Buffer<ArrayBufferLike>>,
+) {
   const year = new Date().getFullYear()
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${prefix}${safeName}`
@@ -49,6 +65,7 @@ async function uploadDocumentObject(file: File, type: string, prefix = '', heade
       body = await patchXlsxHeaderMetadata(body, headerMetadata)
     }
   }
+  if (bodyTransform) body = await bodyTransform(body)
   await r2.send(new PutObjectCommand({
     Bucket: R2_BUCKET,
     Key: r2Key,
@@ -212,6 +229,11 @@ export async function POST(req: NextRequest) {
             imported_current_by: actor.id,
             imported_current_note: meta.imported_current_note || null,
             legacy_cover_included: Boolean(meta.legacy_cover_included),
+            cover_metadata: meta.legacy_cover_included
+              ? {
+                  reason: 'import_current_pdf_has_existing_cover',
+                }
+              : undefined,
           }
         : {}),
     }
@@ -221,7 +243,23 @@ export async function POST(req: NextRequest) {
     })
 
     if (file) {
-      const uploaded = await uploadDocumentObject(file, meta.type, '', headerMetadata)
+      const shouldStampImportedLegacyPdf =
+        isImportCurrent &&
+        isCoverRequiredType(meta.type) &&
+        Boolean(resolvedMeta.legacy_cover_included) &&
+        isPdfFile(file)
+      const importedEffectiveDate = shouldStampImportedLegacyPdf
+        ? parseDateOnly(resolvedMeta.effective_date ?? null)
+        : null
+      const uploaded = await uploadDocumentObject(
+        file,
+        meta.type,
+        '',
+        headerMetadata,
+        importedEffectiveDate
+          ? (body) => stampPublishedPdfFooter(body, documentCode, meta.revision, importedEffectiveDate)
+          : undefined,
+      )
       const r2Key = uploaded.key
       uploadedKeys.push(r2Key)
       officialFields = {
