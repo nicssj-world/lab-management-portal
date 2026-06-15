@@ -130,7 +130,7 @@ function fmtStatusDate(iso: string | null): string {
 }
 
 const PAGE_SIZE = 30
-const DEFAULT_TYPE_FILTER = 'QP'
+const DEFAULT_TYPE_FILTER = 'All'
 
 // ── Status Change Modal ────────────────────────────────────────
 function StatusModal({ doc, userRole, docRole, onClose, onSaved, toast }: {
@@ -769,11 +769,17 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
 
   const canDownloadRevision = userRole === 'Admin' || docRole === 'Document Controller'
   const allowRevisionHistoryBackfill = canAdd && (userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller')
+  const canSkipSystemCover = userRole === 'Admin'
+    || userRole === 'Quality Manager'
+    || userRole === 'Laboratory Director'
+    || docRole === 'Quality Manager'
+    || docRole === 'Laboratory Director'
   const allowCurrentRevisionRollback = false
 
   const [revisions, setRevisions] = useState<RevisionRow[]>([])
   const [activeDraft, setActiveDraft] = useState<DocumentRevisionDraft | null>(null)
   const [draftBusy, setDraftBusy] = useState(false)
+  const [skipSystemCover, setSkipSystemCover] = useState(false)
   const [draftFormOpen, setDraftFormOpen] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const [draftDepartment, setDraftDepartment] = useState('')
@@ -990,8 +996,10 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
   useEffect(() => {
     if (!activeDraft) {
       setDraftFormOpen(false)
+      setSkipSystemCover(false)
       return
     }
+    if (activeDraft.type !== 'QP' && activeDraft.type !== 'WI') setSkipSystemCover(false)
     setDraftTitle(activeDraft.title ?? '')
     setDraftDepartment(activeDraft.department ?? '')
     setDraftOwnerName(activeDraft.owner_name ?? '')
@@ -1071,17 +1079,25 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
 
   async function handleDraftStatus(next: DocStatus) {
     if (!activeDraft) return
+    const shouldSkipSystemCover = skipSystemCover && next === 'Published' && (activeDraft.type === 'QP' || activeDraft.type === 'WI')
+    if (shouldSkipSystemCover && !confirm('ยืนยันว่า PDF ทางการนี้มีหน้าปกเดิมครบถ้วนแล้ว และต้องการใช้เป็นไฟล์ทางการโดยไม่สร้างหน้าปกระบบ?')) {
+      return
+    }
     setDraftBusy(true)
     try {
       const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: next }),
+        body: JSON.stringify({
+          status: next,
+          ...(shouldSkipSystemCover ? { skip_system_cover: true } : {}),
+        }),
       })
       const json = await res.json()
       if (!res.ok) { alert(json.error ?? 'เปลี่ยนสถานะ working revision ไม่สำเร็จ'); return }
       if (next === 'Published') {
         setActiveDraft(null)
+        setSkipSystemCover(false)
         loadRevisions()
         onPromoted(json as Document)
       } else {
@@ -1379,6 +1395,22 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                   {activeDraft.file_name && <div>Official: {activeDraft.file_name}</div>}
                   {!activeDraft.word_name && !activeDraft.file_name && <div>อัปโหลดไฟล์ต้นฉบับก่อน แล้วให้ DC อัปโหลดไฟล์ทางการ/PDF เนื้อหา</div>}
                 </div>
+
+                {canSkipSystemCover && (activeDraft.type === 'QP' || activeDraft.type === 'WI') && activeDraft.status === 'Approved' && (
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '9px 10px', borderRadius: 8, border: '1px solid rgba(217,119,6,.25)', background: 'rgba(217,119,6,.08)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={skipSystemCover}
+                      onChange={(e) => setSkipSystemCover(e.target.checked)}
+                      style={{ marginTop: 3, accentColor: '#D97706' }}
+                    />
+                    <span style={{ fontSize: 11.8, color: '#92400E', lineHeight: 1.45 }}>
+                      PDF ทางการนี้มีหน้าปกเดิมครบแล้ว ให้ใช้ไฟล์นี้เป็น official PDF โดยไม่สร้างหน้าปกระบบ
+                      <br />
+                      <span style={{ color: 'var(--muted)' }}>ใช้เฉพาะกรณีต้องการคงหน้าปกเดิมไว้ ระบบจะไม่ stamp วันที่/ลายเซ็นบนหน้าปกระบบใหม่</span>
+                    </span>
+                  </label>
+                )}
 
                 {(() => {
                   const transitions = allowedTransitions(activeDraft.status as DocStatus, userRole, docRole)

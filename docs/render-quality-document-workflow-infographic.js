@@ -59,9 +59,9 @@ function flowCard(x, y, w, h, color, tag, title, subtitle, steps, foot) {
 const flow1 = [
   ['สร้าง Draft ปกติ', ['ใส่ Rev ที่ต้องการ', 'เช่น Rev.00 หรือ Rev.01']],
   ['Upload Source', ['Word/Excel ต้นฉบับ', 'วันที่ upload = Edit/Review Date']],
-  ['DCC Upload PDF', ['QP/WI ใช้ PDF เนื้อหา', 'แบบไม่มีหน้าปก']],
-  ['Review → Approved', ['ตรวจเอกสารและอนุมัติ', 'ระบบลงวันที่อนุมัติ']],
-  ['Published', ['ระบบสร้าง cover + final PDF', 'แล้วตั้งเป็นไฟล์ทางการ']],
+  ['DCC/Admin Review', ['ตรวจ draft + upload PDF เนื้อหา', 'แล้วกด Draft → Review']],
+  ['Review → Approved', ['Manager/Admin อนุมัติ', 'ระบบลงวันที่อนุมัติ']],
+  ['Approved → Published', ['QM/LD/Admin เท่านั้น', 'สร้าง cover + final PDF']],
 ]
 const flow2 = [
   ['เลือก Import Current', ['สร้างเป็น Published ทันที', 'ใส่ Rev ปัจจุบัน เช่น Rev.10']],
@@ -73,9 +73,9 @@ const flow2 = [
 const flow3 = [
   ['Create Revision', ['เริ่มจากเอกสาร Published']],
   ['Working Draft', ['ระบบสร้าง Rev ถัดไป', 'และไม่กระทบ Rev ปัจจุบัน']],
-  ['Upload ฉบับแก้ไข', ['Reviewer: Word/Excel', 'DCC: PDF/Official file']],
-  ['Review → Approved', ['ตรวจและอนุมัติ revision draft']],
-  ['Publish Rev ใหม่', ['Archive Rev เดิม', 'Promote Rev ใหม่เป็น current']],
+  ['DCC/Admin Review', ['Reviewer: Word/Excel', 'DCC upload PDF แล้วส่ง Review']],
+  ['Review → Approved', ['Manager/Admin อนุมัติ revision']],
+  ['Approved → Published', ['QM/LD/Admin publish Rev ใหม่', 'Archive เดิม + Promote ใหม่']],
 ]
 
 const svg = `<?xml version="1.0" encoding="UTF-8"?>
@@ -118,11 +118,11 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
   <rect x="88" y="1242" width="2224" height="320" rx="32" fill="#0F172A"/>
   ${text('ข้อควรจำก่อนกดส่งต่อ', 132, 1310, 52, '#FFFFFF', 900)}
   <line x1="132" y1="1342" x2="2268" y2="1342" stroke="#FFFFFF" opacity="0.18"/>
-  ${text(['01  Word/Excel คือ source file เท่านั้น ห้าม promote ทับ file_url อัตโนมัติ', '02  Flow 01 ใช้ได้ทั้ง Rev.00 และ Rev.>0 เมื่อเริ่มจาก DOCX/XLSX', '03  QP/WI ต้องมี PDF เนื้อหาไม่มีหน้าปก ก่อนเข้า Review และระบบสร้าง cover ตอน Published', '04  Fm/Rf/Cf ไม่ต้องมีหน้าปก ไม่ stamp signature แต่ยังควบคุม revision/status ได้', '05  Backfill history ใช้เฉพาะเอกสารเก่าที่เคยแก้ไขมาก่อน สิทธิ์ Admin + DCC'], 132, 1390, 32, '#E5EEF8', 700, { lineHeight: 36 })}
+  ${text(['01  Word/Excel คือ source file เท่านั้น ห้าม promote ทับ file_url อัตโนมัติ', '02  Flow 01 ใช้ได้ทั้ง Rev.00 และ Rev.>0 เมื่อเริ่มจาก DOCX/XLSX', '03  QP/WI ต้องมี source + PDF เนื้อหาไม่มีหน้าปก ก่อน DCC/Admin ส่งเข้า Review', '04  Fm/Rf/Cf ไม่ต้องมีหน้าปก ไม่ stamp signature แต่ยังควบคุม revision/status ได้', '05  Backfill history ใช้เฉพาะเอกสารเก่าที่เคยแก้ไขมาก่อน สิทธิ์ Admin + DCC'], 132, 1390, 32, '#E5EEF8', 700, { lineHeight: 36 })}
 
   <rect x="88" y="1606" width="1070" height="190" rx="28" fill="#FFFFFF" stroke="#D9E2EC"/>
   ${text('บทบาทหลัก', 132, 1666, 46, '#12213A', 900)}
-  ${text(['Reviewer: upload Word/Excel ฉบับร่างหรือฉบับแก้ไข', 'DCC: ตรวจควบคุมเอกสาร, upload official/PDF, เพิ่มประวัติย้อนหลัง', 'Approver: อนุมัติเอกสารก่อน Published'], 132, 1706, 31, '#465568', 700, { lineHeight: 34 })}
+  ${text(['Reviewer: upload Word/Excel ฉบับร่างหรือฉบับแก้ไข', 'DCC/Admin: ตรวจ draft, upload PDF/official file, ส่ง Draft → Review', 'Manager/Admin: Review → Approved · QM/LD/Admin: Approved → Published'], 132, 1706, 31, '#465568', 700, { lineHeight: 34 })}
 
   <rect x="1242" y="1606" width="1070" height="190" rx="28" fill="#FFFFFF" stroke="#D9E2EC"/>
   ${text('จุดตรวจสำคัญ', 1286, 1666, 46, '#12213A', 900)}

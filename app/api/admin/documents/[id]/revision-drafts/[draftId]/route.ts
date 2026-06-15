@@ -10,12 +10,21 @@ import { canMoveToStatus, isCoverRequiredType, isPdfFile, isSourceFile } from '@
 import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/lib/documents/docx-header'
 import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
 import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
+import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
 
 type Params = { params: Promise<{ id: string; draftId: string }> }
 const STATUS_CHANGE_INPUT_FIELDS = new Set(['status', 'obsolete_reason'])
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
+}
+
+function canSkipSystemCover(actor: { role: string; doc_role?: string | null }) {
+  return actor.role === 'Admin'
+    || actor.role === 'Quality Manager'
+    || actor.role === 'Laboratory Director'
+    || actor.doc_role === 'Quality Manager'
+    || actor.doc_role === 'Laboratory Director'
 }
 
 async function uploadDocumentObject(file: File, type: string, prefix = '', headerMetadata?: DocxHeaderMetadata) {
@@ -83,6 +92,15 @@ function todayIsoDate() {
   return new Date().toISOString().split('T')[0]
 }
 
+function parseDateOnly(value: string | null | undefined) {
+  const clean = value?.trim()
+  if (!clean) return null
+  const iso = clean.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+  const parsed = new Date(clean)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 export async function PATCH(req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return jsonUnauthorized()
@@ -112,6 +130,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     let updates: Record<string, unknown> = {}
     let officialFile: File | null = null
     let sourceFile: File | null = null
+    let skipSystemCover = false
 
     if (contentType.includes('multipart/form-data')) {
       const form = await req.formData()
@@ -121,12 +140,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       sourceFile = sourceRaw instanceof File && sourceRaw.size > 0 ? sourceRaw : null
       const metaRaw = form.get('meta')
       if (metaRaw) {
-        const parsed = DocumentSchema.partial().safeParse(JSON.parse(metaRaw as string))
+        const rawMeta = JSON.parse(metaRaw as string) as Record<string, unknown>
+        skipSystemCover = rawMeta.skip_system_cover === true
+        const parsed = DocumentSchema.partial().safeParse(rawMeta)
         if (!parsed.success) return NextResponse.json({ error: parsed.error.errors[0]?.message }, { status: 422 })
         updates = parsed.data as Record<string, unknown>
       }
     } else {
-      const parsed = DocumentSchema.partial().safeParse(await req.json())
+      const rawBody = await req.json() as Record<string, unknown>
+      skipSystemCover = rawBody.skip_system_cover === true
+      const parsed = DocumentSchema.partial().safeParse(rawBody)
       if (!parsed.success) return NextResponse.json({ error: parsed.error.errors[0]?.message }, { status: 422 })
       updates = parsed.data as Record<string, unknown>
     }
@@ -139,6 +162,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       const invalidStatusField = Object.keys(updates).find((key) => !STATUS_CHANGE_INPUT_FIELDS.has(key))
       if (invalidStatusField) {
         return NextResponse.json({ error: `การเปลี่ยนสถานะไม่อนุญาตให้แก้ field ${invalidStatusField} พร้อมกัน` }, { status: 422 })
+      }
+      if (skipSystemCover && nextStatus !== 'Published') {
+        return NextResponse.json({ error: 'การข้ามหน้าปกระบบใช้ได้เฉพาะตอน Published เท่านั้น' }, { status: 422 })
       }
       const allowed = allowedTransitions(draft.status as DocStatus, actor.role, actor.doc_role ?? undefined)
       if (!allowed.includes(nextStatus as DocStatus)) {
@@ -213,6 +239,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (nextStatus === 'Approved') {
         updates.approved_at = new Date().toISOString()
         updates.approved_by_id = actor.id
+        if (!updates.reviewer_id && !draft.reviewer_id) updates.reviewer_id = actor.id
+        if (!updates.reviewer_name && !draft.reviewer_name && actor.name) updates.reviewer_name = actor.name
       }
       if (nextStatus === 'Published') {
         const now = new Date().toISOString()
@@ -223,6 +251,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const merged = { ...draft, ...updates }
+    const publishWithExistingCover = Boolean(skipSystemCover && statusAfter === 'Published' && isCoverRequiredType(merged.type))
+    if (skipSystemCover) {
+      if (!isCoverRequiredType(merged.type)) {
+        return NextResponse.json({ error: 'ตัวเลือกข้ามหน้าปกระบบใช้ได้เฉพาะ QP/WI' }, { status: 422 })
+      }
+      if (!canSkipSystemCover(actor)) {
+        return NextResponse.json({ error: 'เฉพาะ Admin, Quality Manager หรือ Laboratory Director เท่านั้นที่ข้ามการสร้างหน้าปกระบบได้' }, { status: 403 })
+      }
+      if (!merged.file_url || !merged.file_name) {
+        return NextResponse.json({ error: 'ต้องมี PDF ทางการที่มีหน้าปกครบก่อนข้ามการสร้างหน้าปกระบบ' }, { status: 422 })
+      }
+      if (!isPdfFile({ name: String(merged.file_name), type: String(merged.mime_type ?? '') })) {
+        return NextResponse.json({ error: 'QP/WI ที่ข้ามหน้าปกระบบต้องใช้ไฟล์ PDF ทางการเท่านั้น' }, { status: 422 })
+      }
+    }
     const finalHeaderMetadata: DocxHeaderMetadata = buildDocxHeaderMetadata({
       ...merged,
       document_code: parentDoc.document_code,
@@ -331,7 +374,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (archiveErr) return NextResponse.json({ error: archiveErr.message }, { status: 500 })
 
-    const promoteUpdates = {
+    const promoteUpdates: Record<string, unknown> = {
       title: merged.title,
       type: merged.type,
       department: merged.department,
@@ -365,14 +408,53 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       published_by_id: merged.published_by_id,
       cover_template_version: null,
       cover_generated_at: null,
-      cover_metadata: null,
+      cover_metadata: publishWithExistingCover
+        ? {
+            skipped_system_cover: true,
+            skipped_at: merged.published_at,
+            skipped_by: actor.id,
+            reason: 'revision_draft_pdf_has_existing_cover',
+            file_url: merged.file_url,
+            file_name: merged.file_name,
+          }
+        : null,
       imported_current_at: null,
       imported_current_by: null,
       imported_current_note: null,
-      legacy_cover_included: false,
+      legacy_cover_included: publishWithExistingCover,
     }
 
-    if (isCoverRequiredType(merged.type)) {
+    if (publishWithExistingCover && promoteUpdates.file_url && promoteUpdates.effective_date) {
+      const effectiveDate = parseDateOnly(String(promoteUpdates.effective_date))
+      if (effectiveDate) {
+        const existingCoverPdf = await getObjectBuffer(String(promoteUpdates.file_url))
+        const stampedPdf = await stampPublishedPdfFooter(
+          existingCoverPdf,
+          parentDoc.document_code,
+          String(promoteUpdates.revision ?? ''),
+          effectiveDate,
+        )
+        const safeCode = parentDoc.document_code.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const stampedKey = `documents/generated/${id}/${Date.now()}-${safeCode}-existing-cover-final.pdf`
+        await r2.send(new PutObjectCommand({
+          Bucket: R2_BUCKET,
+          Key: stampedKey,
+          Body: stampedPdf,
+          ContentType: 'application/pdf',
+        }))
+        promoteUpdates.file_url = stampedKey
+        promoteUpdates.file_size = stampedPdf.length
+        promoteUpdates.mime_type = 'application/pdf'
+        if (promoteUpdates.cover_metadata && typeof promoteUpdates.cover_metadata === 'object') {
+          promoteUpdates.cover_metadata = {
+            ...(promoteUpdates.cover_metadata as Record<string, unknown>),
+            file_url: stampedKey,
+          }
+        }
+      }
+    }
+
+    if (isCoverRequiredType(merged.type) && !publishWithExistingCover) {
       const finalFields = await buildPublishedPdfFields(id, promoteUpdates)
       if (finalFields) Object.assign(promoteUpdates, finalFields)
     }
@@ -391,10 +473,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       .eq('id', draftId)
 
     supabaseAdmin.from('audit_log').insert({
-      action: 'document.revision_draft_publish',
+      action: publishWithExistingCover ? 'document.revision_draft_publish_existing_cover' : 'document.revision_draft_publish',
       user_id: actor.id,
       target: promoted.document_code ?? id,
-      detail: `Rev. ${promoted.revision}`,
+      detail: publishWithExistingCover
+        ? `Rev. ${promoted.revision} · skipped system cover · used uploaded PDF as official file`
+        : `Rev. ${promoted.revision}`,
     }).then(undefined, () => {})
 
     return NextResponse.json(promoted)

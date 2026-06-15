@@ -33,29 +33,31 @@ export async function POST(
 
   const { data: doc, error: docErr } = await supabaseAdmin
     .from('documents')
-    .select('id, file_url, mime_type, title, document_code')
+    .select('id, file_url, file_name, mime_type, title, document_code, type, status, revision, effective_date, cover_metadata')
     .eq('id', id)
     .single()
 
   if (docErr || !doc) return NextResponse.json({ error: 'ไม่พบเอกสาร' }, { status: 404 })
   if (!doc.file_url) return NextResponse.json({ error: 'เอกสารนี้ยังไม่มีไฟล์ทางการสำหรับอ่าน' }, { status: 409 })
 
+  await supabaseAdmin.from('document_access_logs')
+    .insert({ document_id: id, user_id: actor.id, action: 'view' })
+
   // Generate R2 presigned URL (1 hour)
-  const ext = doc.file_url.split('.').pop() ?? 'pdf'
+  const fileUrl = doc.file_url
+  if (!fileUrl) return NextResponse.json({ error: 'เอกสารนี้ยังไม่มีไฟล์ทางการสำหรับอ่าน' }, { status: 409 })
+
+  const ext = fileUrl.split('.').pop() ?? 'pdf'
   const displayName = `${doc.document_code} ${doc.title}.${ext}`
   const url = await getSignedUrl(
     r2,
     new GetObjectCommand({
       Bucket: R2_BUCKET,
-      Key: doc.file_url,
+      Key: fileUrl,
       ResponseContentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(displayName)}`,
     }),
     { expiresIn: 3600 }
   )
-
-  supabaseAdmin.from('document_access_logs')
-    .insert({ document_id: id, user_id: actor.id, action: 'view' })
-    .then(undefined, () => {})
 
   return NextResponse.json({ url, mime_type: doc.mime_type, read_logged: true })
 }

@@ -454,6 +454,9 @@ export default function ProfilePage() {
                 </button>
               )}
             </div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6, lineHeight: 1.4 }}>
+              รองรับ PNG, JPG, WebP ไม่เกิน 2 MB; ระบบจะปรับเป็น PNG 900x260 ให้อัตโนมัติ
+            </div>
           </div>
         </div>
       </Card>

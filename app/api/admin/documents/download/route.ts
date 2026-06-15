@@ -11,6 +11,14 @@ type DownloadDocument = {
   document_code: string
   title: string
   file_name?: string | null
+  file_url?: string | null
+  file_size?: number | null
+  mime_type?: string | null
+  type?: string | null
+  status?: string | null
+  revision?: string | null
+  effective_date?: string | null
+  cover_metadata?: Record<string, unknown> | null
   visibility?: string | null
   deleted_at?: string | null
 }
@@ -18,7 +26,7 @@ type DownloadDocument = {
 async function getDocumentForDownload(path: string) {
   const { data: doc } = await supabaseAdmin
     .from('documents')
-    .select('id, document_code, title, file_name, visibility, deleted_at')
+    .select('id, document_code, title, file_url, file_name, file_size, mime_type, type, status, revision, effective_date, cover_metadata, visibility, deleted_at')
     .eq('file_url', path)
     .is('deleted_at', null)
     .maybeSingle()

@@ -24,9 +24,12 @@ export default function LoginPage() {
     clearStaleAuthSession()
     const supabase = createClient()
     const loginEmail = email.includes('@') ? email : `${email}@cbh.go.th`
-    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password }).catch(() => ({
+      error: { message: 'Failed to fetch' },
+    }))
 
     if (error) {
+      if (error.message === 'Failed to fetch') clearStaleAuthSession()
       setError('รหัสผ่านไม่ถูกต้อง')
       setLoading(false)
       return

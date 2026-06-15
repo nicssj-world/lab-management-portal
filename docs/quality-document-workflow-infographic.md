@@ -19,8 +19,10 @@ Flow 1: สร้าง Draft ตาม workflow ปกติ
 - Reviewer สร้าง Draft
 - ใส่ Rev ที่ต้องการ เช่น Rev.00 หรือ Rev.01
 - Upload Word/Excel ต้นฉบับ
-- QP/WI: DCC upload PDF เนื้อหาแบบไม่มีหน้าปก
-- ส่ง Review -> Approved -> Published
+- QP/WI: DCC/Admin ตรวจ draft และ upload PDF เนื้อหาแบบไม่มีหน้าปก
+- DCC/Admin ส่ง Draft -> Review
+- Manager/Admin ส่ง Review -> Approved
+- Quality Manager/Laboratory Director/Admin ส่ง Approved -> Published
 - ระบบสร้างหน้าปกและ final PDF
 
 Flow 2: อัปโหลดเอกสารใหม่ Rev.>0
@@ -38,14 +40,16 @@ Flow 3: อัปเดตการแก้ไข เพิ่ม Rev.
 - กดสร้าง Revision ใหม่
 - ระบบสร้าง Working Draft Rev ถัดไป
 - Reviewer upload Word/Excel ฉบับแก้ไข
-- DCC upload PDF/official file
-- Review -> Approved -> Published
+- DCC/Admin ตรวจ draft, upload PDF/official file, แล้วส่ง Draft -> Review
+- Manager/Admin ส่ง Review -> Approved
+- Quality Manager/Laboratory Director/Admin ส่ง Approved -> Published
 - ระบบ archive Rev เดิม และ promote Rev ใหม่
 
 Key Reminders
 - `file_url` = ไฟล์ทางการปัจจุบันเท่านั้น
 - Word/Excel source ห้าม promote ทับ `file_url` อัตโนมัติ
 - Rev.>0 ที่เริ่มจาก DOCX/XLSX ให้ใช้ Flow 1 ไม่ใช่ Import Current
+- QP/WI ต้องมี source + PDF เนื้อหาก่อน DCC/Admin ส่งเข้า Review
 - QP/WI มีหน้าปกและลายเซ็นระบบ
 - Fm/Rf/Cf ไม่ต้องมีหน้าปกและไม่ stamp signature
 - Published ห้ามแก้ไฟล์โดยตรง ต้องสร้าง Revision ใหม่

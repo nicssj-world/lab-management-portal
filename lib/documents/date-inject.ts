@@ -1,4 +1,5 @@
 import { sarabunBase64 } from '@/lib/fonts/sarabun-base64'
+import JSZip from 'jszip'
 
 // ── Date formatters ──────────────────────────────────────────────────────────
 
@@ -10,13 +11,23 @@ const EN_MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
+const EN_SHORT_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+]
 
 function toThaiDate(d: Date): string {
-  return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`
+  const s = `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`
+  // Ensure Arabic numerals — some Thai fonts render digit glyphs as Thai numerals
+  return s.replace(/[๐-๙]/g, c => String(c.charCodeAt(0) - 0x0E50))
 }
 
 function toEnDate(d: Date): string {
   return `${d.getDate()} ${EN_MONTHS[d.getMonth()]} ${d.getFullYear()}`
+}
+
+function toEnShortDate(d: Date): string {
+  return `${d.getDate()} ${EN_SHORT_MONTHS[d.getMonth()]} ${d.getFullYear()}`
 }
 
 // ── Eligibility ──────────────────────────────────────────────────────────────
@@ -85,19 +96,12 @@ interface DocxField {
   dateStr: string
 }
 
-function injectDocxDates(buffer: Buffer, fields: DocxField[]): Buffer {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const PizZip = require('pizzip') as new (data: Buffer) => {
-    file(name: string): { asText(): string } | null
-    file(name: string, content: string): void
-    generate(opts: { type: string }): Buffer
-  }
-
-  const zip = new PizZip(buffer)
+async function injectDocxDates(buffer: Buffer, fields: DocxField[]): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(buffer)
   const xmlFile = zip.file('word/document.xml')
   if (!xmlFile) return buffer
 
-  let xml = xmlFile.asText()
+  let xml = await xmlFile.async('string')
 
   // Split into table rows, process each, rejoin
   const parts = xml.split(/(?=<w:tr[ >])/g)
@@ -118,7 +122,8 @@ function injectDocxDates(buffer: Buffer, fields: DocxField[]): Buffer {
   if (!changed) return buffer
   xml = parts.join('')
   zip.file('word/document.xml', xml)
-  return zip.generate({ type: 'nodebuffer' }) as unknown as Buffer
+  const output = await zip.generateAsync({ type: 'nodebuffer' })
+  return Buffer.from(output)
 }
 
 // ── PDF injection ────────────────────────────────────────────────────────────
@@ -141,6 +146,30 @@ interface TextItem {
 }
 
 type Overlay = { x: number; y: number; w: number; h: number; fontSize: number; text: string }
+type InjectOptions = { revision?: string | null }
+
+async function embedReadablePdfFont(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pdfDoc: any,
+  standardFont: string,
+) {
+  const { default: fontkit } = await import('@pdf-lib/fontkit')
+  if (sarabunBase64) {
+    pdfDoc.registerFontkit(fontkit)
+    return pdfDoc.embedFont(Buffer.from(sarabunBase64, 'base64'))
+  }
+  try {
+    const { readFileSync, existsSync } = await import('fs')
+    const systemFont = 'C:\\Windows\\Fonts\\THSarabun.ttf'
+    if (existsSync(systemFont)) {
+      pdfDoc.registerFontkit(fontkit)
+      return pdfDoc.embedFont(readFileSync(systemFont))
+    }
+  } catch {
+    // Fall through to the PDF standard font for non-Windows/server environments.
+  }
+  return pdfDoc.embedFont(standardFont)
+}
 
 /** Group text items into lines by Y proximity, sort each group by X.
  *  Thai PDFs often split one word into many small items; concatenate them before label search. */
@@ -155,9 +184,20 @@ function buildLineGroups(items: TextItem[], yTol = 3): { y: number; items: TextI
   return groups.map((g) => ({ ...g, text: g.items.map((i) => i.str).join('') }))
 }
 
-async function injectPdfDates(buffer: Buffer, fields: PdfField[]): Promise<Buffer> {
+function normalizePdfText(text: string) {
+  return text
+    .normalize('NFC')
+    .replace(/[\s:：()[\]{}._\-–—|/\\]+/g, '')
+    .toLowerCase()
+}
+
+function lineMatches(lineText: string, label: string) {
+  return normalizePdfText(lineText).includes(normalizePdfText(label))
+}
+
+async function injectPdfDates(buffer: Buffer, fields: PdfField[], documentCode?: string): Promise<Buffer> {
   const { getDocumentProxy, extractTextItems } = await import('unpdf')
-  const { PDFDocument, rgb } = await import('pdf-lib')
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
 
   // Load once — used for AcroForm detection AND final drawing
   const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true } as Parameters<typeof PDFDocument.load>[1])
@@ -224,7 +264,7 @@ async function injectPdfDates(buffer: Buffer, fields: PdfField[]): Promise<Buffe
   const overlays: Overlay[] = []
 
   for (const field of fields) {
-    const anchorLine = lines.find(l => l.text.includes(field.label))
+    const anchorLine = lines.find(l => lineMatches(l.text, field.label))
     if (anchorLine) {
       const avgFs = anchorLine.items.reduce((s, i) => s + i.fontSize, 0) / (anchorLine.items.length || 1) || 10
       const yBand = Math.max(avgFs * 5, 30)
@@ -244,9 +284,10 @@ async function injectPdfDates(buffer: Buffer, fields: PdfField[]): Promise<Buffe
         .sort((a, b) => Math.abs(a.y - anchorLine.y) - Math.abs(b.y - anchorLine.y))
       if (nearPh.length > 0) {
         const rightOfLabel = nearPh[0].items.filter(it => it.x > labelMaxX + 2)
-        const targetItems  = rightOfLabel.length > 0 ? rightOfLabel : nearPh[0].items
-        const ov = overlayAt(targetItems, field.dateStr)
-        if (ov) { overlays.push(ov); continue }
+        if (rightOfLabel.length > 0) {
+          const ov = overlayAt(rightOfLabel, field.dateStr)
+          if (ov) { overlays.push(ov); continue }
+        }
       }
 
       // S1b: nearest AcroForm rect to the label
@@ -260,13 +301,30 @@ async function injectPdfDates(buffer: Buffer, fields: PdfField[]): Promise<Buffe
 
       // S1c: items to the RIGHT of the label (no placeholder text anywhere in PDF)
       const rightItems = rawItems.filter(it =>
-        Math.abs(it.y - anchorLine.y) < yBand && it.x > labelMaxX + 5
+        Math.abs(it.y - anchorLine.y) < yBand && it.x > labelMaxX + 5 && it.x < labelMaxX + 150
       )
       if (rightItems.length > 0) {
         const rightLines = buildLineGroups(rightItems, 6)
           .sort((a, b) => Math.abs(a.y - anchorLine.y) - Math.abs(b.y - anchorLine.y))
         const ov = overlayAt(rightLines[0].items, field.dateStr)
         if (ov) { overlays.push(ov); continue }
+      }
+
+      // S1d: blank value cell to the right of the label. Many controlled-document
+      // headers render only the label and an empty bordered area, so there are no
+      // text items to replace.
+      if (!usedY.has(Math.round(anchorLine.y))) {
+        usedY.add(Math.round(anchorLine.y))
+        const pageWidth = pdfDoc.getPages()[0]?.getWidth() ?? 595
+        overlays.push({
+          x: Math.min(labelMaxX + 8, pageWidth - 140),
+          y: anchorLine.y,
+          w: 110,
+          h: Math.max(avgFs, 10),
+          fontSize: Math.max(avgFs, 10),
+          text: field.dateStr,
+        })
+        continue
       }
     }
 
@@ -291,23 +349,180 @@ async function injectPdfDates(buffer: Buffer, fields: PdfField[]): Promise<Buffe
   }
 
   console.log('[date-inject:pdf] overlays resolved:', overlays.length, overlays.map(o => `"${o.text}"@(${o.x.toFixed(0)},${o.y.toFixed(0)})`))
-  if (overlays.length === 0) return buffer
+  const resolvedFont = await embedReadablePdfFont(pdfDoc, StandardFonts.Helvetica)
+  const pages = pdfDoc.getPages()
+  let drew = false
 
-  const page = pdfDoc.getPages()[0]
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  pdfDoc.registerFontkit(require('@pdf-lib/fontkit'))
-  const fontBytes = Buffer.from(sarabunBase64, 'base64')
-  const font = await pdfDoc.embedFont(fontBytes)
-
-  for (const ov of overlays) {
+  function drawOverlay(pageIndex: number, ov: Overlay) {
+    const page = pages[pageIndex]
+    if (!page) return
+    drew = true
     page.drawRectangle({
       x: ov.x - 1, y: ov.y - 2,
       width: Math.max(ov.w + 12, 80), height: ov.h + 4,
       color: rgb(1, 1, 1),
     })
-    const textOpts = { size: Math.max(ov.fontSize, 9), font, color: rgb(0, 0, 0) }
+    const textOpts = { size: Math.max(ov.fontSize, 9), font: resolvedFont, color: rgb(0, 0, 0) }
     page.drawText(ov.text, { x: ov.x + 0.35, y: ov.y + 1, ...textOpts })
     page.drawText(ov.text, { x: ov.x,        y: ov.y + 1, ...textOpts })
+  }
+
+  function headerDateOverlay(pageItems: TextItem[], field: PdfField, pageWidth: number): Overlay | null {
+    const pageLines = buildLineGroups(pageItems, 6)
+    const anchorLine = pageLines.find(l => lineMatches(l.text, field.label))
+      ?? fallbackEffectiveHeaderLine(pageLines)
+    if (!anchorLine) return null
+    const avgFs = anchorLine.items.reduce((s, i) => s + i.fontSize, 0) / (anchorLine.items.length || 1) || 10
+    const yBand = Math.max(avgFs * 5, 30)
+    const labelOnlyItems = anchorLine.items.filter(it => !isPhLine(it.str))
+    const labelMaxX = labelOnlyItems.length > 0
+      ? Math.max(...labelOnlyItems.map(i => i.x + (i.width || 0)))
+      : Math.max(...anchorLine.items.map(i => i.x + (i.width || 0)))
+    const hasLabel = lineMatches(anchorLine.text, field.label)
+    const rightItems = pageItems.filter(it =>
+      Math.abs(it.y - anchorLine.y) < yBand && it.x > labelMaxX + 5 && it.x < labelMaxX + 150
+    )
+    if (hasLabel && rightItems.length > 0) {
+      const rightLines = buildLineGroups(rightItems, 6)
+        .sort((a, b) => Math.abs(a.y - anchorLine.y) - Math.abs(b.y - anchorLine.y))
+      if (rightLines[0]?.items.length) {
+        const xMin = Math.min(...rightLines[0].items.map(t => t.x))
+        const yMin = Math.min(...rightLines[0].items.map(t => t.y))
+        const xMax = Math.max(...rightLines[0].items.map(t => t.x + (t.width || 0)))
+        const h = Math.max(...rightLines[0].items.map(t => t.height)) || 10
+        const fs = rightLines[0].items.find(t => t.fontSize > 0)?.fontSize ?? 10
+        return { x: xMin, y: yMin, w: Math.max(xMax - xMin, 50), h, fontSize: fs, text: field.dateStr }
+      }
+    }
+    if (!hasLabel) {
+      return {
+        x: Math.min(Math.max(pageWidth * 0.66, labelMaxX + 28), pageWidth - 130),
+        y: anchorLine.y,
+        w: 100,
+        h: Math.max(avgFs, 10),
+        fontSize: Math.max(avgFs, 10),
+        text: field.dateStr,
+      }
+    }
+    return {
+      x: Math.min(labelMaxX + 8, pageWidth - 140),
+      y: anchorLine.y,
+      w: 110,
+      h: Math.max(avgFs, 10),
+      fontSize: Math.max(avgFs, 10),
+      text: field.dateStr,
+    }
+  }
+
+  function fixedEffectiveHeaderOverlay(
+    pageItems: TextItem[],
+    field: PdfField,
+    pageWidth: number,
+    pageHeight: number,
+  ): Overlay | null {
+    const pageLines = buildLineGroups(pageItems, 6)
+    const pageText = normalizePdfText(pageLines.map(line => line.text).join(' '))
+    const code = normalizePdfText(documentCode ?? '')
+    const hasControlledHeader =
+      pageText.includes(normalizePdfText('เอกสารควบคุม')) ||
+      pageText.includes(normalizePdfText('หน้าที่')) ||
+      pageText.includes(normalizePdfText('หมายเลขเอกสาร')) ||
+      (code.length > 0 && pageText.includes(code))
+    if (!hasControlledHeader) return null
+
+    const headerLines = pageLines.filter(line => line.y > pageHeight * 0.72)
+    const effectiveLine = headerLines.find(line => lineMatches(line.text, field.label))
+    const codeLine = headerLines.find(line => {
+      const text = normalizePdfText(line.text)
+      return text.includes(normalizePdfText('หมายเลขเอกสาร')) ||
+        text.includes(normalizePdfText('รหัสเอกสาร')) ||
+        (code.length > 0 && text.includes(code))
+    })
+    const anchorY = effectiveLine?.y ?? codeLine?.y
+    const y = anchorY
+      ? (anchorY < pageHeight / 2 ? pageHeight - anchorY - 2 : anchorY)
+      : pageHeight - 104
+
+    return {
+      x: pageWidth * 0.60,
+      y,
+      w: pageWidth * 0.18,
+      h: 12,
+      fontSize: 10,
+      text: field.dateStr,
+    }
+  }
+
+  function fallbackEffectiveHeaderLine(pageLines: { y: number; items: TextItem[]; text: string }[]) {
+    const code = normalizePdfText(documentCode ?? '')
+    const candidates = pageLines
+      .filter(line => {
+        const text = normalizePdfText(line.text)
+        if (text.includes(normalizePdfText('หมายเลขเอกสาร'))) return true
+        if (text.includes(normalizePdfText('รหัสเอกสาร'))) return true
+        return code.length > 0 && text.includes(code)
+      })
+      .sort((a, b) => {
+        const ay = Math.abs(a.y)
+        const by = Math.abs(b.y)
+        return by - ay
+      })
+    return candidates[0] ?? null
+  }
+
+  for (const ov of overlays) {
+    drawOverlay(0, ov)
+  }
+
+  const effectiveHeaderField = fields.find(field => field.label === 'วันที่บังคับใช้')
+  if (effectiveHeaderField) {
+    for (let pageIndex = 0; pageIndex < Math.min(itemsByPage.length, pages.length); pageIndex++) {
+      const pageItems = (itemsByPage[pageIndex] ?? []) as TextItem[]
+      const pageWidth = pages[pageIndex].getWidth()
+      const pageHeight = pages[pageIndex].getHeight()
+      const ov = fixedEffectiveHeaderOverlay(pageItems, effectiveHeaderField, pageWidth, pageHeight)
+        ?? headerDateOverlay(pageItems, effectiveHeaderField, pageWidth)
+      if (pageIndex === 0 && ov && overlays.some(existing => existing.text === ov.text && Math.abs(existing.y - ov.y) < 4)) {
+        continue
+      }
+      if (ov) drawOverlay(pageIndex, ov)
+    }
+  }
+
+  if (!drew) return buffer
+  return Buffer.from(await pdfDoc.save())
+}
+
+function formatRevision(revision?: string | null) {
+  const clean = revision?.trim()
+  if (!clean) return 'Rev.'
+  if (/^rev\.?/i.test(clean)) return clean.replace(/^rev\.?\s*/i, 'Rev.')
+  return `Rev.${clean}`
+}
+
+export async function stampPublishedPdfFooter(
+  buffer: Buffer,
+  documentCode: string,
+  revision: string | null | undefined,
+  date: Date,
+): Promise<Buffer> {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
+  const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true } as Parameters<typeof PDFDocument.load>[1])
+  const font = await embedReadablePdfFont(pdfDoc, StandardFonts.Helvetica)
+  const size = 10
+  const footerText = `${documentCode} | ${formatRevision(revision)} | Effective date: ${toEnShortDate(date)}`
+
+  for (const page of pdfDoc.getPages()) {
+    const crop = page.getCropBox()
+    const pageWidth = crop.width
+    const textWidth = font.widthOfTextAtSize(footerText, size)
+    page.drawText(footerText, {
+      x: crop.x + Math.max(18, pageWidth - textWidth - 28),
+      y: crop.y + 22,
+      size,
+      font,
+      color: rgb(0, 0, 0),
+    })
   }
 
   return Buffer.from(await pdfDoc.save())
@@ -335,15 +550,8 @@ const APPROVED_DOCX_FIELDS = (date: Date): DocxField[] => [
   { label: 'รับรองโดย', dateStr: toThaiDate(date) },
 ]
 
-const PUBLISHED_PDF_FIELDS = (date: Date): PdfField[] => [
-  { label: 'วันที่บังคับใช้เอกสาร', dateStr: toThaiDate(date) },
-  { label: 'Effective Date',         dateStr: toEnDate(date) },
-  // sigSlot: -1 = last remaining signature "Click or tap" (bottom = อนุมัติโดย)
-  { label: 'อนุมัติโดย', sigSlot: -1, dateStr: toThaiDate(date) },
-]
-
 const PUBLISHED_DOCX_FIELDS = (date: Date): DocxField[] => [
-  { label: 'วันที่บังคับใช้เอกสาร', dateStr: toThaiDate(date) },
+  { label: 'วันที่บังคับใช้', dateStr: toThaiDate(date) },
   { label: '(Effective Date)',        dateStr: toEnDate(date) },
   { label: 'อนุมัติโดย',              dateStr: toThaiDate(date) },
 ]
@@ -363,6 +571,7 @@ export async function injectCoverDates(
   documentCode: string,
   trigger: 'upload' | 'approved' | 'published',
   date: Date = new Date(),
+  options: InjectOptions = {},
 ): Promise<Buffer<ArrayBuffer>> {
   const cast = (b: Buffer): Buffer<ArrayBuffer> => b as Buffer<ArrayBuffer>
 
@@ -375,14 +584,13 @@ export async function injectCoverDates(
 
   try {
     if (trigger === 'upload') {
-      if (isDocx) return cast(injectDocxDates(buffer, UPLOAD_DOCX_FIELDS(date)))
-      if (isPdf)  return cast(await injectPdfDates(buffer, UPLOAD_PDF_FIELDS(date)))
+      if (isDocx) return cast(await injectDocxDates(buffer, UPLOAD_DOCX_FIELDS(date)))
+      if (isPdf)  return cast(await injectPdfDates(buffer, UPLOAD_PDF_FIELDS(date), documentCode))
     } else if (trigger === 'approved') {
-      if (isPdf)  return cast(await injectPdfDates(buffer, APPROVED_PDF_FIELDS(date)))
-      if (isDocx) return cast(injectDocxDates(buffer, APPROVED_DOCX_FIELDS(date)))
+      if (isPdf)  return cast(await injectPdfDates(buffer, APPROVED_PDF_FIELDS(date), documentCode))
+      if (isDocx) return cast(await injectDocxDates(buffer, APPROVED_DOCX_FIELDS(date)))
     } else if (trigger === 'published') {
-      if (isPdf)  return cast(await injectPdfDates(buffer, PUBLISHED_PDF_FIELDS(date)))
-      if (isDocx) return cast(injectDocxDates(buffer, PUBLISHED_DOCX_FIELDS(date)))
+      if (isDocx) return cast(await injectDocxDates(buffer, PUBLISHED_DOCX_FIELDS(date)))
     }
   } catch (err) {
     console.error('[date-inject] injection failed:', trigger, documentCode, err instanceof Error ? err.message : String(err))

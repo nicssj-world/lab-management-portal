@@ -222,7 +222,7 @@ export default async function StaffDashboardPage() {
     supabaseAdmin
       .from('audit_log')
       .select('id, action, target, detail, created_at, user_id')
-      .not('action', 'in', '("permission.update","settings.update","user.update","user.create")')
+      .not('action', 'in', '("permission.update","settings.update","user.update","user.create","document.cover_generate","document.cover_regenerate")')
       .order('created_at', { ascending: false })
       .limit(20),
   ])

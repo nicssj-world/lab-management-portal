@@ -403,7 +403,9 @@ function DocumentProfileModal({ user, onClose, onSaved, showToast }: DocumentPro
                     {removing ? 'กำลังลบ...' : 'ลบลายเซ็น'}
                   </Button>
                 </div>
-                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>รองรับ PNG, JPG, WebP ขนาดไม่เกิน 2 MB</div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>
+                  รองรับ PNG, JPG, WebP ขนาดไม่เกิน 2 MB; ระบบจะปรับเป็น PNG 900x260 ให้อัตโนมัติ
+                </div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>

@@ -62,7 +62,7 @@ export function canMoveToStatus(doc: DocumentFileFields, nextStatus: string) {
       return { ok: false as const, error: 'QP/WI ต้องมีไฟล์ต้นฉบับ Word/Excel ก่อนส่งเข้า Review' }
     }
     if (!doc.source_pdf_url && !doc.file_url) {
-      return { ok: false as const, error: 'QP/WI ต้องมีไฟล์ PDF ก่อนส่งเข้า Review' }
+      return { ok: false as const, error: 'QP/WI ต้องมีไฟล์ PDF เนื้อหาก่อนส่งเข้า Review' }
     }
     return { ok: true as const }
   }

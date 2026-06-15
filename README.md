@@ -18,6 +18,7 @@ scripts/quality-document-workflow-v2.sql
 - `Published` documents must not be edited directly for file/status/revision/date changes.
 - Published content changes must create a working revision draft.
 - Admin and Document Controller can correct small Published metadata. For QP/WI, cover-impacting metadata changes regenerate the final PDF and create an audit log.
+- Signature uploads accept PNG/JPG/WebP up to 2 MB and are normalized to transparent PNG 900x260 before storage/stamping.
 
 ### QP/WI Flow
 
@@ -25,11 +26,11 @@ scripts/quality-document-workflow-v2.sql
 - Reviewer creates Draft and can upload Word/Excel source only.
 - Normal Draft workflow can be used for Rev.00 or Rev.>0 when the document should start from DOCX/XLSX and pass Draft -> Review -> Approved -> Published.
 - Edit/Review date is the date the source draft is uploaded.
-- DC uploads the content PDF without cover.
+- DCC/Admin reviews the draft, uploads the content PDF without cover, then moves Draft -> Review.
+- QP/WI Draft -> Review requires both the Word/Excel source file and the content PDF.
 - For QP/WI Rev.>0 in normal Draft workflow, the later PDF upload must be the content PDF without the old cover; the system will generate the new cover at Published.
-- Draft can move to Review only after the required source/content files are present.
-- Review -> Approved sets approval date and approver.
-- Approved -> Published sets effective/published date, generates the cover page, merges cover + content PDF, and stores the generated final PDF as `file_url`.
+- Manager/Admin can move Review -> Approved; this sets approval date and approver.
+- Only Quality Manager, Laboratory Director, and Admin can move Approved -> Published; this sets effective/published date, generates the cover page, merges cover + content PDF, and stores the generated final PDF as `file_url`.
 
 ### Legacy Import Flow Rev.>0
 
@@ -53,6 +54,7 @@ scripts/quality-document-workflow-v2.sql
 - Published documents are updated through "Create Revision" only.
 - The system creates one active working revision draft per current document.
 - When the draft is Published, the previous current version is archived into `document_revisions`, then the draft is promoted to the current document.
+- Admin/Quality Manager/Laboratory Director can publish a QP/WI revision draft with "PDF already has a complete cover" checked. In that case the uploaded PDF becomes the official file directly, system cover generation is skipped, `legacy_cover_included` is set, and an audit log is written.
 - Legacy revision rollback and direct workflow-history edits are intentionally blocked.
 
 ### Retroactive Revision History
