@@ -19,15 +19,15 @@ function parseDateOnly(value: unknown) {
   return new Date(`${text}T00:00:00.000Z`).toISOString()
 }
 
-async function getBackfilledRevision(id: string, revId: string) {
+async function getRevision(id: string, revId: string) {
   const { data, error } = await supabaseAdmin
     .from('document_revisions')
-    .select('id, document_id, file_url, history_source')
+    .select('id, document_id, file_url, history_source, revision_number')
     .eq('id', revId)
     .eq('document_id', id)
     .maybeSingle()
   if (error) throw error
-  return data as { id: string; document_id: string; file_url: string | null; history_source: string | null } | null
+  return data as { id: string; document_id: string; file_url: string | null; history_source: string | null; revision_number: string } | null
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
@@ -36,13 +36,39 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!canBackfillRevisionHistory(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id, revId } = await params
-  const revision = await getBackfilledRevision(id, revId)
+  const revision = await getRevision(id, revId)
   if (!revision) return NextResponse.json({ error: 'Revision not found' }, { status: 404 })
+  const body = await req.json()
   if (revision.history_source !== 'backfill') {
-    return NextResponse.json({ error: WORKFLOW_LOCK_ERROR }, { status: 409 })
+    if (actor.role !== 'Admin') {
+      return NextResponse.json({ error: WORKFLOW_LOCK_ERROR }, { status: 409 })
+    }
+    const invalidField = Object.keys(body as Record<string, unknown>).find((key) => key !== 'revision_date')
+    if (invalidField) {
+      return NextResponse.json({ error: 'Workflow revision อนุญาตให้ Admin แก้ได้เฉพาะวันที่เท่านั้น' }, { status: 422 })
+    }
+    const createdAt = parseDateOnly((body as Record<string, unknown>).revision_date)
+    if (!createdAt) return NextResponse.json({ error: 'กรุณาเลือกวันที่แก้ไข' }, { status: 422 })
+
+    const { data, error } = await supabaseAdmin
+      .from('document_revisions')
+      .update({ created_at: createdAt })
+      .eq('id', revId)
+      .eq('document_id', id)
+      .select('*')
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    supabaseAdmin.from('audit_log').insert({
+      action: 'document.revision_history_date_update',
+      user_id: actor.id,
+      target: `${id}:${revId}`,
+      detail: `Updated Rev. ${revision.revision_number} date`,
+    }).then(undefined, () => {})
+
+    return NextResponse.json(data)
   }
 
-  const body = await req.json()
   const revisionNumber = typeof body.revision_number === 'string' ? body.revision_number.trim() : ''
   if (!revisionNumber) {
     return NextResponse.json({ error: 'กรุณากรอกหมายเลข Revision' }, { status: 422 })
@@ -83,7 +109,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!canBackfillRevisionHistory(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id, revId } = await params
-  const revision = await getBackfilledRevision(id, revId)
+  const revision = await getRevision(id, revId)
   if (!revision) return NextResponse.json({ error: 'Revision not found' }, { status: 404 })
   if (revision.history_source !== 'backfill') {
     return NextResponse.json({ error: WORKFLOW_LOCK_ERROR }, { status: 409 })

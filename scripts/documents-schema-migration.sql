@@ -42,6 +42,7 @@ CREATE TABLE document_revisions (
   revision_note   text,
   file_url        text        NOT NULL,
   file_name       text        NOT NULL,
+  expiry_date     date,
   uploaded_by     uuid        REFERENCES profiles(id) ON DELETE SET NULL,
   created_at      timestamptz DEFAULT now()
 );

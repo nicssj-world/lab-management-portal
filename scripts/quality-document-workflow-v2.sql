@@ -59,6 +59,7 @@ alter table document_revisions
   add column if not exists word_size bigint,
   add column if not exists edit_date date,
   add column if not exists effective_date date,
+  add column if not exists expiry_date date,
   add column if not exists approved_at timestamptz,
   add column if not exists published_at timestamptz,
   add column if not exists approved_by_id uuid references profiles(id) on delete set null,
@@ -75,6 +76,10 @@ alter table document_revisions
   add column if not exists legacy_cover_included boolean not null default false,
   add column if not exists history_source text not null default 'workflow'
     check (history_source in ('workflow','backfill','legacy'));
+
+update document_revisions
+set expiry_date = coalesce(expiry_date, edit_date, effective_date)
+where expiry_date is null;
 
 -- Working revisions ---------------------------------------------------------
 create table if not exists document_revision_drafts (

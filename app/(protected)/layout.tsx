@@ -5,6 +5,7 @@ import { StaffTopbar } from '@/components/layout/StaffTopbar'
 import { PermissionProvider } from '@/context/PermissionContext'
 import { SidebarProvider } from '@/context/SidebarContext'
 import { getRolePermissions } from '@/lib/permissions'
+import { ensureOwnProfile } from '@/lib/auth/profile'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -14,21 +15,17 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     redirect('/login')
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('name, role, avatar_url, doc_role')
-    .eq('id', user.id)
-    .single()
+  const profile = await ensureOwnProfile(user)
 
   const LEGACY_ROLES: Record<string, string> = {
     admin: 'Admin', staff: 'Manager', editor: 'Medical Technologist', viewer: 'Assistant',
   }
-  const role = profile?.role ? (LEGACY_ROLES[profile.role] ?? profile.role) : undefined
+  const role = profile.role ? (LEGACY_ROLES[profile.role] ?? profile.role) : undefined
   const permissions = role ? await getRolePermissions(role) : {}
-  if (['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(profile?.doc_role ?? '')) {
+  if (['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(profile.doc_role ?? '')) {
     permissions['เอกสารคุณภาพ'] = 'edit'
   }
-  if (profile?.doc_role === 'Reviewer') {
+  if (profile.doc_role === 'Reviewer') {
     permissions['รายการตรวจ'] = 'edit'
   }
 
@@ -59,9 +56,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       <div className="protected-shell">
         <StaffSidebar
           userRole={role}
-          userName={profile?.name ?? undefined}
-          userAvatar={profile?.avatar_url ?? undefined}
-          userDocRole={profile?.doc_role ?? undefined}
+          userName={profile.name ?? undefined}
+          userAvatar={profile.avatar_url ?? undefined}
+          userDocRole={profile.doc_role ?? undefined}
           userPermissions={permissions}
         />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>

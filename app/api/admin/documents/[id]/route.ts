@@ -341,6 +341,7 @@ export async function PATCH(
         word_size:       current.word_size ?? null,
         edit_date:       current.edit_date ?? null,
         effective_date:  current.effective_date ?? null,
+        expiry_date:     current.expiry_date ?? null,
         approved_at:     current.approved_at ?? null,
         published_at:    current.published_at ?? null,
         approved_by_id:  current.approved_by_id ?? null,

@@ -27,6 +27,10 @@ function canSkipSystemCover(actor: { role: string; doc_role?: string | null }) {
     || actor.doc_role === 'Laboratory Director'
 }
 
+function canManageDraftOfficialFile(actor: { role: string; doc_role?: string | null }) {
+  return actor.role === 'Admin' || actor.role === 'Document Controller' || actor.doc_role === 'Document Controller'
+}
+
 async function uploadDocumentObject(file: File, type: string, prefix = '', headerMetadata?: DocxHeaderMetadata) {
   const year = new Date().getFullYear()
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
@@ -121,7 +125,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const { data: parentDoc } = await supabaseAdmin
       .from('documents')
-      .select('document_code, file_url, word_url')
+      .select('document_code, file_url, word_url, description')
       .eq('id', id)
       .single()
     if (!parentDoc) return NextResponse.json({ error: 'Current document not found' }, { status: 404 })
@@ -175,16 +179,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const targetType = ((updates.type as string | undefined) ?? draft.type) as string
     const sourceUploadDate = sourceFile ? todayIsoDate() : undefined
     if (sourceUploadDate) {
-      updates.edit_date = sourceUploadDate
-      updates.expiry_date = sourceUploadDate
+      if (updates.edit_date === undefined && !draft.edit_date) updates.edit_date = sourceUploadDate
+      if (updates.expiry_date === undefined && !draft.expiry_date) updates.expiry_date = sourceUploadDate
       if (!updates.owner_name && !draft.owner_name && actor.name) updates.owner_name = actor.name
-    } else if (typeof updates.edit_date === 'string' && !updates.expiry_date) {
-      updates.expiry_date = updates.edit_date
-    } else if (typeof updates.expiry_date === 'string' && !updates.edit_date) {
-      updates.edit_date = updates.expiry_date
     }
 
     if (officialFile) {
+      if (!canManageDraftOfficialFile(actor)) {
+        return NextResponse.json({ error: 'เฉพาะ Admin หรือ Document Controller เท่านั้นที่อัปโหลด PDF เนื้อหา/ไฟล์ทางการได้' }, { status: 403 })
+      }
       if (officialFile.size > 50 * 1024 * 1024) return NextResponse.json({ error: 'ไฟล์ทางการใหญ่เกิน 50 MB' }, { status: 422 })
       if (isCoverRequiredType(targetType) && !isPdfFile(officialFile)) {
         return NextResponse.json({ error: 'QP/WI ต้องใช้ PDF เนื้อหาในช่องไฟล์ทางการ' }, { status: 422 })
@@ -224,6 +227,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       updates.word_url = key
       updates.word_name = sourceFile.name
       updates.word_size = uploaded.size
+      if (draft.description && draft.description === parentDoc.description && updates.description === undefined) {
+        updates.description = ''
+      }
     }
 
     const statusAfter = (nextStatus ?? draft.status) as string
@@ -355,6 +361,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         word_size: current.word_size ?? null,
         edit_date: current.edit_date ?? null,
         effective_date: current.effective_date ?? null,
+        expiry_date: current.expiry_date ?? null,
         approved_at: current.approved_at ?? null,
         published_at: current.published_at ?? null,
         approved_by_id: current.approved_by_id ?? null,

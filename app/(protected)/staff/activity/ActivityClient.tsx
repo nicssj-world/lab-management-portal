@@ -17,36 +17,71 @@ interface LogEntry {
 }
 
 const ACTION_LABELS: Record<string, string> = {
-  'test.update':           'แก้ไขรายการตรวจ',
-  'test.create':           'เพิ่มรายการตรวจ',
-  'test.delete':           'ลบรายการตรวจ',
-  'test.bulk_delete':      'ลบรายการตรวจ (กลุ่ม)',
-  'test.import':           'นำเข้ารายการตรวจ',
-  'test.duplicate':        'คัดลอกรายการตรวจ',
-  'test.purge_deleted':    'ลบถาวรรายการตรวจ',
-  'document.upload':       'อัปโหลดเอกสาร',
-  'document.edit':         'แก้ไขเอกสาร',
-  'document.delete':       'ลบเอกสาร',
-  'document.status_change':'เปลี่ยนสถานะเอกสาร',
-  'category.update':       'แก้ไขหมวดหมู่',
-  'category.create':       'เพิ่มหมวดหมู่',
-  'rejection.create':      'บันทึก Rejection',
-  'equipment.create':      'เพิ่มเครื่องมือ',
-  'equipment.update':      'แก้ไขเครื่องมือ',
-  'equipment.delete':      'ลบเครื่องมือ',
-  'contract.create':       'เพิ่มสัญญา',
-  'contract.update':       'แก้ไขสัญญา',
-  'contract.delete':       'ลบสัญญา',
-  'contract.usage_add':    'บันทึกค่าใช้จ่ายสัญญา',
-  'risk.create':           'บันทึกความเสี่ยง',
-  'risk.update':           'แก้ไขความเสี่ยง',
-  'risk.delete':           'ลบความเสี่ยง',
-  'risk.close':            'ปิดประเด็นความเสี่ยง',
-  'kpi.entry':             'บันทึก KPI',
-  'create_news':           'เพิ่มข่าวสาร',
-  'update_news':           'แก้ไขข่าวสาร',
-  'delete_news':           'ลบข่าวสาร',
-  'phleb_upload_init':     'อัปโหลดข้อมูล Phlebotomy',
+  // รายการตรวจ
+  'test.create':                                  'เพิ่มรายการตรวจ',
+  'test.update':                                  'แก้ไขรายการตรวจ',
+  'test.delete':                                  'ลบรายการตรวจ',
+  'test.bulk_delete':                             'ลบรายการตรวจ (กลุ่ม)',
+  'test.import':                                  'นำเข้ารายการตรวจ',
+  'test.duplicate':                               'คัดลอกรายการตรวจ',
+  'test.purge_deleted':                           'ลบถาวรรายการตรวจ',
+  'category.create':                              'เพิ่มหมวดหมู่',
+  'category.update':                              'แก้ไขหมวดหมู่',
+  // เอกสาร — workflow เดิม
+  'document.upload':                              'อัปโหลดเอกสาร',
+  'document.edit':                                'แก้ไขเอกสาร',
+  'document.delete':                              'ลบเอกสาร',
+  'document.status_change':                       'เปลี่ยนสถานะเอกสาร',
+  'document.current_revision_rollback':           'ย้อนกลับเวอร์ชันเอกสาร',
+  // เอกสาร — working revision workflow
+  'document.revision_draft_create':               'สร้าง Working Revision',
+  'document.revision_draft_status':               'เปลี่ยนสถานะ Working Revision',
+  'document.revision_draft_publish':              'เผยแพร่เอกสาร (Publish)',
+  'document.revision_draft_publish_existing_cover': 'เผยแพร่เอกสาร (ใช้หน้าปกเดิม)',
+  // เอกสาร — ประวัติการแก้ไข
+  'document.revision_history_backfill_create':    'เพิ่มประวัติการแก้ไขย้อนหลัง',
+  'document.revision_history_backfill_update':    'แก้ไขประวัติการแก้ไขย้อนหลัง',
+  'document.revision_history_backfill_delete':    'ลบประวัติการแก้ไขย้อนหลัง',
+  'document.revision_history_date_update':        'แก้ไขวันที่ประวัติการแก้ไข',
+  // เครื่องมือ
+  'equipment.create':                             'เพิ่มเครื่องมือ',
+  'equipment.update':                             'แก้ไขเครื่องมือ',
+  'equipment.delete':                             'ลบเครื่องมือ',
+  // สัญญา
+  'contract.create':                              'เพิ่มสัญญา',
+  'contract.update':                              'แก้ไขสัญญา',
+  'contract.delete':                              'ลบสัญญา',
+  'contract.usage_add':                           'บันทึกค่าใช้จ่ายสัญญา',
+  // ความเสี่ยง
+  'risk.create':                                  'บันทึกความเสี่ยง',
+  'risk.update':                                  'แก้ไขความเสี่ยง',
+  'risk.delete':                                  'ลบความเสี่ยง',
+  'risk.close':                                   'ปิดประเด็นความเสี่ยง',
+  'rejection.create':                             'บันทึก Rejection',
+  // KPI
+  'kpi.entry':                                    'บันทึก KPI',
+  // ข่าวสาร
+  'create_news':                                  'เพิ่มข่าวสาร',
+  'update_news':                                  'แก้ไขข่าวสาร',
+  'delete_news':                                  'ลบข่าวสาร',
+  // บุคลากร
+  'personnel.profile.update':                     'แก้ไขโปรไฟล์บุคลากร',
+  'personnel.org.create':                         'เพิ่มโครงสร้างองค์กร',
+  'personnel.org.delete':                         'ลบโครงสร้างองค์กร',
+  'personnel.jd.create':                          'เพิ่มข้อกำหนดตำแหน่งงาน',
+  'personnel.jd.update':                          'แก้ไขข้อกำหนดตำแหน่งงาน',
+  // โปรไฟล์เอกสาร / ลายเซ็น
+  'document_profile.update':                      'แก้ไขโปรไฟล์เอกสาร',
+  'document_profile.update_self':                 'แก้ไขโปรไฟล์เอกสาร (ตัวเอง)',
+  'document_profile.signature_upload':            'อัปโหลดลายเซ็น',
+  'document_profile.signature_upload_self':       'อัปโหลดลายเซ็น (ตัวเอง)',
+  'document_profile.signature_delete':            'ลบลายเซ็น',
+  'document_profile.signature_delete_self':       'ลบลายเซ็น (ตัวเอง)',
+  // ระบบ
+  'manual_edit':                                  'แก้ไขคู่มือ',
+  'permission.update':                            'แก้ไขสิทธิ์ผู้ใช้',
+  'settings.update':                              'แก้ไขการตั้งค่าระบบ',
+  'phleb_upload_init':                            'อัปโหลดข้อมูล Phlebotomy',
 }
 
 const CATEGORIES = [
@@ -80,19 +115,121 @@ function fmtTime(iso: string | null) {
   })
 }
 
+const STATUS_TH: Record<string, string> = {
+  'Draft':     'ร่าง',
+  'Review':    'รอตรวจสอบ',
+  'Approved':  'อนุมัติแล้ว',
+  'Published': 'เผยแพร่แล้ว',
+  'Obsolete':  'ยกเลิกใช้งาน',
+}
+
+function isUuid(s: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(:[0-9a-f-]+)?$/i.test(s)
+}
+
+function translateStatuses(s: string) {
+  return s.replace(/\b(Draft|Review|Approved|Published|Obsolete)\b/g, m => STATUS_TH[m] ?? m)
+}
+
 function detailText(action: string | null, target: string | null, detail: string | null): string {
-  if (detail?.trim().startsWith('{')) {
+  const a = action ?? ''
+  const t = (target ?? '').trim()
+  const d = (detail ?? '').trim()
+  const safeTarget = isUuid(t) ? '' : t
+
+  // JSON detail (test.* actions)
+  if (d.startsWith('{')) {
     try {
-      const p = JSON.parse(detail) as Record<string, unknown>
-      if (action?.startsWith('test.')) {
+      const p = JSON.parse(d) as Record<string, unknown>
+      if (a.startsWith('test.')) {
         const name = (p.th as string) || (p.en as string) || (p.code as string) || ''
-        return [target, name].filter(Boolean).join(' · ').slice(0, 120)
+        return [safeTarget, name].filter(Boolean).join(' · ').slice(0, 120)
       }
     } catch { /* ignore */ }
-    return target ?? ''
+    return safeTarget
   }
-  return [target, detail && detail !== target ? detail : null]
-    .filter(Boolean).join(' · ').slice(0, 140)
+
+  // Working revision status change: "Rev. 07 · Draft → Review"
+  if (a === 'document.revision_draft_status') {
+    return [safeTarget, translateStatuses(d)].filter(Boolean).join(' · ')
+  }
+
+  // Document status change (legacy): detail = "CODE · old → new"
+  if (a === 'document.status_change') {
+    return translateStatuses(d) || safeTarget
+  }
+
+  // Publish with existing cover
+  if (a === 'document.revision_draft_publish_existing_cover') {
+    const rev = d.match(/Rev\.\s*\S+/)?.[0] ?? ''
+    return [safeTarget, rev, 'ใช้หน้าปกเดิม'].filter(Boolean).join(' · ')
+  }
+
+  // Rollback: "Deleted Rev. X; promoted Rev. Y"
+  if (a === 'document.current_revision_rollback') {
+    const del = d.match(/Deleted (Rev\.\s*\S+)/)?.[1]
+    const prom = d.match(/promoted (Rev\.\s*\S+)/)?.[1]
+    return [safeTarget, del ? `ลบ ${del}` : null, prom ? `ย้อนกลับ ${prom}` : null].filter(Boolean).join(' · ')
+  }
+
+  // Revision history (target is uuid:uuid — no meaningful target)
+  if (a === 'document.revision_history_backfill_create') {
+    const rev = d.match(/Rev\.\s*\S+/)?.[0]
+    return rev ? `เพิ่ม ${rev}` : 'เพิ่มประวัติ'
+  }
+  if (a === 'document.revision_history_backfill_update') {
+    const rev = d.match(/Rev\.\s*\S+/)?.[0]
+    return rev ? `แก้ไข ${rev}` : 'แก้ไขประวัติ'
+  }
+  if (a === 'document.revision_history_backfill_delete') return 'ลบประวัติย้อนหลัง'
+  if (a === 'document.revision_history_date_update') {
+    const rev = d.match(/Rev\.\s*\S+/)?.[0]
+    return rev ? `แก้ไขวันที่ ${rev}` : 'แก้ไขวันที่ประวัติ'
+  }
+
+  // Import current revision
+  if (a === 'document.import_current') {
+    const rev = d.match(/Rev\.\s*\S+/)?.[0]
+    const hasLegacy = d.includes('legacy cover')
+    return [safeTarget, rev ? `นำเข้า ${rev}` : null, hasLegacy ? 'มีหน้าปกเดิม' : null].filter(Boolean).join(' · ')
+  }
+
+  // Cover generate — just show code
+  if (a === 'document.cover_generate' || a === 'document.cover_regenerate') return safeTarget
+
+  // Permission: target = "role:resource", detail = "Set to level"
+  if (a === 'permission.update') {
+    return [t, d.replace(/^Set to\s*/i, '')].filter(Boolean).join(' · ')
+  }
+
+  // Settings — action label already says it all
+  if (a === 'settings.update') return ''
+
+  // Signature upload — show dimensions only
+  if (a === 'document_profile.signature_upload' || a === 'document_profile.signature_upload_self') {
+    const dims = d.match(/(\d+x\d+)/)?.[1]
+    return dims ? `ขนาด ${dims}` : ''
+  }
+
+  // Personnel / profile — UUID targets, no useful detail
+  if (a.startsWith('personnel.')) {
+    if (a === 'personnel.org.delete') {
+      const count = d.match(/\d+/)?.[0]
+      return count ? `${count} รายการ` : ''
+    }
+    return ''
+  }
+  if (a.startsWith('document_profile.')) return ''
+
+  // General document actions: detail often starts with "CODE · ..."
+  // Avoid duplicating the code when target === detail prefix
+  if (safeTarget && d.startsWith(safeTarget + ' · ')) {
+    return d  // detail already contains code + info — use as-is
+  }
+  if (safeTarget && d && d !== safeTarget) {
+    return `${safeTarget} · ${d}`.slice(0, 140)
+  }
+  return (d || safeTarget).slice(0, 140)
 }
 
 const PAGE_SIZE = 30
