@@ -48,6 +48,7 @@ export default async function PersonnelPage() {
     position_title: p.position_title ?? null,
     mt_license_no: p.mt_license_no ?? null,
     mt_license_expiry: p.mt_license_expiry ?? null,
+    avatar_url: p.avatar_url ?? null,
     licenseStatus: expiryStatus(p.mt_license_expiry),
     certExpiring: certByProfile.get(p.id)?.expiring ?? 0,
     certExpired: certByProfile.get(p.id)?.expired ?? 0,

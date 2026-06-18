@@ -18,6 +18,7 @@ export interface RosterRow {
   position_title: string | null
   mt_license_no: string | null
   mt_license_expiry: string | null
+  avatar_url: string | null
   licenseStatus: ExpiryStatus
   certExpiring: number
   certExpired: number
@@ -37,9 +38,16 @@ function deptColor(dept: string | null): string {
   return DEPT_PALETTE[hash % DEPT_PALETTE.length]
 }
 
-// ── Avatar initials ──
-function Avatar({ name, dept }: { name: string; dept: string | null }) {
+// ── Avatar ──
+function Avatar({ name, dept, photoUrl }: { name: string; dept: string | null; photoUrl?: string | null }) {
   const color = deptColor(dept)
+  if (photoUrl) {
+    return (
+      <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, overflow: 'hidden' }}>
+        <img src={photoUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      </div>
+    )
+  }
   return (
     <div style={{
       width: 36, height: 36, borderRadius: '50%',
@@ -240,7 +248,7 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
                   {/* Name + avatar */}
                   <td style={tdStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Avatar name={r.name} dept={r.dept} />
+                      <Avatar name={r.name} dept={r.dept} photoUrl={r.avatar_url} />
                       <div>
                         <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.name}</div>
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{r.role}</div>
