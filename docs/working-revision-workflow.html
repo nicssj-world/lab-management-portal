@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Working Revision Workflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --teal:       #0D9488;
+    --teal-light: #14B8A6;
+    --teal-dim:   rgba(13,148,136,.12);
+    --blue:       #1E5FAD;
+    --blue-light: #3B82F6;
+    --blue-dim:   rgba(30,95,173,.12);
+    --navy:       #0B1628;
+    --navy-mid:   #112240;
+    --navy-card:  #162845;
+    --navy-border:#1E3A5F;
+    --ink:        #E2EAF4;
+    --muted:      #7FA3C8;
+    --faint:      #3A5A80;
+
+    --s-draft:    #64748B;
+    --s-review:   #D97706;
+    --s-approved: #2563EB;
+    --s-published:#059669;
+    --s-obsolete: #DC2626;
+  }
+
+  @page { size: A4; margin: 0; }
+
+  html { background: var(--navy); }
+
+  body {
+    font-family: 'Noto Sans Thai', sans-serif;
+    background: var(--navy);
+    color: var(--ink);
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    padding: 14mm 14mm 18mm;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── Background decoration ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 10% 10%, rgba(13,148,136,.08) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 90% 80%, rgba(30,95,173,.10) 0%, transparent 55%);
+    pointer-events: none;
+  }
+
+  .grid-bg {
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(30,95,173,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30,95,173,.04) 1px, transparent 1px);
+    background-size: 24px 24px;
+    pointer-events: none;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--navy-border);
+    position: relative;
+  }
+  .header-left { flex: 1; }
+  .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--teal-light);
+    margin-bottom: 5px;
+  }
+  .title {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.1;
+    letter-spacing: -.3px;
+  }
+  .title span { color: var(--teal-light); }
+  .subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 5px;
+    font-weight: 400;
+  }
+  .header-badge {
+    background: var(--teal-dim);
+    border: 1px solid rgba(13,148,136,.3);
+    border-radius: 8px;
+    padding: 8px 14px;
+    text-align: right;
+    flex-shrink: 0;
+    margin-left: 16px;
+  }
+  .header-badge .label { font-size: 8.5px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; font-family: 'DM Mono', monospace; }
+  .header-badge .value { font-size: 16px; font-weight: 800; color: var(--teal-light); font-family: 'Syne', sans-serif; }
+
+  /* ── Status flow bar ── */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 18px;
+    background: var(--navy-card);
+    border: 1px solid var(--navy-border);
+    border-radius: 12px;
+    padding: 10px 14px;
+    overflow: hidden;
+    position: relative;
+  }
+  .status-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+  .status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-name { font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+  .status-sub  { font-size: 8.5px; color: var(--muted); margin-top: 1px; white-space: nowrap; font-family: 'DM Mono', monospace; }
+  .status-arrow {
+    flex-shrink: 0;
+    margin: 0 4px;
+    color: var(--faint);
+    font-size: 14px;
+    font-weight: 300;
+  }
+  .status-arrow.dashed { opacity: .5; }
+
+  /* ── Main grid ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  /* ── Step card ── */
+  .step {
+    background: var(--navy-card);
+    border: 1px solid var(--navy-border);
+    border-radius: 12px;
+    padding: 12px 13px;
+    position: relative;
+    display: flex;
+    gap: 10px;
+    transition: border-color .2s;
+  }
+  .step.wide { grid-column: 1 / -1; }
+  .step.highlight { border-color: rgba(13,148,136,.4); }
+  .step.highlight-blue { border-color: rgba(30,95,173,.4); }
+
+  .step-num {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .step-body { flex: 1; min-width: 0; }
+  .step-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+  .step-items {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .step-items li {
+    font-size: 9.5px;
+    color: var(--muted);
+    line-height: 1.45;
+    display: flex;
+    gap: 5px;
+    align-items: flex-start;
+  }
+  .step-items li::before {
+    content: '·';
+    color: var(--teal);
+    font-size: 13px;
+    line-height: 1.2;
+    flex-shrink: 0;
+  }
+  .step-items li strong { color: var(--ink); font-weight: 600; }
+  .step-items code {
+    font-family: 'DM Mono', monospace;
+    font-size: 8.5px;
+    background: rgba(13,148,136,.12);
+    color: var(--teal-light);
+    padding: 0px 4px;
+    border-radius: 3px;
+  }
+
+  .step-badge {
+    position: absolute;
+    top: 10px; right: 11px;
+    font-size: 8px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 20px;
+    letter-spacing: .5px;
+    font-family: 'DM Mono', monospace;
+    text-transform: uppercase;
+  }
+
+  .role-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 8px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 5px;
+    letter-spacing: .3px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* ── Connector arrows between steps ── */
+  .connector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 12px;
+    margin: -2px 0;
+    color: var(--faint);
+    font-size: 16px;
+    z-index: 1;
+    position: relative;
+  }
+  .connector::before, .connector::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--navy-border);
+  }
+  .connector span {
+    padding: 0 8px;
+    font-size: 14px;
+  }
+
+  /* ── Side effects box ── */
+  .side-effect {
+    background: rgba(13,148,136,.07);
+    border: 1px solid rgba(13,148,136,.2);
+    border-radius: 7px;
+    padding: 6px 9px;
+    margin-top: 7px;
+  }
+  .side-effect-label {
+    font-size: 7.5px;
+    font-weight: 700;
+    color: var(--teal);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 3px;
+  }
+  .side-effect-items {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .side-effect-items li {
+    font-size: 8.5px;
+    color: #9EC8C0;
+    display: flex;
+    gap: 4px;
+    align-items: flex-start;
+    line-height: 1.4;
+  }
+  .side-effect-items li::before {
+    content: '→';
+    color: var(--teal-light);
+    flex-shrink: 0;
+  }
+  .side-effect-items code {
+    font-family: 'DM Mono', monospace;
+    font-size: 8px;
+    background: rgba(13,148,136,.15);
+    color: var(--teal-light);
+    padding: 0px 3px;
+    border-radius: 2px;
+  }
+
+  /* ── Published outcome block ── */
+  .publish-outcomes {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .outcome-box {
+    background: rgba(5,150,105,.08);
+    border: 1px solid rgba(5,150,105,.2);
+    border-radius: 7px;
+    padding: 7px 8px;
+    text-align: center;
+  }
+  .outcome-icon { font-size: 15px; margin-bottom: 3px; }
+  .outcome-label { font-size: 8px; color: #6EE7B7; font-weight: 600; line-height: 1.4; }
+
+  /* ── Bottom sections ── */
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  /* ── Permissions table ── */
+  .section-box {
+    background: var(--navy-card);
+    border: 1px solid var(--navy-border);
+    border-radius: 12px;
+    padding: 12px 13px;
+  }
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--teal-light);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .section-title::before {
+    content: '';
+    width: 3px; height: 12px;
+    background: var(--teal);
+    border-radius: 2px;
+    display: block;
+  }
+
+  .perm-table { width: 100%; border-collapse: collapse; }
+  .perm-table th {
+    font-size: 7.5px;
+    font-weight: 700;
+    color: var(--muted);
+    text-align: center;
+    padding: 0 3px 7px;
+    letter-spacing: .5px;
+    font-family: 'DM Mono', monospace;
+    white-space: nowrap;
+  }
+  .perm-table th:first-child { text-align: left; }
+  .perm-table td {
+    font-size: 8.5px;
+    color: var(--ink);
+    padding: 5px 3px;
+    text-align: center;
+    border-top: 1px solid rgba(30,58,95,.6);
+    vertical-align: middle;
+  }
+  .perm-table td:first-child {
+    text-align: left;
+    font-weight: 600;
+    font-size: 9px;
+    padding-left: 0;
+  }
+  .perm-table tr:first-child td { border-top: none; }
+  .check { color: #34D399; font-size: 12px; }
+  .cross { color: var(--faint); font-size: 12px; }
+
+  .role-label {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .role-main { color: var(--ink); font-weight: 700; }
+  .role-sub { color: var(--muted); font-size: 7.5px; font-weight: 400; font-family: 'DM Mono', monospace; }
+
+  /* ── Document type comparison ── */
+  .type-compare { display: flex; flex-direction: column; gap: 8px; }
+  .type-box {
+    border-radius: 9px;
+    padding: 9px 11px;
+    flex: 1;
+  }
+  .type-box.qpwi {
+    background: rgba(37,99,235,.08);
+    border: 1px solid rgba(37,99,235,.25);
+  }
+  .type-box.other {
+    background: rgba(13,148,136,.07);
+    border: 1px solid rgba(13,148,136,.2);
+  }
+  .type-name {
+    font-size: 10px;
+    font-weight: 800;
+    margin-bottom: 5px;
+    font-family: 'Syne', sans-serif;
+  }
+  .type-name.blue { color: #93C5FD; }
+  .type-name.teal { color: var(--teal-light); }
+  .type-reqs { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+  .type-reqs li {
+    font-size: 8.5px;
+    color: var(--muted);
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    line-height: 1.4;
+  }
+  .req-icon { flex-shrink: 0; font-size: 10px; }
+  .type-auto {
+    margin-top: 6px;
+    background: rgba(37,99,235,.12);
+    border: 1px solid rgba(37,99,235,.2);
+    border-radius: 5px;
+    padding: 4px 7px;
+    font-size: 8px;
+    color: #93C5FD;
+    font-family: 'DM Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .type-auto.teal-auto {
+    background: rgba(13,148,136,.1);
+    border-color: rgba(13,148,136,.2);
+    color: var(--teal-light);
+  }
+
+  /* ── Color helpers ── */
+  .c-draft    { color: var(--s-draft); }
+  .c-review   { color: var(--s-review); }
+  .c-approved { color: var(--s-approved); }
+  .c-published{ color: var(--s-published); }
+  .c-obsolete { color: var(--s-obsolete); }
+  .c-teal     { color: var(--teal-light); }
+  .c-blue     { color: #93C5FD; }
+
+  .bg-draft    { background: rgba(100,116,139,.15); color: var(--s-draft); border: 1px solid rgba(100,116,139,.3); }
+  .bg-review   { background: rgba(217,119,6,.12);  color: var(--s-review); border: 1px solid rgba(217,119,6,.3); }
+  .bg-approved { background: rgba(37,99,235,.12);  color: #60A5FA; border: 1px solid rgba(37,99,235,.3); }
+  .bg-published{ background: rgba(5,150,105,.12);  color: #34D399; border: 1px solid rgba(5,150,105,.3); }
+
+  .num-draft    { background: rgba(100,116,139,.15); color: var(--s-draft); }
+  .num-review   { background: rgba(217,119,6,.12);   color: var(--s-review); }
+  .num-approved { background: rgba(37,99,235,.12);   color: #60A5FA; }
+  .num-published{ background: rgba(5,150,105,.12);   color: #34D399; }
+  .num-teal     { background: var(--teal-dim);        color: var(--teal-light); }
+
+  .dcc-tag   { background: rgba(13,148,136,.12); color: var(--teal-light); border: 1px solid rgba(13,148,136,.2); }
+  .admin-tag { background: rgba(30,95,173,.12);  color: #93C5FD; border: 1px solid rgba(30,95,173,.2); }
+  .qm-tag    { background: rgba(5,150,105,.1);   color: #6EE7B7; border: 1px solid rgba(5,150,105,.2); }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--navy-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .footer-note { font-size: 8px; color: var(--faint); font-family: 'DM Mono', monospace; }
+  .footer-iso { font-size: 8.5px; color: var(--muted); font-weight: 600; letter-spacing: .5px; }
+
+  /* ── Divider ── */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--navy-border) 20%, var(--navy-border) 80%, transparent);
+    margin: 8px 0;
+  }
+
+  /* ── Step connector visual ── */
+  .flow-arrow-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 0;
+    position: relative;
+  }
+  .flow-arrow-wrap::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: linear-gradient(180deg, var(--navy-border), var(--teal-dim));
+    transform: translateX(-50%);
+  }
+  .flow-arrow-dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--navy-card);
+    border: 1px solid var(--navy-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    color: var(--teal);
+    z-index: 1;
+    position: relative;
+  }
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+
+<!-- ── Header ── -->
+<div class="header">
+  <div class="header-left">
+    <div class="eyebrow">ISO 15189 · 15190 &nbsp;|&nbsp; ระบบจัดการเอกสารคุณภาพ</div>
+    <div class="title">Working Revision <span>Workflow</span></div>
+    <div class="subtitle">กระบวนการสร้าง ตรวจสอบ อนุมัติ และเผยแพร่เอกสาร — ตั้งแต่เริ่มสร้างจนถึง MasterList</div>
+  </div>
+  <div class="header-badge">
+    <div class="label">เวอร์ชัน</div>
+    <div class="value">v2</div>
+  </div>
+</div>
+
+<!-- ── Status flow bar ── -->
+<div class="status-bar">
+  <div class="status-item">
+    <div class="status-dot" style="background:var(--s-draft)"></div>
+    <div>
+      <div class="status-name c-draft">Draft</div>
+      <div class="status-sub">ร่าง</div>
+    </div>
+  </div>
+  <div class="status-arrow">›</div>
+  <div class="status-item">
+    <div class="status-dot" style="background:var(--s-review)"></div>
+    <div>
+      <div class="status-name c-review">Review</div>
+      <div class="status-sub">รอตรวจสอบ</div>
+    </div>
+  </div>
+  <div class="status-arrow">›</div>
+  <div class="status-item">
+    <div class="status-dot" style="background:var(--s-approved)"></div>
+    <div>
+      <div class="status-name c-approved">Approved</div>
+      <div class="status-sub">อนุมัติแล้ว</div>
+    </div>
+  </div>
+  <div class="status-arrow">›</div>
+  <div class="status-item">
+    <div class="status-dot" style="background:var(--s-published)"></div>
+    <div>
+      <div class="status-name c-published">Published</div>
+      <div class="status-sub">เผยแพร่</div>
+    </div>
+  </div>
+  <div class="status-arrow dashed" style="margin-left:12px">⤳</div>
+  <div class="status-item" style="opacity:.7">
+    <div class="status-dot" style="background:var(--s-obsolete)"></div>
+    <div>
+      <div class="status-name c-obsolete">Obsolete</div>
+      <div class="status-sub">เมื่อถูกแทนที่</div>
+    </div>
+  </div>
+
+  <!-- back arrows small note -->
+  <div style="margin-left:auto;padding-left:12px;border-left:1px solid var(--navy-border)">
+    <div style="font-size:7.5px;color:var(--faint);font-family:'DM Mono',monospace;line-height:1.6">
+      Review → Draft (DCC)<br>
+      Approved → Review (QM/LD)
+    </div>
+  </div>
+</div>
+
+<!-- ── Steps 1–2 ── -->
+<div class="main-grid">
+
+  <!-- Step 1 -->
+  <div class="step">
+    <div class="step-num num-draft">1</div>
+    <div class="step-body">
+      <div class="step-title">สร้าง Working Revision</div>
+      <ul class="step-items">
+        <li>กดสร้างจากเอกสาร <strong>Published</strong> ที่ต้องการแก้ไข</li>
+        <li>ระบบสร้าง record ใน <code>document_revision_drafts</code></li>
+        <li>Rev. ถัดไปถูกกำหนดอัตโนมัติ (เช่น Rev.06 → Rev.07)</li>
+        <li>ถ้ามี draft ค้างอยู่ → ระบบ return draft เดิม ไม่สร้างซ้ำ</li>
+      </ul>
+      <div style="margin-top:6px;display:flex;gap:5px">
+        <span class="role-tag dcc-tag">DCC</span>
+        <span class="role-tag admin-tag">Admin</span>
+        <span class="step-badge bg-draft" style="position:relative;top:auto;right:auto">Draft</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="step">
+    <div class="step-num num-draft">2</div>
+    <div class="step-body">
+      <div class="step-title">กรอก Metadata</div>
+      <ul class="step-items">
+        <li>ชื่อเอกสาร, แผนก</li>
+        <li><strong>วันที่แก้ไข</strong> / <strong>วันที่ทบทวน</strong> / <strong>วันที่บังคับใช้</strong></li>
+        <li>ผู้จัดทำ / ผู้รับรอง / ผู้อนุมัติ</li>
+      </ul>
+      <div class="side-effect">
+        <div class="side-effect-label">⚡ Side Effect ทันที</div>
+        <ul class="side-effect-items">
+          <li>Update <code>document_revision_drafts</code></li>
+          <li>Patch header Word/Excel ใน R2 อัตโนมัติ</li>
+        </ul>
+      </div>
+      <div style="margin-top:6px;display:flex;gap:5px">
+        <span class="role-tag dcc-tag">DCC</span>
+        <span class="role-tag admin-tag">Admin</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="step">
+    <div class="step-num num-draft">3</div>
+    <div class="step-body">
+      <div class="step-title">อัปโหลด Word / Excel <span style="font-size:9px;color:var(--muted);font-weight:400">(ไฟล์ต้นฉบับ)</span></div>
+      <ul class="step-items">
+        <li>รองรับ <code>.docx</code> / <code>.xlsx</code></li>
+        <li>ระบบ <strong>patch header</strong> อัตโนมัติ: วันที่, รหัสเอกสาร, ชื่อ</li>
+        <li>บันทึก path ใน <code>word_url</code> ของ draft</li>
+        <li><strong>จำเป็น</strong> สำหรับ QP/WI ก่อนส่ง Review</li>
+      </ul>
+      <div style="margin-top:6px;display:flex;gap:5px">
+        <span class="role-tag dcc-tag">DCC</span>
+        <span class="role-tag admin-tag">Admin</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 4 -->
+  <div class="step">
+    <div class="step-num num-draft">4</div>
+    <div class="step-body">
+      <div class="step-title">อัปโหลด PDF ทางการ <span style="font-size:9px;color:var(--muted);font-weight:400">(ไฟล์เนื้อหา)</span></div>
+      <ul class="step-items">
+        <li><strong>QP/WI</strong>: อัปโหลด PDF เนื้อหา → <code>source_pdf_url</code></li>
+        <li><strong>Form/อื่นๆ</strong>: อัปโหลดไฟล์ทางการ (PDF/Word/Excel) → <code>file_url</code></li>
+        <li><strong>จำเป็น</strong> ก่อนส่งเข้า Review ทุกประเภท</li>
+      </ul>
+      <div style="margin-top:6px;display:flex;gap:5px">
+        <span class="role-tag dcc-tag">DCC เท่านั้น</span>
+        <span class="role-tag admin-tag">Admin</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 5 -->
+  <div class="step wide highlight">
+    <div class="step-num num-review">5</div>
+    <div class="step-body">
+      <div class="step-title">ส่งเข้า Review
+        <span class="step-badge bg-review" style="position:relative;top:auto;right:auto;margin-left:8px">→ Review</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:5px">
+        <ul class="step-items">
+          <li><strong>QP / WI</strong>: ต้องมี Word/Excel <strong>และ</strong> PDF เนื้อหา</li>
+          <li><strong>Form / อื่นๆ</strong>: ต้องมีไฟล์ทางการอย่างน้อย 1 ไฟล์</li>
+          <li>ระบบตรวจสอบเงื่อนไขก่อนอนุญาตเปลี่ยนสถานะ</li>
+        </ul>
+        <div>
+          <div style="font-size:8.5px;color:var(--muted);margin-bottom:4px">ผู้ดำเนินการ</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <span class="role-tag dcc-tag">DCC</span>
+            <span class="role-tag admin-tag">Admin</span>
+          </div>
+          <div style="font-size:8px;color:var(--faint);margin-top:5px;font-family:'DM Mono',monospace">
+            ⚠ สามารถส่งกลับ Draft ได้ (DCC)
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 6 -->
+  <div class="step wide highlight-blue">
+    <div class="step-num num-approved">6</div>
+    <div class="step-body">
+      <div class="step-title">ตรวจสอบ & อนุมัติ</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:5px">
+        <div>
+          <div style="font-size:8.5px;color:var(--muted);margin-bottom:4px;font-family:'DM Mono',monospace;letter-spacing:.5px">REVIEW → APPROVED</div>
+          <ul class="step-items">
+            <li>ตรวจสอบเนื้อหาและไฟล์</li>
+            <li>บันทึก <code>approved_at</code>, <code>approved_by_id</code></li>
+          </ul>
+          <div style="margin-top:5px;display:flex;gap:4px">
+            <span class="role-tag qm-tag">Quality Manager</span>
+            <span class="role-tag qm-tag">Lab Director</span>
+            <span class="role-tag admin-tag">Admin</span>
+          </div>
+          <div style="font-size:8px;color:var(--faint);margin-top:4px;font-family:'DM Mono',monospace">
+            ⚠ สามารถส่งกลับ Review ได้
+          </div>
+        </div>
+        <div>
+          <div style="font-size:8.5px;color:var(--muted);margin-bottom:4px;font-family:'DM Mono',monospace;letter-spacing:.5px">APPROVED → PUBLISHED</div>
+          <ul class="step-items">
+            <li>ยืนยันการเผยแพร่</li>
+            <li>บันทึก <code>published_at</code>, <code>published_by_id</code></li>
+          </ul>
+          <div style="margin-top:5px;display:flex;gap:4px">
+            <span class="role-tag qm-tag">Quality Manager</span>
+            <span class="role-tag qm-tag">Lab Director</span>
+            <span class="role-tag admin-tag">Admin</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 7 -->
+  <div class="step wide" style="border-color:rgba(5,150,105,.4)">
+    <div class="step-num num-published">7</div>
+    <div class="step-body">
+      <div class="step-title">เผยแพร่เอกสาร <span class="step-badge bg-published" style="position:relative;top:auto;right:auto;margin-left:8px">Published</span></div>
+      <div class="publish-outcomes">
+        <div class="outcome-box">
+          <div class="outcome-icon">📦</div>
+          <div class="outcome-label">Archive เวอร์ชันเก่า<br>→ <code style="font-size:7px;color:#6EE7B7;font-family:'DM Mono',monospace">document_revisions</code></div>
+        </div>
+        <div class="outcome-box">
+          <div class="outcome-icon">⬆️</div>
+          <div class="outcome-label">Promote Draft<br>→ <code style="font-size:7px;color:#6EE7B7;font-family:'DM Mono',monospace">documents</code><br>(current version)</div>
+        </div>
+        <div class="outcome-box">
+          <div class="outcome-icon">📄</div>
+          <div class="outcome-label">QP/WI:<br>สร้างหน้าปก PDF<br>ทางการอัตโนมัติ</div>
+        </div>
+        <div class="outcome-box">
+          <div class="outcome-icon">📋</div>
+          <div class="outcome-label">MasterList<br>อัปเดตทันที<br>Version เก่า → Obsolete</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Bottom: permissions + doc types ── -->
+<div class="bottom-grid">
+
+  <!-- Permissions -->
+  <div class="section-box">
+    <div class="section-title">สิทธิ์ตามบทบาท</div>
+    <table class="perm-table">
+      <thead>
+        <tr>
+          <th>บทบาท</th>
+          <th>สร้าง<br>Draft</th>
+          <th>อัปโหลด<br>ไฟล์</th>
+          <th>→ Review</th>
+          <th>→ Approved</th>
+          <th>→ Published</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="role-label"><span class="role-main" style="color:#93C5FD">Admin</span></div></td>
+          <td><span class="check">✓</span></td>
+          <td><span class="check">✓</span></td>
+          <td><span class="check">✓</span></td>
+          <td><span class="check">✓</span></td>
+          <td><span class="check">✓</span></td>
+        </tr>
+        <tr>
+          <td><div class="role-label"><span class="role-main c-teal">Document Controller</span><span class="role-sub">DCC</span></div></td>
+          <td><span class="check">✓</span></td>
+          <td><span class="check">✓</span></td>
+          <td><span class="check">✓</span></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="cross">—</span></td>
+        </tr>
+        <tr>
+          <td><div class="role-label"><span class="role-main" style="color:#6EE7B7">Quality Manager</span><span class="role-sub">QM</span></div></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="check">✓</span></td>
+          <td><span class="check">✓</span></td>
+        </tr>
+        <tr>
+          <td><div class="role-label"><span class="role-main" style="color:#6EE7B7">Lab Director</span><span class="role-sub">LD</span></div></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="check">✓</span></td>
+          <td><span class="check">✓</span></td>
+        </tr>
+        <tr>
+          <td><div class="role-label"><span class="role-main" style="color:var(--muted)">Reviewer / Viewer</span></div></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="cross">—</span></td>
+          <td><span class="cross">—</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Doc type comparison -->
+  <div class="section-box">
+    <div class="section-title">เงื่อนไขตามประเภทเอกสาร</div>
+    <div class="type-compare">
+
+      <div class="type-box qpwi">
+        <div class="type-name blue">QP &nbsp;·&nbsp; WI</div>
+        <ul class="type-reqs">
+          <li><span class="req-icon">📝</span>ต้องมีไฟล์ต้นฉบับ <strong style="color:#93C5FD">Word/Excel</strong> (.docx/.xlsx)</li>
+          <li><span class="req-icon">📄</span>ต้องมีไฟล์ PDF เนื้อหา <strong style="color:#93C5FD">(source_pdf)</strong></li>
+          <li><span class="req-icon">⚠️</span>ทั้งสองไฟล์ <strong style="color:#93C5FD">จำเป็นก่อน</strong> ส่งเข้า Review</li>
+        </ul>
+        <div class="type-auto">
+          ⚙ ระบบสร้างหน้าปก PDF ทางการอัตโนมัติเมื่อ Publish
+        </div>
+      </div>
+
+      <div class="type-box other">
+        <div class="type-name teal">Form &nbsp;·&nbsp; Policy &nbsp;·&nbsp; Manual &nbsp;·&nbsp; อื่นๆ</div>
+        <ul class="type-reqs">
+          <li><span class="req-icon">📁</span>ต้องมีไฟล์ทางการอย่างน้อย 1 ไฟล์</li>
+          <li><span class="req-icon">✅</span>รองรับ PDF, DOC, DOCX, XLS, XLSX</li>
+          <li><span class="req-icon">ℹ️</span>ไม่จำเป็นต้องมี Word/Excel แยก</li>
+        </ul>
+        <div class="type-auto teal-auto">
+          ℹ ไม่สร้างหน้าปกอัตโนมัติ — ใช้ไฟล์ที่อัปโหลดโดยตรง
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Footer ── -->
+<div class="footer">
+  <div class="footer-note">document_revision_drafts → documents → document_revisions → MasterList</div>
+  <div class="footer-iso">ISO 15189 · ISO 15190 Quality Document System</div>
+</div>
+
+</body>
+</html>

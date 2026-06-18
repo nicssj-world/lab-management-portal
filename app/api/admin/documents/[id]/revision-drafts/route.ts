@@ -32,7 +32,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { data: current, error: currentErr } = await supabaseAdmin
     .from('documents')
-    .select('id, title, type, department, description, status, visibility, revision, owner_name, reviewer_name, approver_name, reviewer_id, approver_id, audience_text')
+    .select('id, document_code, title, type, department, description, status, visibility, revision, owner_name, reviewer_name, approver_name, reviewer_id, approver_id, audience_text')
     .eq('id', id)
     .is('deleted_at', null)
     .single()
@@ -60,7 +60,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       title: current.title,
       type: current.type,
       department: current.department,
-      description: current.description,
+      description: null,
       status: 'Draft',
       visibility: current.visibility,
       owner_name: current.owner_name,
@@ -79,7 +79,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   supabaseAdmin.from('audit_log').insert({
     action: 'document.revision_draft_create',
     user_id: actor.id,
-    target: id,
+    target: current.document_code ?? id,
     detail: `Rev. ${data.revision}`,
   }).then(undefined, () => {})
 

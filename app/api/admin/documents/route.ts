@@ -47,6 +47,10 @@ function canImportCurrentDocument(actor: { role: string; doc_role?: string | nul
   return actor.role === 'Admin' || actor.role === 'Document Controller' || actor.doc_role === 'Document Controller'
 }
 
+function canViewSourceUploadQueue(actor: { role: string; doc_role?: string | null }) {
+  return actor.role === 'Admin' || actor.role === 'Document Controller' || actor.doc_role === 'Document Controller'
+}
+
 async function uploadDocumentObject(
   file: File,
   type: string,
@@ -91,14 +95,37 @@ export async function GET(req: NextRequest) {
     const pageSize   = parsePositiveInt(sp.get('pageSize'), 50, 200)
     const sortBy     = resolveDocumentSortColumn(sp.get('sortBy'))
     const sortDir    = sp.get('sortDir') === 'asc' ? 'asc' : 'desc'
+    const sourceUploadedOnly = sp.get('sourceUploaded') === '1'
 
     const code = sp.get('code') ?? undefined
+
+    let sourceUploadedDocumentIds: string[] | null = null
+    if (sourceUploadedOnly) {
+      if (!canViewSourceUploadQueue(actor)) return jsonForbidden()
+
+      const { data: sourceDrafts, error: sourceDraftsErr } = await supabaseAdmin
+        .from('document_revision_drafts')
+        .select('document_id')
+        .is('cancelled_at', null)
+        .neq('status', 'Published')
+        .not('word_url', 'is', null)
+
+      if (sourceDraftsErr) {
+        return NextResponse.json({ error: sourceDraftsErr.message }, { status: 500 })
+      }
+
+      sourceUploadedDocumentIds = Array.from(new Set((sourceDrafts ?? []).map((row) => row.document_id).filter(Boolean)))
+      if (sourceUploadedDocumentIds.length === 0) {
+        return NextResponse.json({ data: [], count: 0 })
+      }
+    }
 
     let query = supabaseAdmin
       .from('documents')
       .select('*', { count: 'exact' })
       .is('deleted_at', null)
 
+    if (sourceUploadedDocumentIds) query = query.in('id', sourceUploadedDocumentIds)
     if (code)                   query = query.eq('document_code', code.toUpperCase())
     if (type && type !== 'All') query = query.eq('type', type)
     if (status)                 query = query.eq('status', status)

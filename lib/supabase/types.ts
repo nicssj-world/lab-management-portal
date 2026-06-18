@@ -326,6 +326,30 @@ export interface DocumentRevision {
   file_name: string | null
   file_size: number | null
   mime_type: string | null
+  source_pdf_url: string | null
+  source_pdf_name: string | null
+  source_pdf_size: number | null
+  source_pdf_mime_type: string | null
+  word_url: string | null
+  word_name: string | null
+  word_size: number | null
+  edit_date: string | null
+  effective_date: string | null
+  expiry_date: string | null
+  approved_at: string | null
+  published_at: string | null
+  approved_by_id: string | null
+  published_by_id: string | null
+  reviewer_id: string | null
+  approver_id: string | null
+  audience_text: string | null
+  cover_template_version: string | null
+  cover_generated_at: string | null
+  cover_metadata: Record<string, unknown> | null
+  imported_current_at: string | null
+  imported_current_by: string | null
+  imported_current_note: string | null
+  legacy_cover_included: boolean | null
   history_source?: string | null
   uploaded_by: string | null
   created_at: string

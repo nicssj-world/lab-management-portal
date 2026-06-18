@@ -16,9 +16,12 @@ function clean(value: unknown) {
 }
 
 export function getDocumentEditReviewDate(source: Pick<DocumentMetadataSource, 'edit_date' | 'expiry_date'>) {
-  // In this workflow, "edit date" and "review date" are the same date.
-  // expiry_date is a legacy DB column still used by master-list screens as review date.
   return clean(source.edit_date) ?? clean(source.expiry_date)
+}
+
+export function getDocumentReviewDate(source: Pick<DocumentMetadataSource, 'edit_date' | 'expiry_date'>) {
+  // expiry_date is the legacy DB column used by master-list screens as review date.
+  return clean(source.expiry_date) ?? clean(source.edit_date)
 }
 
 export function buildDocxHeaderMetadata(source: DocumentMetadataSource): DocxHeaderMetadata {
@@ -27,7 +30,7 @@ export function buildDocxHeaderMetadata(source: DocumentMetadataSource): DocxHea
     title: clean(source.title),
     revision: clean(source.revision),
     effectiveDate: clean(source.effective_date),
-    reviewDate: getDocumentEditReviewDate(source),
+    reviewDate: getDocumentReviewDate(source),
     editDate: getDocumentEditReviewDate(source),
   }
 }

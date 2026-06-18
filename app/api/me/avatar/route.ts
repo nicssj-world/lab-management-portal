@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
+import { ensureOwnProfile } from '@/lib/auth/profile'
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024
 const AVATAR_EXT_BY_TYPE: Record<string, string> = {
@@ -14,6 +15,7 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  await ensureOwnProfile(user)
 
   const form = await req.formData()
   const file = form.get('file') as File | null
@@ -44,7 +46,14 @@ export async function POST(req: NextRequest) {
   const { data: { publicUrl } } = supabaseAdmin.storage.from('avatars').getPublicUrl(path)
   const url = `${publicUrl}?t=${Date.now()}`
 
-  await supabaseAdmin.from('profiles').update({ avatar_url: url }).eq('id', user.id)
+  const { error: profileErr } = await supabaseAdmin
+    .from('profiles')
+    .update({ avatar_url: url })
+    .eq('id', user.id)
+    .select('id')
+    .single()
+
+  if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 500 })
 
   return NextResponse.json({ url })
 }
@@ -53,7 +62,15 @@ export async function DELETE() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  await ensureOwnProfile(user)
 
-  await supabaseAdmin.from('profiles').update({ avatar_url: null }).eq('id', user.id)
+  const { error } = await supabaseAdmin
+    .from('profiles')
+    .update({ avatar_url: null })
+    .eq('id', user.id)
+    .select('id')
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }

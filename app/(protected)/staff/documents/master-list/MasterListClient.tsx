@@ -214,7 +214,7 @@ const { toasts, add: toast } = useToast()
       <th class="c">ประเภท</th>
       <th class="c">Rev.</th>
       <th class="c">สถานะ</th>
-      <th class="c">วันที่ทบทวน</th>
+      <th class="c">วันที่แก้ไข</th>
       <th class="c">วันที่บังคับใช้</th>
       <th class="c wrap col-fill-sm">แผนก</th>
       <th class="c">ผู้จัดทำ</th>
@@ -238,7 +238,7 @@ const { toasts, add: toast } = useToast()
           <td class="c">${doc.type}</td>
           <td class="c muted">${doc.revision}</td>
           <td class="c">${doc.status}</td>
-          <td class="c muted">${fmtD(doc.expiry_date)}</td>
+          <td class="c muted">${fmtD(doc.edit_date ?? doc.expiry_date)}</td>
           <td class="c muted">${fmtD(doc.effective_date)}</td>
           <td class="c wrap col-fill-sm">${doc.department || '—'}</td>
           <td class="c muted">${doc.owner_name || '—'}</td>
@@ -465,7 +465,7 @@ const { toasts, add: toast } = useToast()
                 <th style={{ ...thStyle, cursor: 'pointer', textAlign: 'center' }} onClick={() => handleSort('effective_date')}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>วันที่บังคับใช้ <SortIcon col="effective_date" /></span>
                 </th>
-                <th style={{ ...thStyle, textAlign: 'center' }}>วันที่ทบทวน</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>วันที่แก้ไข</th>
                 <th style={{ ...thStyle, textAlign: 'center' }}>ผู้จัดทำ</th>
                 <th style={{ ...thStyle, textAlign: 'center' }}>ผู้รับรอง</th>
                 <th style={{ ...thStyle, textAlign: 'center' }}>ผู้อนุมัติ</th>
@@ -543,8 +543,8 @@ const { toasts, add: toast } = useToast()
                     {/* วันที่บังคับใช้ */}
                     <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)' }}>{fmtDate(doc.effective_date)}</td>
 
-                    {/* วันที่ทบทวน */}
-                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)' }}>{fmtDate(doc.expiry_date)}</td>
+                    {/* วันที่แก้ไข */}
+                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)' }}>{fmtDate(doc.edit_date ?? doc.expiry_date)}</td>
 
                     {/* ผู้จัดทำ */}
                     <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--muted)' }}>{doc.owner_name || '—'}</td>

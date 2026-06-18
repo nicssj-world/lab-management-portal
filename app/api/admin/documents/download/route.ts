@@ -59,6 +59,29 @@ async function getDocumentForDownload(path: string) {
     if (revisionDoc) return { ...revisionDoc, file_name: revision.file_name } as DownloadDocument
   }
 
+  // Working revision draft files
+  const { data: draft } = await supabaseAdmin
+    .from('document_revision_drafts')
+    .select('document_id, file_url, file_name, word_url, word_name')
+    .or(`file_url.eq.${path},word_url.eq.${path}`)
+    .is('cancelled_at', null)
+    .maybeSingle()
+
+  if (draft?.document_id) {
+    const { data: draftDoc } = await supabaseAdmin
+      .from('documents')
+      .select('id, document_code, title, visibility, deleted_at')
+      .eq('id', draft.document_id)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (draftDoc) {
+      return {
+        ...draftDoc,
+        file_name: draft.word_url === path ? draft.word_name : draft.file_name,
+      } as DownloadDocument
+    }
+  }
+
   // Attachment file
   const { data: attachment } = await supabaseAdmin
     .from('document_attachments')

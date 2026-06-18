@@ -823,91 +823,198 @@ function ContractCard({ contract }: { contract: ContractWithUsage }) {
 }
 
 const ACTION_LABELS: Record<string, string> = {
-  'test.update':           'แก้ไขรายการตรวจ',
-  'test.create':           'เพิ่มรายการตรวจ',
-  'test.delete':           'ลบรายการตรวจ',
-  'permission.update':     'อัปเดต Permission',
-  'user.update':           'อัปเดตผู้ใช้',
-  'user.create':           'เพิ่มผู้ใช้',
-  'document.upload':       'อัปโหลดเอกสาร',
-  'document.edit':         'แก้ไขเอกสาร',
-  'document.delete':       'ลบเอกสาร',
-  'document.status_change':'เปลี่ยนสถานะเอกสาร',
-  'document.download':     'ดาวน์โหลดเอกสาร',
-  'category.update':       'แก้ไขหมวดหมู่',
-  'category.create':       'เพิ่มหมวดหมู่',
-  'rejection.create':      'บันทึก Rejection',
-  'equipment.create':      'เพิ่มเครื่องมือ',
-  'equipment.update':      'แก้ไขเครื่องมือ',
-  'equipment.delete':      'ลบเครื่องมือ',
-  'contract.create':       'เพิ่มสัญญา',
-  'contract.update':       'แก้ไขสัญญา',
-  'contract.delete':       'ลบสัญญา',
-  'contract.usage_add':    'บันทึกค่าใช้จ่ายสัญญา',
-  'risk.create':           'บันทึกความเสี่ยง',
-  'risk.update':           'แก้ไขความเสี่ยง',
-  'risk.delete':           'ลบความเสี่ยง',
-  'risk.close':            'ปิดประเด็นความเสี่ยง',
-  'kpi.entry':             'บันทึก KPI',
+  // รายการตรวจ
+  'test.create':                                  'เพิ่มรายการตรวจ',
+  'test.update':                                  'แก้ไขรายการตรวจ',
+  'test.delete':                                  'ลบรายการตรวจ',
+  'test.bulk_delete':                             'ลบรายการตรวจ (กลุ่ม)',
+  'test.import':                                  'นำเข้ารายการตรวจ',
+  'test.duplicate':                               'คัดลอกรายการตรวจ',
+  'test.purge_deleted':                           'ลบถาวรรายการตรวจ',
+  'category.create':                              'เพิ่มหมวดหมู่',
+  'category.update':                              'แก้ไขหมวดหมู่',
+  // เอกสาร — workflow เดิม
+  'document.upload':                              'อัปโหลดเอกสาร',
+  'document.edit':                                'แก้ไขเอกสาร',
+  'document.delete':                              'ลบเอกสาร',
+  'document.status_change':                       'เปลี่ยนสถานะเอกสาร',
+  'document.download':                            'ดาวน์โหลดเอกสาร',
+  'document.current_revision_rollback':           'ย้อนกลับเวอร์ชันเอกสาร',
+  // เอกสาร — working revision workflow
+  'document.revision_draft_create':               'สร้าง Working Revision',
+  'document.revision_draft_status':               'เปลี่ยนสถานะ Working Revision',
+  'document.revision_draft_publish':              'เผยแพร่เอกสาร (Publish)',
+  'document.revision_draft_publish_existing_cover': 'เผยแพร่เอกสาร (ใช้หน้าปกเดิม)',
+  // เอกสาร — ประวัติการแก้ไข
+  'document.revision_history_backfill_create':    'เพิ่มประวัติการแก้ไขย้อนหลัง',
+  'document.revision_history_backfill_update':    'แก้ไขประวัติการแก้ไขย้อนหลัง',
+  'document.revision_history_backfill_delete':    'ลบประวัติการแก้ไขย้อนหลัง',
+  'document.revision_history_date_update':        'แก้ไขวันที่ประวัติการแก้ไข',
+  // เครื่องมือ
+  'equipment.create':                             'เพิ่มเครื่องมือ',
+  'equipment.update':                             'แก้ไขเครื่องมือ',
+  'equipment.delete':                             'ลบเครื่องมือ',
+  // สัญญา
+  'contract.create':                              'เพิ่มสัญญา',
+  'contract.update':                              'แก้ไขสัญญา',
+  'contract.delete':                              'ลบสัญญา',
+  'contract.usage_add':                           'บันทึกค่าใช้จ่ายสัญญา',
+  // ความเสี่ยง
+  'risk.create':                                  'บันทึกความเสี่ยง',
+  'risk.update':                                  'แก้ไขความเสี่ยง',
+  'risk.delete':                                  'ลบความเสี่ยง',
+  'risk.close':                                   'ปิดประเด็นความเสี่ยง',
+  'rejection.create':                             'บันทึก Rejection',
+  // KPI
+  'kpi.entry':                                    'บันทึก KPI',
+  // ข่าวสาร
+  'create_news':                                  'เพิ่มข่าวสาร',
+  'update_news':                                  'แก้ไขข่าวสาร',
+  'delete_news':                                  'ลบข่าวสาร',
+  // บุคลากร
+  'personnel.profile.update':                     'แก้ไขโปรไฟล์บุคลากร',
+  'personnel.org.create':                         'เพิ่มโครงสร้างองค์กร',
+  'personnel.org.delete':                         'ลบโครงสร้างองค์กร',
+  'personnel.jd.create':                          'เพิ่มข้อกำหนดตำแหน่งงาน',
+  'personnel.jd.update':                          'แก้ไขข้อกำหนดตำแหน่งงาน',
+  // โปรไฟล์เอกสาร / ลายเซ็น
+  'document_profile.update':                      'แก้ไขโปรไฟล์เอกสาร',
+  'document_profile.update_self':                 'แก้ไขโปรไฟล์เอกสาร (ตัวเอง)',
+  'document_profile.signature_upload':            'อัปโหลดลายเซ็น',
+  'document_profile.signature_upload_self':       'อัปโหลดลายเซ็น (ตัวเอง)',
+  'document_profile.signature_delete':            'ลบลายเซ็น',
+  'document_profile.signature_delete_self':       'ลบลายเซ็น (ตัวเอง)',
+  // ระบบ
+  'user.update':                                  'อัปเดตผู้ใช้',
+  'user.create':                                  'เพิ่มผู้ใช้',
+  'manual_edit':                                  'แก้ไขคู่มือ',
+  'permission.update':                            'แก้ไขสิทธิ์ผู้ใช้',
+  'settings.update':                              'แก้ไขการตั้งค่าระบบ',
+  'phleb_upload_init':                            'อัปโหลดข้อมูล Phlebotomy',
+}
+
+const STATUS_TH: Record<string, string> = {
+  'Draft':     'ร่าง',
+  'Review':    'รอตรวจสอบ',
+  'Approved':  'อนุมัติแล้ว',
+  'Published': 'เผยแพร่แล้ว',
+  'Obsolete':  'ยกเลิกใช้งาน',
+}
+
+function isUuid(s: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(:[0-9a-f-]+)?$/i.test(s)
+}
+
+function translateStatuses(s: string) {
+  return s.replace(/\b(Draft|Review|Approved|Published|Obsolete)\b/g, m => STATUS_TH[m] ?? m)
 }
 
 function parseActivityTitle(action: string | null, target: string | null, detail: string | null): string {
   const a = action ?? ''
-  const verbLabel = ACTION_LABELS[a] ?? a
+  const t = (target ?? '').trim()
+  const d = (detail ?? '').trim()
+  const safeTarget = isUuid(t) ? '' : t
 
-  // detail is a JSON blob → extract human-readable name
-  if (detail && detail.trim().startsWith('{')) {
+  // JSON detail (test.* actions)
+  if (d.startsWith('{')) {
     try {
-      const parsed = JSON.parse(detail) as Record<string, unknown>
-      // test records have th/en name
+      const p = JSON.parse(d) as Record<string, unknown>
       if (a.startsWith('test.')) {
-        const name = (parsed.th as string) || (parsed.en as string) || (parsed.code as string)
-        return name ? `${verbLabel}: ${name}` : verbLabel
+        const name = (p.th as string) || (p.en as string) || (p.code as string) || ''
+        return [safeTarget, name].filter(Boolean).join(' · ').slice(0, 120)
       }
-      // document records
-      if (a.startsWith('document.')) {
-        const name = (parsed.doc_number as string) || (parsed.title as string) || (parsed.file_name as string)
-        return name ? `${verbLabel}: ${name}` : verbLabel
-      }
-      // user records
-      if (a.startsWith('user.')) {
-        const name = (parsed.full_name as string) || (parsed.name as string)
-        return name ? `${verbLabel}: ${name}` : verbLabel
-      }
-    } catch { /* ignore parse error */ }
-    return verbLabel
+    } catch { /* ignore */ }
+    return safeTarget
   }
 
-  // document.*: prepend short verb to plain-text detail
-  if (a.startsWith('document.') && detail && detail.length <= 120) {
-    const verbShort: Record<string, string> = {
-      'document.upload': 'อัปโหลด',
-      'document.edit': 'แก้ไข',
-      'document.delete': 'ลบ',
-      'document.status_change': 'เปลี่ยนสถานะ',
+  // Working revision status change: "Rev. 07 · Draft → Review"
+  if (a === 'document.revision_draft_status') {
+    return [safeTarget, translateStatuses(d)].filter(Boolean).join(' · ')
+  }
+
+  // Document status change (legacy): detail = "CODE · old → new"
+  if (a === 'document.status_change') {
+    return translateStatuses(d) || safeTarget
+  }
+
+  // Publish with existing cover
+  if (a === 'document.revision_draft_publish_existing_cover') {
+    const rev = d.match(/Rev\.\s*\S+/)?.[0] ?? ''
+    return [safeTarget, rev, 'ใช้หน้าปกเดิม'].filter(Boolean).join(' · ')
+  }
+
+  // Rollback: "Deleted Rev. X; promoted Rev. Y"
+  if (a === 'document.current_revision_rollback') {
+    const del = d.match(/Deleted (Rev\.\s*\S+)/)?.[1]
+    const prom = d.match(/promoted (Rev\.\s*\S+)/)?.[1]
+    return [safeTarget, del ? `ลบ ${del}` : null, prom ? `ย้อนกลับ ${prom}` : null].filter(Boolean).join(' · ')
+  }
+
+  // Revision history (target is uuid:uuid — no meaningful target)
+  if (a === 'document.revision_history_backfill_create') {
+    const rev = d.match(/Rev\.\s*\S+/)?.[0]
+    return rev ? `เพิ่ม ${rev}` : 'เพิ่มประวัติ'
+  }
+  if (a === 'document.revision_history_backfill_update') {
+    const rev = d.match(/Rev\.\s*\S+/)?.[0]
+    return rev ? `แก้ไข ${rev}` : 'แก้ไขประวัติ'
+  }
+  if (a === 'document.revision_history_backfill_delete') return 'ลบประวัติย้อนหลัง'
+  if (a === 'document.revision_history_date_update') {
+    const rev = d.match(/Rev\.\s*\S+/)?.[0]
+    return rev ? `แก้ไขวันที่ ${rev}` : 'แก้ไขวันที่ประวัติ'
+  }
+
+  // Cover generate — just show code
+  if (a === 'document.cover_generate' || a === 'document.cover_regenerate') return safeTarget
+
+  // Permission: target = "role:resource", detail = "Set to level"
+  if (a === 'permission.update') {
+    return [t, d.replace(/^Set to\s*/i, '')].filter(Boolean).join(' · ')
+  }
+
+  // Settings — action label already says it all
+  if (a === 'settings.update') return ''
+
+  // Signature upload — show dimensions only
+  if (a === 'document_profile.signature_upload' || a === 'document_profile.signature_upload_self') {
+    const dims = d.match(/(\d+x\d+)/)?.[1]
+    return dims ? `ขนาด ${dims}` : ''
+  }
+
+  // Personnel / profile — UUID targets, no useful detail
+  if (a.startsWith('personnel.')) {
+    if (a === 'personnel.org.delete') {
+      const count = d.match(/\d+/)?.[0]
+      return count ? `${count} รายการ` : ''
     }
-    return `${verbShort[a] ?? verbLabel} ${detail}`
+    return ''
   }
-  // contract.usage_add: prepend verb to plain-text detail
-  if (a === 'contract.usage_add' && detail && detail.length <= 120) {
-    return `บันทึกค่าใช้จ่ายสัญญา ${detail}`
+  if (a.startsWith('document_profile.')) return ''
+
+  // General document actions: detail often starts with "CODE · ..."
+  // Avoid duplicating the code when target === detail prefix
+  if (safeTarget && d.startsWith(safeTarget + ' · ')) {
+    return d  // detail already contains code + info — use as-is
   }
-  // detail is plain text (short human-readable string)
-  if (detail && detail.length <= 120) return detail
-  if (target) return `${verbLabel}: ${target}`
-  return verbLabel || 'กิจกรรม'
+  if (safeTarget && d && d !== safeTarget) {
+    return `${safeTarget} · ${d}`.slice(0, 140)
+  }
+  return (d || safeTarget).slice(0, 140)
 }
 
 function ActivityFeedItem({ entry, profileName, isLast }: { entry: AuditEntry; profileName: string; isLast: boolean }) {
   const dotColor = actionDotColor(entry.action)
-  const title = parseActivityTitle(entry.action, entry.target, entry.detail)
-  const meta = profileName ? `โดย ${profileName}` : (ACTION_LABELS[entry.action ?? ''] ?? entry.action ?? '')
+  const label = ACTION_LABELS[entry.action ?? ''] ?? entry.action ?? 'กิจกรรม'
+  const detail = parseActivityTitle(entry.action, entry.target, entry.detail)
+  const meta = profileName ? `โดย ${profileName}` : ''
   return (
     <div style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'11px 0', borderBottom: isLast ? 'none' : '1px solid var(--border)' }}>
       <div style={{ width:8, height:8, borderRadius:'50%', background:dotColor, marginTop:4, flexShrink:0, position:'relative', zIndex:1, boxShadow:`0 0 0 2px var(--card)` }} />
       <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontSize:13, fontWeight:600, color:'var(--ink)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{title}</div>
-        {meta && <div style={{ fontSize:11.5, color:'var(--muted)', marginTop:1.5 }}>{meta}</div>}
+        <div style={{ fontSize:13, fontWeight:600, color:'var(--ink)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{label}</div>
+        {detail && <div style={{ fontSize:11.5, color:'var(--ink)', opacity:0.75, marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{detail}</div>}
+        {meta && <div style={{ fontSize:11.5, color:'var(--muted)', marginTop:1 }}>{meta}</div>}
       </div>
       <div style={{ fontSize:11, color:'var(--muted)', flexShrink:0, marginTop:2, whiteSpace:'nowrap' }}>{fmtActivityTime(entry.created_at)}</div>
     </div>
