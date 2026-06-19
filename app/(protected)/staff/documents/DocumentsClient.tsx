@@ -1102,11 +1102,49 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     }
     setDraftBusy(true)
     try {
-      const fd = new FormData()
-      fd.append(kind === 'official' ? 'file' : 'word_file', file)
-      const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}`, { method: 'PATCH', body: fd })
-      const json = await res.json()
-      if (!res.ok) { alert(json.error ?? 'อัปโหลดไฟล์ไม่สำเร็จ'); return }
+      const endpoint = `/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}`
+      const fileType = file.type || 'application/octet-stream'
+      const presignRes = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind,
+          fileName: file.name,
+          fileType,
+          fileSize: file.size,
+        }),
+      })
+      const presignJson = await presignRes.json().catch(() => ({}))
+      if (!presignRes.ok) {
+        alert(presignJson.error ?? 'สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ')
+        return
+      }
+
+      const uploadRes = await fetch(presignJson.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': presignJson.contentType ?? fileType },
+        body: file,
+      })
+      if (!uploadRes.ok) {
+        alert('อัปโหลดไฟล์ไปยัง storage ไม่สำเร็จ')
+        return
+      }
+
+      const confirmRes = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uploaded_file: {
+            kind,
+            key: presignJson.key,
+            fileName: file.name,
+            fileType: presignJson.contentType ?? fileType,
+            fileSize: file.size,
+          },
+        }),
+      })
+      const json = await confirmRes.json()
+      if (!confirmRes.ok) { alert(json.error ?? 'บันทึกข้อมูลไฟล์ไม่สำเร็จ'); return }
       setActiveDraft(json)
     } catch {
       alert('อัปโหลดไฟล์ไม่สำเร็จ')

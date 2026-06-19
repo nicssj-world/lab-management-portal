@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { getActor, canAccessDocuments, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
@@ -14,6 +15,15 @@ import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
 
 type Params = { params: Promise<{ id: string; draftId: string }> }
 const STATUS_CHANGE_INPUT_FIELDS = new Set(['status', 'obsolete_reason'])
+const MAX_DRAFT_FILE_SIZE = 50 * 1024 * 1024
+
+type UploadedDraftFile = {
+  kind: 'official' | 'source'
+  key: string
+  fileName: string
+  fileType: string
+  fileSize: number
+}
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
@@ -29,6 +39,57 @@ function canSkipSystemCover(actor: { role: string; doc_role?: string | null }) {
 
 function canManageDraftOfficialFile(actor: { role: string; doc_role?: string | null }) {
   return actor.role === 'Admin' || actor.role === 'Document Controller' || actor.doc_role === 'Document Controller'
+}
+
+function safeStorageName(filename: string) {
+  return filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+}
+
+function inferredContentType(filename: string, contentType: string | null | undefined) {
+  if (contentType?.trim()) return contentType.trim()
+  const ext = filename.split('.').pop()?.toLowerCase()
+  if (ext === 'pdf') return 'application/pdf'
+  if (ext === 'doc') return 'application/msword'
+  if (ext === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  if (ext === 'xls') return 'application/vnd.ms-excel'
+  if (ext === 'xlsx') return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  return 'application/octet-stream'
+}
+
+function parseUploadedDraftFile(value: unknown): UploadedDraftFile | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const raw = value as Record<string, unknown>
+  const kind = raw.kind === 'official' || raw.kind === 'source' ? raw.kind : null
+  const key = typeof raw.key === 'string' ? raw.key : ''
+  const fileName = typeof raw.fileName === 'string' ? raw.fileName : ''
+  const fileType = inferredContentType(fileName, typeof raw.fileType === 'string' ? raw.fileType : null)
+  const fileSize = typeof raw.fileSize === 'number' ? raw.fileSize : Number(raw.fileSize)
+  if (!kind || !key || !fileName || !Number.isFinite(fileSize)) return null
+  return { kind, key, fileName, fileType, fileSize }
+}
+
+function validateDraftFile(
+  kind: 'official' | 'source',
+  file: { name?: string; type?: string; size?: number },
+  docType: string,
+  actor: { role: string; doc_role?: string | null },
+) {
+  if (file.size !== undefined && file.size > MAX_DRAFT_FILE_SIZE) {
+    return kind === 'source' ? 'ไฟล์ต้นฉบับใหญ่เกิน 50 MB' : 'ไฟล์ทางการใหญ่เกิน 50 MB'
+  }
+  if (kind === 'source') {
+    return isSourceFile(file) ? null : 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น'
+  }
+  if (!canManageDraftOfficialFile(actor)) {
+    return 'เฉพาะ Admin หรือ Document Controller เท่านั้นที่อัปโหลด PDF เนื้อหา/ไฟล์ทางการได้'
+  }
+  if (isCoverRequiredType(docType) && !isPdfFile(file)) {
+    return 'QP/WI ต้องใช้ PDF เนื้อหาในช่องไฟล์ทางการ'
+  }
+  if (!isCoverRequiredType(docType) && !isPdfFile(file) && !isSourceFile(file)) {
+    return 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX'
+  }
+  return null
 }
 
 async function uploadDocumentObject(file: File, type: string, prefix = '', headerMetadata?: DocxHeaderMetadata) {
@@ -99,6 +160,11 @@ async function patchR2XlsxObject(key: string, metadata: DocxHeaderMetadata) {
   return patched.length
 }
 
+async function getStoredObjectSize(key: string) {
+  const object = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+  return object.ContentLength ?? null
+}
+
 function todayIsoDate() {
   return new Date().toISOString().split('T')[0]
 }
@@ -110,6 +176,50 @@ function parseDateOnly(value: string | null | undefined) {
   if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
   const parsed = new Date(clean)
   return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+export async function POST(req: NextRequest, { params }: Params) {
+  const actor = await getActor()
+  if (!actor) return jsonUnauthorized()
+  if (!(await canAccessDocuments(actor, 'edit'))) return jsonForbidden()
+  const { id, draftId } = await params
+
+  try {
+    const body = await req.json() as Record<string, unknown>
+    const kind = body.kind === 'official' || body.kind === 'source' ? body.kind : null
+    const fileName = typeof body.fileName === 'string' ? body.fileName.trim() : ''
+    const fileType = inferredContentType(fileName, typeof body.fileType === 'string' ? body.fileType : null)
+    const fileSize = typeof body.fileSize === 'number' ? body.fileSize : Number(body.fileSize)
+    if (!kind || !fileName || !Number.isFinite(fileSize)) {
+      return NextResponse.json({ error: 'ข้อมูลไฟล์ไม่ครบ' }, { status: 422 })
+    }
+
+    const { data: draft, error: draftErr } = await supabaseAdmin
+      .from('document_revision_drafts')
+      .select('id, type, status')
+      .eq('id', draftId)
+      .eq('document_id', id)
+      .is('cancelled_at', null)
+      .single()
+    if (draftErr || !draft) return NextResponse.json({ error: draftErr?.message ?? 'Draft not found' }, { status: 404 })
+    if (draft.status === 'Published') return NextResponse.json({ error: 'Revision draft นี้ถูก Published แล้ว' }, { status: 409 })
+
+    const validationError = validateDraftFile(kind, { name: fileName, type: fileType, size: fileSize }, draft.type, actor)
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 422 })
+
+    const year = new Date().getFullYear()
+    const prefix = kind === 'official' ? 'draft-official-' : 'draft-source-'
+    const key = `documents/${String(draft.type).toLowerCase()}/${year}/${Date.now()}-${prefix}${safeStorageName(fileName)}`
+    const uploadUrl = await getSignedUrl(
+      r2,
+      new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, ContentType: fileType }),
+      { expiresIn: 300 },
+    )
+
+    return NextResponse.json({ uploadUrl, key, contentType: fileType })
+  } catch (err) {
+    return NextResponse.json({ error: toMsg(err) }, { status: 500 })
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
@@ -141,6 +251,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     let updates: Record<string, unknown> = {}
     let officialFile: File | null = null
     let sourceFile: File | null = null
+    let uploadedFile: UploadedDraftFile | null = null
     let skipSystemCover = false
 
     if (contentType.includes('multipart/form-data')) {
@@ -160,6 +271,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     } else {
       const rawBody = await req.json() as Record<string, unknown>
       skipSystemCover = rawBody.skip_system_cover === true
+      uploadedFile = parseUploadedDraftFile(rawBody.uploaded_file)
       const parsed = DocumentSchema.partial().safeParse(rawBody)
       if (!parsed.success) return NextResponse.json({ error: parsed.error.errors[0]?.message }, { status: 422 })
       updates = parsed.data as Record<string, unknown>
@@ -184,7 +296,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const targetType = ((updates.type as string | undefined) ?? draft.type) as string
-    const sourceUploadDate = sourceFile ? todayIsoDate() : undefined
+    const sourceUploadDate = sourceFile || uploadedFile?.kind === 'source' ? todayIsoDate() : undefined
     if (sourceUploadDate) {
       if (updates.edit_date === undefined && !draft.edit_date) updates.edit_date = sourceUploadDate
       if (updates.expiry_date === undefined && !draft.expiry_date) updates.expiry_date = sourceUploadDate
@@ -236,6 +348,43 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       updates.word_size = uploaded.size
       if (draft.description && draft.description === parentDoc.description && updates.description === undefined) {
         updates.description = ''
+      }
+    }
+
+    if (uploadedFile) {
+      const validationError = validateDraftFile(
+        uploadedFile.kind,
+        { name: uploadedFile.fileName, type: uploadedFile.fileType, size: uploadedFile.fileSize },
+        targetType,
+        actor,
+      )
+      if (validationError) return NextResponse.json({ error: validationError }, { status: 422 })
+      if (!uploadedFile.key.startsWith(`documents/${targetType.toLowerCase()}/`)) {
+        return NextResponse.json({ error: 'key ไฟล์ไม่ถูกต้อง' }, { status: 422 })
+      }
+      const storedSize = await getStoredObjectSize(uploadedFile.key).catch(() => null)
+      if (storedSize === null) return NextResponse.json({ error: 'ไม่พบไฟล์ที่อัปโหลดใน storage' }, { status: 422 })
+      if (storedSize > MAX_DRAFT_FILE_SIZE) {
+        return NextResponse.json({ error: uploadedFile.kind === 'source' ? 'ไฟล์ต้นฉบับใหญ่เกิน 50 MB' : 'ไฟล์ทางการใหญ่เกิน 50 MB' }, { status: 422 })
+      }
+      if (uploadedFile.kind === 'official') {
+        updates.file_url = uploadedFile.key
+        updates.file_name = uploadedFile.fileName
+        updates.file_size = storedSize
+        updates.mime_type = uploadedFile.fileType || 'application/octet-stream'
+        if (isCoverRequiredType(targetType)) {
+          updates.source_pdf_url = uploadedFile.key
+          updates.source_pdf_name = uploadedFile.fileName
+          updates.source_pdf_size = storedSize
+          updates.source_pdf_mime_type = uploadedFile.fileType || 'application/pdf'
+        }
+      } else {
+        updates.word_url = uploadedFile.key
+        updates.word_name = uploadedFile.fileName
+        updates.word_size = storedSize
+        if (draft.description && draft.description === parentDoc.description && updates.description === undefined) {
+          updates.description = ''
+        }
       }
     }
 
@@ -321,13 +470,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       merged.word_url as string | null | undefined,
       merged.word_name as string | null | undefined,
       'word_size',
-      Boolean(updates.word_url) || merged.word_url !== parentDoc.word_url,
+      !uploadedFile && (Boolean(updates.word_url) || merged.word_url !== parentDoc.word_url),
     )
     await patchDraftTarget(
       merged.file_url as string | null | undefined,
       merged.file_name as string | null | undefined,
       'file_size',
-      Boolean(updates.file_url) || merged.file_url !== parentDoc.file_url,
+      !uploadedFile && (Boolean(updates.file_url) || merged.file_url !== parentDoc.file_url),
     )
 
     if (Object.keys(updates).length === 0) {
