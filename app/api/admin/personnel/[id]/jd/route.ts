@@ -34,6 +34,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .insert({ ...fields, profile_id: id, created_by: actor.id })
       .select()
       .single()
+    if (error && error.message.includes('approver_position')) {
+      const { approver_position, ...legacyFields } = fields
+      void approver_position
+      const fallback = await supabaseAdmin
+        .from('staff_jd')
+        .insert({ ...legacyFields, profile_id: id, created_by: actor.id })
+        .select()
+        .single()
+      if (fallback.error) return NextResponse.json({ error: fallback.error.message }, { status: 500 })
+      return NextResponse.json(fallback.data, { status: 201 })
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     supabaseAdmin.from('audit_log').insert({ action: 'personnel.jd.create', user_id: actor.id, target: id }).then(undefined, () => {})
     return NextResponse.json(data, { status: 201 })

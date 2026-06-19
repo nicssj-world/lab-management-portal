@@ -8,10 +8,12 @@ import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
 import { usePermission } from '@/context/PermissionContext'
 import { EXPIRY_COLOR, EXPIRY_LABEL_TH, type ExpiryStatus } from '@/lib/personnel/expiry'
+import { MAIN_PERSONNEL_ROLES, mainPersonnelRole, type MainPersonnelRole } from '@/lib/personnel/roles'
 
 export interface RosterRow {
   id: string
   name: string
+  ephis_id: string | null
   role: string
   dept: string | null
   unit: string | null
@@ -106,6 +108,12 @@ function Pill({ color, children }: { color: string; children: React.ReactNode })
   )
 }
 
+const ROLE_TONE: Record<MainPersonnelRole, { bg: string; color: string }> = {
+  Assistant: { bg: 'rgba(8,145,178,.10)', color: '#0891B2' },
+  'Medical Technologist': { bg: 'rgba(30,95,173,.10)', color: 'var(--primary)' },
+  'Medical Science Technician': { bg: 'rgba(5,150,105,.10)', color: '#059669' },
+}
+
 export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
   const router = useRouter()
   const { canEdit } = usePermission('บุคลากร')
@@ -113,16 +121,29 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
   const [roleFilter, setRoleFilter] = useState<string>('All')
   const [deptFilter, setDeptFilter] = useState<string>('All')
 
-  const roles = useMemo(() => ['All', ...Array.from(new Set(rows.map((r) => r.role)))], [rows])
+  const roleCounts = useMemo(() => {
+    const counts: Record<MainPersonnelRole, number> = {
+      Assistant: 0,
+      'Medical Technologist': 0,
+      'Medical Science Technician': 0,
+    }
+    for (const r of rows) {
+      const mainRole = mainPersonnelRole(r.role)
+      if (mainRole) counts[mainRole]++
+    }
+    return counts
+  }, [rows])
+  const roles = useMemo(() => ['All', ...MAIN_PERSONNEL_ROLES], [])
   const depts = useMemo(() => ['All', ...Array.from(new Set(rows.map((r) => r.dept ?? '').filter(Boolean)))], [rows])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return rows.filter((r) => {
-      if (roleFilter !== 'All' && r.role !== roleFilter) return false
+      const mainRole = mainPersonnelRole(r.role)
+      if (roleFilter !== 'All' && mainRole !== roleFilter) return false
       if (deptFilter !== 'All' && (r.dept ?? '') !== deptFilter) return false
       if (!q) return true
-      return [r.name, r.position_title, r.unit, r.dept, r.mt_license_no]
+      return [r.name, r.ephis_id, r.role, mainRole, r.position_title, r.unit, r.dept, r.mt_license_no]
         .some((v) => (v ?? '').toLowerCase().includes(q))
     })
   }, [rows, search, roleFilter, deptFilter])
@@ -139,7 +160,12 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+        padding: 18, borderRadius: 14, border: '1px solid var(--border)',
+        background: 'linear-gradient(135deg, var(--card) 0%, var(--surface-2) 100%)',
+        boxShadow: '0 14px 36px rgba(15,23,42,.08)',
+      }}>
         <PageHeader
           eyebrow="กลุ่มงานเทคนิคการแพทย์"
           title="ทะเบียนบุคลากร"
@@ -166,7 +192,11 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
       </div>
 
       {/* ── Filters ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 12,
+        padding: 14, borderRadius: 12, border: '1px solid var(--border)',
+        background: 'var(--card)', boxShadow: '0 10px 28px rgba(15,23,42,.05)',
+      }}>
         {/* Search */}
         <div style={{ position: 'relative', maxWidth: 440 }}>
           <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }}>
@@ -175,7 +205,7 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาชื่อ / ตำแหน่ง / หน่วยงาน / เลขใบอนุญาต"
+            placeholder="ค้นหาชื่อ / เลขพนักงาน / ตำแหน่ง / หน่วยงาน / เลขใบอนุญาต"
             style={{ width: '100%', padding: '9px 12px 9px 36px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
@@ -185,15 +215,25 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
           <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, marginRight: 2 }}>บทบาท</span>
           {roles.map((r) => {
             const active = roleFilter === r
+            const count = r === 'All' ? rows.length : roleCounts[r as MainPersonnelRole]
             return (
               <button key={r} onClick={() => setRoleFilter(r)} style={{
-                padding: '4px 13px', borderRadius: 20, border: '1px solid var(--border)',
-                background: active ? 'var(--surface-2)' : 'transparent',
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+                padding: '5px 13px', borderRadius: 20, border: '1px solid var(--border)',
+                background: active ? 'var(--surface-2)' : 'var(--card)',
                 color: active ? 'var(--ink)' : 'var(--muted)',
                 fontWeight: active ? 700 : 500, fontSize: 12.5,
                 cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
+                boxShadow: active ? '0 6px 18px rgba(15,23,42,.08)' : 'none',
               }}>
                 {r === 'All' ? 'ทั้งหมด' : r}
+                <span style={{
+                  minWidth: 20, height: 20, padding: '0 7px', borderRadius: 99,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: active ? 'var(--card)' : 'var(--surface-2)',
+                  color: active ? 'var(--primary)' : 'var(--muted)',
+                  fontSize: 11, fontWeight: 800,
+                }}>{count}</span>
               </button>
             )
           })}
@@ -226,7 +266,7 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
-                {['ชื่อ-สกุล', 'ตำแหน่ง / หน่วยงาน', 'เลขใบ ทนพ.', 'สถานะใบอนุญาต', 'แจ้งเตือน', ''].map((h) => (
+                {['ชื่อ-สกุล', 'เลขพนักงาน', 'ตำแหน่ง / หน่วยงาน', 'เลขใบ ทนพ.', 'สถานะใบอนุญาต', 'แจ้งเตือน', ''].map((h) => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
               </tr>
@@ -234,11 +274,14 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: 40, textAlign: 'center' }}>
+                  <td colSpan={7} style={{ padding: 40, textAlign: 'center' }}>
                     <div style={{ color: 'var(--muted)', fontSize: 13 }}>ไม่พบบุคลากรที่ตรงกับเงื่อนไข</div>
                   </td>
                 </tr>
-              ) : filtered.map((r) => (
+              ) : filtered.map((r) => {
+                const mainRole = mainPersonnelRole(r.role)
+                const tone = mainRole ? ROLE_TONE[mainRole] : null
+                return (
                 <tr key={r.id}
                   onClick={() => router.push(`/staff/personnel/${r.id}`)}
                   style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s', cursor: 'pointer' }}
@@ -251,9 +294,24 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
                       <Avatar name={r.name} dept={r.dept} photoUrl={r.avatar_url} />
                       <div>
                         <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{r.role}</div>
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', marginTop: 3 }}>
+                          {tone && (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center',
+                              padding: '2px 8px', borderRadius: 99,
+                              background: tone.bg, color: tone.color,
+                              fontSize: 10.5, fontWeight: 800,
+                            }}>{mainRole}</span>
+                          )}
+                          {mainRole !== r.role && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{r.role}</span>}
+                        </div>
                       </div>
                     </div>
+                  </td>
+
+                  {/* Employee ID */}
+                  <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12.5, color: r.ephis_id ? 'var(--ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>
+                    {r.ephis_id ?? '—'}
                   </td>
 
                   {/* Position / dept */}
@@ -304,7 +362,8 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
                     <Icon name="chevRight" size={16} />
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

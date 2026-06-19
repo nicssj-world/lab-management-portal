@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS staff_jd (
   effective_date date,
   approver_id    uuid REFERENCES profiles(id),
   approver_name  text,
+  approver_position text,
   status         text DEFAULT 'Draft' CHECK (status IN ('Draft', 'Active', 'Obsolete')),
   created_at     timestamptz DEFAULT now(),
   created_by     uuid REFERENCES profiles(id),
@@ -32,11 +33,15 @@ CREATE TABLE IF NOT EXISTS staff_jd_revisions (
   file_url       text,
   effective_date date,
   approver_name  text,
+  approver_position text,
   revision_note  text,
   revised_by     uuid REFERENCES profiles(id),
   created_at     timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS staff_jd_revisions_jd_idx ON staff_jd_revisions(jd_id);
+
+ALTER TABLE staff_jd ADD COLUMN IF NOT EXISTS approver_position text;
+ALTER TABLE staff_jd_revisions ADD COLUMN IF NOT EXISTS approver_position text;
 
 -- ============================================================
 -- Annual Training Plan (ISO 6.2.4) — based on competency gaps

@@ -9,6 +9,7 @@ import type {
   StaffJd, StaffJdRevision, StaffTrainingPlan, OrientationItem,
 } from '@/lib/supabase/types'
 import { expiryStatus, EXPIRY_COLOR, EXPIRY_LABEL_TH, daysLeft } from '@/lib/personnel/expiry'
+import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 
 export interface TestOption { id: number; code: string; th: string; category_id: string | null }
@@ -39,7 +40,7 @@ const TABS: { key: TabKey; th: string; icon: string }[] = [
   { key: 'competency', th: 'สมรรถนะ',       icon: 'check' },
   { key: 'cert',       th: 'ใบรับรอง',      icon: 'doc' },
   { key: 'auth',       th: 'มอบหมายงาน',   icon: 'shieldCheck' },
-  { key: 'jd',         th: 'JD',            icon: 'edit' },
+  { key: 'jd',         th: 'JDJS',          icon: 'edit' },
   { key: 'orient',     th: 'ปฐมนิเทศ',      icon: 'clock' },
 ]
 
@@ -152,6 +153,68 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <div><label style={labelStyle}>{label}</label>{children}</div>
 }
 
+function FileDropZone({ file, accept, note, onFile }: { file: File | null; accept: string; note: string; onFile: (file: File | null) => void }) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [dragging, setDragging] = useState(false)
+
+  function selectFile(next: File | undefined) {
+    if (next) onFile(next)
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => inputRef.current?.click()}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click() }}
+      onDragEnter={(e) => { e.preventDefault(); setDragging(true) }}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+      onDragLeave={(e) => { e.preventDefault(); setDragging(false) }}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); selectFile(e.dataTransfer.files?.[0]) }}
+      style={{
+        border: `1.5px dashed ${dragging ? 'var(--primary)' : 'var(--border)'}`,
+        borderRadius: 12,
+        background: dragging ? 'var(--primary-soft)' : 'var(--surface-2)',
+        padding: '16px 18px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        cursor: 'pointer',
+        transition: 'background .15s, border-color .15s, box-shadow .15s',
+        boxShadow: dragging ? '0 0 0 4px var(--primary-soft)' : 'none',
+        outline: 'none',
+      }}
+    >
+      <input ref={inputRef} type="file" accept={accept} onChange={(e) => selectFile(e.target.files?.[0])} style={{ display: 'none' }} />
+      <div style={{
+        width: 40, height: 40, borderRadius: 10,
+        background: 'var(--card)', color: file ? 'var(--success)' : 'var(--primary)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      }}>
+        <Icon name={file ? 'check' : 'upload'} size={18} />
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {file ? file.name : 'ลากไฟล์มาวาง หรือคลิกเพื่อเลือกไฟล์'}
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+          {file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : note}
+        </div>
+      </div>
+      {file && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onFile(null) }}
+          style={{ ...iconBtn, color: 'var(--danger)' }}
+          aria-label="ล้างไฟล์"
+        >
+          <Icon name="x" size={14} />
+        </button>
+      )}
+    </div>
+  )
+}
+
 function SectionHeader({ title, sub, onAdd, canEdit }: { title: string; sub?: string; onAdd?: () => void; canEdit: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -164,23 +227,274 @@ function SectionHeader({ title, sub, onAdd, canEdit }: { title: string; sub?: st
   )
 }
 
-function fmtDate(d: string | null) { return d ?? '—' }
+function parseIsoDate(value: string | null | undefined) {
+  if (!value) return null
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+  const date = new Date(year, month - 1, day)
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null
+  return { year, month, day }
+}
+
+function formatDateBE(value: string | null | undefined) {
+  const parsed = parseIsoDate(value)
+  if (!parsed) return null
+  return `${String(parsed.day).padStart(2, '0')}/${String(parsed.month).padStart(2, '0')}/${parsed.year + 543}`
+}
+
+function fmtDate(d: string | null | undefined) { return formatDateBE(d) ?? '—' }
+
+function fmtDateTimeDateBE(value: string | null | undefined) {
+  return formatDateBE(value?.slice(0, 10)) ?? ''
+}
+
+const TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
+const TH_WEEKDAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+
+function isoFromDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function dateFromIso(value: string | null | undefined) {
+  const parsed = parseIsoDate(value)
+  return parsed ? new Date(parsed.year, parsed.month - 1, parsed.day) : null
+}
+
+function sameDate(a: Date | null, b: Date | null) {
+  return !!a && !!b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
+function DateInputBE({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
+  const selected = dateFromIso(value)
+  const today = new Date()
+  const initial = selected ?? today
+  const [open, setOpen] = useState(false)
+  const [viewYear, setViewYear] = useState(initial.getFullYear())
+  const [viewMonth, setViewMonth] = useState(initial.getMonth())
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const next = selected ?? today
+    if (!open) {
+      setViewYear(next.getFullYear())
+      setViewMonth(next.getMonth())
+    }
+  }, [value, open])
+
+  useEffect(() => {
+    if (!open) return
+    function onPointerDown(event: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [open])
+
+  function moveMonth(delta: number) {
+    const next = new Date(viewYear, viewMonth + delta, 1)
+    setViewYear(next.getFullYear())
+    setViewMonth(next.getMonth())
+  }
+
+  function selectDate(date: Date) {
+    onChange(isoFromDate(date))
+    setOpen(false)
+  }
+
+  const firstDay = new Date(viewYear, viewMonth, 1)
+  const start = new Date(viewYear, viewMonth, 1 - firstDay.getDay())
+  const cells = Array.from({ length: 42 }, (_, index) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + index))
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          ...inputStyle,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          textAlign: 'left',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          color: selected ? 'var(--ink)' : 'var(--muted)',
+        }}
+      >
+        <span>{formatDateBE(value) ?? 'เลือกวันที่ (พ.ศ.)'}</span>
+        <Icon name="clock" size={15} />
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          zIndex: 1200,
+          top: 'calc(100% + 6px)',
+          right: 0,
+          width: 306,
+          maxWidth: 'min(306px, calc(100vw - 48px))',
+          padding: 12,
+          borderRadius: 12,
+          border: '1px solid var(--border)',
+          background: 'var(--card)',
+          boxShadow: '0 18px 44px rgba(15,23,42,.18)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <button type="button" onClick={() => moveMonth(-1)} style={iconBtn} aria-label="เดือนก่อนหน้า">
+              <Icon name="arrowLeft" size={14} />
+            </button>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ink)' }}>
+              {TH_MONTHS[viewMonth]} {viewYear + 543}
+            </div>
+            <button type="button" onClick={() => moveMonth(1)} style={iconBtn} aria-label="เดือนถัดไป">
+              <Icon name="arrowRight" size={14} />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+            {TH_WEEKDAYS.map((day) => (
+              <div key={day} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--muted)', padding: '4px 0' }}>{day}</div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+            {cells.map((date) => {
+              const inMonth = date.getMonth() === viewMonth
+              const active = sameDate(date, selected)
+              const isToday = sameDate(date, today)
+              return (
+                <button
+                  key={date.toISOString()}
+                  type="button"
+                  onClick={() => selectDate(date)}
+                  style={{
+                    height: 34,
+                    borderRadius: 8,
+                    border: active ? '1px solid var(--primary)' : isToday ? '1px solid var(--border)' : '1px solid transparent',
+                    background: active ? 'var(--primary)' : isToday ? 'var(--primary-soft)' : 'transparent',
+                    color: active ? '#fff' : inMonth ? 'var(--ink)' : 'var(--muted)',
+                    opacity: inMonth ? 1 : .45,
+                    fontSize: 12.5,
+                    fontWeight: active || isToday ? 800 : 600,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {date.getDate()}
+                </button>
+              )
+            })}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+            <button type="button" onClick={() => { onChange(''); setOpen(false) }} style={ghostBtn}>ล้างค่า</button>
+            <button type="button" onClick={() => selectDate(today)} style={primaryBtn}>วันนี้ {today.getFullYear() + 543}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const POSITION_OPTIONS = [
+  'นักเทคนิคการแพทย์',
+  'นักเทคนิคการแพทย์ปฏิบัติการ',
+  'นักเทคนิคการแพทย์ชำนาญการ',
+  'นักเทคนิคการแพทย์ชำนาญการพิเศษ',
+  'จพง.วิทยาศาสตร์การแพทย์ชำนาญงาน',
+  'จพง.วิทยาศาสตร์การแพทย์ปฏิบัติงาน',
+  'พนักงานประจำห้องทดลอง',
+  'พนักงานบริการ',
+]
+
+const EMPLOYMENT_TYPE_OPTIONS = [
+  'ข้าราชการ',
+  'พนักงานราชการ',
+  'พนักงานกระทรวงฯ',
+  'ลูกจ้างชั่วคราว รายเดือน',
+  'ลูกจ้างชั่วคราว รายวัน',
+]
+
+const EDUCATION_OPTIONS = [
+  'ปริญญาเอก',
+  'ปริญญาโท',
+  'ปริญญาตรี',
+  'อนุปริญญา / ประกาศนียบัตรวิชาชีพชั้นสูง',
+  'ประกาศนียบัตรวิชาชีพ',
+  'มัธยมศึกษาตอนปลาย',
+]
+
+const JDJS_DEFAULT_EFFECTIVE_DATE = '2026-03-09'
+const JDJS_DEFAULT_APPROVER_NAME = 'นางเกศสิรี กรสิทธิกุล'
+const JDJS_DEFAULT_APPROVER_POSITION = 'รองผู้อำนวยการด้านพัฒนาระบบบริการและสนับสนุนบริการสุขภาพ'
+
+function licenseDigits(value: string | null | undefined) {
+  return (value ?? '').replace(/\D/g, '')
+}
+
+function optionsWithCurrent(options: string[], current: string) {
+  return current && !options.includes(current) ? [current, ...options] : options
+}
+
+function formatMtLicense(value: string | null | undefined) {
+  const digits = licenseDigits(value)
+  return digits ? `ทน.${digits}` : null
+}
+
+function formatTenure(startDate: string | null | undefined) {
+  if (!startDate) return null
+  const start = new Date(`${startDate}T00:00:00`)
+  const today = new Date()
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  if (Number.isNaN(start.getTime()) || start > end) return null
+
+  let years = end.getFullYear() - start.getFullYear()
+  let months = end.getMonth() - start.getMonth()
+  let days = end.getDate() - start.getDate()
+
+  if (days < 0) {
+    months -= 1
+    days += new Date(end.getFullYear(), end.getMonth(), 0).getDate()
+  }
+  if (months < 0) {
+    years -= 1
+    months += 12
+  }
+
+  const parts = [
+    years > 0 ? `${years} ปี` : '',
+    months > 0 ? `${months} เดือน` : '',
+    days > 0 ? `${days} วัน` : '',
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join(' ') : '0 วัน'
+}
 
 // ════════════ Profile tab ════════════
 function ProfileTab({ prof, canEdit, onSaved, onError }: { prof: Profile; canEdit: boolean; onSaved: (p: Profile) => void; onError: (m: string) => void }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({
+    ephis_id: licenseDigits(prof.ephis_id),
     position_title: prof.position_title ?? '', dept: prof.dept ?? '', employment_type: prof.employment_type ?? '',
     start_date: prof.start_date ?? '', education: prof.education ?? '',
-    mt_license_no: prof.mt_license_no ?? '', mt_license_expiry: prof.mt_license_expiry ?? '',
+    mt_license_no: licenseDigits(prof.mt_license_no), mt_license_expiry: prof.mt_license_expiry ?? '',
   })
   const [saving, setSaving] = useState(false)
+  const hasMtLicenseScope = hasMedicalTechnologistLicenseScope(prof.role)
 
   async function save() {
     setSaving(true)
     try {
+      const payload = hasMtLicenseScope
+        ? form
+        : {
+            ephis_id: form.ephis_id,
+            position_title: form.position_title,
+            dept: form.dept,
+            employment_type: form.employment_type,
+            start_date: form.start_date,
+            education: form.education,
+          }
       const res = await fetch(`/api/admin/personnel/${prof.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'บันทึกไม่สำเร็จ')
@@ -190,10 +504,17 @@ function ProfileTab({ prof, canEdit, onSaved, onError }: { prof: Profile; canEdi
   }
 
   const rows: [string, string | null][] = [
+    ['เลขประจำตัวพนักงาน', prof.ephis_id ?? null],
     ['ตำแหน่ง', prof.position_title ?? null], ['หน่วยงาน', prof.dept ?? prof.unit ?? null],
-    ['ประเภทการจ้าง', prof.employment_type ?? null], ['วันเริ่มงาน', prof.start_date ?? null],
-    ['วุฒิการศึกษา', prof.education ?? null], ['เลขใบประกอบวิชาชีพ (ทนพ.)', prof.mt_license_no ?? null],
-    ['วันหมดอายุใบอนุญาต', prof.mt_license_expiry ?? null],
+    ['ประเภทการจ้าง', prof.employment_type ?? null], ['วันเริ่มงาน', fmtDate(prof.start_date)],
+    ['อายุงาน', formatTenure(prof.start_date)],
+    ['วุฒิการศึกษา', prof.education ?? null],
+    ...(hasMtLicenseScope
+      ? [
+          ['เลขใบประกอบวิชาชีพ (ทนพ.)', formatMtLicense(prof.mt_license_no)],
+          ['วันหมดอายุใบอนุญาต', prof.mt_license_expiry ?? null],
+        ] satisfies [string, string | null][]
+      : []),
   ]
 
   return (
@@ -205,7 +526,7 @@ function ProfileTab({ prof, canEdit, onSaved, onError }: { prof: Profile; canEdi
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 3 }}>{k}</div>
             <div style={{ fontSize: 13.5, color: 'var(--ink)', fontWeight: 500 }}>
               {k === 'วันหมดอายุใบอนุญาต' && v
-                ? <span style={{ color: EXPIRY_COLOR[expiryStatus(v)] }}>{v} · {EXPIRY_LABEL_TH[expiryStatus(v)]}</span>
+                ? <span style={{ color: EXPIRY_COLOR[expiryStatus(v)] }}>{fmtDate(v)} · {EXPIRY_LABEL_TH[expiryStatus(v)]}</span>
                 : (v ?? <span style={{ color: 'var(--muted)' }}>—</span>)}
             </div>
           </div>
@@ -215,7 +536,23 @@ function ProfileTab({ prof, canEdit, onSaved, onError }: { prof: Profile; canEdi
       {editing && (
         <Modal title="แก้ไขประวัติบุคลากร" onClose={() => setEditing(false)}
           footer={<><button onClick={() => setEditing(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
-          <Field label="ตำแหน่ง"><input style={inputStyle} value={form.position_title} onChange={(e) => setForm({ ...form, position_title: e.target.value })} /></Field>
+          <Field label="เลขประจำตัวพนักงาน">
+            <input
+              style={inputStyle}
+              value={form.ephis_id}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="เลข Ephis"
+              onChange={(e) => setForm({ ...form, ephis_id: licenseDigits(e.target.value) })}
+            />
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>เลข Ephis</div>
+          </Field>
+          <Field label="ตำแหน่ง">
+            <select style={inputStyle} value={form.position_title} onChange={(e) => setForm({ ...form, position_title: e.target.value })}>
+              <option value="">— เลือกตำแหน่ง —</option>
+              {optionsWithCurrent(POSITION_OPTIONS, form.position_title).map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </Field>
           <Field label="หน่วยงาน">
             <select style={inputStyle} value={form.dept} onChange={(e) => setForm({ ...form, dept: e.target.value })}>
               <option value="">— เลือกหน่วยงาน —</option>
@@ -223,14 +560,36 @@ function ProfileTab({ prof, canEdit, onSaved, onError }: { prof: Profile; canEdi
             </select>
           </Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="ประเภทการจ้าง"><input style={inputStyle} value={form.employment_type} onChange={(e) => setForm({ ...form, employment_type: e.target.value })} /></Field>
-            <Field label="วันเริ่มงาน"><input type="date" style={inputStyle} value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
+            <Field label="ประเภทการจ้าง">
+              <select style={inputStyle} value={form.employment_type} onChange={(e) => setForm({ ...form, employment_type: e.target.value })}>
+                <option value="">— เลือกประเภทการจ้าง —</option>
+                {optionsWithCurrent(EMPLOYMENT_TYPE_OPTIONS, form.employment_type).map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="วันเริ่มงาน"><DateInputBE value={form.start_date} onChange={(value) => setForm({ ...form, start_date: value })} /></Field>
           </div>
-          <Field label="วุฒิการศึกษา"><input style={inputStyle} value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })} /></Field>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="เลขใบประกอบวิชาชีพ"><input style={inputStyle} value={form.mt_license_no} onChange={(e) => setForm({ ...form, mt_license_no: e.target.value })} /></Field>
-            <Field label="วันหมดอายุใบอนุญาต"><input type="date" style={inputStyle} value={form.mt_license_expiry} onChange={(e) => setForm({ ...form, mt_license_expiry: e.target.value })} /></Field>
-          </div>
+          <Field label="วุฒิการศึกษา">
+            <select style={inputStyle} value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })}>
+              <option value="">— เลือกวุฒิการศึกษา —</option>
+              {optionsWithCurrent(EDUCATION_OPTIONS, form.education).map((e) => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </Field>
+          {hasMtLicenseScope && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field label="เลขใบประกอบวิชาชีพ">
+                <input
+                  style={inputStyle}
+                  value={form.mt_license_no}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="ใส่เฉพาะตัวเลข"
+                  onChange={(e) => setForm({ ...form, mt_license_no: licenseDigits(e.target.value) })}
+                />
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>ระบบจะแสดงผลเป็น ทน.ตามด้วยเลขที่กรอก</div>
+              </Field>
+              <Field label="วันหมดอายุใบอนุญาต"><DateInputBE value={form.mt_license_expiry} onChange={(value) => setForm({ ...form, mt_license_expiry: value })} /></Field>
+            </div>
+          )}
         </Modal>
       )}
     </Card>
@@ -245,12 +604,13 @@ async function apiSend(url: string, method: string, body?: unknown) {
   return json
 }
 
-async function openAttachment(profileId: string, path: string) {
-  try {
-    const res = await fetch(`/api/admin/personnel/${profileId}/files?path=${encodeURIComponent(path)}`)
-    const json = await res.json()
-    if (json.signed_url) window.open(json.signed_url, '_blank')
-  } catch { /* ignore */ }
+function openAttachment(profileId: string, path: string) {
+  const encodedPath = encodeURIComponent(path)
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const url = isIos
+    ? `/staff/personnel/${profileId}/attachments/preview?path=${encodedPath}`
+    : `/api/admin/personnel/${profileId}/files?path=${encodedPath}&inline=1`
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 // ════════════ Training tab ════════════
@@ -312,7 +672,7 @@ function TrainingTab({ profileId, items, setItems, canEdit, toast }: { profileId
           footer={<><button onClick={() => setModal(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
           <Field label="หัวข้อการอบรม *"><input style={inputStyle} value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="วันที่"><input type="date" style={inputStyle} value={form.training_date} onChange={(e) => setForm({ ...form, training_date: e.target.value })} /></Field>
+            <Field label="วันที่"><DateInputBE value={form.training_date} onChange={(value) => setForm({ ...form, training_date: value })} /></Field>
             <Field label="จำนวนชั่วโมง"><input type="number" style={inputStyle} value={form.hours} onChange={(e) => setForm({ ...form, hours: e.target.value })} /></Field>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -322,7 +682,9 @@ function TrainingTab({ profileId, items, setItems, canEdit, toast }: { profileId
           <Field label="ผู้จัด/วิทยากร"><input style={inputStyle} value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} /></Field>
           <Field label="สถานที่"><input style={inputStyle} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></Field>
           <Field label="หมายเหตุ"><input style={inputStyle} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
-          <Field label="ไฟล์หลักฐาน (PDF/รูป ≤10MB)"><input type="file" accept=".pdf,image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ fontSize: 12.5 }} /></Field>
+          <Field label="ไฟล์หลักฐาน (PDF/รูป ≤10MB)">
+            <FileDropZone file={file} accept=".pdf,image/*" note="รองรับ PDF และรูปภาพ ขนาดไม่เกิน 10MB" onFile={setFile} />
+          </Field>
         </Modal>
       )}
     </Card>
@@ -393,7 +755,7 @@ function CompetencyTab({ profileId, items, setItems, canEdit, tests, testById, s
               <td style={td}>{c.assessor_id ? (staffById.get(c.assessor_id) ?? '—') : '—'}</td>
               <td style={td}>{fmtDate(c.assessment_date)}</td>
               <td style={td}>{c.next_due_date
-                ? <span style={{ color: EXPIRY_COLOR[dueS], fontWeight: dueS === 'valid' ? 400 : 600 }}>{c.next_due_date}{dueS !== 'valid' && dueS !== 'none' ? ` · ${EXPIRY_LABEL_TH[dueS]}` : ''}</span>
+                ? <span style={{ color: EXPIRY_COLOR[dueS], fontWeight: dueS === 'valid' ? 400 : 600 }}>{fmtDate(c.next_due_date)}{dueS !== 'valid' && dueS !== 'none' ? ` · ${EXPIRY_LABEL_TH[dueS]}` : ''}</span>
                 : '—'}</td>
               <td style={td}>{c.result ? <span style={{ fontWeight: 700, color: c.result === 'pass' ? 'var(--success)' : 'var(--danger)' }}>{c.result === 'pass' ? 'ผ่าน' : 'ไม่ผ่าน'}</span> : '—'}</td>
               <td style={td}>
@@ -418,8 +780,8 @@ function CompetencyTab({ profileId, items, setItems, canEdit, tests, testById, s
           <Field label="หรือระบุหัวข้อสมรรถนะ (อิสระ)"><input style={inputStyle} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} /></Field>
           <Field label="ผู้ประเมิน"><select style={inputStyle} value={form.assessor_id} onChange={(e) => setForm({ ...form, assessor_id: e.target.value })}><option value="">—</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="วันที่ประเมิน"><input type="date" style={inputStyle} value={form.assessment_date} onChange={(e) => setForm({ ...form, assessment_date: e.target.value })} /></Field>
-            <Field label="ครบกำหนดประเมินครั้งถัดไป"><input type="date" style={inputStyle} value={form.next_due_date} onChange={(e) => setForm({ ...form, next_due_date: e.target.value })} /></Field>
+            <Field label="วันที่ประเมิน"><DateInputBE value={form.assessment_date} onChange={(value) => setForm({ ...form, assessment_date: value })} /></Field>
+            <Field label="ครบกำหนดประเมินครั้งถัดไป"><DateInputBE value={form.next_due_date} onChange={(value) => setForm({ ...form, next_due_date: value })} /></Field>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             <Field label="คะแนนความรู้"><input type="number" style={inputStyle} value={form.score_knowledge} onChange={(e) => setForm({ ...form, score_knowledge: e.target.value })} /></Field>
@@ -476,7 +838,7 @@ function CertTab({ profileId, items, setItems, canEdit, toast }: { profileId: st
               <td style={{ ...td, fontFamily: 'monospace', fontSize: 12 }}>{c.cert_no ?? '—'}</td>
               <td style={td}>{c.issuer ?? '—'}</td>
               <td style={td}>{fmtDate(c.issue_date)}</td>
-              <td style={td}>{c.expiry_date ? <span style={{ color: EXPIRY_COLOR[s], fontWeight: s === 'valid' ? 400 : 600 }}>{c.expiry_date}{s !== 'valid' && s !== 'none' ? ` · ${EXPIRY_LABEL_TH[s]}` : ''}{s === 'expiring' && daysLeft(c.expiry_date) !== null ? ` (${daysLeft(c.expiry_date)} วัน)` : ''}</span> : '—'}</td>
+              <td style={td}>{c.expiry_date ? <span style={{ color: EXPIRY_COLOR[s], fontWeight: s === 'valid' ? 400 : 600 }}>{fmtDate(c.expiry_date)}{s !== 'valid' && s !== 'none' ? ` · ${EXPIRY_LABEL_TH[s]}` : ''}{s === 'expiring' && daysLeft(c.expiry_date) !== null ? ` (${daysLeft(c.expiry_date)} วัน)` : ''}</span> : '—'}</td>
               <td style={td}>{c.file_url ? <button onClick={() => openAttachment(profileId, c.file_url!)} style={iconBtn}><Icon name="eye" size={14} /></button> : '—'}</td>
               <td style={{ ...td, textAlign: 'right' }}>{canEdit && <button onClick={() => remove(c.id)} style={iconBtn}><Icon name="trash" size={14} /></button>}</td>
             </tr>
@@ -493,11 +855,13 @@ function CertTab({ profileId, items, setItems, canEdit, toast }: { profileId: st
           </div>
           <Field label="ผู้ออก"><input style={inputStyle} value={form.issuer} onChange={(e) => setForm({ ...form, issuer: e.target.value })} /></Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="วันที่ออก"><input type="date" style={inputStyle} value={form.issue_date} onChange={(e) => setForm({ ...form, issue_date: e.target.value })} /></Field>
-            <Field label="วันหมดอายุ"><input type="date" style={inputStyle} value={form.expiry_date} onChange={(e) => setForm({ ...form, expiry_date: e.target.value })} /></Field>
+            <Field label="วันที่ออก"><DateInputBE value={form.issue_date} onChange={(value) => setForm({ ...form, issue_date: value })} /></Field>
+            <Field label="วันหมดอายุ"><DateInputBE value={form.expiry_date} onChange={(value) => setForm({ ...form, expiry_date: value })} /></Field>
           </div>
           <Field label="หมายเหตุ"><input style={inputStyle} value={form.remark} onChange={(e) => setForm({ ...form, remark: e.target.value })} /></Field>
-          <Field label="ไฟล์ใบรับรอง (PDF/รูป ≤10MB)"><input type="file" accept=".pdf,image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ fontSize: 12.5 }} /></Field>
+          <Field label="ไฟล์ใบรับรอง (PDF/รูป ≤10MB)">
+            <FileDropZone file={file} accept=".pdf,image/*" note="รองรับ PDF และรูปภาพ ขนาดไม่เกิน 10MB" onFile={setFile} />
+          </Field>
         </Modal>
       )}
     </Card>
@@ -577,8 +941,8 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
             ? <Field label="เลือก Test"><select style={inputStyle} value={form.test_id} onChange={(e) => setForm({ ...form, test_id: e.target.value })}><option value="">— เลือก —</option>{tests.map((t) => <option key={t.id} value={t.id}>{t.code} · {t.th}</option>)}</select></Field>
             : <Field label="เลือกหมวด"><select style={inputStyle} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}><option value="">— เลือก —</option>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>}
           <Field label="บทบาท"><select style={inputStyle} value={form.role_type} onChange={(e) => setForm({ ...form, role_type: e.target.value })}>{Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-          <Field label="อ้างอิงหลักฐานสมรรถนะ (ไม่บังคับ)"><select style={inputStyle} value={form.competency_id} onChange={(e) => setForm({ ...form, competency_id: e.target.value })}><option value="">—</option>{competencies.map((c) => <option key={c.id} value={c.id}>{(c.test_id ? testById.get(c.test_id)?.code : c.area) ?? 'สมรรถนะ'} · {c.assessment_date ?? ''} {c.result === 'pass' ? '(ผ่าน)' : ''}</option>)}</select></Field>
-          <Field label="วันที่มอบหมาย"><input type="date" style={inputStyle} value={form.authorized_date} onChange={(e) => setForm({ ...form, authorized_date: e.target.value })} /></Field>
+          <Field label="อ้างอิงหลักฐานสมรรถนะ (ไม่บังคับ)"><select style={inputStyle} value={form.competency_id} onChange={(e) => setForm({ ...form, competency_id: e.target.value })}><option value="">—</option>{competencies.map((c) => <option key={c.id} value={c.id}>{(c.test_id ? testById.get(c.test_id)?.code : c.area) ?? 'สมรรถนะ'} · {fmtDate(c.assessment_date)} {c.result === 'pass' ? '(ผ่าน)' : ''}</option>)}</select></Field>
+          <Field label="วันที่มอบหมาย"><DateInputBE value={form.authorized_date} onChange={(value) => setForm({ ...form, authorized_date: value })} /></Field>
           <Field label="หมายเหตุ"><input style={inputStyle} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
         </Modal>
       )}
@@ -683,30 +1047,29 @@ function TrainingPlanTab({ profileId, items, setItems, training, canEdit, toast 
   )
 }
 
-// ════════════ JD / JS tab (ISO 6.2.2) ════════════
+// ════════════ JDJS tab (ISO 6.2.2) ════════════
 function JdTab({ profileId, items, setItems, canEdit, toast }: { profileId: string; items: StaffJd[]; setItems: (f: (p: StaffJd[]) => StaffJd[]) => void; canEdit: boolean; toast: (m: string, ok?: boolean) => void }) {
   const [modal, setModal] = useState<StaffJd | 'new' | null>(null)
   const [revOf, setRevOf] = useState<StaffJd | null>(null)
 
   async function remove(id: string) {
-    if (!confirm('ลบ JD นี้?')) return
+    if (!confirm('ลบ JDJS นี้?')) return
     try { await apiSend(`/api/admin/personnel/${profileId}/jd/${id}`, 'DELETE'); setItems((p) => p.filter((x) => x.id !== id)); toast('ลบแล้ว') }
     catch (e) { toast(e instanceof Error ? e.message : 'error', false) }
   }
 
   return (
     <Card padding={20}>
-      <SectionHeader title="Job Description / Job Specification" sub="คำบรรยายลักษณะงาน · มี version control" canEdit={canEdit} onAdd={() => setModal('new')} />
+      <SectionHeader title="JDJS / Job Description & Job Specification" sub="คำบรรยายลักษณะงาน · มี version control" canEdit={canEdit} onAdd={() => setModal('new')} />
       <ChildTable
-        cols={['รหัส', 'ตำแหน่ง', 'Version', 'มีผล', 'ผู้อนุมัติ', 'สถานะ', '']}
-        empty="ยังไม่มี JD"
+        cols={['มีผล', 'ผู้อนุมัติ', 'ตำแหน่งผู้อนุมัติ', 'ไฟล์ PDF', 'สถานะ', '']}
+        empty="ยังไม่มี JDJS"
         rows={items.map((j) => (
           <tr key={j.id} style={{ borderBottom: '1px solid var(--border)' }}>
-            <td style={{ ...td, fontFamily: 'monospace', fontSize: 12 }}>{j.jd_code ?? '—'}</td>
-            <td style={{ ...td, fontWeight: 600 }}>{j.position_title ?? '—'}</td>
-            <td style={td}>Rev. {j.version}</td>
             <td style={td}>{fmtDate(j.effective_date)}</td>
             <td style={td}>{j.approver_name ?? '—'}</td>
+            <td style={td}>{j.approver_position ?? '—'}</td>
+            <td style={td}>{j.file_url ? <button onClick={() => openAttachment(profileId, j.file_url!)} style={iconBtn}><Icon name="eye" size={14} /></button> : '—'}</td>
             <td style={td}><span style={{ fontWeight: 600, color: j.status === 'Active' ? 'var(--success)' : j.status === 'Obsolete' ? 'var(--muted)' : 'var(--warning)' }}>{j.status}</span></td>
             <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
               <button onClick={() => setRevOf(j)} title="ประวัติฉบับแก้ไข" style={iconBtn}><Icon name="clock" size={14} /></button>
@@ -716,7 +1079,7 @@ function JdTab({ profileId, items, setItems, canEdit, toast }: { profileId: stri
           </tr>
         ))}
       />
-      {modal && <JdModal profileId={profileId} jd={modal === 'new' ? null : modal} onClose={() => setModal(null)} onSaved={(saved, isNew) => { setItems((p) => isNew ? [saved, ...p] : p.map((x) => x.id === saved.id ? saved : x)); setModal(null); toast('บันทึก JD แล้ว') }} onError={(m) => toast(m, false)} />}
+      {modal && <JdModal profileId={profileId} jd={modal === 'new' ? null : modal} onClose={() => setModal(null)} onSaved={(saved, isNew) => { setItems((p) => isNew ? [saved, ...p] : p.map((x) => x.id === saved.id ? saved : x)); setModal(null); toast('บันทึก JDJS แล้ว') }} onError={(m) => toast(m, false)} />}
       {revOf && <JdRevisionsModal profileId={profileId} jd={revOf} onClose={() => setRevOf(null)} />}
     </Card>
   )
@@ -725,32 +1088,49 @@ function JdTab({ profileId, items, setItems, canEdit, toast }: { profileId: stri
 function JdModal({ profileId, jd, onClose, onSaved, onError }: { profileId: string; jd: StaffJd | null; onClose: () => void; onSaved: (j: StaffJd, isNew: boolean) => void; onError: (m: string) => void }) {
   const [form, setForm] = useState({
     jd_code: jd?.jd_code ?? '', position_title: jd?.position_title ?? '', version: jd?.version ?? '1',
-    content: jd?.content ?? '', effective_date: jd?.effective_date ?? '', approver_name: jd?.approver_name ?? '',
-    status: jd?.status ?? 'Draft', revision_note: '',
+    content: jd?.content ?? '',
+    effective_date: jd?.effective_date ?? JDJS_DEFAULT_EFFECTIVE_DATE,
+    approver_name: jd?.approver_name ?? JDJS_DEFAULT_APPROVER_NAME,
+    approver_position: jd?.approver_position ?? JDJS_DEFAULT_APPROVER_POSITION,
+    status: jd?.status ?? 'Active',
+    revision_note: '',
   })
+  const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   async function save() {
     setSaving(true)
     try {
+      let file_url: string | undefined
+      if (file) {
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+        if (!isPdf) throw new Error('JDJS รองรับเฉพาะไฟล์ PDF')
+        const fd = new FormData(); fd.append('file', file); fd.append('kind', 'jdjs')
+        const up = await fetch(`/api/admin/personnel/${profileId}/files`, { method: 'POST', body: fd })
+        const uj = await up.json(); if (!up.ok) throw new Error(uj.error); file_url = uj.file_url
+      }
       const url = jd ? `/api/admin/personnel/${profileId}/jd/${jd.id}` : `/api/admin/personnel/${profileId}/jd`
-      const saved = await apiSend(url, jd ? 'PATCH' : 'POST', form)
+      const payload = file_url ? { ...form, file_url } : form
+      const saved = await apiSend(url, jd ? 'PATCH' : 'POST', payload)
       onSaved(saved, !jd)
     } catch (e) { onError(e instanceof Error ? e.message : 'error') } finally { setSaving(false) }
   }
   return (
-    <Modal title={jd ? `แก้ไข JD (Rev. ${jd.version})` : 'เพิ่ม JD'} onClose={onClose}
+    <Modal title={jd ? `แก้ไข JDJS (Rev. ${jd.version})` : 'เพิ่ม JDJS'} onClose={onClose}
       footer={<><button onClick={onClose} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Field label="รหัส JD (FM-JD-xxx)"><input style={inputStyle} value={form.jd_code} onChange={(e) => setForm({ ...form, jd_code: e.target.value })} /></Field>
-        <Field label="Version"><input style={inputStyle} value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} /></Field>
-      </div>
-      <Field label="ตำแหน่ง"><input style={inputStyle} value={form.position_title} onChange={(e) => setForm({ ...form, position_title: e.target.value })} /></Field>
-      <Field label="เนื้อหา JD / หน้าที่ความรับผิดชอบ"><textarea style={{ ...inputStyle, minHeight: 120, resize: 'vertical' }} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} /></Field>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Field label="วันที่มีผล"><input type="date" style={inputStyle} value={form.effective_date} onChange={(e) => setForm({ ...form, effective_date: e.target.value })} /></Field>
+        <Field label="วันที่มีผล"><DateInputBE value={form.effective_date} onChange={(value) => setForm({ ...form, effective_date: value })} /></Field>
         <Field label="ผู้อนุมัติ"><input style={inputStyle} value={form.approver_name} onChange={(e) => setForm({ ...form, approver_name: e.target.value })} /></Field>
       </div>
+      <Field label="ตำแหน่งผู้อนุมัติ"><input style={inputStyle} value={form.approver_position} onChange={(e) => setForm({ ...form, approver_position: e.target.value })} /></Field>
       <Field label="สถานะ"><select style={inputStyle} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as StaffJd['status'] })}><option value="Draft">Draft</option><option value="Active">Active</option><option value="Obsolete">Obsolete</option></select></Field>
+      <Field label="ไฟล์ PDF JDJS">
+        <FileDropZone file={file} accept=".pdf,application/pdf" note={jd?.file_url ? 'มีไฟล์เดิมแล้ว · ลาก PDF ใหม่มาวางเพื่อแทนที่' : 'รองรับ PDF ขนาดไม่เกิน 10MB'} onFile={setFile} />
+        {jd?.file_url && !file && (
+          <button type="button" onClick={() => openAttachment(profileId, jd.file_url!)} style={{ ...ghostBtn, marginTop: 8, fontSize: 12 }}>
+            <Icon name="eye" size={13} /> ดูไฟล์ PDF ปัจจุบัน
+          </button>
+        )}
+      </Field>
       {jd && <Field label="หมายเหตุการแก้ไข (เก็บใน revision)"><input style={inputStyle} value={form.revision_note} onChange={(e) => setForm({ ...form, revision_note: e.target.value })} placeholder="ระบุเมื่อเปลี่ยน version/เนื้อหา" /></Field>}
     </Modal>
   )
@@ -762,7 +1142,7 @@ function JdRevisionsModal({ profileId, jd, onClose }: { profileId: string; jd: S
     fetch(`/api/admin/personnel/${profileId}/jd/${jd.id}/revisions`).then((r) => r.json()).then((j) => setRevs(j.data ?? [])).catch(() => setRevs([]))
   }, [profileId, jd.id])
   return (
-    <Modal title={`ประวัติฉบับแก้ไข — ${jd.jd_code ?? jd.position_title ?? 'JD'}`} onClose={onClose} footer={<button onClick={onClose} style={ghostBtn}>ปิด</button>}>
+    <Modal title={`ประวัติฉบับแก้ไข — ${jd.jd_code ?? 'JDJS'}`} onClose={onClose} footer={<button onClick={onClose} style={ghostBtn}>ปิด</button>}>
       {revs === null ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>กำลังโหลด…</div>
         : revs.length === 0 ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>ยังไม่มีประวัติการแก้ไข (ฉบับปัจจุบัน Rev. {jd.version})</div>
         : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -770,8 +1150,13 @@ function JdRevisionsModal({ profileId, jd, onClose }: { profileId: string; jd: S
               <div key={r.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                   <strong style={{ color: 'var(--ink)' }}>Rev. {r.version}</strong>
-                  <span style={{ color: 'var(--muted)' }}>{r.created_at ? new Date(r.created_at).toLocaleDateString('th-TH') : ''}</span>
+                  <span style={{ color: 'var(--muted)' }}>{fmtDateTimeDateBE(r.created_at)}</span>
                 </div>
+                {(r.approver_name || r.approver_position) && (
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                    ผู้อนุมัติ: {r.approver_name ?? '—'}{r.approver_position ? ` · ${r.approver_position}` : ''}
+                  </div>
+                )}
                 {r.revision_note && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>หมายเหตุ: {r.revision_note}</div>}
                 {r.content && <div style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 6, whiteSpace: 'pre-wrap' }}>{r.content}</div>}
               </div>
@@ -811,6 +1196,7 @@ function OrientationTab({ profileId, canEdit, toast }: { profileId: string; canE
   }
   function removeItem(key: string) {
     if (!items) return
+    if (!confirm('ลบหัวข้อนี้ออกจากรายการปฐมนิเทศของทุกคน?')) return
     persist(items.filter((i) => i.key !== key))
   }
 
@@ -822,11 +1208,11 @@ function OrientationTab({ profileId, canEdit, toast }: { profileId: string; canE
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>การปฐมนิเทศพนักงานใหม่</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>ความปลอดภัยและระบบคุณภาพห้องปฏิบัติการ{saving && ' · กำลังบันทึก…'}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>หัวข้อเป็นชุดกลางใช้ร่วมกันทุกคน · สถานะติ๊กเก็บแยกตามบุคคล{saving && ' · กำลังบันทึก…'}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 20, fontWeight: 700, color: total > 0 && done === total ? 'var(--success)' : 'var(--ink)' }}>{done}/{total}</div>
-          {completedAt && <div style={{ fontSize: 11, color: 'var(--success)' }}>เสร็จสมบูรณ์ {new Date(completedAt).toLocaleDateString('th-TH')}</div>}
+          {completedAt && <div style={{ fontSize: 11, color: 'var(--success)' }}>เสร็จสมบูรณ์ {fmtDateTimeDateBE(completedAt)}</div>}
         </div>
       </div>
       {items === null ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>กำลังโหลด…</div>

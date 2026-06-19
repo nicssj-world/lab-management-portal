@@ -14,7 +14,7 @@ export interface ComplianceData {
     competencyCoverage: number
   }
   summary: {
-    staffCount: number; withLicense: number; licenseExpiring: number; licenseExpired: number
+    staffCount: number; withLicense: number; licenseEligibleCount: number; licenseExpiring: number; licenseExpired: number
     certCount: number; certExpiring: number; certExpired: number
     compPassRate: number | null; compOverdue: number; trainingRecords: number; staffWithTraining: number
   }
@@ -88,7 +88,7 @@ h2 { font-size: 15px; margin: 16px 0 4px; }
       {/* summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
         <Mini label="บุคลากร" value={summary.staffCount} />
-        <Mini label="มีใบ ทนพ." value={`${summary.withLicense}/${summary.staffCount}`} />
+        <Mini label="มีใบ ทนพ." value={`${summary.withLicense}/${summary.licenseEligibleCount}`} />
         <Mini label="ใบรับรองหมดอายุ" value={summary.certExpired} warn={summary.certExpired > 0} />
         <Mini label="ประเมินผ่าน" value={summary.compPassRate != null ? `${summary.compPassRate}%` : '—'} />
         <Mini label="ประเมินค้าง" value={summary.compOverdue} warn={summary.compOverdue > 0} />
@@ -102,7 +102,7 @@ h2 { font-size: 15px; margin: 16px 0 4px; }
           <Ring label="อัตราการอบรม" value={kpi.trainingRate} />
           <Ring label="ผ่านการประเมินสมรรถนะ" value={kpi.competencyPassRate} />
           <Ring label="ครอบคลุมการประเมิน" value={kpi.competencyCoverage} />
-          <Ring label="JD ครบ (Active)" value={kpi.jdCoverage} />
+          <Ring label="JDJS ครบ (Active)" value={kpi.jdCoverage} />
         </div>
       </Card>
 

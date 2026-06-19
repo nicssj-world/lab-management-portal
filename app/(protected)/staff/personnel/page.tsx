@@ -4,6 +4,7 @@ import { getRolePermissions } from '@/lib/permissions'
 import { getStaffRoster, getAllCertifications, getAllCompetencies } from '@/lib/queries/personnel'
 import { expiryStatus } from '@/lib/personnel/expiry'
 import { PersonnelClient, type RosterRow } from './PersonnelClient'
+import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
 
 export default async function PersonnelPage() {
   const supabase = await createClient()
@@ -39,22 +40,26 @@ export default async function PersonnelPage() {
     compByProfile.set(c.profile_id, cur)
   }
 
-  const rows: RosterRow[] = roster.map((p) => ({
-    id: p.id,
-    name: p.name,
-    role: p.role,
-    dept: p.dept,
-    unit: p.unit ?? null,
-    position_title: p.position_title ?? null,
-    mt_license_no: p.mt_license_no ?? null,
-    mt_license_expiry: p.mt_license_expiry ?? null,
-    avatar_url: p.avatar_url ?? null,
-    licenseStatus: expiryStatus(p.mt_license_expiry),
-    certExpiring: certByProfile.get(p.id)?.expiring ?? 0,
-    certExpired: certByProfile.get(p.id)?.expired ?? 0,
-    compOverdue: compByProfile.get(p.id)?.overdue ?? 0,
-    compDueSoon: compByProfile.get(p.id)?.dueSoon ?? 0,
-  }))
+  const rows: RosterRow[] = roster.map((p) => {
+    const hasMtLicenseScope = hasMedicalTechnologistLicenseScope(p.role)
+    return {
+      id: p.id,
+      name: p.name,
+      ephis_id: p.ephis_id ?? null,
+      role: p.role,
+      dept: p.dept,
+      unit: p.unit ?? null,
+      position_title: p.position_title ?? null,
+      mt_license_no: hasMtLicenseScope ? p.mt_license_no ?? null : null,
+      mt_license_expiry: hasMtLicenseScope ? p.mt_license_expiry ?? null : null,
+      avatar_url: p.avatar_url ?? null,
+      licenseStatus: hasMtLicenseScope ? expiryStatus(p.mt_license_expiry) : 'none',
+      certExpiring: certByProfile.get(p.id)?.expiring ?? 0,
+      certExpired: certByProfile.get(p.id)?.expired ?? 0,
+      compOverdue: compByProfile.get(p.id)?.overdue ?? 0,
+      compDueSoon: compByProfile.get(p.id)?.dueSoon ?? 0,
+    }
+  })
 
   return <PersonnelClient rows={rows} />
 }

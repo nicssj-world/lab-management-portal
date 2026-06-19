@@ -224,6 +224,8 @@ Component usage notes:
 
 ### UI Patterns
 
+**Upload controls** — every file upload UI must support Drag & Drop in addition to click-to-browse. Use a visible drop zone with `dragover` feedback using `var(--primary-soft)`, keep keyboard-accessible file input/button behavior, and apply this consistently across documents, personnel evidence, imports, images, and any future upload feature.
+
 **Pill tabs (type filter)** — outlined, active = gray fill:
 ```tsx
 <button style={{

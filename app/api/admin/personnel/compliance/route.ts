@@ -7,6 +7,7 @@ import {
   getAllTraining,
 } from '@/lib/queries/personnel'
 import { expiryStatus } from '@/lib/personnel/expiry'
+import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
 import { toMsg } from '@/lib/personnel/crud'
 
 export async function GET() {
@@ -21,9 +22,11 @@ export async function GET() {
     ])
 
     const staffCount = roster.length
-    const withLicense = roster.filter((p) => p.mt_license_no).length
-    const licenseExpiring = roster.filter((p) => expiryStatus(p.mt_license_expiry) === 'expiring').length
-    const licenseExpired = roster.filter((p) => expiryStatus(p.mt_license_expiry) === 'expired').length
+    const licenseRoster = roster.filter((p) => hasMedicalTechnologistLicenseScope(p.role))
+    const licenseEligibleCount = licenseRoster.length
+    const withLicense = licenseRoster.filter((p) => p.mt_license_no).length
+    const licenseExpiring = licenseRoster.filter((p) => expiryStatus(p.mt_license_expiry) === 'expiring').length
+    const licenseExpired = licenseRoster.filter((p) => expiryStatus(p.mt_license_expiry) === 'expired').length
 
     const certExpiring = certs.filter((c) => expiryStatus(c.expiry_date) === 'expiring').length
     const certExpired = certs.filter((c) => expiryStatus(c.expiry_date) === 'expired').length
@@ -38,7 +41,7 @@ export async function GET() {
 
     // ISO 15189:2022 clause 6.2 evidence checklist
     const checklist = [
-      { clause: '6.2.2', title: 'คุณสมบัติ/ประวัติบุคลากร (วุฒิ, ใบ ทนพ.)', met: withLicense > 0, evidence: `${withLicense}/${staffCount} คนมีเลขใบประกอบวิชาชีพ` },
+      { clause: '6.2.2', title: 'คุณสมบัติ/ประวัติบุคลากร (วุฒิ, ใบ ทนพ.)', met: licenseEligibleCount === 0 || withLicense === licenseEligibleCount, evidence: `${withLicense}/${licenseEligibleCount} คนมีเลขใบประกอบวิชาชีพ` },
       { clause: '6.2.3', title: 'ใบรับรอง/Certification', met: certs.length > 0, evidence: `${certs.length} รายการใบรับรอง` },
       { clause: '6.2.4', title: 'การฝึกอบรม (Training records)', met: staffWithTraining > 0, evidence: `${staffWithTraining}/${staffCount} คนมีบันทึกการอบรม` },
       { clause: '6.2.5', title: 'การประเมินสมรรถนะ (Competency)', met: staffWithCompetency > 0, evidence: `${staffWithCompetency}/${staffCount} คนได้รับการประเมิน · ค้าง ${compOverdue}` },
@@ -49,6 +52,7 @@ export async function GET() {
       summary: {
         staffCount,
         withLicense,
+        licenseEligibleCount,
         licenseExpiring,
         licenseExpired,
         certExpiring,

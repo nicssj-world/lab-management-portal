@@ -10,8 +10,21 @@ const EXT_BY_TYPE: Record<string, string> = {
   'image/webp': 'webp',
 }
 
+const TYPE_BY_EXT: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+}
+
 export function staffFileExtForType(type: string): string | null {
   return EXT_BY_TYPE[type] ?? null
+}
+
+export function staffFileTypeForPath(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase() ?? ''
+  return TYPE_BY_EXT[ext] ?? 'application/octet-stream'
 }
 
 export async function ensureStaffBucket() {
@@ -35,6 +48,12 @@ export async function createStaffSignedUrl(path: string | null | undefined): Pro
   if (!path) return null
   const { data } = await supabaseAdmin.storage.from(STAFF_BUCKET).createSignedUrl(path, 60 * 10)
   return data?.signedUrl ?? null
+}
+
+export async function downloadStaffFile(path: string): Promise<Blob> {
+  const { data, error } = await supabaseAdmin.storage.from(STAFF_BUCKET).download(path)
+  if (error || !data) throw error ?? new Error('ไม่พบไฟล์')
+  return data
 }
 
 export async function removeStaffFile(path: string | null | undefined) {
