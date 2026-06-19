@@ -52,6 +52,33 @@ const STATUS_LABEL: Record<DocStatus, string> = {
 }
 const ALL_STATUSES: DocStatus[] = ['Draft', 'Review', 'Approved', 'Published', 'Obsolete']
 
+function uploadFileWithProgress(
+  url: string,
+  file: File,
+  contentType: string,
+  onProgress: (percent: number) => void,
+) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url)
+    xhr.setRequestHeader('Content-Type', contentType)
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return
+      onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)))
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100)
+        resolve()
+        return
+      }
+      reject(new Error(`(${xhr.status}) ${xhr.responseText.slice(0, 160)}`))
+    }
+    xhr.onerror = () => reject(new Error('network error'))
+    xhr.send(file)
+  })
+}
+
 interface StatusHistoryRow {
   to_status: string
   changed_at: string
@@ -787,6 +814,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
   const [revisions, setRevisions] = useState<RevisionRow[]>([])
   const [activeDraft, setActiveDraft] = useState<DocumentRevisionDraft | null>(null)
   const [draftBusy, setDraftBusy] = useState(false)
+  const [draftUploadProgress, setDraftUploadProgress] = useState<number | null>(null)
   const [skipSystemCover, setSkipSystemCover] = useState(false)
   const [draftFormOpen, setDraftFormOpen] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
@@ -1137,17 +1165,14 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
         return
       }
 
-      const uploadRes = await fetch(presignJson.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': presignJson.contentType ?? fileType },
-        body: file,
-      })
-      if (!uploadRes.ok) {
-        const uploadText = await uploadRes.text().catch(() => '')
-        alert(`อัปโหลดไฟล์ไปยัง storage ไม่สำเร็จ (${uploadRes.status}) ${uploadText.slice(0, 160)}`)
+      try {
+        setDraftUploadProgress(0)
+        await uploadFileWithProgress(presignJson.uploadUrl, file, presignJson.contentType ?? fileType, setDraftUploadProgress)
+      } catch (err) {
+        alert(`อัปโหลดไฟล์ไปยัง storage ไม่สำเร็จ ${err instanceof Error ? err.message : String(err)}`)
+        setDraftUploadProgress(null)
         return
       }
-
       const confirmRes = await fetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -1170,6 +1195,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     } finally {
       if (draftOfficialRef.current) draftOfficialRef.current.value = ''
       if (draftSourceRef.current) draftSourceRef.current.value = ''
+      setDraftUploadProgress(null)
       setDraftBusy(false)
     }
   }
@@ -1626,6 +1652,17 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                     style={{ display: 'none' }}
                     onChange={(e) => handleDraftFile('official', e.target.files?.[0] ?? null)}
                   />
+                  {draftUploadProgress !== null && (
+                    <div style={{ gridColumn: '1 / -1', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface-2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
+                        <span>กำลังอัปโหลดไฟล์</span>
+                        <span>{draftUploadProgress}%</span>
+                      </div>
+                      <div style={{ height: 7, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
+                        <div style={{ width: `${draftUploadProgress}%`, height: '100%', borderRadius: 999, background: 'var(--primary)', transition: 'width .15s ease' }} />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {(activeDraft.word_url || activeDraft.file_url) && (

@@ -59,6 +59,33 @@ async function readJsonOrError(res: Response): Promise<{ error?: string; [key: s
   return { error: text || res.statusText || 'เกิดข้อผิดพลาด' }
 }
 
+function uploadFileWithProgress(
+  url: string,
+  file: File,
+  contentType: string,
+  onProgress: (percent: number) => void,
+) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url)
+    xhr.setRequestHeader('Content-Type', contentType)
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return
+      onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)))
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100)
+        resolve()
+        return
+      }
+      reject(new Error(`(${xhr.status}) ${xhr.responseText.slice(0, 160)}`))
+    }
+    xhr.onerror = () => reject(new Error('network error'))
+    xhr.send(file)
+  })
+}
+
 const DEPT_BY_PREFIX: Record<string, string> = {
   QP: 'กลุ่มงานเทคนิคการแพทย์',
   QM: 'กลุ่มงานเทคนิคการแพทย์',
@@ -291,6 +318,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
   const [selectedWordFile, setSelectedWordFile] = useState<File | null>(null)
   const [saveRevision, setSaveRevision] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [extracting, setExtracting] = useState(false)
   const [extractingWord, setExtractingWord] = useState(false)
   const [error, setError] = useState('')
@@ -507,6 +535,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
 
   async function handleSave() {
     setDuplicateDocumentId(null)
+    setUploadProgress(null)
     if (!title.trim())         { setError('กรุณากรอกชื่อเอกสาร'); return }
     if (!documentCode.trim())  { setError('กรุณากรอกรหัสเอกสาร'); return }
     if (revisionWarning) { setError(revisionWarning); return }
@@ -555,15 +584,13 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           setSaving(false)
           return
         }
-        const uploadRes = await fetch(uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': contentType },
-          body: selectedWordFile,
-        })
-        if (!uploadRes.ok) {
-          const uploadText = await uploadRes.text().catch(() => '')
-          setError(`อัปโหลดไฟล์ต้นฉบับไม่สำเร็จ (${uploadRes.status}) ${uploadText.slice(0, 120)}`)
+        try {
+          setUploadProgress(0)
+          await uploadFileWithProgress(uploadUrl, selectedWordFile, contentType, setUploadProgress)
+        } catch (err) {
+          setError(`อัปโหลดไฟล์ต้นฉบับไม่สำเร็จ ${err instanceof Error ? err.message : String(err)}`)
           setSaving(false)
+          setUploadProgress(null)
           return
         }
         wordFileKey = key
@@ -676,6 +703,18 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                   เปิดเอกสารเดิม
                 </button>
               )}
+            </div>
+          )}
+
+          {uploadProgress !== null && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface-2)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
+                <span>กำลังอัปโหลดไฟล์</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div style={{ height: 7, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
+                <div style={{ width: `${uploadProgress}%`, height: '100%', borderRadius: 999, background: 'var(--primary)', transition: 'width .15s ease' }} />
+              </div>
             </div>
           )}
 
