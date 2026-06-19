@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
       }),
       { expiresIn: 300 },
     )
-    return NextResponse.json({ uploadUrl, key, contentType: fileType })
+    return NextResponse.json({ uploadMode: 'direct-r2', uploadUrl, key, contentType: fileType })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'เกิดข้อผิดพลาด' },

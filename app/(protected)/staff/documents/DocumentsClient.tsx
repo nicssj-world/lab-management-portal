@@ -1078,7 +1078,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     }
   }
 
-  function parseDraftUploadResponse(text: string): { error?: string; uploadUrl?: string; key?: string; contentType?: string } {
+  function parseDraftUploadResponse(text: string): { error?: string; uploadMode?: string; uploadUrl?: string; key?: string; contentType?: string } {
     if (!text) return {}
     try {
       const parsed = JSON.parse(text)
@@ -1128,6 +1128,10 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
         alert(presignJson.error ?? `สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ (${presignRes.status}) ${presignText.slice(0, 160)}`)
         return
       }
+      if (presignJson.uploadMode !== 'direct-r2') {
+        alert(`สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ: production อาจยังไม่ใช่โค้ด direct upload ล่าสุด ${presignText.slice(0, 160)}`)
+        return
+      }
       if (!presignJson.uploadUrl || !presignJson.key) {
         alert(`สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ: response ไม่ครบ ${presignText.slice(0, 160)}`)
         return
@@ -1161,8 +1165,8 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
       const json = parseDraftUploadResponse(confirmText)
       if (!confirmRes.ok) { alert(json.error ?? `บันทึกข้อมูลไฟล์ไม่สำเร็จ (${confirmRes.status}) ${confirmText.slice(0, 160)}`); return }
       setActiveDraft(json as DocumentRevisionDraft)
-    } catch {
-      alert('อัปโหลดไฟล์ไม่สำเร็จ')
+    } catch (err) {
+      alert(`อัปโหลดไฟล์ไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       if (draftOfficialRef.current) draftOfficialRef.current.value = ''
       if (draftSourceRef.current) draftSourceRef.current.value = ''
