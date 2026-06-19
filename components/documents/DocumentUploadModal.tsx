@@ -530,6 +530,42 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
     setError('')
 
     try {
+      // Pre-upload word/excel file directly to R2 via presigned URL to bypass
+      // Vercel's 4.5 MB API-route body-size limit.
+      let wordFileKey: string | null = null
+      let wordFileName: string | null = null
+      let wordFileSize: number | null = null
+      if (selectedWordFile) {
+        const presignParams = new URLSearchParams({
+          fileName: selectedWordFile.name,
+          fileType: selectedWordFile.type || 'application/octet-stream',
+          fileSize: String(selectedWordFile.size),
+          docType: type.toLowerCase(),
+        })
+        const presignRes = await fetch(`/api/admin/documents/presign-word?${presignParams}`)
+        const presignJson = await readJsonOrError(presignRes)
+        if (!presignRes.ok) {
+          setError(presignJson.error ?? 'สร้าง URL อัปโหลดไฟล์ต้นฉบับไม่สำเร็จ')
+          setSaving(false)
+          return
+        }
+        const { uploadUrl, key, contentType } = presignJson as { uploadUrl: string; key: string; contentType: string }
+        const uploadRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': contentType },
+          body: selectedWordFile,
+        })
+        if (!uploadRes.ok) {
+          const uploadText = await uploadRes.text().catch(() => '')
+          setError(`อัปโหลดไฟล์ต้นฉบับไม่สำเร็จ (${uploadRes.status}) ${uploadText.slice(0, 120)}`)
+          setSaving(false)
+          return
+        }
+        wordFileKey = key
+        wordFileName = selectedWordFile.name
+        wordFileSize = selectedWordFile.size
+      }
+
       const baseMetadata = {
         title:          title.trim(),
         visibility,
@@ -561,10 +597,14 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
 
       if (isEdit) {
         const editUrl = `/api/admin/documents/${doc!.id}${!saveRevision ? '?skipRevision=1' : ''}`
-        if (!isPublishedCorrection && (selectedFile || selectedWordFile)) {
+        if (!isPublishedCorrection && (selectedFile || wordFileKey)) {
           const fd = new FormData()
           if (selectedFile) fd.append('file', selectedFile)
-          if (selectedWordFile) fd.append('word_file', selectedWordFile)
+          if (wordFileKey) {
+            fd.append('word_file_key', wordFileKey)
+            fd.append('word_file_name', wordFileName!)
+            fd.append('word_file_size', String(wordFileSize!))
+          }
           fd.append('meta', JSON.stringify(meta))
           res = await fetch(editUrl, { method: 'PATCH', body: fd })
         } else {
@@ -577,7 +617,11 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
       } else {
         const fd = new FormData()
         if (selectedFile) fd.append('file', selectedFile)
-        if (selectedWordFile) fd.append('word_file', selectedWordFile)
+        if (wordFileKey) {
+          fd.append('word_file_key', wordFileKey)
+          fd.append('word_file_name', wordFileName!)
+          fd.append('word_file_size', String(wordFileSize!))
+        }
         fd.append('meta', JSON.stringify(meta))
         res = await fetch('/api/admin/documents', { method: 'POST', body: fd })
       }

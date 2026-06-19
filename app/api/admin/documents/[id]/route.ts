@@ -158,6 +158,9 @@ export async function PATCH(
     let newFile: File | null = null
 
     let newWordFile: File | null = null
+    let wordFileKey: string | null = null
+    let wordFileName: string | null = null
+    let wordFileSizePre: number | null = null
 
     if (contentType.includes('multipart/form-data')) {
       const form = await req.formData()
@@ -165,6 +168,9 @@ export async function PATCH(
       newFile = fileRaw instanceof File && fileRaw.size > 0 ? fileRaw : null
       const wordRaw = form.get('word_file')
       newWordFile = wordRaw instanceof File && wordRaw.size > 0 ? wordRaw : null
+      wordFileKey = (form.get('word_file_key') as string | null)?.trim() || null
+      wordFileName = (form.get('word_file_name') as string | null)?.trim() || null
+      wordFileSizePre = (form.get('word_file_size') != null) ? Number(form.get('word_file_size')) : null
 
       const metaRaw = form.get('meta')
       if (metaRaw) {
@@ -195,7 +201,7 @@ export async function PATCH(
     // Enforce status transition rules server-side
     const requestedStatus = updates.status as string | undefined
     if (requestedStatus && current?.status && requestedStatus !== current.status) {
-      if (newFile || (newWordFile && newWordFile.size > 0)) {
+      if (newFile || (newWordFile && newWordFile.size > 0) || wordFileKey) {
         return NextResponse.json({ error: 'การเปลี่ยนสถานะต้องทำแยกจากการอัปโหลดไฟล์' }, { status: 422 })
       }
       const invalidStatusField = Object.keys(updates).find((key) => !STATUS_CHANGE_INPUT_FIELDS.has(key))
@@ -209,7 +215,7 @@ export async function PATCH(
     }
 
     if (current.status === 'Published') {
-      if (newFile || (newWordFile && newWordFile.size > 0)) {
+      if (newFile || (newWordFile && newWordFile.size > 0) || wordFileKey) {
         return NextResponse.json({ error: 'เอกสาร Published ต้องสร้าง Revision ใหม่ก่อนเปลี่ยนไฟล์เนื้อหา' }, { status: 409 })
       }
 
@@ -256,7 +262,7 @@ export async function PATCH(
       }
     }
 
-    const sourceUploadDate = newWordFile && newWordFile.size > 0 ? todayIsoDate() : undefined
+    const sourceUploadDate = ((newWordFile && newWordFile.size > 0) || wordFileKey) ? todayIsoDate() : undefined
     if (sourceUploadDate) {
       updates.edit_date = sourceUploadDate
       updates.expiry_date = sourceUploadDate
@@ -299,7 +305,15 @@ export async function PATCH(
       }
     }
 
-    if (newWordFile && newWordFile.size > 0) {
+    if (wordFileKey) {
+      // File already uploaded directly to R2 via presigned URL — record the reference.
+      if (wordFileName && !isSourceFile({ name: wordFileName })) {
+        return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
+      }
+      updates.word_url  = wordFileKey
+      updates.word_name = wordFileName ?? wordFileKey.split('/').pop() ?? 'file'
+      if (wordFileSizePre && Number.isFinite(wordFileSizePre)) updates.word_size = wordFileSizePre
+    } else if (newWordFile && newWordFile.size > 0) {
       if (newWordFile.size > 50 * 1024 * 1024) {
         return NextResponse.json({ error: 'ไฟล์ Word/Excel ใหญ่เกิน 50 MB' }, { status: 422 })
       }

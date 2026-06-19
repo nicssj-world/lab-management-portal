@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { r2, R2_BUCKET } from '@/lib/r2/client'
+import { requiredEnv } from '@/lib/env'
 import { getActor, canAccessDocuments, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 import { allowedTransitions, type DocStatus } from '@/lib/documents/transitions'
 import { DocumentSchema } from '@/lib/validations/document'
@@ -16,6 +16,7 @@ import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
 type Params = { params: Promise<{ id: string; draftId: string }> }
 const STATUS_CHANGE_INPUT_FIELDS = new Set(['status', 'obsolete_reason'])
 const MAX_DRAFT_FILE_SIZE = 50 * 1024 * 1024
+let cachedR2: S3Client | null = null
 
 type UploadedDraftFile = {
   kind: 'official' | 'source'
@@ -27,6 +28,24 @@ type UploadedDraftFile = {
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
+}
+
+function getR2Bucket() {
+  return requiredEnv('R2_BUCKET_NAME')
+}
+
+function getR2Client() {
+  if (!cachedR2) {
+    cachedR2 = new S3Client({
+      region: 'auto',
+      endpoint: `https://${requiredEnv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: requiredEnv('R2_ACCESS_KEY_ID'),
+        secretAccessKey: requiredEnv('R2_SECRET_ACCESS_KEY'),
+      },
+    })
+  }
+  return cachedR2
 }
 
 function canSkipSystemCover(actor: { role: string; doc_role?: string | null }) {
@@ -111,8 +130,8 @@ async function uploadDocumentObject(file: File, type: string, prefix = '', heade
       })
     }
   }
-  await r2.send(new PutObjectCommand({
-    Bucket: R2_BUCKET,
+  await getR2Client().send(new PutObjectCommand({
+    Bucket: getR2Bucket(),
     Key: r2Key,
     Body: body,
     ContentType: file.type || 'application/octet-stream',
@@ -121,7 +140,7 @@ async function uploadDocumentObject(file: File, type: string, prefix = '', heade
 }
 
 async function getObjectBuffer(key: string) {
-  const object = await r2.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+  const object = await getR2Client().send(new GetObjectCommand({ Bucket: getR2Bucket(), Key: key }))
   const body = object.Body
   if (!body) throw new Error('ไม่พบไฟล์ต้นฉบับใน R2')
   if ('transformToByteArray' in body && typeof body.transformToByteArray === 'function') {
@@ -138,8 +157,8 @@ async function patchR2DocxObject(key: string, metadata: DocxHeaderMetadata) {
   const original = await getObjectBuffer(key)
   const patched = await patchDocxHeaderMetadata(original, metadata)
   if (patched.equals(original)) return null
-  await r2.send(new PutObjectCommand({
-    Bucket: R2_BUCKET,
+  await getR2Client().send(new PutObjectCommand({
+    Bucket: getR2Bucket(),
     Key: key,
     Body: patched,
     ContentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -151,8 +170,8 @@ async function patchR2XlsxObject(key: string, metadata: DocxHeaderMetadata) {
   const original = await getObjectBuffer(key)
   const patched = await patchXlsxHeaderMetadata(original, metadata)
   if (patched.equals(original)) return null
-  await r2.send(new PutObjectCommand({
-    Bucket: R2_BUCKET,
+  await getR2Client().send(new PutObjectCommand({
+    Bucket: getR2Bucket(),
     Key: key,
     Body: patched,
     ContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -161,7 +180,7 @@ async function patchR2XlsxObject(key: string, metadata: DocxHeaderMetadata) {
 }
 
 async function getStoredObjectSize(key: string) {
-  const object = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+  const object = await getR2Client().send(new HeadObjectCommand({ Bucket: getR2Bucket(), Key: key }))
   return object.ContentLength ?? null
 }
 
@@ -211,8 +230,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     const prefix = kind === 'official' ? 'draft-official-' : 'draft-source-'
     const key = `documents/${String(draft.type).toLowerCase()}/${year}/${Date.now()}-${prefix}${safeStorageName(fileName)}`
     const uploadUrl = await getSignedUrl(
-      r2,
-      new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, ContentType: fileType }),
+      getR2Client(),
+      new PutObjectCommand({ Bucket: getR2Bucket(), Key: key, ContentType: fileType }),
       { expiresIn: 300 },
     )
 
@@ -258,8 +277,8 @@ export async function GET(req: NextRequest, { params }: Params) {
     const prefix = kind === 'official' ? 'draft-official-' : 'draft-source-'
     const key = `documents/${String(draft.type).toLowerCase()}/${year}/${Date.now()}-${prefix}${safeStorageName(fileName)}`
     const uploadUrl = await getSignedUrl(
-      r2,
-      new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, ContentType: fileType }),
+      getR2Client(),
+      new PutObjectCommand({ Bucket: getR2Bucket(), Key: key, ContentType: fileType }),
       { expiresIn: 300 },
     )
 
@@ -658,8 +677,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         )
         const safeCode = parentDoc.document_code.replace(/[^a-zA-Z0-9._-]/g, '_')
         const stampedKey = `documents/generated/${id}/${Date.now()}-${safeCode}-existing-cover-final.pdf`
-        await r2.send(new PutObjectCommand({
-          Bucket: R2_BUCKET,
+        await getR2Client().send(new PutObjectCommand({
+          Bucket: getR2Bucket(),
           Key: stampedKey,
           Body: stampedPdf,
           ContentType: 'application/pdf',
