@@ -1080,9 +1080,25 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
 
   async function handleDraftFile(kind: 'official' | 'source', file: File | null) {
     if (!activeDraft || !file) return
+    if (file.size > 50 * 1024 * 1024) {
+      alert(kind === 'source' ? 'ไฟล์ต้นฉบับใหญ่เกิน 50 MB' : 'ไฟล์ทางการใหญ่เกิน 50 MB')
+      return
+    }
+    if (kind === 'source' && !/\.(doc|docx|xls|xlsx)$/i.test(file.name)) {
+      alert('ช่อง Word/Excel รองรับเฉพาะไฟล์ DOC, DOCX, XLS, XLSX เท่านั้น')
+      return
+    }
     if (kind === 'official' && !canManageDraftOfficial) {
       alert('เฉพาะ Admin หรือ Document Controller เท่านั้นที่อัปโหลด PDF เนื้อหา/ไฟล์ทางการได้')
       return
+    }
+    if (kind === 'official') {
+      const isQpWi = activeDraft.type === 'QP' || activeDraft.type === 'WI'
+      const allowed = isQpWi ? /\.pdf$/i.test(file.name) : /\.(pdf|doc|docx|xls|xlsx)$/i.test(file.name)
+      if (!allowed) {
+        alert(isQpWi ? 'QP/WI ต้องใช้ไฟล์ PDF ในช่องไฟล์ทางการ' : 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX เท่านั้น')
+        return
+      }
     }
     setDraftBusy(true)
     try {
@@ -1272,8 +1288,8 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     draftOfficialDragCounter.current = 0
     setDraftOfficialDragOver(false)
     const file = e.dataTransfer.files[0]
-    if (file && !draftBusy && canManageDraftOfficial) void handleDraftFile('official', file)
-  }, [canManageDraftOfficial, draftBusy, handleDraftFile])
+    if (file && !draftBusy) void handleDraftFile('official', file)
+  }, [draftBusy, handleDraftFile])
 
   return (
     <>

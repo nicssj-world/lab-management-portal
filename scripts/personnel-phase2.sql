@@ -43,6 +43,14 @@ CREATE INDEX IF NOT EXISTS staff_jd_revisions_jd_idx ON staff_jd_revisions(jd_id
 ALTER TABLE staff_jd ADD COLUMN IF NOT EXISTS approver_position text;
 ALTER TABLE staff_jd_revisions ADD COLUMN IF NOT EXISTS approver_position text;
 
+UPDATE staff_jd
+SET approver_position = 'รองผู้อำนวยการด้านพัฒนาระบบบริการและสนับสนุนบริการสุขภาพ'
+WHERE approver_position IS NULL
+  AND effective_date = DATE '2026-03-09'
+  AND approver_name = 'นางเกศสิรี กรสิทธิกุล'
+  AND status = 'Active'
+  AND deleted_at IS NULL;
+
 -- ============================================================
 -- Annual Training Plan (ISO 6.2.4) — based on competency gaps
 -- ============================================================

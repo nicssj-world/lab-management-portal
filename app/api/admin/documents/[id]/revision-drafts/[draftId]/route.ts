@@ -37,10 +37,17 @@ async function uploadDocumentObject(file: File, type: string, prefix = '', heade
   const r2Key = `documents/${type.toLowerCase()}/${year}/${Date.now()}-${prefix}${safeName}`
   let body: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer())
   if (headerMetadata) {
-    if (isDocxFile(file)) {
-      body = await patchDocxHeaderMetadata(body, headerMetadata)
-    } else if (isXlsxFile(file)) {
-      body = await patchXlsxHeaderMetadata(body, headerMetadata)
+    try {
+      if (isDocxFile(file)) {
+        body = await patchDocxHeaderMetadata(body, headerMetadata)
+      } else if (isXlsxFile(file)) {
+        body = await patchXlsxHeaderMetadata(body, headerMetadata)
+      }
+    } catch (err) {
+      console.warn('Skipping draft source metadata patch during upload', {
+        fileName: file.name,
+        error: toMsg(err),
+      })
     }
   }
   await r2.send(new PutObjectCommand({
@@ -233,13 +240,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const statusAfter = (nextStatus ?? draft.status) as string
-    const workflowCheck = canMoveToStatus({
-      type: targetType,
-      file_url: (updates.file_url as string | null | undefined) ?? draft.file_url ?? null,
-      source_pdf_url: (updates.source_pdf_url as string | null | undefined) ?? draft.source_pdf_url ?? null,
-      word_url: (updates.word_url as string | null | undefined) ?? draft.word_url ?? null,
-    }, statusAfter)
-    if (!workflowCheck.ok) return NextResponse.json({ error: workflowCheck.error }, { status: 422 })
+    if (nextStatus && nextStatus !== draft.status) {
+      const workflowCheck = canMoveToStatus({
+        type: targetType,
+        file_url: (updates.file_url as string | null | undefined) ?? draft.file_url ?? null,
+        source_pdf_url: (updates.source_pdf_url as string | null | undefined) ?? draft.source_pdf_url ?? null,
+        word_url: (updates.word_url as string | null | undefined) ?? draft.word_url ?? null,
+      }, statusAfter)
+      if (!workflowCheck.ok) return NextResponse.json({ error: workflowCheck.error }, { status: 422 })
+    }
 
     if (nextStatus && nextStatus !== draft.status) {
       if (nextStatus === 'Approved') {
@@ -289,9 +298,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       const canPatchXlsx = isXlsxFile(fileRef)
       if (!canPatchDocx && !canPatchXlsx) return
       patchedKeys.add(key)
-      const patchedSize = canPatchDocx
-        ? await patchR2DocxObject(key, finalHeaderMetadata)
-        : await patchR2XlsxObject(key, finalHeaderMetadata)
+      let patchedSize: number | null = null
+      try {
+        patchedSize = canPatchDocx
+          ? await patchR2DocxObject(key, finalHeaderMetadata)
+          : await patchR2XlsxObject(key, finalHeaderMetadata)
+      } catch (err) {
+        console.warn('Skipping draft source metadata patch after upload', {
+          key,
+          name,
+          error: toMsg(err),
+        })
+        return
+      }
       if (patchedSize !== null) {
         updates[sizeField] = patchedSize
         merged[sizeField] = patchedSize
