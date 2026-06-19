@@ -549,7 +549,12 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           setSaving(false)
           return
         }
-        const { uploadUrl, key, contentType } = presignJson as { uploadUrl: string; key: string; contentType: string }
+        const { uploadMode, uploadUrl, key, contentType } = presignJson as { uploadMode?: string; uploadUrl: string; key: string; contentType: string }
+        if (uploadMode !== 'direct-r2') {
+          setError('production อาจยังไม่ใช่โค้ด direct upload ล่าสุด กรุณา redeploy แล้วลองใหม่')
+          setSaving(false)
+          return
+        }
         const uploadRes = await fetch(uploadUrl, {
           method: 'PUT',
           headers: { 'Content-Type': contentType },
