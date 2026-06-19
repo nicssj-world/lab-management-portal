@@ -1270,13 +1270,16 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     try {
       const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}`, { method: 'DELETE' })
       if (!res.ok) {
-        const json = await res.json()
-        alert(json.error ?? 'ยกเลิก working revision ไม่สำเร็จ')
+        const ct = res.headers.get('content-type') ?? ''
+        const msg = ct.includes('application/json')
+          ? ((await res.json()).error ?? 'ยกเลิก working revision ไม่สำเร็จ')
+          : `ยกเลิก working revision ไม่สำเร็จ (${res.status})`
+        alert(msg)
         return
       }
       setActiveDraft(null)
-    } catch {
-      alert('ยกเลิก working revision ไม่สำเร็จ')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ยกเลิก working revision ไม่สำเร็จ')
     } finally {
       setDraftBusy(false)
     }

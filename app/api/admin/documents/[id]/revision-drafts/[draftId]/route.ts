@@ -729,20 +729,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
-  const actor = await getActor()
-  if (!actor) return jsonUnauthorized()
-  if (!(await canAccessDocuments(actor, 'edit'))) return jsonForbidden()
-  const { id, draftId } = await params
-  const reason = req.nextUrl.searchParams.get('reason')
+  try {
+    const actor = await getActor()
+    if (!actor) return jsonUnauthorized()
+    if (!(await canAccessDocuments(actor, 'edit'))) return jsonForbidden()
+    const { id, draftId } = await params
+    const reason = req.nextUrl.searchParams.get('reason')
 
-  const { data, error } = await supabaseAdmin
-    .from('document_revision_drafts')
-    .update({ cancelled_at: new Date().toISOString(), cancelled_by: actor.id, cancel_reason: reason || null })
-    .eq('id', draftId)
-    .eq('document_id', id)
-    .select()
-    .single()
+    const { data, error } = await supabaseAdmin
+      .from('document_revision_drafts')
+      .update({ cancelled_at: new Date().toISOString(), cancelled_by: actor.id, cancel_reason: reason || null })
+      .eq('id', draftId)
+      .eq('document_id', id)
+      .select()
+      .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data)
+  } catch (err) {
+    return NextResponse.json({ error: toMsg(err) }, { status: 500 })
+  }
 }
