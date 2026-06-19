@@ -159,6 +159,12 @@ export async function POST(req: NextRequest) {
     const file = fileRaw instanceof File && fileRaw.size > 0 ? fileRaw : null
     const wordRaw = form.get('word_file')
     const wordFile = wordRaw instanceof File && wordRaw.size > 0 ? wordRaw : null
+    // Pre-uploaded path: browser PUT the file directly to R2 via presigned URL.
+    const wordFileKey = (form.get('word_file_key') as string | null)?.trim() || null
+    const wordFileName = (form.get('word_file_name') as string | null)?.trim() || null
+    const wordFileSizeRaw = form.get('word_file_size')
+    const wordFileSizePresigned = wordFileSizeRaw ? Number(wordFileSizeRaw) : null
+    const hasWordFile = Boolean(wordFile || wordFileKey)
 
     const metaRaw = form.get('meta')
     if (!metaRaw) return NextResponse.json({ error: 'ไม่พบข้อมูลเอกสาร' }, { status: 422 })
@@ -193,6 +199,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
     }
     if (wordFile && !isSourceFile(wordFile)) {
+      return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
+    }
+    if (wordFileKey && wordFileName && !isSourceFile({ name: wordFileName })) {
       return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
     }
     if (isImportCurrent && !file) {
@@ -240,10 +249,10 @@ export async function POST(req: NextRequest) {
     }
     const uploadedKeys: string[] = []
     const now = new Date().toISOString()
-    const editReviewDate = wordFile && !isImportCurrent ? todayIsoDate() : (meta.edit_date || meta.expiry_date)
+    const editReviewDate = hasWordFile && !isImportCurrent ? todayIsoDate() : (meta.edit_date || meta.expiry_date)
     const resolvedMeta = {
       ...meta,
-      owner_name: meta.owner_name || (wordFile ? actor.name ?? undefined : meta.owner_name),
+      owner_name: meta.owner_name || (hasWordFile ? actor.name ?? undefined : meta.owner_name),
       edit_date: editReviewDate,
       expiry_date: editReviewDate,
       ...(isImportCurrent
@@ -306,7 +315,13 @@ export async function POST(req: NextRequest) {
     }
 
     let wordFields: { word_url?: string; word_name?: string; word_size?: number } = {}
-    if (wordFile) {
+    if (wordFileKey) {
+      wordFields = {
+        word_url: wordFileKey,
+        word_name: wordFileName ?? wordFileKey.split('/').pop() ?? 'file',
+        ...(wordFileSizePresigned && Number.isFinite(wordFileSizePresigned) ? { word_size: wordFileSizePresigned } : {}),
+      }
+    } else if (wordFile) {
       const uploaded = await uploadDocumentObject(wordFile, meta.type, 'source-', headerMetadata)
       const wordKey = uploaded.key
       uploadedKeys.push(wordKey)
