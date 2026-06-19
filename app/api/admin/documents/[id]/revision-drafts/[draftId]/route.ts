@@ -222,6 +222,53 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 }
 
+export async function GET(req: NextRequest, { params }: Params) {
+  const actor = await getActor()
+  if (!actor) return jsonUnauthorized()
+  if (!(await canAccessDocuments(actor, 'edit'))) return jsonForbidden()
+  const { id, draftId } = await params
+
+  try {
+    const sp = req.nextUrl.searchParams
+    if (sp.get('intent') !== 'upload') {
+      return NextResponse.json({ error: 'Unsupported intent' }, { status: 405 })
+    }
+    const kind = sp.get('kind') === 'official' || sp.get('kind') === 'source' ? sp.get('kind') as 'official' | 'source' : null
+    const fileName = (sp.get('fileName') ?? '').trim()
+    const fileType = inferredContentType(fileName, sp.get('fileType'))
+    const fileSize = Number(sp.get('fileSize') ?? '')
+    if (!kind || !fileName || !Number.isFinite(fileSize)) {
+      return NextResponse.json({ error: 'ข้อมูลไฟล์ไม่ครบ' }, { status: 422 })
+    }
+
+    const { data: draft, error: draftErr } = await supabaseAdmin
+      .from('document_revision_drafts')
+      .select('id, type, status')
+      .eq('id', draftId)
+      .eq('document_id', id)
+      .is('cancelled_at', null)
+      .single()
+    if (draftErr || !draft) return NextResponse.json({ error: draftErr?.message ?? 'Draft not found' }, { status: 404 })
+    if (draft.status === 'Published') return NextResponse.json({ error: 'Revision draft นี้ถูก Published แล้ว' }, { status: 409 })
+
+    const validationError = validateDraftFile(kind, { name: fileName, type: fileType, size: fileSize }, draft.type, actor)
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 422 })
+
+    const year = new Date().getFullYear()
+    const prefix = kind === 'official' ? 'draft-official-' : 'draft-source-'
+    const key = `documents/${String(draft.type).toLowerCase()}/${year}/${Date.now()}-${prefix}${safeStorageName(fileName)}`
+    const uploadUrl = await getSignedUrl(
+      r2,
+      new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, ContentType: fileType }),
+      { expiresIn: 300 },
+    )
+
+    return NextResponse.json({ uploadUrl, key, contentType: fileType })
+  } catch (err) {
+    return NextResponse.json({ error: toMsg(err) }, { status: 500 })
+  }
+}
+
 export async function PATCH(req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return jsonUnauthorized()

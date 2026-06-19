@@ -1078,6 +1078,16 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     }
   }
 
+  function parseDraftUploadResponse(text: string): { error?: string; uploadUrl?: string; key?: string; contentType?: string } {
+    if (!text) return {}
+    try {
+      const parsed = JSON.parse(text)
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+
   async function handleDraftFile(kind: 'official' | 'source', file: File | null) {
     if (!activeDraft || !file) return
     if (file.size > 50 * 1024 * 1024) {
@@ -1104,19 +1114,22 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     try {
       const endpoint = `/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}`
       const fileType = file.type || 'application/octet-stream'
-      const presignRes = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          kind,
-          fileName: file.name,
-          fileType,
-          fileSize: file.size,
-        }),
+      const uploadParams = new URLSearchParams({
+        intent: 'upload',
+        kind,
+        fileName: file.name,
+        fileType,
+        fileSize: String(file.size),
       })
-      const presignJson = await presignRes.json().catch(() => ({}))
+      const presignRes = await fetch(`${endpoint}?${uploadParams.toString()}`)
+      const presignText = await presignRes.text()
+      const presignJson = parseDraftUploadResponse(presignText)
       if (!presignRes.ok) {
-        alert(presignJson.error ?? 'สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ')
+        alert(presignJson.error ?? `สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ (${presignRes.status}) ${presignText.slice(0, 160)}`)
+        return
+      }
+      if (!presignJson.uploadUrl || !presignJson.key) {
+        alert(`สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ: response ไม่ครบ ${presignText.slice(0, 160)}`)
         return
       }
 
@@ -1126,7 +1139,8 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
         body: file,
       })
       if (!uploadRes.ok) {
-        alert('อัปโหลดไฟล์ไปยัง storage ไม่สำเร็จ')
+        const uploadText = await uploadRes.text().catch(() => '')
+        alert(`อัปโหลดไฟล์ไปยัง storage ไม่สำเร็จ (${uploadRes.status}) ${uploadText.slice(0, 160)}`)
         return
       }
 
@@ -1143,9 +1157,10 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
           },
         }),
       })
-      const json = await confirmRes.json()
-      if (!confirmRes.ok) { alert(json.error ?? 'บันทึกข้อมูลไฟล์ไม่สำเร็จ'); return }
-      setActiveDraft(json)
+      const confirmText = await confirmRes.text()
+      const json = parseDraftUploadResponse(confirmText)
+      if (!confirmRes.ok) { alert(json.error ?? `บันทึกข้อมูลไฟล์ไม่สำเร็จ (${confirmRes.status}) ${confirmText.slice(0, 160)}`); return }
+      setActiveDraft(json as DocumentRevisionDraft)
     } catch {
       alert('อัปโหลดไฟล์ไม่สำเร็จ')
     } finally {
