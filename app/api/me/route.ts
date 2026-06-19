@@ -14,12 +14,16 @@ export async function GET() {
   const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const data = await ensureOwnProfile(user)
-
-  return NextResponse.json({
-    ...data,
-    signature_signed_url: await createSignatureSignedUrl(data.signature_url),
-  })
+  try {
+    const data = await ensureOwnProfile(user)
+    return NextResponse.json({
+      ...data,
+      signature_signed_url: await createSignatureSignedUrl(data.signature_url),
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to load profile'
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }
 
 export async function PATCH(req: NextRequest) {

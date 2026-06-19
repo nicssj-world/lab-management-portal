@@ -77,8 +77,8 @@ export async function ensureOwnProfile(user: User): Promise<OwnProfile> {
   const ephisId = fallbackEphisId(user)
   const attempts: Record<string, unknown>[] = [
     { id: user.id, name, role: 'Assistant', dept: null, status: 'active', ephis_id: ephisId },
+    { id: user.id, name, role: 'Assistant', dept: null, status: 'active' },
     { id: user.id, name, role: 'Assistant', dept: null },
-    { id: user.id, name, role: 'viewer', dept: null },
   ]
 
   let lastError: unknown = null

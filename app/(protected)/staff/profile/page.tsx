@@ -42,6 +42,7 @@ export default function ProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [documentPosition, setDocumentPosition] = useState('')
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadingSignature, setUploadingSignature] = useState(false)
   const [savingName, setSavingName] = useState(false)
@@ -64,8 +65,11 @@ export default function ProfilePage() {
 
   useEffect(() => {
     fetch('/api/me')
-      .then((r) => r.json())
-      .then((data: ProfileData) => {
+      .then((r) => {
+        if (r.status === 401) { window.location.href = '/login'; return null }
+        return r.json()
+      })
+      .then((data: ProfileData | null) => {
         if (!data?.id) return
         setProfile(data)
         setDisplayName(data.name ?? '')
@@ -73,6 +77,8 @@ export default function ProfilePage() {
         setDocumentPosition(data.document_position ?? '')
         setSignatureUrl(data.signature_signed_url ?? null)
       })
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
 
   async function handleSaveName() {
@@ -215,6 +221,14 @@ export default function ProfilePage() {
     border: '1px solid var(--border)', fontSize: 13,
     fontFamily: 'inherit', color: 'var(--ink)',
     background: 'var(--card)', outline: 'none', boxSizing: 'border-box',
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, color: 'var(--muted)', fontSize: 13 }}>
+        กำลังโหลด...
+      </div>
+    )
   }
 
   return (
