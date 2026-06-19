@@ -5,6 +5,7 @@ import {
   getStaffRoster, getAllCertifications, getAllCompetencies, getAllTraining, getActiveJdProfileIds,
 } from '@/lib/queries/personnel'
 import { expiryStatus } from '@/lib/personnel/expiry'
+import { hasMedicalTechnologistLicenseScope, mainPersonnelRole } from '@/lib/personnel/roles'
 import { ComplianceClient, type ComplianceData } from './ComplianceClient'
 
 export default async function CompliancePage() {
@@ -20,7 +21,9 @@ export default async function CompliancePage() {
   ])
 
   const staffCount = roster.length
-  const withLicense = roster.filter((p) => p.mt_license_no).length
+  const licenseRoster = roster.filter((p) => hasMedicalTechnologistLicenseScope(p.role))
+  const licenseEligibleCount = licenseRoster.length
+  const withLicense = licenseRoster.filter((p) => p.mt_license_no).length
   const compPass = comps.filter((c) => c.result === 'pass').length
   const compTotal = comps.filter((c) => c.result != null).length
   const staffWithTraining = new Set(training.map((t) => t.profile_id)).size
@@ -36,9 +39,9 @@ export default async function CompliancePage() {
       competencyCoverage: staffCount ? Math.round((staffWithCompetency / staffCount) * 100) : 0,
     },
     summary: {
-      staffCount, withLicense,
-      licenseExpiring: roster.filter((p) => expiryStatus(p.mt_license_expiry) === 'expiring').length,
-      licenseExpired: roster.filter((p) => expiryStatus(p.mt_license_expiry) === 'expired').length,
+      staffCount, withLicense, licenseEligibleCount,
+      licenseExpiring: licenseRoster.filter((p) => expiryStatus(p.mt_license_expiry) === 'expiring').length,
+      licenseExpired: licenseRoster.filter((p) => expiryStatus(p.mt_license_expiry) === 'expired').length,
       certCount: certs.length,
       certExpiring: certs.filter((c) => expiryStatus(c.expiry_date) === 'expiring').length,
       certExpired: certs.filter((c) => expiryStatus(c.expiry_date) === 'expired').length,
@@ -46,19 +49,22 @@ export default async function CompliancePage() {
       compOverdue, trainingRecords: training.length, staffWithTraining,
     },
     checklist: [
-      { clause: 'คุณสมบัติ',   title: 'คุณสมบัติ/ประวัติบุคลากร', met: withLicense > 0, evidence: `${withLicense}/${staffCount} คนมีเลขใบประกอบวิชาชีพ` },
+      { clause: 'คุณสมบัติ',   title: 'คุณสมบัติ/ประวัติบุคลากร', met: licenseEligibleCount === 0 || withLicense === licenseEligibleCount, evidence: `${withLicense}/${licenseEligibleCount} คนมีเลขใบประกอบวิชาชีพ` },
       { clause: 'ใบรับรอง',    title: 'ใบอนุญาต/Certification', met: certs.length > 0, evidence: `${certs.length} รายการใบรับรอง · หมดอายุ ${certs.filter((c) => expiryStatus(c.expiry_date) === 'expired').length}` },
       { clause: 'การอบรม',     title: 'การฝึกอบรม', met: staffWithTraining > 0, evidence: `${staffWithTraining}/${staffCount} คนมีบันทึก · รวม ${training.length} รายการ` },
       { clause: 'สมรรถนะ',    title: 'การประเมินสมรรถนะ', met: staffWithCompetency > 0, evidence: `${staffWithCompetency}/${staffCount} คนได้ประเมิน · ค้าง ${compOverdue}` },
       { clause: 'มอบหมายงาน', title: 'การมอบหมายสิทธิ์ปฏิบัติงาน', met: comps.length > 0, evidence: `อ้างอิงสมรรถนะ ${comps.length} รายการ` },
     ],
-    staffRows: roster.map((p) => ({
-      name: p.name, role: p.role, position: p.position_title ?? '', unit: p.dept ?? p.unit ?? '',
-      license: p.mt_license_no ?? '', licenseExpiry: p.mt_license_expiry ?? '',
-      certCount: certs.filter((c) => c.profile_id === p.id).length,
-      trainingCount: training.filter((t) => t.profile_id === p.id).length,
-      competencyCount: comps.filter((c) => c.profile_id === p.id).length,
-    })),
+    staffRows: roster.map((p) => {
+      const hasMtLicenseScope = hasMedicalTechnologistLicenseScope(p.role)
+      return {
+        name: p.name, role: mainPersonnelRole(p.role) ?? p.role, position: p.position_title ?? '', unit: p.dept ?? p.unit ?? '',
+        license: hasMtLicenseScope ? p.mt_license_no ?? '' : '', licenseExpiry: hasMtLicenseScope ? p.mt_license_expiry ?? '' : '',
+        certCount: certs.filter((c) => c.profile_id === p.id).length,
+        trainingCount: training.filter((t) => t.profile_id === p.id).length,
+        competencyCount: comps.filter((c) => c.profile_id === p.id).length,
+      }
+    }),
   }
 
   return <ComplianceClient data={data} />

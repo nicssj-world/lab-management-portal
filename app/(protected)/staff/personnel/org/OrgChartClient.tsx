@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -196,7 +196,7 @@ function EditNodeModal({ node, staff, onClose, onSaved, onDeleted }: { node: Org
         <Field label="ชื่อบุคคล (กล่องบนสุด — ไม่ link โปรไฟล์)"><input style={inputStyle} value={personName} onChange={(e) => setPersonName(e.target.value)} /></Field>
       )}
       <Field label="รูป (PNG/JPG/WebP ≤10MB)">
-        <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ fontSize: 12.5 }} />
+        <ImageDropZone file={file} onFile={setFile} />
         {node.photo && <button onClick={removePhoto} style={{ ...ghostBtn, marginTop: 8, fontSize: 12 }}><Icon name="trash" size={13} /> ลบรูปปัจจุบัน</button>}
       </Field>
       {err && <div style={{ color: 'var(--danger)', fontSize: 12.5 }}>{err}</div>}
@@ -263,6 +263,68 @@ function ModalShell({ title, onClose, children, footer }: { title: string; onClo
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div><label style={labelStyle}>{label}</label>{children}</div>
+}
+
+function ImageDropZone({ file, onFile }: { file: File | null; onFile: (file: File | null) => void }) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [dragging, setDragging] = useState(false)
+
+  function selectFile(next: File | undefined) {
+    if (next) onFile(next)
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => inputRef.current?.click()}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click() }}
+      onDragEnter={(e) => { e.preventDefault(); setDragging(true) }}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+      onDragLeave={(e) => { e.preventDefault(); setDragging(false) }}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); selectFile(e.dataTransfer.files?.[0]) }}
+      style={{
+        border: `1.5px dashed ${dragging ? 'var(--primary)' : 'var(--border)'}`,
+        borderRadius: 12,
+        background: dragging ? 'var(--primary-soft)' : 'var(--surface-2)',
+        padding: '15px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        cursor: 'pointer',
+        transition: 'background .15s, border-color .15s, box-shadow .15s',
+        boxShadow: dragging ? '0 0 0 4px var(--primary-soft)' : 'none',
+        outline: 'none',
+      }}
+    >
+      <input ref={inputRef} type="file" accept="image/*" onChange={(e) => selectFile(e.target.files?.[0])} style={{ display: 'none' }} />
+      <div style={{
+        width: 40, height: 40, borderRadius: 10,
+        background: 'var(--card)', color: file ? 'var(--success)' : 'var(--primary)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      }}>
+        <Icon name={file ? 'check' : 'upload'} size={18} />
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {file ? file.name : 'ลากรูปมาวาง หรือคลิกเพื่อเลือกไฟล์'}
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+          {file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'รองรับ PNG, JPG, WebP ขนาดไม่เกิน 10MB'}
+        </div>
+      </div>
+      {file && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onFile(null) }}
+          style={{ ...miniBtn, color: 'var(--danger)' }}
+          aria-label="ล้างไฟล์"
+        >
+          <Icon name="x" size={13} />
+        </button>
+      )}
+    </div>
+  )
 }
 
 const inputStyle: React.CSSProperties = { width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', outline: 'none', boxSizing: 'border-box' }

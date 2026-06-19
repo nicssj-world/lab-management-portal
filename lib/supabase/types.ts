@@ -16,6 +16,7 @@ export interface Profile {
   dept: string | null
   status: UserStatus
   avatar_url: string | null
+  ephis_id?: string | null
   document_position: string | null
   signature_url: string | null
   signature_updated_at: string | null
@@ -102,6 +103,7 @@ export interface StaffJd {
   effective_date: string | null
   approver_id: string | null
   approver_name: string | null
+  approver_position?: string | null
   status: 'Draft' | 'Active' | 'Obsolete'
   created_at: string
   created_by: string | null
@@ -117,6 +119,7 @@ export interface StaffJdRevision {
   file_url: string | null
   effective_date: string | null
   approver_name: string | null
+  approver_position?: string | null
   revision_note: string | null
   revised_by: string | null
   created_at: string

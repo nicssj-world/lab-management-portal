@@ -4,6 +4,7 @@ import { requireResource } from '@/lib/auth/guards'
 import { getStaffDetail } from '@/lib/queries/personnel'
 import { PersonnelProfileSchema } from '@/lib/validations/personnel'
 import { createStaffSignedUrl } from '@/lib/personnel/storage'
+import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
 import { toMsg } from '@/lib/personnel/crud'
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -35,6 +36,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const parsed = PersonnelProfileSchema.partial().safeParse(await req.json())
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.errors[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
+    }
+    if ('mt_license_no' in parsed.data || 'mt_license_expiry' in parsed.data) {
+      const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', id).maybeSingle()
+      if (profile && !hasMedicalTechnologistLicenseScope(profile.role)) {
+        return NextResponse.json({ error: 'ใบ ทนพ. ใช้เฉพาะ Medical Technologist' }, { status: 422 })
+      }
     }
     const { data, error } = await supabaseAdmin
       .from('profiles')

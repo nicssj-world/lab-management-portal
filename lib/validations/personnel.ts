@@ -5,16 +5,24 @@ import { DEPARTMENTS } from '@/lib/validations/user-schema'
 const optStr = z.string().trim().optional().or(z.literal('').transform(() => undefined))
 const optDate = z.string().optional().or(z.literal('').transform(() => undefined))
 const optNum = z.number().optional().nullable()
+const optDigits = z.preprocess(
+  (value) => typeof value === 'string' ? value.trim() : value,
+  z.string()
+    .regex(/^\d*$/, 'กรุณากรอกเฉพาะตัวเลข')
+    .transform((value) => value || undefined)
+    .optional(),
+)
 
 // ── Profile personnel fields (PATCH /api/admin/personnel/[id]) ──
 export const PersonnelProfileSchema = z.object({
+  ephis_id:          optDigits,
   position_title:    optStr,
   unit:              optStr,
   dept:              z.enum(DEPARTMENTS).optional().nullable(),
   employment_type:   optStr,
   start_date:        optDate,
   education:         optStr,
-  mt_license_no:     optStr,
+  mt_license_no:     optDigits,
   mt_license_expiry: optDate,
 })
 export type PersonnelProfileInput = z.infer<typeof PersonnelProfileSchema>
@@ -109,6 +117,7 @@ export const JdSchema = z.object({
   file_url:       optStr,
   effective_date: optDate,
   approver_name:  optStr,
+  approver_position: optStr,
   status:         z.enum(['Draft', 'Active', 'Obsolete']).default('Draft'),
   revision_note:  optStr,  // used when creating a revision on update
 })
