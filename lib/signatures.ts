@@ -1,5 +1,4 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import sharp from 'sharp'
 
 export const SIGNATURE_BUCKET = 'signatures'
 export const MAX_SIGNATURE_BYTES = 2 * 1024 * 1024
@@ -20,6 +19,7 @@ export function signatureExtForType(type: string) {
 }
 
 export async function normalizeSignatureImage(file: File) {
+  const sharp = (await import('sharp')).default
   const ext = signatureExtForType(file.type)
   if (!ext) throw new Error('รองรับเฉพาะ PNG, JPG หรือ WebP')
   if (file.size > MAX_SIGNATURE_BYTES) throw new Error('ไฟล์ลายเซ็นต้องไม่เกิน 2 MB')
