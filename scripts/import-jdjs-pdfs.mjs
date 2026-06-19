@@ -138,6 +138,16 @@ async function saveJdjs(row, fileUrl, existing) {
       .from('staff_jd')
       .update({ ...payload, updated_at: new Date().toISOString() })
       .eq('id', existing.id)
+    if (error?.message?.includes('approver_position')) {
+      const { approver_position, ...legacyPayload } = payload
+      void approver_position
+      const fallback = await supabase
+        .from('staff_jd')
+        .update({ ...legacyPayload, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+      if (fallback.error) throw fallback.error
+      return 'updated'
+    }
     if (error) throw error
     return 'updated'
   }
@@ -148,6 +158,18 @@ async function saveJdjs(row, fileUrl, existing) {
       ...payload,
       profile_id: row.profile.id,
     })
+  if (error?.message?.includes('approver_position')) {
+    const { approver_position, ...legacyPayload } = payload
+    void approver_position
+    const fallback = await supabase
+      .from('staff_jd')
+      .insert({
+        ...legacyPayload,
+        profile_id: row.profile.id,
+      })
+    if (fallback.error) throw fallback.error
+    return 'created'
+  }
   if (error) throw error
   return 'created'
 }

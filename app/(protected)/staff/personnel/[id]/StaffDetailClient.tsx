@@ -427,6 +427,14 @@ const JDJS_DEFAULT_EFFECTIVE_DATE = '2026-03-09'
 const JDJS_DEFAULT_APPROVER_NAME = 'นางเกศสิรี กรสิทธิกุล'
 const JDJS_DEFAULT_APPROVER_POSITION = 'รองผู้อำนวยการด้านพัฒนาระบบบริการและสนับสนุนบริการสุขภาพ'
 
+function jdjsApproverPosition(jd: { approver_position?: string | null; effective_date?: string | null; approver_name?: string | null }) {
+  if (jd.approver_position) return jd.approver_position
+  if (jd.effective_date === JDJS_DEFAULT_EFFECTIVE_DATE && jd.approver_name === JDJS_DEFAULT_APPROVER_NAME) {
+    return JDJS_DEFAULT_APPROVER_POSITION
+  }
+  return null
+}
+
 function licenseDigits(value: string | null | undefined) {
   return (value ?? '').replace(/\D/g, '')
 }
@@ -1068,7 +1076,7 @@ function JdTab({ profileId, items, setItems, canEdit, toast }: { profileId: stri
           <tr key={j.id} style={{ borderBottom: '1px solid var(--border)' }}>
             <td style={td}>{fmtDate(j.effective_date)}</td>
             <td style={td}>{j.approver_name ?? '—'}</td>
-            <td style={td}>{j.approver_position ?? '—'}</td>
+            <td style={td}>{jdjsApproverPosition(j) ?? '—'}</td>
             <td style={td}>{j.file_url ? <button onClick={() => openAttachment(profileId, j.file_url!)} style={iconBtn}><Icon name="eye" size={14} /></button> : '—'}</td>
             <td style={td}><span style={{ fontWeight: 600, color: j.status === 'Active' ? 'var(--success)' : j.status === 'Obsolete' ? 'var(--muted)' : 'var(--warning)' }}>{j.status}</span></td>
             <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -1091,7 +1099,7 @@ function JdModal({ profileId, jd, onClose, onSaved, onError }: { profileId: stri
     content: jd?.content ?? '',
     effective_date: jd?.effective_date ?? JDJS_DEFAULT_EFFECTIVE_DATE,
     approver_name: jd?.approver_name ?? JDJS_DEFAULT_APPROVER_NAME,
-    approver_position: jd?.approver_position ?? JDJS_DEFAULT_APPROVER_POSITION,
+    approver_position: jd ? jdjsApproverPosition(jd) ?? '' : JDJS_DEFAULT_APPROVER_POSITION,
     status: jd?.status ?? 'Active',
     revision_note: '',
   })
@@ -1152,9 +1160,9 @@ function JdRevisionsModal({ profileId, jd, onClose }: { profileId: string; jd: S
                   <strong style={{ color: 'var(--ink)' }}>Rev. {r.version}</strong>
                   <span style={{ color: 'var(--muted)' }}>{fmtDateTimeDateBE(r.created_at)}</span>
                 </div>
-                {(r.approver_name || r.approver_position) && (
+                {(r.approver_name || jdjsApproverPosition(r)) && (
                   <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                    ผู้อนุมัติ: {r.approver_name ?? '—'}{r.approver_position ? ` · ${r.approver_position}` : ''}
+                    ผู้อนุมัติ: {r.approver_name ?? '—'}{jdjsApproverPosition(r) ? ` · ${jdjsApproverPosition(r)}` : ''}
                   </div>
                 )}
                 {r.revision_note && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>หมายเหตุ: {r.revision_note}</div>}
