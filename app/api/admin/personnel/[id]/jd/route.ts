@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requireResource } from '@/lib/auth/guards'
+import { requireResource, requirePersonnelEdit } from '@/lib/auth/guards'
 import { JdSchema } from '@/lib/validations/personnel'
 import { toMsg } from '@/lib/personnel/crud'
 
@@ -19,9 +19,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const { actor, response } = await requireResource('บุคลากร', 'edit')
-  if (!actor) return response
   const { id } = await ctx.params
+  const { actor, response } = await requirePersonnelEdit(id)
+  if (!actor) return response
   try {
     const parsed = JdSchema.safeParse(await req.json())
     if (!parsed.success) {

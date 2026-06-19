@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireResource } from '@/lib/auth/guards'
+import { requireResource, requirePersonnelEdit } from '@/lib/auth/guards'
 import {
   MAX_STAFF_FILE_BYTES,
   downloadStaffFile,
@@ -43,9 +43,9 @@ export async function GET(req: NextRequest) {
 // POST a file (cert / license / training evidence). Returns the storage path;
 // the client then saves it in the record's file_url / evidence_url field.
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const { actor, response } = await requireResource('บุคลากร', 'edit')
-  if (!actor) return response
   const { id } = await ctx.params
+  const { actor, response } = await requirePersonnelEdit(id)
+  if (!actor) return response
   try {
     const form = await req.formData()
     const file = form.get('file')

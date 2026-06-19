@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requireResource, type Actor } from '@/lib/auth/guards'
+import { requireResource, requirePersonnelEdit, type Actor } from '@/lib/auth/guards'
 
 const RESOURCE = 'บุคลากร' as const
 
@@ -29,14 +29,14 @@ export async function listChildren(table: string, profileId: string) {
   return NextResponse.json({ data: data ?? [] })
 }
 
-// POST create a child row under a profile (edit permission)
+// POST create a child row under a profile (own or edit permission)
 export async function createChild<T extends z.ZodTypeAny>(
   req: NextRequest,
   table: string,
   profileId: string,
   schema: T,
 ) {
-  const { actor, response } = await requireResource(RESOURCE, 'edit')
+  const { actor, response } = await requirePersonnelEdit(profileId)
   if (!actor) return response
   try {
     const body = await req.json()
@@ -57,14 +57,15 @@ export async function createChild<T extends z.ZodTypeAny>(
   }
 }
 
-// PATCH update a child row (edit permission)
+// PATCH update a child row (own or edit permission)
 export async function updateChild(
   req: NextRequest,
   table: string,
   childId: string,
   schema: z.AnyZodObject,
+  ownerId: string,
 ) {
-  const { actor, response } = await requireResource(RESOURCE, 'edit')
+  const { actor, response } = await requirePersonnelEdit(ownerId)
   if (!actor) return response
   try {
     const body = await req.json()
@@ -86,9 +87,9 @@ export async function updateChild(
   }
 }
 
-// DELETE soft-delete a child row (edit permission)
-export async function softDeleteChild(table: string, childId: string) {
-  const { actor, response } = await requireResource(RESOURCE, 'edit')
+// DELETE soft-delete a child row (own or edit permission)
+export async function softDeleteChild(table: string, childId: string, ownerId: string) {
+  const { actor, response } = await requirePersonnelEdit(ownerId)
   if (!actor) return response
   const { error } = await supabaseAdmin
     .from(table)

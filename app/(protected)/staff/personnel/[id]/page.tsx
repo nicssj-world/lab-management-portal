@@ -12,8 +12,8 @@ export default async function StaffDetailPage(ctx: { params: Promise<{ id: strin
   if (!user) redirect('/login')
   const { data: actor } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   const perms = actor?.role ? await getRolePermissions(actor.role) : {}
-  if ((perms['บุคลากร'] ?? 'none') === 'none') redirect('/staff/dashboard')
-  const canEdit = perms['บุคลากร'] === 'edit'
+  if ((perms['บุคลากร'] ?? 'none') === 'none' && user.id !== id) redirect('/staff/dashboard')
+  const canEdit = perms['บุคลากร'] === 'edit' || user.id === id
 
   const detail = await getStaffDetail(id)
   if (!detail) notFound()

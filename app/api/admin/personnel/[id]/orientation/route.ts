@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requireResource } from '@/lib/auth/guards'
+import { requireResource, requirePersonnelEdit } from '@/lib/auth/guards'
 import { OrientationSchema, ORIENTATION_TEMPLATE } from '@/lib/validations/personnel'
 import { toMsg } from '@/lib/personnel/crud'
 import type { OrientationItem, StaffOrientation } from '@/lib/supabase/types'
@@ -66,9 +66,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
 // PUT upsert the checklist. Done-state is per profile; topic add/remove is synced globally.
 export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const { actor, response } = await requireResource('บุคลากร', 'edit')
-  if (!actor) return response
   const { id } = await ctx.params
+  const { actor, response } = await requirePersonnelEdit(id)
+  if (!actor) return response
   try {
     const parsed = OrientationSchema.safeParse(await req.json())
     if (!parsed.success) {

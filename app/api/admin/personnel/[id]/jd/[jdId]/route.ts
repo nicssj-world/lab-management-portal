@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requireResource } from '@/lib/auth/guards'
+import { requirePersonnelEdit } from '@/lib/auth/guards'
 import { JdSchema } from '@/lib/validations/personnel'
 import { toMsg } from '@/lib/personnel/crud'
 
 // PATCH a JDJS record. If version OR content/file changed, snapshot the old state to staff_jd_revisions first.
-export async function PATCH(req: NextRequest, ctx: { params: Promise<{ jdId: string }> }) {
-  const { actor, response } = await requireResource('บุคลากร', 'edit')
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string; jdId: string }> }) {
+  const { id, jdId } = await ctx.params
+  const { actor, response } = await requirePersonnelEdit(id)
   if (!actor) return response
-  const { jdId } = await ctx.params
   try {
     const parsed = JdSchema.partial().safeParse(await req.json())
     if (!parsed.success) {
@@ -69,10 +69,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ jdId: str
   }
 }
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ jdId: string }> }) {
-  const { actor, response } = await requireResource('บุคลากร', 'edit')
+export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string; jdId: string }> }) {
+  const { id, jdId } = await ctx.params
+  const { actor, response } = await requirePersonnelEdit(id)
   if (!actor) return response
-  const { jdId } = await ctx.params
   const { error } = await supabaseAdmin.from('staff_jd').update({ deleted_at: new Date().toISOString() }).eq('id', jdId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requireResource } from '@/lib/auth/guards'
+import { requirePersonnelEdit } from '@/lib/auth/guards'
 import { toMsg } from '@/lib/personnel/crud'
 
 const SignoffSchema = z.object({ role: z.enum(['assessor', 'assessee']), value: z.boolean() })
 
 // POST peer-assessment sign-off: assessor sign-off or assessee acknowledgement
-export async function POST(req: NextRequest, ctx: { params: Promise<{ compId: string }> }) {
-  const { actor, response } = await requireResource('บุคลากร', 'edit')
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string; compId: string }> }) {
+  const { id, compId } = await ctx.params
+  const { actor, response } = await requirePersonnelEdit(id)
   if (!actor) return response
-  const { compId } = await ctx.params
   try {
     const parsed = SignoffSchema.safeParse(await req.json())
     if (!parsed.success) return NextResponse.json({ error: 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
