@@ -91,3 +91,14 @@ export async function requireResource(
   if (!(await canAccessResource(actor, resource, minimum))) return { response: jsonForbidden() }
   return { actor }
 }
+
+// Allows if actor is the profile owner (self-edit) OR has general บุคลากร edit permission
+export async function requirePersonnelEdit(
+  profileId: string,
+): Promise<{ actor: Actor; response?: undefined } | { actor?: undefined; response: NextResponse }> {
+  const actor = await getActor()
+  if (!actor) return { response: jsonUnauthorized() }
+  if (actor.id === profileId) return { actor }
+  if (await canAccessResource(actor, 'บุคลากร', 'edit')) return { actor }
+  return { response: jsonForbidden() }
+}

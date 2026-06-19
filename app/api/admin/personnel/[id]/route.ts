@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requireResource } from '@/lib/auth/guards'
+import { requireResource, requirePersonnelEdit } from '@/lib/auth/guards'
 import { getStaffDetail } from '@/lib/queries/personnel'
 import { PersonnelProfileSchema } from '@/lib/validations/personnel'
 import { createStaffSignedUrl } from '@/lib/personnel/storage'
@@ -29,9 +29,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 }
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const { actor, response } = await requireResource('บุคลากร', 'edit')
-  if (!actor) return response
   const { id } = await ctx.params
+  const { actor, response } = await requirePersonnelEdit(id)
+  if (!actor) return response
   try {
     const parsed = PersonnelProfileSchema.partial().safeParse(await req.json())
     if (!parsed.success) {
