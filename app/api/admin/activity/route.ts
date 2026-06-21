@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { isAdminRole } from '@/lib/roles'
 import { NextRequest, NextResponse } from 'next/server'
 
 const EXCLUDED = ['permission.update', 'settings.update', 'user.update', 'user.create', 'document.cover_generate', 'document.cover_regenerate']
@@ -73,8 +74,7 @@ export async function GET(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const perms = await getRolePermissions(actor.role)
-  if ((perms['Activity Log'] ?? 'none') !== 'edit') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!isAdminRole(actor.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const ids: unknown[] = Array.isArray(body?.ids) ? body.ids : []

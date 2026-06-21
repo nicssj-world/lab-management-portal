@@ -2449,6 +2449,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
 
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({})
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
+  const [docsWithActiveDraft, setDocsWithActiveDraft] = useState<Set<string>>(new Set())
 
   // Debounce search input: immediate clear, 350ms delay when typing
   useEffect(() => {
@@ -2518,6 +2519,16 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
   }, [activeType, filterStatus, visibility, department, sourceUploadedOnly, canViewSourceUploadQueue, debouncedSearch, page, sortDir])
 
   useEffect(() => { fetchDocs() }, [fetchDocs])
+
+  // Fetch IDs of documents with an active (in-progress) revision draft.
+  // Re-runs on list reload (docs) and when the revision panel opens/closes (revDoc),
+  // covering Rev+ create, publish, and cancel transitions.
+  useEffect(() => {
+    fetch('/api/admin/documents/with-active-drafts')
+      .then((r) => r.json())
+      .then((ids: string[]) => { if (Array.isArray(ids)) setDocsWithActiveDraft(new Set(ids)) })
+      .catch(() => {})
+  }, [docs, revDoc])
 
   function handleSearchChange(val: string) {
     setSearch(val)
@@ -2896,6 +2907,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
                   docs.map((doc) => {
                     const docStatus = (doc.status ?? 'Draft') as DocStatus
                     const canChangeStatus = allowedTransitions(docStatus, userRole ?? '', docRole).length > 0
+                    const hasActiveDraft = docsWithActiveDraft.has(doc.id)
                     return (
                       <tr key={doc.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background .12s' }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
@@ -2936,7 +2948,19 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
 
                         {/* 4. Revision */}
                         <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', textAlign: 'center' }}>
-                          Rev.&nbsp;{doc.revision}
+                          <span
+                            title={hasActiveDraft ? 'มีฉบับแก้ไข (Rev+) กำลังดำเนินการ' : undefined}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center',
+                              padding: hasActiveDraft ? '2px 8px' : 0,
+                              borderRadius: 20,
+                              border: hasActiveDraft ? '1px solid var(--warning)' : 'none',
+                              color: hasActiveDraft ? 'var(--warning)' : 'inherit',
+                              fontWeight: hasActiveDraft ? 600 : 'inherit',
+                            }}
+                          >
+                            Rev.&nbsp;{doc.revision}
+                          </span>
                         </td>
 
                         {/* 5. Visibility */}
@@ -2990,10 +3014,10 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
                               <Icon name="clock" size={14} />
                             </button>
                             {canUpload && doc.status === 'Published' && (
-                              <button onClick={() => handleCreateRevisionDraft(doc)} title="สร้าง Revision ใหม่"
-                                style={{ width: 42, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
+                              <button onClick={() => handleCreateRevisionDraft(doc)} title={hasActiveDraft ? 'มีฉบับแก้ไข (Rev+) กำลังดำเนินการ — คลิกเพื่อเปิด' : 'สร้าง Revision ใหม่'}
+                                style={{ width: 42, height: 32, borderRadius: 7, border: `1px solid ${hasActiveDraft ? 'var(--warning)' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: hasActiveDraft ? 'var(--warning)' : 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
                                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
-                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = hasActiveDraft ? 'var(--warning)' : 'var(--border)'; e.currentTarget.style.color = hasActiveDraft ? 'var(--warning)' : 'var(--muted)' }}>
                                 Rev+
                               </button>
                             )}
