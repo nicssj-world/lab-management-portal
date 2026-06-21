@@ -13,6 +13,7 @@ import { ManualReport } from './sections/ManualReport'
 import { ManualOutLab } from './sections/ManualOutLab'
 import { ManualMicrobiology } from './sections/ManualMicrobiology'
 import { ManualBloodBank } from './sections/ManualBloodBank'
+import { ManualAmendment } from './sections/ManualAmendment'
 
 // ─── Editor helpers ─────────────────────────────────────────────────────────────
 
@@ -277,6 +278,10 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
         /* Phone directory */
         .manual-phone-dir    { margin-top: 10px; padding: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; font-size: 12px; color: var(--muted); line-height: 1.55; }
 
+        /* Head-of-department contact QR */
+        .manual-qr-box       { margin-top: 10px; padding: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+        .manual-qr-box img   { width: 100%; max-width: 180px; aspect-ratio: 1 / 1; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid var(--border); padding: 8px; }
+
         .manual-content      { min-width: 0; }
         .manual-prevnext     { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
         .manual-mobile-topbar { display: none; }
@@ -391,6 +396,21 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
                 <strong style={{ color: 'var(--ink)', fontFamily: '"IBM Plex Mono",monospace' }}>{ext}</strong>
               </div>
             ))}
+          </div>
+
+          {/* Head-of-department contact QR */}
+          <div className="manual-qr-box">
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, color: 'var(--ink)', fontWeight: 700, fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
+              <Icon name="mail" size={13} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: 2 }} />
+              <span>
+                {lang === 'th'
+                  ? 'ช่องทางการสื่อสารถึงหัวหน้ากลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี'
+                  : 'Contact the Head of the Medical Technology Department, Chonburi Hospital'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <img src="/images/qr-mt-head.png" alt={lang === 'th' ? 'QR code ช่องทางติดต่อหัวหน้ากลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี' : 'QR code to contact the Head of the Medical Technology Department'} />
+            </div>
           </div>
         </aside>
 
@@ -624,6 +644,7 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
                   {activeSection === 'outlab'     && <ManualOutLab lang={lang} />}
                   {activeSection === 'micro'      && <ManualMicrobiology lang={lang} />}
                   {activeSection === 'bloodbank'  && <ManualBloodBank lang={lang} />}
+                  {activeSection === 'amendment'  && <ManualAmendment lang={lang} />}
                 </div>
               )}
             </>

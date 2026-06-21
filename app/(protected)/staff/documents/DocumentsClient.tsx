@@ -815,6 +815,12 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
   const [activeDraft, setActiveDraft] = useState<DocumentRevisionDraft | null>(null)
   const [draftBusy, setDraftBusy] = useState(false)
   const [draftUploadProgress, setDraftUploadProgress] = useState<number | null>(null)
+  const [draftAttachments, setDraftAttachments] = useState<Attachment[]>([])
+  const [attachUploading, setAttachUploading] = useState(false)
+  const [attachUploadProgress, setAttachUploadProgress] = useState<number | null>(null)
+  const [attachDragOver, setAttachDragOver] = useState(false)
+  const [zipBusy, setZipBusy] = useState(false)
+  const attachInputRef = useRef<HTMLInputElement>(null)
   const [skipSystemCover, setSkipSystemCover] = useState(false)
   const [draftFormOpen, setDraftFormOpen] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
@@ -1091,6 +1097,64 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
       draftDescriptionContext.current = descriptionContext
     }
   }, [activeDraft, doc.description])
+
+  // Load attachments for the active draft
+  useEffect(() => {
+    if (!activeDraft?.id) { setDraftAttachments([]); return }
+    fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}/attachments`)
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setDraftAttachments(d) })
+      .catch(() => {})
+  }, [activeDraft?.id, doc.id])
+
+  async function handleDraftAttachUpload(files: FileList | File[]) {
+    if (!activeDraft) return
+    const arr = Array.from(files)
+    if (!arr.length) return
+    setAttachUploading(true)
+    setAttachUploadProgress(0)
+    const fd = new FormData()
+    for (const f of arr) fd.append('files', f)
+    try {
+      const result = await new Promise<{ ok: boolean; body: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', `/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}/attachments`)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setAttachUploadProgress(Math.round((e.loaded / e.total) * 100))
+        }
+        xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, body: xhr.responseText })
+        xhr.onerror = () => reject(new Error('network'))
+        xhr.send(fd)
+      })
+      const json = result.body ? JSON.parse(result.body) : null
+      if (!result.ok) { alert(json?.error ?? 'อัปโหลดไฟล์แนบไม่สำเร็จ'); return }
+      setDraftAttachments((prev) => [...prev, ...(Array.isArray(json) ? json : [])])
+    } catch {
+      alert('อัปโหลดไฟล์แนบไม่สำเร็จ')
+    } finally {
+      setAttachUploading(false)
+      setAttachUploadProgress(null)
+    }
+  }
+
+  async function handleDraftAttachDelete(attachId: string) {
+    if (!activeDraft) return
+    if (!confirm('ลบไฟล์แนบนี้?')) return
+    const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}/attachments/${attachId}`, { method: 'DELETE' })
+    if (res.ok) setDraftAttachments((prev) => prev.filter((a) => a.id !== attachId))
+  }
+
+  function handleDownloadDraftZip() {
+    if (!activeDraft) return
+    setZipBusy(true)
+    const a = document.createElement('a')
+    a.href = `/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}/download-zip`
+    a.download = ''
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => setZipBusy(false), 1500)
+  }
 
   async function handleCreateDraftFromPanel() {
     setDraftBusy(true)
@@ -1722,6 +1786,74 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                   </div>
                 )}
 
+                {/* Draft attachments */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, background: 'var(--card)', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', flex: 1 }}>
+                      ไฟล์แนบ ({draftAttachments.length})
+                    </div>
+                    {(draftAttachments.length > 0 || activeDraft.word_url || activeDraft.file_url) && (
+                      <button
+                        onClick={handleDownloadDraftZip}
+                        disabled={zipBusy}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: zipBusy ? 'default' : 'pointer', fontSize: 11.5, color: 'var(--muted)', fontFamily: 'inherit', opacity: zipBusy ? 0.6 : 1, transition: 'all .15s' }}
+                        onMouseEnter={(e) => { if (!zipBusy) { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' } }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}
+                      >
+                        <Icon name="download" size={11} />
+                        {zipBusy ? 'กำลังเตรียม...' : 'ดาวน์โหลดทั้งหมด (ZIP)'}
+                      </button>
+                    )}
+                  </div>
+
+                  {draftAttachments.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {draftAttachments.map((a) => (
+                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <Icon name="doc" size={13} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11.5, color: 'var(--ink)' }}>{a.file_name}</span>
+                          <button onClick={() => onDownload(a.file_url)} title="ดาวน์โหลด" style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Icon name="download" size={12} />
+                          </button>
+                          {canAdd && (
+                            <button onClick={() => handleDraftAttachDelete(a.id)} title="ลบ" style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#FCA5A5'; e.currentTarget.style.color = '#DC2626' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                              <Icon name="trash" size={12} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {canAdd && (
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setAttachDragOver(true) }}
+                      onDragLeave={() => setAttachDragOver(false)}
+                      onDrop={(e) => { e.preventDefault(); setAttachDragOver(false); if (e.dataTransfer.files?.length) handleDraftAttachUpload(e.dataTransfer.files) }}
+                      onClick={() => attachInputRef.current?.click()}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, border: `1px dashed ${attachDragOver ? 'var(--primary)' : 'var(--border)'}`, background: attachDragOver ? 'var(--primary-soft)' : 'transparent', cursor: 'pointer', fontSize: 11.5, color: 'var(--muted)', transition: 'all .12s' }}
+                    >
+                      <Icon name="upload" size={13} />
+                      {attachUploading ? 'กำลังอัปโหลด...' : 'ลากไฟล์มาวาง หรือคลิกเพื่อแนบไฟล์ (หลายไฟล์ได้)'}
+                      <input ref={attachInputRef} type="file" multiple hidden onChange={(e) => { if (e.target.files?.length) handleDraftAttachUpload(e.target.files); e.currentTarget.value = '' }} />
+                    </div>
+                  )}
+
+                  {attachUploadProgress !== null && (
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface-2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
+                        <span>กำลังอัปโหลดไฟล์แนบ</span>
+                        <span>{attachUploadProgress}%</span>
+                      </div>
+                      <div style={{ height: 7, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
+                        <div style={{ width: `${attachUploadProgress}%`, height: '100%', borderRadius: 999, background: 'var(--primary)', transition: 'width .15s ease' }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.45 }}>
                   {activeDraft.title && <div>Title: {activeDraft.title}</div>}
                   {activeDraft.owner_name && <div>Owner: {activeDraft.owner_name}</div>}
@@ -1780,7 +1912,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                 )}
 
                 {(() => {
-                  const transitions = allowedTransitions(activeDraft.status as DocStatus, userRole, docRole)
+                  const transitions = allowedTransitions(activeDraft.status as DocStatus, userRole, docRole, { coverRequired: isCoverRequiredType(activeDraft.type) })
                   if (transitions.length === 0) {
                     return (
                       <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.45 }}>
