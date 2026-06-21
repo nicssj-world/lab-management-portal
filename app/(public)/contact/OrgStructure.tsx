@@ -37,6 +37,36 @@ const splitPhones = (phone: string): string[] => phone.split(/[,/]/).map((s) => 
 const resolvePhones = (node: { phone: string | null; title: string }): string[] =>
   node.phone?.trim() ? splitPhones(node.phone) : (PHONE_LOOKUP.get(norm(node.title)) ?? [])
 
+// Thai has no spaces between words, so browsers break long labels mid-word.
+// Segment into words and join with zero-width spaces → breaks only at word boundaries.
+type Segmenter = { segment(s: string): Iterable<{ segment: string }> }
+const SegmenterCtor = (Intl as unknown as { Segmenter?: new (l: string, o: { granularity: string }) => Segmenter }).Segmenter
+const thaiSeg: Segmenter | null = SegmenterCtor ? new SegmenterCtor('th', { granularity: 'word' }) : null
+const ZWSP = String.fromCharCode(0x200B)
+// Compound technical terms the ICU dictionary over-segments — keep them unbroken.
+const KEEP_TOGETHER = ['จุลทรรศนศาสตร์', 'จุลชีววิทยา', 'ปฏิบัติการ']
+const KEEP_RE = KEEP_TOGETHER.map((t) => new RegExp([...t].join(`${ZWSP}?`), 'g'))
+function thaiWords(text: string): string[] {
+  if (!thaiSeg) return [text]
+  let out = ''
+  for (const { segment } of thaiSeg.segment(text)) out += segment + ZWSP
+  KEEP_RE.forEach((re, i) => { out = out.replace(re, KEEP_TOGETHER[i]) })
+  return out.split(ZWSP).filter(Boolean)
+}
+
+// Render Thai text wrapping only at word boundaries. `word-break: keep-all` does NOT
+// work for Thai (spec: CJK only), so instead each word is an atomic `nowrap` span and
+// ZWSP between words provides the (only) break opportunities.
+function ThaiLabel({ text, style }: { text: string; style: React.CSSProperties }) {
+  const words = thaiWords(text)
+  const parts: React.ReactNode[] = []
+  words.forEach((w, i) => {
+    if (i > 0) parts.push(ZWSP)
+    parts.push(<span key={i} style={{ whiteSpace: 'nowrap' }}>{w}</span>)
+  })
+  return <div lang="th" style={style}>{parts}</div>
+}
+
 const TREE_CSS = `
 .octree { --org-line: #94A3B8; padding: 6px 0; }
 [data-theme="dark"] .octree { --org-line: #64748B; }
@@ -86,14 +116,14 @@ function NodeBox({ node }: { node: OrgNode }) {
           : <Icon name="users" size={36} style={{ color: 'var(--muted)' }} />}
       </div>
       {/* ตำแหน่ง / หน่วยงาน */}
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.3 }}>{node.title}</div>
+      <ThaiLabel text={node.title} style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.3 }} />
       {/* ชื่อบุคคล */}
       {node.display_name
         ? <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.35 }}>{node.display_name}</div>
         : null}
       {/* ตำแหน่ง (จากโปรไฟล์ที่ link) */}
       {node.position
-        ? <div style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.3 }}>{node.position}</div>
+        ? <ThaiLabel text={node.position} style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.3 }} />
         : null}
       {/* เบอร์โทรภายใน */}
       {phones.length > 0 && (
