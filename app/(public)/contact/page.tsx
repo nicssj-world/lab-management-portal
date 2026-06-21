@@ -22,10 +22,10 @@ async function loadOrgNodes(): Promise<OrgNode[]> {
   const rows = (nodes ?? []) as OrgChartNode[]
 
   const profileIds = [...new Set(rows.map((n) => n.profile_id).filter(Boolean))] as string[]
-  const profileMap = new Map<string, { name: string; avatar_url: string | null }>()
+  const profileMap = new Map<string, { name: string; avatar_url: string | null; position_title: string | null }>()
   if (profileIds.length) {
-    const { data: profs } = await supabaseAdmin.from('profiles').select('id, name, avatar_url').in('id', profileIds)
-    for (const p of profs ?? []) profileMap.set(p.id, { name: p.name, avatar_url: p.avatar_url })
+    const { data: profs } = await supabaseAdmin.from('profiles').select('id, name, avatar_url, position_title').in('id', profileIds)
+    for (const p of profs ?? []) profileMap.set(p.id, { name: p.name, avatar_url: p.avatar_url, position_title: p.position_title ?? null })
   }
 
   return Promise.all(rows.map(async (n) => {
@@ -37,7 +37,9 @@ async function loadOrgNodes(): Promise<OrgNode[]> {
       title: n.title,
       node_type: n.node_type,
       display_name: n.person_name || linked?.name || null,
+      position: linked?.position_title ?? null,
       photo,
+      phone: n.phone,
       sort_order: n.sort_order,
     }
   }))

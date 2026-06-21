@@ -39,8 +39,8 @@ export function FitToWidth({ children, maxScale = 1 }: { children: React.ReactNo
   }, [fit])
 
   return (
-    <div ref={outerRef} style={{ width: '100%', overflow: 'hidden', height }}>
-      <div ref={innerRef} style={{ width: 'max-content', margin: '0 auto', transform: `scale(${scale})`, transformOrigin: 'top center' }}>
+    <div ref={outerRef} style={{ width: '100%', overflow: 'hidden', height, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+      <div ref={innerRef} style={{ flex: '0 0 auto', width: 'max-content', transform: `scale(${scale})`, transformOrigin: 'top center' }}>
         {children}
       </div>
     </div>

@@ -14,10 +14,12 @@ interface OrgNodeView {
   person_name: string | null
   profile_id: string | null
   photo_url: string | null
+  phone: string | null
   node_type: 'leadership' | 'position' | 'unit'
   is_linkable: boolean
   sort_order: number
   display_name: string | null
+  position: string | null
   photo: string | null
 }
 
@@ -131,6 +133,8 @@ function NodeBox({ node, canEdit, onEdit, onAdd }: { node: OrgNodeView; canEdit:
             ? <Link href={`/staff/personnel/${node.profile_id}`} style={{ fontSize: 11.5, color: 'var(--primary)', textDecoration: 'none', textAlign: 'center' }}>{node.display_name}</Link>
             : <div style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'center' }}>{node.display_name}</div>)
         : <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>— ว่าง —</div>}
+      {node.position && <div style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.3 }}>{node.position}</div>}
+      {node.phone && <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: '"IBM Plex Mono",monospace', textAlign: 'center' }}>☎ {node.phone}</div>}
       {canEdit && (
         <div style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 3 }}>
           <button onClick={onEdit} title="แก้ไข" style={miniBtn}><Icon name="edit" size={12} /></button>
@@ -145,6 +149,7 @@ function EditNodeModal({ node, staff, onClose, onSaved, onDeleted }: { node: Org
   const [title, setTitle] = useState(node.title)
   const [personName, setPersonName] = useState(node.person_name ?? '')
   const [profileId, setProfileId] = useState(node.profile_id ?? '')
+  const [phone, setPhone] = useState(node.phone ?? '')
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -158,8 +163,8 @@ function EditNodeModal({ node, staff, onClose, onSaved, onDeleted }: { node: Org
         if (!up.ok) throw new Error((await up.json()).error ?? 'อัปโหลดรูปไม่สำเร็จ')
       }
       const body = node.is_linkable
-        ? { title, profile_id: profileId || null, person_name: profileId ? undefined : personName }
-        : { title, person_name: personName }
+        ? { title, phone, profile_id: profileId || null, person_name: profileId ? undefined : personName }
+        : { title, phone, person_name: personName }
       const res = await fetch(`/api/admin/personnel/org/${node.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error((await res.json()).error ?? 'บันทึกไม่สำเร็จ')
       onSaved()
@@ -181,7 +186,7 @@ function EditNodeModal({ node, staff, onClose, onSaved, onDeleted }: { node: Org
         <button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button>
       </>
     }>
-      <Field label="ชื่อกล่อง / ตำแหน่ง"><input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
+      <Field label="ชื่อกล่อง"><input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
       {node.is_linkable ? (
         <>
           <Field label="link โปรไฟล์บุคลากร">
@@ -195,6 +200,7 @@ function EditNodeModal({ node, staff, onClose, onSaved, onDeleted }: { node: Org
       ) : (
         <Field label="ชื่อบุคคล (กล่องบนสุด — ไม่ link โปรไฟล์)"><input style={inputStyle} value={personName} onChange={(e) => setPersonName(e.target.value)} /></Field>
       )}
+      <Field label="เบอร์โทรภายใน (หลายเบอร์คั่นด้วย ,)"><input style={inputStyle} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="เช่น 1458 หรือ 1464, 1469" /></Field>
       <Field label="รูป (PNG/JPG/WebP ≤10MB)">
         <ImageDropZone file={file} onFile={setFile} />
         {node.photo && <button onClick={removePhoto} style={{ ...ghostBtn, marginTop: 8, fontSize: 12 }}><Icon name="trash" size={13} /> ลบรูปปัจจุบัน</button>}
@@ -229,7 +235,7 @@ function AddNodeModal({ parent, onClose, onSaved }: { parent: OrgNodeView; onClo
     <ModalShell title={isRoot ? 'เพิ่มกล่องบนสุด' : `เพิ่มหน่วยย่อยใต้ "${parent.title}"`} onClose={onClose} footer={
       <><button onClick={onClose} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'เพิ่ม'}</button></>
     }>
-      <Field label="ชื่อกล่อง / ตำแหน่ง / หน่วยงาน"><input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></Field>
+      <Field label="ชื่อกล่อง"><input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></Field>
       <Field label="ประเภท">
         <select style={inputStyle} value={nodeType} onChange={(e) => setNodeType(e.target.value as typeof nodeType)}>
           <option value="leadership">ผู้บริหาร (Leadership)</option>

@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { href: '/catalog', th: 'รายการตรวจวิเคราะห์',   en: 'Test Catalog' },
   { href: '/manual',  th: 'คู่มือห้องปฏิบัติการ',  en: 'Lab Manual' },
   { href: '/news',    th: 'ข่าวสาร',               en: 'News' },
-  { href: '/contact', th: 'ติดต่อ',                en: 'Contact' },
+  { href: '/contact', th: 'โครงสร้างองค์กร',      en: 'Organization' },
 ]
 
 interface SessionUser { name: string; role: string; avatar_url: string | null }

@@ -157,6 +157,7 @@ export interface OrgChartNode {
   person_name: string | null
   profile_id: string | null
   photo_url: string | null
+  phone: string | null
   node_type: 'leadership' | 'position' | 'unit'
   is_linkable: boolean
   sort_order: number
