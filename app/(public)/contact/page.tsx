@@ -101,7 +101,7 @@ export default async function ContactPage() {
         {/* Footer note */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 16, padding: '12px 18px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, fontSize: 12.5, color: '#92400E' }}>
           <Icon name="alert" size={14} style={{ flexShrink: 0, marginTop: 1, color: '#D97706' }} />
-          <span>หมายเลขในกล่องเป็น <strong>เบอร์โทรศัพท์ภายใน</strong> สำหรับประสานงานในโรงพยาบาล กรณีติดต่อจากภายนอกกรุณาโทร <strong>(038) 931-455</strong> แล้วต่อเบอร์ภายใน · กลุ่มงานเทคนิคการแพทย์ ชั้น 3 อาคารเฉลิมราชสมบัติ โรงพยาบาลชลบุรี</span>
+          <span>หมายเลขในกล่องเป็น <strong>เบอร์โทรศัพท์ภายใน</strong> สำหรับประสานงานในโรงพยาบาล กรณีติดต่อจากภายนอกกรุณาโทร <strong>(038) 931-455</strong> แล้วต่อเบอร์ภายใน</span>
         </div>
 
       </div>
