@@ -16,6 +16,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
   { id: 'outlab',     th: 'การใช้บริการ OUT LAB',                  en: 'OUT LAB Service',                    icon: 'biohazard' },
   { id: 'micro',      th: 'การใช้บริการห้องจุลชีววิทยา',          en: 'Microbiology Service',               icon: 'petri' },
   { id: 'bloodbank',  th: 'การใช้บริการคลังเลือด',               en: 'Blood Bank Service',                 icon: 'bloodBag' },
+  { id: 'amendment',  th: 'การแก้ไขและเปลี่ยนแปลงข้อมูลทางห้องปฏิบัติการ', en: 'Result Amendment & Correction', icon: 'edit' },
 ]
 
 export interface PhoneEntry {

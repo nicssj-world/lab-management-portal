@@ -82,6 +82,23 @@ async function getDocumentForDownload(path: string) {
     }
   }
 
+  // Revision draft attachment file
+  const { data: draftAttachment } = await supabaseAdmin
+    .from('document_revision_draft_attachments')
+    .select('file_name, document_id')
+    .eq('file_url', path)
+    .maybeSingle()
+
+  if (draftAttachment?.document_id) {
+    const { data: draftAttachDoc } = await supabaseAdmin
+      .from('documents')
+      .select('id, document_code, title, visibility, deleted_at')
+      .eq('id', draftAttachment.document_id)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (draftAttachDoc) return { id: draftAttachDoc.id, file_name: draftAttachment.file_name, visibility: draftAttachDoc.visibility, deleted_at: draftAttachDoc.deleted_at } as unknown as DownloadDocument
+  }
+
   // Attachment file
   const { data: attachment } = await supabaseAdmin
     .from('document_attachments')

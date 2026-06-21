@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requiredEnv } from '@/lib/env'
@@ -354,7 +354,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (skipSystemCover && nextStatus !== 'Published') {
         return NextResponse.json({ error: 'การข้ามหน้าปกระบบใช้ได้เฉพาะตอน Published เท่านั้น' }, { status: 422 })
       }
-      const allowed = allowedTransitions(draft.status as DocStatus, actor.role, actor.doc_role ?? undefined)
+      const transitionType = (updates.type as string | undefined) ?? draft.type
+      const allowed = allowedTransitions(draft.status as DocStatus, actor.role, actor.doc_role ?? undefined, { coverRequired: isCoverRequiredType(transitionType) })
       if (!allowed.includes(nextStatus as DocStatus)) {
         return NextResponse.json({ error: 'สถานะที่เปลี่ยนไม่ได้รับอนุญาต' }, { status: 403 })
       }
@@ -712,6 +713,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       .from('document_revision_drafts')
       .update({ ...updates, status: 'Published' })
       .eq('id', draftId)
+
+    // Hard-delete draft attachments (supporting files only). The Word/Excel source and the
+    // official file were already promoted to the document above, so they are kept; these
+    // attachment files are no longer needed once the revision is published. Wrapped so that a
+    // failed cleanup can never break a publish that has already succeeded.
+    try {
+      const { data: draftAttachments } = await supabaseAdmin
+        .from('document_revision_draft_attachments')
+        .select('file_url')
+        .eq('draft_id', draftId)
+      for (const att of draftAttachments ?? []) {
+        if (att.file_url) {
+          await getR2Client().send(new DeleteObjectCommand({ Bucket: getR2Bucket(), Key: att.file_url })).catch(() => {})
+        }
+      }
+      await supabaseAdmin.from('document_revision_draft_attachments').delete().eq('draft_id', draftId)
+    } catch {
+      // non-fatal: publish already committed
+    }
 
     supabaseAdmin.from('audit_log').insert({
       action: publishWithExistingCover ? 'document.revision_draft_publish_existing_cover' : 'document.revision_draft_publish',
