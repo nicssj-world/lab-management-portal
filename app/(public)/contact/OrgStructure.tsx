@@ -78,8 +78,8 @@ function NodeBox({ node }: { node: OrgNode }) {
   const accent = node.node_type === 'leadership' ? '#64748B' : node.node_type === 'position' ? 'var(--primary)' : '#0D9488'
   const phones = resolvePhones(node)
   return (
-    <div style={{ width: 200, background: 'var(--card)', border: '1px solid var(--border)', borderTop: `3px solid ${accent}`, borderRadius: 12, padding: '11px 11px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-      <div style={{ width: '100%', aspectRatio: '1 / 1', borderRadius: 9, overflow: 'hidden', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
+    <div style={{ width: 220, background: 'var(--card)', border: '1px solid var(--border)', borderTop: `3px solid ${accent}`, borderRadius: 12, padding: '11px 11px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+      <div style={{ width: 176, height: 176, borderRadius: 9, overflow: 'hidden', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--border)' }}>
         {node.photo
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={node.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
