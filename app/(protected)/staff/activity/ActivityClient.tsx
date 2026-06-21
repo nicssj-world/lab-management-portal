@@ -234,7 +234,7 @@ function detailText(action: string | null, target: string | null, detail: string
 
 const PAGE_SIZE = 30
 
-export function ActivityClient() {
+export function ActivityClient({ canDelete = false }: { canDelete?: boolean }) {
   const [category, setCategory] = useState('')
   const [from, setFrom]         = useState('')
   const [to, setTo]             = useState('')
@@ -273,15 +273,18 @@ export function ActivityClient() {
   }
 
   function toggleRow(id: string) {
+    if (!canDelete) return
     setSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
   }
 
   function toggleAll() {
+    if (!canDelete) return
     if (selected.size === data.length) setSelected(new Set())
     else setSelected(new Set(data.map(r => r.id)))
   }
 
   async function deleteSelected() {
+    if (!canDelete) return
     if (selected.size === 0 || deleting) return
     if (!confirm(`ลบ ${selected.size} รายการที่เลือก?`)) return
     setDeleting(true)
@@ -317,7 +320,7 @@ export function ActivityClient() {
           marginBottom={0}
         />
         <div style={{ display: 'flex', gap: 8 }}>
-          {selected.size > 0 && (
+          {canDelete && selected.size > 0 && (
             <Button variant="danger" size="sm" onClick={deleteSelected} disabled={deleting}>
               {deleting ? 'กำลังลบ...' : `ลบ ${selected.size} รายการ`}
             </Button>
@@ -367,9 +370,11 @@ export function ActivityClient() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)' }}>
-                <th style={{ padding: '9px 12px 9px 16px', width: 36 }}>
-                  <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ cursor: 'pointer' }} />
-                </th>
+                {canDelete && (
+                  <th style={{ padding: '9px 12px 9px 16px', width: 36 }}>
+                    <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ cursor: 'pointer' }} />
+                  </th>
+                )}
                 {['เวลา', 'กิจกรรม', 'รายละเอียด', 'ผู้ดำเนินการ'].map(h => (
                   <th key={h} style={{ padding: '9px 16px', textAlign: 'left', fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                     {h}
@@ -381,7 +386,7 @@ export function ActivityClient() {
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i}>
-                    {[36, 120, 160, 280, 130].map((w, j) => (
+                    {[(canDelete ? 36 : 0), 120, 160, 280, 130].filter(Boolean).map((w, j) => (
                       <td key={j} style={{ padding: '10px 16px' }}>
                         <div style={{ height: 13, borderRadius: 4, background: 'var(--surface-2)', width: w }} />
                       </td>
@@ -390,7 +395,7 @@ export function ActivityClient() {
                 ))
               ) : data.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+                  <td colSpan={canDelete ? 5 : 4} style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
                     ไม่พบกิจกรรม
                   </td>
                 </tr>
@@ -402,9 +407,11 @@ export function ActivityClient() {
                     onMouseEnter={e => { if (!selected.has(row.id)) e.currentTarget.style.background = 'var(--surface-2)' }}
                     onMouseLeave={e => { e.currentTarget.style.background = selected.has(row.id) ? 'var(--primary-soft, rgba(30,95,173,.06))' : 'transparent' }}
                   >
-                    <td style={{ padding: '9px 12px 9px 16px' }}>
-                      <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleRow(row.id)} style={{ cursor: 'pointer' }} />
-                    </td>
+                    {canDelete && (
+                      <td style={{ padding: '9px 12px 9px 16px' }}>
+                        <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleRow(row.id)} style={{ cursor: 'pointer' }} />
+                      </td>
+                    )}
                     <td style={{ padding: '9px 16px', fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                       {fmtTime(row.created_at)}
                     </td>
