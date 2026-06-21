@@ -3,7 +3,11 @@ import { DEPARTMENTS } from '@/lib/validations/user-schema'
 
 // Empty strings from form inputs → undefined (so optional date/text fields clear cleanly)
 const optStr = z.string().trim().optional().or(z.literal('').transform(() => undefined))
-const optDate = z.string().optional().or(z.literal('').transform(() => undefined))
+// Empty/whitespace date inputs → null (Postgres rejects '' for `date` columns; null clears cleanly)
+const optDate = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? null : v),
+  z.string().optional().nullable(),
+)
 const optNum = z.number().optional().nullable()
 const optDigits = z.preprocess(
   (value) => typeof value === 'string' ? value.trim() : value,
@@ -101,6 +105,7 @@ export const OrgNodeCreateSchema = z.object({
 export const OrgNodeUpdateSchema = z.object({
   title:       z.string().min(1).max(200).optional(),
   person_name: optStr,
+  phone:       optStr,
   profile_id:  z.string().uuid().optional().nullable(),
   photo_url:   optStr,
   parent_id:   z.string().uuid().optional().nullable(),
