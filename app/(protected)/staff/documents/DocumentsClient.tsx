@@ -1453,6 +1453,10 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
         position: 'fixed', top: 0, right: 0, bottom: 0, width: 420, maxWidth: '95vw',
         background: 'var(--card)', zIndex: 1001, display: 'flex', flexDirection: 'column',
         boxShadow: '-8px 0 40px rgba(0,0,0,.18)',
+        maxHeight: '100vh',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        overscrollBehavior: 'contain',
       }}>
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
@@ -1961,7 +1965,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
         )}
 
         {/* Revision history list */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ flex: 'none', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
           {/* Header row */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
