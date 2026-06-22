@@ -561,7 +561,7 @@ export async function DELETE(
       detail: deletedDoc ? `${deletedDoc.document_code} · ${deletedDoc.title}` : id,
     }).then(undefined, () => {})
 
-    return new NextResponse(null, { status: 204 })
+    return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: toMsg(err) }, { status: 500 })
   }

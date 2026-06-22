@@ -17,6 +17,10 @@ npm run build    # Production build (also type-checks)
 npx tsc --noEmit # Type-check without building
 ```
 
+## TAT Local Source Files
+
+TAT source exports live outside the repo under `E:\TAT\<fiscal-year>`, for example `E:\TAT\2569`. Rebuild TAT dashboard cache with `npm run tat:local` from those local files before deleting Supabase raw rows with `npm run tat:clean-raw`.
+
 # CLAUDE.md
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
