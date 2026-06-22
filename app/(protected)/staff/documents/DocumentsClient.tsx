@@ -2705,7 +2705,16 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
     setDeleting(true)
     try {
       const res = await fetch(`/api/admin/documents/${confirmDoc.id}`, { method: 'DELETE' })
-      if (!res.ok) { const j = await res.json(); toast(j.error ?? 'ลบไม่สำเร็จ', false); return }
+      if (!res.ok) {
+        const text = await res.text()
+        let message = text || 'ลบไม่สำเร็จ'
+        try {
+          const json = JSON.parse(text) as { error?: string }
+          message = json.error ?? message
+        } catch {}
+        toast(message, false)
+        return
+      }
       setDocs((d) => d.filter((x) => x.id !== confirmDoc.id))
       setCount((c) => c - 1)
       setTypeCounts((c) => ({

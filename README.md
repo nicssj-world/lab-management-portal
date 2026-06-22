@@ -2,6 +2,33 @@
 
 Internal laboratory management portal for Chonburi Hospital. The app includes the staff portal, quality document control, test catalog, equipment, workload, TAT, risk/rejection, contracts, user/role management, and personnel modules.
 
+## TAT Local Analysis Workflow
+
+TAT source files are stored locally under `E:\TAT\<fiscal-year>`, for example `E:\TAT\2569`. Use the matching fiscal-year folder as new years are added.
+
+Use local analysis as the source of truth for TAT dashboards. The local script publishes `analysis_summary_cache` only; raw `tat_records` and `phlebotomy_records` in Supabase are temporary staging data and can be removed after the cache is verified.
+
+Example:
+
+```powershell
+npm run tat:local -- --tat "E:\TAT\2569\TAT 0169.txt" --phleb "E:\TAT\2569\Phe 0169.txt" --year 2026 --month 1
+npm run tat:clean-raw -- --year 2026 --month 1 --dry-run
+npm run tat:clean-raw -- --year 2026 --month 1 --yes
+```
+
+Fiscal year 2569 example mapping:
+
+| File suffix | Month |
+| --- | --- |
+| `1068` | 2025-10 |
+| `1168` | 2025-11 |
+| `1268` | 2025-12 |
+| `0169` | 2026-01 |
+| `0269` | 2026-02 |
+| `0369` | 2026-03 |
+| `0469` | 2026-04 |
+| `0569` | 2026-05 |
+
 ## Quality Document Workflow V2
 
 Run the schema script before using the workflow in a real environment:
