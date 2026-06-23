@@ -99,6 +99,7 @@ export const COLLECTION_TABS: CollectionTab[] = [
   { id: 'coag',         th: 'PT · aPTT · TT',     en: 'Coagulation' },
   { id: 'micro',        th: 'จุลชีววิทยา',        en: 'Microbiology' },
   { id: 'urine',        th: 'ปัสสาวะ',            en: 'Urine collection' },
+  { id: 'stool',        th: 'อุจจาระ',            en: 'Stool collection' },
 ]
 
 export interface CriticalValue {
