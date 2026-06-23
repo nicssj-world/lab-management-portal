@@ -25,6 +25,23 @@ export function CollectionUrine({ lang }: Props) {
               </div>
             )}
           </div>
+
+          {sec.id === '6.1' && (
+            <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center' }}>
+              <img
+                src="/images/Rurine.png"
+                alt={lang === 'th' ? 'อินโฟกราฟิกวิธีการเก็บปัสสาวะแบบ Random urine' : 'Random urine collection infographic'}
+                style={{
+                  maxWidth: 400,
+                  width: '100%',
+                  borderRadius: 14,
+                  boxShadow: '0 4px 20px rgba(15,23,42,.12)',
+                  border: '1px solid var(--border)',
+                  display: 'block',
+                }}
+              />
+            </div>
+          )}
         </div>
       ))}
 
