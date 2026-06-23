@@ -28,6 +28,7 @@ const DEPARTMENTS = [
   'ห้องปฏิบัติการศูนย์สุขภาพชุมชนเมืองชลบุรี',
   'งานอณูชีววิทยา',
   'งานตรวจพิเศษและปฏิบัติการตรวจต่อ',
+  'งานชันสูตรผู้ป่วยนอก',
 ] as const
 
 const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray' | 'red'> = {
