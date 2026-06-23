@@ -100,6 +100,7 @@ const DEPT_BY_PREFIX: Record<string, string> = {
   LM: 'ห้องปฏิบัติการศูนย์สุขภาพชุมชนเมืองชลบุรี',
   BM: 'งานอณูชีววิทยา',
   SR: 'งานตรวจพิเศษและปฏิบัติการตรวจต่อ',
+  OP: 'งานชันสูตรผู้ป่วยนอก',
 }
 
 const TYPE_BY_PREFIX: Record<string, string> = {
