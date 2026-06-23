@@ -10,6 +10,7 @@ import { CollectionBloodGas } from './collection/CollectionBloodGas'
 import { CollectionCoag } from './collection/CollectionCoag'
 import { CollectionMicro } from './collection/CollectionMicro'
 import { CollectionUrine } from './collection/CollectionUrine'
+import { CollectionStool } from './collection/CollectionStool'
 
 interface Props { lang: Lang }
 
@@ -58,6 +59,7 @@ export function ManualCollection({ lang }: Props) {
       {tab === 'coag'         && <CollectionCoag lang={lang} />}
       {tab === 'micro'        && <CollectionMicro lang={lang} />}
       {tab === 'urine'        && <CollectionUrine lang={lang} />}
+      {tab === 'stool'        && <CollectionStool lang={lang} />}
     </Section>
   )
 }

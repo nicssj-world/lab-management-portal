@@ -201,6 +201,22 @@ export const MICRO_SPUTUM = [
   { k: 'BAL', th: 'แพทย์ทำระหว่าง Bronchoscopy — ใส่ 0.9% NaCl ในหลอดลมส่วนปลาย ดูดกลับ · หุ้ม parafilm นำส่งทันที', en: 'Physician procedure during bronchoscopy. Instill 0.9% NaCl distally, re-aspirate. Wrap parafilm, deliver immediately.' },
 ]
 
+// ── Stool Collection ──────────────────────────────────────────────────────────
+
+export const STOOL_STEPS_TH = [
+  'ให้ผู้ป่วยทำความสะอาดมือก่อนเก็บอุจจาระ',
+  'ถ่ายอุจจาระลงบนกระดาษ หรือภาชนะขนาดใหญ่ที่แห้งและสะอาด',
+  'ใช้ช้อนตักอุจจาระหลายๆจุด ปริมาณอย่างน้อย 2 ช้อนตัก ใส่กระปุกเก็บอุจจาระ ปิดฝาให้สนิท แล้วล้างมือให้สะอาดอีกครั้ง',
+  'นำส่งห้องปฏิบัติการทันทีภายในเวลาไม่เกิน 2 ชั่วโมง หากไม่สามารถนำส่งได้ทันที ควรเก็บไว้ในตู้เย็นอุณหภูมิ 2–8 °C รีบนำส่งภายใน 4 ชั่วโมง',
+]
+
+export const STOOL_STEPS_EN = [
+  'Patient washes hands thoroughly before collection.',
+  'Defecate onto paper or a large clean, dry container — not directly into the toilet.',
+  'Use the spoon to collect stool from several areas (at least 2 scoops) into the stool container. Close the lid tightly, then wash hands again.',
+  'Deliver to the lab within 2 hours. If immediate delivery is not possible, refrigerate at 2–8 °C and deliver within 4 hours.',
+]
+
 // ── Urine Collection ──────────────────────────────────────────────────────────
 
 export const URINE_SECTIONS = [
