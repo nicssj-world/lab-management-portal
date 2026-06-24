@@ -16,7 +16,6 @@ import {
   isPublishedMetadataField,
   isSourceFile,
 } from '@/lib/documents/workflow'
-import { buildPublishedPdfFields } from '@/lib/documents/publish'
 import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/lib/documents/docx-header'
 import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
 import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
@@ -143,19 +142,19 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const actor = await getActor()
-  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  if (!(await canUploadDocument(actor.role, actor.doc_role))) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  const { id } = await params
-
   try {
+    const actor = await getActor()
+    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    if (!(await canUploadDocument(actor.role, actor.doc_role))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const { id } = await params
     const contentType = req.headers.get('content-type') ?? ''
     let updates: Record<string, unknown> = {}
     let newFile: File | null = null
+    const warnings: string[] = []
 
     let newWordFile: File | null = null
     let wordFileKey: string | null = null
@@ -190,12 +189,13 @@ export async function PATCH(
     }
 
     // Always fetch current doc (needed for revision history + R2 key)
-    const { data: current } = await supabaseAdmin
+    const { data: current, error: currentErr } = await supabaseAdmin
       .from('documents')
       .select('file_url, file_name, file_size, mime_type, source_pdf_url, source_pdf_name, source_pdf_size, source_pdf_mime_type, word_url, word_name, word_size, revision, type, description, owner_name, reviewer_name, approver_name, status, document_code, title, edit_date, effective_date, expiry_date, approved_at, published_at, approved_by_id, published_by_id, reviewer_id, approver_id, audience_text, cover_template_version, cover_generated_at, cover_metadata, imported_current_at, imported_current_by, imported_current_note, legacy_cover_included')
       .eq('id', id)
       .single()
 
+    if (currentErr) return NextResponse.json({ error: currentErr.message }, { status: 500 })
     if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     // Enforce status transition rules server-side
@@ -469,14 +469,29 @@ export async function PATCH(
     const shouldBuildFinalPdf = isCoverRequiredType(targetType)
       && !current.legacy_cover_included
       && (newStatus === 'Published' || publishedCoverMetadataChanged)
+    let finalPdfBuilt = false
     if (shouldBuildFinalPdf) {
-      const finalFields = await buildPublishedPdfFields(id, {
-        ...updates,
-        type: targetType,
-        file_url: (updates.file_url as string | null | undefined) ?? current.file_url,
-        source_pdf_url: (updates.source_pdf_url as string | null | undefined) ?? current.source_pdf_url,
-      })
-      if (finalFields) Object.assign(updates, finalFields)
+      try {
+        const { buildPublishedPdfFields } = await import('@/lib/documents/publish')
+        const finalFields = await buildPublishedPdfFields(id, {
+          ...updates,
+          type: targetType,
+          file_url: (updates.file_url as string | null | undefined) ?? current.file_url,
+          source_pdf_url: (updates.source_pdf_url as string | null | undefined) ?? current.source_pdf_url,
+        })
+        if (finalFields) {
+          Object.assign(updates, finalFields)
+          finalPdfBuilt = true
+        }
+      } catch (err) {
+        if (current.status !== 'Published') throw err
+        console.error('Published document cover regeneration failed; saving metadata only', {
+          documentId: id,
+          code: current.document_code,
+          error: toMsg(err),
+        })
+        warnings.push('บันทึกข้อมูลแล้ว แต่สร้าง PDF หน้าปกใหม่ไม่สำเร็จ กรุณาลอง Regenerate cover อีกครั้ง')
+      }
     }
 
     if (Object.keys(updates).length === 0) {
@@ -520,7 +535,7 @@ export async function PATCH(
       detail: auditDetail,
     }).then(undefined, () => {})
 
-    if (shouldBuildFinalPdf) {
+    if (finalPdfBuilt) {
       supabaseAdmin.from('audit_log').insert({
         action: current.status === 'Published' ? 'document.cover_regenerate' : 'document.cover_generate',
         user_id: actor.id,
@@ -531,6 +546,9 @@ export async function PATCH(
       }).then(undefined, () => {})
     }
 
+    if (warnings.length > 0) {
+      return NextResponse.json({ ...doc, warnings })
+    }
     return NextResponse.json(doc)
   } catch (err) {
     return NextResponse.json({ error: toMsg(err) }, { status: 500 })

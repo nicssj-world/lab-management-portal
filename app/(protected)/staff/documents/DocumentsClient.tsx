@@ -2739,6 +2739,8 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
 
   // ── Save callback ────────────────────────────────────────────
   function handleSaved(saved: Document) {
+    const warnings = (saved as Document & { warnings?: unknown }).warnings
+    const firstWarning = Array.isArray(warnings) && typeof warnings[0] === 'string' ? warnings[0] : null
     if (editDoc) {
       setDocs((d) => d.map((x) => x.id === saved.id ? saved : x))
       if (editDoc.type !== saved.type) {
@@ -2759,6 +2761,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
       }))
       toast('Upload เอกสารแล้ว')
     }
+    if (firstWarning) toast(firstWarning, false)
     setModalOpen(false)
     setEditDoc(null)
   }
