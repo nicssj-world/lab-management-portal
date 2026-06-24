@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
+import { getLabCodeInfo } from '@/lib/equipment-lab-code'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 
 const TEMPLATE_HEADERS = [
-  'CBH Code', 'Hospital Asset No.', 'Department', 'Equipment Type',
+  'LAB Code', 'Hospital Asset No.', 'Department', 'Equipment Type',
   'Manufacturer', 'Model', 'Serial Number', 'Equipment Vendor',
   'Owner', 'Owner Status', 'Risk', 'Classification',
   'Purchase Date', 'Warranty Exp.', 'Purchase Price',
@@ -13,9 +14,9 @@ const TEMPLATE_HEADERS = [
 ]
 
 const TEMPLATE_EXAMPLE = [
-  'CBH3367', '6515-047-0001/1/36', 'โลหิตวิทยา', 'BATH, WATER 24 ลิตร',
+  'LAB-CC-02-001', '6515-047-0001/1/36', 'โลหิตวิทยา', 'BATH, WATER 24 ลิตร',
   'MEMMERT', 'W760', '92.0311', 'บ.ยูไนเต็ด อินทรูเมนท์ จำกัด',
-  'รพ', 'Hospital', 'Medium', 'Diagnostic',
+  'Hospital', 'Hospital', 'Medium', 'Centrifuge',
   '1993-09-17', '2025-12-31', '23320',
   'Active', 'ต้องการ', 'นาย ก ข ค', '',
 ]
@@ -78,16 +79,26 @@ function parsePrice(value: unknown): number | null {
 
 function parseBoolean(value: unknown): boolean {
   const s = String(value ?? '').trim().toLowerCase()
-  return s === 'ต้องการ' || s === 'true' || s === 'yes' || s === '1'
+  return s === 'ต้องการ' || s === 'รอขึ้นทะเบียน' || s === 'true' || s === 'yes' || s === '1'
 }
 
 // Column header → DB field mapping (flexible: tries multiple header names)
 const COLUMN_MAP: Record<string, string> = {
+  'lab code': 'cbh_code',
+  'labcode': 'cbh_code',
+  'รหัส lab': 'cbh_code',
+  'รหัสเครื่องมือ lab': 'cbh_code',
+  'รอรหัส lab': 'cbh_code_pending',
+  'รอขึ้นทะเบียน lab': 'cbh_code_pending',
+  'รอขึ้นทะเบียนรหัส lab': 'cbh_code_pending',
   'cbh code': 'cbh_code',
   'cbhcode': 'cbh_code',
   'hospital asset no': 'hospital_asset_no',
   'hospital asset no.': 'hospital_asset_no',
   'asset no': 'hospital_asset_no',
+  'รอเลขสินทรัพย์': 'hospital_asset_no_pending',
+  'รอขึ้นทะเบียนเลขสินทรัพย์': 'hospital_asset_no_pending',
+  'รอขึ้นทะเบียนสินทรัพย์': 'hospital_asset_no_pending',
   'department': 'department',
   'แผนก': 'department',
   'owner': 'owner',
@@ -134,6 +145,12 @@ type ExistingEquipment = {
   department: string
 }
 
+type ResponsibleUser = {
+  id: string
+  ephis_id: string | null
+  name: string
+}
+
 type DuplicateIssue = {
   row: number
   field: string
@@ -148,13 +165,23 @@ type DuplicateRow = {
   row: number
   equipment_type: string
   department: string
+  action: 'insert' | 'update' | 'blocked'
+  target: string | null
   canImport: boolean
   reason: string | null
   issues: DuplicateIssue[]
 }
 
+type ImportPlan = {
+  row: number
+  action: 'insert' | 'update' | 'blocked'
+  targetId: string | null
+  target: string | null
+  reason: string | null
+}
+
 const DUPLICATE_FIELDS: { key: 'cbh_code' | 'hospital_asset_no' | 'serial_number'; label: string }[] = [
-  { key: 'cbh_code', label: 'CBH Code' },
+  { key: 'cbh_code', label: 'LAB Code' },
   { key: 'hospital_asset_no', label: 'Hospital Asset No' },
   { key: 'serial_number', label: 'Serial Number' },
 ]
@@ -209,6 +236,29 @@ async function getExistingEquipment(): Promise<ExistingEquipment[]> {
   return rows
 }
 
+async function getResponsibleUsers(): Promise<ResponsibleUser[]> {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, ephis_id, name')
+    .eq('status', 'active')
+    .is('deleted_at', null)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as ResponsibleUser[]
+}
+
+function findResponsibleUser(value: unknown, users: ResponsibleUser[]): ResponsibleUser | null {
+  const key = normalizeKey(value)
+  if (!key) return null
+
+  const byEphis = users.filter(user => normalizeKey(user.ephis_id) === key)
+  if (byEphis.length === 1) return byEphis[0]
+
+  const byName = users.filter(user => normalizeKey(user.name) === key)
+  if (byName.length === 1) return byName[0]
+
+  return null
+}
+
 function addToMap<T>(map: Map<string, T[]>, key: string, value: T) {
   if (!key) return
   const list = map.get(key) ?? []
@@ -216,8 +266,8 @@ function addToMap<T>(map: Map<string, T[]>, key: string, value: T) {
   map.set(key, list)
 }
 
-async function findDuplicateIssues(records: ImportRecord[]): Promise<DuplicateIssue[]> {
-  const existing = await getExistingEquipment()
+async function findDuplicateIssues(records: ImportRecord[], existing = [] as ExistingEquipment[]): Promise<DuplicateIssue[]> {
+  if (existing.length === 0) existing = await getExistingEquipment()
   const existingByField = new Map<string, ExistingEquipment[]>()
   const fileByField = new Map<string, ImportRecord[]>()
   const existingByFallback = new Map<string, ExistingEquipment[]>()
@@ -307,8 +357,110 @@ async function findDuplicateIssues(records: ImportRecord[]): Promise<DuplicateIs
   return issues.sort((a, b) => a.row - b.row || a.field.localeCompare(b.field))
 }
 
-function buildDuplicateRows(duplicates: DuplicateIssue[]): DuplicateRow[] {
+function uniqueMatch(
+  map: Map<string, ExistingEquipment[]>,
+  key: string,
+  fieldLabel: string,
+): { eq: ExistingEquipment | null; reason: string | null } {
+  if (!key) return { eq: null, reason: null }
+  const matches = map.get(key) ?? []
+  if (matches.length === 0) return { eq: null, reason: null }
+  if (matches.length === 1) return { eq: matches[0], reason: null }
+  return { eq: null, reason: `${fieldLabel} นี้ตรงกับเครื่องมือในระบบมากกว่า 1 รายการ` }
+}
+
+function buildImportPlans(records: ImportRecord[], existing: ExistingEquipment[]): ImportPlan[] {
+  const byAsset = new Map<string, ExistingEquipment[]>()
+  const bySerial = new Map<string, ExistingEquipment[]>()
+  const byLabCode = new Map<string, ExistingEquipment[]>()
+
+  for (const eq of existing) {
+    addToMap(byAsset, normalizeKey(eq.hospital_asset_no), eq)
+    addToMap(bySerial, normalizeKey(eq.serial_number), eq)
+    addToMap(byLabCode, normalizeKey(eq.cbh_code), eq)
+  }
+
+  const plans: ImportPlan[] = records.map((record) => {
+    const assetKey = normalizeKey(record.hospital_asset_no)
+    const serialKey = normalizeKey(record.serial_number)
+    const labCodeKey = normalizeKey(record.cbh_code)
+
+    const assetMatch = uniqueMatch(byAsset, assetKey, 'Hospital Asset No')
+    const serialMatch = uniqueMatch(bySerial, serialKey, 'Serial Number')
+    if (assetMatch.reason || serialMatch.reason) {
+      return {
+        row: record.__rowNumber,
+        action: 'blocked',
+        targetId: null,
+        target: null,
+        reason: assetMatch.reason ?? serialMatch.reason,
+      }
+    }
+
+    const candidates = [assetMatch.eq, serialMatch.eq].filter(Boolean) as ExistingEquipment[]
+    const target = candidates[0] ?? null
+    if (target && candidates.some(eq => eq.id !== target.id)) {
+      return {
+        row: record.__rowNumber,
+        action: 'blocked',
+        targetId: null,
+        target: null,
+        reason: 'Hospital Asset No และ Serial Number ตรงกับคนละเครื่องในระบบ',
+      }
+    }
+
+    const labMatches = byLabCode.get(labCodeKey) ?? []
+    if (labCodeKey && labMatches.some(eq => eq.id !== target?.id)) {
+      return {
+        row: record.__rowNumber,
+        action: 'blocked',
+        targetId: null,
+        target: null,
+        reason: 'LAB Code ซ้ำกับเครื่องมืออื่นในระบบ',
+      }
+    }
+
+    if (target) {
+      return {
+        row: record.__rowNumber,
+        action: 'update',
+        targetId: target.id,
+        target: displayEquipment(target),
+        reason: null,
+      }
+    }
+
+    return {
+      row: record.__rowNumber,
+      action: 'insert',
+      targetId: null,
+      target: null,
+      reason: null,
+    }
+  })
+
+  const targetCounts = new Map<string, number>()
+  for (const plan of plans) {
+    if (plan.action === 'update' && plan.targetId) {
+      targetCounts.set(plan.targetId, (targetCounts.get(plan.targetId) ?? 0) + 1)
+    }
+  }
+
+  return plans.map(plan => {
+    if (plan.action === 'update' && plan.targetId && (targetCounts.get(plan.targetId) ?? 0) > 1) {
+      return {
+        ...plan,
+        action: 'blocked' as const,
+        reason: 'ไฟล์นี้มีหลายแถวที่ตรงกับเครื่องมือเดียวกันในระบบ',
+      }
+    }
+    return plan
+  })
+}
+
+function buildDuplicateRows(duplicates: DuplicateIssue[], plans = [] as ImportPlan[]): DuplicateRow[] {
   const byRow = new Map<number, DuplicateIssue[]>()
+  const planByRow = new Map(plans.map(plan => [plan.row, plan]))
   for (const issue of duplicates) {
     const list = byRow.get(issue.row) ?? []
     list.push(issue)
@@ -318,13 +470,19 @@ function buildDuplicateRows(duplicates: DuplicateIssue[]): DuplicateRow[] {
   return Array.from(byRow.entries())
     .map(([row, issues]) => {
       const first = issues[0]
-      const hardBlock = issues.some(issue => issue.field === 'CBH Code' && issue.source === 'database')
+      const plan = planByRow.get(row)
+      const labFileDuplicate = issues.some(issue => issue.field === 'LAB Code' && issue.source === 'file')
+      const hardBlock = plan?.action === 'blocked'
+        || labFileDuplicate
+        || issues.some(issue => issue.field === 'LAB Code' && issue.source === 'database' && plan?.action !== 'update')
       return {
         row,
         equipment_type: first.equipment_type,
         department: first.department,
+        action: plan?.action ?? 'insert',
+        target: plan?.target ?? null,
         canImport: !hardBlock,
-        reason: hardBlock ? 'CBH Code ซ้ำกับข้อมูลในระบบ ต้องข้ามหรือแก้รหัสก่อน' : null,
+        reason: plan?.reason ?? (labFileDuplicate ? 'LAB Code ซ้ำในไฟล์ ต้องข้ามหรือแก้รหัสก่อน' : hardBlock ? 'LAB Code ซ้ำกับข้อมูลในระบบ ต้องข้ามหรือแก้รหัสก่อน' : null),
         issues,
       }
     })
@@ -335,6 +493,18 @@ function toInsertRecord(record: ImportRecord) {
   const { __rowNumber, ...insertable } = record
   void __rowNumber
   return insertable
+}
+
+function toUpdateRecord(record: ImportRecord) {
+  const { __rowNumber, created_by, ...updateable } = record
+  void __rowNumber
+  void created_by
+  const cleaned = Object.fromEntries(
+    Object.entries(updateable).filter(([, value]) => value !== null && value !== undefined && value !== ''),
+  )
+  if (record.cbh_code_pending === true) cleaned.cbh_code = null
+  if (record.hospital_asset_no_pending === true) cleaned.hospital_asset_no = null
+  return cleaned
 }
 
 function parseSkipRows(value: FormDataEntryValue | null) {
@@ -375,7 +545,7 @@ export async function POST(req: NextRequest) {
   for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
     const row = rawRows[i]
     const combined = row.join('|').toLowerCase()
-    if (combined.includes('department') || combined.includes('equipment type') || combined.includes('cbh')) {
+    if (combined.includes('department') || combined.includes('equipment type') || combined.includes('lab code') || combined.includes('cbh')) {
       headerRowIdx = i
       break
     }
@@ -398,20 +568,23 @@ export async function POST(req: NextRequest) {
   const statusCols = headerRow.reduce<number[]>((acc, h, i) => h === 'status' ? [...acc, i] : acc, [])
   if (statusCols.length > 0) colIdx['status'] = statusCols[statusCols.length - 1]
 
+  const responsibleUsers = await getResponsibleUsers()
   const records: ImportRecord[] = []
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i]
     const eqType = String(row[colIdx['equipment_type'] ?? -1] ?? '').trim()
     if (!eqType || eqType.toLowerCase() === 'total' || eqType.toLowerCase() === 'grand total') continue
 
+    const labCode = String(row[colIdx['cbh_code'] ?? -1] ?? '').trim()
     const dept = String(row[colIdx['department'] ?? -1] ?? '').trim()
+    const labInfo = getLabCodeInfo(labCode)
     if (!dept && !eqType) continue
 
     const record: ImportRecord = {
       __rowNumber: headerRowIdx + i + 2,
       created_by: actor.id,
       equipment_type: eqType || 'ไม่ระบุ',
-      department: dept || 'ไม่ระบุ',
+      department: dept || labInfo.department || 'ไม่ระบุ',
     }
 
     const textFields = ['cbh_code', 'hospital_asset_no', 'owner', 'owner_status', 'risk_level',
@@ -422,6 +595,26 @@ export async function POST(req: NextRequest) {
         record[f] = val || null
       }
     }
+    if ('cbh_code_pending' in colIdx) record['cbh_code_pending'] = parseBoolean(row[colIdx['cbh_code_pending']])
+    if ('hospital_asset_no_pending' in colIdx) record['hospital_asset_no_pending'] = parseBoolean(row[colIdx['hospital_asset_no_pending']])
+    if (String(record['cbh_code'] ?? '').trim() === 'รอขึ้นทะเบียน') {
+      record['cbh_code_pending'] = true
+      record['cbh_code'] = null
+    }
+    if (String(record['hospital_asset_no'] ?? '').trim() === 'รอขึ้นทะเบียน') {
+      record['hospital_asset_no_pending'] = true
+      record['hospital_asset_no'] = null
+    }
+    if (record['cbh_code_pending'] === true) record['cbh_code'] = null
+    else if (record['cbh_code']) record['cbh_code_pending'] = false
+    if (record['hospital_asset_no_pending'] === true) record['hospital_asset_no'] = null
+    else if (record['hospital_asset_no']) record['hospital_asset_no_pending'] = false
+    const responsibleUser = findResponsibleUser(record['responsible_person'], responsibleUsers)
+    if (responsibleUser) {
+      record['responsible_user_id'] = responsibleUser.id
+      record['responsible_person'] = responsibleUser.name
+    }
+    if (labInfo.classification) record['classification'] = labInfo.classification
 
     if ('purchase_date' in colIdx) record['purchase_date'] = parseDate(row[colIdx['purchase_date']])
     if ('warranty_exp' in colIdx) record['warranty_exp'] = parseDate(row[colIdx['warranty_exp']])
@@ -439,12 +632,21 @@ export async function POST(req: NextRequest) {
 
   if (records.length === 0) return NextResponse.json({ error: 'ไม่พบข้อมูลที่นำเข้าได้' }, { status: 422 })
 
-  const duplicates = await findDuplicateIssues(records)
-  const duplicateRows = buildDuplicateRows(duplicates)
+  const existing = await getExistingEquipment()
+  const plans = buildImportPlans(records, existing)
+  const duplicates = await findDuplicateIssues(records, existing)
+  const duplicateRows = buildDuplicateRows(duplicates, plans)
   if (preview) {
+    const insertCount = plans.filter(plan => plan.action === 'insert').length
+    const updateCount = plans.filter(plan => plan.action === 'update').length
+    const blockedCount = plans.filter(plan => plan.action === 'blocked').length
     return NextResponse.json({
       count: records.length,
       rows: records.slice(0, 5).map(toInsertRecord),
+      insertCount,
+      updateCount,
+      blockedCount,
+      plans,
       duplicateCount: duplicates.length,
       duplicates: duplicates.slice(0, 50),
       duplicateRows,
@@ -456,25 +658,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'ไม่มีรายการที่เลือกให้นำเข้า' }, { status: 422 })
   }
 
-  const selectedDuplicates = await findDuplicateIssues(selectedRecords)
-  const hardBlockDuplicates = selectedDuplicates.filter(issue => issue.field === 'CBH Code')
-  if (hardBlockDuplicates.length > 0) {
+  const selectedExisting = await getExistingEquipment()
+  const selectedPlans = buildImportPlans(selectedRecords, selectedExisting)
+  const selectedDuplicates = await findDuplicateIssues(selectedRecords, selectedExisting)
+  const selectedDuplicateRows = buildDuplicateRows(selectedDuplicates, selectedPlans)
+  const blockedRows = selectedDuplicateRows.filter(row => !row.canImport)
+  if (blockedRows.length > 0) {
     return NextResponse.json({
-      error: `ยังมี CBH Code ซ้ำ ${hardBlockDuplicates.length} จุด กรุณาเลือกข้ามหรือแก้ไฟล์ก่อนนำเข้า`,
-      duplicateCount: hardBlockDuplicates.length,
-      duplicates: hardBlockDuplicates.slice(0, 50),
-      duplicateRows: buildDuplicateRows(hardBlockDuplicates),
+      error: `ยังมีรายการที่นำเข้าไม่ได้ ${blockedRows.length} แถว กรุณาเลือกข้ามหรือแก้ไฟล์ก่อนนำเข้า`,
+      duplicateCount: blockedRows.length,
+      duplicates: selectedDuplicates.slice(0, 50),
+      duplicateRows: blockedRows,
     }, { status: 409 })
   }
 
-  // Batch insert 500 per chunk
   let inserted = 0
-  for (let i = 0; i < selectedRecords.length; i += 500) {
-    const batch = selectedRecords.slice(i, i + 500).map(toInsertRecord)
+  let updated = 0
+  const planByRow = new Map(selectedPlans.map(plan => [plan.row, plan]))
+  const insertRecords = selectedRecords.filter(record => planByRow.get(record.__rowNumber)?.action === 'insert')
+  const updateRecords = selectedRecords.filter(record => planByRow.get(record.__rowNumber)?.action === 'update')
+
+  for (const record of updateRecords) {
+    const plan = planByRow.get(record.__rowNumber)
+    if (!plan?.targetId) continue
+    const { error } = await supabaseAdmin
+      .from('equipment')
+      .update(toUpdateRecord(record))
+      .eq('id', plan.targetId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    updated += 1
+  }
+
+  for (let i = 0; i < insertRecords.length; i += 500) {
+    const batch = insertRecords.slice(i, i + 500).map(toInsertRecord)
     const { error } = await supabaseAdmin.from('equipment').insert(batch)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     inserted += batch.length
   }
 
-  return NextResponse.json({ inserted })
+  return NextResponse.json({ inserted, updated })
 }

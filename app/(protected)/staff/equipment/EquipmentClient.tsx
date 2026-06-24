@@ -9,13 +9,23 @@ import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/Select'
 import { StickyScroll } from '@/components/ui/StickyScroll'
-import type { Equipment } from '@/lib/queries/equipment'
+import { getLabCodeInfo } from '@/lib/equipment-lab-code'
+import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
+import type { Equipment, EquipmentSummaryCounts } from '@/lib/queries/equipment'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
 type EquipmentStatus = Equipment['status']
 type RiskLevel = 'High' | 'Medium' | 'Low'
+type EquipmentSortKey = 'name' | 'code'
+type ResponsibleUser = {
+  id: string
+  ephis_id: string | null
+  name: string
+  dept: string | null
+  role: string | null
+}
 
 const STATUS_TABS: { value: string; label: string }[] = [
   { value: '', label: 'ทั้งหมด' },
@@ -51,6 +61,7 @@ type EquipmentListPayload = {
   pageSize?: number
   totalPages?: number
   statusCounts?: Record<string, number>
+  summaryCounts?: EquipmentSummaryCounts
 }
 
 function parseEquipmentPayload(payload: unknown): EquipmentListPayload {
@@ -81,6 +92,36 @@ function formatDate(d: string | null) {
 function formatPrice(n: number | null) {
   if (n == null) return '—'
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function normalizeOwner(value: unknown): string {
+  const raw = String(value ?? '').trim()
+  const key = raw.toLowerCase()
+  if (!raw) return ''
+  if (raw === 'รพ' || raw === 'โรงพยาบาล' || key === 'hospital') return 'Hospital'
+  if (key === 'vendor') return 'Vendor'
+  return raw
+}
+
+function labCodeLabel(item: Pick<Equipment, 'cbh_code' | 'cbh_code_pending'>) {
+  if (item.cbh_code_pending) return 'รอขึ้นทะเบียน'
+  return item.cbh_code || '—'
+}
+
+function compareEquipment(a: Equipment, b: Equipment, sortKey: EquipmentSortKey, sortDir: 'asc' | 'desc') {
+  if (sortKey === 'code') {
+    const av = a.cbh_code_pending ? '' : (a.cbh_code ?? '')
+    const bv = b.cbh_code_pending ? '' : (b.cbh_code ?? '')
+    const aEmpty = !av
+    const bEmpty = !bv
+    if (aEmpty && !bEmpty) return 1
+    if (!aEmpty && bEmpty) return -1
+    const cmp = av.localeCompare(bv, 'th', { numeric: true, sensitivity: 'base' })
+    return sortDir === 'asc' ? cmp : -cmp
+  }
+
+  const cmp = a.equipment_type.localeCompare(b.equipment_type, 'th', { numeric: true, sensitivity: 'base' })
+  return sortDir === 'asc' ? cmp : -cmp
 }
 
 // Converts yyyy-mm-dd → dd/mm/yyyy for display
@@ -145,10 +186,10 @@ function DateInput({ value, onChange, style }: {
 
 const BLANK: Partial<Equipment> = {
   item_no: null, cbh_code: '', cbh_code_pending: false, hospital_asset_no: '', hospital_asset_no_pending: false, department: '',
-  owner: 'รพ', owner_status: '', risk_level: null, classification: '',
+  owner: 'Hospital', owner_status: '', risk_level: null, classification: '',
   equipment_type: '', manufacturer: '', model: '', serial_number: '',
   vendor: '', purchase_date: null, warranty_exp: null, purchase_price: null,
-  status: 'Active', needs_calibration: true, responsible_person: '', purpose: '', remark: '',
+  status: 'Active', needs_calibration: true, responsible_user_id: null, responsible_person: '', purpose: '', remark: '',
   photo_url: null, method_validation_url: null, method_correlation_url: null, manual_url: null,
 }
 
@@ -175,18 +216,44 @@ const labelStyle: React.CSSProperties = {
   fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 4, display: 'block',
 }
 
+function RiskHint() {
+  const term = (text: string, color: string, bg: string) => (
+    <strong style={{ color, background: bg, padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap' }}>
+      {text}
+    </strong>
+  )
+
+  return (
+    <span className="eq-risk-hint">
+      <button type="button" className="eq-risk-hint-btn" aria-label="รายละเอียดระดับความเสี่ยง">?</button>
+      <span className="eq-risk-hint-popover" role="tooltip">
+        <span>
+          {term('High Risk', '#B91C1C', 'rgba(220,38,38,.10)')} หมายถึงเครื่องมือที่ใช้ในการช่วยชีวิต เครื่องมือที่ใช้ในการติดตามสัญญาณชีพ และเครื่องมืออื่น ๆ ที่ชำรุดหรือใช้งานผิดพลาด ซึ่งอาจเป็นเหตุให้เกิดอันตรายขั้นร้ายแรงต่อผู้ป่วยหรือผู้ใช้งาน เช่น ตู้ Biosafety cabinet และ Autoclave
+        </span>
+        <span>
+          {term('Medium Risk', '#B45309', 'rgba(217,119,6,.13)')} หมายถึงเครื่องมือที่ใช้ในการวินิจฉัย ซึ่งอาจเกิดความผิดพลาดจากการใช้งาน ชำรุด ไม่สามารถใช้งานได้ หรือไม่เพียงพอต่อการใช้งาน ทำให้มีผลกระทบต่อความปลอดภัยของผู้ป่วยแต่ไม่ถึงขั้นอันตรายร้ายแรง เช่น Blood bank refrigerators, Blood Gas / pH Analyzers, Centrifuges and Clinical lab equipment, Bio-safety Cabinet Class II และ Microscope
+        </span>
+        <span>
+          {term('Low Risk', '#0E7490', 'rgba(8,145,178,.10)')} หมายถึงเครื่องมือที่ชำรุดไม่สามารถใช้งานได้หรือเกิดความผิดพลาดในการใช้งาน ซึ่งทำให้เกิดผลกระทบต่อผู้ป่วยที่ไม่ร้ายแรง เช่น Electronic Thermometer, Temperature Monitors
+        </span>
+      </span>
+    </span>
+  )
+}
+
 // ─── Add/Edit Modal ───────────────────────────────────────────────────────────
 
 function EquipmentModal({
-  item, onClose, onSaved, departments,
+  item, onClose, onSaved, departments, responsibleUsers,
 }: {
   item: Partial<Equipment> | null
   onClose: () => void
   onSaved: (eq: Equipment) => void
   departments: string[]
+  responsibleUsers: ResponsibleUser[]
 }) {
   const isEdit = !!item?.id
-  const [form, setForm] = useState<Partial<Equipment>>(item ?? BLANK)
+  const [form, setForm] = useState<Partial<Equipment>>(item ? { ...item, owner: normalizeOwner(item.owner) } : BLANK)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [photoFile, setPhotoFile] = useState<File | null>(null)
@@ -209,6 +276,26 @@ function EquipmentModal({
   }
 
   const set = (k: keyof Equipment, v: unknown) => setForm(f => ({ ...f, [k]: v }))
+
+  function setResponsibleUser(userId: string) {
+    const user = responsibleUsers.find(u => u.id === userId)
+    setForm(f => ({
+      ...f,
+      responsible_user_id: user?.id ?? null,
+      responsible_person: user?.name ?? '',
+    }))
+  }
+
+  function setLabCode(value: string) {
+    const cbhCode = value || null
+    const labInfo = getLabCodeInfo(cbhCode)
+    setForm(f => ({
+      ...f,
+      cbh_code: cbhCode,
+      ...(labInfo.department ? { department: labInfo.department } : {}),
+      ...(labInfo.classification ? { classification: labInfo.classification } : {}),
+    }))
+  }
 
   function handlePhotoSelect(file: File) {
     if (file.size > 20 * 1024 * 1024) { setErr('ขนาดรูปเกิน 20 MB'); return }
@@ -318,13 +405,13 @@ function EquipmentModal({
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <label style={{ ...labelStyle, marginBottom: 0 }}>รหัส CBH</label>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>รหัส LAB</label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: 'var(--warning)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={!!form.cbh_code_pending} onChange={e => { set('cbh_code_pending', e.target.checked); if (e.target.checked) set('cbh_code', null) }} style={{ accentColor: 'var(--warning)', width: 13, height: 13, cursor: 'pointer' }} />
                   รอขึ้นทะเบียน
                 </label>
               </div>
-              <input style={{ ...inputStyle, opacity: form.cbh_code_pending ? 0.4 : 1 }} disabled={!!form.cbh_code_pending} value={form.cbh_code ?? ''} onChange={e => set('cbh_code', e.target.value || null)} placeholder="CBH3367" />
+              <input style={{ ...inputStyle, opacity: form.cbh_code_pending ? 0.6 : 1 }} disabled={!!form.cbh_code_pending} value={form.cbh_code_pending ? 'รอขึ้นทะเบียน' : (form.cbh_code ?? '')} onChange={e => setLabCode(e.target.value)} placeholder="LAB-CC-XX-XXX" />
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -334,7 +421,7 @@ function EquipmentModal({
                   รอขึ้นทะเบียน
                 </label>
               </div>
-              <input style={{ ...inputStyle, opacity: form.hospital_asset_no_pending ? 0.4 : 1 }} disabled={!!form.hospital_asset_no_pending} value={form.hospital_asset_no ?? ''} onChange={e => set('hospital_asset_no', e.target.value || null)} placeholder="6515-047-0001/1/36" />
+              <input style={{ ...inputStyle, opacity: form.hospital_asset_no_pending ? 0.6 : 1 }} disabled={!!form.hospital_asset_no_pending} value={form.hospital_asset_no_pending ? 'รอขึ้นทะเบียน' : (form.hospital_asset_no ?? '')} onChange={e => set('hospital_asset_no', e.target.value || null)} placeholder="6515-047-0001/1/36" />
             </div>
             <div>
               <label style={labelStyle}>แผนก <span style={{ color: 'var(--danger)' }}>*</span></label>
@@ -346,14 +433,37 @@ function EquipmentModal({
             </div>
             <div>
               <label style={labelStyle}>ผู้รับผิดชอบ</label>
-              <input style={inputStyle} value={form.responsible_person ?? ''} onChange={e => set('responsible_person', e.target.value || null)} placeholder="ชื่อผู้รับผิดชอบ" />
+              <select
+                style={{ ...inputStyle, marginBottom: 6 }}
+                value={form.responsible_user_id ?? ''}
+                onChange={e => setResponsibleUser(e.target.value)}
+              >
+                <option value="">ไม่ผูกกับผู้ใช้ / กรอกชื่อเอง</option>
+                {responsibleUsers.map(user => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}{user.ephis_id ? ` (${user.ephis_id})` : ''}{user.dept ? ` · ${user.dept}` : ''}
+                  </option>
+                ))}
+              </select>
+              <input
+                style={{ ...inputStyle, opacity: form.responsible_user_id ? 0.65 : 1 }}
+                disabled={!!form.responsible_user_id}
+                value={form.responsible_person ?? ''}
+                onChange={e => {
+                  setForm(f => ({ ...f, responsible_user_id: null, responsible_person: e.target.value || null }))
+                }}
+                placeholder="ชื่อผู้รับผิดชอบ"
+              />
             </div>
             <div>
               <label style={labelStyle}>Classification</label>
               <input style={inputStyle} value={form.classification ?? ''} onChange={e => set('classification', e.target.value || null)} placeholder="Diagnostic / Misc other" />
             </div>
             <div>
-              <label style={labelStyle}>ระดับความเสี่ยง</label>
+              <div style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}>
+                ระดับความเสี่ยง
+                <RiskHint />
+              </div>
               <select style={inputStyle} value={form.risk_level ?? ''} onChange={e => set('risk_level', e.target.value || null)}>
                 <option value="">เลือก</option>
                 <option value="High">High</option>
@@ -393,7 +503,11 @@ function EquipmentModal({
             </div>
             <div>
               <label style={labelStyle}>เจ้าของ</label>
-              <input style={inputStyle} value={form.owner ?? ''} onChange={e => set('owner', e.target.value || null)} placeholder="รพ" />
+              <select style={inputStyle} value={normalizeOwner(form.owner)} onChange={e => set('owner', e.target.value || null)}>
+                <option value="">เลือกเจ้าของ</option>
+                <option value="Hospital">Hospital</option>
+                <option value="Vendor">Vendor</option>
+              </select>
             </div>
             <div>
               <label style={labelStyle}>Owner Status</label>
@@ -579,6 +693,9 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   const [preview, setPreview] = useState<{
     count: number
     rows: Partial<Equipment>[]
+    insertCount?: number
+    updateCount?: number
+    blockedCount?: number
     duplicateCount?: number
     duplicates?: {
       row: number
@@ -593,6 +710,8 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
       row: number
       equipment_type: string
       department: string
+      action?: 'insert' | 'update' | 'blocked'
+      target?: string | null
       canImport: boolean
       reason: string | null
       issues: {
@@ -620,7 +739,9 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     if (!res.ok) { setErr(json.error ?? 'เกิดข้อผิดพลาด') }
     else {
       setPreview(json)
-      setSkippedRows(new Set((json.duplicateRows ?? []).map((row: { row: number }) => row.row)))
+      setSkippedRows(new Set((json.duplicateRows ?? [])
+        .filter((row: { row: number; action?: string; canImport?: boolean }) => row.action !== 'update' || row.canImport === false)
+        .map((row: { row: number }) => row.row)))
     }
     setLoading(false)
   }
@@ -652,8 +773,8 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
         <div style={{ padding: 24 }}>
           <div style={{ padding: '12px 16px', borderRadius: 10, background: 'var(--surface-2)', fontSize: 13, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.7 }}>
             รองรับไฟล์ .xlsx / .xls — ระบบจะอ่าน column header แถวแรกและ map กับ field อัตโนมัติ
-            <br />Column ที่รองรับ: CBH Code, Hospital Asset No, Department, Risk, Equipment Type, Manufacturer, Model, Serial Number, Equipment Vendor, Purchase Date, Warranty Exp, Purchase Price, Status, Remark, ผู้รับผิดชอบ, ต้องการสอบเทียบ
-            <br />ระบบจะตรวจซ้ำจาก CBH Code, Hospital Asset No, Serial Number และกรณีไม่มีเลขอ้างอิงจะเทียบชื่อเครื่องมือ + แผนก
+            <br />Column ที่รองรับ: LAB Code, Hospital Asset No, Department, Risk, Equipment Type, Manufacturer, Model, Serial Number, Equipment Vendor, Purchase Date, Warranty Exp, Purchase Price, Status, Remark, ผู้รับผิดชอบ, ต้องการสอบเทียบ
+            <br />ระบบจะตรวจซ้ำจาก LAB Code, Hospital Asset No, Serial Number และกรณีไม่มีเลขอ้างอิงจะเทียบชื่อเครื่องมือ + แผนก
           </div>
 
           <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -678,11 +799,16 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 8 }}>
                 พบข้อมูล {preview.count} รายการ — ตัวอย่าง 5 แถวแรก:
               </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                <Badge color="green" size="sm">เพิ่มใหม่ {preview.insertCount ?? 0}</Badge>
+                <Badge color="blue" size="sm">อัปเดตเดิม {preview.updateCount ?? 0}</Badge>
+                {!!preview.blockedCount && <Badge color="red" size="sm">ต้องแก้ไข {preview.blockedCount}</Badge>}
+              </div>
               <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: 'var(--surface-2)' }}>
-                      {['Equipment Type', 'Department', 'CBH Code', 'Manufacturer', 'Status'].map(h => (
+                      {['Equipment Type', 'Department', 'LAB Code', 'Manufacturer', 'Status'].map(h => (
                         <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--muted)' }}>{h}</th>
                       ))}
                     </tr>
@@ -712,7 +838,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                       <thead>
                         <tr style={{ background: 'var(--surface-2)' }}>
-                          {['นำเข้า', 'แถว', 'เครื่องมือในไฟล์', 'ซ้ำจาก', 'รายละเอียด'].map(h => (
+                          {['นำเข้า', 'แถว', 'การทำงาน', 'เครื่องมือในไฟล์', 'ซ้ำจาก', 'รายละเอียด'].map(h => (
                             <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
                           ))}
                         </tr>
@@ -743,10 +869,15 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                                 />
                               </td>
                               <td style={{ padding: '8px 10px', color: d.canImport ? 'var(--danger)' : 'var(--muted)', fontWeight: 700 }}>{d.row}</td>
+                              <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                                <Badge color={d.action === 'update' ? 'blue' : d.action === 'blocked' ? 'red' : 'green'} size="sm">
+                                  {d.action === 'update' ? 'อัปเดตเดิม' : d.action === 'blocked' ? 'นำเข้าไม่ได้' : 'เพิ่มใหม่'}
+                                </Badge>
+                              </td>
                               <td style={{ padding: '8px 10px', color: 'var(--ink)' }}>{d.equipment_type} · {d.department}</td>
                               <td style={{ padding: '8px 10px', color: 'var(--muted)' }}>{issueSummary}</td>
                               <td style={{ padding: '8px 10px', color: d.canImport ? 'var(--muted)' : 'var(--danger)' }}>
-                                {detail}
+                                {d.target ? `จะทับ: ${d.target}` : detail}
                               </td>
                             </tr>
                           )
@@ -761,7 +892,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                       onClick={() => setSkippedRows(new Set(duplicateRows.filter(row => !row.canImport).map(row => row.row)))}
                       style={{ border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, padding: 0 }}
                     >
-                      เลือกนำเข้ารายการซ้ำที่อนุญาตทั้งหมด
+                      เลือกนำเข้ารายการที่อนุญาตทั้งหมด
                     </button>
                   </div>
                 </div>
@@ -966,7 +1097,7 @@ function EquipmentDetailModal({ item, onClose, onEdit }: {
           )}
           <DetailRow label="แผนก" value={item.department} />
           <DetailRow label="เลขทะเบียนสินทรัพย์" value={item.hospital_asset_no} />
-          <DetailRow label="CBH Code" value={item.cbh_code ? <span style={{ fontFamily: 'monospace' }}>{item.cbh_code}</span> : null} />
+          <DetailRow label="LAB Code" value={item.cbh_code ? <span style={{ fontFamily: 'monospace' }}>{item.cbh_code}</span> : null} />
           <DetailRow label="Classification" value={item.classification} />
           <DetailRow label="ผู้รับผิดชอบ" value={item.responsible_person} />
           <DetailRow label="เจ้าของ" value={item.owner} />
@@ -1069,6 +1200,7 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const certFileRef = useRef<HTMLInputElement>(null)
+  const currentFiscalYear = getCurrentThaiFiscalYear()
 
   async function handleCertUpload(file: File) {
     if (file.size > 50 * 1024 * 1024) { setErr('ขนาดไฟล์เกิน 50 MB'); return }
@@ -1219,7 +1351,7 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
           </div>
 
           {/* Monthly plan */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>แผน PM / CAL รายเดือน ปี 2569</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>แผน PM / CAL รายเดือน ปีงบประมาณ {currentFiscalYear}</div>
           <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -1880,6 +2012,7 @@ export default function EquipmentClient({
   initialPageSize,
   departments,
   statusCounts,
+  initialSummaryCounts,
   canEdit,
   lastUpdated,
 }: {
@@ -1888,6 +2021,7 @@ export default function EquipmentClient({
   initialPageSize: number
   departments: string[]
   statusCounts: Record<string, number>
+  initialSummaryCounts: EquipmentSummaryCounts
   canEdit: boolean
   lastUpdated: string | null
 }) {
@@ -1895,6 +2029,7 @@ export default function EquipmentClient({
   const [total, setTotal] = useState(initialTotal)
   const [pageSize, setPageSize] = useState(initialPageSize || EQUIPMENT_PAGE_SIZE)
   const [page, setPage] = useState(1)
+  const [sortKey, setSortKey] = useState<EquipmentSortKey>('name')
   const [nameSort, setNameSort] = useState<'asc' | 'desc'>('asc')
   const [newItemId, setNewItemId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -1907,9 +2042,11 @@ export default function EquipmentClient({
   const [loading, setLoading] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({ '': initialTotal, ...statusCounts })
+  const [summaryCounts, setSummaryCounts] = useState<EquipmentSummaryCounts>(initialSummaryCounts)
   const [dashboardItems, setDashboardItems] = useState<Equipment[] | null>(null)
   const [dashboardLoading, setDashboardLoading] = useState(false)
   const [dashboardError, setDashboardError] = useState('')
+  const [responsibleUsers, setResponsibleUsers] = useState<ResponsibleUser[]>([])
 
   const [view, setView] = useState<'list' | 'dashboard' | 'calplan'>('list')
   const [addModal, setAddModal] = useState(false)
@@ -1937,6 +2074,7 @@ export default function EquipmentClient({
       params.set('page', String(page))
       params.set('pageSize', String(pageSize || EQUIPMENT_PAGE_SIZE))
     }
+    params.set('sortBy', sortKey)
     params.set('sortDir', nameSort)
     if (debouncedSearch) params.set('search', debouncedSearch)
     if (statusTab) params.set('status', statusTab)
@@ -1945,7 +2083,7 @@ export default function EquipmentClient({
     if (needsCal) params.set('needs_calibration', needsCal)
     if (pendingReg) params.set('pending_reg', 'true')
     return params
-  }, [debouncedSearch, department, nameSort, needsCal, page, pageSize, pendingReg, riskLevel, statusTab])
+  }, [debouncedSearch, department, nameSort, needsCal, page, pageSize, pendingReg, riskLevel, sortKey, statusTab])
 
   const loadEquipmentList = useCallback(async () => {
     setLoading(true)
@@ -1958,6 +2096,7 @@ export default function EquipmentClient({
       setTotal(Number(parsed.count ?? 0))
       setPageSize(Number(parsed.pageSize ?? EQUIPMENT_PAGE_SIZE))
       if (parsed.statusCounts) setCounts({ '': Number(parsed.statusCounts[''] ?? 0), ...parsed.statusCounts })
+      if (parsed.summaryCounts) setSummaryCounts(parsed.summaryCounts)
     } catch {
       setItems([])
       setTotal(0)
@@ -1969,11 +2108,21 @@ export default function EquipmentClient({
   useEffect(() => {
     setPage(1)
     setNewItemId(null)
-  }, [debouncedSearch, statusTab, department, riskLevel, needsCal, pendingReg, nameSort])
+  }, [debouncedSearch, statusTab, department, riskLevel, needsCal, pendingReg, sortKey, nameSort])
 
   useEffect(() => {
     void loadEquipmentList()
   }, [loadEquipmentList, reloadKey])
+
+  useEffect(() => {
+    fetch('/api/admin/equipment/responsible-users')
+      .then(async res => {
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error ?? 'โหลดรายชื่อผู้ใช้ไม่สำเร็จ')
+        setResponsibleUsers(Array.isArray(json.users) ? json.users : [])
+      })
+      .catch(() => setResponsibleUsers([]))
+  }, [])
 
   useEffect(() => {
     if (view !== 'dashboard' || dashboardItems) return
@@ -1998,6 +2147,18 @@ export default function EquipmentClient({
     ...departments,
     ...initialData.map(i => i.department),
   ])).sort()
+
+  function toggleSort(key: EquipmentSortKey) {
+    setSortKey(current => {
+      if (current === key) {
+        setNameSort(dir => dir === 'asc' ? 'desc' : 'asc')
+        return current
+      }
+      setNameSort('asc')
+      return key
+    })
+    setNewItemId(null)
+  }
 
   function handleSaved(eq: Equipment) {
     setNewItemId(eq.id)
@@ -2057,7 +2218,7 @@ export default function EquipmentClient({
       <th class="c" style="width:40px">ลำดับ</th>
       <th class="l col-fill">ชื่อเครื่องมือ</th>
       <th class="c" style="width:130px">Model</th>
-      <th class="c" style="width:100px">รหัส CBH</th>
+      <th class="c" style="width:100px">รหัส LAB</th>
       <th class="c" style="width:75px">สถานะ</th>
       <th class="c" style="width:120px">วันที่สอบเทียบล่าสุด</th>
       <th class="c" style="width:120px">ผู้รับผิดชอบ</th>
@@ -2131,7 +2292,7 @@ export default function EquipmentClient({
     setExportMenu(false)
     setExportLoading(true)
     try {
-      const params = new URLSearchParams({ all: '1', sortDir: nameSort })
+      const params = new URLSearchParams({ all: '1', sortBy: sortKey, sortDir: nameSort })
       if (scope === 'filtered') {
         if (debouncedSearch) params.set('search', debouncedSearch)
         if (statusTab) params.set('status', statusTab)
@@ -2156,7 +2317,7 @@ export default function EquipmentClient({
 
   // CSV export
   function handleExport() {
-    const headers = ['CBH Code', 'เลขทะเบียนสินทรัพย์', 'แผนก', 'ชื่อเครื่องมือ', 'Manufacturer', 'Model', 'Serial Number', 'Vendor', 'Risk', 'สถานะ', 'ต้องการสอบเทียบ', 'ผู้รับผิดชอบ', 'วันที่ซื้อ', 'วันหมดประกัน', 'ราคา', 'หมายเหตุ']
+    const headers = ['LAB Code', 'เลขทะเบียนสินทรัพย์', 'แผนก', 'ชื่อเครื่องมือ', 'Manufacturer', 'Model', 'Serial Number', 'Vendor', 'Risk', 'สถานะ', 'ต้องการสอบเทียบ', 'ผู้รับผิดชอบ', 'วันที่ซื้อ', 'วันหมดประกัน', 'ราคา', 'หมายเหตุ']
     const rows = items.map(i => [
       i.cbh_code ?? '', i.hospital_asset_no ?? '', i.department, i.equipment_type,
       i.manufacturer ?? '', i.model ?? '', i.serial_number ?? '', i.vendor ?? '',
@@ -2183,17 +2344,32 @@ export default function EquipmentClient({
   const safePage = Math.min(page, totalPages)
   const pageStart = total ? (safePage - 1) * pageSize + 1 : 0
   const pageEnd = Math.min(safePage * pageSize, total)
-  const activeCount = statusTab ? items.filter(i => i.status === 'Active').length : (counts.Active ?? 0)
-  const highRiskCount = items.filter(i => i.risk_level === 'High').length
-  const warrantyAlertCount = items.filter(i => { const ws = warrantyStatus(i.warranty_exp); return ws === 'warn' || ws === 'danger' }).length
-  const calCount = items.filter(i => i.needs_calibration).length
+  const activeCount = summaryCounts.active
+  const highRiskCount = summaryCounts.highRisk
+  const warrantyAlertCount = summaryCounts.warrantyAlert
+  const calCount = summaryCounts.needsCalibration
 
   const SUMMARY_STATS = [
-    { label: 'ใช้งานอยู่', value: activeCount, color: 'var(--success)', bg: 'rgba(22,163,74,.07)', border: 'rgba(22,163,74,.2)' },
-    { label: 'High Risk', value: highRiskCount, color: 'var(--danger)', bg: 'rgba(220,38,38,.07)', border: 'rgba(220,38,38,.2)' },
-    { label: 'ประกันใกล้หมด', value: warrantyAlertCount, color: 'var(--warning)', bg: 'rgba(217,119,6,.07)', border: 'rgba(217,119,6,.2)' },
-    { label: 'ต้องการ PM/CAL', value: calCount, color: 'var(--primary)', bg: 'var(--primary-soft)', border: 'rgba(30,95,173,.2)' },
+    { label: 'ใช้งานอยู่', value: activeCount, icon: 'shieldCheck', color: 'var(--success)', bg: 'linear-gradient(135deg, rgba(22,163,74,.12), rgba(240,253,244,.86))', border: 'rgba(22,163,74,.22)' },
+    { label: 'High Risk', value: highRiskCount, icon: 'alert', color: 'var(--danger)', bg: 'linear-gradient(135deg, rgba(220,38,38,.11), rgba(254,242,242,.88))', border: 'rgba(220,38,38,.22)' },
+    { label: 'ประกันใกล้หมด', value: warrantyAlertCount, icon: 'clock', color: 'var(--warning)', bg: 'linear-gradient(135deg, rgba(217,119,6,.12), rgba(255,251,235,.9))', border: 'rgba(217,119,6,.22)' },
+    { label: 'ต้องการ PM/CAL', value: calCount, icon: 'settings', color: 'var(--primary)', bg: 'linear-gradient(135deg, rgba(30,95,173,.12), rgba(239,246,255,.92))', border: 'rgba(30,95,173,.22)' },
   ]
+
+  const renderPagination = (position: 'top' | 'bottom') => (
+    <div className={`eq-pagination eq-pagination-${position}`} style={{ marginBottom: position === 'top' ? 10 : 0, marginTop: position === 'bottom' ? 12 : 0 }}>
+      <div className="eq-pagination-info">
+        แสดง {pageStart.toLocaleString('th-TH')}-{pageEnd.toLocaleString('th-TH')} จาก {total.toLocaleString('th-TH')} รายการ
+      </div>
+      <div className="eq-pagination-actions">
+        <Button variant="secondary" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage <= 1 || loading}>ก่อนหน้า</Button>
+        <span className="eq-page-chip">
+          หน้า {safePage.toLocaleString('th-TH')} / {totalPages.toLocaleString('th-TH')}
+        </span>
+        <Button variant="secondary" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages || loading}>ถัดไป</Button>
+      </div>
+    </div>
+  )
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages)
@@ -2205,19 +2381,71 @@ export default function EquipmentClient({
   }
 
   return (
-    <div style={{ padding: '0 0 48px' }}>
+    <div className="eq-page-shell" style={{ padding: '0 0 48px' }}>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg) } }
         @keyframes eqFadeUp { from { opacity: 0; transform: translateY(5px) } to { opacity: 1; transform: translateY(0) } }
         @keyframes toastIn { from { opacity: 0; transform: translateX(12px) } to { opacity: 1; transform: translateX(0) } }
-        .eq-row { transition: background .12s, box-shadow .12s; cursor: pointer; }
-        .eq-row:hover { background: var(--surface-2) !important; box-shadow: inset 3px 0 0 var(--primary); }
+        .eq-page-shell { position: relative; isolation: isolate; }
+        .eq-page-shell::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: -1; background:
+          radial-gradient(circle at 12% 4%, rgba(37,99,235,.10), transparent 26rem),
+          radial-gradient(circle at 86% 12%, rgba(14,165,233,.10), transparent 24rem),
+          linear-gradient(180deg, rgba(248,251,255,.75), transparent 18rem);
+        }
+        .eq-header-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .eq-soft-button { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,.82); cursor: pointer; font-size: 13px; font-family: inherit; color: var(--ink); box-shadow: 0 1px 2px rgba(15,23,42,.04); transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease, background .14s ease; }
+        .eq-soft-button:hover { transform: translateY(-1px); border-color: rgba(30,95,173,.35); box-shadow: 0 8px 22px rgba(15,23,42,.08); }
+        .eq-view-switcher { display: flex; gap: 4px; margin-bottom: 18px; background: rgba(255,255,255,.74); border: 1px solid rgba(148,163,184,.22); border-radius: 12px; padding: 4px; width: fit-content; box-shadow: 0 8px 26px rgba(15,23,42,.05); backdrop-filter: blur(10px); }
+        .eq-view-button { display: flex; align-items: center; gap: 7px; padding: 7px 16px; border-radius: 9px; border: none; background: transparent; color: var(--muted); font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; transition: color .15s, background .15s, box-shadow .15s, transform .15s; }
+        .eq-view-button:hover { color: var(--primary); }
+        .eq-view-button.is-active { background: var(--card); color: var(--primary); box-shadow: 0 2px 10px rgba(15,23,42,.08); transform: translateY(-1px); }
+        .eq-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+        .eq-stat { position: relative; overflow: hidden; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; box-shadow: 0 10px 30px rgba(15,23,42,.06); transition: transform .15s, box-shadow .15s, border-color .15s; }
+        .eq-stat::after { content: ''; position: absolute; right: -22px; top: -34px; width: 86px; height: 86px; border-radius: 999px; background: currentColor; opacity: .08; }
+        .eq-stat:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(15,23,42,.10) !important; }
+        .eq-stat-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(255,255,255,.68); box-shadow: inset 0 0 0 1px rgba(255,255,255,.68), 0 6px 16px rgba(15,23,42,.06); }
+        .eq-status-tabs { display: flex; gap: 4px; flex-wrap: nowrap; overflow-x: auto; margin-bottom: 0; padding: 5px; border: 1px solid rgba(148,163,184,.2); border-radius: 12px 12px 0 0; background: rgba(255,255,255,.72); }
+        .eq-status-tab { display: flex; align-items: center; gap: 7px; padding: 8px 13px; border: none; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; transition: all .15s; white-space: nowrap; }
+        .eq-status-tab:hover { color: var(--primary); background: rgba(30,95,173,.06); }
+        .eq-status-tab.is-active { background: var(--card); color: var(--primary); box-shadow: 0 2px 10px rgba(15,23,42,.08); }
+        .eq-filter-panel { display: flex; gap: 8px; flex-wrap: wrap; margin: -1px 0 14px; padding: 12px 14px; background: rgba(255,255,255,.78); border: 1px solid rgba(148,163,184,.2); border-top: none; border-radius: 0 0 12px 12px; align-items: center; box-shadow: 0 14px 30px rgba(15,23,42,.045); }
+        .eq-search-box { flex: 1 1 240px; min-width: 180px; }
+        .eq-filter-select { padding: 9px 12px; border-radius: 9px; border: 1px solid var(--border); font-size: 13px; font-family: inherit; color: var(--ink); background: var(--card); cursor: pointer; outline: none; transition: border-color .14s, box-shadow .14s, transform .14s; }
+        .eq-filter-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(30,95,173,.10); outline: none; }
+        .eq-filter-select:hover { border-color: rgba(30,95,173,.28); }
+        .eq-pending-toggle { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 9px; cursor: pointer; font-family: inherit; font-size: 13px; border: 1px solid var(--border); background: var(--card); color: var(--muted); font-weight: 600; transition: all .15s; }
+        .eq-pending-toggle:hover { border-color: rgba(217,119,6,.32); color: var(--warning); }
+        .eq-pending-toggle.is-active { border-color: var(--warning); background: rgba(217,119,6,.1); color: var(--warning); font-weight: 800; }
+        .eq-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 2px 2px; }
+        .eq-pagination-info { font-size: 12px; color: var(--muted); font-weight: 800; letter-spacing: .01em; }
+        .eq-pagination-actions { display: flex; align-items: center; gap: 8px; }
+        .eq-page-chip { min-width: 94px; text-align: center; color: var(--primary); background: var(--primary-soft); border: 1px solid rgba(30,95,173,.14); border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 900; }
+        .eq-table-card { overflow: hidden; border-color: rgba(148,163,184,.24) !important; box-shadow: 0 18px 42px rgba(15,23,42,.07); }
+        .eq-table { width: 100%; border-collapse: separate !important; border-spacing: 0; }
+        .eq-table thead th { position: sticky; top: 0; z-index: 5; background: linear-gradient(180deg, #F8FBFF, #EFF5FC) !important; border-bottom: 1px solid rgba(148,163,184,.28); }
+        .eq-row { transition: background .12s, box-shadow .12s, transform .12s; cursor: pointer; }
+        .eq-row:hover { background: linear-gradient(90deg, rgba(30,95,173,.07), rgba(255,255,255,.92)) !important; box-shadow: inset 3px 0 0 var(--primary); }
         .eq-actions { opacity: 1; }
-        .eq-stat { transition: transform .15s, box-shadow .15s; }
-        .eq-stat:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.08) !important; }
+        .eq-code-badge { display: inline-flex; align-items: center; font-size: 10.5px; padding: 3px 9px; border-radius: 999px; font-weight: 800; box-shadow: inset 0 0 0 1px rgba(255,255,255,.5); }
         .eq-toast { animation: toastIn .22s ease both; }
-        .eq-filter-select { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; font-family: inherit; color: var(--ink); background: var(--card); cursor: pointer; outline: none; }
-        .eq-filter-select:focus { border-color: var(--primary); outline: none; }
+        .eq-risk-hint { position: relative; display: inline-flex; align-items: center; }
+        .eq-risk-hint-btn { width: 17px; height: 17px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 800; line-height: 1; cursor: help; font-family: inherit; padding: 0; }
+        .eq-risk-hint-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+        .eq-risk-hint-popover { position: absolute; left: 50%; bottom: calc(100% + 9px); transform: translateX(-50%) translateY(4px); width: min(440px, calc(100vw - 48px)); display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); box-shadow: 0 14px 40px rgba(15,23,42,.18); color: var(--ink); font-size: 12px; font-weight: 500; line-height: 1.55; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .14s ease, transform .14s ease, visibility .14s ease; z-index: 1200; text-transform: none; letter-spacing: 0; }
+        .eq-risk-hint-popover::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; transform: translateX(-50%) rotate(45deg); background: var(--card); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+        .eq-risk-hint:hover .eq-risk-hint-popover,
+        .eq-risk-hint:focus-within .eq-risk-hint-popover { opacity: 1; pointer-events: auto; visibility: visible; transform: translateX(-50%) translateY(0); }
+        @media (max-width: 920px) {
+          .eq-stat-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+          .eq-header-actions { justify-content: flex-start; }
+        }
+        @media (max-width: 620px) {
+          .eq-stat-grid { grid-template-columns: 1fr; }
+          .eq-view-switcher { width: 100%; }
+          .eq-view-button { flex: 1; justify-content: center; padding-left: 10px; padding-right: 10px; }
+          .eq-pagination { justify-content: center; }
+          .eq-pagination-info { width: 100%; text-align: center; }
+        }
       `}</style>
 
       <PageHeader
@@ -2225,7 +2453,7 @@ export default function EquipmentClient({
         eyebrow={lastUpdated ? `${total.toLocaleString('th-TH')} รายการ · อัปเดตล่าสุด ${new Date(lastUpdated).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}` : `${total.toLocaleString('th-TH')} รายการ`}
         marginBottom={16}
         actions={
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="eq-header-actions">
             {/* Export PDF split button */}
             <div ref={exportMenuRef} style={{ position: 'relative' }}>
               <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
@@ -2266,7 +2494,7 @@ export default function EquipmentClient({
             </div>
             {canEdit && (
               <>
-                <button onClick={() => setImportModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)' }}>
+                <button onClick={() => setImportModal(true)} className="eq-soft-button">
                   <Icon name="upload" size={14} /> นำเข้า Excel
                 </button>
                 <Button variant="primary" icon="plus" onClick={() => setAddModal(true)}>เพิ่มเครื่องมือ</Button>
@@ -2277,17 +2505,9 @@ export default function EquipmentClient({
       />
 
       {/* View switcher */}
-      <div style={{ display: 'flex', gap: 3, marginBottom: 20, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 3, width: 'fit-content' }}>
+      <div className="eq-view-switcher">
         {([['dashboard', 'chart', 'Dashboard'], ['list', 'beaker', 'รายการ'], ['calplan', 'clock', 'แผนสอบเทียบ']] as const).map(([key, icon, label]) => (
-          <button key={key} onClick={() => setView(key)} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 16px', borderRadius: 8, border: 'none',
-            background: view === key ? 'var(--card)' : 'transparent',
-            color: view === key ? 'var(--primary)' : 'var(--muted)',
-            fontWeight: view === key ? 700 : 500, fontSize: 13,
-            cursor: 'pointer', fontFamily: 'inherit',
-            boxShadow: view === key ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
-            transition: 'all .15s',
-          }}>
+          <button key={key} onClick={() => setView(key)} className={`eq-view-button ${view === key ? 'is-active' : ''}`}>
             <Icon name={icon} size={14} /> {label}
           </button>
         ))}
@@ -2308,11 +2528,11 @@ export default function EquipmentClient({
       {view === 'list' && <>
 
       {/* Summary stat strip */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div className="eq-stat-grid">
         {SUMMARY_STATS.map(s => (
-          <div key={s.label} className="eq-stat" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRadius: 10, background: s.bg, border: `1px solid ${s.border}`, boxShadow: '0 1px 3px rgba(0,0,0,.04)', minWidth: 130, flex: '1 1 130px', maxWidth: 200 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 8, background: `${s.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: s.color }} />
+          <div key={s.label} className="eq-stat" style={{ color: s.color, background: s.bg, border: `1px solid ${s.border}` }}>
+            <div className="eq-stat-icon">
+              <Icon name={s.icon} size={17} stroke={2} />
             </div>
             <div>
               <div style={{ fontSize: 22, fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.value}</div>
@@ -2323,23 +2543,14 @@ export default function EquipmentClient({
       </div>
 
       {/* Status Tabs — underline style */}
-      <div style={{ display: 'flex', gap: 0, flexWrap: 'nowrap', overflowX: 'auto', marginBottom: 0, borderBottom: '1px solid var(--border)' }}>
+      <div className="eq-status-tabs">
         {STATUS_TABS.map(t => {
           const isActive = statusTab === t.value
           return (
             <button
               key={t.value}
               onClick={() => setStatusTab(t.value)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '9px 16px', border: 'none', borderRadius: 0,
-                borderBottom: isActive ? '2px solid var(--primary)' : '2px solid transparent',
-                background: 'transparent',
-                color: isActive ? 'var(--primary)' : 'var(--muted)',
-                fontWeight: isActive ? 700 : 500, fontSize: 13,
-                cursor: 'pointer', fontFamily: 'inherit', transition: 'color .15s, border-color .15s',
-                whiteSpace: 'nowrap', marginBottom: -1,
-              }}
+              className={`eq-status-tab ${isActive ? 'is-active' : ''}`}
             >
               {t.value && (
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: TAB_DOT[t.value] ?? 'var(--muted)', display: 'inline-block', flexShrink: 0, opacity: isActive ? 1 : 0.55 }} />
@@ -2359,10 +2570,10 @@ export default function EquipmentClient({
       </div>
 
       {/* Filter row */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0 14px', padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 10, alignItems: 'center' }}>
+      <div className="eq-filter-panel">
         <Icon name="filter" size={13} style={{ color: 'var(--muted)', flexShrink: 0 }} />
-        <div style={{ flex: '1 1 200px', minWidth: 160 }}>
-          <Input value={search} onChange={setSearch} placeholder="ค้นหาชื่อ, CBH, Serial, ผู้รับผิดชอบ..." />
+        <div className="eq-search-box">
+          <Input value={search} onChange={setSearch} placeholder="ค้นหาชื่อ, LAB, Serial, ผู้รับผิดชอบ..." />
         </div>
         <select value={department} onChange={e => setDepartment(e.target.value)} className="eq-filter-select" style={{ minWidth: 148 }}>
           <option value="">ทุกแผนก</option>
@@ -2381,36 +2592,17 @@ export default function EquipmentClient({
         </select>
         <button
           onClick={() => setPendingReg(v => !v)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
-            border: `1px solid ${pendingReg ? 'var(--warning)' : 'var(--border)'}`,
-            background: pendingReg ? 'rgba(217,119,6,.1)' : 'var(--card)',
-            color: pendingReg ? 'var(--warning)' : 'var(--muted)',
-            fontWeight: pendingReg ? 700 : 400,
-            transition: 'all .15s',
-          }}
+          className={`eq-pending-toggle ${pendingReg ? 'is-active' : ''}`}
         >
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: pendingReg ? 'var(--warning)' : 'var(--border)', flexShrink: 0, display: 'inline-block' }} />
           รอขึ้นทะเบียน
         </button>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>
-          แสดง {pageStart.toLocaleString('th-TH')}-{pageEnd.toLocaleString('th-TH')} จาก {total.toLocaleString('th-TH')} รายการ
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Button variant="secondary" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage <= 1 || loading}>ก่อนหน้า</Button>
-          <span style={{ minWidth: 92, textAlign: 'center', color: 'var(--muted)', fontSize: 12, fontWeight: 800 }}>
-            หน้า {safePage.toLocaleString('th-TH')} / {totalPages.toLocaleString('th-TH')}
-          </span>
-          <Button variant="secondary" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages || loading}>ถัดไป</Button>
-        </div>
-      </div>
+      {renderPagination('top')}
 
       {/* Table */}
-      <Card padding={0}>
+      <Card padding={0} className="eq-table-card">
         {loading && (
           <div style={{ padding: '20px' }}>
             {[...Array(6)].map((_, i) => (
@@ -2435,16 +2627,22 @@ export default function EquipmentClient({
         )}
         {!loading && items.length > 0 && (
           <StickyScroll>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table className="eq-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', borderBottom: '2px solid var(--border)' }}>
                   <th
-                    onClick={() => { setNameSort(s => s === 'asc' ? 'desc' : 'asc'); setNewItemId(null) }}
+                    onClick={() => toggleSort('code')}
+                    style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: sortKey === 'code' ? 'var(--primary)' : 'var(--muted)', whiteSpace: 'nowrap', letterSpacing: .6, textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
+                  >
+                    รหัส {sortKey === 'code' ? (nameSort === 'asc' ? '↑' : '↓') : ''}
+                  </th>
+                  <th
+                    onClick={() => toggleSort('name')}
                     style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap', letterSpacing: .6, textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
                   >
-                    ชื่อเครื่องมือ {nameSort === 'asc' ? '↑' : '↓'}
+                    ชื่อเครื่องมือ {sortKey === 'name' ? (nameSort === 'asc' ? '↑' : '↓') : ''}
                   </th>
-                  {['แผนก', 'Manufacturer / Model', 'Serial No.', 'Risk', 'ประกัน', 'ผู้รับผิดชอบ', 'PM/CAL', 'สถานะ', ''].map(h => (
+                  {['แผนก', 'Manufacturer / Model', 'Serial No.', 'Risk', 'ผู้รับผิดชอบ', 'PM/CAL', 'สถานะ', ''].map(h => (
                     <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap', letterSpacing: .6, textTransform: 'uppercase' }}>{h}</th>
                   ))}
                 </tr>
@@ -2453,25 +2651,33 @@ export default function EquipmentClient({
                 {[...items].sort((a, b) => {
                   if (a.id === newItemId) return -1
                   if (b.id === newItemId) return 1
-                  return nameSort === 'asc'
-                    ? a.equipment_type.localeCompare(b.equipment_type, 'th')
-                    : b.equipment_type.localeCompare(a.equipment_type, 'th')
-                }).map((item, idx) => {
-                  const ws = warrantyStatus(item.warranty_exp)
-                  return (
+                  return compareEquipment(a, b, sortKey, nameSort)
+                }).map((item, idx) => (
                     <tr
                       key={item.id}
                       className="eq-row"
                       onClick={() => setDetailItem(item)}
                       style={{ borderBottom: '1px solid var(--border)', animation: idx < 12 ? `eqFadeUp .2s ease ${idx * 22}ms both` : undefined }}
                     >
-                      {/* Name + codes */}
+                      {/* LAB Code */}
+                      <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+                        <span
+                          className="eq-code-badge"
+                          style={{
+                            fontSize: 10.5, fontFamily: item.cbh_code_pending ? 'inherit' : 'monospace',
+                            color: item.cbh_code_pending ? 'var(--warning)' : 'var(--primary)',
+                            background: item.cbh_code_pending ? 'rgba(217,119,6,.10)' : 'var(--primary-soft)',
+                            border: `1px solid ${item.cbh_code_pending ? 'rgba(217,119,6,.24)' : 'transparent'}`,
+                            letterSpacing: item.cbh_code_pending ? 0 : .3,
+                          }}
+                        >
+                          {labCodeLabel(item)}
+                        </span>
+                      </td>
+                      {/* Name */}
                       <td style={{ padding: '11px 14px', minWidth: 220, maxWidth: 280 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.35 }}>{item.equipment_type}</div>
                         <div style={{ display: 'flex', gap: 5, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
-                          {item.cbh_code && (
-                            <span style={{ fontSize: 10.5, fontFamily: 'monospace', color: 'var(--primary)', background: 'var(--primary-soft)', padding: '1px 7px', borderRadius: 4, letterSpacing: .3 }}>{item.cbh_code}</span>
-                          )}
                           {item.hospital_asset_no && (
                             <span style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'monospace' }}>{item.hospital_asset_no}</span>
                           )}
@@ -2491,15 +2697,6 @@ export default function EquipmentClient({
                         {item.risk_level
                           ? <Badge color={RISK_BADGE[item.risk_level as RiskLevel]}>{item.risk_level}</Badge>
                           : <span style={{ color: 'var(--border)', fontSize: 16 }}>—</span>}
-                      </td>
-                      {/* Warranty */}
-                      <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
-                        {item.warranty_exp ? (
-                          <span style={{ fontSize: 12, color: ws === 'danger' ? 'var(--danger)' : ws === 'warn' ? 'var(--warning)' : 'var(--muted)', fontWeight: (ws === 'warn' || ws === 'danger') ? 600 : 400, display: 'flex', alignItems: 'center', gap: 3 }}>
-                            {(ws === 'warn' || ws === 'danger') && <Icon name="alert" size={11} />}
-                            {formatDate(item.warranty_exp)}
-                          </span>
-                        ) : <span style={{ color: 'var(--border)', fontSize: 16 }}>—</span>}
                       </td>
                       {/* Responsible */}
                       <td style={{ padding: '11px 14px', fontSize: 12.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{item.responsible_person ?? <span style={{ color: 'var(--border)' }}>—</span>}</td>
@@ -2556,13 +2753,14 @@ export default function EquipmentClient({
                         </div>
                       </td>
                     </tr>
-                  )
-                })}
+                ))}
               </tbody>
             </table>
           </StickyScroll>
         )}
       </Card>
+
+      {items.length > 0 && renderPagination('bottom')}
 
       </>}
 
@@ -2573,6 +2771,7 @@ export default function EquipmentClient({
           onClose={() => { setAddModal(false); setEditItem(null) }}
           onSaved={handleSaved}
           departments={allDepts}
+          responsibleUsers={responsibleUsers}
         />
       )}
       {deleteItem && <DeleteConfirm item={deleteItem} onClose={() => setDeleteItem(null)} onDeleted={handleDeleted} />}
