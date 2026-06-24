@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getRolePermissions } from '@/lib/permissions'
+import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import {
   getEquipmentDepartments,
   getEquipmentLastUpdated,
@@ -15,7 +15,7 @@ export default async function EquipmentPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: actor } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
-  const perms = actor?.role ? await getRolePermissions(actor.role) : {}
+  const perms = actor?.role ? await getPermissionsWithEquipmentOverride(actor.role, user!.id) : {}
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') === 'none') redirect('/staff/dashboard')
   const canEdit = perms['ทะเบียนเครื่องมือ'] === 'edit'
 

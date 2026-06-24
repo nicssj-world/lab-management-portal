@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getRolePermissions } from '@/lib/permissions'
+import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
@@ -42,7 +42,7 @@ function isValidDocType(t: unknown): t is DocType {
 export async function GET(req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const perms = await getRolePermissions(actor.role)
+  const perms = await getPermissionsWithEquipmentOverride(actor.role, actor.id)
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') === 'none')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const perms = await getRolePermissions(actor.role)
+  const perms = await getPermissionsWithEquipmentOverride(actor.role, actor.id)
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') !== 'edit')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 export async function PATCH(req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const perms = await getRolePermissions(actor.role)
+  const perms = await getPermissionsWithEquipmentOverride(actor.role, actor.id)
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') !== 'edit')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -119,7 +119,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const perms = await getRolePermissions(actor.role)
+  const perms = await getPermissionsWithEquipmentOverride(actor.role, actor.id)
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') !== 'edit')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 

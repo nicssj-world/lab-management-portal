@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getRolePermissions } from '@/lib/permissions'
+import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getActor() {
@@ -18,7 +18,7 @@ export async function PATCH(
 ) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const perms = await getRolePermissions(actor.role)
+  const perms = await getPermissionsWithEquipmentOverride(actor.role, actor.id)
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') !== 'edit')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -41,7 +41,7 @@ export async function DELETE(
 ) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const perms = await getRolePermissions(actor.role)
+  const perms = await getPermissionsWithEquipmentOverride(actor.role, actor.id)
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') !== 'edit')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
