@@ -431,9 +431,19 @@ export async function PATCH(
         const canPatchXlsx = isXlsxFile(fileRef)
         if (!canPatchDocx && !canPatchXlsx) return
         patchedKeys.add(key)
-        const patchedSize = canPatchDocx
-          ? await patchR2DocxObject(key, finalHeaderMetadata)
-          : await patchR2XlsxObject(key, finalHeaderMetadata)
+        let patchedSize: number | null = null
+        try {
+          patchedSize = canPatchDocx
+            ? await patchR2DocxObject(key, finalHeaderMetadata)
+            : await patchR2XlsxObject(key, finalHeaderMetadata)
+        } catch (err) {
+          console.warn('Skipping document source metadata patch', {
+            key,
+            name,
+            error: toMsg(err),
+          })
+          return
+        }
         if (patchedSize !== null) updates[sizeField] = patchedSize
       }
 

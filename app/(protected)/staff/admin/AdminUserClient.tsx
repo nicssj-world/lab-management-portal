@@ -423,13 +423,13 @@ function DocumentProfileModal({ user, onClose, onSaved, showToast }: DocumentPro
 }
 
 // ─── Skeleton row ─────────────────────────────────────────────────────────────
-function SkeletonRow() {
+function SkeletonRow({ showEquipmentColumn = false }: { showEquipmentColumn?: boolean }) {
   const cell = (w: number) => (
     <td style={{ padding: '12px 16px' }}>
       <div style={{ height: 14, width: w, borderRadius: 4, background: 'var(--surface-2)', animation: 'pulse 1.5s ease-in-out infinite' }} />
     </td>
   )
-  return <tr>{cell(120)}{cell(60)}{cell(160)}{cell(120)}{cell(60)}{cell(90)}{cell(60)}{cell(60)}</tr>
+  return <tr>{cell(120)}{cell(60)}{cell(160)}{cell(120)}{cell(60)}{cell(90)}{cell(60)}{showEquipmentColumn && cell(90)}{cell(60)}</tr>
 }
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
@@ -778,8 +778,11 @@ export function AdminUserClient({ canAdminUsers, canManageDocumentProfiles }: Ad
   const [documentProfileUser, setDocumentProfileUser] = useState<UserProfile | null>(null)
   const [confirm, setConfirm]     = useState<{ msg: string; onConfirm: () => void } | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [equipmentEditors, setEquipmentEditors] = useState<Set<string>>(new Set())
+  const [equipmentSaving, setEquipmentSaving] = useState<string | null>(null)
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const showEquipmentColumn = canAdminUsers
 
   const fetchUsers = useCallback(async (f: UserFilters, page: number, sf: string, sd: string) => {
     setLoading(true)
@@ -807,9 +810,21 @@ export function AdminUserClient({ canAdminUsers, canManageDocumentProfiles }: Ad
     setLoading(false)
   }, [])
 
+  const fetchEquipmentEditors = useCallback(async () => {
+    if (!canAdminUsers) return
+    const res = await fetch('/api/admin/equipment/editors')
+    if (!res.ok) return
+    const data = await res.json().catch(() => ({}))
+    setEquipmentEditors(new Set(Array.isArray(data.user_ids) ? data.user_ids : []))
+  }, [canAdminUsers])
+
   useEffect(() => {
     fetchUsers(filters, pagination.page, sortField, sortDir)
   }, [sortField, sortDir]) // eslint-disable-line
+
+  useEffect(() => {
+    fetchEquipmentEditors()
+  }, [fetchEquipmentEditors])
 
   function applyFilter(partial: Partial<UserFilters>) {
     const next = { ...filters, ...partial }
@@ -859,6 +874,41 @@ export function AdminUserClient({ canAdminUsers, canManageDocumentProfiles }: Ad
         else { const d = await res.json(); showToast(d.error ?? 'เกิดข้อผิดพลาด', 'error') }
       },
     })
+  }
+
+  async function toggleEquipmentEditor(user: UserProfile) {
+    if (!canAdminUsers) return
+    if (user.role === 'Admin' || user.role === 'Manager') return
+
+    const enabled = !equipmentEditors.has(user.id)
+    setEquipmentSaving(user.id)
+    setEquipmentEditors((prev) => {
+      const next = new Set(prev)
+      if (enabled) next.add(user.id)
+      else next.delete(user.id)
+      return next
+    })
+
+    const res = await fetch('/api/admin/equipment/editors', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user.id, enabled }),
+    })
+
+    setEquipmentSaving(null)
+    if (res.ok) {
+      showToast(enabled ? 'ให้สิทธิ์แก้ไขทะเบียนเครื่องมือแล้ว' : 'ถอนสิทธิ์แก้ไขทะเบียนเครื่องมือแล้ว')
+      return
+    }
+
+    setEquipmentEditors((prev) => {
+      const next = new Set(prev)
+      if (enabled) next.delete(user.id)
+      else next.add(user.id)
+      return next
+    })
+    const data = await res.json().catch(() => ({}))
+    showToast(data.error ?? 'อัปเดตสิทธิ์เครื่องมือไม่สำเร็จ', 'error')
   }
 
   const activeFilters = [filters.role, filters.dept, filters.status].filter(Boolean).length
@@ -952,16 +1002,19 @@ export function AdminUserClient({ canAdminUsers, canManageDocumentProfiles }: Ad
                 <SortTh label="แผนก"           field="dept"      sortField={sortField} sortDir={sortDir} onClick={handleSort} />
                 <SortTh label="สถานะ"          field="status"    sortField={sortField} sortDir={sortDir} onClick={handleSort} />
                 <SortTh label="วันที่สร้าง"    field="created_at" sortField={sortField} sortDir={sortDir} onClick={handleSort} />
+                {showEquipmentColumn && (
+                  <th style={{ padding: '11px 16px', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', borderBottom: '1px solid var(--border)', letterSpacing: '.04em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>เครื่องมือ</th>
+                )}
                 <th style={{ padding: '11px 16px', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', borderBottom: '1px solid var(--border)', letterSpacing: '.04em', textTransform: 'uppercase' }} />
               </tr>
             </thead>
             <tbody>
               {loading
-                ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
+                ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} showEquipmentColumn={showEquipmentColumn} />)
                 : fetchError
                 ? (
                   <tr>
-                    <td colSpan={8} style={{ padding: '32px 24px', textAlign: 'center' }}>
+                    <td colSpan={showEquipmentColumn ? 9 : 8} style={{ padding: '32px 24px', textAlign: 'center' }}>
                       <div style={{ fontSize: 13, color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 18px', display: 'inline-block', maxWidth: 480 }}>
                         <strong>โหลดข้อมูลไม่สำเร็จ:</strong> {fetchError}
                       </div>
@@ -971,7 +1024,7 @@ export function AdminUserClient({ canAdminUsers, canManageDocumentProfiles }: Ad
                 : users.length === 0
                 ? (
                   <tr>
-                    <td colSpan={8} style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)' }}>
+                    <td colSpan={showEquipmentColumn ? 9 : 8} style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)' }}>
                       <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
                       <div style={{ fontSize: 14, fontWeight: 600 }}>ไม่พบผู้ใช้งาน</div>
                       {activeFilters > 0 && <div style={{ fontSize: 12, marginTop: 4 }}>ลองปรับตัวกรองหรือคำค้นหา</div>}
@@ -999,6 +1052,34 @@ export function AdminUserClient({ canAdminUsers, canManageDocumentProfiles }: Ad
                     <td style={{ padding: '12px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap' }}>
                       {u.created_at ? new Date(u.created_at).toLocaleDateString('th-TH') : '—'}
                     </td>
+                    {showEquipmentColumn && (
+                      <td style={{ padding: '12px 16px' }}>
+                        {u.role === 'Admin' || u.role === 'Manager' ? (
+                          <Badge color="blue" size="sm">ตาม Role</Badge>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => toggleEquipmentEditor(u)}
+                            disabled={equipmentSaving === u.id}
+                            title={equipmentEditors.has(u.id) ? 'ถอนสิทธิ์แก้ไขทะเบียนเครื่องมือ' : 'ให้สิทธิ์แก้ไขทะเบียนเครื่องมือ'}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: 6,
+                              border: equipmentEditors.has(u.id) ? '1px solid #86EFAC' : '1px solid var(--border)',
+                              background: equipmentEditors.has(u.id) ? '#F0FDF4' : 'transparent',
+                              cursor: equipmentSaving === u.id ? 'wait' : 'pointer',
+                              fontSize: 12,
+                              color: equipmentEditors.has(u.id) ? '#15803D' : 'var(--muted)',
+                              fontFamily: 'inherit',
+                              whiteSpace: 'nowrap',
+                              opacity: equipmentSaving === u.id ? 0.65 : 1,
+                            }}
+                          >
+                            {equipmentSaving === u.id ? 'กำลังบันทึก...' : equipmentEditors.has(u.id) ? 'Equipment editor' : 'View'}
+                          </button>
+                        )}
+                      </td>
+                    )}
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         {canManageDocumentProfiles && (

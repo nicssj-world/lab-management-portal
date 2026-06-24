@@ -148,7 +148,7 @@ const BLANK: Partial<Equipment> = {
   owner: 'รพ', owner_status: '', risk_level: null, classification: '',
   equipment_type: '', manufacturer: '', model: '', serial_number: '',
   vendor: '', purchase_date: null, warranty_exp: null, purchase_price: null,
-  status: 'Active', needs_calibration: false, responsible_person: '', purpose: '', remark: '',
+  status: 'Active', needs_calibration: true, responsible_person: '', purpose: '', remark: '',
   photo_url: null, method_validation_url: null, method_correlation_url: null, manual_url: null,
 }
 
@@ -239,13 +239,19 @@ function EquipmentModal({
           body: JSON.stringify({ fileName: photoFile.name, fileType: photoFile.type, fileSize: photoFile.size }),
         })
         const { uploadUrl, key, error: presignErr } = await presignRes.json()
-        if (presignErr) { setErr(presignErr); return }
-        await fetch(uploadUrl, { method: 'PUT', body: photoFile, headers: { 'Content-Type': photoFile.type } })
+        if (!presignRes.ok || presignErr) { setErr(presignErr ?? 'ไม่สามารถสร้าง URL อัพโหลดรูปได้'); return }
+        const uploadRes = await fetch(uploadUrl, { method: 'PUT', body: photoFile, headers: { 'Content-Type': photoFile.type } })
+        if (!uploadRes.ok) { setErr('อัพโหลดรูปไม่สำเร็จ กรุณาลองใหม่'); return }
         const saveRes = await fetch(`/api/admin/equipment/${json.id}/photo`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ key }),
         })
+        if (!saveRes.ok) {
+          const errData = await saveRes.json()
+          setErr(errData.error ?? 'บันทึกรูปไม่สำเร็จ')
+          return
+        }
         const saveData = await saveRes.json()
         json.photo_url = saveData.photo_url
       } else if (removePhoto && isEdit && item?.photo_url) {
@@ -266,8 +272,9 @@ function EquipmentModal({
             body: JSON.stringify({ doc_type: docType, fileName: file.name, fileType: file.type, fileSize: file.size }),
           })
           const { uploadUrl, key, error: presignErr } = await presignRes.json()
-          if (presignErr) { setErr(presignErr); return }
-          await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+          if (!presignRes.ok || presignErr) { setErr(presignErr ?? `ไม่สามารถสร้าง URL อัพโหลดไฟล์ ${docType} ได้`); return }
+          const uploadRes = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+          if (!uploadRes.ok) { setErr(`อัพโหลดไฟล์ ${docType} ไม่สำเร็จ กรุณาลองใหม่`); return }
           const saveRes = await fetch(`/api/admin/equipment/${json.id}/docs`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ doc_type: docType, key }),
@@ -569,7 +576,34 @@ function EquipmentModal({
 
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [file, setFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<{ count: number; rows: Partial<Equipment>[] } | null>(null)
+  const [preview, setPreview] = useState<{
+    count: number
+    rows: Partial<Equipment>[]
+    duplicateCount?: number
+    duplicates?: {
+      row: number
+      field: string
+      value: string
+      equipment_type: string
+      department: string
+      source: 'database' | 'file'
+      matched_with: string
+    }[]
+    duplicateRows?: {
+      row: number
+      equipment_type: string
+      department: string
+      canImport: boolean
+      reason: string | null
+      issues: {
+        field: string
+        value: string
+        source: 'database' | 'file'
+        matched_with: string
+      }[]
+    }[]
+  } | null>(null)
+  const [skippedRows, setSkippedRows] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
   const [err, setErr] = useState('')
@@ -584,7 +618,10 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     const res = await fetch('/api/admin/equipment/import', { method: 'POST', body: fd })
     const json = await res.json()
     if (!res.ok) { setErr(json.error ?? 'เกิดข้อผิดพลาด') }
-    else setPreview(json)
+    else {
+      setPreview(json)
+      setSkippedRows(new Set((json.duplicateRows ?? []).map((row: { row: number }) => row.row)))
+    }
     setLoading(false)
   }
 
@@ -593,12 +630,16 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     setImporting(true); setErr('')
     const fd = new FormData()
     fd.append('file', file)
+    fd.append('skip_rows', JSON.stringify(Array.from(skippedRows)))
     const res = await fetch('/api/admin/equipment/import', { method: 'POST', body: fd })
     const json = await res.json()
     if (!res.ok) { setErr(json.error ?? 'เกิดข้อผิดพลาด'); setImporting(false); return }
     setImporting(false)
     onImported()
   }
+
+  const selectedImportCount = preview ? Math.max(0, preview.count - skippedRows.size) : 0
+  const duplicateRows = preview?.duplicateRows ?? []
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -612,10 +653,11 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
           <div style={{ padding: '12px 16px', borderRadius: 10, background: 'var(--surface-2)', fontSize: 13, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.7 }}>
             รองรับไฟล์ .xlsx / .xls — ระบบจะอ่าน column header แถวแรกและ map กับ field อัตโนมัติ
             <br />Column ที่รองรับ: CBH Code, Hospital Asset No, Department, Risk, Equipment Type, Manufacturer, Model, Serial Number, Equipment Vendor, Purchase Date, Warranty Exp, Purchase Price, Status, Remark, ผู้รับผิดชอบ, ต้องการสอบเทียบ
+            <br />ระบบจะตรวจซ้ำจาก CBH Code, Hospital Asset No, Serial Number และกรณีไม่มีเลขอ้างอิงจะเทียบชื่อเครื่องมือ + แผนก
           </div>
 
           <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => { setFile(e.target.files?.[0] ?? null); setPreview(null) }} />
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => { setFile(e.target.files?.[0] ?? null); setPreview(null); setSkippedRows(new Set()) }} />
             <button onClick={() => fileRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 8, border: '1px dashed var(--border)', background: 'var(--surface-2)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)' }}>
               <Icon name="upload" size={15} />
               {file ? file.name : 'เลือกไฟล์ Excel'}
@@ -658,6 +700,108 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                   </tbody>
                 </table>
               </div>
+              {duplicateRows.length > 0 && (
+                <div style={{ marginTop: 14, border: '1px solid rgba(220,38,38,.28)', borderRadius: 10, overflow: 'hidden', background: 'rgba(220,38,38,.05)' }}>
+                  <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(220,38,38,.20)', color: 'var(--danger)', fontSize: 13, fontWeight: 700, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span>พบรายการซ้ำ {preview.duplicateCount} จุด — เลือกแถวที่จะนำเข้า</span>
+                    <span style={{ color: 'var(--muted)', fontWeight: 600 }}>
+                      จะนำเข้า {selectedImportCount} จาก {preview.count} รายการ
+                    </span>
+                  </div>
+                  <div style={{ maxHeight: 220, overflow: 'auto', background: 'var(--card)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--surface-2)' }}>
+                          {['นำเข้า', 'แถว', 'เครื่องมือในไฟล์', 'ซ้ำจาก', 'รายละเอียด'].map(h => (
+                            <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {duplicateRows.map((d) => {
+                          const checked = !skippedRows.has(d.row)
+                          const issueSummary = d.issues.map(issue => `${issue.field}${issue.value ? `: ${issue.value}` : ''}`).join(' / ')
+                          const detail = d.reason ?? d.issues.map(issue => `${issue.source === 'database' ? 'ในระบบ' : 'ในไฟล์'}: ${issue.matched_with}`).join(' | ')
+                          return (
+                            <tr key={d.row} style={{ borderTop: '1px solid var(--border)', opacity: d.canImport ? 1 : 0.72 }}>
+                              <td style={{ padding: '8px 10px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={!d.canImport}
+                                  onChange={e => {
+                                    const shouldImport = e.target.checked
+                                    setSkippedRows(prev => {
+                                      const next = new Set(prev)
+                                      if (shouldImport) next.delete(d.row)
+                                      else next.add(d.row)
+                                      return next
+                                    })
+                                  }}
+                                  style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: d.canImport ? 'pointer' : 'not-allowed' }}
+                                  title={d.canImport ? 'เลือกเพื่อนำเข้า' : d.reason ?? 'ไม่สามารถนำเข้าได้'}
+                                />
+                              </td>
+                              <td style={{ padding: '8px 10px', color: d.canImport ? 'var(--danger)' : 'var(--muted)', fontWeight: 700 }}>{d.row}</td>
+                              <td style={{ padding: '8px 10px', color: 'var(--ink)' }}>{d.equipment_type} · {d.department}</td>
+                              <td style={{ padding: '8px 10px', color: 'var(--muted)' }}>{issueSummary}</td>
+                              <td style={{ padding: '8px 10px', color: d.canImport ? 'var(--muted)' : 'var(--danger)' }}>
+                                {detail}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ padding: '9px 14px', borderTop: '1px solid rgba(220,38,38,.20)', fontSize: 12, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <span>ค่าเริ่มต้นคือข้ามรายการซ้ำทั้งหมด กดติ๊กเพื่อเลือกนำเข้าเฉพาะแถวที่ต้องการ</span>
+                    <button
+                      type="button"
+                      onClick={() => setSkippedRows(new Set(duplicateRows.filter(row => !row.canImport).map(row => row.row)))}
+                      style={{ border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, padding: 0 }}
+                    >
+                      เลือกนำเข้ารายการซ้ำที่อนุญาตทั้งหมด
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!!preview.duplicateCount && preview.duplicateCount > 0 && duplicateRows.length === 0 && (
+                <div style={{ marginTop: 14, border: '1px solid rgba(220,38,38,.28)', borderRadius: 10, overflow: 'hidden', background: 'rgba(220,38,38,.05)' }}>
+                  <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(220,38,38,.20)', color: 'var(--danger)', fontSize: 13, fontWeight: 700 }}>
+                    พบรายการซ้ำ {preview.duplicateCount} จุด
+                  </div>
+                  <div style={{ maxHeight: 220, overflow: 'auto', background: 'var(--card)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--surface-2)' }}>
+                          {['แถว', 'เช็คจาก', 'ค่า', 'เครื่องมือในไฟล์', 'ซ้ำกับ'].map(h => (
+                            <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(preview.duplicates ?? []).map((d, i) => (
+                          <tr key={`${d.row}-${d.field}-${i}`} style={{ borderTop: '1px solid var(--border)' }}>
+                            <td style={{ padding: '8px 10px', color: 'var(--danger)', fontWeight: 700 }}>{d.row}</td>
+                            <td style={{ padding: '8px 10px', color: 'var(--ink)', whiteSpace: 'nowrap' }}>{d.field}</td>
+                            <td style={{ padding: '8px 10px', color: 'var(--muted)' }}>{d.value || '—'}</td>
+                            <td style={{ padding: '8px 10px', color: 'var(--ink)' }}>{d.equipment_type} · {d.department}</td>
+                            <td style={{ padding: '8px 10px', color: 'var(--muted)' }}>
+                              {d.source === 'database' ? 'ในระบบ: ' : 'ในไฟล์: '}{d.matched_with}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {preview.duplicateCount > (preview.duplicates?.length ?? 0) && (
+                    <div style={{ padding: '8px 14px', borderTop: '1px solid rgba(220,38,38,.20)', fontSize: 12, color: 'var(--muted)' }}>
+                      แสดง {preview.duplicates?.length ?? 0} รายการแรกจากทั้งหมด {preview.duplicateCount} จุด
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -669,8 +813,8 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
               {loading ? 'กำลังอ่านไฟล์...' : 'ตรวจสอบข้อมูล'}
             </button>
           ) : (
-            <button onClick={handleImport} disabled={importing} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: 'var(--success)', color: '#fff', cursor: importing ? 'not-allowed' : 'pointer', fontSize: 13, fontFamily: 'inherit', opacity: importing ? 0.6 : 1 }}>
-              {importing ? 'กำลังนำเข้า...' : `นำเข้า ${preview.count} รายการ`}
+            <button onClick={handleImport} disabled={importing || selectedImportCount <= 0} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: selectedImportCount <= 0 ? 'var(--muted)' : 'var(--success)', color: '#fff', cursor: (importing || selectedImportCount <= 0) ? 'not-allowed' : 'pointer', fontSize: 13, fontFamily: 'inherit', opacity: (importing || selectedImportCount <= 0) ? 0.6 : 1 }}>
+              {importing ? 'กำลังนำเข้า...' : `นำเข้า ${selectedImportCount} รายการ`}
             </button>
           )}
         </div>

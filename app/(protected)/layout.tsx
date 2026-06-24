@@ -4,7 +4,7 @@ import { StaffSidebar } from '@/components/layout/StaffSidebar'
 import { StaffTopbar } from '@/components/layout/StaffTopbar'
 import { PermissionProvider } from '@/context/PermissionContext'
 import { SidebarProvider } from '@/context/SidebarContext'
-import { getRolePermissions } from '@/lib/permissions'
+import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { ensureOwnProfile } from '@/lib/auth/profile'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -21,7 +21,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     admin: 'Admin', staff: 'Manager', editor: 'Medical Technologist', viewer: 'Assistant',
   }
   const role = profile.role ? (LEGACY_ROLES[profile.role] ?? profile.role) : undefined
-  const permissions = role ? await getRolePermissions(role) : {}
+  const permissions = role ? await getPermissionsWithEquipmentOverride(role, user.id) : {}
   if (['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(profile.doc_role ?? '')) {
     permissions['เอกสารคุณภาพ'] = 'edit'
   }

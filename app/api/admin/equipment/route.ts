@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getRolePermissions } from '@/lib/permissions'
+import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
 
 const DEFAULT_PAGE_SIZE = 50
@@ -59,9 +59,11 @@ function applyEquipmentFilters(query: any, searchParams: URLSearchParams) {
 }
 
 export async function GET(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const actor = await getActor()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const perms = await getPermissionsWithEquipmentOverride(actor.role, actor.id)
+  if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') === 'none')
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = req.nextUrl
   const all = searchParams.get('all') === '1' || searchParams.get('all') === 'true'
@@ -107,13 +109,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const perms = await getRolePermissions(actor.role)
+  const perms = await getPermissionsWithEquipmentOverride(actor.role, actor.id)
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') !== 'edit')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
   if (body.cbh_code !== undefined && body.cbh_code?.trim() === '') body.cbh_code = null
   if (body.hospital_asset_no !== undefined && body.hospital_asset_no?.trim() === '') body.hospital_asset_no = null
+  if (body.status === 'Inactive') body.needs_calibration = false
   const { data, error } = await supabaseAdmin
     .from('equipment')
     .insert({ ...body, created_by: actor.id })

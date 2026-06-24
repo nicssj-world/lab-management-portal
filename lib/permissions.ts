@@ -30,3 +30,22 @@ export async function getRolePermissions(role: string): Promise<Permissions> {
   }
   return perms
 }
+
+export async function getPermissionsWithEquipmentOverride(
+  role: string,
+  userId: string,
+): Promise<Permissions> {
+  const perms = await getRolePermissions(role)
+  if (normalizeRole(role) === 'Admin') return perms
+
+  const { data, error } = await supabaseAdmin
+    .from('equipment_editors')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  // Keep existing role-based behaviour if the readiness SQL has not been run yet.
+  if (error) return perms
+  if (data?.user_id) perms['ทะเบียนเครื่องมือ'] = 'edit'
+  return perms
+}
