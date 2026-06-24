@@ -7,6 +7,7 @@ import { downloadSignature } from '@/lib/signatures'
 import { DEFAULT_DOCUMENT_AUDIENCE, isCoverRequiredType } from '@/lib/documents/workflow'
 import { generateQualityCoverPdf, mergeCoverWithPdf, type CoverPerson } from '@/lib/documents/cover-pdf'
 import { detectPdfHeader } from '@/lib/documents/detect-header'
+import { appendRevisionHistoryPdf, generateRevisionHistoryPdfForDocument } from '@/lib/documents/revision-history-pdf'
 
 const COVER_TEMPLATE_VERSION = 'quality-cover-v1'
 
@@ -125,7 +126,11 @@ async function coverPerson(profile: PersonProfile | null, fallbackName: string |
   }
 }
 
-export async function buildPublishedPdfFields(documentId: string, overrides: Record<string, unknown> = {}) {
+export async function buildPublishedPdfFields(
+  documentId: string,
+  overrides: Record<string, unknown> = {},
+  options: { removeExistingPortalHistory?: boolean } = {},
+) {
   const { data, error } = await supabaseAdmin
     .from('documents')
     .select('id, document_code, title, type, department, revision, owner_id, reviewer_id, approver_id, approved_by_id, published_by_id, owner_name, reviewer_name, approver_name, file_url, file_name, source_pdf_url, source_pdf_name, edit_date, approved_at, effective_date, audience_text')
@@ -144,7 +149,12 @@ export async function buildPublishedPdfFields(documentId: string, overrides: Rec
   const revision = detected.revision ?? doc.revision
   const effectiveDateStr = detected.effectiveDate ?? doc.effective_date
 
-  const stampedContentBytes = Buffer.from(contentBytes)
+  const historyPdf = await generateRevisionHistoryPdfForDocument(documentId, doc)
+  const stampedContentBytes = Buffer.from(await appendRevisionHistoryPdf(
+    Buffer.from(contentBytes),
+    historyPdf,
+    { removeExistingPortalHistory: options.removeExistingPortalHistory ?? true },
+  ))
 
   const ownerProfile = await loadProfileByName(doc.owner_name) || (!doc.owner_name ? await loadProfile(doc.owner_id) : null)
   const reviewerProfile = await loadProfile(doc.reviewer_id) || await loadProfileByName(doc.reviewer_name) || (!doc.reviewer_name ? await loadProfile(doc.approved_by_id) : null)
@@ -169,6 +179,7 @@ export async function buildPublishedPdfFields(documentId: string, overrides: Rec
     approved_at: doc.approved_at,
     effective_date: effectiveDateStr,
     audience_text: doc.audience_text || DEFAULT_DOCUMENT_AUDIENCE,
+    revision_history_appended: true,
     ...(Object.keys(detected).length > 0 ? { detected_header: detected } : {}),
     owner: { id: ownerProfile?.id ?? null, name: owner.name, position: owner.position, signature_url: ownerProfile?.signature_url ?? null },
     reviewer: { id: reviewerProfile?.id ?? null, name: reviewer.name, position: reviewer.position, signature_url: reviewerProfile?.signature_url ?? null },

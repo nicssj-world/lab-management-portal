@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { getActor, jsonUnauthorized } from '@/lib/auth/guards'
+import { generateRevisionHistoryPdfForDocument } from '@/lib/documents/revision-history-pdf'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -36,13 +37,33 @@ async function uploadHistoryFile(file: File, documentId: string) {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const actor = await getActor()
   if (!actor) return jsonUnauthorized()
 
   const { id } = await params
+  if (req.nextUrl.searchParams.get('format') === 'pdf') {
+    const { data: doc, error: docErr } = await supabaseAdmin
+      .from('documents')
+      .select('id, document_code')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (docErr) return NextResponse.json({ error: docErr.message }, { status: 500 })
+    if (!doc) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
+
+    const pdf = await generateRevisionHistoryPdfForDocument(id)
+    const safeCode = String(doc.document_code ?? id).replace(/[^a-zA-Z0-9._-]/g, '_')
+    return new NextResponse(Buffer.from(pdf), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${safeCode || 'revision-history'}-revision-history.pdf"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
 
   const { data, error } = await supabaseAdmin
     .from('document_revisions')

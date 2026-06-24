@@ -508,11 +508,24 @@ export async function stampPublishedPdfFooter(
 ): Promise<Buffer> {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
   const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true } as Parameters<typeof PDFDocument.load>[1])
-  const font = await embedReadablePdfFont(pdfDoc, StandardFonts.Helvetica)
-  const size = 10
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const size = 8
   const footerText = `${documentCode} | ${formatRevision(revision)} | Effective date: ${toEnShortDate(date)}`
 
-  for (const page of pdfDoc.getPages()) {
+  let pageTexts: string[] = []
+  try {
+    const { getDocumentProxy, extractText } = await import('unpdf')
+    const proxy = await getDocumentProxy(new Uint8Array(buffer))
+    const { text } = await extractText(proxy, { mergePages: false })
+    pageTexts = Array.isArray(text) ? text.map(String) : []
+  } catch {
+    // stamp all pages if extraction fails
+  }
+
+  const pages = pdfDoc.getPages()
+  for (let i = 1; i < pages.length; i++) {
+    if (pageTexts[i]?.includes('Fm-QP-LAB-01/03')) continue
+    const page = pages[i]
     const crop = page.getCropBox()
     const pageWidth = crop.width
     const textWidth = font.widthOfTextAtSize(footerText, size)

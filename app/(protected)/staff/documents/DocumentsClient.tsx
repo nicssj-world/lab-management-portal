@@ -823,6 +823,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
   const [zipBusy, setZipBusy] = useState(false)
   const attachInputRef = useRef<HTMLInputElement>(null)
   const [skipSystemCover, setSkipSystemCover] = useState(false)
+  const [removePortalRevisionHistory, setRemovePortalRevisionHistory] = useState(true)
   const [draftFormOpen, setDraftFormOpen] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const [draftDepartment, setDraftDepartment] = useState('')
@@ -932,120 +933,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
   }
 
   function downloadRevisionHistory() {
-    const TYPE_LABEL: Record<string, string> = {
-      QP: 'ระเบียบปฏิบัติ QP', WI: 'วิธีปฏิบัติ (WI)', Manual: 'คู่มือคุณภาพ (QM)',
-      Form: 'แบบฟอร์ม (Form)', Policy: 'นโยบาย (Policy)', Record: 'บันทึกคุณภาพ (Record)',
-      Reference: 'เอกสารอ้างอิง (Reference)', 'Card file': 'Card file', Others: 'เอกสารอื่นๆ',
-    }
-    const fmtD = (s: string) =>
-      s ? new Date(s).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
-
-    const ROWS_PER_PAGE = 14
-    const revisionCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
-    const currentRevisionRow: RevisionRow = {
-      id: `current-${doc.id}`,
-      revision_number: doc.revision,
-      revision_note: doc.description ?? null,
-      revised_by: doc.owner_name ?? null,
-      approved_by: doc.approver_name ?? null,
-      file_url: doc.file_url ?? null,
-      file_name: doc.file_name ?? null,
-      created_at: doc.edit_date ?? doc.effective_date ?? doc.published_at ?? doc.updated_at ?? doc.created_at,
-      history_source: 'current',
-    }
-    const archivedRows = revisions.filter((rev) => (
-      rev.revision_number !== currentRevisionRow.revision_number
-      || rev.file_url !== currentRevisionRow.file_url
-    ))
-    const sorted = [...archivedRows, currentRevisionRow]
-      .sort((a, b) => {
-        const revisionOrder = revisionCollator.compare(a.revision_number, b.revision_number)
-        if (revisionOrder !== 0) return revisionOrder
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      })
-    const pages: RevisionRow[][] = []
-    for (let i = 0; i < Math.max(sorted.length, 1); i += ROWS_PER_PAGE) {
-      pages.push(sorted.slice(i, i + ROWS_PER_PAGE))
-    }
-
-    const headerBlock = `
-      <div class="page-header">
-        <div class="main-title">แบบบันทึกประวัติการแก้ไข/ทบทวนเอกสาร</div>
-        <div class="sub-title">กลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี</div>
-        <div class="doc-meta">ประเภทเอกสาร ${TYPE_LABEL[doc.type] ?? doc.type}</div>
-        <div class="doc-meta">เรื่อง ${doc.title}&nbsp;&nbsp;&nbsp;รหัส ${doc.document_code}</div>
-      </div>`
-
-    const theadHtml = `<thead><tr>
-      <th class="col-no">ลำดับที่</th>
-      <th class="col-rev">Rev.</th>
-      <th class="col-date">วันที่แก้ไข</th>
-      <th class="col-detail">รายการแก้ไข</th>
-      <th class="col-person">ผู้ทำการแก้ไข</th>
-      <th class="col-person">ผู้อนุมัติ</th>
-    </tr></thead>`
-
-    let rowIdx = 1
-    const pagesHtml = pages.map((page, pageIndex) => {
-      const isLastPage = pageIndex === pages.length - 1
-      const filledRows = [...page]
-      if (!isLastPage) {
-        while (filledRows.length < ROWS_PER_PAGE) filledRows.push(null as unknown as RevisionRow)
-      }
-      const tbodyHtml = filledRows.map((r) =>
-        r
-          ? `<tr>
-              <td class="center">${rowIdx++}</td>
-              <td class="center">${r.revision_number}</td>
-              <td class="center">${fmtD(r.created_at)}</td>
-              <td>${r.revision_note ?? ''}</td>
-              <td class="center">${r.revised_by ?? ''}</td>
-              <td class="center">${r.approved_by ?? ''}</td>
-            </tr>`
-          : `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`
-      ).join('')
-      return `
-        <div class="page">
-          ${headerBlock}
-          <table>${theadHtml}<tbody>${tbodyHtml}</tbody></table>
-          <div class="page-footer">
-            <span class="footer-spacer"></span>
-            <span class="footer-center">เอกสารนี้เป็นสมบัติของกลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี ห้ามนำออกไปใช้ภายนอกหรือทำซ้ำโดยไม่ได้รับอนุญาต</span>
-            <span class="footer-right">Fm-QP-LAB-01/03</span>
-          </div>
-        </div>`
-    }).join('')
-
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fm-QP-LAB-01-03</title><style>
-      @page { size: A4 portrait; margin: 8mm 10mm 8mm 10mm; }
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: 'TH Sarabun New', 'Sarabun', 'Cordia New', Arial, sans-serif; font-size: 14pt; color: #000; }
-      .page { page-break-after: always; display: flex; flex-direction: column; height: 277mm; }
-      .page:last-child { page-break-after: avoid; }
-      .page-header { text-align: center; margin-bottom: 8px; flex-shrink: 0; }
-      .main-title { font-size: 17pt; font-weight: bold; line-height: 1.5; }
-      .sub-title { font-size: 16pt; font-weight: bold; line-height: 1.5; }
-      .doc-meta { font-size: 14pt; font-weight: bold; margin-top: 4px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 8px; flex-shrink: 0; }
-      th, td { border: 1.5px solid #000; padding: 3px 6px; font-size: 13pt; height: 26px; }
-      th { background: #f5f5f5; font-weight: bold; text-align: center; }
-      .col-no { width: auto; white-space: nowrap; }
-      .col-rev { width: 8%; }
-      .col-date { width: 12%; }
-      .col-detail { width: auto; }
-      .col-person { width: 22%; }
-      .center { text-align: center; }
-      .page-footer { display: flex; align-items: center; font-size: 10.5pt; color: #555; margin-top: auto; padding-top: 4px; border-top: 1px solid #bbb; }
-      .footer-spacer { flex: 1; }
-      .footer-center { flex: 0 1 auto; text-align: center; }
-      .footer-right { flex: 1; text-align: right; white-space: nowrap; }
-    </style></head><body>${pagesHtml}</body></html>`
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const blobUrl = URL.createObjectURL(blob)
-    const win = window.open(blobUrl, '_blank')
-    if (!win) { URL.revokeObjectURL(blobUrl); return }
-    win.addEventListener('load', () => { win.print(); URL.revokeObjectURL(blobUrl) }, { once: true })
+    window.open(`/api/admin/documents/${doc.id}/revisions?format=pdf`, '_blank')
   }
 
   function loadRevisions() {
@@ -1073,6 +961,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     if (!activeDraft) {
       setDraftFormOpen(false)
       setSkipSystemCover(false)
+      setRemovePortalRevisionHistory(true)
       setDraftDescriptionEditing(true)
       draftDescriptionContext.current = ''
       return
@@ -1327,7 +1216,8 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
 
   async function handleDraftStatus(next: DocStatus) {
     if (!activeDraft) return
-    const shouldSkipSystemCover = skipSystemCover && next === 'Published' && (activeDraft.type === 'QP' || activeDraft.type === 'WI')
+    const isQpWiPublish = next === 'Published' && (activeDraft.type === 'QP' || activeDraft.type === 'WI')
+    const shouldSkipSystemCover = skipSystemCover && isQpWiPublish
     if (shouldSkipSystemCover && !confirm('ยืนยันว่า PDF ทางการนี้มีหน้าปกเดิมครบถ้วนแล้ว และต้องการใช้เป็นไฟล์ทางการโดยไม่สร้างหน้าปกระบบ?')) {
       return
     }
@@ -1339,6 +1229,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
         body: JSON.stringify({
           status: next,
           ...(shouldSkipSystemCover ? { skip_system_cover: true } : {}),
+          ...(isQpWiPublish ? { remove_portal_revision_history: removePortalRevisionHistory } : {}),
         }),
       })
       const json = await res.json()
@@ -1346,6 +1237,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
       if (next === 'Published') {
         setActiveDraft(null)
         setSkipSystemCover(false)
+        setRemovePortalRevisionHistory(true)
         loadRevisions()
         onPromoted(json as Document)
       } else {
@@ -1912,6 +1804,22 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                       PDF ทางการนี้มีหน้าปกเดิมครบแล้ว ให้ใช้ไฟล์นี้เป็น official PDF โดยไม่สร้างหน้าปกระบบ
                       <br />
                       <span style={{ color: 'var(--muted)' }}>ใช้เฉพาะกรณีต้องการคงหน้าปกเดิมไว้ ระบบจะไม่ stamp วันที่/ลายเซ็นบนหน้าปกระบบใหม่</span>
+                    </span>
+                  </label>
+                )}
+
+                {(activeDraft.type === 'QP' || activeDraft.type === 'WI') && activeDraft.status === 'Approved' && (
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '9px 10px', borderRadius: 8, border: '1px solid rgba(30,95,173,.22)', background: 'rgba(30,95,173,.08)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={removePortalRevisionHistory}
+                      onChange={(e) => setRemovePortalRevisionHistory(e.target.checked)}
+                      style={{ marginTop: 3, accentColor: 'var(--primary)' }}
+                    />
+                    <span style={{ fontSize: 11.8, color: 'var(--primary)', lineHeight: 1.45 }}>
+                      ลบหน้าประวัติที่ระบบสร้างไว้เดิมก่อนเผยแพร่
+                      <br />
+                      <span style={{ color: 'var(--muted)' }}>ระบบจะลบเฉพาะหน้าท้ายที่มี marker ของ Portal แล้วเพิ่มหน้าประวัติแก้ไขชุดล่าสุดต่อท้าย โดยไม่แตะประวัติเดิมใน PDF</span>
                     </span>
                   </label>
                 )}
