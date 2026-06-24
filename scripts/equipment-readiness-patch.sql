@@ -11,6 +11,7 @@ alter table equipment
   add column if not exists method_validation_url text default null,
   add column if not exists method_correlation_url text default null,
   add column if not exists manual_url text default null,
+  add column if not exists responsible_user_id uuid references profiles(id) on delete set null,
   add column if not exists pm_cal_data jsonb default null;
 
 update equipment

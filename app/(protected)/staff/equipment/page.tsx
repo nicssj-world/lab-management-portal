@@ -5,6 +5,7 @@ import {
   getEquipmentDepartments,
   getEquipmentLastUpdated,
   getEquipmentPage,
+  getEquipmentSummaryCounts,
   getEquipmentStatusCounts,
 } from '@/lib/queries/equipment'
 import EquipmentClient from './EquipmentClient'
@@ -19,10 +20,11 @@ export default async function EquipmentPage() {
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') === 'none') redirect('/staff/dashboard')
   const canEdit = perms['ทะเบียนเครื่องมือ'] === 'edit'
 
-  const [initialPage, departments, statusCounts, lastUpdated] = await Promise.all([
+  const [initialPage, departments, statusCounts, summaryCounts, lastUpdated] = await Promise.all([
     getEquipmentPage(supabase, { page: 1, pageSize: INITIAL_PAGE_SIZE }),
     getEquipmentDepartments(supabase),
     getEquipmentStatusCounts(supabase),
+    getEquipmentSummaryCounts(supabase),
     getEquipmentLastUpdated(supabase),
   ])
 
@@ -33,6 +35,7 @@ export default async function EquipmentPage() {
       initialPageSize={initialPage.pageSize}
       departments={departments}
       statusCounts={statusCounts}
+      initialSummaryCounts={summaryCounts}
       canEdit={canEdit}
       lastUpdated={lastUpdated}
     />

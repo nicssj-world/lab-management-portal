@@ -22,6 +22,7 @@ export interface Equipment {
   purchase_price: number | null
   status: 'Active' | 'Inactive' | 'ชำรุด' | 'มาใหม่' | 'ย้าย' | 'สูญหาย'
   needs_calibration: boolean
+  responsible_user_id: string | null
   responsible_person: string | null
   purpose: string | null
   remark: string | null
@@ -71,6 +72,13 @@ export interface EquipmentPageResult {
   totalPages: number
 }
 
+export interface EquipmentSummaryCounts {
+  active: number
+  highRisk: number
+  warrantyAlert: number
+  needsCalibration: number
+}
+
 function escapeLike(value: string) {
   return value.replace(/[\\%_]/g, match => `\\${match}`)
 }
@@ -102,6 +110,22 @@ function applyEquipmentFilters(query: any, filters: EquipmentFilters) {
   if (filters.pending_reg) query = query.or('cbh_code_pending.eq.true,hospital_asset_no_pending.eq.true')
 
   return query
+}
+
+function isWarrantyAlert(exp: string | null) {
+  if (!exp) return false
+  const days = (new Date(exp).getTime() - Date.now()) / 86400000
+  return days < 90
+}
+
+function summarizeEquipmentRows(rows: Array<Pick<Equipment, 'status' | 'risk_level' | 'needs_calibration' | 'warranty_exp'>>): EquipmentSummaryCounts {
+  return rows.reduce<EquipmentSummaryCounts>((acc, row) => {
+    if (row.status === 'Active') acc.active += 1
+    if (row.risk_level === 'High') acc.highRisk += 1
+    if (row.needs_calibration) acc.needsCalibration += 1
+    if (isWarrantyAlert(row.warranty_exp)) acc.warrantyAlert += 1
+    return acc
+  }, { active: 0, highRisk: 0, warrantyAlert: 0, needsCalibration: 0 })
 }
 
 export async function getEquipment(
@@ -148,6 +172,21 @@ export async function getEquipmentPage(
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   }
+}
+
+export async function getEquipmentSummaryCounts(
+  supabase: SupabaseClient,
+  filters: EquipmentFilters = {}
+): Promise<EquipmentSummaryCounts> {
+  let query: any = supabase
+    .from('equipment')
+    .select('status, risk_level, needs_calibration, warranty_exp')
+
+  query = applyEquipmentFilters(query, filters)
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  return summarizeEquipmentRows((data ?? []) as Array<Pick<Equipment, 'status' | 'risk_level' | 'needs_calibration' | 'warranty_exp'>>)
 }
 
 export async function getEquipmentDepartments(supabase: SupabaseClient): Promise<string[]> {
