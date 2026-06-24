@@ -318,6 +318,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     let sourceFile: File | null = null
     let uploadedFile: UploadedDraftFile | null = null
     let skipSystemCover = false
+    let removePortalRevisionHistory = true
 
     if (contentType.includes('multipart/form-data')) {
       const form = await req.formData()
@@ -329,6 +330,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (metaRaw) {
         const rawMeta = JSON.parse(metaRaw as string) as Record<string, unknown>
         skipSystemCover = rawMeta.skip_system_cover === true
+        removePortalRevisionHistory = rawMeta.remove_portal_revision_history !== false
         const parsed = DocumentSchema.partial().safeParse(rawMeta)
         if (!parsed.success) return NextResponse.json({ error: parsed.error.errors[0]?.message }, { status: 422 })
         updates = parsed.data as Record<string, unknown>
@@ -336,6 +338,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     } else {
       const rawBody = await req.json() as Record<string, unknown>
       skipSystemCover = rawBody.skip_system_cover === true
+      removePortalRevisionHistory = rawBody.remove_portal_revision_history !== false
       uploadedFile = parseUploadedDraftFile(rawBody.uploaded_file)
       const parsed = DocumentSchema.partial().safeParse(rawBody)
       if (!parsed.success) return NextResponse.json({ error: parsed.error.errors[0]?.message }, { status: 422 })
@@ -675,20 +678,31 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           String(promoteUpdates.revision ?? ''),
           effectiveDate,
         )
+        const {
+          appendRevisionHistoryPdf,
+          generateRevisionHistoryPdfForDocument,
+        } = await import('@/lib/documents/revision-history-pdf')
+        const historyPdf = await generateRevisionHistoryPdfForDocument(id, promoteUpdates)
+        const finalPdf = await appendRevisionHistoryPdf(
+          stampedPdf,
+          historyPdf,
+          { removeExistingPortalHistory: removePortalRevisionHistory },
+        )
         const safeCode = parentDoc.document_code.replace(/[^a-zA-Z0-9._-]/g, '_')
         const stampedKey = `documents/generated/${id}/${Date.now()}-${safeCode}-existing-cover-final.pdf`
         await getR2Client().send(new PutObjectCommand({
           Bucket: getR2Bucket(),
           Key: stampedKey,
-          Body: stampedPdf,
+          Body: Buffer.from(finalPdf),
           ContentType: 'application/pdf',
         }))
         promoteUpdates.file_url = stampedKey
-        promoteUpdates.file_size = stampedPdf.length
+        promoteUpdates.file_size = finalPdf.length
         promoteUpdates.mime_type = 'application/pdf'
         if (promoteUpdates.cover_metadata && typeof promoteUpdates.cover_metadata === 'object') {
           promoteUpdates.cover_metadata = {
             ...(promoteUpdates.cover_metadata as Record<string, unknown>),
+            revision_history_appended: true,
             file_url: stampedKey,
           }
         }
@@ -697,7 +711,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (isCoverRequiredType(merged.type) && !publishWithExistingCover) {
       const { buildPublishedPdfFields } = await import('@/lib/documents/publish')
-      const finalFields = await buildPublishedPdfFields(id, promoteUpdates)
+      const finalFields = await buildPublishedPdfFields(id, promoteUpdates, {
+        removeExistingPortalHistory: removePortalRevisionHistory,
+      })
       if (finalFields) Object.assign(promoteUpdates, finalFields)
     }
 
