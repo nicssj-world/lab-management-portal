@@ -325,6 +325,24 @@ function StatusModal({ doc, userRole, docRole, onClose, onSaved, toast }: {
   )
 }
 
+// ── Inline PDF Viewer ──────────────────────────────────────────
+function PdfViewerModal({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 2000, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ height: 48, background: 'var(--card)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0 }}>
+        <Icon name="doc" size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
+        <button onClick={onClose} title="ปิด" style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
+          <Icon name="x" size={14} />
+        </button>
+      </div>
+      <iframe src={url} style={{ flex: 1, border: 'none', width: '100%' }} title={title} />
+    </div>
+  )
+}
+
 // ── Document Detail Modal ──────────────────────────────────────
 function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, onClose, onRead, onHistory, onEdit, onDownload }: {
   doc: Document
@@ -359,6 +377,7 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
   const [linkSearching, setLinkSearching] = useState(false)
   const [showLinkResults, setShowLinkResults] = useState(false)
   const linkSearchRef = useRef<HTMLDivElement>(null)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
 
   useEffect(() => {
     fetch(`/api/admin/documents/${doc.id}/attachments`)
@@ -453,9 +472,8 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
     try {
       const res = await fetch(`/api/admin/documents/${docId}/read`, { method: 'POST' })
       const json = await res.json()
-      if (json.url) { window.open(json.url, '_blank'); return }
+      if (json.url) { setPdfViewer({ url: json.url, title: fileName }); return }
     } catch { /* ignore */ }
-    // fallback: inline download
     openAttachmentInline(fileUrl, fileName)
   }
 
@@ -465,7 +483,7 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
     try {
       const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(fileUrl)}${qs}`)
       const json = await res.json()
-      if (json.url) window.open(json.url, '_blank')
+      if (json.url) setPdfViewer({ url: json.url, title: fileName })
     } catch { /* ignore */ }
   }
 
@@ -677,6 +695,14 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
                             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{d.document_code} · {d.type} · {fmtSize(d.file_size)}</div>
                           </div>
                         </div>
+                        {d.file_url && d.file_name?.toLowerCase().endsWith('.pdf') && (
+                          <button onClick={() => openLinkedDocRead(d.id, d.file_url, d.file_name)} title="อ่าน"
+                            style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                            <Icon name="eye" size={13} />
+                          </button>
+                        )}
                         <button disabled={!d.file_url} onClick={() => d.file_url && onDownload(d.file_url)} title={d.file_url ? 'ดาวน์โหลด' : 'ยังไม่มีไฟล์ทางการ'}
                           style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: d.file_url ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', flexShrink: 0, opacity: d.file_url ? 1 : 0.45 }}
                           onMouseEnter={e => { if (d.file_url) { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' } }}
@@ -786,6 +812,7 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
 
         </div>
       </div>
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
     </>
   )
 }
@@ -836,6 +863,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
   const [draftDescriptionEditing, setDraftDescriptionEditing] = useState(true)
   const [loading, setLoading]     = useState(true)
   const [deletingCurrent, setDeletingCurrent] = useState(false)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
 
   // Add form state
   const [showForm, setShowForm]           = useState(false)
@@ -1032,6 +1060,17 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
     if (!confirm('ลบไฟล์แนบนี้?')) return
     const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}/attachments/${attachId}`, { method: 'DELETE' })
     if (res.ok) setDraftAttachments((prev) => prev.filter((a) => a.id !== attachId))
+  }
+
+  async function handleReadAttachment(path: string, fileName: string) {
+    try {
+      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(path)}&inline=1`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setPdfViewer({ url: json.url, title: fileName })
+    } catch {
+      alert('เปิดไฟล์ไม่สำเร็จ')
+    }
   }
 
   function handleDownloadDraftZip() {
@@ -1709,6 +1748,13 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                         <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                           <Icon name="doc" size={13} style={{ color: 'var(--muted)', flexShrink: 0 }} />
                           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11.5, color: 'var(--ink)' }}>{a.file_name}</span>
+                          {(a.mime_type === 'application/pdf' || a.file_name?.toLowerCase().endsWith('.pdf')) && (
+                            <button onClick={() => handleReadAttachment(a.file_url, a.file_name ?? '')} title="อ่าน" style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                              <Icon name="eye" size={12} />
+                            </button>
+                          )}
                           <button onClick={() => onDownload(a.file_url)} title="ดาวน์โหลด" style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <Icon name="download" size={12} />
                           </button>
@@ -2098,6 +2144,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
           )}
         </div>
       </div>
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
     </>
   )
 }
