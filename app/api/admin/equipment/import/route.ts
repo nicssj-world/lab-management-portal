@@ -186,8 +186,11 @@ const DUPLICATE_FIELDS: { key: 'cbh_code' | 'hospital_asset_no' | 'serial_number
   { key: 'serial_number', label: 'Serial Number' },
 ]
 
+const PLACEHOLDER_VALUES = new Set(['-', '--', '–', '—', 'n/a', 'na', 'none', 'null', '-'])
+
 function normalizeKey(value: unknown) {
-  return String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+  const s = String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+  return PLACEHOLDER_VALUES.has(s) ? '' : s
 }
 
 function displayEquipment(eq: ExistingEquipment) {
@@ -255,6 +258,15 @@ function findResponsibleUser(value: unknown, users: ResponsibleUser[]): Responsi
 
   const byName = users.filter(user => normalizeKey(user.name) === key)
   if (byName.length === 1) return byName[0]
+
+  // Partial: every word in the input must appear as a word in the user's full name
+  // e.g. "สมชาย" or "ใจดี" matches "นาย สมชาย ใจดี"
+  const keyTokens = key.split(/\s+/).filter(Boolean)
+  const byPartial = users.filter(user => {
+    const userTokens = normalizeKey(user.name).split(/\s+/)
+    return keyTokens.every(kt => userTokens.includes(kt))
+  })
+  if (byPartial.length === 1) return byPartial[0]
 
   return null
 }
@@ -503,6 +515,7 @@ function toUpdateRecord(record: ImportRecord) {
     Object.entries(updateable).filter(([, value]) => value !== null && value !== undefined && value !== ''),
   )
   if (record.cbh_code_pending === true) cleaned.cbh_code = null
+  else cleaned.cbh_code = String(record.cbh_code ?? '').trim() || null
   if (record.hospital_asset_no_pending === true) cleaned.hospital_asset_no = null
   return cleaned
 }
@@ -632,11 +645,11 @@ export async function POST(req: NextRequest) {
 
   if (records.length === 0) return NextResponse.json({ error: 'ไม่พบข้อมูลที่นำเข้าได้' }, { status: 422 })
 
-  const existing = await getExistingEquipment()
-  const plans = buildImportPlans(records, existing)
-  const duplicates = await findDuplicateIssues(records, existing)
-  const duplicateRows = buildDuplicateRows(duplicates, plans)
   if (preview) {
+    const existing = await getExistingEquipment()
+    const plans = buildImportPlans(records, existing)
+    const duplicates = await findDuplicateIssues(records, existing)
+    const duplicateRows = buildDuplicateRows(duplicates, plans)
     const insertCount = plans.filter(plan => plan.action === 'insert').length
     const updateCount = plans.filter(plan => plan.action === 'update').length
     const blockedCount = plans.filter(plan => plan.action === 'blocked').length
