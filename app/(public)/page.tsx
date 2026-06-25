@@ -1,18 +1,23 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { SETTINGS_DEFAULTS } from '@/lib/settings'
 import { getCategories } from '@/lib/queries/categories'
 import { getNews } from '@/lib/queries/news'
 import { Card } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
 import { CAT_MAP } from '@/lib/validations/news'
 
 export default async function PublicHome() {
   const supabase = await createClient()
-  const [categories, featuredNews] = await Promise.all([
+  const [categories, featuredNews, settingsRow] = await Promise.all([
     getCategories(supabase).catch(() => []),
     getNews(supabase, { publishedOnly: true, limit: 5 }).catch(() => []),
+    supabaseAdmin.from('system_settings').select('standards').eq('id', 1).maybeSingle(),
   ])
+
+  const standardsRaw = (settingsRow.data as { standards?: string } | null)?.standards ?? SETTINGS_DEFAULTS.standards
+  const standards = standardsRaw.split(/[·,|]/).map((s: string) => s.trim()).filter(Boolean)
 
   const outLabCat = categories.find(c =>
     c.en?.toLowerCase().includes('out lab') || c.th?.includes('ตรวจพิเศษ')
@@ -80,10 +85,11 @@ export default async function PublicHome() {
         .public-hero-actions { display: flex; gap: 12px; }
         .public-photo-stack {
           position: absolute;
-          right: -8px;
-          bottom: -28px;
-          width: 470px;
-          height: 315px;
+          right: 0px;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 480px;
+          height: 360px;
           z-index: 1;
         }
         .public-photo-card {
@@ -93,7 +99,7 @@ export default async function PublicHome() {
           border-radius: 14px;
           background: #fff;
           box-shadow: 0 20px 46px rgba(15,23,42,.22);
-          transition: transform .22s ease, box-shadow .22s ease, z-index .22s ease;
+          transition: transform .22s ease, box-shadow .22s ease;
         }
         .public-photo-card img {
           width: 100%;
@@ -105,42 +111,38 @@ export default async function PublicHome() {
           z-index: 20 !important;
           box-shadow: 0 30px 70px rgba(15,23,42,.34);
         }
+        /* central lab — main card, centre of stack */
         .public-photo-central {
-          right: 58px;
-          bottom: 64px;
-          width: 336px;
-          height: 190px;
+          left: 50%; top: 50%;
+          transform: translate(-48%, -50%) rotate(-3deg);
+          width: 300px; height: 178px;
           z-index: 4;
-          transform: rotate(-3deg);
         }
-        .public-photo-central:hover { transform: rotate(-3deg) translateY(-8px) scale(1.035); }
+        .public-photo-central:hover { transform: translate(-48%, -56%) rotate(-3deg) scale(1.04); }
+        /* blood tube — bottom-right */
         .public-photo-blood {
-          right: 2px;
-          bottom: 28px;
-          width: 164px;
-          height: 106px;
+          right: 8px; bottom: 18px;
+          width: 148px; height: 96px;
           z-index: 6;
           transform: rotate(4deg);
         }
-        .public-photo-blood:hover { transform: rotate(4deg) translateY(-8px) scale(1.045); }
+        .public-photo-blood:hover { transform: rotate(4deg) translateY(-8px) scale(1.05); }
+        /* petri — bottom-left */
         .public-photo-petri {
-          right: 260px;
-          bottom: 26px;
-          width: 176px;
-          height: 118px;
+          left: 8px; bottom: 18px;
+          width: 158px; height: 104px;
           z-index: 5;
-          transform: rotate(2deg);
+          transform: rotate(-2deg);
         }
-        .public-photo-petri:hover { transform: rotate(2deg) translateY(-8px) scale(1.045); }
+        .public-photo-petri:hover { transform: rotate(-2deg) translateY(-8px) scale(1.05); }
+        /* sign — top-right */
         .public-photo-sign {
-          right: 286px;
-          bottom: 198px;
-          width: 168px;
-          height: 92px;
+          right: 28px; top: 18px;
+          width: 152px; height: 86px;
           z-index: 3;
           transform: rotate(3deg);
         }
-        .public-photo-sign:hover { transform: rotate(3deg) translateY(-8px) scale(1.045); }
+        .public-photo-sign:hover { transform: rotate(3deg) translateY(-8px) scale(1.05); }
         .public-lab-sticker {
           position: absolute;
           left: 18px;
@@ -169,36 +171,30 @@ export default async function PublicHome() {
           .public-hero-text { max-width: none; }
           .public-photo-stack {
             position: relative;
-            right: auto;
-            bottom: auto;
+            right: auto; top: auto;
+            transform: none;
             width: 100%;
-            height: 272px;
+            height: 280px;
             margin-top: 28px;
           }
-          .public-photo-card { border-width: 5px; }
+          .public-photo-card { border-width: 4px; }
           .public-photo-central {
-            right: 7%;
-            bottom: 74px;
-            width: 58%;
-            height: 146px;
+            left: 50%; top: 50%;
+            transform: translate(-48%, -50%) rotate(-3deg);
+            width: 56%; height: 150px;
           }
+          .public-photo-central:hover { transform: translate(-48%, -56%) rotate(-3deg) scale(1.04); }
           .public-photo-blood {
-            right: 1%;
-            bottom: 34px;
-            width: 32%;
-            height: 88px;
+            right: 4%; bottom: 14px;
+            width: 30%; height: 84px;
           }
           .public-photo-petri {
-            right: 47%;
-            bottom: 26px;
-            width: 34%;
-            height: 94px;
+            left: 4%; bottom: 14px;
+            width: 32%; height: 90px;
           }
           .public-photo-sign {
-            right: 56%;
-            bottom: 194px;
-            width: 32%;
-            height: 70px;
+            right: 6%; top: 14px;
+            width: 30%; height: 72px;
           }
           .public-lab-sticker {
             left: 2px;
@@ -222,6 +218,8 @@ export default async function PublicHome() {
           .public-section { padding-left: 16px !important; padding-right: 16px !important; }
           .public-category-grid { grid-template-columns: 1fr !important; }
         }
+        .line-card { transition: background .18s; }
+        .line-card:hover { background: rgba(255,255,255,.22) !important; }
       `}</style>
       {/* Hero */}
       <section
@@ -235,9 +233,20 @@ export default async function PublicHome() {
         <div style={{ position: 'absolute', right: 120, bottom: -100, width: 280, height: 280, borderRadius: '50%', background: 'rgba(255,255,255,.05)' }} />
         <div className="public-hero-shell">
           <div className="public-hero-text">
-            <Badge color="blue" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', marginBottom: 16, display: 'inline-flex' }}>
-              ISO 15189:2022 · ISO 15190:2020 Accredited
-            </Badge>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+              {standards.map((s: string) => (
+                <span key={s} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '4px 10px', borderRadius: 20,
+                  background: 'rgba(255,255,255,.18)', color: '#fff',
+                  border: '1px solid rgba(255,255,255,.25)',
+                  fontSize: 11.5, fontWeight: 700,
+                }}>
+                  <Icon name="shieldCheck" size={12} />
+                  {s}
+                </span>
+              ))}
+            </div>
             <h1 className="public-hero-title" style={{ fontWeight: 700, margin: '0 0 18px', lineHeight: 1.15, letterSpacing: 0 }}>
               <span className="public-hero-title-th">คู่มือการส่งตรวจทางห้องปฏิบัติการ</span><br />
               <span className="public-hero-title-en">LABORATORY SERVICES</span>
@@ -271,6 +280,61 @@ export default async function PublicHome() {
                 </button>
               </Link>
             </div>
+
+            {/* LINE Add Friend card */}
+            <a
+              href="https://line.me/R/ti/p/@759ksiuc"
+              target="_blank"
+              rel="noreferrer"
+              style={{ textDecoration: 'none', display: 'inline-block', marginTop: 20 }}
+            >
+              <div className="line-card" style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                background: 'rgba(255,255,255,.13)',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255,255,255,.22)',
+                borderRadius: 14, padding: '12px 18px 12px 12px',
+              }}>
+                {/* QR code */}
+                <div style={{
+                  background: '#fff', borderRadius: 10, padding: 5,
+                  flexShrink: 0, lineHeight: 0,
+                }}>
+                  <img
+                    src="https://qr-official.line.me/gs/M_759ksiuc_BW.png"
+                    alt="LINE QR Code @759ksiuc"
+                    width={64} height={64}
+                    style={{ display: 'block', borderRadius: 6 }}
+                  />
+                </div>
+                {/* Text */}
+                <div>
+                  <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.72)', marginBottom: 2, fontWeight: 500 }}>
+                    สอบถามข้อมูลรายการตรวจผ่าน LINE
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    {/* LINE icon */}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="#06C755">
+                      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
+                    </svg>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', letterSpacing: '.01em' }}>
+                      @759ksiuc
+                    </span>
+                  </div>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    background: '#06C755', color: '#fff',
+                    padding: '5px 12px', borderRadius: 999,
+                    fontSize: 11.5, fontWeight: 700,
+                  }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
+                    </svg>
+                    เพิ่มเพื่อน
+                  </div>
+                </div>
+              </div>
+            </a>
           </div>
 
           <div className="public-photo-stack" aria-label="ภาพห้องปฏิบัติการ">
