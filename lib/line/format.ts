@@ -13,7 +13,10 @@ export function formatTestReply(test: Test, docs: Pick<TestDocument, 'name' | 'd
   if (test.available_24hr)      lines.push(`🕐 เวลาให้บริการ: 24 ชั่วโมง`)
   else if (test.service)        lines.push(`🕐 เวลาให้บริการ: ${test.service}`)
   if (test.transport_condition) lines.push(`📋 การเก็บรักษาตัวอย่างก่อนนำส่ง: ${test.transport_condition}`)
-  if (test.reject)              lines.push(`⛔ เกณฑ์ปฏิเสธ: ${test.reject}`)
+  if (test.reject) {
+    const rejectLines = test.reject.split('\n').map(l => `   ${l.trim()}`).filter(l => l.trim())
+    lines.push(`⛔ เกณฑ์ปฏิเสธ:\n${rejectLines.join('\n')}`)
+  }
   if (test.specimen_note)       lines.push(`📝 หมายเหตุ: ${test.specimen_note}`)
   if (test.contact_staff)       lines.push(`⚠️ ติดต่อเจ้าหน้าที่ก่อนเก็บตัวอย่าง`)
   if (test.contact_name || test.contact_phone)
