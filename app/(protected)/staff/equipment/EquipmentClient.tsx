@@ -739,9 +739,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     if (!res.ok) { setErr(json.error ?? 'เกิดข้อผิดพลาด') }
     else {
       setPreview(json)
-      setSkippedRows(new Set((json.duplicateRows ?? [])
-        .filter((row: { row: number; action?: string; canImport?: boolean }) => row.action !== 'update' || row.canImport === false)
-        .map((row: { row: number }) => row.row)))
+      setSkippedRows(new Set((json.duplicateRows ?? []).map((row: { row: number }) => row.row)))
     }
     setLoading(false)
   }
@@ -826,10 +824,16 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                   </tbody>
                 </table>
               </div>
+              {duplicateRows.some(d => d.action === 'update') && (
+                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'rgba(59,130,246,.07)', border: '1px solid rgba(59,130,246,.28)', fontSize: 12.5, color: '#1e40af' }}>
+                  พบ <strong>{duplicateRows.filter(d => d.action === 'update').length} รายการ</strong> ที่ Hospital Asset No / Serial Number ตรงกับเครื่องมือในระบบ —
+                  ค่าเริ่มต้น <strong>ไม่อัปเดต</strong> ต้องติ๊กเพื่ออนุมัติแต่ละรายการ
+                </div>
+              )}
               {duplicateRows.length > 0 && (
                 <div style={{ marginTop: 14, border: '1px solid rgba(220,38,38,.28)', borderRadius: 10, overflow: 'hidden', background: 'rgba(220,38,38,.05)' }}>
                   <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(220,38,38,.20)', color: 'var(--danger)', fontSize: 13, fontWeight: 700, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span>พบรายการซ้ำ {preview.duplicateCount} จุด — เลือกแถวที่จะนำเข้า</span>
+                    <span>พบรายการที่ต้องตรวจสอบ — ติ๊กเพื่อเลือกแถวที่จะนำเข้า</span>
                     <span style={{ color: 'var(--muted)', fontWeight: 600 }}>
                       จะนำเข้า {selectedImportCount} จาก {preview.count} รายการ
                     </span>
@@ -886,7 +890,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                     </table>
                   </div>
                   <div style={{ padding: '9px 14px', borderTop: '1px solid rgba(220,38,38,.20)', fontSize: 12, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                    <span>ค่าเริ่มต้นคือข้ามรายการซ้ำทั้งหมด กดติ๊กเพื่อเลือกนำเข้าเฉพาะแถวที่ต้องการ</span>
+                    <span>ค่าเริ่มต้นคือข้ามทุกแถว (รวมถึงการอัปเดต) — ติ๊กเพื่อเลือกแถวที่ต้องการ</span>
                     <button
                       type="button"
                       onClick={() => setSkippedRows(new Set(duplicateRows.filter(row => !row.canImport).map(row => row.row)))}

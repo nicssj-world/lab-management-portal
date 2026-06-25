@@ -26,7 +26,15 @@ export async function POST(req: NextRequest) {
     const replyToken = event.replyToken as string
 
     try {
-      const exact = await getTestByCode(supabaseAdmin, q.toUpperCase())
+      // exact code match — use limit(1) to handle duplicate rows in DB
+      const { data: exactRows } = await supabaseAdmin
+        .from('tests')
+        .select('*')
+        .eq('code', q.toUpperCase())
+        .eq('active', true)
+        .limit(1)
+      const exact = exactRows?.[0] ?? null
+
       if (exact) {
         const { data: docs } = await supabaseAdmin
           .from('test_documents')
@@ -36,7 +44,15 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      const { data } = await getTests(supabaseAdmin, { search: q, active: true, pageSize: 10 })
+      const { data: rawData } = await getTests(supabaseAdmin, { search: q, active: true, pageSize: 20 })
+      // deduplicate by code (handles duplicate DB rows)
+      const seen = new Set<string>()
+      const data = rawData.filter(t => {
+        if (seen.has(t.code)) return false
+        seen.add(t.code)
+        return true
+      }).slice(0, 10)
+
       if (data.length === 1) {
         const { data: docs } = await supabaseAdmin
           .from('test_documents')
