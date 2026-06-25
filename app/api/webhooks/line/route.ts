@@ -26,21 +26,23 @@ export async function POST(req: NextRequest) {
     const replyToken = event.replyToken as string
 
     try {
-      // exact code match — use limit(1) to handle duplicate rows in DB
+      // exact code match — fetch all rows with same code to collect all contacts
       const { data: exactRows } = await supabaseAdmin
         .from('tests')
         .select('*')
         .eq('code', q.toUpperCase())
         .eq('active', true)
-        .limit(1)
-      const exact = exactRows?.[0] ?? null
 
-      if (exact) {
+      if (exactRows && exactRows.length > 0) {
+        const primary = exactRows[0]
+        const extraContacts = exactRows.slice(1)
+          .map(t => [t.contact_name, t.contact_phone].filter(Boolean).join(' '))
+          .filter(Boolean)
         const { data: docs } = await supabaseAdmin
           .from('test_documents')
           .select('name, doc_type')
-          .eq('test_id', exact.id)
-        await replyMessage(replyToken, [{ type: 'text', text: formatTestReply(exact, docs ?? []) }])
+          .eq('test_id', primary.id)
+        await replyMessage(replyToken, [{ type: 'text', text: formatTestReply(primary, docs ?? [], extraContacts) }])
         continue
       }
 
