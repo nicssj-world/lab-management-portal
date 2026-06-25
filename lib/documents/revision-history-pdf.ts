@@ -206,10 +206,10 @@ function buildRows(input: RevisionHistoryInput) {
 function drawHeader(page: PDFPage, doc: RevisionHistoryDocument, fonts: Fonts) {
   const x = mm(10)
   const width = A4.width - mm(20)
-  drawCentered(page, 'แบบบันทึกประวัติการแก้ไข/ทบทวนเอกสาร', x, A4.height - mm(15), width, fonts.bold, 16)
-  drawCentered(page, 'กลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี', x, A4.height - mm(25), width, fonts.bold, 16)
-  drawCentered(page, `ประเภทเอกสาร ${TYPE_LABELS[doc.type] ?? doc.type}`, x, A4.height - mm(36), width, fonts.bold, 16)
-  drawCentered(page, `เรื่อง ${doc.title}   รหัส ${doc.document_code}`, x, A4.height - mm(47), width, fonts.bold, 16)
+  drawCentered(page, 'แบบบันทึกประวัติการแก้ไข/ทบทวนเอกสาร', x, A4.height - mm(14), width, fonts.bold, 16)
+  drawCentered(page, 'กลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี', x, A4.height - mm(23), width, fonts.bold, 14)
+  drawCentered(page, `ประเภทเอกสาร ${TYPE_LABELS[doc.type] ?? doc.type}`, x, A4.height - mm(32), width, fonts.regular, 12)
+  drawCentered(page, `เรื่อง ${doc.title}   หมายเลขเอกสาร ${doc.document_code}`, x, A4.height - mm(41), width, fonts.regular, 12)
 }
 
 function drawFooter(page: PDFPage, fonts: Fonts) {
@@ -248,11 +248,11 @@ function drawWatermark(page: PDFPage, fonts: Fonts) {
 
 function drawTableHeader(page: PDFPage, y: number, fonts: Fonts, x: number, colWidths: number[]) {
   const headers = ['ลำดับที่', 'Rev.', 'วันที่แก้ไข', 'รายการแก้ไข', 'ผู้ทำการแก้ไข', 'ผู้อนุมัติ']
-  const h = mm(9)
+  const h = mm(8)
   let cx = x
   for (let i = 0; i < headers.length; i += 1) {
     rect(page, cx, y - h, colWidths[i], h, 0.7, LIGHT_GRAY)
-    drawCentered(page, headers[i], cx, y - mm(6.2), colWidths[i], fonts.bold, 12.5)
+    drawCentered(page, headers[i], cx, y - mm(5.5), colWidths[i], fonts.bold, 11)
     cx += colWidths[i]
   }
   return y - h
@@ -284,19 +284,19 @@ function drawDataRow(page: PDFPage, row: RevisionHistoryRow, rowNo: number, y: n
   for (let i = 0; i < values.length; i += 1) {
     rect(page, cx, y - height, colWidths[i], height, 0.7)
     const maxLines = i === 3 ? 4 : 3
-    const lines = wrapText(values[i], fonts.regular, 12.3, colWidths[i] - mm(4), maxLines)
-    drawCellText(page, lines.length ? lines : [''], cx, y, colWidths[i], height, fonts.regular, 12.3, i !== 3)
+    const lines = wrapText(values[i], fonts.regular, 11, colWidths[i] - mm(4), maxLines)
+    drawCellText(page, lines.length ? lines : [''], cx, y, colWidths[i], height, fonts.regular, 11, i !== 3)
     cx += colWidths[i]
   }
 }
 
 function rowHeight(row: RevisionHistoryRow, fonts: Fonts, detailWidth: number, personWidth: number) {
   const lineCounts = [
-    wrapText(row.revision_note ?? '', fonts.regular, 12.3, detailWidth - mm(4), 4).length,
-    wrapText(row.revised_by ?? '', fonts.regular, 12.3, personWidth - mm(4), 3).length,
-    wrapText(row.approved_by ?? '', fonts.regular, 12.3, personWidth - mm(4), 3).length,
+    wrapText(row.revision_note ?? '', fonts.regular, 11, detailWidth - mm(4), 4).length,
+    wrapText(row.revised_by ?? '', fonts.regular, 11, personWidth - mm(4), 3).length,
+    wrapText(row.approved_by ?? '', fonts.regular, 11, personWidth - mm(4), 3).length,
   ]
-  return Math.max(mm(12), mm(5.2 * Math.max(1, ...lineCounts) + 5))
+  return Math.max(mm(10), mm(5 * Math.max(1, ...lineCounts) + 4))
 }
 
 export async function generateRevisionHistoryPdf(input: RevisionHistoryInput) {
@@ -316,7 +316,7 @@ export async function generateRevisionHistoryPdf(input: RevisionHistoryInput) {
     drawHeader(page, input.document, fonts)
     drawFooter(page, fonts)
     drawMarker(page, fonts)
-    y = drawTableHeader(page, A4.height - mm(58), fonts, x, colWidths)
+    y = drawTableHeader(page, A4.height - mm(50), fonts, x, colWidths)
   }
 
   pdf.removePage(0)
