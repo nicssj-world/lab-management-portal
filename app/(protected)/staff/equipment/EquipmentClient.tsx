@@ -2062,7 +2062,9 @@ export default function EquipmentClient({
   const [photoViewItem, setPhotoViewItem] = useState<Equipment | null>(null)
   const [exportMenu, setExportMenu] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
+  const [xlsxMenu, setXlsxMenu] = useState(false)
   const exportMenuRef = useRef<HTMLDivElement>(null)
+  const xlsxMenuRef = useRef<HTMLDivElement>(null)
 
   const { toasts, add: addToast } = useToast()
 
@@ -2188,7 +2190,7 @@ export default function EquipmentClient({
     setReloadKey(k => k + 1)
   }
 
-  // Close export dropdown on outside click
+  // Close export dropdowns on outside click
   useEffect(() => {
     if (!exportMenu) return
     function handler(e: MouseEvent) {
@@ -2197,6 +2199,15 @@ export default function EquipmentClient({
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [exportMenu])
+
+  useEffect(() => {
+    if (!xlsxMenu) return
+    function handler(e: MouseEvent) {
+      if (xlsxMenuRef.current && !xlsxMenuRef.current.contains(e.target as Node)) setXlsxMenu(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [xlsxMenu])
 
   function buildEquipmentMasterListHTML(data: Equipment[], scope: 'filtered' | 'all'): string {
     const fmtD = (s: string | null) =>
@@ -2317,6 +2328,22 @@ export default function EquipmentClient({
     } finally {
       setExportLoading(false)
     }
+  }
+
+  function handleExportXlsx(scope: 'filtered' | 'all') {
+    setXlsxMenu(false)
+    const params = new URLSearchParams({ sortBy: sortKey, sortDir: nameSort })
+    if (scope === 'filtered') {
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      if (statusTab) params.set('status', statusTab)
+      if (department) params.set('department', department)
+      if (riskLevel) params.set('risk_level', riskLevel)
+      if (needsCal) params.set('needs_calibration', needsCal)
+      if (pendingReg) params.set('pending_reg', 'true')
+    }
+    const a = document.createElement('a')
+    a.href = `/api/admin/equipment/export?${params}`
+    a.click()
   }
 
   // CSV export
@@ -2458,13 +2485,55 @@ export default function EquipmentClient({
         marginBottom={16}
         actions={
           <div className="eq-header-actions">
+            {/* Export Excel split button */}
+            <div ref={xlsxMenuRef} style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', border: '1.5px solid rgba(22,163,74,.35)', borderRadius: 8, overflow: 'hidden', background: 'rgba(22,163,74,.07)' }}>
+                <button
+                  onClick={() => handleExportXlsx('filtered')}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'transparent', border: 'none', fontSize: 13, fontFamily: 'inherit', color: 'var(--success)', cursor: 'pointer', fontWeight: 600 }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(22,163,74,.10)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Icon name="download" size={13} />
+                  Export Excel
+                </button>
+                <button
+                  onClick={() => setXlsxMenu(v => !v)}
+                  style={{ display: 'flex', alignItems: 'center', padding: '8px 8px', background: 'transparent', border: 'none', borderLeft: '1.5px solid rgba(22,163,74,.20)', cursor: 'pointer', color: 'var(--success)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(22,163,74,.10)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Icon name="chevDown" size={12} />
+                </button>
+              </div>
+              {xlsxMenu && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', zIndex: 200, minWidth: 200, overflow: 'hidden' }}>
+                  <button onClick={() => handleExportXlsx('filtered')}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'transparent', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', color: 'var(--ink)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    Export ตามตัวกรองปัจจุบัน
+                  </button>
+                  <button onClick={() => handleExportXlsx('all')}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'transparent', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', color: 'var(--ink)', borderTop: '1px solid var(--border)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    Export ทุกรายการ
+                  </button>
+                </div>
+              )}
+            </div>
             {/* Export PDF split button */}
             <div ref={exportMenuRef} style={{ position: 'relative' }}>
-              <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', border: '1.5px solid rgba(30,95,173,.35)', borderRadius: 8, overflow: 'hidden', background: 'rgba(30,95,173,.07)' }}>
                 <button
                   onClick={() => downloadEquipmentPDF('filtered')}
                   disabled={exportLoading}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'transparent', border: 'none', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', cursor: exportLoading ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: exportLoading ? .6 : 1 }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'transparent', border: 'none', fontSize: 13, fontFamily: 'inherit', color: 'var(--primary)', cursor: exportLoading ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: exportLoading ? .6 : 1 }}
+                  onMouseEnter={e => { if (!exportLoading) e.currentTarget.style.background = 'rgba(30,95,173,.10)' }}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
                   <Icon name="download" size={13} />
                   {exportLoading ? 'กำลัง Export...' : 'Export PDF'}
@@ -2472,7 +2541,9 @@ export default function EquipmentClient({
                 <button
                   onClick={() => setExportMenu(v => !v)}
                   disabled={exportLoading}
-                  style={{ display: 'flex', alignItems: 'center', padding: '8px 8px', background: 'transparent', border: 'none', borderLeft: '1px solid var(--border)', cursor: exportLoading ? 'not-allowed' : 'pointer', color: 'var(--muted)' }}
+                  style={{ display: 'flex', alignItems: 'center', padding: '8px 8px', background: 'transparent', border: 'none', borderLeft: '1.5px solid rgba(30,95,173,.20)', cursor: exportLoading ? 'not-allowed' : 'pointer', color: 'var(--primary)' }}
+                  onMouseEnter={e => { if (!exportLoading) e.currentTarget.style.background = 'rgba(30,95,173,.10)' }}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
                   <Icon name="chevDown" size={12} />
                 </button>
@@ -2498,10 +2569,15 @@ export default function EquipmentClient({
             </div>
             {canEdit && (
               <>
-                <button onClick={() => setImportModal(true)} className="eq-soft-button">
+                <button
+                  onClick={() => setImportModal(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1.5px solid rgba(217,119,6,.35)', background: 'rgba(217,119,6,.07)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--warning)', fontWeight: 600, whiteSpace: 'nowrap' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(217,119,6,.13)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(217,119,6,.07)')}
+                >
                   <Icon name="upload" size={14} /> นำเข้า Excel
                 </button>
-                <Button variant="primary" icon="plus" onClick={() => setAddModal(true)}>เพิ่มเครื่องมือ</Button>
+                <Button variant="primary" icon="plus" onClick={() => setAddModal(true)} style={{ fontWeight: 600 }}>เพิ่มเครื่องมือ</Button>
               </>
             )}
           </div>
