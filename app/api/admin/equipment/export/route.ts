@@ -18,7 +18,7 @@ function escapeLike(value: string) {
   return value.replace(/[\\%_]/g, match => `\\${match}`)
 }
 
-function applyFilters(query: ReturnType<typeof supabaseAdmin.from>, searchParams: URLSearchParams) {
+function applyFilters(query: any, searchParams: URLSearchParams) {
   const search = (searchParams.get('search') ?? '').trim().replace(/[(),]/g, ' ')
   const department = searchParams.get('department') ?? ''
   const status = searchParams.get('status') ?? ''
