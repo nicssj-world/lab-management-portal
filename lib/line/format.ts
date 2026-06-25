@@ -2,7 +2,11 @@ import type { Test, TestDocument } from '@/lib/supabase/types'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
-export function formatTestReply(test: Test, docs: Pick<TestDocument, 'name' | 'doc_type'>[] = []): string {
+export function formatTestReply(
+  test: Test,
+  docs: Pick<TestDocument, 'name' | 'doc_type'>[] = [],
+  extraContacts: string[] = [],
+): string {
   const lines: string[] = []
   lines.push(`⭐ รหัส E-Phis: ${test.code}`)
   lines.push(`🔬 ${test.th}${test.en ? ` (${test.en})` : ''}`)
@@ -19,8 +23,10 @@ export function formatTestReply(test: Test, docs: Pick<TestDocument, 'name' | 'd
   }
   if (test.specimen_note)       lines.push(`📝 หมายเหตุ: ${test.specimen_note}`)
   if (test.contact_staff)       lines.push(`⚠️ ติดต่อเจ้าหน้าที่ก่อนเก็บตัวอย่าง`)
-  if (test.contact_name || test.contact_phone)
-    lines.push(`☎️ ติดต่อ: ${[test.contact_name, test.contact_phone].filter(Boolean).join(' ')}`)
+  // collect contacts from primary row + duplicate rows, deduplicated
+  const primaryContact = [test.contact_name, test.contact_phone].filter(Boolean).join(' ')
+  const allContacts = [...new Set([primaryContact, ...extraContacts].filter(Boolean))]
+  allContacts.forEach(c => lines.push(`☎️ ติดต่อ: ${c}`))
   if (docs.length > 0) {
     lines.push(`📎 เอกสารแนบ (${docs.length} รายการ):`)
     docs.forEach(d => lines.push(`  • ${d.doc_type} - ${d.name}`))
