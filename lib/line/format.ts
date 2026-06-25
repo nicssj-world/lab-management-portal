@@ -22,7 +22,7 @@ export function formatTestReply(test: Test, docs: Pick<TestDocument, 'name' | 'd
     lines.push(`📎 เอกสารแนบ (${docs.length} รายการ):`)
     docs.forEach(d => lines.push(`  • ${d.doc_type} - ${d.name}`))
   }
-  if (APP_URL)                  lines.push(`🔗 ${APP_URL}/catalog/${test.code}`)
+  if (APP_URL)                  lines.push(`🔗 ${APP_URL}/catalog/${test.id}`)
   return lines.join('\n')
 }
 
