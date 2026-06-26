@@ -14,9 +14,9 @@ export const FULL_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
 
 const DCC_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   Draft:     ['Review'],
-  Review:    ['Draft'],
-  Approved:  [],
-  Published: [],
+  Review:    ['Approved', 'Draft'],
+  Approved:  ['Published', 'Review'],
+  Published: ['Obsolete'],
   Obsolete:  [],
 }
 
