@@ -75,6 +75,29 @@ export async function GET(req: NextRequest) {
   const sortDir = searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc'
   const sortBy = searchParams.get('sortBy') === 'code' ? 'cbh_code' : 'equipment_type'
 
+  // Resolve duplicate S/N + Asset No filter
+  let duplicateIds: string[] | null = null
+  if (searchParams.get('duplicate_sn') === 'true') {
+    const { data: allRows } = await supabaseAdmin
+      .from('equipment').select('id, serial_number, hospital_asset_no')
+    const snCounts = new Map<string, number>()
+    const assetCounts = new Map<string, number>()
+    for (const row of (allRows ?? []) as { id: string; serial_number: string | null; hospital_asset_no: string | null }[]) {
+      const sn = row.serial_number?.trim()
+      const asset = row.hospital_asset_no?.trim()
+      if (sn && /\d/.test(sn)) snCounts.set(sn, (snCounts.get(sn) ?? 0) + 1)
+      if (asset && /\d/.test(asset)) assetCounts.set(asset, (assetCounts.get(asset) ?? 0) + 1)
+    }
+    const dupSNs = new Set([...snCounts.entries()].filter(([, c]) => c > 1).map(([sn]) => sn))
+    const dupAssets = new Set([...assetCounts.entries()].filter(([, c]) => c > 1).map(([a]) => a))
+    duplicateIds = (allRows ?? [])
+      .filter((row: any) => {
+        const sn = row.serial_number?.trim(); const asset = row.hospital_asset_no?.trim()
+        return (sn && dupSNs.has(sn)) || (asset && dupAssets.has(asset))
+      })
+      .map((row: any) => row.id as string)
+  }
+
   let query = supabaseAdmin
     .from('equipment')
     .select('cbh_code, cbh_code_pending, hospital_asset_no, hospital_asset_no_pending, department, equipment_type, manufacturer, model, serial_number, vendor, owner, owner_status, risk_level, classification, purchase_date, warranty_exp, purchase_price, status, needs_calibration, responsible_person, remark')
@@ -83,6 +106,7 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
 
   query = applyFilters(query, searchParams)
+  if (duplicateIds) query = query.in('id', duplicateIds)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
