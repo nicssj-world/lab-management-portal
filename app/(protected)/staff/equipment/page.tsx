@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import {
+  getEquipmentClassifications,
   getEquipmentDepartments,
   getEquipmentLastUpdated,
   getEquipmentPage,
@@ -20,9 +21,10 @@ export default async function EquipmentPage() {
   if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') === 'none') redirect('/staff/dashboard')
   const canEdit = perms['ทะเบียนเครื่องมือ'] === 'edit'
 
-  const [initialPage, departments, statusCounts, summaryCounts, lastUpdated] = await Promise.all([
+  const [initialPage, departments, classifications, statusCounts, summaryCounts, lastUpdated] = await Promise.all([
     getEquipmentPage(supabase, { page: 1, pageSize: INITIAL_PAGE_SIZE }),
     getEquipmentDepartments(supabase),
+    getEquipmentClassifications(supabase),
     getEquipmentStatusCounts(supabase),
     getEquipmentSummaryCounts(supabase),
     getEquipmentLastUpdated(supabase),
@@ -34,6 +36,7 @@ export default async function EquipmentPage() {
       initialTotal={initialPage.count}
       initialPageSize={initialPage.pageSize}
       departments={departments}
+      classifications={classifications}
       statusCounts={statusCounts}
       initialSummaryCounts={summaryCounts}
       canEdit={canEdit}

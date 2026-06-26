@@ -605,6 +605,8 @@ export async function POST(req: NextRequest) {
       created_by: actor.id,
       equipment_type: eqType || 'ไม่ระบุ',
       department: dept || labInfo.department || 'ไม่ระบุ',
+      cbh_code_pending: false,
+      hospital_asset_no_pending: false,
     }
 
     const textFields = ['cbh_code', 'hospital_asset_no', 'owner', 'owner_status', 'risk_level',

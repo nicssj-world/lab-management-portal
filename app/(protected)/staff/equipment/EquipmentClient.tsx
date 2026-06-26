@@ -2065,6 +2065,7 @@ export default function EquipmentClient({
   initialTotal,
   initialPageSize,
   departments,
+  classifications,
   statusCounts,
   initialSummaryCounts,
   canEdit,
@@ -2074,6 +2075,7 @@ export default function EquipmentClient({
   initialTotal: number
   initialPageSize: number
   departments: string[]
+  classifications: string[]
   statusCounts: Record<string, number>
   initialSummaryCounts: EquipmentSummaryCounts
   canEdit: boolean
@@ -2090,6 +2092,7 @@ export default function EquipmentClient({
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [statusTab, setStatusTab] = useState('')
   const [department, setDepartment] = useState('')
+  const [classification, setClassification] = useState('')
   const [riskLevel, setRiskLevel] = useState('')
   const [needsCal, setNeedsCal] = useState('')
   const [pendingReg, setPendingReg] = useState(false)
@@ -2138,12 +2141,13 @@ export default function EquipmentClient({
     if (debouncedSearch) params.set('search', debouncedSearch)
     if (statusTab) params.set('status', statusTab)
     if (department) params.set('department', department)
+    if (classification) params.set('classification', classification)
     if (riskLevel) params.set('risk_level', riskLevel)
     if (needsCal) params.set('needs_calibration', needsCal)
     if (pendingReg) params.set('pending_reg', 'true')
     if (duplicateSN) params.set('duplicate_sn', 'true')
     return params
-  }, [debouncedSearch, department, duplicateSN, nameSort, needsCal, page, pageSize, pendingReg, riskLevel, sortKey, statusTab])
+  }, [classification, debouncedSearch, department, duplicateSN, nameSort, needsCal, page, pageSize, pendingReg, riskLevel, sortKey, statusTab])
 
   const loadEquipmentList = useCallback(async () => {
     setLoading(true)
@@ -2168,7 +2172,7 @@ export default function EquipmentClient({
   useEffect(() => {
     setPage(1)
     setNewItemId(null)
-  }, [debouncedSearch, statusTab, department, riskLevel, needsCal, pendingReg, duplicateSN, sortKey, nameSort])
+  }, [debouncedSearch, statusTab, department, classification, riskLevel, needsCal, pendingReg, duplicateSN, sortKey, nameSort])
 
   useEffect(() => {
     void loadEquipmentList()
@@ -2209,14 +2213,12 @@ export default function EquipmentClient({
   ])).sort()
 
   function toggleSort(key: EquipmentSortKey) {
-    setSortKey(current => {
-      if (current === key) {
-        setNameSort(dir => dir === 'asc' ? 'desc' : 'asc')
-        return current
-      }
+    if (sortKey === key) {
+      setNameSort(dir => dir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
       setNameSort('asc')
-      return key
-    })
+    }
     setNewItemId(null)
   }
 
@@ -2400,6 +2402,7 @@ export default function EquipmentClient({
       if (debouncedSearch) params.set('search', debouncedSearch)
       if (statusTab) params.set('status', statusTab)
       if (department) params.set('department', department)
+      if (classification) params.set('classification', classification)
       if (riskLevel) params.set('risk_level', riskLevel)
       if (needsCal) params.set('needs_calibration', needsCal)
       if (pendingReg) params.set('pending_reg', 'true')
@@ -2722,6 +2725,10 @@ export default function EquipmentClient({
         <select value={department} onChange={e => setDepartment(e.target.value)} className="eq-filter-select" style={{ minWidth: 148 }}>
           <option value="">ทุกแผนก</option>
           {allDepts.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select value={classification} onChange={e => setClassification(e.target.value)} className="eq-filter-select" style={{ minWidth: 148 }}>
+          <option value="">ทุก Classification</option>
+          {classifications.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={riskLevel} onChange={e => setRiskLevel(e.target.value)} className="eq-filter-select" style={{ minWidth: 118 }}>
           <option value="">ทุก Risk</option>
