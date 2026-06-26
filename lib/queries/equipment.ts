@@ -199,6 +199,11 @@ export async function getEquipmentDepartments(supabase: SupabaseClient): Promise
   return unique
 }
 
+export async function getEquipmentClassifications(_supabase: SupabaseClient): Promise<string[]> {
+  const { LAB_CODE_CLASSIFICATIONS } = await import('@/lib/equipment-lab-code')
+  return Object.values(LAB_CODE_CLASSIFICATIONS)
+}
+
 export async function getEquipmentStatusCounts(supabase: SupabaseClient): Promise<Record<string, number>> {
   const { data, error } = await supabase
     .from('equipment')

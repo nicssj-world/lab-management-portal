@@ -44,6 +44,8 @@ function applyFilters(query: any, searchParams: URLSearchParams) {
   if (needs_calibration === 'true') query = query.eq('needs_calibration', true)
   if (needs_calibration === 'false') query = query.eq('needs_calibration', false)
   if (pending_reg === 'true') query = query.or('cbh_code_pending.eq.true,hospital_asset_no_pending.eq.true')
+  const classification = searchParams.get('classification') ?? ''
+  if (classification) query = query.eq('classification', classification)
 
   return query
 }
