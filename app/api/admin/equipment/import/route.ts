@@ -64,7 +64,14 @@ function parseDate(value: unknown): string | null {
     const d = XLSX.SSF.parse_date_code(n)
     if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
   }
-  // Try direct parse
+  // dd/mm/yyyy (export format)
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) {
+    const iso = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
+    const d = new Date(iso)
+    if (!isNaN(d.getTime())) return iso
+  }
+  // Try direct parse (yyyy-mm-dd, mm/dd/yyyy, etc.)
   const parsed = new Date(s)
   if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10)
   return null

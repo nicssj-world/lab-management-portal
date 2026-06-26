@@ -989,6 +989,56 @@ function DeleteConfirm({ item, onClose, onDeleted }: { item: Equipment; onClose:
   )
 }
 
+function BulkDeleteConfirm({ ids, allItems, onClose, onDeleted }: {
+  ids: string[]
+  allItems: Equipment[]
+  onClose: () => void
+  onDeleted: (ids: string[]) => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const selected = allItems.filter(i => ids.includes(i.id))
+  const preview = selected.slice(0, 10)
+  const extra = selected.length - preview.length
+
+  async function handleDelete() {
+    setLoading(true)
+    const res = await fetch('/api/admin/equipment/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+    if (res.ok) onDeleted(ids)
+    else setLoading(false)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>ลบเครื่องมือ {ids.length} รายการ</div>
+        </div>
+        <div style={{ padding: '20px 24px', maxHeight: 300, overflowY: 'auto' }}>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>รายการที่จะถูกลบออกจากระบบ:</div>
+          {preview.map(i => (
+            <div key={i.id} style={{ fontSize: 13, color: 'var(--ink)', padding: '6px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+              <span style={{ flex: 1 }}>{i.equipment_type}</span>
+              {i.cbh_code && <span style={{ fontSize: 11.5, color: 'var(--muted)', fontFamily: 'monospace' }}>{i.cbh_code}</span>}
+            </div>
+          ))}
+          {extra > 0 && <div style={{ fontSize: 13, color: 'var(--muted)', paddingTop: 8 }}>และอีก {extra} รายการ</div>}
+          <div style={{ fontSize: 13, color: 'var(--danger)', marginTop: 14, fontWeight: 500 }}>ข้อมูลที่ลบแล้วไม่สามารถกู้คืนได้</div>
+        </div>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button onClick={onClose} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>ยกเลิก</button>
+          <button onClick={handleDelete} disabled={loading} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: 'var(--danger)', color: '#fff', cursor: loading ? 'not-allowed' : 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600, opacity: loading ? 0.6 : 1 }}>
+            {loading ? 'กำลังลบ...' : `ลบ ${ids.length} รายการ`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
@@ -2060,6 +2110,8 @@ export default function EquipmentClient({
   const [pmCalItem, setPmCalItem] = useState<Equipment | null>(null)
   const [detailItem, setDetailItem] = useState<Equipment | null>(null)
   const [photoViewItem, setPhotoViewItem] = useState<Equipment | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [exportMenu, setExportMenu] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
   const [xlsxMenu, setXlsxMenu] = useState(false)
@@ -2180,6 +2232,15 @@ export default function EquipmentClient({
     setReloadKey(k => k + 1)
     setDeleteItem(null)
     addToast('ลบเครื่องมือแล้ว')
+  }
+
+  function handleBulkDeleted(ids: string[]) {
+    setItems(prev => prev.filter(i => !ids.includes(i.id)))
+    setSelectedIds(new Set())
+    setBulkDeleteOpen(false)
+    setDashboardItems(null)
+    setReloadKey(k => k + 1)
+    addToast(`ลบ ${ids.length} รายการแล้ว`)
   }
 
   function handleImported() {
@@ -2681,6 +2742,24 @@ export default function EquipmentClient({
 
       {renderPagination('top')}
 
+      {/* Bulk selection bar */}
+      {canEdit && selectedIds.size > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.20)', borderRadius: 10, marginBottom: 10 }}>
+          <Icon name="check" size={14} style={{ color: 'var(--danger)', flexShrink: 0 }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>เลือก {selectedIds.size} รายการ</span>
+          <button onClick={() => setSelectedIds(new Set())} style={{ fontSize: 12, color: 'var(--muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '0 4px', fontFamily: 'inherit' }}>ล้างการเลือก</button>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={() => setBulkDeleteOpen(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 7, border: '1px solid rgba(220,38,38,.35)', background: 'rgba(220,38,38,.08)', color: 'var(--danger)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(220,38,38,.14)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(220,38,38,.08)')}
+          >
+            <Icon name="trash" size={13} /> ลบที่เลือก
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <Card padding={0} className="eq-table-card">
         {loading && (
@@ -2710,6 +2789,24 @@ export default function EquipmentClient({
             <table className="eq-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', borderBottom: '2px solid var(--border)' }}>
+                  {canEdit && (
+                    <th style={{ padding: '9px 10px 9px 14px', width: 36 }} onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={items.length > 0 && items.every(i => selectedIds.has(i.id))}
+                        ref={el => { if (el) el.indeterminate = items.some(i => selectedIds.has(i.id)) && !items.every(i => selectedIds.has(i.id)) }}
+                        onChange={() => {
+                          const allSelected = items.every(i => selectedIds.has(i.id))
+                          setSelectedIds(prev => {
+                            const n = new Set(prev)
+                            items.forEach(i => allSelected ? n.delete(i.id) : n.add(i.id))
+                            return n
+                          })
+                        }}
+                        style={{ cursor: 'pointer', accentColor: 'var(--danger)', width: 15, height: 15 }}
+                      />
+                    </th>
+                  )}
                   <th
                     onClick={() => toggleSort('code')}
                     style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: sortKey === 'code' ? 'var(--primary)' : 'var(--muted)', whiteSpace: 'nowrap', letterSpacing: .6, textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
@@ -2739,6 +2836,21 @@ export default function EquipmentClient({
                       onClick={() => setDetailItem(item)}
                       style={{ borderBottom: '1px solid var(--border)', animation: idx < 12 ? `eqFadeUp .2s ease ${idx * 22}ms both` : undefined }}
                     >
+                      {/* Checkbox */}
+                      {canEdit && (
+                        <td style={{ padding: '11px 10px 11px 14px', width: 36 }} onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(item.id)}
+                            onChange={() => setSelectedIds(prev => {
+                              const n = new Set(prev)
+                              n.has(item.id) ? n.delete(item.id) : n.add(item.id)
+                              return n
+                            })}
+                            style={{ cursor: 'pointer', accentColor: 'var(--danger)', width: 15, height: 15 }}
+                          />
+                        </td>
+                      )}
                       {/* LAB Code */}
                       <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
                         <span
@@ -2855,6 +2967,7 @@ export default function EquipmentClient({
         />
       )}
       {deleteItem && <DeleteConfirm item={deleteItem} onClose={() => setDeleteItem(null)} onDeleted={handleDeleted} />}
+      {bulkDeleteOpen && <BulkDeleteConfirm ids={[...selectedIds]} allItems={items} onClose={() => setBulkDeleteOpen(false)} onDeleted={handleBulkDeleted} />}
       {importModal && <ImportModal onClose={() => setImportModal(false)} onImported={handleImported} />}
       {detailItem && <EquipmentDetailModal item={detailItem} onClose={() => setDetailItem(null)} onEdit={canEdit ? (i) => { setDetailItem(null); setEditItem(i) } : undefined} />}
       {photoViewItem && <PhotoViewModal item={photoViewItem} onClose={() => setPhotoViewItem(null)} />}
