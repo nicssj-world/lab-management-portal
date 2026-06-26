@@ -119,6 +119,32 @@ function applyEquipmentFilters(query: any, searchParams: URLSearchParams) {
   return query
 }
 
+async function getDuplicateEquipmentIds(): Promise<string[]> {
+  const { data } = await supabaseAdmin
+    .from('equipment')
+    .select('id, serial_number, hospital_asset_no')
+
+  const snCounts = new Map<string, number>()
+  const assetCounts = new Map<string, number>()
+  for (const row of (data ?? []) as { id: string; serial_number: string | null; hospital_asset_no: string | null }[]) {
+    const sn = row.serial_number?.trim()
+    const asset = row.hospital_asset_no?.trim()
+    if (sn && /\d/.test(sn)) snCounts.set(sn, (snCounts.get(sn) ?? 0) + 1)
+    if (asset && /\d/.test(asset)) assetCounts.set(asset, (assetCounts.get(asset) ?? 0) + 1)
+  }
+
+  const dupSNs = new Set([...snCounts.entries()].filter(([, c]) => c > 1).map(([sn]) => sn))
+  const dupAssets = new Set([...assetCounts.entries()].filter(([, c]) => c > 1).map(([a]) => a))
+
+  return (data ?? [])
+    .filter((row: any) => {
+      const sn = row.serial_number?.trim()
+      const asset = row.hospital_asset_no?.trim()
+      return (sn && dupSNs.has(sn)) || (asset && dupAssets.has(asset))
+    })
+    .map((row: any) => row.id as string)
+}
+
 export async function GET(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -134,6 +160,15 @@ export async function GET(req: NextRequest) {
   const sortDir = searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc'
   const sortBy = searchParams.get('sortBy') === 'code' ? 'code' : 'name'
 
+  // Resolve duplicate S/N + Asset No filter before building main query
+  let duplicateIds: string[] | null = null
+  if (searchParams.get('duplicate_sn') === 'true') {
+    duplicateIds = await getDuplicateEquipmentIds()
+    if (duplicateIds.length === 0) {
+      return NextResponse.json({ items: [], count: 0, page: 1, pageSize, totalPages: 1, statusCounts: {}, summaryCounts: { active: 0, highRisk: 0, warrantyAlert: 0, needsCalibration: 0 } })
+    }
+  }
+
   let query: any = supabaseAdmin
     .from('equipment')
     .select('*', { count: all ? undefined : 'exact' })
@@ -143,6 +178,7 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
 
   query = applyEquipmentFilters(query, searchParams)
+  if (duplicateIds) query = query.in('id', duplicateIds)
   if (!all) {
     const from = (page - 1) * pageSize
     query = query.range(from, from + pageSize - 1)

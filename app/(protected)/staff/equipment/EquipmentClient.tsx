@@ -2093,6 +2093,7 @@ export default function EquipmentClient({
   const [riskLevel, setRiskLevel] = useState('')
   const [needsCal, setNeedsCal] = useState('')
   const [pendingReg, setPendingReg] = useState(false)
+  const [duplicateSN, setDuplicateSN] = useState(false)
   const [loading, setLoading] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({ '': initialTotal, ...statusCounts })
@@ -2140,8 +2141,9 @@ export default function EquipmentClient({
     if (riskLevel) params.set('risk_level', riskLevel)
     if (needsCal) params.set('needs_calibration', needsCal)
     if (pendingReg) params.set('pending_reg', 'true')
+    if (duplicateSN) params.set('duplicate_sn', 'true')
     return params
-  }, [debouncedSearch, department, nameSort, needsCal, page, pageSize, pendingReg, riskLevel, sortKey, statusTab])
+  }, [debouncedSearch, department, duplicateSN, nameSort, needsCal, page, pageSize, pendingReg, riskLevel, sortKey, statusTab])
 
   const loadEquipmentList = useCallback(async () => {
     setLoading(true)
@@ -2166,7 +2168,7 @@ export default function EquipmentClient({
   useEffect(() => {
     setPage(1)
     setNewItemId(null)
-  }, [debouncedSearch, statusTab, department, riskLevel, needsCal, pendingReg, sortKey, nameSort])
+  }, [debouncedSearch, statusTab, department, riskLevel, needsCal, pendingReg, duplicateSN, sortKey, nameSort])
 
   useEffect(() => {
     void loadEquipmentList()
@@ -2401,6 +2403,7 @@ export default function EquipmentClient({
       if (riskLevel) params.set('risk_level', riskLevel)
       if (needsCal) params.set('needs_calibration', needsCal)
       if (pendingReg) params.set('pending_reg', 'true')
+      if (duplicateSN) params.set('duplicate_sn', 'true')
     }
     const a = document.createElement('a')
     a.href = `/api/admin/equipment/export?${params}`
@@ -2738,6 +2741,14 @@ export default function EquipmentClient({
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: pendingReg ? 'var(--warning)' : 'var(--border)', flexShrink: 0, display: 'inline-block' }} />
           รอขึ้นทะเบียน
         </button>
+        <button
+          onClick={() => setDuplicateSN(v => !v)}
+          className={`eq-pending-toggle ${duplicateSN ? 'is-active' : ''}`}
+          style={duplicateSN ? { borderColor: 'rgba(220,38,38,.35)', background: 'rgba(220,38,38,.07)', color: 'var(--danger)' } : undefined}
+        >
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: duplicateSN ? 'var(--danger)' : 'var(--border)', flexShrink: 0, display: 'inline-block' }} />
+          S/N · Asset No. ซ้ำ
+        </button>
       </div>
 
       {renderPagination('top')}
@@ -2871,7 +2882,7 @@ export default function EquipmentClient({
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.35 }}>{item.equipment_type}</div>
                         <div style={{ display: 'flex', gap: 5, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
                           {item.hospital_asset_no && (
-                            <span style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'monospace' }}>{item.hospital_asset_no}</span>
+                            <span style={{ fontSize: 10.5, fontFamily: 'monospace', color: duplicateSN ? 'var(--danger)' : 'var(--muted)', background: duplicateSN ? 'rgba(220,38,38,.08)' : 'transparent', padding: duplicateSN ? '1px 5px' : undefined, borderRadius: duplicateSN ? 3 : undefined, fontWeight: duplicateSN ? 600 : undefined }}>{item.hospital_asset_no}</span>
                           )}
                         </div>
                       </td>
@@ -2883,7 +2894,11 @@ export default function EquipmentClient({
                         {item.model && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{item.model}</div>}
                       </td>
                       {/* Serial */}
-                      <td style={{ padding: '11px 14px', fontSize: 11.5, color: 'var(--muted)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{item.serial_number ?? <span style={{ color: 'var(--border)', fontFamily: 'inherit' }}>—</span>}</td>
+                      <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+                        {item.serial_number
+                          ? <span style={{ fontSize: 11.5, fontFamily: 'monospace', color: duplicateSN ? 'var(--danger)' : 'var(--muted)', background: duplicateSN ? 'rgba(220,38,38,.08)' : 'transparent', padding: duplicateSN ? '2px 6px' : undefined, borderRadius: duplicateSN ? 4 : undefined, fontWeight: duplicateSN ? 600 : undefined }}>{item.serial_number}</span>
+                          : <span style={{ color: 'var(--border)', fontFamily: 'monospace', fontSize: 11.5 }}>—</span>}
+                      </td>
                       {/* Risk */}
                       <td style={{ padding: '11px 14px' }}>
                         {item.risk_level
