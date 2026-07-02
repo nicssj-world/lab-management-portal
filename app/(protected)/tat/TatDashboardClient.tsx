@@ -75,6 +75,8 @@ const PHLEB_ALLOWED_LABZONES = [
   'ห้องปฏิบัติการ ชั้น G',
   'ห้องปฏิบัติการ เมือง',
   'ห้องปฏิบัติการ นอกรพ.Central',
+  'ห้องปฏิบัติการ นอกรพ.Nhealth',
+  'ห้องปฏิบัติการ นอกรพ.Robinson',
   'ห้องปฏิบัติการ สูติ-นรีเวชกรรม',
   'ห้องเจาะเลือด ชั้น 3',
   CAR_BED_LABZONE,
@@ -512,10 +514,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
       const src = activeTab === 'phlebotomy'
         ? (data.filter_options?.phleb_labzone_names ?? [])
         : (data.filter_options?.labzone_names ?? [])
-      setAllLabzones(activeTab === 'phlebotomy'
-        ? toPhlebLabzoneOptions(src)
-        : src.filter(lz => !HIDDEN_ZONES.has(lz))
-      )
+      setAllLabzones(toPhlebLabzoneOptions(src))
     }
   }, [data, labzone, activeTab])
 
@@ -551,9 +550,11 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
 
   const labzoneOptions = allLabzones.length > 0
     ? allLabzones
-    : activeTab === 'phlebotomy'
-      ? toPhlebLabzoneOptions(data?.filter_options?.phleb_labzone_names ?? [])
-      : (data?.filter_options?.labzone_names ?? []).filter(lz => !HIDDEN_ZONES.has(lz))
+    : toPhlebLabzoneOptions(
+        activeTab === 'phlebotomy'
+          ? (data?.filter_options?.phleb_labzone_names ?? [])
+          : (data?.filter_options?.labzone_names ?? [])
+      )
 
   const labzoneData = (data?.by_labzone ?? []).filter(r => !HIDDEN_ZONES.has(r.labzone_name))
   const phlebLabzoneData = aggregatePhlebLabzones(data?.by_labzone_phleb ?? [])
