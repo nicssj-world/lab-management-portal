@@ -124,6 +124,10 @@ interface RevisionRow {
   approved_by: string | null
   file_url: string | null
   file_name: string | null
+  edit_date?: string | null
+  effective_date?: string | null
+  approved_at?: string | null
+  published_at?: string | null
   created_at: string
   history_source?: string | null
 }
@@ -2133,7 +2137,7 @@ function RevisionPanel({ doc, onClose, onDownload, onPromoted, userRole, docRole
                           </div>
                         )}
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-                          แก้ไขล่าสุด {fmtDate(rev.created_at)}
+                          แก้ไขล่าสุด {fmtDate(rev.edit_date ?? rev.effective_date ?? rev.approved_at ?? rev.published_at ?? rev.created_at)}
                         </div>
                       </div>
                     </div>
@@ -3080,7 +3084,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '' }: Pr
                         </td>
 
                         {/* 7. Updated */}
-                        <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', textAlign: 'center' }}>{fmtDate(doc.updated_at)}</td>
+                        <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', textAlign: 'center' }}>{fmtDate(doc.edit_date ?? doc.expiry_date)}</td>
 
                         {/* 8. Size */}
                         <td style={{ padding: '13px 16px', color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', textAlign: 'center' }}>{fmtSize(doc.file_size)}</td>

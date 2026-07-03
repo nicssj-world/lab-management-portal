@@ -896,6 +896,11 @@ function buildPhlebotomyRollupFromBase(
   const byLabzone = requestedLabzone
     ? [{ labzone_name: requestedLabzone, count: hnCount }]
     : sourceRows
+  const effectiveRowCount = rowCount > 0
+    ? rowCount
+    : requestedLabzone
+      ? hnCount
+      : numberValue(base.phleb_record_count)
 
   return {
     ...base,
@@ -906,8 +911,8 @@ function buildPhlebotomyRollupFromBase(
       total_count: 0,
       sample_count: 0,
     },
-    has_phleb_data: rowCount > 0,
-    phleb_record_count: rowCount,
+    has_phleb_data: effectiveRowCount > 0,
+    phleb_record_count: effectiveRowCount,
     phleb_hn_count: hnCount,
     by_labzone_phleb: byLabzone,
     phleb_heatmap: requestedLabzone ? [] : base.phleb_heatmap,
@@ -976,6 +981,31 @@ export async function GET(req: NextRequest) {
 
   const persistent = await readAnalysisCache<SummaryPayload>(CACHE_ENDPOINT, key)
   if (persistent) {
+    if (!payloadHasData(persistent)) {
+      if (view === 'phlebotomy' && requestedLabzone) {
+        const basePayload = await readBaseSummary(year, month)
+        if (payloadHasData(basePayload)) {
+          const rollup = buildPhlebotomyRollupFromBase(basePayload, requestedLabzone, 0)
+          summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: rollup })
+          await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, rollup, PERSISTENT_CACHE_TTL_MS)
+          return NextResponse.json(rollup, {
+            headers: { 'X-TAT-Summary-Cache': 'phlebotomy-cache-recovered' },
+          })
+        }
+      }
+      const noViewKey = summaryKeyFromFilters(year, month, requestedFilters)
+      if (key !== noViewKey) {
+        const recovered = await readAnalysisCache<SummaryPayload>(CACHE_ENDPOINT, noViewKey)
+          ?? await readAnalysisCacheIgnoringExpiry<SummaryPayload>(CACHE_ENDPOINT, noViewKey)
+        if (payloadHasData(recovered)) {
+          summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: recovered })
+          await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, recovered, PERSISTENT_CACHE_TTL_MS)
+          return NextResponse.json(recovered, {
+            headers: { 'X-TAT-Summary-Cache': 'view-cache-recovered' },
+          })
+        }
+      }
+    }
     if (persistent.precomputed === true) {
       summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: persistent })
       return NextResponse.json(persistent, {
@@ -1015,16 +1045,14 @@ export async function GET(req: NextRequest) {
     if (requestedLabzone) {
       const rowCountResult = await countPhlebRows(year, month, requestedLabzone)
       if (rowCountResult.error) return NextResponse.json({ error: rowCountResult.error }, { status: 500 })
-      if (rowCountResult.count > 2000) {
-        const basePayload = await readBaseSummary(year, month)
-        if (basePayload) {
-          const rollup = buildPhlebotomyRollupFromBase(basePayload, requestedLabzone, rowCountResult.count)
-          summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: rollup })
-          await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, rollup, PERSISTENT_CACHE_TTL_MS)
-          return NextResponse.json(rollup, {
-            headers: { 'X-TAT-Summary-Cache': 'phlebotomy-rollup' },
-          })
-        }
+      const basePayload = await readBaseSummary(year, month)
+      if (basePayload) {
+        const rollup = buildPhlebotomyRollupFromBase(basePayload, requestedLabzone, rowCountResult.count)
+        summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: rollup })
+        await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, rollup, PERSISTENT_CACHE_TTL_MS)
+        return NextResponse.json(rollup, {
+          headers: { 'X-TAT-Summary-Cache': 'phlebotomy-rollup' },
+        })
       }
     }
 
