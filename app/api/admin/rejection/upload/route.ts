@@ -15,8 +15,12 @@ async function getActor() {
 const REQUIRED_COLUMNS = [
   'spcmdate', 'spcmtime', 'ln', 'dspname', 'hn', 'an',
   'spcmnotedt', 'labspcmnm', 'itemno', 'name', 'cnclspcmdt',
-  'cnclstfnm', 'cncldatetime', 'name_1', 'dspname_2', 'hptnm',
+  'cnclstfnm', 'cncldatetime', 'name_1', 'hptnm',
 ]
+
+const COLUMN_ALIASES: Record<string, string[]> = {
+  dspname_2: ['dspname_2', 'dspname_1'],
+}
 
 // Thai Buddhist Era years are > 2500; subtract 543 to get CE
 function beToce(year: number): number {
@@ -122,7 +126,12 @@ export async function POST(req: NextRequest) {
 
   // Validate required columns exist
   const firstRow = normalised[0]
-  const missing = REQUIRED_COLUMNS.filter(c => !(c in firstRow))
+  const missing = [
+    ...REQUIRED_COLUMNS.filter(c => !(c in firstRow)),
+    ...Object.entries(COLUMN_ALIASES)
+      .filter(([, aliases]) => !aliases.some(alias => alias in firstRow))
+      .map(([column]) => column),
+  ]
   if (missing.length > 0) {
     return NextResponse.json({ error: `Missing columns: ${missing.join(', ')}` }, { status: 400 })
   }
@@ -158,7 +167,7 @@ export async function POST(req: NextRequest) {
       cnclstfnm:      r['cnclstfnm']   ? String(r['cnclstfnm']).trim()   : null,
       cncldatetime:   parseDateTime(r['cncldatetime']),
       work:           r['name_1']      ? String(r['name_1']).trim()      : null,
-      ward:           r['dspname_2']   ? String(r['dspname_2']).trim()   : null,
+      ward:           r['dspname_2'] || r['dspname_1'] ? String(r['dspname_2'] || r['dspname_1']).trim() : null,
       hptnm:          r['hptnm']       ? String(r['hptnm']).trim()       : null,
     }))
     .filter(r => r.spcmdate && !isNaN(r.itemno))

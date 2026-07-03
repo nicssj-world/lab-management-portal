@@ -23,6 +23,10 @@ type RevisionHistoryRow = {
   approved_by: string | null
   file_url: string | null
   file_name: string | null
+  edit_date?: string | null
+  effective_date?: string | null
+  approved_at?: string | null
+  published_at?: string | null
   created_at: string
   history_source?: string | null
 }
@@ -171,7 +175,7 @@ function wrapText(text: string | null | undefined, font: PDFFont, size: number, 
 }
 
 function rowDate(row: RevisionHistoryRow) {
-  return fmtThaiDate(row.created_at)
+  return fmtThaiDate(row.edit_date ?? row.effective_date ?? row.approved_at ?? row.published_at ?? row.created_at)
 }
 
 function sortRevisionRows(rows: RevisionHistoryRow[]) {
@@ -179,7 +183,9 @@ function sortRevisionRows(rows: RevisionHistoryRow[]) {
   return [...rows].sort((a, b) => {
     const revisionOrder = collator.compare(a.revision_number, b.revision_number)
     if (revisionOrder !== 0) return revisionOrder
-    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    const aDate = a.edit_date ?? a.effective_date ?? a.approved_at ?? a.published_at ?? a.created_at
+    const bDate = b.edit_date ?? b.effective_date ?? b.approved_at ?? b.published_at ?? b.created_at
+    return new Date(aDate).getTime() - new Date(bDate).getTime()
   })
 }
 
@@ -356,7 +362,7 @@ export async function loadRevisionHistoryInput(documentId: string, currentOverri
 
   const { data: revisions, error: revisionsErr } = await supabaseAdmin
     .from('document_revisions')
-    .select('id, revision_number, revision_note, revised_by, approved_by, file_url, file_name, created_at, history_source')
+    .select('id, revision_number, revision_note, revised_by, approved_by, file_url, file_name, edit_date, effective_date, approved_at, published_at, created_at, history_source')
     .eq('document_id', documentId)
   if (revisionsErr) throw new Error(revisionsErr.message)
 
