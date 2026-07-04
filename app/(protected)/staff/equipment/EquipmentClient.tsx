@@ -2274,98 +2274,21 @@ export default function EquipmentClient({
     return () => document.removeEventListener('mousedown', handler)
   }, [xlsxMenu])
 
-  function buildEquipmentMasterListHTML(data: Equipment[], scope: 'filtered' | 'all'): string {
-    const fmtD = (s: string | null) =>
-      s ? new Date(s).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
-    const today = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
-
+  function buildEquipmentFilterLabel(scope: 'filtered' | 'all'): string {
     const filterParts: string[] = []
     if (scope === 'filtered') {
       if (department) filterParts.push(`แผนก: ${department}`)
+      if (classification) filterParts.push(`Classification: ${classification}`)
       if (statusTab) filterParts.push(`สถานะ: ${statusTab}`)
+      if (riskLevel) filterParts.push(`Risk: ${riskLevel}`)
+      if (needsCal) filterParts.push(`สอบเทียบ: ${needsCal === 'true' ? 'ต้องการ' : 'ไม่ต้องการ'}`)
+      if (pendingReg) filterParts.push('รอขึ้นทะเบียน')
+      if (duplicateSN) filterParts.push('S/N · Asset No. ซ้ำ')
       if (debouncedSearch) filterParts.push(`ค้นหา: "${debouncedSearch}"`)
     } else if (department) {
       filterParts.push(`แผนก: ${department}`)
     }
-
-    const ROWS_PER_PAGE = 20
-    const pages: (Equipment | null)[][] = []
-    for (let i = 0; i < Math.max(data.length, 1); i += ROWS_PER_PAGE) {
-      pages.push(data.slice(i, i + ROWS_PER_PAGE))
-    }
-
-    const theadHtml = `<thead><tr>
-      <th class="c" style="width:40px">ลำดับ</th>
-      <th class="l col-fill">ชื่อเครื่องมือ</th>
-      <th class="c" style="width:130px">Model</th>
-      <th class="c" style="width:100px">รหัส LAB</th>
-      <th class="c" style="width:75px">สถานะ</th>
-      <th class="c" style="width:120px">วันที่สอบเทียบล่าสุด</th>
-      <th class="c" style="width:120px">ผู้รับผิดชอบ</th>
-    </tr></thead>`
-
-    let rowIdx = 1
-    const pagesHtml = pages.map((page, pageIndex) => {
-      const isLastPage = pageIndex === pages.length - 1
-      const filledRows = [...page]
-      if (!isLastPage) {
-        while (filledRows.length < ROWS_PER_PAGE) filledRows.push(null)
-      }
-      const tbodyHtml = filledRows.map((eq) => {
-        if (!eq) return `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`
-        return `<tr>
-          <td class="c muted">${rowIdx++}</td>
-          <td class="l wrap col-fill">${eq.equipment_type}</td>
-          <td class="c muted">${eq.model ?? '—'}</td>
-          <td class="c mono">${eq.cbh_code_pending ? 'รอขึ้นทะเบียน' : (eq.cbh_code ?? '—')}</td>
-          <td class="c">${eq.status}</td>
-          <td class="c muted">${fmtD(eq.pm_cal_data?.last_cal_date ?? null)}</td>
-          <td class="c muted">${eq.responsible_person ?? '—'}</td>
-        </tr>`
-      }).join('')
-      return `
-        <div class="page">
-          <div class="page-header">
-            <div class="main-title">บัญชีรายการเครื่องมือ (Master List)</div>
-            <div class="sub-title">กลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี</div>
-            <div class="meta-row">
-              <span>${filterParts.length ? filterParts.join(' · ') : 'แสดงเครื่องมือทั้งหมด'}</span>
-              <span>วันที่พิมพ์: ${today}</span>
-            </div>
-          </div>
-          <table>${theadHtml}<tbody>${tbodyHtml}</tbody></table>
-          <div class="page-footer">
-            <span class="footer-spacer"></span>
-            <span class="footer-center">เอกสารนี้เป็นสมบัติของกลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี ห้ามนำออกไปใช้ภายนอกหรือทำซ้ำโดยไม่ได้รับอนุญาต</span>
-            <span class="footer-right">Fm-QP-LAB-01/EQ</span>
-          </div>
-        </div>`
-    }).join('')
-
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>บัญชีรายการเครื่องมือ</title><style>
-      @page { size: A4 portrait; margin: 8mm 10mm; }
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: 'TH Sarabun New','Sarabun','Cordia New',Arial,sans-serif; font-size: 10pt; color: #000; }
-      .page { page-break-after: always; display: flex; flex-direction: column; height: 277mm; }
-      .page:last-child { page-break-after: avoid; }
-      .page-header { text-align: center; margin-bottom: 6px; flex-shrink: 0; }
-      .main-title { font-size: 16pt; font-weight: bold; line-height: 1.5; }
-      .sub-title  { font-size: 13pt; font-weight: bold; line-height: 1.4; }
-      .meta-row   { display: flex; justify-content: space-between; font-size: 9pt; color: #555; margin-top: 3px; padding: 0 4px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 4px; flex-shrink: 0; table-layout: fixed; }
-      .col-fill { width: auto; }
-      th, td { border: 1px solid #000; padding: 3px 5px; font-size: 10pt; height: 23px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-      th { background: #f0f0f0; font-weight: bold; text-align: center; }
-      .c { text-align: center; }
-      .l { text-align: left; }
-      .wrap { white-space: normal; overflow: visible; text-overflow: clip; word-break: break-word; height: auto; min-height: 23px; vertical-align: top; padding-top: 4px; padding-bottom: 4px; }
-      .muted { color: #444; }
-      .mono { font-family: monospace; font-size: 9pt; }
-      .page-footer { display: flex; align-items: center; font-size: 9pt; color: #666; margin-top: auto; padding-top: 3px; border-top: 1px solid #bbb; flex-shrink: 0; }
-      .footer-spacer { flex: 1; }
-      .footer-center { flex: 0 1 auto; text-align: center; }
-      .footer-right { flex: 1; text-align: right; white-space: nowrap; }
-    </style></head><body>${pagesHtml}</body></html>`
+    return filterParts.length ? filterParts.join('   ·   ') : 'แสดงเครื่องมือทั้งหมด'
   }
 
   async function downloadEquipmentPDF(scope: 'filtered' | 'all') {
@@ -2377,17 +2300,99 @@ export default function EquipmentClient({
         if (debouncedSearch) params.set('search', debouncedSearch)
         if (statusTab) params.set('status', statusTab)
         if (department) params.set('department', department)
+        if (classification) params.set('classification', classification)
         if (riskLevel) params.set('risk_level', riskLevel)
         if (needsCal) params.set('needs_calibration', needsCal)
         if (pendingReg) params.set('pending_reg', 'true')
+        if (duplicateSN) params.set('duplicate_sn', 'true')
       }
       const data = await fetch(`/api/admin/equipment?${params}`).then(r => r.json())
-      const allItems = parseEquipmentPayload(data).items ?? []
-      const html = buildEquipmentMasterListHTML(allItems, scope)
-      const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
-      const win = window.open(blobUrl, '_blank')
-      if (!win) { URL.revokeObjectURL(blobUrl); return }
-      win.addEventListener('load', () => { win.print(); URL.revokeObjectURL(blobUrl) }, { once: true })
+      const rows = parseEquipmentPayload(data).items ?? []
+
+      const { jsPDF } = await import('jspdf')
+      const autoTable = (await import('jspdf-autotable')).default
+      const { sarabunBase64 } = await import('@/lib/fonts/sarabun-base64')
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+      doc.addFileToVFS('Sarabun-Regular.ttf', sarabunBase64)
+      doc.addFont('Sarabun-Regular.ttf', 'Sarabun', 'normal')
+      doc.setFont('Sarabun')
+
+      const pageW = doc.internal.pageSize.getWidth()
+      const pageH = doc.internal.pageSize.getHeight()
+      const MX = 10          // left/right margin (mm)
+      const HEADER_H = 28    // space reserved for the title block on every page
+      const FOOTER_H = 14    // space reserved for the footer on every page
+
+      const fmtD = (s: string | null) =>
+        s ? new Date(s).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
+      const today = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+      const filterLabel = buildEquipmentFilterLabel(scope)
+
+      const body = rows.map((eq, i) => [
+        String(i + 1),
+        eq.equipment_type ?? '—',
+        eq.model ?? '—',
+        eq.cbh_code_pending ? 'รอขึ้นทะเบียน' : (eq.cbh_code ?? '—'),
+        eq.status ?? '—',
+        fmtD(eq.pm_cal_data?.last_cal_date ?? null),
+        eq.responsible_person ?? '—',
+      ])
+
+      autoTable(doc, {
+        startY: HEADER_H,
+        margin: { top: HEADER_H, bottom: FOOTER_H, left: MX, right: MX },
+        head: [['ลำดับ', 'ชื่อเครื่องมือ', 'Model', 'รหัส LAB', 'สถานะ', 'วันที่สอบเทียบล่าสุด', 'ผู้รับผิดชอบ']],
+        body: body.length
+          ? body
+          : [[{ content: 'ไม่พบข้อมูลตามตัวกรอง', colSpan: 7, styles: { halign: 'center', textColor: [120, 120, 120] as [number, number, number] } }]],
+        theme: 'grid',
+        styles: { font: 'Sarabun', fontSize: 9, cellPadding: 1.4, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], overflow: 'linebreak', valign: 'middle' },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'normal', halign: 'center', lineColor: [0, 0, 0], lineWidth: 0.1 },
+        columnStyles: {
+          0: { cellWidth: 14, halign: 'center', textColor: [90, 90, 90] },
+          1: { cellWidth: 'auto', halign: 'left' },
+          2: { cellWidth: 34, halign: 'center', textColor: [70, 70, 70] },
+          3: { cellWidth: 32, halign: 'center' },
+          4: { cellWidth: 22, halign: 'center' },
+          5: { cellWidth: 34, halign: 'center', textColor: [70, 70, 70] },
+          6: { cellWidth: 42, halign: 'center', textColor: [70, 70, 70] },
+        },
+      })
+
+      // Draw header block + footer on every page (after generation, so total page count is known)
+      const totalPages = doc.getNumberOfPages()
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p)
+        doc.setFont('Sarabun', 'normal')
+
+        // Header block
+        doc.setTextColor(0, 0, 0)
+        doc.setFontSize(15)
+        doc.text('บัญชีรายการเครื่องมือ (Master List)', pageW / 2, 11, { align: 'center' })
+        doc.setFontSize(12)
+        doc.text('กลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี', pageW / 2, 17, { align: 'center' })
+        doc.setFontSize(8)
+        doc.setTextColor(90, 90, 90)
+        doc.text(filterLabel, MX, 23, { maxWidth: pageW - MX * 2 - 60 })
+        doc.text(`วันที่พิมพ์: ${today}`, pageW - MX, 23, { align: 'right' })
+
+        // Footer
+        const fy = pageH - 9
+        doc.setDrawColor(180, 180, 180)
+        doc.setLineWidth(0.1)
+        doc.line(MX, fy - 4, pageW - MX, fy - 4)
+        doc.setTextColor(110, 110, 110)
+        doc.setFontSize(8)
+        doc.text(`หน้า ${p} / ${totalPages}`, MX, fy)
+        doc.text('Fm-QP-LAB-01/EQ', pageW - MX, fy, { align: 'right' })
+        doc.setFontSize(7)
+        doc.text('เอกสารนี้เป็นสมบัติของกลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี ห้ามนำออกไปใช้ภายนอกหรือทำซ้ำโดยไม่ได้รับอนุญาต', pageW / 2, fy, { align: 'center' })
+        doc.setTextColor(0, 0, 0)
+      }
+
+      const stamp = new Date().toISOString().slice(0, 10)
+      doc.save(`equipment-master-list-${stamp}.pdf`)
     } catch {
       addToast('ไม่สามารถ Export PDF ได้', false)
     } finally {
