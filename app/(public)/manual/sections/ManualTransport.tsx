@@ -133,7 +133,7 @@ export function ManualTransport({ lang }: Props) {
       </H2>
 
       {/* ── Pill tab switcher ── */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 22, padding: '4px', background: 'var(--surface-2)', borderRadius: 10, border: '1px solid var(--border)', width: 'fit-content' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 120px), 1fr))', gap: 6, marginBottom: 22, padding: '4px', background: 'var(--surface-2)', borderRadius: 10, border: '1px solid var(--border)' }}>
         {TABS.map(t => {
           const active = t.id === tab
           return (
@@ -145,7 +145,7 @@ export function ManualTransport({ lang }: Props) {
                 fontWeight: active ? 700 : 500, fontSize: 13,
                 cursor: 'pointer', fontFamily: 'inherit',
                 boxShadow: active ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
-                transition: 'all .15s', whiteSpace: 'nowrap',
+                transition: 'all .15s', lineHeight: 1.25,
               }}
               onMouseEnter={e => { if (!active) e.currentTarget.style.color = 'var(--ink)' }}
               onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--muted)' }}
@@ -173,7 +173,7 @@ export function ManualTransport({ lang }: Props) {
           <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
             {lang === 'th' ? 'อุณหภูมิและระยะเวลาส่งตรวจ' : 'Temperature & Time Windows'}
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 8, marginBottom: 22 }}>
             {TEMP_WINDOWS.map(c => (
               <div key={c.label} style={{ border: `1px solid ${c.border}`, borderRadius: 10, overflow: 'hidden', background: 'var(--card)' }}>
                 {/* Header strip */}
@@ -199,7 +199,7 @@ export function ManualTransport({ lang }: Props) {
           <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
             {lang === 'th' ? 'เกณฑ์การปฏิเสธสิ่งตัวอย่างส่งตรวจ' : 'Specimen Rejection Criteria'}
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 7, marginBottom: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 7, marginBottom: 22 }}>
             {REJECTION_RULES.map((r, i) => (
               <div key={i} style={{ padding: '12px 14px', background: 'var(--card)', border: '1px solid var(--border)', borderLeft: '3px solid var(--danger)', borderRadius: 9 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>

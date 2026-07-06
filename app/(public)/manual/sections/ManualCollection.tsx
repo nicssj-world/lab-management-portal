@@ -23,28 +23,47 @@ export function ManualCollection({ lang }: Props) {
         {lang === 'th' ? 'การเก็บตัวอย่างส่งตรวจ' : 'Specimen Collection'}
       </H2>
 
-      {/* Pill tab switcher */}
+      {/* Collection tab switcher */}
       <div style={{
-        display: 'flex', gap: 4, marginBottom: 22,
-        padding: 4, background: 'var(--surface-2)',
-        borderRadius: 10, border: '1px solid var(--border)',
-        overflowX: 'auto', scrollbarWidth: 'none', flexShrink: 0,
+        display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6, marginBottom: 22,
+        padding: 6, background: 'linear-gradient(180deg, var(--surface-2), rgba(241,245,249,.72))',
+        borderRadius: 12, border: '1px solid var(--border)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,.75)',
       }}>
         {COLLECTION_TABS.map((t) => {
           const active = t.id === tab
           return (
-            <button key={t.id} onClick={() => setTab(t.id)}
+            <button key={t.id} onClick={() => setTab(t.id)} aria-pressed={active}
               style={{
-                padding: '7px 14px', borderRadius: 7, border: 'none',
-                background: active ? 'var(--card)' : 'transparent',
-                color: active ? 'var(--ink)' : 'var(--muted)',
-                fontWeight: active ? 700 : 500, fontSize: 12.5,
+                position: 'relative',
+                minWidth: 0,
+                minHeight: 48,
+                padding: '8px 6px',
+                borderRadius: 8,
+                border: active ? '1px solid rgba(30,95,173,.24)' : '1px solid transparent',
+                background: active ? 'var(--card)' : 'rgba(255,255,255,.28)',
+                color: active ? 'var(--ink)' : '#496179',
+                fontWeight: active ? 700 : 600, fontSize: 11.5,
                 cursor: 'pointer', fontFamily: 'inherit',
-                boxShadow: active ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
-                transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0,
+                boxShadow: active ? '0 4px 12px rgba(15,23,42,.08), inset 0 3px 0 var(--primary)' : 'inset 0 1px 0 rgba(255,255,255,.45)',
+                transition: 'background .15s, border-color .15s, box-shadow .15s, color .15s',
+                lineHeight: 1.2,
+                textAlign: 'center',
+                overflowWrap: 'normal',
+                wordBreak: 'keep-all',
               }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.color = 'var(--ink)' }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--muted)' }}
+              onMouseEnter={e => {
+                if (!active) {
+                  e.currentTarget.style.background = 'rgba(255,255,255,.55)'
+                  e.currentTarget.style.color = 'var(--ink)'
+                }
+              }}
+              onMouseLeave={e => {
+                if (!active) {
+                  e.currentTarget.style.background = 'rgba(255,255,255,.28)'
+                  e.currentTarget.style.color = '#496179'
+                }
+              }}
             >
               {lang === 'th' ? t.th : t.en}
             </button>

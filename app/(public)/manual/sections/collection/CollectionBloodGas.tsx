@@ -16,7 +16,7 @@ export function CollectionBloodGas({ lang }: Props) {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))', gap: 8, marginBottom: 20 }}>
         {ABG_SOURCES.map((s) => (
           <div key={s.kind} style={{ padding: '12px 14px', border: `1px solid ${s.color}25`, borderLeft: `3px solid ${s.color}`, borderRadius: 9, background: s.bg }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>

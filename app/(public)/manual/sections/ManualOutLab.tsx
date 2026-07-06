@@ -250,7 +250,7 @@ export function ManualOutLab({ lang }: Props) {
           {/* Path split */}
           <TimelineConnector>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>เส้นทางเอกสาร</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 10 }}>
               <div style={{ padding: '14px 16px', borderRadius: 10, background: 'var(--primary-soft)', border: '1px solid rgba(30,95,173,.25)' }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--primary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Icon name="check" size={13} style={{ color: 'var(--primary)' }} />
