@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
+import * as XLSX from 'xlsx'
 import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
 import type { ContractWithUsage } from '@/lib/queries/contracts'
@@ -107,6 +108,41 @@ function exportCSV(history: ContractUsage[], vendor: string, product: string) {
   a.download = `contract_${vendor}_${product}.csv`.replace(/\s+/g, '_')
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function exportExcel(contract: ContractWithUsage, history: ContractUsage[]) {
+  const sorted = [...history].sort((a, b) =>
+    (usageMonthKey(a) || '').localeCompare(usageMonthKey(b) || '') ||
+    (a.usage_date ?? '').localeCompare(b.usage_date ?? '')
+  )
+  const infoRows: (string | number)[][] = [
+    ['ประวัติการใช้สัญญา'],
+    ['เลขที่สัญญา', contract.contract_number ?? '—'],
+    ['ชื่อสัญญา', contract.product],
+    ['คู่สัญญา', contract.vendor],
+    ['หน่วยงาน', contract.department ?? '—'],
+    ['มูลค่าสัญญา (บาท)', contract.total ?? 0],
+    ['ใช้ไปแล้วรวม (บาท)', contract.used],
+    ['คงเหลือ (บาท)', (contract.total ?? 0) - contract.used],
+    [],
+  ]
+  const header = ['เดือนค่าใช้จ่าย', 'จำนวนเงิน (บาท)', 'หมายเหตุ', 'บันทึกโดย', 'วันที่บันทึก']
+  const dataRows = sorted.map(u => [
+    fmtExpenseMonth(usageMonthKey(u)),
+    u.amount,
+    u.note ?? '',
+    u.recorded_by ?? '',
+    u.usage_date ? fmtDate(u.usage_date) : '',
+  ])
+  const totalRow = ['รวม', history.reduce((s, u) => s + u.amount, 0), '', '', '']
+
+  const ws = XLSX.utils.aoa_to_sheet([...infoRows, header, ...dataRows, totalRow])
+  ws['!cols'] = [{ wch: 20 }, { wch: 18 }, { wch: 32 }, { wch: 20 }, { wch: 16 }]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'ประวัติการใช้สัญญา')
+  const filename = `contract_${contract.contract_number ?? contract.vendor}_${contract.product}.xlsx`.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_')
+  XLSX.writeFile(wb, filename)
 }
 
 interface Props {
@@ -1221,13 +1257,22 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px 8px' }}>
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)' }}>บันทึกรายการทั้งหมด</span>
                   {history.length > 0 && (
-                    <button
-                      onClick={() => exportCSV(history, hc.vendor, hc.product)}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--primary)', fontFamily: 'inherit', padding: 0 }}
-                    >
-                      <Icon name="download" size={13} />
-                      ส่งออก CSV
-                    </button>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 14 }}>
+                      <button
+                        onClick={() => exportExcel(hc, history)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--success)', fontFamily: 'inherit', padding: 0 }}
+                      >
+                        <Icon name="download" size={13} />
+                        ส่งออก Excel
+                      </button>
+                      <button
+                        onClick={() => exportCSV(history, hc.vendor, hc.product)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--primary)', fontFamily: 'inherit', padding: 0 }}
+                      >
+                        <Icon name="download" size={13} />
+                        ส่งออก CSV
+                      </button>
+                    </div>
                   )}
                 </div>
 
