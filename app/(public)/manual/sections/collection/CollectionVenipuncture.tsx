@@ -10,7 +10,7 @@ export function CollectionVenipuncture({ lang }: Props) {
       <h3 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
         {lang === 'th' ? 'ตำแหน่งที่เหมาะสม' : 'Suitable Sites'}
       </h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: 8, marginBottom: 20 }}>
         {VENIPUNCTURE_SITES.map((s) => (
           <div key={s.num} style={{ padding: '13px 14px', border: `1px solid ${s.border}`, borderTop: `3px solid ${s.color}`, borderRadius: 9, background: s.bg }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 7 }}>

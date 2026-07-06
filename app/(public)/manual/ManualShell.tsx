@@ -76,15 +76,6 @@ function useToast() {
   return { toasts, add }
 }
 
-// Short labels for mobile nav — built from MANUAL_SECTIONS automatically
-// th: ตัดเอาแค่คำแรก (ก่อนเว้นวรรค) เพื่อให้พอดีกับช่องเล็ก
-function shortLabel(s: { th: string; en: string }) {
-  return {
-    th: s.th.replace(/การ/, '').split(/[·\s\/]/)[0].trim().slice(0, 6) || s.th.slice(0, 6),
-    en: s.en.split(/[\s·\/]/)[0].trim().slice(0, 10),
-  }
-}
-
 // ─── Props ───────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -233,6 +224,7 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
   const db = localSections[activeSection]
   const displayHtml = sanitizeRichHtml(lang === 'th' ? db?.th : db?.en)
   const hasCustomContent = !!(db?.th?.trim() || db?.en?.trim())
+  const usesStaticComponent = ['collection', 'transport', 'micro'].includes(activeSection)
 
   return (
     <>
@@ -305,11 +297,11 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
           .manual-mobile-topbar { display: block; background: var(--card); border-bottom: 1px solid var(--border); }
           .manual-mobile-section-bar { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-bottom: 1px solid var(--border); }
           .manual-mobile-section-name { font-size: 13px; font-weight: 700; color: var(--primary); flex: 1; }
-          .manual-mobile-nav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 1px; background: var(--border); }
-          .manual-mobile-nav-item { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 11px 8px 9px; border: none; cursor: pointer; font-family: inherit; transition: background .12s; }
+          .manual-mobile-nav-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); }
+          .manual-mobile-nav-item { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; padding: 11px 4px 10px; border: none; cursor: pointer; font-family: inherit; transition: background .12s; }
           .manual-mobile-nav-item:hover { background: var(--surface-2); }
-          .manual-mobile-nav-icon { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; }
-          .manual-mobile-nav-label { font-size: 10.5px; font-weight: 600; line-height: 1.25; text-align: center; }
+          .manual-mobile-nav-icon { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+          .manual-mobile-nav-label { font-size: 10.5px; font-weight: 600; line-height: 1.2; text-align: center; word-break: break-word; overflow-wrap: anywhere; hyphens: none; max-width: 100%; }
           .manual-content  { padding: 18px 16px; }
           .manual-prevnext { gap: 8px; }
           .manual-prevnext-title { font-size: 12px !important; }
@@ -348,7 +340,6 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
         <nav className="manual-mobile-nav-grid">
           {MANUAL_SECTIONS.map(s => {
             const active = s.id === activeSection
-            const label = shortLabel(s)
             return (
               <button key={s.id} onClick={() => goSection(s.id)} className="manual-mobile-nav-item"
                 style={{ background: active ? 'var(--primary-soft)' : 'var(--card)' }}>
@@ -356,7 +347,7 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
                   <Icon name={s.icon as any} size={17} style={{ color: active ? '#fff' : 'var(--muted)' }} />
                 </div>
                 <span className="manual-mobile-nav-label" style={{ color: active ? 'var(--primary)' : 'var(--ink)' }}>
-                  {lang === 'th' ? label.th : label.en}
+                  {lang === 'th' ? s.shortTh : s.shortEn}
                 </span>
               </button>
             )
@@ -594,8 +585,8 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
           ) : (
             /* ── VIEW MODE ── */
             <>
-              {/* Edit button — hidden for collection/transport (content lives in sub-component files, not DB) */}
-              {canEdit && !['collection', 'transport'].includes(activeSection) && (
+              {/* Edit button — hidden for sections whose layout lives in sub-component files, not DB HTML */}
+              {canEdit && !usesStaticComponent && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
                   <button
                     onClick={() => {
@@ -629,8 +620,8 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
               )}
 
               {/* Content: DB override (if saved) or static React component.
-                  collection/transport always use React component to preserve interactive tabs */}
-              {displayHtml?.trim() && !['collection', 'transport'].includes(activeSection) ? (
+                  rich static sections always use React component to preserve layout and interactions */}
+              {displayHtml?.trim() && !usesStaticComponent ? (
                 <div dangerouslySetInnerHTML={{ __html: displayHtml }}
                   style={{ fontSize: 14, lineHeight: 1.75, color: 'var(--ink)' }}
                   className="manual-db-content" />

@@ -16,7 +16,7 @@ export function CollectionSkin({ lang }: Props) {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 10, marginBottom: 20 }}>
         {SKIN_TYPES.map((c) => (
           <div key={c.titleEn} style={{ padding: '14px 16px', border: `1px solid ${c.border}`, borderTop: `3px solid ${c.color}`, borderRadius: 9, background: c.bg }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>

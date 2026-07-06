@@ -22,16 +22,16 @@ export function CollectionOverview({ lang }: Props) {
       <h3 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
         {lang === 'th' ? 'ลำดับการใส่เลือดลงในหลอด (Order of Draw)' : 'Order of Draw'}
       </h3>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, padding: '12px 8px', background: 'var(--surface-2)', borderRadius: 10, overflowX: 'auto', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 3, flexWrap: 'nowrap', padding: '12px 8px', background: 'var(--surface-2)', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
         {ORDER_OF_DRAW.map((t, i) => (
           <React.Fragment key={t.cap}>
-            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flex: 1, minWidth: 70 }}>
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: '1 1 0', minWidth: 0 }}>
               <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', width: 18, height: 18, borderRadius: '50%', background: t.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9.5, fontWeight: 900, color: '#fff', zIndex: 1 }}>
                 {t.num}
               </div>
-              <div style={{ marginTop: 22, width: 18, height: 50, borderRadius: 4, background: `linear-gradient(180deg, ${t.color} 28%, #fff 28%, #f3f4f6 100%)`, border: '1px solid rgba(0,0,0,.1)' }} />
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink)', textAlign: 'center' }}>{t.cap}</div>
-              <div style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.35 }}>{t.name}</div>
+              <div style={{ marginTop: 22, width: 16, height: 46, borderRadius: 4, background: `linear-gradient(180deg, ${t.color} 28%, #fff 28%, #f3f4f6 100%)`, border: '1px solid rgba(0,0,0,.1)' }} />
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', whiteSpace: 'nowrap' }}>{t.cap}</div>
+              <div style={{ fontSize: 9.5, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.25, overflowWrap: 'anywhere' }}>{t.name}</div>
             </div>
             {i < ORDER_OF_DRAW.length - 1 && (
               <div style={{ display: 'flex', alignItems: 'center', paddingTop: 38, flexShrink: 0, color: 'var(--muted)', fontSize: 22 }}>›</div>
@@ -89,7 +89,7 @@ export function CollectionOverview({ lang }: Props) {
       <h3 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
         {lang === 'th' ? 'การเตรียมผู้ป่วยตามรายการตรวจ' : 'Patient Preparation by Test'}
       </h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 8, marginBottom: 16 }}>
         {PATIENT_PREP.map((p) => (
           <div key={p.en} style={{ padding: '12px 14px', border: '1px solid var(--border)', borderLeft: '3px solid var(--primary)', borderRadius: 9, background: 'var(--card)' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 1 }}>{lang === 'th' ? p.th : p.en}</div>

@@ -24,7 +24,7 @@ export function CollectionMicro({ lang }: Props) {
       <h3 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
         {lang === 'th' ? 'ภาชนะและ Transport Media' : 'Containers & Transport Media'}
       </h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: 8, marginBottom: 20 }}>
         {MICRO_TRANSPORTS.map((t) => (
           <div key={t.name} style={{ padding: '11px 13px', border: '1px solid var(--border)', borderRadius: 9, background: 'var(--card)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
@@ -62,7 +62,7 @@ export function CollectionMicro({ lang }: Props) {
       <h3 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
         {lang === 'th' ? 'การเก็บเสมหะ (3 วิธี)' : 'Sputum Collection — 3 Methods'}
       </h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: 8, marginBottom: 8 }}>
         {MICRO_SPUTUM.map((m, i) => (
           <div key={m.k} style={{ padding: '11px 13px', border: '1px solid var(--border)', borderTop: '3px solid var(--primary)', borderRadius: 9, background: 'var(--card)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>

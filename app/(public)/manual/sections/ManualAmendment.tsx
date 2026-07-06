@@ -162,7 +162,7 @@ export function ManualAmendment({ lang }: Props) {
       {/* ══════════════ 2. REQUEST PURPOSES ══════════════ */}
       <Section>
         <H3 mt={0}>{lang === 'th' ? 'ประเภทคำขอ (ความประสงค์)' : 'Request Types'}</H3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))', gap: 8 }}>
           {REQUEST_TYPES.map((r, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--card)', border: '1px solid var(--border)', borderLeft: '3px solid var(--primary)', borderRadius: 9 }}>
               <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--primary-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -230,12 +230,12 @@ export function ManualAmendment({ lang }: Props) {
             return (
               <div key={p.no} style={{ border: `1px solid ${p.border}`, borderRadius: 11, overflow: 'hidden' }}>
                 {/* Header strip */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', background: p.bg, borderBottom: `1px solid ${p.border}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11, flexWrap: 'wrap', padding: '10px 14px', background: p.bg, borderBottom: `1px solid ${p.border}` }}>
                   <div style={{ width: 26, height: 26, borderRadius: 7, background: p.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, flexShrink: 0 }}>{p.no}</div>
                   <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ink)' }}>
                     {lang === 'th' ? `ส่วนที่ ${p.no} · ${t.title}` : `Part ${p.no} · ${t.title}`}
                   </span>
-                  <span style={{ marginLeft: 'auto', padding: '2px 9px', borderRadius: 20, background: 'var(--card)', border: `1px solid ${p.border}`, fontSize: 11, fontWeight: 700, color: p.color, whiteSpace: 'nowrap' }}>{t.who}</span>
+                  <span style={{ marginLeft: 'auto', padding: '2px 9px', borderRadius: 20, background: 'var(--card)', border: `1px solid ${p.border}`, fontSize: 11, fontWeight: 700, color: p.color, lineHeight: 1.3 }}>{t.who}</span>
                 </div>
                 {/* Items */}
                 <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 7, background: 'var(--card)' }}>

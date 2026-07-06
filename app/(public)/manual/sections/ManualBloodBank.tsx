@@ -176,7 +176,7 @@ export function ManualBloodBank({ lang }: Props) {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 7 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 7 }}>
           {REJECTION_CRITERIA.map(c => {
             const s = CAT[c.category]
             return (
@@ -207,7 +207,7 @@ export function ManualBloodBank({ lang }: Props) {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))', gap: 10 }}>
           {URGENT_METHODS.map(m => (
             <div key={m.no} style={{ border: '1px solid var(--border)', borderRadius: 11, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               {/* Header strip */}
@@ -239,7 +239,7 @@ export function ManualBloodBank({ lang }: Props) {
       ══════════════════════════════════════════════════════════════════ */}
       <Section>
         <H3 mt={0}>{lang === 'th' ? 'การขอเลือดแบบปกติ (ไม่เร่งด่วน)' : 'Routine Blood Request'}</H3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 10 }}>
           {[
             { label: 'เวลาเตรียมเลือด', value: '2', unit: 'ชม.', desc: 'นับจากเวลาที่ได้รับใบขอเลือด', accent: 'var(--primary)', bg: 'var(--primary-soft)', border: 'rgba(30,95,173,.2)' },
             { label: 'ระยะเวลาจองเลือด', value: '48', unit: 'ชม.', desc: 'หากไม่มีการจ่าย คลังเลือดจะปลดเลือดออกเพื่อสำรองให้ผู้ป่วยรายอื่น', accent: '#D97706', bg: 'rgba(217,119,6,.08)', border: 'rgba(217,119,6,.22)' },
@@ -311,7 +311,7 @@ export function ManualBloodBank({ lang }: Props) {
       ══════════════════════════════════════════════════════════════════ */}
       <Section>
         <H3 mt={0}>{lang === 'th' ? 'ข้อควรระวังในการให้เลือด' : 'Transfusion Precautions'}</H3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 8 }}>
           {PRECAUTIONS.map((p, i) => {
             const urgencyMap = {
               high:   { border: 'rgba(220,38,38,.25)', bg: 'rgba(220,38,38,.05)', stripe: 'var(--danger)',   label: 'ด่วน', labelColor: 'var(--danger)', labelBg: 'rgba(220,38,38,.1)' },
@@ -353,7 +353,7 @@ export function ManualBloodBank({ lang }: Props) {
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 10 }}>
             ระยะเวลาปลดเลือดจองหลังเตรียมให้
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 92px), 1fr))', gap: 8 }}>
             {RETENTION_DATA.map(r => (
               <div key={r.type} style={{ padding: '12px 14px', background: r.bg, border: `1px solid ${r.color}33`, borderRadius: 9, textAlign: 'center' }}>
                 <div style={{ fontSize: 28, fontWeight: 900, color: r.color, letterSpacing: '-.03em', lineHeight: 1 }}>{r.days}</div>

@@ -5,18 +5,21 @@ export interface ManualSection {
   th: string
   en: string
   icon: string
+  /** Short labels for the compact mobile nav grid (no blind truncation). */
+  shortTh: string
+  shortEn: string
 }
 
 export const MANUAL_SECTIONS: ManualSection[] = [
-  { id: 'home',       th: 'หน้าแรก',                              en: 'Home',                               icon: 'home' },
-  { id: 'collection', th: 'การเก็บตัวอย่างส่งตรวจ',               en: 'Specimen Collection',                icon: 'syringe' },
-  { id: 'transport',  th: 'การส่งตัวอย่างส่งตรวจ',                en: 'Specimen Transport',                 icon: 'bloodBag' },
-  { id: 'addon',      th: 'การขอตรวจเพิ่มหรือขอตรวจซ้ำ',           en: 'Add-on / Repeat Requests',           icon: 'plus' },
-  { id: 'report',     th: 'การรายงานผลตรวจ / ค่าวิกฤติ',           en: 'Result Reporting · Critical Values', icon: 'alert' },
-  { id: 'outlab',     th: 'การใช้บริการ OUT LAB',                  en: 'OUT LAB Service',                    icon: 'biohazard' },
-  { id: 'micro',      th: 'การใช้บริการห้องจุลชีววิทยา',          en: 'Microbiology Service',               icon: 'petri' },
-  { id: 'bloodbank',  th: 'การใช้บริการคลังเลือด',               en: 'Blood Bank Service',                 icon: 'bloodBag' },
-  { id: 'amendment',  th: 'การแก้ไขและเปลี่ยนแปลงข้อมูลทางห้องปฏิบัติการ', en: 'Result Amendment & Correction', icon: 'edit' },
+  { id: 'home',       th: 'หน้าแรก',                              en: 'Home',                               icon: 'home',      shortTh: 'หน้าแรก',       shortEn: 'Home' },
+  { id: 'collection', th: 'การเก็บตัวอย่างส่งตรวจ',               en: 'Specimen Collection',                icon: 'syringe',   shortTh: 'เก็บตัวอย่าง',   shortEn: 'Collect' },
+  { id: 'transport',  th: 'การส่งตัวอย่างส่งตรวจ',                en: 'Specimen Transport',                 icon: 'bloodBag',  shortTh: 'ส่งตัวอย่าง',    shortEn: 'Transport' },
+  { id: 'addon',      th: 'การขอตรวจเพิ่มหรือขอตรวจซ้ำ',           en: 'Add-on / Repeat Requests',           icon: 'plus',      shortTh: 'ขอตรวจเพิ่ม',    shortEn: 'Add-on' },
+  { id: 'report',     th: 'การรายงานผลตรวจ / ค่าวิกฤติ',           en: 'Result Reporting · Critical Values', icon: 'alert',     shortTh: 'รายงานผล',       shortEn: 'Reporting' },
+  { id: 'outlab',     th: 'การใช้บริการ OUT LAB',                  en: 'OUT LAB Service',                    icon: 'biohazard', shortTh: 'OUT LAB',        shortEn: 'OUT LAB' },
+  { id: 'micro',      th: 'การใช้บริการห้องจุลชีววิทยา',          en: 'Microbiology Service',               icon: 'petri',     shortTh: 'จุลชีววิทยา',    shortEn: 'Microbio' },
+  { id: 'bloodbank',  th: 'การใช้บริการคลังเลือด',               en: 'Blood Bank Service',                 icon: 'bloodBag',  shortTh: 'คลังเลือด',      shortEn: 'Blood Bank' },
+  { id: 'amendment',  th: 'การแก้ไขและเปลี่ยนแปลงข้อมูลทางห้องปฏิบัติการ', en: 'Result Amendment & Correction', icon: 'edit', shortTh: 'แก้ไขข้อมูล',    shortEn: 'Amendment' },
 ]
 
 export interface PhoneEntry {
