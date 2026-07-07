@@ -6,6 +6,7 @@ export type OwnProfile = {
   name: string
   role: string
   dept: string | null
+  phone: string | null
   avatar_url: string | null
   doc_role: string | null
   document_position: string | null
@@ -13,7 +14,7 @@ export type OwnProfile = {
   signature_updated_at: string | null
 }
 
-const FULL_SELECT = 'id, name, role, dept, avatar_url, doc_role, document_position, signature_url, signature_updated_at'
+const FULL_SELECT = 'id, name, role, dept, phone, avatar_url, doc_role, document_position, signature_url, signature_updated_at'
 const BASIC_SELECT = 'id, name, role, dept'
 
 function isNoRows(error: { code?: string; message?: string } | null) {
@@ -26,6 +27,7 @@ function withOptionalColumns(row: Partial<OwnProfile> & Pick<OwnProfile, 'id' | 
     name: row.name,
     role: row.role,
     dept: row.dept ?? null,
+    phone: row.phone ?? null,
     avatar_url: row.avatar_url ?? null,
     doc_role: row.doc_role ?? null,
     document_position: row.document_position ?? null,

@@ -11,6 +11,7 @@ interface ProfileData {
   name: string
   role: string
   dept: string | null
+  phone: string | null
   avatar_url: string | null
   doc_role: string | null
   document_position: string | null
@@ -39,6 +40,7 @@ export default function ProfilePage() {
 
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [displayName, setDisplayName] = useState('')
+  const [phone, setPhone] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [documentPosition, setDocumentPosition] = useState('')
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
@@ -46,7 +48,10 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState(false)
   const [uploadingSignature, setUploadingSignature] = useState(false)
   const [savingName, setSavingName] = useState(false)
+  const [savingPhone, setSavingPhone] = useState(false)
+  const [editingPhone, setEditingPhone] = useState(true)
   const [savingDocumentProfile, setSavingDocumentProfile] = useState(false)
+  const [editingDocumentPosition, setEditingDocumentPosition] = useState(true)
   const [editingName, setEditingName] = useState(false)
 
   const [oldPassword, setOldPassword] = useState('')
@@ -73,8 +78,11 @@ export default function ProfilePage() {
         if (!data?.id) return
         setProfile(data)
         setDisplayName(data.name ?? '')
+        setPhone(data.phone ?? '')
+        setEditingPhone(!data.phone)
         setAvatarUrl(data.avatar_url ?? null)
         setDocumentPosition(data.document_position ?? '')
+        setEditingDocumentPosition(!data.document_position)
         setSignatureUrl(data.signature_signed_url ?? null)
       })
       .catch(() => {})
@@ -88,6 +96,31 @@ export default function ProfilePage() {
     setSavingName(false)
     if (!res.ok) showToast('บันทึกไม่สำเร็จ', false)
     else { setProfile((p) => p ? { ...p, name: displayName.trim() } : p); setEditingName(false); showToast('บันทึกชื่อแล้ว') }
+  }
+
+  async function handleSavePhone() {
+    if (!profile) return
+    if (!editingPhone) {
+      setEditingPhone(true)
+      return
+    }
+    setSavingPhone(true)
+    const normalizedPhone = phone.trim()
+    const res = await fetch('/api/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: normalizedPhone || null }),
+    })
+    setSavingPhone(false)
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      showToast(json.error ?? 'บันทึกเบอร์โทรศัพท์ไม่สำเร็จ', false)
+      return
+    }
+    setPhone(json.phone ?? '')
+    setEditingPhone(false)
+    setProfile((p) => p ? { ...p, phone: json.phone ?? null } : p)
+    showToast('บันทึกเบอร์โทรศัพท์แล้ว')
   }
 
   async function resizeImage(file: File, maxSize = 200): Promise<Blob> {
@@ -139,6 +172,10 @@ export default function ProfilePage() {
 
   async function handleSaveDocumentProfile() {
     if (!profile) return
+    if (!editingDocumentPosition) {
+      setEditingDocumentPosition(true)
+      return
+    }
     setSavingDocumentProfile(true)
     const res = await fetch('/api/me/document-profile', {
       method: 'PATCH',
@@ -152,6 +189,8 @@ export default function ProfilePage() {
       return
     }
     setProfile((p) => p ? { ...p, document_position: json.document_position ?? null } : p)
+    setDocumentPosition(json.document_position ?? '')
+    setEditingDocumentPosition(false)
     showToast('บันทึกข้อมูลเอกสารคุณภาพแล้ว')
   }
 
@@ -397,6 +436,34 @@ export default function ProfilePage() {
           {profile?.doc_role && (
             <InfoCell label="บทบาทด้านเอกสาร" value={profile.doc_role} color={docScheme?.color} />
           )}
+          <div style={{ gridColumn: '1 / -1', padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 8 }}>
+            <label style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em', display: 'block' }}>
+              เบอร์โทรศัพท์
+            </label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="tel"
+                inputMode="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                onKeyDown={(e) => { if (editingPhone && e.key === 'Enter') handleSavePhone() }}
+                readOnly={!editingPhone}
+                disabled={savingPhone}
+                placeholder="เช่น 08x-xxx-xxxx หรือ เบอร์ภายใน"
+                style={{
+                  ...inputStyle,
+                  flex: '1 1 220px',
+                  minWidth: 0,
+                  background: editingPhone ? 'var(--card)' : 'var(--surface-2)',
+                  color: editingPhone ? 'var(--ink)' : 'var(--muted)',
+                  cursor: editingPhone ? 'text' : 'default',
+                }}
+              />
+              <Button variant="primary" onClick={handleSavePhone} disabled={savingPhone}>
+                {savingPhone ? 'กำลังบันทึก...' : editingPhone ? 'บันทึกเบอร์โทร' : 'แก้ไขเบอร์โทร'}
+              </Button>
+            </div>
+          </div>
         </div>
         {(!profile?.role || !profile?.dept) && (
           <div style={{ padding: '0 24px 16px', fontSize: 11.5, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -423,9 +490,16 @@ export default function ProfilePage() {
             <input
               value={documentPosition}
               onChange={(e) => setDocumentPosition(e.target.value)}
-              disabled={!canEditDocumentProfile}
+              onKeyDown={(e) => { if (editingDocumentPosition && e.key === 'Enter') handleSaveDocumentProfile() }}
+              readOnly={!editingDocumentPosition}
+              disabled={!canEditDocumentProfile || savingDocumentProfile}
               placeholder="เช่น นักเทคนิคการแพทย์"
-              style={inputStyle}
+              style={{
+                ...inputStyle,
+                background: editingDocumentPosition ? 'var(--card)' : 'var(--surface-2)',
+                color: editingDocumentPosition ? 'var(--ink)' : 'var(--muted)',
+                cursor: editingDocumentPosition ? 'text' : 'default',
+              }}
             />
             <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
               <Button
@@ -433,7 +507,7 @@ export default function ProfilePage() {
                 onClick={handleSaveDocumentProfile}
                 disabled={!canEditDocumentProfile || savingDocumentProfile}
               >
-                {savingDocumentProfile ? 'กำลังบันทึก...' : 'บันทึกตำแหน่ง'}
+                {savingDocumentProfile ? 'กำลังบันทึก...' : editingDocumentPosition ? 'บันทึกตำแหน่ง' : 'แก้ไขตำแหน่ง'}
               </Button>
             </div>
           </div>

@@ -14,6 +14,7 @@ export interface Profile {
   name: string
   role: Role
   dept: string | null
+  phone: string | null
   status: UserStatus
   avatar_url: string | null
   ephis_id?: string | null
