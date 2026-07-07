@@ -32,10 +32,15 @@ export async function PATCH(req: NextRequest) {
   await ensureOwnProfile(user)
 
   const body = await req.json()
-  const allowed = ['name', 'avatar_url', 'document_position'] as const
+  const allowed = ['name', 'avatar_url', 'document_position', 'phone'] as const
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
-    if (key in body) updates[key] = body[key]
+    if (!(key in body)) continue
+    if (key === 'phone') {
+      updates[key] = typeof body[key] === 'string' ? body[key].trim() || null : body[key] ?? null
+      continue
+    }
+    updates[key] = body[key]
   }
 
   if (Object.keys(updates).length === 0)

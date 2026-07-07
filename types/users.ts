@@ -9,6 +9,7 @@ export interface UserProfile {
   name: string
   role: UserRole
   dept: string | null
+  phone: string | null
   status: UserStatus
   doc_role: string | null
   document_position: string | null
@@ -52,6 +53,7 @@ export interface UpdateUserPayload {
   name?: string
   role?: UserRole
   dept?: string
+  phone?: string | null
   status?: UserStatus
   document_position?: string | null
 }
