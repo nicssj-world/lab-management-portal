@@ -1,3 +1,9 @@
+// System cover-page generation is suspended for now — Published QP/WI keep the uploaded
+// content PDF as-is (status changes just record the transition date). The implementation in
+// lib/documents/cover-pdf.ts and lib/documents/publish.ts is kept intact; flip this back to
+// true to re-enable.
+export const COVER_GENERATION_ENABLED = false
+
 export const COVER_REQUIRED_TYPES = ['QP', 'WI'] as const
 export const SOURCE_FILE_EXTENSIONS = ['doc', 'docx', 'xls', 'xlsx'] as const
 export const PDF_EXTENSIONS = ['pdf'] as const

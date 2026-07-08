@@ -10,6 +10,7 @@ import { allowedTransitions, type DocStatus } from '@/lib/documents/transitions'
 import {
   canCorrectPublishedMetadata,
   canMoveToStatus,
+  COVER_GENERATION_ENABLED,
   isCoverRequiredType,
   isPdfFile,
   isPublishedCoverMetadataField,
@@ -19,6 +20,7 @@ import {
 import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/lib/documents/docx-header'
 import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
 import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
+import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
 
 async function getActor() {
   const supabase = await createClient()
@@ -96,6 +98,15 @@ async function patchR2XlsxObject(key: string, metadata: DocxHeaderMetadata) {
 
 function todayIsoDate() {
   return new Date().toISOString().split('T')[0]
+}
+
+function parseDateOnly(value: string | null | undefined) {
+  const clean = value?.trim()
+  if (!clean) return null
+  const iso = clean.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+  const parsed = new Date(clean)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 const DOC_UPLOAD_ROLES = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer']
@@ -264,8 +275,10 @@ export async function PATCH(
 
     const sourceUploadDate = ((newWordFile && newWordFile.size > 0) || wordFileKey) ? todayIsoDate() : undefined
     if (sourceUploadDate) {
-      updates.edit_date = sourceUploadDate
-      updates.expiry_date = sourceUploadDate
+      // Prefer the "วันที่แก้ไข/ทบทวน" value from the form; only default to today's date
+      // when the form didn't supply one.
+      if (typeof updates.edit_date !== 'string' || !updates.edit_date) updates.edit_date = sourceUploadDate
+      if (typeof updates.expiry_date !== 'string' || !updates.expiry_date) updates.expiry_date = updates.edit_date
       if (!updates.owner_name && !current.owner_name && actor.name) updates.owner_name = actor.name
     } else if (typeof updates.edit_date === 'string' && !updates.expiry_date) {
       updates.expiry_date = updates.edit_date
@@ -466,10 +479,19 @@ export async function PATCH(
     const publishedCoverMetadataChanged = current.status === 'Published'
       && targetStatus === 'Published'
       && publishedMetadataFields.some((key) => isPublishedCoverMetadataField(key))
-    const shouldBuildFinalPdf = isCoverRequiredType(targetType)
+    const shouldBuildFinalPdf = COVER_GENERATION_ENABLED
+      && isCoverRequiredType(targetType)
       && !current.legacy_cover_included
       && (newStatus === 'Published' || publishedCoverMetadataChanged)
+    // While system cover generation is suspended, a fresh QP/WI Rev.00 becoming Published has
+    // no cover page at all — stamp a footer + append the revision-history page directly onto
+    // the uploaded content PDF instead, mirroring the "PDF already has a cover" flow.
+    const shouldStampFooterOnly = !COVER_GENERATION_ENABLED
+      && isCoverRequiredType(targetType)
+      && !current.legacy_cover_included
+      && newStatus === 'Published'
     let finalPdfBuilt = false
+    let footerStamped = false
     if (shouldBuildFinalPdf) {
       try {
         const { buildPublishedPdfFields } = await import('@/lib/documents/publish')
@@ -491,6 +513,43 @@ export async function PATCH(
           error: toMsg(err),
         })
         warnings.push('บันทึกข้อมูลแล้ว แต่สร้าง PDF หน้าปกใหม่ไม่สำเร็จ กรุณาลอง Regenerate cover อีกครั้ง')
+      }
+    } else if (shouldStampFooterOnly) {
+      try {
+        const contentKey = (updates.file_url as string | null | undefined) ?? current.file_url
+        const effectiveDate = parseDateOnly((updates.effective_date as string | null | undefined) ?? current.effective_date)
+        if (contentKey && effectiveDate) {
+          const contentBytes = await getObjectBuffer(contentKey)
+          const stamped = await stampPublishedPdfFooter(
+            contentBytes,
+            current.document_code,
+            (updates.revision as string | null | undefined) ?? current.revision,
+            effectiveDate,
+            { stampFirstPage: true },
+          )
+          const { appendRevisionHistoryPdf, generateRevisionHistoryPdfForDocument } = await import('@/lib/documents/revision-history-pdf')
+          const historyPdf = await generateRevisionHistoryPdfForDocument(id, { ...updates, type: targetType })
+          const finalPdf = await appendRevisionHistoryPdf(stamped, historyPdf)
+          const safeCode = current.document_code.replace(/[^a-zA-Z0-9._-]/g, '_')
+          const stampedKey = `documents/generated/${id}/${Date.now()}-${safeCode}-final.pdf`
+          await r2.send(new PutObjectCommand({
+            Bucket: R2_BUCKET,
+            Key: stampedKey,
+            Body: Buffer.from(finalPdf),
+            ContentType: 'application/pdf',
+          }))
+          updates.file_url = stampedKey
+          updates.file_size = finalPdf.length
+          updates.mime_type = 'application/pdf'
+          footerStamped = true
+        }
+      } catch (err) {
+        console.error('Published document footer stamp failed; saving metadata only', {
+          documentId: id,
+          code: current.document_code,
+          error: toMsg(err),
+        })
+        warnings.push('บันทึกข้อมูลแล้ว แต่ stamp footer และ revision history ลง PDF ไม่สำเร็จ')
       }
     }
 
@@ -543,6 +602,15 @@ export async function PATCH(
         detail: current.status === 'Published'
           ? `${doc.document_code} · cover metadata: ${publishedMetadataFields.filter(isPublishedCoverMetadataField).join(', ')}`
           : `${doc.document_code} · ${doc.title}`,
+      }).then(undefined, () => {})
+    }
+
+    if (footerStamped) {
+      supabaseAdmin.from('audit_log').insert({
+        action: 'document.footer_stamp',
+        user_id: actor.id,
+        target: doc.document_code,
+        detail: `${doc.document_code} · ${doc.title}`,
       }).then(undefined, () => {})
     }
 

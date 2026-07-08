@@ -249,7 +249,9 @@ export async function POST(req: NextRequest) {
     }
     const uploadedKeys: string[] = []
     const now = new Date().toISOString()
-    const editReviewDate = hasWordFile && !isImportCurrent ? todayIsoDate() : (meta.edit_date || meta.expiry_date)
+    // Prefer the "วันที่แก้ไข/ทบทวน" value from the form; only default to today's date
+    // when the form didn't supply one and a source file is being uploaded.
+    const editReviewDate = meta.edit_date || meta.expiry_date || (hasWordFile && !isImportCurrent ? todayIsoDate() : undefined)
     const resolvedMeta = {
       ...meta,
       owner_name: meta.owner_name || (hasWordFile ? actor.name ?? undefined : meta.owner_name),
