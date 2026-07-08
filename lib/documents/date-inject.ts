@@ -505,6 +505,7 @@ export async function stampPublishedPdfFooter(
   documentCode: string,
   revision: string | null | undefined,
   date: Date,
+  options: { stampFirstPage?: boolean } = {},
 ): Promise<Buffer> {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
   const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true } as Parameters<typeof PDFDocument.load>[1])
@@ -522,8 +523,11 @@ export async function stampPublishedPdfFooter(
     // stamp all pages if extraction fails
   }
 
+  // Page 0 is normally an existing cover page and is skipped; pass stampFirstPage when the
+  // PDF has no cover (e.g. a raw content PDF published without system cover generation).
   const pages = pdfDoc.getPages()
-  for (let i = 1; i < pages.length; i++) {
+  const startPage = options.stampFirstPage ? 0 : 1
+  for (let i = startPage; i < pages.length; i++) {
     if (pageTexts[i]?.includes('Fm-QP-LAB-01/03')) continue
     const page = pages[i]
     const crop = page.getCropBox()

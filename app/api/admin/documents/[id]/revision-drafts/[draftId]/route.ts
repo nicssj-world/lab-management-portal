@@ -6,7 +6,7 @@ import { requiredEnv } from '@/lib/env'
 import { getActor, canAccessDocuments, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 import { allowedTransitions, type DocStatus } from '@/lib/documents/transitions'
 import { DocumentSchema } from '@/lib/validations/document'
-import { canMoveToStatus, isCoverRequiredType, isPdfFile, isSourceFile } from '@/lib/documents/workflow'
+import { canMoveToStatus, COVER_GENERATION_ENABLED, isCoverRequiredType, isPdfFile, isSourceFile } from '@/lib/documents/workflow'
 import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/lib/documents/docx-header'
 import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
 import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
@@ -709,7 +709,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       }
     }
 
-    if (isCoverRequiredType(merged.type) && !publishWithExistingCover) {
+    if (COVER_GENERATION_ENABLED && isCoverRequiredType(merged.type) && !publishWithExistingCover) {
       const { buildPublishedPdfFields } = await import('@/lib/documents/publish')
       const finalFields = await buildPublishedPdfFields(id, promoteUpdates, {
         removeExistingPortalHistory: removePortalRevisionHistory,

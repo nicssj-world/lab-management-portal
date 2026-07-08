@@ -156,6 +156,12 @@ function fmtDate(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })
 }
+function fileAccentColor(name: string | null | undefined): string {
+  const ext = name?.split('.').pop()?.toLowerCase() ?? ''
+  if (ext === 'doc' || ext === 'docx') return '#2563EB'
+  if (ext === 'xls' || ext === 'xlsx') return '#059669'
+  return '#DC2626'
+}
 function fmtStatusDate(iso: string | null): string {
   if (!iso) return ''
   return new Date(iso).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -633,7 +639,7 @@ function DocDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, on
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {doc.file_url && <FileCard name={doc.file_name} size={doc.file_size} accentColor="#DC2626" path={doc.file_url} />}
                 {canDownloadSource && doc.word_name && doc.word_url && (
-                  <FileCard name={doc.word_name} size={doc.word_size} accentColor="#059669" path={doc.word_url} />
+                  <FileCard name={doc.word_name} size={doc.word_size} accentColor={fileAccentColor(doc.word_name)} path={doc.word_url} />
                 )}
               </div>
             </div>
