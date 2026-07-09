@@ -1,0 +1,87 @@
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getActiveRevisionDrafts } from '@/lib/documents/pending'
+import { PendingClient, type PendingDoc } from './PendingClient'
+
+export const dynamic = 'force-dynamic'
+
+const DOC_SELECT = 'id, document_code, title, type, department, revision, updated_at'
+interface DocRow { id: string; document_code: string; title: string; type: string; department: string | null; revision: string | null; updated_at: string }
+
+export default async function PendingApprovalPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+  const { data: actor } = await supabase
+    .from('profiles').select('role, doc_role').eq('id', user.id).single()
+
+  const role = actor?.role ?? ''
+  const docRole = actor?.doc_role ?? ''
+  const allowed = ['Admin', 'Document Controller'].includes(role) || ['Document Controller', 'Reviewer'].includes(docRole)
+  if (!allowed) redirect('/staff/dashboard')
+
+  // Working revision drafts have their own status (Draft/Review/Approved) independent of
+  // their parent document's status (the parent stays "Published" while a draft is worked
+  // on) — bucket them by draft status so a draft moved to Review/Approved shows up in the
+  // matching section instead of staying stuck under "รอ DCC".
+  const activeDrafts = await getActiveRevisionDrafts().catch(() => [])
+  const draftsAwaitingDcc = activeDrafts.filter((d) => d.status === 'Draft' && d.hasWordUrl)
+  const draftsInReview = activeDrafts.filter((d) => d.status === 'Review')
+  const draftsApproved = activeDrafts.filter((d) => d.status === 'Approved')
+
+  const draftDocIds = Array.from(new Set(activeDrafts.map((d) => d.documentId)))
+
+  const [draftParentsRes, reviewRes, approvedRes] = await Promise.all([
+    draftDocIds.length > 0
+      ? supabaseAdmin.from('documents').select(DOC_SELECT).in('id', draftDocIds).is('deleted_at', null)
+      : Promise.resolve({ data: [] as DocRow[] }),
+    supabaseAdmin.from('documents').select(DOC_SELECT).eq('status', 'Review').is('deleted_at', null).order('updated_at', { ascending: false }),
+    supabaseAdmin.from('documents').select(DOC_SELECT).eq('status', 'Approved').is('deleted_at', null).order('updated_at', { ascending: false }),
+  ])
+
+  const parentById = new Map<string, DocRow>((draftParentsRes.data ?? []).map((d) => [d.id, d as DocRow]))
+
+  function toDraftPendingDocs(drafts: typeof activeDrafts): PendingDoc[] {
+    return drafts
+      .map((d): PendingDoc | null => {
+        const parent = parentById.get(d.documentId)
+        if (!parent) return null
+        return {
+          id: parent.id,
+          document_code: parent.document_code,
+          title: parent.title,
+          type: parent.type,
+          department: parent.department,
+          revision: d.revision,
+          updated_at: d.updatedAt,
+          kind: 'draft',
+        }
+      })
+      .filter((d): d is PendingDoc => d !== null)
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  }
+
+  const sourceDocs = toDraftPendingDocs(draftsAwaitingDcc)
+
+  const reviewDocs: PendingDoc[] = [
+    ...((reviewRes.data ?? []) as DocRow[]).map((d) => ({ ...d, kind: 'document' as const })),
+    ...toDraftPendingDocs(draftsInReview),
+  ].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+
+  const approvedDocs: PendingDoc[] = [
+    ...((approvedRes.data ?? []) as DocRow[]).map((d) => ({ ...d, kind: 'document' as const })),
+    ...toDraftPendingDocs(draftsApproved),
+  ].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+
+  return (
+    <PendingClient
+      sourceDocs={sourceDocs}
+      reviewDocs={reviewDocs}
+      approvedDocs={approvedDocs}
+      userRole={actor?.role ?? undefined}
+      docRole={actor?.doc_role ?? undefined}
+      userId={user.id}
+    />
+  )
+}

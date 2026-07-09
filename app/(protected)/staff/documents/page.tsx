@@ -5,7 +5,7 @@ import { DocumentsClient } from './DocumentsClient'
 
 const DOCUMENT_WORKFLOW_ACCESS_ROLES = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer', 'Viewer']
 
-export default async function DocumentsPage() {
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ search?: string; open?: string; read?: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: actor } = await supabase
@@ -14,11 +14,15 @@ export default async function DocumentsPage() {
   const perms = actor?.role ? await getRolePermissions(actor.role) : {}
   const hasWorkflowAccess = DOCUMENT_WORKFLOW_ACCESS_ROLES.includes(actor?.doc_role ?? '')
   if (!hasWorkflowAccess && (perms['เอกสารคุณภาพ'] ?? 'none') === 'none') redirect('/staff/dashboard')
+  const sp = await searchParams
 
   return <DocumentsClient
     userRole={actor?.role ?? undefined}
     docRole={actor?.doc_role ?? undefined}
     userName={actor?.name ?? undefined}
     userId={userId}
+    initialSearch={typeof sp.search === 'string' ? sp.search : undefined}
+    initialOpenId={typeof sp.open === 'string' ? sp.open : undefined}
+    initialReadId={typeof sp.read === 'string' ? sp.read : undefined}
   />
 }

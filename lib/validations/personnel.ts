@@ -28,6 +28,7 @@ export const PersonnelProfileSchema = z.object({
   education:         optStr,
   mt_license_no:     optDigits,
   mt_license_expiry: optDate,
+  official_photo_url: z.string().trim().optional().nullable(),
 })
 export type PersonnelProfileInput = z.infer<typeof PersonnelProfileSchema>
 

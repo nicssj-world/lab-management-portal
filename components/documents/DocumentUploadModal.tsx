@@ -308,6 +308,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
   const canImportCurrent = !isEdit && (userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller')
   const [createMode, setCreateMode] = useState<'draft' | 'import-current'>('draft')
   const isImportCurrent = canImportCurrent && createMode === 'import-current'
+  const [publishImmediately, setPublishImmediately] = useState(false)
   const availableStatuses = isEdit ? [doc?.status ?? 'Draft'] : (isImportCurrent ? ['Published'] : ['Draft'])
   const fileRef = useRef<HTMLInputElement>(null)
   const wordFileRef = useRef<HTMLInputElement>(null)
@@ -666,7 +667,25 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         setSaving(false)
         return
       }
-      onSaved(json as unknown as Document)
+
+      let finalDoc = json as unknown as Document
+
+      if (!isEdit && !isImportCurrent && publishImmediately) {
+        const pubRes = await fetch(`/api/admin/documents/${finalDoc.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Published' }),
+        })
+        const pubJson = await readJsonOrError(pubRes)
+        if (pubRes.ok) {
+          finalDoc = pubJson as unknown as Document
+        } else {
+          setSaving(false)
+          onSaved(finalDoc)
+          alert(`สร้างเอกสารเป็น Draft สำเร็จ แต่เผยแพร่ทันทีไม่สำเร็จ: ${pubJson.error ?? 'เกิดข้อผิดพลาด'} กรุณาเปลี่ยนสถานะเป็น Published ภายหลัง`)
+          return
+        }
+      }
+
+      onSaved(finalDoc)
     } catch {
       setDuplicateDocumentId(null)
       setError('เกิดข้อผิดพลาด กรุณาลองใหม่')
@@ -743,6 +762,21 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                   ? 'ใช้กับเอกสารเก่าที่ใช้งานอยู่แล้วในระบบเดิม ระบบจะสร้างเป็น Published ทันที แล้วค่อยเพิ่มประวัติย้อนหลัง'
                   : 'ใช้กับเอกสารที่ต้องเริ่มจาก Word/Excel และผ่าน Draft → Review → Approved → Published ใช้ได้ทั้ง Rev.00 และ Rev.>0'}
               </div>
+
+              {!isImportCurrent && (
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', paddingTop: 4, borderTop: '1px solid var(--border)' }}>
+                  <input
+                    type="checkbox"
+                    checked={publishImmediately}
+                    onChange={(e) => setPublishImmediately(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span style={{ fontSize: 12, lineHeight: 1.4 }}>
+                    <span style={{ fontWeight: 700, color: 'var(--ink)' }}>เผยแพร่ทันที (ข้าม Review / Approved)</span>
+                    <span style={{ display: 'block', color: 'var(--muted)', marginTop: 2 }}>เอกสารจะถูกสร้างแล้วเปลี่ยนเป็น Published ทันทีในขั้นตอนเดียว</span>
+                  </span>
+                </label>
+              )}
             </div>
           )}
 
@@ -1094,8 +1128,8 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           </button>
           <Button variant="primary" onClick={handleSave} disabled={saving || !!revisionWarning}>
             {saving
-              ? (isEdit ? 'กำลังบันทึก...' : (isImportCurrent ? 'กำลังนำเข้า...' : 'กำลังสร้าง Draft...'))
-              : (isEdit ? 'บันทึกการแก้ไข' : (isImportCurrent ? 'นำเข้าเป็น Published' : 'บันทึกเป็น Draft'))}
+              ? (isEdit ? 'กำลังบันทึก...' : (isImportCurrent ? 'กำลังนำเข้า...' : publishImmediately ? 'กำลังเผยแพร่...' : 'กำลังสร้าง Draft...'))
+              : (isEdit ? 'บันทึกการแก้ไข' : (isImportCurrent ? 'นำเข้าเป็น Published' : publishImmediately ? 'สร้างและเผยแพร่ทันที' : 'บันทึกเป็น Draft'))}
           </Button>
         </div>
       </div>

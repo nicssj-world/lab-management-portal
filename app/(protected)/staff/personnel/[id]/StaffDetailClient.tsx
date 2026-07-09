@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { Icon } from '@/components/ui/Icon'
 import { Card } from '@/components/ui/Card'
@@ -29,6 +30,7 @@ interface DetailProps {
   tests: TestOption[]
   categories: string[]
   staff: StaffOption[]
+  officialPhotoUrl?: string | null
 }
 
 type TabKey = 'profile' | 'training' | 'plan' | 'competency' | 'cert' | 'auth' | 'jd' | 'orient'
@@ -56,7 +58,7 @@ function useToast() {
   return { toasts, add }
 }
 
-export function StaffDetailClient({ detail, canEdit, tests, categories, staff }: DetailProps) {
+export function StaffDetailClient({ detail, canEdit, tests, categories, staff, officialPhotoUrl }: DetailProps) {
   const { profile } = detail
   const [tab, setTab] = useState<TabKey>('profile')
   const { toasts, add } = useToast()
@@ -74,6 +76,16 @@ export function StaffDetailClient({ detail, canEdit, tests, categories, staff }:
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <style>{`
+        @keyframes sd-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .sd-rise { opacity: 0; animation: sd-rise .4s cubic-bezier(.22,.68,0,1) forwards; }
+        .sd-widget:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(15,23,42,.08); }
+        @media (prefers-color-scheme: dark) { .sd-widget:hover { box-shadow: 0 12px 28px rgba(0,0,0,.35); } }
+        @media (prefers-reduced-motion: reduce) {
+          .sd-rise { animation: none; opacity: 1; }
+          .sd-widget:hover { transform: none; }
+        }
+      `}</style>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <Link href="/staff/personnel" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}>
@@ -106,7 +118,12 @@ export function StaffDetailClient({ detail, canEdit, tests, categories, staff }:
         })}
       </div>
 
-      {tab === 'profile' && <ProfileTab prof={prof} canEdit={canEdit} onSaved={(p) => { setProf(p); add('บันทึกประวัติแล้ว') }} onError={(m) => add(m, false)} />}
+      {tab === 'profile' && (
+        <>
+          <ProfileTab prof={prof} canEdit={canEdit} officialPhotoUrl={officialPhotoUrl} onSaved={(p) => { setProf(p); add('บันทึกประวัติแล้ว') }} onError={(m) => add(m, false)} />
+          <OverviewSection prof={prof} training={training} plan={plan} comps={comps} certs={certs} auths={auths} jds={jds} onNavigate={setTab} />
+        </>
+      )}
       {tab === 'training' && <TrainingTab profileId={prof.id} items={training} setItems={setTraining} canEdit={canEdit} toast={add} />}
       {tab === 'plan' && <TrainingPlanTab profileId={prof.id} items={plan} setItems={setPlan} training={training} canEdit={canEdit} toast={add} />}
       {tab === 'competency' && <CompetencyTab profileId={prof.id} items={comps} setItems={setComps} canEdit={canEdit} tests={tests} testById={testById} staff={staff} staffById={staffById} toast={add} />}
@@ -133,9 +150,10 @@ const td: React.CSSProperties = { padding: '10px 14px', color: 'var(--ink)', ver
 const primaryBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const ghostBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const iconBtn: React.CSSProperties = { padding: 5, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', cursor: 'pointer', display: 'inline-flex' }
+const miniSelectStyle: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 7, padding: '4px 6px', fontFamily: 'inherit', cursor: 'pointer', outline: 'none' }
 
 function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
-  return (
+  const content = (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -147,6 +165,9 @@ function Modal({ title, onClose, children, footer }: { title: string; onClose: (
       </div>
     </div>
   )
+  // Portal to <body> so a transformed ancestor (e.g. the .sd-rise card) can't become the
+  // containing block for this position:fixed overlay and clip/offset it.
+  return typeof document === 'undefined' ? content : createPortal(content, document.body)
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -304,6 +325,9 @@ function DateInputBE({ value, onChange, disabled }: { value: string; onChange: (
   const firstDay = new Date(viewYear, viewMonth, 1)
   const start = new Date(viewYear, viewMonth, 1 - firstDay.getDay())
   const cells = Array.from({ length: 42 }, (_, index) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + index))
+  // Wide range so long-tenured staff (start dates decades back) or license expiry years
+  // ahead don't require clicking the month arrow dozens of times.
+  const yearOptions = Array.from({ length: 91 }, (_, i) => today.getFullYear() + 10 - i)
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
@@ -339,12 +363,27 @@ function DateInputBE({ value, onChange, disabled }: { value: string; onChange: (
           background: 'var(--card)',
           boxShadow: '0 18px 44px rgba(15,23,42,.18)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 10 }}>
             <button type="button" onClick={() => moveMonth(-1)} style={iconBtn} aria-label="เดือนก่อนหน้า">
               <Icon name="arrowLeft" size={14} />
             </button>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ink)' }}>
-              {TH_MONTHS[viewMonth]} {viewYear + 543}
+            <div style={{ display: 'flex', gap: 5, flex: 1, justifyContent: 'center' }}>
+              <select
+                value={viewMonth}
+                onChange={(e) => setViewMonth(Number(e.target.value))}
+                style={miniSelectStyle}
+                aria-label="เลือกเดือน"
+              >
+                {TH_MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+              </select>
+              <select
+                value={viewYear}
+                onChange={(e) => setViewYear(Number(e.target.value))}
+                style={miniSelectStyle}
+                aria-label="เลือกปี พ.ศ."
+              >
+                {yearOptions.map((y) => <option key={y} value={y}>{y + 543}</option>)}
+              </select>
             </div>
             <button type="button" onClick={() => moveMonth(1)} style={iconBtn} aria-label="เดือนถัดไป">
               <Icon name="arrowRight" size={14} />
@@ -477,8 +516,33 @@ function formatTenure(startDate: string | null | undefined) {
 }
 
 // ════════════ Profile tab ════════════
-function ProfileTab({ prof, canEdit, onSaved, onError }: { prof: Profile; canEdit: boolean; onSaved: (p: Profile) => void; onError: (m: string) => void }) {
+function ProfileTab({ prof, canEdit, officialPhotoUrl, onSaved, onError }: { prof: Profile; canEdit: boolean; officialPhotoUrl?: string | null; onSaved: (p: Profile) => void; onError: (m: string) => void }) {
   const [editing, setEditing] = useState(false)
+  const [photoUrl, setPhotoUrl] = useState<string | null>(officialPhotoUrl ?? null)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement | null>(null)
+
+  async function uploadOfficialPhoto(file: File) {
+    if (!file.type.startsWith('image/')) { onError('รูปทางการรองรับเฉพาะไฟล์รูปภาพ (PNG, JPG, WebP)'); return }
+    if (file.size > 10 * 1024 * 1024) { onError('รูปต้องไม่เกิน 10 MB'); return }
+    setPhotoBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('kind', 'official-photo')
+      const up = await fetch(`/api/admin/personnel/${prof.id}/files`, { method: 'POST', body: fd })
+      const upJson = await up.json()
+      if (!up.ok) throw new Error(upJson.error ?? 'อัปโหลดรูปไม่สำเร็จ')
+      const res = await fetch(`/api/admin/personnel/${prof.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ official_photo_url: upJson.file_url }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'บันทึกรูปไม่สำเร็จ')
+      onSaved(json as Profile)
+      setPhotoUrl(upJson.signed_url ?? null)
+    } catch (e) { onError(e instanceof Error ? e.message : 'error') } finally { setPhotoBusy(false) }
+  }
   const [form, setForm] = useState({
     ephis_id: licenseDigits(prof.ephis_id),
     position_title: prof.position_title ?? '', dept: prof.dept ?? '', employment_type: prof.employment_type ?? '',
@@ -526,19 +590,63 @@ function ProfileTab({ prof, canEdit, onSaved, onError }: { prof: Profile; canEdi
   ]
 
   return (
-    <Card padding={20}>
-      <SectionHeader title="ประวัติบุคลากร" sub="ข้อมูลส่วนบุคคล · คุณสมบัติวิชาชีพ" canEdit={canEdit} onAdd={canEdit ? () => setEditing(true) : undefined} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-        {rows.map(([k, v]) => (
-          <div key={k}>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 3 }}>{k}</div>
-            <div style={{ fontSize: 13.5, color: 'var(--ink)', fontWeight: 500 }}>
-              {k === 'วันหมดอายุใบอนุญาต' && v
-                ? <span style={{ color: EXPIRY_COLOR[expiryStatus(v)] }}>{fmtDate(v)} · {EXPIRY_LABEL_TH[expiryStatus(v)]}</span>
-                : (v ?? <span style={{ color: 'var(--muted)' }}>—</span>)}
-            </div>
+    <div className="sd-rise" style={{
+      position: 'relative',
+      background: 'linear-gradient(135deg, var(--card) 0%, var(--surface-2) 130%)',
+      border: '1px solid var(--border)', borderRadius: 16,
+      boxShadow: '0 14px 36px rgba(15,23,42,.06)',
+    }}>
+      {/* overflow:hidden is scoped to this decorative wrapper only, so the fixed-position
+          Modal below (a sibling, not a descendant) is never at risk of being clipped/contained. */}
+      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 16, padding: 22 }}>
+        <div style={{
+          position: 'absolute', top: -70, right: -50, width: 240, height: 240, borderRadius: '50%',
+          background: 'radial-gradient(circle, var(--primary-soft) 0%, transparent 70%)', pointerEvents: 'none',
+        }} />
+        <SectionHeader title="ประวัติบุคลากร" sub="ข้อมูลส่วนบุคคล · คุณสมบัติวิชาชีพ" canEdit={canEdit} onAdd={canEdit ? () => setEditing(true) : undefined} />
+        <div style={{ position: 'relative', display: 'flex', gap: 26, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        {/* Official photo (formal / uniform), separate from display avatar */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <div style={{ position: 'relative', width: 140, height: 178, borderRadius: 13, overflow: 'hidden', border: `2px solid ${photoUrl ? 'var(--primary)' : 'var(--border)'}`, background: 'var(--surface-2)', boxShadow: photoUrl ? '0 8px 22px var(--primary-soft)' : 'none' }}>
+            {photoUrl ? (
+              <img src={photoUrl} alt="รูปทางการ" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <svg viewBox="0 0 140 178" style={{ width: '100%', height: '100%' }} aria-hidden="true">
+                <rect width="140" height="178" fill="var(--surface-2)" />
+                <circle cx="70" cy="68" r="32" fill="var(--border)" />
+                <path d="M16 178 C16 132 42 114 70 114 C98 114 124 132 124 178 Z" fill="var(--border)" />
+              </svg>
+            )}
+            <span style={{ position: 'absolute', top: 7, left: 7, fontSize: 9, fontWeight: 800, letterSpacing: '.03em', background: 'var(--primary)', color: '#fff', padding: '2px 7px', borderRadius: 5 }}>ทางการ</span>
+            {canEdit && (
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photoBusy}
+                style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '7px 0', border: 'none', background: 'rgba(15,23,42,.66)', color: '#fff', fontSize: 11, fontWeight: 600, fontFamily: 'inherit', cursor: photoBusy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+              >
+                <Icon name={photoBusy ? 'clock' : 'upload'} size={12} /> {photoBusy ? 'กำลังอัปโหลด…' : photoUrl ? 'เปลี่ยนรูป' : 'อัปโหลดรูป'}
+              </button>
+            )}
           </div>
-        ))}
+          <div style={{ fontSize: 9.5, color: 'var(--muted)', textAlign: 'center', maxWidth: 140, lineHeight: 1.3 }}>ใช้ในเอกสาร/รายงานราชการ</div>
+          <input ref={photoInputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadOfficialPhoto(f); e.target.value = '' }} />
+        </div>
+
+        {/* Facts */}
+        <div style={{ flex: '1 1 420px', maxWidth: 620, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(140px, 1fr))', columnGap: 22, rowGap: 18 }}>
+          {rows.map(([k, v], i) => (
+            <div key={k} style={{ paddingTop: i >= 3 ? 14 : 0, borderTop: i >= 3 ? '1px solid var(--border)' : 'none' }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 4 }}>{k}</div>
+              <div style={{ fontSize: 14.5, color: 'var(--ink)', fontWeight: 600 }}>
+                {k === 'วันหมดอายุใบอนุญาต' && v
+                  ? <span style={{ color: EXPIRY_COLOR[expiryStatus(v)] }}>{fmtDate(v)} · {EXPIRY_LABEL_TH[expiryStatus(v)]}</span>
+                  : (v ?? <span style={{ color: 'var(--muted)', fontWeight: 400 }}>—</span>)}
+              </div>
+            </div>
+          ))}
+        </div>
+        </div>
       </div>
 
       {editing && (
@@ -600,7 +708,192 @@ function ProfileTab({ prof, canEdit, onSaved, onError }: { prof: Profile; canEdi
           )}
         </Modal>
       )}
-    </Card>
+    </div>
+  )
+}
+
+// ════════════ Overview section (profile tab) ════════════
+function OverviewWidget({ icon, title, count, iconTone, children, onOpen, openLabel, delay = 0 }: {
+  icon: string; title: string; count?: React.ReactNode; iconTone?: 'primary' | 'success' | 'warning' | 'danger';
+  children: React.ReactNode; onOpen: () => void; openLabel: string; delay?: number
+}) {
+  const toneBg = iconTone === 'success' ? 'rgba(22,163,74,.10)'
+    : iconTone === 'warning' ? 'rgba(217,119,6,.10)'
+    : iconTone === 'danger' ? 'rgba(220,38,38,.10)'
+    : 'var(--primary-soft)'
+  const toneColor = iconTone === 'success' ? 'var(--success)'
+    : iconTone === 'warning' ? 'var(--warning)'
+    : iconTone === 'danger' ? 'var(--danger)'
+    : 'var(--primary)'
+  return (
+    <div className="sd-rise sd-widget" style={{
+      animationDelay: `${delay}ms`,
+      background: 'var(--card)', border: '1px solid var(--border)', borderTop: `2.5px solid ${toneColor}55`,
+      borderRadius: 14, padding: '16px 17px 13px', display: 'flex', flexDirection: 'column', minHeight: 152,
+      transition: 'transform .18s, box-shadow .18s',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 13 }}>
+        <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: toneBg, color: toneColor }}>
+          <Icon name={icon} size={18} />
+        </span>
+        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>{title}</span>
+        {count !== undefined && <span style={{ marginLeft: 'auto', fontSize: 21, fontWeight: 800, lineHeight: 1, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{count}</span>}
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7 }}>{children}</div>
+      <div style={{ marginTop: 11, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+        <button onClick={onOpen} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {openLabel} <Icon name="arrowRight" size={12} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function OverviewRow({ date, text }: { date?: string | null; text: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12.5 }}>
+      {date && <span style={{ color: 'var(--muted)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{fmtDate(date)}</span>}
+      <span style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</span>
+    </div>
+  )
+}
+
+function OverviewPill({ tone, children }: { tone: 'ok' | 'warn' | 'crit' | 'info'; children: React.ReactNode }) {
+  const map = {
+    ok: ['var(--success)', 'rgba(22,163,74,.10)'],
+    warn: ['var(--warning)', 'rgba(217,119,6,.10)'],
+    crit: ['var(--danger)', 'rgba(220,38,38,.10)'],
+    info: ['var(--primary)', 'var(--primary-soft)'],
+  }[tone]
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 99, color: map[0], background: map[1], width: 'fit-content' }}>{children}</span>
+}
+
+function OverviewEmpty({ text }: { text: string }) {
+  return <div style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic', padding: '4px 0' }}>{text}</div>
+}
+
+function OverviewSection({ prof, training, plan, comps, certs, auths, jds, onNavigate }: {
+  prof: Profile
+  training: StaffTraining[]
+  plan: StaffTrainingPlan[]
+  comps: StaffCompetency[]
+  certs: StaffCertification[]
+  auths: StaffAuthorization[]
+  jds: StaffJd[]
+  onNavigate: (tab: TabKey) => void
+}) {
+  const hasMtLicenseScope = hasMedicalTechnologistLicenseScope(prof.role)
+
+  const alerts = useMemo(() => {
+    const list: { tone: 'crit' | 'warn'; msg: React.ReactNode; go: TabKey | null }[] = []
+    // MT license
+    if (hasMtLicenseScope) {
+      const st = expiryStatus(prof.mt_license_expiry)
+      if (st === 'expired') list.push({ tone: 'crit', msg: <><b>ใบอนุญาต ทนพ. หมดอายุแล้ว</b> ({fmtDate(prof.mt_license_expiry)})</>, go: null })
+      else if (st === 'expiring') list.push({ tone: 'warn', msg: <><b>ใบอนุญาต ทนพ. ใกล้หมดอายุ</b> ({fmtDate(prof.mt_license_expiry)})</>, go: null })
+      else if (!prof.mt_license_expiry || !prof.mt_license_no) list.push({ tone: 'warn', msg: <><b>ยังไม่ได้บันทึกเลขใบอนุญาต ทนพ. หรือวันหมดอายุ</b></>, go: null })
+    }
+    // Certifications
+    const certExpired = certs.filter((c) => expiryStatus(c.expiry_date) === 'expired').length
+    const certExpiring = certs.filter((c) => expiryStatus(c.expiry_date) === 'expiring').length
+    if (certExpired > 0) list.push({ tone: 'crit', msg: <><b>ใบรับรองหมดอายุ {certExpired} รายการ</b></>, go: 'cert' })
+    else if (certExpiring > 0) list.push({ tone: 'warn', msg: <><b>ใบรับรองใกล้หมดอายุ {certExpiring} รายการ</b></>, go: 'cert' })
+    // Competency due
+    const compOverdue = comps.filter((c) => expiryStatus(c.next_due_date) === 'expired').length
+    const compDue = comps.filter((c) => expiryStatus(c.next_due_date) === 'expiring').length
+    if (compOverdue > 0) list.push({ tone: 'crit', msg: <><b>ค้างประเมินสมรรถนะ {compOverdue} รายการ</b> (เกินกำหนดทบทวน)</>, go: 'competency' })
+    else if (compDue > 0) list.push({ tone: 'warn', msg: <><b>สมรรถนะใกล้ถึงรอบทบทวน {compDue} รายการ</b></>, go: 'competency' })
+    // Planned training pending
+    const planned = plan.filter((p) => p.status === 'planned').length
+    if (planned > 0) list.push({ tone: 'warn', msg: <><b>แผนอบรมรอดำเนินการ {planned} รายการ</b></>, go: 'plan' })
+    return list
+  }, [prof, certs, comps, plan, hasMtLicenseScope])
+
+  const latestComp = comps[0]
+  const plannedCount = plan.filter((p) => p.status === 'planned').length
+  const activeAuths = auths.filter((a) => a.status === 'active')
+  const activeJd = jds.find((j) => j.status === 'Active') ?? jds[0]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Alerts */}
+      {alerts.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--muted)' }}>ต้องดำเนินการ / แจ้งเตือน</div>
+          {alerts.map((a, i) => (
+            <div key={i} className="sd-rise" style={{
+              animationDelay: `${i * 40}ms`,
+              display: 'flex', alignItems: 'center', gap: 13, padding: '12px 16px', borderRadius: 12,
+              border: '1px solid var(--border)', borderLeft: `3px solid ${a.tone === 'crit' ? 'var(--danger)' : 'var(--warning)'}`,
+              background: 'var(--card)', boxShadow: '0 2px 8px rgba(15,23,42,.03)',
+            }}>
+              <span style={{
+                width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: a.tone === 'crit' ? 'rgba(220,38,38,.10)' : 'rgba(217,119,6,.10)',
+                color: a.tone === 'crit' ? 'var(--danger)' : 'var(--warning)',
+              }}><Icon name="alert" size={15} /></span>
+              <span style={{ fontSize: 13, flex: 1, color: 'var(--ink)' }}>{a.msg}</span>
+              {a.go && (
+                <button onClick={() => onNavigate(a.go as TabKey)} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap' }}>ดูรายละเอียด →</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Overview widgets */}
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--muted)' }}>ภาพรวม</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(268px, 1fr))', gap: 12 }}>
+
+        <OverviewWidget icon="book" title="ประชุม / อบรม" count={training.length} onOpen={() => onNavigate('training')} openLabel={`ดูทั้งหมด ${training.length} รายการ`} delay={0}>
+          {training.length === 0 ? <OverviewEmpty text="ยังไม่มีบันทึกการอบรม" /> : training.slice(0, 3).map((t) => <OverviewRow key={t.id} date={t.training_date} text={t.topic} />)}
+        </OverviewWidget>
+
+        <OverviewWidget icon="chart" title="แผนพัฒนา / อบรม" count={plan.length} iconTone={plannedCount > 0 ? 'warning' : 'primary'} onOpen={() => onNavigate('plan')} openLabel="ดูแผนพัฒนา" delay={40}>
+          {plan.length === 0 ? <OverviewEmpty text="ยังไม่มีแผนอบรม" /> : <>
+            {plannedCount > 0 && <OverviewPill tone="warn">⏰ รอดำเนินการ {plannedCount}</OverviewPill>}
+            {plan.slice(0, 2).map((p) => <OverviewRow key={p.id} text={`${p.topic} (${p.year})`} />)}
+          </>}
+        </OverviewWidget>
+
+        <OverviewWidget icon="check" title="สมรรถนะ" count={comps.length} iconTone={latestComp?.result === 'pass' ? 'success' : latestComp?.result === 'fail' ? 'danger' : 'primary'} onOpen={() => onNavigate('competency')} openLabel="ดูผลประเมิน" delay={80}>
+          {comps.length === 0 ? <OverviewEmpty text="ยังไม่มีการประเมินสมรรถนะ" /> : <>
+            {latestComp?.result === 'pass' && <OverviewPill tone="ok">✓ ผ่านเกณฑ์ (ล่าสุด)</OverviewPill>}
+            {latestComp?.result === 'fail' && <OverviewPill tone="crit">ไม่ผ่านเกณฑ์ (ล่าสุด)</OverviewPill>}
+            {latestComp && <OverviewRow date={latestComp.assessment_date} text={latestComp.area ?? 'การประเมินสมรรถนะ'} />}
+          </>}
+        </OverviewWidget>
+
+        <OverviewWidget icon="doc" title="ใบอนุญาต / ใบรับรอง" count={certs.length} onOpen={() => onNavigate('cert')} openLabel={certs.length === 0 ? '+ เพิ่มใบรับรอง' : 'ดูใบรับรอง'} delay={120}>
+          {certs.length === 0 ? <OverviewEmpty text="ยังไม่มีใบรับรอง" /> : certs.slice(0, 3).map((c) => (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+              <span style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c.cert_name}</span>
+              {c.expiry_date && <span style={{ fontSize: 11, fontWeight: 700, color: EXPIRY_COLOR[expiryStatus(c.expiry_date)], whiteSpace: 'nowrap' }}>{EXPIRY_LABEL_TH[expiryStatus(c.expiry_date)]}</span>}
+            </div>
+          ))}
+        </OverviewWidget>
+
+        <OverviewWidget icon="shieldCheck" title="มอบหมายงาน" count={activeAuths.length} onOpen={() => onNavigate('auth')} openLabel="ดูการมอบหมาย" delay={160}>
+          {auths.length === 0 ? <OverviewEmpty text="ยังไม่มีการมอบหมาย" /> : <>
+            <OverviewPill tone="info">มอบหมายที่ใช้งานอยู่ {activeAuths.length}</OverviewPill>
+            {activeAuths.slice(0, 2).map((a) => <OverviewRow key={a.id} text={a.category ?? a.role_type} />)}
+          </>}
+        </OverviewWidget>
+
+        <OverviewWidget icon="edit" title="JDJS / ใบกำหนดหน้าที่" count={jds.length} iconTone={activeJd?.status === 'Active' ? 'success' : 'primary'} onOpen={() => onNavigate('jd')} openLabel="ดูเอกสาร JD" delay={200}>
+          {jds.length === 0 ? <OverviewEmpty text="ยังไม่มีเอกสาร JD" /> : <>
+            {activeJd?.status === 'Active' && <OverviewPill tone="ok">✓ JD ใช้งานอยู่ (v{activeJd.version})</OverviewPill>}
+            {activeJd && <OverviewRow date={activeJd.effective_date} text={activeJd.position_title ?? 'ใบกำหนดหน้าที่งาน'} />}
+          </>}
+        </OverviewWidget>
+
+        <OverviewWidget icon="clock" title="ปฐมนิเทศ / ทดลองปฏิบัติงาน" onOpen={() => onNavigate('orient')} openLabel="ดูรายละเอียด" delay={240}>
+          <OverviewRow text="แผนปฐมนิเทศและทดลองปฏิบัติงาน" />
+          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>เปิดแท็บเพื่อดู/บันทึกความคืบหน้า</div>
+        </OverviewWidget>
+
+      </div>
+    </div>
   )
 }
 

@@ -357,8 +357,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (skipSystemCover && nextStatus !== 'Published') {
         return NextResponse.json({ error: 'การข้ามหน้าปกระบบใช้ได้เฉพาะตอน Published เท่านั้น' }, { status: 422 })
       }
-      const transitionType = (updates.type as string | undefined) ?? draft.type
-      const allowed = allowedTransitions(draft.status as DocStatus, actor.role, actor.doc_role ?? undefined, { coverRequired: isCoverRequiredType(transitionType) })
+      const allowed = allowedTransitions(draft.status as DocStatus, actor.role, actor.doc_role ?? undefined)
       if (!allowed.includes(nextStatus as DocStatus)) {
         return NextResponse.json({ error: 'สถานะที่เปลี่ยนไม่ได้รับอนุญาต' }, { status: 403 })
       }
@@ -484,7 +483,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const merged = { ...draft, ...updates }
-    const publishWithExistingCover = Boolean(skipSystemCover && statusAfter === 'Published' && isCoverRequiredType(merged.type))
+    // While system cover generation is suspended, every QP/WI revision publish behaves like
+    // "PDF already has a cover" (footer stamp + revision-history append onto the uploaded
+    // content PDF, no system cover built) — mirrors the Rev.00 shouldStampFooterOnly path in
+    // [id]/route.ts. The user-facing skip-cover checkbox only matters once cover generation is
+    // re-enabled, where it becomes an explicit opt-out from system cover generation.
+    const userSkippedCover = Boolean(skipSystemCover && statusAfter === 'Published' && isCoverRequiredType(merged.type))
+    const publishWithExistingCover = Boolean(
+      statusAfter === 'Published' && isCoverRequiredType(merged.type) && (!COVER_GENERATION_ENABLED || skipSystemCover),
+    )
     if (skipSystemCover) {
       if (!isCoverRequiredType(merged.type)) {
         return NextResponse.json({ error: 'ตัวเลือกข้ามหน้าปกระบบใช้ได้เฉพาะ QP/WI' }, { status: 422 })
