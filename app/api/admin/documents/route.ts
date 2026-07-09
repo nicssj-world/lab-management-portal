@@ -9,6 +9,7 @@ import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/
 import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
 import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
 import { resolveDocumentSortColumn } from '@/lib/documents/sort'
+import { getSourceUploadedDocumentIds } from '@/lib/documents/pending'
 import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
 
 function toMsg(err: unknown) {
@@ -103,18 +104,11 @@ export async function GET(req: NextRequest) {
     if (sourceUploadedOnly) {
       if (!canViewSourceUploadQueue(actor)) return jsonForbidden()
 
-      const { data: sourceDrafts, error: sourceDraftsErr } = await supabaseAdmin
-        .from('document_revision_drafts')
-        .select('document_id')
-        .is('cancelled_at', null)
-        .neq('status', 'Published')
-        .not('word_url', 'is', null)
-
-      if (sourceDraftsErr) {
-        return NextResponse.json({ error: sourceDraftsErr.message }, { status: 500 })
+      try {
+        sourceUploadedDocumentIds = await getSourceUploadedDocumentIds()
+      } catch (err) {
+        return NextResponse.json({ error: toMsg(err) }, { status: 500 })
       }
-
-      sourceUploadedDocumentIds = Array.from(new Set((sourceDrafts ?? []).map((row) => row.document_id).filter(Boolean)))
       if (sourceUploadedDocumentIds.length === 0) {
         return NextResponse.json({ data: [], count: 0 })
       }

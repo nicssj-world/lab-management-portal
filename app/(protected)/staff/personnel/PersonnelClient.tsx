@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
 import { usePermission } from '@/context/PermissionContext'
 import { EXPIRY_COLOR, EXPIRY_LABEL_TH, type ExpiryStatus } from '@/lib/personnel/expiry'
@@ -20,7 +19,7 @@ export interface RosterRow {
   position_title: string | null
   mt_license_no: string | null
   mt_license_expiry: string | null
-  avatar_url: string | null
+  photo_url: string | null
   licenseStatus: ExpiryStatus
   certExpiring: number
   certExpired: number
@@ -40,55 +39,64 @@ function deptColor(dept: string | null): string {
   return DEPT_PALETTE[hash % DEPT_PALETTE.length]
 }
 
-// ── Avatar ──
-function Avatar({ name, dept, photoUrl }: { name: string; dept: string | null; photoUrl?: string | null }) {
+const ROLE_TONE: Record<MainPersonnelRole, { bg: string; color: string }> = {
+  Assistant: { bg: 'rgba(8,145,178,.10)', color: '#0891B2' },
+  'Medical Technologist': { bg: 'rgba(30,95,173,.10)', color: 'var(--primary)' },
+  'Medical Science Technician': { bg: 'rgba(5,150,105,.10)', color: '#059669' },
+}
+
+// ── Portrait — official photo first, initials medallion as fallback ──
+function Portrait({ name, dept, photoUrl, ring }: { name: string; dept: string | null; photoUrl: string | null; ring: string }) {
   const color = deptColor(dept)
-  if (photoUrl) {
-    return (
-      <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, overflow: 'hidden' }}>
-        <img src={photoUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      </div>
-    )
-  }
   return (
     <div style={{
-      width: 36, height: 36, borderRadius: '50%',
-      background: `${color}1a`, color,
-      fontSize: 14, fontWeight: 700,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexShrink: 0, lineHeight: 1, userSelect: 'none',
+      position: 'relative', width: '100%', aspectRatio: '4 / 5', borderRadius: 12,
+      overflow: 'hidden', flexShrink: 0, background: `linear-gradient(155deg, ${color}14, ${color}05)`,
+      boxShadow: `inset 0 0 0 1.5px ${ring}`,
     }}>
-      {name.charAt(0)}
+      {photoUrl ? (
+        <img src={photoUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      ) : (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontSize: 30, fontWeight: 800, color, letterSpacing: '-.02em', userSelect: 'none' }}>
+            {name.charAt(0)}
+          </span>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Enhanced stat card ──
-function StatCard({ label, value, color, icon, warn }: {
-  label: string; value: number; color: string; icon: string; warn?: boolean
+// ── Stat card ──
+function StatCard({ label, value, color, icon, warn, delay }: {
+  label: string; value: number; color: string; icon: string; warn?: boolean; delay: number
 }) {
   const highlighted = warn && value > 0
   return (
-    <div style={{
-      background: 'var(--card)', borderRadius: 12,
-      padding: '14px 16px',
-      borderLeft: `3px solid ${highlighted ? color : 'var(--border)'}`,
-      display: 'flex', alignItems: 'center', gap: 12,
-      transition: 'border-color .2s',
-    }}>
+    <div className="pc-rise" style={{
+      animationDelay: `${delay}ms`,
+      background: 'var(--card)', borderRadius: 13,
+      padding: '15px 16px', border: '1px solid var(--border)',
+      borderTop: `2.5px solid ${highlighted ? color : 'var(--border)'}`,
+      display: 'flex', alignItems: 'center', gap: 13,
+      transition: 'transform .18s, box-shadow .18s, border-color .18s',
+    }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 26px rgba(15,23,42,.08)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none' }}
+    >
       <div style={{
-        width: 38, height: 38, borderRadius: 10,
+        width: 40, height: 40, borderRadius: 11,
         background: highlighted ? `${color}18` : 'var(--surface-2)',
         color: highlighted ? color : 'var(--muted)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
       }}>
-        <Icon name={icon} size={18} />
+        <Icon name={icon} size={19} />
       </div>
-      <div>
-        <div style={{ fontSize: 23, fontWeight: 800, lineHeight: 1, color: highlighted ? color : 'var(--ink)' }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 25, fontWeight: 800, lineHeight: 1, color: highlighted ? color : 'var(--ink)', fontVariantNumeric: 'tabular-nums', letterSpacing: '-.01em' }}>
           {value}
         </div>
-        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3, lineHeight: 1.3 }}>{label}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.3 }}>{label}</div>
       </div>
     </div>
   )
@@ -99,27 +107,23 @@ function Pill({ color, children }: { color: string; children: React.ReactNode })
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '2px 10px', borderRadius: 20,
-      fontSize: 11, fontWeight: 600,
+      padding: '2px 9px', borderRadius: 20,
+      fontSize: 10.5, fontWeight: 700,
       background: `${color}18`, color,
+      whiteSpace: 'nowrap',
     }}>
       {children}
     </span>
   )
 }
 
-const ROLE_TONE: Record<MainPersonnelRole, { bg: string; color: string }> = {
-  Assistant: { bg: 'rgba(8,145,178,.10)', color: '#0891B2' },
-  'Medical Technologist': { bg: 'rgba(30,95,173,.10)', color: 'var(--primary)' },
-  'Medical Science Technician': { bg: 'rgba(5,150,105,.10)', color: '#059669' },
-}
-
-export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
+export function PersonnelClient({ rows, currentUserId }: { rows: RosterRow[]; currentUserId?: string }) {
   const router = useRouter()
   const { canEdit } = usePermission('บุคลากร')
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('All')
   const [deptFilter, setDeptFilter] = useState<string>('All')
+  const hasOwnRecord = Boolean(currentUserId && rows.some((r) => r.id === currentUserId))
 
   const roleCounts = useMemo(() => {
     const counts: Record<MainPersonnelRole, number> = {
@@ -158,21 +162,41 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <style>{`
+        @keyframes pc-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .pc-rise { opacity: 0; animation: pc-rise .42s cubic-bezier(.22,.68,0,1) forwards; }
+        .pc-card:hover { transform: translateY(-3px); }
+        .pc-card:hover .pc-arrow { transform: translateX(3px); opacity: 1; }
+        @media (prefers-reduced-motion: reduce) {
+          .pc-rise { animation: none; opacity: 1; }
+          .pc-card:hover, .pc-card:hover .pc-arrow { transform: none; }
+        }
+      `}</style>
 
       {/* ── Header ── */}
       <div style={{
+        position: 'relative', overflow: 'hidden',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
-        padding: 18, borderRadius: 14, border: '1px solid var(--border)',
+        padding: 22, borderRadius: 16, border: '1px solid var(--border)',
         background: 'linear-gradient(135deg, var(--card) 0%, var(--surface-2) 100%)',
         boxShadow: '0 14px 36px rgba(15,23,42,.08)',
       }}>
+        <div style={{
+          position: 'absolute', top: -60, right: -40, width: 220, height: 220, borderRadius: '50%',
+          background: 'radial-gradient(circle, var(--primary-soft) 0%, transparent 70%)', pointerEvents: 'none',
+        }} />
         <PageHeader
           eyebrow="กลุ่มงานเทคนิคการแพทย์"
           title="ทะเบียนบุคลากร"
           subtitle={`บุคลากรทั้งหมด ${rows.length} คน`}
           marginBottom={0}
         />
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, position: 'relative' }}>
+          {hasOwnRecord && (
+            <Link href={`/staff/personnel/${currentUserId}`} style={linkBtn}>
+              <Icon name="user" size={15} /> โปรไฟล์ของฉัน
+            </Link>
+          )}
           <Link href="/staff/personnel/org" style={linkBtn}>
             <Icon name="users" size={15} /> ผังองค์กร
           </Link>
@@ -184,11 +208,11 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
 
       {/* ── Stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
-        <StatCard label="บุคลากรทั้งหมด"         value={summary.total}           color="#1E5FAD" icon="users"  />
-        <StatCard label="ใบ ทนพ. ใกล้หมดอายุ"   value={summary.licenseExpiring} color="#D97706" icon="clock" warn />
-        <StatCard label="ใบ ทนพ. หมดอายุแล้ว"   value={summary.licenseExpired}  color="#DC2626" icon="alert" warn />
-        <StatCard label="ใบรับรองต้องต่ออายุ"    value={summary.certAlerts}      color="#D97706" icon="doc"  warn />
-        <StatCard label="ค้างประเมินสมรรถนะ"     value={summary.compOverdue}     color="#DC2626" icon="clock" warn />
+        <StatCard label="บุคลากรทั้งหมด"         value={summary.total}           color="#1E5FAD" icon="users" delay={0} />
+        <StatCard label="ใบ ทนพ. ใกล้หมดอายุ"   value={summary.licenseExpiring} color="#D97706" icon="clock" warn delay={40} />
+        <StatCard label="ใบ ทนพ. หมดอายุแล้ว"   value={summary.licenseExpired}  color="#DC2626" icon="alert" warn delay={80} />
+        <StatCard label="ใบรับรองต้องต่ออายุ"    value={summary.certAlerts}      color="#D97706" icon="doc"  warn delay={120} />
+        <StatCard label="ค้างประเมินสมรรถนะ"     value={summary.compOverdue}     color="#DC2626" icon="clock" warn delay={160} />
       </div>
 
       {/* ── Filters ── */}
@@ -260,114 +284,88 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
         )}
       </div>
 
-      {/* ── Roster table ── */}
-      <Card padding={0}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
-                {['ชื่อ-สกุล', 'เลขพนักงาน', 'ตำแหน่ง / หน่วยงาน', 'เลขใบ ทนพ.', 'สถานะใบอนุญาต', 'แจ้งเตือน', ''].map((h) => (
-                  <th key={h} style={thStyle}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: 40, textAlign: 'center' }}>
-                    <div style={{ color: 'var(--muted)', fontSize: 13 }}>ไม่พบบุคลากรที่ตรงกับเงื่อนไข</div>
-                  </td>
-                </tr>
-              ) : filtered.map((r) => {
-                const mainRole = mainPersonnelRole(r.role)
-                const tone = mainRole ? ROLE_TONE[mainRole] : null
-                return (
-                <tr key={r.id}
-                  onClick={() => router.push(`/staff/personnel/${r.id}`)}
-                  style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s', cursor: 'pointer' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  {/* Name + avatar */}
-                  <td style={tdStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Avatar name={r.name} dept={r.dept} photoUrl={r.avatar_url} />
-                      <div>
-                        <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.name}</div>
-                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', marginTop: 3 }}>
-                          {tone && (
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center',
-                              padding: '2px 8px', borderRadius: 99,
-                              background: tone.bg, color: tone.color,
-                              fontSize: 10.5, fontWeight: 800,
-                            }}>{mainRole}</span>
-                          )}
-                          {mainRole !== r.role && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{r.role}</span>}
-                        </div>
-                      </div>
+      {/* ── Roster — directory grid ── */}
+      {filtered.length === 0 ? (
+        <div style={{ padding: 56, textAlign: 'center', background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)' }}>
+          <Icon name="search" size={22} style={{ color: 'var(--muted)', marginBottom: 8 }} />
+          <div style={{ color: 'var(--muted)', fontSize: 13.5 }}>ไม่พบบุคลากรที่ตรงกับเงื่อนไข</div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(196px, 1fr))', gap: 14 }}>
+          {filtered.map((r, i) => {
+            const mainRole = mainPersonnelRole(r.role)
+            const tone = mainRole ? ROLE_TONE[mainRole] : null
+            const isMe = r.id === currentUserId
+            const color = deptColor(r.dept)
+            const alertCount = r.certExpired + r.certExpiring + r.compOverdue + r.compDueSoon
+            return (
+              <div
+                key={r.id}
+                className="pc-rise pc-card"
+                onClick={() => router.push(`/staff/personnel/${r.id}`)}
+                style={{
+                  animationDelay: `${Math.min(i, 24) * 22}ms`,
+                  position: 'relative', cursor: 'pointer',
+                  background: 'var(--card)', borderRadius: 14, overflow: 'hidden',
+                  border: `1.5px solid ${isMe ? 'var(--primary)' : 'var(--border)'}`,
+                  boxShadow: isMe ? '0 8px 22px var(--primary-soft)' : '0 2px 8px rgba(15,23,42,.03)',
+                  transition: 'transform .18s, box-shadow .18s, border-color .18s',
+                  display: 'flex', flexDirection: 'column',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 14px 30px ${color}22`; e.currentTarget.style.borderColor = isMe ? 'var(--primary)' : `${color}55` }}
+                onMouseLeave={(e) => { e.currentTarget.style.boxShadow = isMe ? '0 8px 22px var(--primary-soft)' : '0 2px 8px rgba(15,23,42,.03)'; e.currentTarget.style.borderColor = isMe ? 'var(--primary)' : 'var(--border)' }}
+              >
+                {/* department accent stripe */}
+                <div style={{ height: 4, background: `linear-gradient(90deg, ${color}, ${color}66)`, flexShrink: 0 }} />
+
+                <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+                  <Portrait name={r.name} dept={r.dept} photoUrl={r.photo_url} ring={isMe ? 'var(--primary)' : `${color}30`} />
+
+                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, textAlign: 'center' }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.3, letterSpacing: '-.01em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, flexWrap: 'wrap', width: '100%' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+                      {isMe && <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--primary)', background: 'var(--primary-soft)', padding: '1px 6px', borderRadius: 99, flexShrink: 0 }}>ฉัน</span>}
                     </div>
-                  </td>
 
-                  {/* Employee ID */}
-                  <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12.5, color: r.ephis_id ? 'var(--ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>
-                    {r.ephis_id ?? '—'}
-                  </td>
-
-                  {/* Position / dept */}
-                  <td style={tdStyle}>
-                    <div>{r.position_title ?? <span style={{ color: 'var(--muted)' }}>—</span>}</div>
-                    {(r.dept ?? r.unit) && (
-                      <div style={{ fontSize: 11, color: deptColor(r.dept), marginTop: 2, fontWeight: 500 }}>
-                        {r.dept ?? r.unit}
-                      </div>
+                    {tone && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 99, background: tone.bg, color: tone.color, fontSize: 10, fontWeight: 800 }}>
+                        {mainRole}
+                      </span>
                     )}
-                  </td>
 
-                  {/* License no */}
-                  <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12, color: r.mt_license_no ? 'var(--ink)' : 'var(--muted)' }}>
-                    {r.mt_license_no ?? '—'}
-                  </td>
+                    {(r.dept ?? r.unit) && (
+                      <span style={{ fontSize: 10.5, color, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                        {r.dept ?? r.unit}
+                      </span>
+                    )}
+                  </div>
 
-                  {/* License status */}
-                  <td style={tdStyle}>
-                    {r.licenseStatus === 'none'
-                      ? <span style={{ color: 'var(--muted)' }}>—</span>
-                      : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: EXPIRY_COLOR[r.licenseStatus] }}>
-                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: EXPIRY_COLOR[r.licenseStatus], flexShrink: 0 }} />
-                          {EXPIRY_LABEL_TH[r.licenseStatus]}
-                          {r.mt_license_expiry && (
-                            <span style={{ color: 'var(--muted)', fontWeight: 400 }}>· {r.mt_license_expiry}</span>
-                          )}
-                        </span>
-                      )}
-                  </td>
+                  {r.licenseStatus !== 'none' && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: EXPIRY_COLOR[r.licenseStatus] }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: EXPIRY_COLOR[r.licenseStatus], flexShrink: 0 }} />
+                      ทนพ. {EXPIRY_LABEL_TH[r.licenseStatus]}
+                    </div>
+                  )}
 
-                  {/* Alerts */}
-                  <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  {alertCount > 0 && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       {r.certExpired  > 0 && <Pill color="#DC2626">ใบรับรองหมด {r.certExpired}</Pill>}
                       {r.certExpiring > 0 && <Pill color="#D97706">ใบรับรองใกล้ {r.certExpiring}</Pill>}
                       {r.compOverdue  > 0 && <Pill color="#DC2626">ค้างประเมิน {r.compOverdue}</Pill>}
                       {r.compDueSoon  > 0 && <Pill color="#D97706">ใกล้ถึงรอบ {r.compDueSoon}</Pill>}
-                      {r.certExpired + r.certExpiring + r.compOverdue + r.compDueSoon === 0 && (
-                        <span style={{ fontSize: 12, color: 'var(--success)', fontWeight: 500 }}>ปกติ</span>
-                      )}
                     </div>
-                  </td>
+                  )}
 
-                  {/* Arrow */}
-                  <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--muted)', paddingRight: 14 }}>
-                    <Icon name="chevRight" size={16} />
-                  </td>
-                </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                  <div style={{ marginTop: 'auto', paddingTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'monospace' }}>{r.ephis_id ?? '—'}</span>
+                    <Icon name="chevRight" size={14} className="pc-arrow" style={{ color: 'var(--muted)', opacity: .5, transition: 'transform .18s, opacity .18s' }} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
-      </Card>
+      )}
 
       {/* Result count */}
       {filtered.length !== rows.length && (
@@ -383,12 +381,6 @@ export function PersonnelClient({ rows }: { rows: RosterRow[] }) {
   )
 }
 
-const thStyle: React.CSSProperties = {
-  padding: '10px 16px', fontSize: 11, fontWeight: 600, color: 'var(--muted)',
-  letterSpacing: '.05em', textTransform: 'uppercase',
-  borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', textAlign: 'left',
-}
-const tdStyle: React.CSSProperties = { padding: '12px 16px', color: 'var(--ink)', verticalAlign: 'middle' }
 const linkBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
   padding: '8px 14px', borderRadius: 8,

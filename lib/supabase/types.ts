@@ -17,6 +17,7 @@ export interface Profile {
   phone: string | null
   status: UserStatus
   avatar_url: string | null
+  official_photo_url?: string | null
   ephis_id?: string | null
   document_position: string | null
   signature_url: string | null

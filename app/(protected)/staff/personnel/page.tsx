@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getRolePermissions } from '@/lib/permissions'
 import { getStaffRoster, getAllCertifications, getAllCompetencies } from '@/lib/queries/personnel'
 import { expiryStatus } from '@/lib/personnel/expiry'
+import { createStaffSignedUrl } from '@/lib/personnel/storage'
 import { PersonnelClient, type RosterRow } from './PersonnelClient'
 import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
 
@@ -40,7 +41,13 @@ export default async function PersonnelPage() {
     compByProfile.set(c.profile_id, cur)
   }
 
-  const rows: RosterRow[] = roster.map((p) => {
+  // Official photos live in the private staff-files bucket and need a signed URL each;
+  // fall back to the public display avatar when no official photo has been uploaded yet.
+  const officialPhotoUrls = await Promise.all(
+    roster.map((p) => (p.official_photo_url ? createStaffSignedUrl(p.official_photo_url) : Promise.resolve(null))),
+  )
+
+  const rows: RosterRow[] = roster.map((p, i) => {
     const hasMtLicenseScope = hasMedicalTechnologistLicenseScope(p.role)
     return {
       id: p.id,
@@ -52,7 +59,7 @@ export default async function PersonnelPage() {
       position_title: p.position_title ?? null,
       mt_license_no: hasMtLicenseScope ? p.mt_license_no ?? null : null,
       mt_license_expiry: hasMtLicenseScope ? p.mt_license_expiry ?? null : null,
-      avatar_url: p.avatar_url ?? null,
+      photo_url: officialPhotoUrls[i] ?? p.avatar_url ?? null,
       licenseStatus: hasMtLicenseScope ? expiryStatus(p.mt_license_expiry) : 'none',
       certExpiring: certByProfile.get(p.id)?.expiring ?? 0,
       certExpired: certByProfile.get(p.id)?.expired ?? 0,
@@ -61,5 +68,5 @@ export default async function PersonnelPage() {
     }
   })
 
-  return <PersonnelClient rows={rows} />
+  return <PersonnelClient rows={rows} currentUserId={user.id} />
 }

@@ -44,9 +44,10 @@ const NO_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   Obsolete:  [],
 }
 
-// For non-cover document types (Form/Reference/Card file/etc.), document-control
-// roles may publish a revision directly without the Review/Approved steps.
-const NON_COVER_QUICK: Record<DocStatus, DocStatus[]> = {
+// Admin / Document Controller may publish directly, skipping Review/Approved —
+// e.g. for a fresh upload that doesn't need a formal review cycle. Applies to every
+// document type, including QP/WI.
+const QUICK_PUBLISH: Record<DocStatus, DocStatus[]> = {
   Draft:     ['Published'],
   Review:    ['Published'],
   Approved:  ['Published'],
@@ -72,13 +73,10 @@ export function allowedTransitions(
   current: DocStatus,
   role: string,
   docRole?: string,
-  opts?: { coverRequired?: boolean },
 ): DocStatus[] {
-  const coverRequired = opts?.coverRequired ?? true
   const wfRole = resolveWorkflowRole(role, docRole)
-  // Non-cover types: Admin/DC may publish a revision directly (skip Review/Approved).
-  const quick = !coverRequired && (role === 'Admin' || wfRole === 'Document Controller')
-    ? NON_COVER_QUICK[current] ?? []
+  const quick = (role === 'Admin' || wfRole === 'Document Controller')
+    ? QUICK_PUBLISH[current] ?? []
     : []
 
   if (role === 'Admin') return mergeTransitions(FULL_TRANSITIONS[current] ?? [], quick)

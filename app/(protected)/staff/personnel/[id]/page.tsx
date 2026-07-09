@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { getStaffDetail } from '@/lib/queries/personnel'
+import { createStaffSignedUrl } from '@/lib/personnel/storage'
 import { StaffDetailClient, type TestOption, type StaffOption } from './StaffDetailClient'
 
 export default async function StaffDetailPage(ctx: { params: Promise<{ id: string }> }) {
@@ -27,6 +28,7 @@ export default async function StaffDetailPage(ctx: { params: Promise<{ id: strin
   const testOptions: TestOption[] = (tests ?? []).map((t) => ({ id: t.id, code: t.code, th: t.th, category_id: t.category_id }))
   const categories: string[] = (cats ?? []).map((c) => c.th)
   const staffOptions: StaffOption[] = (staff ?? []).map((s) => ({ id: s.id, name: s.name }))
+  const officialPhotoUrl = await createStaffSignedUrl(detail.profile.official_photo_url)
 
   return (
     <StaffDetailClient
@@ -35,6 +37,7 @@ export default async function StaffDetailPage(ctx: { params: Promise<{ id: strin
       tests={testOptions}
       categories={categories}
       staff={staffOptions}
+      officialPhotoUrl={officialPhotoUrl}
     />
   )
 }

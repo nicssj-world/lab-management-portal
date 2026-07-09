@@ -10,6 +10,16 @@ import { useSettings } from '@/context/SettingsContext'
 import { useSidebar } from '@/context/SidebarContext'
 import { createClient } from '@/lib/supabase/client'
 
+interface NavChild {
+  href: string
+  th: string
+  en: string
+  icon: string
+  role?: string | string[]
+  docRole?: string | string[]
+  resource?: string
+}
+
 interface NavItem {
   href: string
   th: string
@@ -19,13 +29,21 @@ interface NavItem {
   role?: string | string[]
   resource?: string
   requireEdit?: boolean
+  children?: NavChild[]
 }
 
 const NAV_ITEMS: (NavItem | null)[] = [
   { href: '/staff/dashboard',  th: 'แดชบอร์ด',           en: 'Dashboard',      icon: 'dash' },
   { href: '/staff/tests',      th: 'รายการตรวจ',         en: 'Tests',          icon: 'flask',    resource: 'รายการตรวจ' },
-  { href: '/staff/documents',             th: 'เอกสารคุณภาพ', en: 'Documents',   icon: 'doc',      resource: 'เอกสารคุณภาพ' },
-  { href: '/staff/documents/master-list', th: 'Master List',  en: 'Master List', icon: 'book',     resource: 'Master List' },
+  { href: '/staff/documents/dashboard', th: 'เอกสารคุณภาพ', en: 'Documents', icon: 'doc',
+    children: [
+      { href: '/staff/documents/dashboard',   th: 'Dashboard',   en: 'Dashboard',   icon: 'dash',  resource: 'เอกสารคุณภาพ' },
+      { href: '/staff/documents',             th: 'คลังเอกสาร',  en: 'Library',     icon: 'doc',   resource: 'เอกสารคุณภาพ' },
+      { href: '/staff/documents/categories',  th: 'หมวดหมู่',    en: 'Categories',  icon: 'inbox', resource: 'เอกสารคุณภาพ' },
+      { href: '/staff/documents/pending',     th: 'รออนุมัติ',   en: 'Pending',     icon: 'clock',
+        role: ['Admin', 'Document Controller'], docRole: ['Document Controller', 'Reviewer'] },
+      { href: '/staff/documents/master-list', th: 'Master List', en: 'Master List', icon: 'book',  resource: 'Master List' },
+    ] },
   { href: '/staff/tests/categories', th: 'หมวดหมู่การตรวจ', en: 'Categories', icon: 'beaker',   resource: 'รายการตรวจ', role: 'Admin' },
   { href: '/staff/news',       th: 'จัดการข่าวสาร',        en: 'News',           icon: 'bell',     resource: 'ข่าวสาร' },
   { href: '/staff/risk',       th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',  icon: 'shield',   resource: 'ความเสี่ยง / Rejection' },
@@ -144,10 +162,29 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
       {/* Nav */}
       <nav style={{ flex: 1, padding: 10, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
         {(() => {
-          const bestMatch = NAV_ITEMS
-            .filter((item): item is NavItem => item !== null)
-            .filter(item => pathname === item.href || pathname.startsWith(item.href + '/'))
+          // A child is visible when its resource permission allows it, OR (for role/docRole
+          // gated items) when either the user's role or doc_role matches.
+          const childVisible = (child: NavChild) => {
+            if (child.role || child.docRole) {
+              const roles = child.role ? (Array.isArray(child.role) ? child.role : [child.role]) : []
+              const docRoles = child.docRole ? (Array.isArray(child.docRole) ? child.docRole : [child.docRole]) : []
+              if (roles.includes(userRole ?? '') || docRoles.includes(userDocRole ?? '')) return true
+              if (!child.resource) return false
+            }
+            if (child.resource) {
+              return (userPermissions?.[child.resource] ?? 'none') !== 'none'
+            }
+            return true
+          }
+
+          const items = NAV_ITEMS.filter((item): item is NavItem => item !== null)
+          const flat: { href: string }[] = items.flatMap(item =>
+            item.children ? item.children.filter(childVisible) : [item],
+          )
+          const bestMatch = flat
+            .filter(entry => pathname === entry.href || pathname.startsWith(entry.href + '/'))
             .sort((a, b) => b.href.length - a.href.length)[0]
+
           return NAV_ITEMS.map((item, i) => {
           if (item === null) return <div key={i} style={{ height: 1, background: 'var(--border)', margin: '8px 6px' }} />
           if (item.role) {
@@ -160,6 +197,69 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
             if (level === 'none' && !managerDocumentProfileAccess) return null
             if (item.requireEdit && level !== 'edit') return null
           }
+
+          // ── Submenu group ──
+          if (item.children) {
+            const visibleChildren = item.children.filter(childVisible)
+            if (visibleChildren.length === 0) return null
+            const parentHref = visibleChildren.some(c => c.href === item.href) ? item.href : visibleChildren[0].href
+            const groupBase = item.href.split('/').slice(0, 3).join('/') // e.g. /staff/documents
+            const groupActive = pathname === groupBase || pathname.startsWith(groupBase + '/')
+            const expanded = !collapsed && groupActive
+            return (
+              <div key={item.href} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Link
+                  href={parentHref}
+                  onClick={closeMobile}
+                  title={collapsed ? (lang === 'th' ? item.th : item.en) : undefined}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: collapsed ? '10px' : '9px 12px',
+                    borderRadius: 8, textDecoration: 'none',
+                    background: collapsed && groupActive ? 'var(--primary-soft)' : 'transparent',
+                    color: collapsed && groupActive ? 'var(--primary)' : 'var(--ink)',
+                    fontWeight: collapsed && groupActive ? 600 : 500, fontSize: 13,
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    transition: 'background .15s',
+                  }}
+                >
+                  <Icon name={item.icon} size={17} />
+                  {!collapsed && (
+                    <>
+                      <span style={{ flex: 1 }}>{lang === 'th' ? item.th : item.en}</span>
+                      {docCount !== null && (
+                        <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 500 }}>{docCount}</span>
+                      )}
+                      <Icon name={expanded ? 'chevDown' : 'chevRight'} size={12} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                    </>
+                  )}
+                </Link>
+                {expanded && visibleChildren.map(child => {
+                  const childActive = bestMatch?.href === child.href
+                  return (
+                    <Link
+                      key={child.href}
+                      href={child.href}
+                      onClick={closeMobile}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 9,
+                        padding: '7px 12px 7px 34px',
+                        borderRadius: 8, textDecoration: 'none',
+                        background: childActive ? 'var(--primary-soft)' : 'transparent',
+                        color: childActive ? 'var(--primary)' : 'var(--muted)',
+                        fontWeight: childActive ? 600 : 500, fontSize: 12.5,
+                        transition: 'background .15s',
+                      }}
+                    >
+                      <Icon name={child.icon} size={15} />
+                      <span style={{ flex: 1 }}>{lang === 'th' ? child.th : child.en}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            )
+          }
+
           const active = bestMatch?.href === item.href
           return (
             <Link
@@ -184,8 +284,6 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
                   <span style={{ flex: 1 }}>{lang === 'th' ? item.th : item.en}</span>
                   {item.href === '/staff/tests' && testCount !== null
                     ? <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 500 }}>{testCount}</span>
-                    : item.href === '/staff/documents' && docCount !== null
-                    ? <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 500 }}>{docCount}</span>
                     : item.badge && <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 500 }}>{item.badge}</span>
                   }
                 </>
