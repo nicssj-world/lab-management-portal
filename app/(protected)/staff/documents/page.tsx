@@ -5,7 +5,7 @@ import { DocumentsClient } from './DocumentsClient'
 
 const DOCUMENT_WORKFLOW_ACCESS_ROLES = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer', 'Viewer']
 
-export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ search?: string; open?: string; read?: string }> }) {
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ search?: string; open?: string; read?: string; create?: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: actor } = await supabase
@@ -24,5 +24,6 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
     initialSearch={typeof sp.search === 'string' ? sp.search : undefined}
     initialOpenId={typeof sp.open === 'string' ? sp.open : undefined}
     initialReadId={typeof sp.read === 'string' ? sp.read : undefined}
+    initialCreate={sp.create === '1'}
   />
 }

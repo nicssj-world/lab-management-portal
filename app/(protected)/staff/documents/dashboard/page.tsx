@@ -19,11 +19,14 @@ interface DashDoc {
   status: string
   department: string | null
   revision: string | null
+  edit_date: string | null
   expiry_date: string | null
   updated_at: string
 }
 
 const TYPE_ORDER = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others']
+// Types whose review cadence is tracked closely on the "ใกล้ครบกำหนดทบทวน" widget (MN/QP/WI docs)
+const REVIEW_TRACKED_TYPES = ['QP', 'WI', 'Manual']
 const TYPE_LABEL: Record<string, string> = {
   QP: 'ระเบียบปฏิบัติ (QP)', WI: 'วิธีปฏิบัติงาน (WI)', Form: 'แบบฟอร์ม (Form)',
   Policy: 'นโยบาย (Policy)', Manual: 'คู่มือ (Manual)', Record: 'บันทึกคุณภาพ (Record)',
@@ -54,6 +57,17 @@ function daysUntil(dateStr: string): number {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return Math.round((target.getTime() - today.getTime()) / 86_400_000)
+}
+
+// The document form only stores the last edit/review date (edit_date, mirrored into
+// expiry_date) — there's no separate "due date" field. The review cycle is annual, so the
+// actual due date is that date plus one year.
+function reviewDueDate(doc: { edit_date: string | null; expiry_date: string | null }): string | null {
+  const base = doc.edit_date ?? doc.expiry_date
+  if (!base) return null
+  const d = new Date(base + 'T00:00:00')
+  d.setFullYear(d.getFullYear() + 1)
+  return d.toISOString().split('T')[0]
 }
 
 // SVG donut segments via stroke-dasharray on circles
@@ -107,11 +121,14 @@ export default async function DocumentsDashboardPage() {
   if (!hasWorkflowAccess && (perms['เอกสารคุณภาพ'] ?? 'none') === 'none') redirect('/staff/dashboard')
 
   const isDcc = actor?.role === 'Admin' || actor?.role === 'Document Controller' || actor?.doc_role === 'Document Controller'
+  const workflowRole = actor?.doc_role ?? actor?.role
+  const canCreateDraft = actor?.role === 'Admin'
+    || ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(workflowRole ?? '')
 
   const [{ data }, dccQueueIds] = await Promise.all([
     supabaseAdmin
       .from('documents')
-      .select('id, document_code, title, type, status, department, revision, expiry_date, updated_at')
+      .select('id, document_code, title, type, status, department, revision, edit_date, expiry_date, updated_at')
       .is('deleted_at', null),
     isDcc ? getSourceUploadedDocumentIds().catch(() => [] as string[]) : Promise.resolve([] as string[]),
   ])
@@ -122,11 +139,28 @@ export default async function DocumentsDashboardPage() {
   const published = byStatus('Published')
   const pending = byStatus('Review') + byStatus('Approved')
   const reviewSoon = docs.filter((d) => {
-    if (d.status !== 'Published' || !d.expiry_date) return false
-    const days = daysUntil(d.expiry_date)
-    return days >= 0 && days <= 90
+    if (d.status !== 'Published') return false
+    const due = reviewDueDate(d)
+    if (!due) return false
+    const days = daysUntil(due)
+    return days >= 0 && days <= 365
   })
-  const reviewOverdue = docs.filter((d) => d.status === 'Published' && d.expiry_date && daysUntil(d.expiry_date) < 0)
+  const reviewOverdue = docs.filter((d) => {
+    if (d.status !== 'Published') return false
+    const due = reviewDueDate(d)
+    return due ? daysUntil(due) < 0 : false
+  })
+
+  // "ใกล้ครบกำหนดทบทวน" widget: narrower scope than the stat cards above — only the core
+  // controlled-document types (Manual/QP/WI), and only within 90 days of the due date.
+  const reviewOverdueTracked = reviewOverdue.filter((d) => REVIEW_TRACKED_TYPES.includes(d.type))
+  const reviewDueSoon90 = docs.filter((d) => {
+    if (d.status !== 'Published' || !REVIEW_TRACKED_TYPES.includes(d.type)) return false
+    const due = reviewDueDate(d)
+    if (!due) return false
+    const days = daysUntil(due)
+    return days >= 0 && days < 90
+  })
 
   const typeCounts = TYPE_ORDER
     .map((t) => ({ type: t, count: docs.filter((d) => (TYPE_ORDER.includes(d.type) ? d.type : 'Others') === t).length }))
@@ -136,8 +170,8 @@ export default async function DocumentsDashboardPage() {
   const statusCounts = STATUS_META.map((s) => ({ ...s, value: byStatus(s.key) }))
 
   const recent = [...docs].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 8)
-  const expiring = [...reviewOverdue, ...reviewSoon]
-    .sort((a, b) => (a.expiry_date ?? '').localeCompare(b.expiry_date ?? ''))
+  const expiring = [...reviewOverdueTracked, ...reviewDueSoon90]
+    .sort((a, b) => (reviewDueDate(a) ?? '').localeCompare(reviewDueDate(b) ?? ''))
     .slice(0, 8)
 
   return (
@@ -154,29 +188,48 @@ export default async function DocumentsDashboardPage() {
           <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink)', marginTop: 2 }}>แดชบอร์ด</div>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>ภาพรวมระบบควบคุมเอกสาร</div>
         </div>
-        <Link href="/staff/documents" style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
-          border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
-          fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0,
-        }}>
-          <Icon name="doc" size={15} /> เปิดคลังเอกสาร
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {canCreateDraft && (
+            <Link href="/staff/documents?create=1" className="dash-btn-primary" style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
+              border: '1px solid var(--primary)', background: 'var(--primary)', color: '#fff',
+              fontSize: 13, fontWeight: 600, textDecoration: 'none',
+            }}>
+              <Icon name="upload" size={15} /> สร้าง Draft เอกสาร
+            </Link>
+          )}
+          <Link href="/staff/documents" className="dash-btn-secondary" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
+            border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
+            fontSize: 13, fontWeight: 600, textDecoration: 'none',
+          }}>
+            <Icon name="doc" size={15} /> เปิดคลังเอกสาร
+          </Link>
+        </div>
       </div>
 
       {/* Stat row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-        <Stat label="เอกสารทั้งหมด" value={total} color="blue" icon="doc" changeLabel="ทั้งคลังเอกสาร" change="" />
-        <Stat
-          label="รอดำเนินการ" value={pending + dccQueueIds.length} color="amber" icon="clock"
-          change={isDcc && dccQueueIds.length > 0 ? `${dccQueueIds.length}` : undefined}
-          changeLabel={isDcc && dccQueueIds.length > 0 ? 'ไฟล์ Word/Excel รอ DCC' : undefined}
-        />
-        <Stat
-          label="ครบกำหนดทบทวนใน 90 วัน" value={reviewSoon.length + reviewOverdue.length} color="red" icon="alert"
-          change={reviewOverdue.length > 0 ? `${reviewOverdue.length}` : undefined}
-          changeLabel={reviewOverdue.length > 0 ? 'เกินกำหนดแล้ว' : undefined}
-        />
-        <Stat label="เผยแพร่แล้ว" value={published} color="green" icon="check" changeLabel="เอกสารบังคับใช้" change="" />
+        <div className="fade-in-up" style={{ animationDelay: '0ms' }}>
+          <Stat label="เอกสารทั้งหมด" value={total} color="blue" icon="doc" changeLabel="ทั้งคลังเอกสาร" change="" />
+        </div>
+        <div className="fade-in-up" style={{ animationDelay: '40ms' }}>
+          <Stat
+            label="รอดำเนินการ" value={pending + dccQueueIds.length} color="amber" icon="clock"
+            change={isDcc && dccQueueIds.length > 0 ? `${dccQueueIds.length}` : ''}
+            changeLabel={isDcc && dccQueueIds.length > 0 ? 'ไฟล์ Word/Excel รอ DCC' : 'Review + Approved'}
+          />
+        </div>
+        <div className="fade-in-up" style={{ animationDelay: '80ms' }}>
+          <Stat
+            label="เลยกำหนดทบทวนใน 1 ปี" value={reviewOverdue.length} color="red" icon="alert"
+            change={reviewSoon.length > 0 ? `${reviewSoon.length}` : ''}
+            changeLabel="ฉบับจะครบกำหนดในอีก 1 ปีข้างหน้า"
+          />
+        </div>
+        <div className="fade-in-up" style={{ animationDelay: '120ms' }}>
+          <Stat label="เผยแพร่แล้ว" value={published} color="green" icon="check" changeLabel="เอกสารบังคับใช้" change="" />
+        </div>
       </div>
 
       {/* Type bars + status donut */}
@@ -220,11 +273,13 @@ export default async function DocumentsDashboardPage() {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {recent.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic' }}>ยังไม่มีเอกสาร</div>}
-            {recent.map((d) => {
+            {recent.map((d, i) => {
               const tone = STATUS_TONE[d.status] ?? STATUS_TONE.Draft
               return (
                 <Link key={d.id} href={`/staff/documents?search=${encodeURIComponent(d.document_code)}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, textDecoration: 'none', background: 'var(--surface-2)' }}>
+                  className="fade-in-up dash-row"
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, textDecoration: 'none', animationDelay: `${i * 35}ms` }}
+                >
                   <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)', flexShrink: 0 }}>{d.document_code}</span>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: tone.color, background: tone.bg, padding: '2px 9px', borderRadius: 99, flexShrink: 0 }}>{d.status}</span>
@@ -236,28 +291,33 @@ export default async function DocumentsDashboardPage() {
         </SectionCard>
 
         <SectionCard
-          title="ใกล้ครบกำหนดทบทวน"
-          extra={(reviewSoon.length + reviewOverdue.length) > 0
-            ? <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B45309', background: 'rgba(217,119,6,.12)', padding: '2px 10px', borderRadius: 99 }}>⚠ {reviewSoon.length + reviewOverdue.length} ฉบับ</span>
-            : undefined}
+          title="ใกล้ครบกำหนดทบทวน (น้อยกว่า 90 วัน)"
+          extra={reviewOverdueTracked.length > 0
+            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: '#DC2626', background: 'rgba(220,38,38,.12)', padding: '2px 10px', borderRadius: 99 }}><Icon name="alert" size={12} /> เลยกำหนด {reviewOverdueTracked.length} ฉบับ</span>
+            : reviewDueSoon90.length > 0
+              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: '#16A34A', background: 'rgba(22,163,74,.12)', padding: '2px 10px', borderRadius: 99 }}><Icon name="clock" size={12} /> ใกล้ครบกำหนด {reviewDueSoon90.length} ฉบับ</span>
+              : undefined}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {expiring.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic' }}>ไม่มีเอกสารครบกำหนดทบทวนใน 90 วัน</div>}
-            {expiring.map((d) => {
-              const days = d.expiry_date ? daysUntil(d.expiry_date) : null
+            {expiring.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic' }}>ไม่มีเอกสาร Manual/QP/WI ที่ใกล้ครบกำหนดทบทวนภายใน 90 วัน</div>}
+            {expiring.map((d, i) => {
+              const due = reviewDueDate(d)
+              const days = due ? daysUntil(due) : null
               const overdue = days !== null && days < 0
-              const urgent = days !== null && days < 30
-              const chipColor = overdue || urgent ? '#DC2626' : '#D97706'
+              const urgent = days !== null && days >= 0 && days < 30
+              const chipColor = overdue ? '#DC2626' : urgent ? '#D97706' : '#16A34A'
               return (
                 <Link key={d.id} href={`/staff/documents?search=${encodeURIComponent(d.document_code)}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, textDecoration: 'none', background: 'var(--surface-2)' }}>
+                  className="fade-in-up dash-row"
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, textDecoration: 'none', animationDelay: `${i * 35}ms` }}
+                >
                   <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)', flexShrink: 0 }}>{d.document_code}</span>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
                   <span style={{ textAlign: 'right', flexShrink: 0 }}>
                     <span style={{ display: 'block', fontSize: 11.5, fontWeight: 800, color: chipColor }}>
                       {overdue ? `เกิน ${Math.abs(days!)} วัน` : `${days} วัน`}
                     </span>
-                    <span style={{ display: 'block', fontSize: 10.5, color: 'var(--muted)' }}>{fmtDate(d.expiry_date)}</span>
+                    <span style={{ display: 'block', fontSize: 10.5, color: 'var(--muted)' }}>{fmtDate(due)}</span>
                   </span>
                 </Link>
               )

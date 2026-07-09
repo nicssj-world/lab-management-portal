@@ -142,7 +142,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
           subtitle={`จัดกลุ่มตามหน่วยงานและชนิดเอกสาร · ${docs.length} ฉบับ`}
           marginBottom={0}
         />
-        <Link href="/staff/documents" style={{
+        <Link href="/staff/documents" className="dash-btn-secondary" style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
           border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
           fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0,
@@ -157,17 +157,18 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {groups.map((g) => {
+          {groups.map((g, gIdx) => {
             const expanded = expandedDept === g.dept
             return (
-              <div key={g.dept} style={{ background: 'var(--card)', border: `1.5px solid ${expanded ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 14, overflow: 'hidden', transition: 'border-color .15s' }}>
+              <div key={g.dept} className="fade-in-up qd-card" style={{ background: 'var(--card)', border: `1.5px solid ${expanded ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 14, overflow: 'hidden', transition: 'border-color .15s', animationDelay: `${Math.min(gIdx, 10) * 30}ms` }}>
                 {/* Department header (folder) */}
                 <button
                   onClick={() => toggleDept(g.dept)}
+                  className="qd-row"
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px',
                     background: expanded ? 'var(--primary-soft)' : 'transparent', border: 'none',
-                    cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'background .15s',
+                    cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
                   }}
                 >
                   <span style={{ width: 38, height: 38, borderRadius: 10, background: expanded ? 'var(--primary)' : 'var(--primary-soft)', color: expanded ? '#fff' : 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -194,6 +195,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
                         <div key={type} style={{ borderRadius: 10, overflow: 'hidden', border: typeExpanded ? '1px solid var(--border)' : 'none' }}>
                           <button
                             onClick={() => setExpandedType(typeExpanded ? null : type)}
+                            className="qd-row"
                             style={{
                               width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px',
                               background: typeExpanded ? 'var(--surface-2)' : 'transparent', border: 'none',
@@ -209,15 +211,17 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
                           </button>
                           {typeExpanded && (
                             <div style={{ padding: '4px 10px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                              {typeDocs.map((d) => {
+                              {typeDocs.map((d, dIdx) => {
                                 const tone = STATUS_TONE[d.status] ?? STATUS_TONE.Draft
                                 const loading = detailLoadingId === d.id
                                 return (
                                   <div
                                     key={d.id}
+                                    className="fade-in qd-row"
                                     style={{
                                       display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px 8px 12px',
                                       borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)',
+                                      animationDelay: `${Math.min(dIdx, 14) * 20}ms`,
                                     }}
                                   >
                                     <button

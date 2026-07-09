@@ -515,16 +515,153 @@ function formatTenure(startDate: string | null | undefined) {
   return parts.length > 0 ? parts.join(' ') : '0 วัน'
 }
 
+// Official photo is always stored as a small, fixed-aspect portrait JPEG — never the raw
+// upload (raw phone/camera photos can be 10+ MB and any aspect ratio). PhotoCropDialog lets
+// the user pan/zoom to pick the crop window themselves before it's baked into this size.
+const OFFICIAL_PHOTO_WIDTH = 480
+const OFFICIAL_PHOTO_HEIGHT = 610
+
+interface CropOffset { x: number; y: number }
+
+function PhotoCropDialog({ src, busy, onCancel, onConfirm }: {
+  src: string
+  busy: boolean
+  onCancel: () => void
+  onConfirm: (file: File) => void
+}) {
+  const VW = 240
+  const VH = Math.round((VW * OFFICIAL_PHOTO_HEIGHT) / OFFICIAL_PHOTO_WIDTH)
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
+  const [zoom, setZoom] = useState(1)
+  const [offset, setOffset] = useState<CropOffset>({ x: 0, y: 0 })
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null)
+  const imgRef = useRef<HTMLImageElement | null>(null)
+
+  const baseScale = natural ? Math.max(VW / natural.w, VH / natural.h) : 1
+  const scale = baseScale * zoom
+  const dispW = natural ? natural.w * scale : 0
+  const dispH = natural ? natural.h * scale : 0
+
+  function clamp(o: CropOffset, dw: number, dh: number): CropOffset {
+    const minX = Math.min(0, VW - dw)
+    const minY = Math.min(0, VH - dh)
+    return { x: Math.min(0, Math.max(minX, o.x)), y: Math.min(0, Math.max(minY, o.y)) }
+  }
+
+  function handleImgLoad(e: React.SyntheticEvent<HTMLImageElement>) {
+    const w = e.currentTarget.naturalWidth
+    const h = e.currentTarget.naturalHeight
+    const bScale = Math.max(VW / w, VH / h)
+    const dW = w * bScale
+    const dH = h * bScale
+    // Default framing is biased toward the top of the image (not centered) — a
+    // head-and-shoulders portrait usually has the face in the upper portion.
+    setOffset(clamp({ x: (VW - dW) / 2, y: (VH - dH) * 0.15 }, dW, dH))
+    setZoom(1)
+    setNatural({ w, h })
+  }
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: offset.x, origY: offset.y }
+  }
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current) return
+    const dx = e.clientX - dragRef.current.startX
+    const dy = e.clientY - dragRef.current.startY
+    setOffset(clamp({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy }, dispW, dispH))
+  }
+  function onPointerUp() { dragRef.current = null }
+
+  function handleZoomChange(z: number) {
+    if (!natural) { setZoom(z); return }
+    const bScale = Math.max(VW / natural.w, VH / natural.h)
+    const s = bScale * z
+    setZoom(z)
+    setOffset((o) => clamp(o, natural.w * s, natural.h * s))
+  }
+
+  function handleConfirm() {
+    const img = imgRef.current
+    if (!img || !natural) return
+    const canvas = document.createElement('canvas')
+    canvas.width = OFFICIAL_PHOTO_WIDTH
+    canvas.height = OFFICIAL_PHOTO_HEIGHT
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const sourceX = -offset.x / scale
+    const sourceY = -offset.y / scale
+    const sourceW = VW / scale
+    const sourceH = VH / scale
+    ctx.drawImage(img, sourceX, sourceY, sourceW, sourceH, 0, 0, OFFICIAL_PHOTO_WIDTH, OFFICIAL_PHOTO_HEIGHT)
+    canvas.toBlob((blob) => { if (blob) onConfirm(new File([blob], 'official-photo.jpg', { type: 'image/jpeg' })) }, 'image/jpeg', 0.85)
+  }
+
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.6)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--card)', borderRadius: 16, padding: 20, width: '100%', maxWidth: 320, boxShadow: '0 24px 70px rgba(0,0,0,.35)' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: 3 }}>ปรับตำแหน่งรูป</div>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.4 }}>ลากรูปเพื่อขยับ และเลื่อนแถบเพื่อซูม ให้ใบหน้าอยู่ในกรอบ</div>
+        <div
+          onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+          style={{ width: VW, height: VH, margin: '0 auto', borderRadius: 10, overflow: 'hidden', position: 'relative', background: 'var(--surface-2)', border: '1px solid var(--border)', cursor: dragRef.current ? 'grabbing' : 'grab', touchAction: 'none' }}
+        >
+          <img
+            ref={imgRef}
+            src={src}
+            onLoad={handleImgLoad}
+            draggable={false}
+            alt="ปรับตำแหน่งรูปทางการ"
+            style={{ position: 'absolute', left: offset.x, top: offset.y, width: dispW || undefined, height: dispH || undefined, maxWidth: 'none', userSelect: 'none', pointerEvents: 'none' }}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
+          <Icon name="search" size={13} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+          <input type="range" min={1} max={2.5} step={0.02} value={zoom} onChange={(e) => handleZoomChange(Number(e.target.value))} style={{ flex: 1 }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+          <button onClick={onCancel} disabled={busy} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink)', cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', fontSize: 13 }}>
+            ยกเลิก
+          </button>
+          <button onClick={handleConfirm} disabled={busy || !natural} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, opacity: busy || !natural ? .7 : 1 }}>
+            {busy ? 'กำลังอัปโหลด…' : 'ยืนยันและอัปโหลด'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 // ════════════ Profile tab ════════════
 function ProfileTab({ prof, canEdit, officialPhotoUrl, onSaved, onError }: { prof: Profile; canEdit: boolean; officialPhotoUrl?: string | null; onSaved: (p: Profile) => void; onError: (m: string) => void }) {
   const [editing, setEditing] = useState(false)
   const [photoUrl, setPhotoUrl] = useState<string | null>(officialPhotoUrl ?? null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const photoInputRef = useRef<HTMLInputElement | null>(null)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
 
-  async function uploadOfficialPhoto(file: File) {
+  function openCropForFile(file: File) {
     if (!file.type.startsWith('image/')) { onError('รูปทางการรองรับเฉพาะไฟล์รูปภาพ (PNG, JPG, WebP)'); return }
     if (file.size > 10 * 1024 * 1024) { onError('รูปต้องไม่เกิน 10 MB'); return }
+    setCropSrc(URL.createObjectURL(file))
+  }
+
+  async function openCropForCurrentPhoto() {
+    if (!photoUrl) return
+    try {
+      const res = await fetch(photoUrl)
+      const blob = await res.blob()
+      setCropSrc(URL.createObjectURL(blob))
+    } catch { onError('โหลดรูปเดิมไม่สำเร็จ') }
+  }
+
+  function closeCropDialog() {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null)
+  }
+
+  async function uploadOfficialPhoto(file: File) {
     setPhotoBusy(true)
     try {
       const fd = new FormData()
@@ -541,6 +678,7 @@ function ProfileTab({ prof, canEdit, officialPhotoUrl, onSaved, onError }: { pro
       if (!res.ok) throw new Error(json.error ?? 'บันทึกรูปไม่สำเร็จ')
       onSaved(json as Profile)
       setPhotoUrl(upJson.signed_url ?? null)
+      closeCropDialog()
     } catch (e) { onError(e instanceof Error ? e.message : 'error') } finally { setPhotoBusy(false) }
   }
   const [form, setForm] = useState({
@@ -617,7 +755,6 @@ function ProfileTab({ prof, canEdit, officialPhotoUrl, onSaved, onError }: { pro
                 <path d="M16 178 C16 132 42 114 70 114 C98 114 124 132 124 178 Z" fill="var(--border)" />
               </svg>
             )}
-            <span style={{ position: 'absolute', top: 7, left: 7, fontSize: 9, fontWeight: 800, letterSpacing: '.03em', background: 'var(--primary)', color: '#fff', padding: '2px 7px', borderRadius: 5 }}>ทางการ</span>
             {canEdit && (
               <button
                 onClick={() => photoInputRef.current?.click()}
@@ -628,9 +765,20 @@ function ProfileTab({ prof, canEdit, officialPhotoUrl, onSaved, onError }: { pro
               </button>
             )}
           </div>
-          <div style={{ fontSize: 9.5, color: 'var(--muted)', textAlign: 'center', maxWidth: 140, lineHeight: 1.3 }}>ใช้ในเอกสาร/รายงานราชการ</div>
+          {canEdit && photoUrl && (
+            <button
+              onClick={openCropForCurrentPhoto}
+              disabled={photoBusy}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: 11, fontFamily: 'inherit', cursor: photoBusy ? 'default' : 'pointer' }}
+            >
+              <Icon name="edit" size={11} /> แก้ไขรูป
+            </button>
+          )}
           <input ref={photoInputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadOfficialPhoto(f); e.target.value = '' }} />
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) openCropForFile(f); e.target.value = '' }} />
+          {cropSrc && (
+            <PhotoCropDialog src={cropSrc} busy={photoBusy} onCancel={closeCropDialog} onConfirm={uploadOfficialPhoto} />
+          )}
         </div>
 
         {/* Facts */}

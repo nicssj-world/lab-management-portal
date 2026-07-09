@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
 import { PdfViewerModal, type Attachment } from '@/components/documents/DocumentDetailModal'
 import { allowedTransitions } from '@/lib/documents/transitions'
-import { canMoveToStatus } from '@/lib/documents/workflow'
+import { canMoveToStatus, COVER_GENERATION_ENABLED } from '@/lib/documents/workflow'
 import { STATUS_COLOR, STATUS_LABEL, fmtDate } from '@/lib/documents/ui-constants'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
@@ -626,6 +626,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
       {/* Backdrop */}
       <div
         onClick={onClose}
+        className="modal-scrim"
         style={isModal
           ? { position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }
           : { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 1000 }}
@@ -633,6 +634,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
       {/* Panel */}
       <div
         onClick={(e) => e.stopPropagation()}
+        className={isModal ? 'modal-panel-pop' : 'modal-panel-slide'}
         style={isModal
           ? {
               width: '100%', maxWidth: 620, maxHeight: '90vh',
@@ -1097,7 +1099,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
                   )
                 })()}
 
-                {canSkipSystemCover && (activeDraft.type === 'QP' || activeDraft.type === 'WI') && activeDraft.status === 'Approved' && (
+                {COVER_GENERATION_ENABLED && canSkipSystemCover && (activeDraft.type === 'QP' || activeDraft.type === 'WI') && activeDraft.status === 'Approved' && (
                   <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '9px 10px', borderRadius: 8, border: '1px solid rgba(217,119,6,.25)', background: 'rgba(217,119,6,.08)', cursor: 'pointer' }}>
                     <input
                       type="checkbox"

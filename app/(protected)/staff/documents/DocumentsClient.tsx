@@ -567,9 +567,9 @@ const DOC_ROLE_COLOR: Record<string, { bg: string; color: string; dot: string }>
   'Viewer':              { bg: 'rgba(100,116,139,.09)',color: '#64748B', dot: '#94A3B8' },
 }
 
-interface Props { userRole?: string; docRole?: string; userName?: string; userId?: string; initialSearch?: string; initialOpenId?: string; initialReadId?: string }
+interface Props { userRole?: string; docRole?: string; userName?: string; userId?: string; initialSearch?: string; initialOpenId?: string; initialReadId?: string; initialCreate?: boolean }
 
-export function DocumentsClient({ userRole, docRole, userName, userId = '', initialSearch, initialOpenId, initialReadId }: Props) {
+export function DocumentsClient({ userRole, docRole, userName, userId = '', initialSearch, initialOpenId, initialReadId, initialCreate }: Props) {
   const isAdmin = userRole === 'Admin'
   const workflowRole = docRole ?? userRole
   const canUpload = isAdmin
@@ -663,6 +663,10 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
         .then((r) => r.json())
         .then((d) => { if (d?.id) setReadDoc(d as Document) })
         .catch(() => {})
+    }
+    if (initialCreate && canUpload) {
+      setEditDoc(null)
+      setModalOpen(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -870,12 +874,14 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
       {/* Toasts */}
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {toasts.map((t) => (
-          <div key={t.id} style={{
+          <div key={t.id} className="fade-in-up" style={{
+            display: 'flex', alignItems: 'center', gap: 8,
             padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
             background: t.ok ? '#166534' : '#B91C1C', color: '#fff',
             boxShadow: '0 4px 16px rgba(0,0,0,.2)',
           }}>
-            {t.ok ? '✓ ' : '✕ '}{t.msg}
+            <Icon name={t.ok ? 'check' : 'x'} size={14} />
+            {t.msg}
           </div>
         ))}
       </div>
@@ -1098,12 +1104,12 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
                     <EmptyState icon="doc" title="ไม่มีเอกสาร" hint={hasFilters ? 'ลองเปลี่ยนตัวกรองหรือล้างคำค้นหา' : 'กดปุ่มสร้าง Draft เอกสารเพื่อเริ่มต้น'} />
                   </td></tr>
                 ) : (
-                  docs.map((doc) => {
+                  docs.map((doc, docIdx) => {
                     const docStatus = (doc.status ?? 'Draft') as DocStatus
                     const canChangeStatus = allowedTransitions(docStatus, userRole ?? '', docRole).length > 0
                     const hasActiveDraft = docsWithActiveDraft.has(doc.id)
                     return (
-                      <tr key={doc.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background .12s' }}
+                      <tr key={doc.id} className="fade-in" style={{ borderBottom: '1px solid var(--border)', transition: 'background .12s', animationDelay: `${Math.min(docIdx, 12) * 25}ms` }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
                         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                       >
@@ -1114,7 +1120,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
                               <Icon name="doc" size={16} style={{ color: TYPE_ICON_FG[doc.type] ?? 'var(--muted)' }} />
                             </div>
                             <div>
-                              <div style={{ fontWeight: 600, color: 'var(--primary)', lineHeight: 1.35, fontSize: 13, textDecoration: 'underline', textDecorationColor: 'transparent', textUnderlineOffset: 3, transition: 'text-decoration-color .12s' }}
+                              <div style={{ fontWeight: 600, color: 'var(--ink)', lineHeight: 1.35, fontSize: 13, textDecoration: 'underline', textDecorationColor: 'transparent', textUnderlineOffset: 3, transition: 'text-decoration-color .12s' }}
                                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecorationColor = 'var(--primary)' }}
                                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecorationColor = 'transparent' }}>
                                 {doc.title}

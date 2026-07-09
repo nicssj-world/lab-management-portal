@@ -79,3 +79,75 @@ button { font-family: inherit; }
   50%       { opacity: .6; transform: scale(1.05); box-shadow: 0 0 0 6px rgba(220,38,38,0); }
 }
 .news-new-badge { animation: newPulse 1.4s ease-in-out infinite; }
+
+/* Visible keyboard-focus ring. Uses box-shadow (not outline) so it still shows even where a
+   component sets `outline: none` inline — box-shadow is an independent layer. */
+:focus-visible {
+  box-shadow: 0 0 0 3px var(--primary-soft);
+  border-radius: 4px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in-up { animation: fadeInUp .35s ease-out both; }
+
+/* Opacity-only variant for elements where `transform` is unreliable (e.g. table rows) */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.fade-in { animation: fadeIn .3s ease-out both; }
+
+/* CSS-only hover states for server components (no onMouseEnter/onMouseLeave allowed there) */
+.dash-row {
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.dash-row:hover {
+  background: var(--card);
+  border-color: var(--primary-soft);
+  transform: translateX(2px);
+}
+.dash-btn-primary { transition: transform .15s, box-shadow .15s; }
+.dash-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(30,95,173,.25); }
+.dash-btn-secondary { transition: background .15s, border-color .15s; }
+.dash-btn-secondary:hover { background: var(--surface-2) !important; border-color: var(--primary) !important; }
+
+/* Generic hoverable list row/card used across the Quality Documents module
+   (categories, pending, master list) — subtle lift + border tint on hover. */
+.qd-row {
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.qd-row:hover {
+  background: var(--card) !important;
+  border-color: var(--primary-soft) !important;
+  transform: translateX(2px);
+}
+.qd-card { transition: border-color .15s, box-shadow .15s; }
+.qd-card:hover { box-shadow: 0 4px 14px rgba(15,23,42,.06); }
+
+/* Shared modal open motion — scrim fades, panel pops in from its trigger */
+@keyframes scrimFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes panelPop {
+  from { opacity: 0; transform: scale(.97) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes panelSlideIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+.modal-scrim { animation: scrimFade .18s ease-out both; }
+.modal-panel-pop { animation: panelPop .22s cubic-bezier(.2,.7,.3,1) both; }
+.modal-panel-slide { animation: panelSlideIn .22s cubic-bezier(.2,.7,.3,1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .news-new-badge, .spinner, .fade-in-up, .fade-in { animation: none !important; }
+  .modal-scrim, .modal-panel-pop, .modal-panel-slide { animation: none !important; }
+  *, *::before, *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}
