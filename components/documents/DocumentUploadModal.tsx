@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
+import { Spinner } from '@/components/ui/Spinner'
 import { DOC_TYPES, DOC_VISIBILITIES } from '@/lib/validations/document'
 import type { Document } from '@/lib/supabase/types'
 
@@ -694,8 +695,8 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{
+    <div className="modal-scrim" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div className="modal-panel-pop" style={{
         background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 620,
         maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)',
       }}>
@@ -995,7 +996,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 20 }}>📄</span>
+                    <Icon name="doc" size={20} style={{ color: '#DC2626', flexShrink: 0 }} />
                     <span style={{ fontSize: 12, color: 'var(--muted)' }}>
                       {requiresCover(type) ? 'PDF' : 'PDF / Office'} &nbsp;<span style={{ color: 'var(--primary)', fontWeight: 600 }}>เลือกไฟล์</span>
                     </span>
@@ -1012,7 +1013,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                 <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
                   <button type="button" onClick={extractFromFile} disabled={extracting}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, cursor: extracting ? 'default' : 'pointer', padding: '4px 10px', borderRadius: 6, fontFamily: 'inherit', background: 'transparent', border: `1px solid ${extracting ? 'var(--border)' : 'var(--primary)'}`, color: extracting ? 'var(--muted)' : 'var(--primary)', transition: 'all .15s' }}>
-                    {extracting ? '⏳ กำลังอ่าน...' : '✦ ดึงข้อมูล'}
+                    {extracting ? <><Spinner size={11} /> กำลังอ่าน...</> : <><Icon name="sparkle" size={12} /> ดึงข้อมูล</>}
                   </button>
                 </div>
               )}
@@ -1055,7 +1056,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 20 }}>📝</span>
+                    <Icon name="doc" size={20} style={{ color: '#059669', flexShrink: 0 }} />
                     <span style={{ fontSize: 12, color: 'var(--muted)' }}>DOC / DOCX / XLSX &nbsp;<span style={{ color: 'var(--primary)', fontWeight: 600 }}>เลือกไฟล์</span></span>
                   </div>
                 )}
@@ -1069,7 +1070,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                 <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
                   <button type="button" onClick={extractFromWordFile} disabled={extractingWord}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, cursor: extractingWord ? 'default' : 'pointer', padding: '4px 10px', borderRadius: 6, fontFamily: 'inherit', background: 'transparent', border: `1px solid ${extractingWord ? 'var(--border)' : '#059669'}`, color: extractingWord ? 'var(--muted)' : '#059669', transition: 'all .15s' }}>
-                    {extractingWord ? '⏳ กำลังอ่าน...' : '✦ ดึงข้อมูล'}
+                    {extractingWord ? <><Spinner size={11} /> กำลังอ่าน...</> : <><Icon name="sparkle" size={12} /> ดึงข้อมูล</>}
                   </button>
                 </div>
               )}

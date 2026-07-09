@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requireResource, requirePersonnelEdit } from '@/lib/auth/guards'
 import { getStaffDetail } from '@/lib/queries/personnel'
 import { PersonnelProfileSchema } from '@/lib/validations/personnel'
-import { createStaffSignedUrl } from '@/lib/personnel/storage'
+import { createStaffSignedUrl, removeStaffFile } from '@/lib/personnel/storage'
 import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
 import { toMsg } from '@/lib/personnel/crud'
 
@@ -43,6 +43,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         return NextResponse.json({ error: 'ใบ ทนพ. ใช้เฉพาะ Medical Technologist' }, { status: 422 })
       }
     }
+
+    let previousPhotoUrl: string | null = null
+    if ('official_photo_url' in parsed.data) {
+      const { data: current } = await supabaseAdmin.from('profiles').select('official_photo_url').eq('id', id).maybeSingle()
+      previousPhotoUrl = current?.official_photo_url ?? null
+    }
+
     const { data, error } = await supabaseAdmin
       .from('profiles')
       .update(parsed.data)
@@ -50,6 +57,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       .select()
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    if (previousPhotoUrl && previousPhotoUrl !== parsed.data.official_photo_url) {
+      await removeStaffFile(previousPhotoUrl)
+    }
 
     supabaseAdmin.from('audit_log')
       .insert({ action: 'personnel.profile.update', user_id: actor.id, target: id })

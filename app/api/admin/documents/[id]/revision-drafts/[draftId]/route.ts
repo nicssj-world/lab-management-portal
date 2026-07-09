@@ -659,7 +659,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       published_by_id: merged.published_by_id,
       cover_template_version: null,
       cover_generated_at: null,
-      cover_metadata: publishWithExistingCover
+      cover_metadata: userSkippedCover
         ? {
             skipped_system_cover: true,
             skipped_at: merged.published_at,
@@ -672,7 +672,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       imported_current_at: null,
       imported_current_by: null,
       imported_current_note: null,
-      legacy_cover_included: publishWithExistingCover,
+      legacy_cover_included: userSkippedCover,
     }
 
     if (publishWithExistingCover && promoteUpdates.file_url && promoteUpdates.effective_date) {
