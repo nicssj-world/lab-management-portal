@@ -450,7 +450,7 @@ export function AnalyticsTabs({ tatTrend }: Props) {
 
   function tabStyle(active: boolean): React.CSSProperties {
     return {
-      padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
+      padding: '12px 18px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
       fontSize: 13, fontWeight: 700,
       borderBottom: active ? '2px solid var(--primary)' : '2px solid transparent',
       color: active ? 'var(--primary)' : 'var(--muted)',
@@ -609,7 +609,7 @@ function GroupShell({ title, icon, iconColor, href, count, children }: {
           <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)' }}>{title}</span>
         </div>
         {count > 0 && (
-          <Link href={href} style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--primary)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+          <Link href={href} style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--primary)', textDecoration: 'none', whiteSpace: 'nowrap', padding: '6px 8px', margin: '-6px -8px', borderRadius: 6 }}>
             ดูทั้งหมด ({count}) →
           </Link>
         )}
@@ -625,7 +625,7 @@ function DocumentRow({ doc }: { doc: PendingApprovalDoc }) {
     <div style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
       <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)' }}>{doc.document_code}</div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.title}</div>
-      <div style={{ fontSize: 10.5, color: '#D97706', fontWeight: 700, marginTop: 3 }}>รอ {days} วัน</div>
+      <div style={{ fontSize: 10.5, color: '#B45309', fontWeight: 700, marginTop: 3 }}>รอ {days} วัน</div>
     </div>
   )
 }
@@ -640,7 +640,7 @@ function ContractRow({ contract }: { contract: ContractWithUsage }) {
     <div style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
       <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)' }}>{contract.vendor}</div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contract.product}</div>
-      <div style={{ fontSize: 10.5, color: isExpiry ? '#DC2626' : '#D97706', fontWeight: 700, marginTop: 3 }}>{tag}</div>
+      <div style={{ fontSize: 10.5, color: isExpiry ? '#DC2626' : '#B45309', fontWeight: 700, marginTop: 3 }}>{tag}</div>
     </div>
   )
 }
@@ -1065,3 +1065,4 @@ git commit -m "Reorder staff dashboard around Attention Queue, Quick Actions str
 - **Spec coverage:** page order ✓ (Task 8 Steps 5–7), Documents/Contracts/Risk/Rejection groups with the agreed filters/sorts ✓ (Tasks 1, 2, 7), 3-items-plus-count-link per group ✓ (Task 7), empty-state-per-group except Rejection ✓ (Task 7), TAT tab prefetched + Workload tab lazy-fetched via existing endpoint ✓ (Tasks 5, 8), permission gating + whole-section omission ✓ (Task 7), funnel-style Pipeline ✓ (Task 8 Step 6), Activity Feed + Document status bars moved to the bottom ✓ (Task 8 Step 7).
 - **Type consistency check:** `RiskRow` (Task 1) is reused as-is by `AttentionQueue` (Task 7) and by the new `risksResult` query shape in Task 8 — column list in the Supabase `.select(...)` matches `RiskRow`'s fields exactly. `PendingApprovalDoc` (Task 2) is reused as-is in Task 7 and Task 8. `TatTrendRow` (Task 5) matches the field names/types `TATTrendChart`'s internal (unexported) `TrendRow` expects (`month`, `avgTAT`, `sampleCount`) structurally. `WorkloadOverallTrendRow` (Task 4) is deliberately distinct from the existing per-department `WorkloadTrendRow` in `lib/queries/workload.ts`.
 - **Out of scope, confirmed still out of scope:** KPI Dashboard as a third analytics tab, role-personalized dashboard variants, any new DB migration.
+- **UI/UX pass (ui-ux-pro-max):** two fixes applied to Task 7's code before execution — (1) small warning-colored labels (`DocumentRow`'s "รอ N วัน", `ContractRow`'s non-expiry tag) changed from `#D97706` to `#B45309`, since `#D97706` on white only reaches ~3.15:1 contrast at 10.5px text (fails WCAG AA's 4.5:1 for normal text; `#B45309` reaches ~5:1) — `#D97706` itself is kept for the docs-status bar fills in Task 8 Step 7, since those are non-text color fills (3:1 threshold, unaffected); (2) the `GroupShell` "ดูทั้งหมด (N) →" link gained `padding:'6px 8px', margin:'-6px -8px'` to enlarge its touch target without shifting the visible layout. `AnalyticsTabs` tab button padding bumped from `10px 16px` to `12px 18px` for the same reason. No other issues found — icons are all SVG (no emoji), hover states already come from existing `.qa-tile`/`.section-link`/`.more-link` global classes already defined in the page's `<style>` block, and all new `dash-fade`-wrapped sections already inherit the existing `prefers-reduced-motion` override.
