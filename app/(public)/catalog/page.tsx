@@ -16,7 +16,7 @@ function CatalogContent() {
   const [tests, setTests] = useState<Test[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(searchParams.get('search') ?? '')
   const [categoryId, setCategoryId] = useState(searchParams.get('cat') ?? '')
   const [tube, setTube] = useState('')
   const [page, setPage] = useState(0)
@@ -74,8 +74,42 @@ function CatalogContent() {
   }
 
   return (
-    <main style={{ background: 'var(--bg)', minHeight: '100vh' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 28px 60px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <main className="catalog-page" style={{ background: 'var(--bg)', minHeight: '100vh' }}>
+      <style>{`
+        .catalog-page {
+          background:
+            radial-gradient(circle at 10% 0%, var(--primary-soft) 0, transparent 32%),
+            linear-gradient(180deg, var(--bg), var(--surface-2)) !important;
+        }
+        .catalog-page-inner {
+          position: relative;
+        }
+        .catalog-page-inner::before {
+          content: "";
+          position: absolute;
+          inset: 12px 18px auto;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, var(--public-hairline), transparent);
+          pointer-events: none;
+        }
+        .catalog-page input,
+        .catalog-page select {
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.72), var(--public-shadow-sm);
+        }
+        .catalog-page input:focus,
+        .catalog-page select:focus {
+          box-shadow: 0 0 0 4px var(--primary-soft), inset 0 1px 0 rgba(255,255,255,.8), var(--public-shadow-sm);
+        }
+        .catalog-page .test-table-desktop-wrap > div {
+          border-color: var(--public-hairline) !important;
+          box-shadow: var(--public-shadow-md);
+        }
+        .catalog-page .test-table-mobile-list article {
+          border-color: var(--public-hairline) !important;
+          box-shadow: var(--public-shadow-sm);
+        }
+      `}</style>
+      <div className="catalog-page-inner" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 28px 60px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <PageHeader
           eyebrow="ค้นหา"
           title="รายการตรวจวิเคราะห์"

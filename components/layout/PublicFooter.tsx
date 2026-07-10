@@ -66,6 +66,21 @@ export function PublicFooter() {
           background: var(--primary-soft) !important;
           transform: translateX(2px);
         }
+        .public-footer {
+          background:
+            linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 76%, var(--card)), var(--surface-2)) !important;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.72);
+        }
+        .public-footer-brand,
+        .public-footer-col {
+          transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+        }
+        .public-footer-badge {
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.68), var(--public-shadow-sm);
+        }
+        [data-theme="dark"] .public-footer {
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+        }
 
         @media (max-width: 767px) {
           .public-footer {
@@ -81,6 +96,7 @@ export function PublicFooter() {
             border: 1px solid var(--border);
             border-radius: 14px;
             background: var(--card);
+            box-shadow: var(--public-shadow-sm);
           }
           .public-footer-brand p {
             margin-bottom: 0 !important;
@@ -90,6 +106,7 @@ export function PublicFooter() {
             border: 1px solid var(--border);
             border-radius: 14px;
             background: var(--card);
+            box-shadow: var(--public-shadow-sm);
           }
           .public-footer-col-title {
             margin-bottom: 10px !important;
@@ -141,7 +158,7 @@ export function PublicFooter() {
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
             {standards.map((standard) => (
-              <span key={standard} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 20, background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--primary)', fontSize: 11.5, fontWeight: 700 }}>
+              <span key={standard} className="public-footer-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 20, background: 'var(--card)', border: '1px solid var(--public-hairline)', color: 'var(--primary)', fontSize: 11.5, fontWeight: 700 }}>
                 <Icon name="shieldCheck" size={13} />
                 {standard}
               </span>
