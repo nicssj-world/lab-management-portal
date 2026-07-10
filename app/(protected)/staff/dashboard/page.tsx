@@ -1,145 +1,18 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getContracts } from '@/lib/queries/contracts'
-import { getRejectionLogs } from '@/lib/queries/rejection'
 import { getRolePermissions } from '@/lib/permissions'
 import { getPendingApprovalDocuments } from '@/lib/documents/pending'
-import { sortByOldestUpdated, sortContractsByUrgency, filterUrgentRisks, monthsLeftUntil, isContractExpiring, type RiskRow } from '@/lib/dashboard/attention-queue'
+import { sortByOldestUpdated, sortContractsByUrgency, monthsLeftUntil, isContractExpiring } from '@/lib/dashboard/attention-queue'
+import { expiryStatus } from '@/lib/personnel/expiry'
 import { Icon } from '@/components/ui/Icon'
 import { Empty } from '@/components/dashboard/Empty'
-import { QuickActionsStrip } from '@/components/dashboard/QuickActionsStrip'
 import { AttentionQueue } from '@/components/dashboard/AttentionQueue'
-import { AnalyticsTabs, type TatTrendRow } from '@/components/dashboard/AnalyticsTabs'
+import { AnalyticsTabs } from '@/components/dashboard/AnalyticsTabs'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
-
-/* ─── helpers ─── */
-function fmtMinutes(min: number) {
-  if (!min) return '—'
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  if (h > 0 && m > 0) return `${h} hr ${m} min`
-  if (h > 0) return `${h} hr`
-  return `${m} min`
-}
-
-type HeatCell = { dow: number; hour: number; count: number }
-type StageRow = { stage: string; avg_minutes: number }
-type TatSummaryPayload = {
-  kpi?: {
-    avg_tat?: number
-    avg_total_tat?: number
-    avg_total_tat_cut_720?: number
-    pct_within_target?: number
-    pct_total_within_target?: number
-    total_count?: number
-    sample_count?: number
-    pipeline_avg_phleb_wait?: number
-    pipeline_avg_phleb_draw?: number
-    avg_phleb_wait?: number
-    avg_transport?: number
-    avg_lab_stage?: number
-  }
-  stage_breakdown?: StageRow[]
-  heatmap?: HeatCell[]
-  phleb_heatmap?: HeatCell[]
-}
-
-function tatSummaryCacheKey(year: number, month: number) {
-  return ['v2', year, month, '', '', '', '', ''].join('|')
-}
-
-async function readCompletedTatSummary(year: number, month: number) {
-  const { data, error } = await supabaseAdmin
-    .from('analysis_summary_cache')
-    .select('payload')
-    .eq('endpoint', 'tat-summary')
-    .eq('cache_key', tatSummaryCacheKey(year, month))
-    .eq('year', year)
-    .eq('month', month)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) return null
-  const payload = (data?.payload as TatSummaryPayload | undefined) ?? null
-  if (!payload || payload.kpi?.avg_total_tat_cut_720 != null) return payload
-
-  const avgCut = await computeTotalTatCut720(year, month)
-  if (avgCut == null) return payload
-  return {
-    ...payload,
-    kpi: {
-      ...payload.kpi,
-      avg_total_tat_cut_720: avgCut,
-    },
-  }
-}
-
-async function computeTotalTatCut720(year: number, month: number) {
-  const rows: Array<{
-    id: number
-    ln: string | null
-    register_at: string | null
-    rslt_at: string | null
-    match_confidence: string | null
-  }> = []
-
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabaseAdmin
-      .from('tat_records')
-      .select('id,ln,register_at,rslt_at,match_confidence')
-      .eq('year', year)
-      .eq('month', month)
-      .eq('is_blood_draw', true)
-      .range(from, from + 999)
-
-    if (error) return null
-    rows.push(...(data ?? []))
-    if (!data || data.length < 1000) break
-  }
-
-  const samples = new Map<string, { registerMs: number | null; rsltMs: number | null; matched: boolean }>()
-  for (const row of rows) {
-    const key = row.ln?.trim() || String(row.id)
-    const sample = samples.get(key) ?? { registerMs: null, rsltMs: null, matched: false }
-    if (row.register_at) {
-      const registerMs = new Date(row.register_at).getTime()
-      if (Number.isFinite(registerMs) && (sample.registerMs == null || registerMs < sample.registerMs)) sample.registerMs = registerMs
-    }
-    if (row.rslt_at) {
-      const rsltMs = new Date(row.rslt_at).getTime()
-      if (Number.isFinite(rsltMs) && (sample.rsltMs == null || rsltMs > sample.rsltMs)) sample.rsltMs = rsltMs
-    }
-    if (row.match_confidence && row.match_confidence !== 'no_match') sample.matched = true
-    samples.set(key, sample)
-  }
-
-  const values = Array.from(samples.values())
-    .filter(sample => sample.matched && sample.registerMs != null && sample.rsltMs != null)
-    .map(sample => ((sample.rsltMs as number) - (sample.registerMs as number)) / 60000)
-    .filter(value => Number.isFinite(value) && value >= 0 && value <= 720)
-
-  if (values.length === 0) return null
-  return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1))
-}
-
-// แปลง heatmap cells จาก RPC (hourly) → grid [7][6] (4-hour slots)
-function rpcHeatmapToGrid(cells: HeatCell[]): number[][] {
-  const grid: number[][] = Array.from({ length: 7 }, () => new Array(6).fill(0))
-  for (const c of cells) {
-    const slot = Math.min(5, Math.floor(c.hour / 4))
-    grid[c.dow][slot] += c.count
-  }
-  return grid
-}
-
-function stageMinutes(stages: StageRow[] | undefined, stage: string, fallback?: number) {
-  const value = stages?.find(row => row.stage === stage)?.avg_minutes ?? fallback
-  return value && Number.isFinite(value) ? Math.round(value) : null
-}
 
 type AuditEntry = {
   id: string | number
@@ -182,11 +55,11 @@ export default async function StaffDashboardPage() {
     ? await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single()
     : { data: null }
   const permissions = actor?.role ? await getRolePermissions(actor.role) : {}
-  const todayISO = new Date().toISOString().slice(0, 10)
 
   const now = new Date()
   const year  = now.getFullYear()
   const month = now.getMonth() + 1
+  const curMonthLabel = now.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
 
   // เดือนที่แล้ว
   const prevMonth = month === 1 ? 12 : month - 1
@@ -194,20 +67,6 @@ export default async function StaffDashboardPage() {
   const prevMonthLabel = new Date(prevYear, prevMonth - 1, 1)
     .toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
 
-  // สองเดือนที่แล้ว (สำหรับ rejection rate change)
-  const prevPrevMonth = prevMonth === 1 ? 12 : prevMonth - 1
-  const prevPrevYear  = prevMonth === 1 ? prevYear - 1 : prevYear
-
-  const tatTrendMonths: { year: number; month: number }[] = []
-  {
-    let y = prevYear, m = prevMonth
-    for (let i = 0; i < 6; i++) {
-      tatTrendMonths.unshift({ year: y, month: m })
-      m -= 1
-      if (m === 0) { m = 12; y -= 1 }
-    }
-  }
-  const tatTrendPromise = Promise.all(tatTrendMonths.map(({ year, month }) => readCompletedTatSummary(year, month)))
   const pendingDocsPromise = getPendingApprovalDocuments()
 
   // ── ดึงข้อมูลทั้งหมดพร้อมกัน ──
@@ -216,15 +75,20 @@ export default async function StaffDashboardPage() {
     ? `${prevYear + 1}-01-01T00:00:00`
     : `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-01T00:00:00`
 
+  // เดือนปัจจุบัน (สำหรับการ์ดระดับความรุนแรง RM)
+  const curMonthStart = `${year}-${String(month).padStart(2, '0')}-01`
+  const curNextMonthStart = month === 12
+    ? `${year + 1}-01-01`
+    : `${year}-${String(month + 1).padStart(2, '0')}-01`
+
   const [
     contracts,
-    risksResult,
+    riskSeverityMonthResult,
     testActiveResult,
     testTotalResult,
-    rejMonthResult,
-    rejPrevResult,
-    tatSummary,
-    tatPrevSummary,
+    staffTotalResult,
+    staffMtResult,
+    staffMtLicenseResult,
     docTotalResult,
     docPublishedResult,
     docNewResult,
@@ -235,15 +99,14 @@ export default async function StaffDashboardPage() {
   ] = await Promise.all([
     getContracts(supabaseAdmin),
     supabaseAdmin.from('risks')
-      .select('id, risk_no, name, severity_level, status, due_date, follow_up_date')
-      .neq('status', 'closed'),
+      .select('severity_level')
+      .gte('event_date', curMonthStart)
+      .lt('event_date', curNextMonthStart),
     supabaseAdmin.from('tests').select('*', { count: 'exact', head: true }).eq('active', true),
     supabaseAdmin.from('tests').select('*', { count: 'exact', head: true }),
-    getRejectionLogs(supabaseAdmin, { year: prevYear, month: prevMonth, limit: 1 }),
-    getRejectionLogs(supabaseAdmin, { year: prevPrevYear, month: prevPrevMonth, limit: 1 }),
-    // Read the completed all-month TAT analysis cached by the TAT module.
-    readCompletedTatSummary(prevYear, prevMonth),
-    readCompletedTatSummary(prevPrevYear, prevPrevMonth),
+    supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+    supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('role', 'Medical Technologist'),
+    supabaseAdmin.from('profiles').select('mt_license_expiry').is('deleted_at', null).eq('role', 'Medical Technologist'),
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null),
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Published'),
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).gte('created_at', prevMonthStart).lt('created_at', nextMonthStart),
@@ -258,24 +121,34 @@ export default async function StaffDashboardPage() {
       .limit(20),
   ])
 
-  const tatTrendPayloads = await tatTrendPromise
   const pendingDocsAll = await pendingDocsPromise
-  const tatTrend: TatTrendRow[] = tatTrendMonths.map(({ month }, i) => {
-    const p = tatTrendPayloads[i]
-    const k = p?.kpi ?? {}
-    return {
-      month,
-      avgTAT: Math.round(k.avg_total_tat_cut_720 ?? k.avg_total_tat ?? k.avg_tat ?? 0),
-      sampleCount: k.sample_count ?? k.total_count ?? 0,
-    }
-  })
   const pendingDocs = sortByOldestUpdated(pendingDocsAll)
-  const urgentRisksAll = filterUrgentRisks((risksResult.data ?? []) as RiskRow[], todayISO)
+
+  let staffLicenseExpired = 0
+  let staffLicenseExpiring = 0
+  for (const row of (staffMtLicenseResult.data ?? []) as { mt_license_expiry: string | null }[]) {
+    const status = expiryStatus(row.mt_license_expiry)
+    if (status === 'expired') staffLicenseExpired++
+    else if (status === 'expiring') staffLicenseExpiring++
+  }
+
+  const SEVERITY_LEVELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'] as const
+  // Same palette as the Risk Register's own "ระดับความรุนแรง (RM)" panel (components/risk/RiskClient.tsx)
+  const SEVERITY_COLORS: Record<string, string> = {
+    A: '#EF4444', B: '#F59E0B', C: '#3B82F6', D: '#10B981', E: '#8B5CF6',
+    F: '#EC4899', G: '#64748B', H: '#475569', I: '#111827',
+  }
+  const riskSeverityCounts: Record<string, number> = Object.fromEntries(SEVERITY_LEVELS.map(l => [l, 0]))
+  for (const row of (riskSeverityMonthResult.data ?? []) as { severity_level: string | null }[]) {
+    const lvl = row.severity_level?.trim().toUpperCase()
+    if (lvl && lvl in riskSeverityCounts) riskSeverityCounts[lvl]++
+  }
+  const maxSeverityCount = Math.max(1, ...Object.values(riskSeverityCounts))
 
   const testCount    = testActiveResult.count ?? 0
   const testTotal    = testTotalResult.count ?? 0
-  const rejThisMonth = rejMonthResult.count ?? 0
-  const rejPrevMonth = rejPrevResult.count ?? 0
+  const staffTotal   = staffTotalResult.count ?? 0
+  const staffMt      = staffMtResult.count ?? 0
   const docTotal     = docTotalResult.count ?? 0
   const docPublished = docPublishedResult.count ?? 0
   const docNew       = docNewResult.count ?? 0
@@ -317,48 +190,21 @@ export default async function StaffDashboardPage() {
     }
   }
 
-  const tatData = tatSummary ?? {}
-  const kpi     = tatData.kpi ?? {}
-
-  const avgTAT      = Math.round(kpi.avg_total_tat_cut_720 ?? kpi.avg_total_tat ?? kpi.avg_tat ?? 0)
-  const pctOnTarget = Math.round(kpi.pct_total_within_target ?? kpi.pct_within_target ?? 0)
-  const totalSamples = kpi.sample_count ?? kpi.total_count ?? 0
-
-  const prevKpi        = (tatPrevSummary ?? {})?.kpi ?? {}
-  const prevSamples    = prevKpi.sample_count ?? prevKpi.total_count ?? 0
-  const rejRate        = totalSamples > 0 ? (rejThisMonth / totalSamples) * 100 : null
-  const rejRatePrev    = prevSamples > 0 ? (rejPrevMonth / prevSamples) * 100 : null
-  const rejRateChange  = rejRate != null && rejRatePrev != null ? rejRate - rejRatePrev : null
-  const avgPhlebWait = stageMinutes(tatData.stage_breakdown, 'รอเจาะเลือด', kpi.pipeline_avg_phleb_wait ?? kpi.avg_phleb_wait)
-  const avgPhlebDraw = stageMinutes(tatData.stage_breakdown, 'เจาะเลือด', kpi.pipeline_avg_phleb_draw)
-  const avgTransport = stageMinutes(tatData.stage_breakdown, 'ขนส่งตัวอย่าง', kpi.avg_transport)
-  const avgLabStage  = stageMinutes(tatData.stage_breakdown, 'วิเคราะห์ในแลป', kpi.avg_lab_stage ?? kpi.avg_tat)
-
-  const phlebHeatmap = rpcHeatmapToGrid(tatData.phleb_heatmap ?? [])
-  const tatHeatmap   = rpcHeatmapToGrid(tatData.heatmap ?? [])
-  const phlebCount   = (tatData.phleb_heatmap ?? []).reduce((s, c) => s + c.count, 0)
-  const tatCount     = (tatData.heatmap ?? []).reduce((s, c) => s + c.count, 0)
-
-  const criticalContractsAll = sortContractsByUrgency(contracts.filter(c => {
+  const activeContracts = contracts.filter(c => c.status === 'active')
+  const criticalContractsAll = sortContractsByUrgency(activeContracts.filter(c => {
     const ml = monthsLeftUntil(c.end_date)
     const isExpiring = isContractExpiring(c.total, ml)
     const budgetRemaining = c.total > 0 ? ((c.total - c.used) / c.total) * 100 : 100
+    const alreadyExpired = ml <= 0
+    const budgetExhausted = budgetRemaining <= 0
+    if (alreadyExpired || budgetExhausted) return false
     return isExpiring || budgetRemaining < 30
   }))
+  const totalContractValue = activeContracts.reduce((sum, c) => sum + (c.total ?? 0), 0)
+  const usedContractValue  = activeContracts.reduce((sum, c) => sum + (c.used ?? 0), 0)
 
   const todayStr = now.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   const timeStr  = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
-
-  const PIPELINE = [
-    { label: 'ยืนยันคิว', from: 'ลงทะเบียน', to: 'ยืนยันคิว', metric: 'รอเจาะเลือดเฉลี่ย', value: avgPhlebWait, icon: 'check', color: '#1E5FAD' },
-    { label: 'เจาะเสร็จ', from: 'ยืนยันคิว', to: 'เจาะเสร็จ', metric: 'เจาะเลือดเฉลี่ย', value: avgPhlebDraw, icon: 'syringe', color: '#9333EA' },
-    { label: 'รับ Specimen', from: 'เจาะเสร็จ', to: 'รับ Specimen', metric: 'ขนส่งตัวอย่างเฉลี่ย', value: avgTransport, icon: 'cup', color: '#D97706' },
-    { label: 'รายงานผล', from: 'รับ Specimen', to: 'รายงานผล', metric: 'วิเคราะห์ในแลปเฉลี่ย', value: avgLabStage, icon: 'chart', color: '#16A34A' },
-  ].filter((step): step is { label: string; from: string; to: string; metric: string; value: number; icon: string; color: string } => typeof step.value === 'number' && step.value > 0)
-  const totalPipelineMinutes = PIPELINE.reduce((sum, step) => sum + step.value, 0)
-
-  const DOW_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
-  const SLOTS   = ['00','04','08','12','16','20']
 
   return (
     <>
@@ -371,10 +217,6 @@ export default async function StaffDashboardPage() {
         .kpi-card{transition:transform .18s ease,box-shadow .18s ease;box-shadow:0 1px 4px rgba(15,23,42,.05),0 4px 16px rgba(15,23,42,.04)}
         .kpi-card:hover{transform:translateY(-3px);box-shadow:0 8px 32px rgba(30,95,173,.14)!important}
         .rej-bar{transition:width .7s cubic-bezier(.22,1,.36,1)}
-        .workflow-step{transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
-        .workflow-step:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(15,23,42,.08)}
-        .hm-cell{transition:transform .1s}
-        .hm-cell:hover{transform:scale(1.15)}
         .contract-card{transition:border-color .15s}
         .contract-card:hover{border-color:var(--primary)!important}
         .section-link:hover{background:var(--primary-soft)!important;color:var(--primary)!important}
@@ -390,14 +232,10 @@ export default async function StaffDashboardPage() {
         @media(max-width:640px){
           .dash-kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important}
           .dash-attention-grid{grid-template-columns:repeat(2,1fr)!important}
-          .dash-qa-strip{grid-template-columns:repeat(2,1fr)!important}
           .dash-main-grid{grid-template-columns:1fr!important;align-items:start!important}
-          .dash-heat-grid{grid-template-columns:1fr!important}
           .dash-hero{padding:16px 18px!important}
           .dash-hero .ops-title{font-size:20px!important}
           .dash-hero .live-label{font-size:9px!important}
-          .dash-pipeline-steps{overflow-x:auto!important;padding-bottom:6px!important}
-          .dash-pipeline-steps>*{min-width:140px!important}
           .kpi-card{padding:14px 16px!important}
         }
       `}</style>
@@ -448,154 +286,35 @@ export default async function StaffDashboardPage() {
             barPct={docTotal > 0 ? (docPublished / docTotal) * 100 : 0}
           />
           <KpiCard
-            icon="alert" label="Rejection Rate" accent="#F59E0B" delay={0.14}
-            value={rejRate != null ? `${rejRate.toFixed(2)}%` : `${rejThisMonth.toLocaleString()} ราย`}
-            sub={rejRate != null ? 'เป้าหมาย: <3%' : prevMonthLabel}
-            warn={rejRate != null ? rejRate >= 3 : rejThisMonth > 50}
-            change={rejRateChange != null ? `${Math.abs(rejRateChange).toFixed(2)}% ${rejRateChange <= 0 ? 'ดีขึ้น' : 'แย่ลง'}` : undefined}
-            changeDir={rejRateChange != null ? (rejRateChange <= 0 ? 'down' : 'up') : undefined}
-            barLabel="Rate" barValue={rejRate != null ? `${rejRate.toFixed(2)}%` : `${rejThisMonth}`}
-            barPct={rejRate != null ? Math.min(100, (rejRate / 3) * 100) : Math.min(100, (rejThisMonth / 200) * 100)}
+            icon="users" label="อัตรากำลัง" accent="#8B5CF6" delay={0.14}
+            value={staffTotal.toLocaleString()} sub="บุคลากรทั้งหมด"
+            barLabel="นักเทคนิคการแพทย์" barValue={`${staffMt}/${staffTotal}`}
+            barPct={staffTotal ? (staffMt / staffTotal) * 100 : 0}
           />
           <KpiCard
-            icon="building" label="สัญญาใกล้หมด/งบต่ำ" delay={0.2}
-            accent={criticalContractsAll.length > 0 ? '#DC2626' : '#16A34A'}
-            value={criticalContractsAll.length.toLocaleString()} sub={`จาก ${contracts.length} สัญญา`}
-            warn={criticalContractsAll.length > 0}
-            barLabel="ต้องดูแล" barValue={`${criticalContractsAll.length}/${contracts.length}`}
-            barPct={contracts.length ? (criticalContractsAll.length / contracts.length) * 100 : 0}
+            icon="building" label="สัญญาทั้งหมด" accent="#7C3AED" delay={0.2}
+            value={contracts.length.toLocaleString()} sub={`มูลค่ารวม ฿${totalContractValue.toLocaleString()}`}
+            barLabel="ใช้ไปแล้ว" barValue={`฿${usedContractValue.toLocaleString()}`}
+            barPct={totalContractValue ? (usedContractValue / totalContractValue) * 100 : 0}
           />
-        </div>
-
-        {/* ══ QUICK ACTIONS ══ */}
-        <div className="dash-fade" style={{ animationDelay: '.22s' }}>
-          <QuickActionsStrip />
         </div>
 
         {/* ══ ATTENTION QUEUE ══ */}
-        <div className="dash-fade" style={{ animationDelay: '.26s' }}>
+        <div className="dash-fade" style={{ animationDelay: '.22s' }}>
           <AttentionQueue
             pendingDocs={pendingDocs}
             totalPendingDocs={pendingDocs.length}
             contracts={criticalContractsAll}
             totalContracts={criticalContractsAll.length}
-            urgentRisks={urgentRisksAll}
-            totalUrgentRisks={urgentRisksAll.length}
-            rejectionAlert={rejRate != null && rejRate >= 3 ? {
-              rate: rejRate,
-              changeText: rejRateChange != null ? `${Math.abs(rejRateChange).toFixed(2)}% ${rejRateChange <= 0 ? 'ดีขึ้น' : 'แย่ลง'}` : null,
-            } : null}
+            staffLicenseExpired={staffLicenseExpired}
+            staffLicenseExpiring={staffLicenseExpiring}
             permissions={permissions}
           />
         </div>
 
         {/* ══ ANALYTICS ══ */}
-        <div className="dash-fade" style={{ animationDelay: '.3s' }}>
-          <AnalyticsTabs tatTrend={tatTrend} />
-        </div>
-
-        {/* ══ PIPELINE ══ */}
-        <div className="dash-fade" style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', animationDelay:'.32s' }}>
-          <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:30,height:30,borderRadius:8,background:'rgba(30,95,173,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--primary)' }}>
-              <Icon name="trending" size={14} />
-            </div>
-            <div>
-              <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>Lab Workflow Pipeline</div>
-              <div style={{ fontSize:11,color:'var(--muted)',marginTop:1 }}>เวลาเฉลี่ยแต่ละขั้นตอน · {prevMonthLabel}</div>
-            </div>
-          </div>
-          <div style={{ padding:'18px 20px' }}>
-            {PIPELINE.length > 0 ? (
-              <>
-                <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:14,overflowX:'auto',paddingBottom:2 }}>
-                  {['ลงทะเบียน', ...PIPELINE.map(step => step.to)].map((label, index, arr) => (
-                    <div key={`${label}-${index}`} style={{ display:'flex',alignItems:'center',gap:8,flexShrink:0 }}>
-                      <div style={{
-                        padding:'5px 10px',
-                        borderRadius:999,
-                        background:index === 0 ? 'var(--surface-2)' : 'rgba(30,95,173,.08)',
-                        border:'1px solid var(--border)',
-                        color:index === 0 ? 'var(--muted)' : 'var(--ink)',
-                        fontSize:11,
-                        fontWeight:800,
-                        whiteSpace:'nowrap',
-                      }}>
-                        {label}
-                      </div>
-                      {index < arr.length - 1 && <Icon name="chevRight" size={13} style={{ color:'var(--muted)' }} />}
-                    </div>
-                  ))}
-                </div>
-                <div className="dash-pipeline-steps" style={{ display:'flex', gap:0, alignItems:'stretch' }}>
-                  {PIPELINE.map((step, i) => (
-                    <div key={step.label} style={{ flex: Math.max(step.value, totalPipelineMinutes * 0.12), display:'flex', alignItems:'center', minWidth:120 }}>
-                      <div className="workflow-step" style={{
-                        flex:1,
-                        padding:'14px 16px',
-                        borderRadius:10,
-                        background:`linear-gradient(135deg,${step.color}0A 0%,var(--surface-2) 100%)`,
-                        border:'1px solid var(--border)',
-                        borderLeft:`3px solid ${step.color}`,
-                        minWidth:0,
-                      }}>
-                        <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:10 }}>
-                          <div style={{ width:30,height:30,borderRadius:8,background:`${step.color}18`,display:'flex',alignItems:'center',justifyContent:'center',color:step.color,flexShrink:0 }}>
-                            <Icon name={step.icon} size={14} />
-                          </div>
-                          <div style={{ minWidth:0 }}>
-                            <div style={{ fontSize:12.5,fontWeight:800,color:'var(--ink)',lineHeight:1.2 }}>{step.label}</div>
-                            <div style={{ fontSize:10,color:'var(--muted)',marginTop:1.5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>
-                              {step.from} → {step.to}
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ fontSize:10.5,color:'var(--muted)',marginBottom:3 }}>{step.metric}</div>
-                        <div className="dmono" style={{ fontSize:22,fontWeight:700,color:step.color,lineHeight:1 }}>
-                          {fmtMinutes(step.value)}
-                        </div>
-                      </div>
-                      {i < PIPELINE.length - 1 && (
-                        <div style={{ padding:'0 8px', color:'var(--muted)', flexShrink:0 }}>
-                          <Icon name="chevRight" size={14} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {avgTAT > 0 && (
-                  <div style={{ marginTop:10,padding:'9px 14px',borderRadius:8,background:'rgba(30,95,173,.06)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12 }}>
-                    <span style={{ fontSize:12,color:'var(--muted)',fontWeight:600 }}>Total TAT เฉลี่ยต่อ LN</span>
-                    <span className="dmono" style={{ fontSize:17,fontWeight:500,color:'var(--primary)',whiteSpace:'nowrap' }}>{fmtMinutes(avgTAT)}</span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <Empty text="ยังไม่มีข้อมูล Pipeline จาก TAT Module ในเดือนนี้" />
-            )}
-          </div>
-        </div>
-
-        {/* ══ HEATMAPS ══ */}
-        <div className="dash-heat-grid dash-fade" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, animationDelay:'.38s' }}>
-          <HeatmapCard
-            title="Heatmap การเจาะเลือด"
-            sub={`${phlebCount.toLocaleString()} ราย · ${prevMonthLabel}`}
-            grid={phlebHeatmap}
-            color="#8B5CF6"
-            dowLabels={DOW_TH}
-            slotLabels={SLOTS}
-            href="/tat"
-          />
-          <HeatmapCard
-            title="Heatmap การรับตัวอย่าง (Received)"
-            sub={`${tatCount.toLocaleString()} รายการ · ${prevMonthLabel}`}
-            grid={tatHeatmap}
-            color="#0EA5E9"
-            dowLabels={DOW_TH}
-            slotLabels={SLOTS}
-            href="/tat"
-          />
+        <div className="dash-fade" style={{ animationDelay: '.26s' }}>
+          <AnalyticsTabs />
         </div>
 
         {/* ══ ACTIVITY + DOCUMENT STATUS ══ */}
@@ -617,12 +336,12 @@ export default async function StaffDashboardPage() {
             <div style={{ padding:'8px 20px 0', flex:1, display:'flex', flexDirection:'column' }}>
               {auditLogs.length > 0 ? (
                 <div className="activity-timeline">
-                  {auditLogs.slice(0, 5).map((entry, i) => (
+                  {auditLogs.slice(0, 6).map((entry, i) => (
                     <ActivityFeedItem
                       key={entry.id}
                       entry={entry}
                       profileName={entry.user_id ? (profileMap[entry.user_id] ?? '') : ''}
-                      isLast={i === Math.min(4, auditLogs.length - 1)}
+                      isLast={i === Math.min(5, auditLogs.length - 1)}
                     />
                   ))}
                 </div>
@@ -637,33 +356,74 @@ export default async function StaffDashboardPage() {
             </div>
           </div>
 
-          {/* Document status bars */}
-          <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
-            <div style={{ padding:'13px 16px 11px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)' }}>
-              <div style={{ fontSize:13, fontWeight:800, color:'var(--ink)' }}>เอกสารตามสถานะ</div>
+          {/* Right column — Document status + RM severity, stacked as separate cards */}
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+            {/* Document status bars */}
+            <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
+              <div style={{ padding:'13px 16px 11px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ width:30,height:30,borderRadius:8,background:'rgba(13,148,136,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'#0D9488',flexShrink:0 }}>
+                  <Icon name="doc" size={14} />
+                </div>
+                <div style={{ fontSize:13, fontWeight:800, color:'var(--ink)' }}>เอกสารตามสถานะ</div>
+              </div>
+              <div style={{ padding:'14px 16px' }}>
+                {([
+                  { label:'Published', count:docPublished, color:'#16A34A' },
+                  { label:'Review',    count:docReview,    color:'#1E5FAD' },
+                  { label:'Draft',     count:docDraft,     color:'#D97706' },
+                  { label:'Obsolete',  count:docObsolete,  color:'#DC2626' },
+                ] as const).map(({ label, count, color }) => {
+                  const pct = docTotal > 0 ? (count / docTotal) * 100 : 0
+                  const barWidth = Math.max(pct, count > 0 ? 2 : 0)
+                  return (
+                    <div key={label} style={{ marginBottom:9 }}>
+                      <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
+                        <span style={{ fontSize:12,color:'var(--ink)',fontWeight:600 }}>{label}</span>
+                        <span style={{ fontSize:12,color,fontWeight:700 }}>{count} ฉบับ</span>
+                      </div>
+                      <div style={{ height:4,background:'var(--border)',borderRadius:99,overflow:'hidden' }}>
+                        <div style={{ height:'100%',width:`${barWidth}%`,background:color,borderRadius:99 }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-            <div style={{ padding:'14px 16px' }}>
-              {([
-                { label:'Published', count:docPublished, color:'#16A34A' },
-                { label:'Review',    count:docReview,    color:'#1E5FAD' },
-                { label:'Draft',     count:docDraft,     color:'#D97706' },
-                { label:'Obsolete',  count:docObsolete,  color:'#DC2626' },
-              ] as const).map(({ label, count, color }) => {
-                const pct = docTotal > 0 ? (count / docTotal) * 100 : 0
-                const barWidth = Math.max(pct, count > 0 ? 2 : 0)
-                return (
-                  <div key={label} style={{ marginBottom:9 }}>
-                    <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
-                      <span style={{ fontSize:12,color:'var(--ink)',fontWeight:600 }}>{label}</span>
-                      <span style={{ fontSize:12,color,fontWeight:700 }}>{count} ฉบับ</span>
-                    </div>
-                    <div style={{ height:4,background:'var(--border)',borderRadius:99,overflow:'hidden' }}>
-                      <div style={{ height:'100%',width:`${barWidth}%`,background:color,borderRadius:99 }} />
-                    </div>
+
+            {/* RM severity — separate card */}
+            {(permissions['ความเสี่ยง / Rejection'] ?? 'none') !== 'none' && (
+              <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
+                <div style={{ padding:'13px 16px 11px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ width:30,height:30,borderRadius:8,background:'rgba(220,38,38,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'#DC2626',flexShrink:0 }}>
+                    <Icon name="shield" size={14} />
                   </div>
-                )
-              })}
-            </div>
+                  <div>
+                    <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>ระดับความรุนแรง (RM)</div>
+                    <div style={{ fontSize:11,color:'var(--muted)',marginTop:1 }}>{curMonthLabel}</div>
+                  </div>
+                </div>
+                <div style={{ padding:'14px 16px' }}>
+                  <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                    {SEVERITY_LEVELS.map(level => {
+                      const count = riskSeverityCounts[level]
+                      const color = SEVERITY_COLORS[level] ?? '#94A3B8'
+                      const pct = Math.round(count / maxSeverityCount * 100)
+                      return (
+                        <div key={level} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <div style={{ width:14, color, fontWeight:900, fontSize:11.5 }}>{level}</div>
+                          <div style={{ flex:1, height:8, borderRadius:999, background:'var(--surface-2)', overflow:'hidden' }}>
+                            <div style={{ height:'100%', width:`${pct}%`, background:color, borderRadius:999 }} />
+                          </div>
+                          <div style={{ width:26, textAlign:'right', color:'var(--muted)', fontSize:11 }}>{count}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
 
         </div>
@@ -710,76 +470,6 @@ function KpiCard({ icon, label, value, sub, accent, warn = false, change, change
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-function HeatmapCard({ title, sub, grid, color, dowLabels, slotLabels, href }: {
-  title: string; sub: string; grid: number[][]; color: string
-  dowLabels: string[]; slotLabels: string[]; href: string
-}) {
-  const maxVal = Math.max(1, ...grid.flat())
-  // reorder: Mon(1)..Sun(0)
-  const ordered = [1,2,3,4,5,6,0]
-  return (
-    <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
-      <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-          <div style={{ width:30,height:30,borderRadius:8,background:`${color}18`,display:'flex',alignItems:'center',justifyContent:'center',color }}>
-            <Icon name="beaker" size={14} />
-          </div>
-          <div>
-            <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>{title}</div>
-            <div style={{ fontSize:11,color:'var(--muted)',marginTop:1 }}>{sub}</div>
-          </div>
-        </div>
-        <Link href={href} style={{ textDecoration:'none' }}>
-          <div className="section-link" style={{ fontSize:11,fontWeight:700,color:'var(--muted)',padding:'4px 9px',borderRadius:6,background:'var(--surface-2)',display:'flex',alignItems:'center',gap:4 }}>
-            TAT Module <Icon name="arrowRight" size={10} />
-          </div>
-        </Link>
-      </div>
-      <div style={{ padding:'16px 20px' }}>
-        {/* slot labels */}
-        <div style={{ display:'grid', gridTemplateColumns:'28px repeat(6,1fr)', gap:3, marginBottom:4 }}>
-          <div />
-          {slotLabels.map(s => (
-            <div key={s} className="dmono" style={{ fontSize:9.5,color:'var(--muted)',textAlign:'center' }}>{s}:00</div>
-          ))}
-        </div>
-        {/* rows */}
-        {ordered.map(dow => (
-          <div key={dow} style={{ display:'grid', gridTemplateColumns:'28px repeat(6,1fr)', gap:3, marginBottom:3 }}>
-            <div style={{ fontSize:10.5,fontWeight:700,color:'var(--muted)',display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:5 }}>
-              {dowLabels[dow]}
-            </div>
-            {grid[dow].map((val, slot) => {
-              const intensity = maxVal > 0 ? val / maxVal : 0
-              return (
-                <div
-                  key={slot}
-                  className="hm-cell"
-                  title={`${dowLabels[dow]} ${slotLabels[slot]}:00–${String(Number(slotLabels[slot])+4).padStart(2,'0')}:00 · ${val} ราย`}
-                  style={{
-                    height:26, borderRadius:5,
-                    background: intensity > 0
-                      ? `${color}${Math.round(intensity * 220 + 20).toString(16).padStart(2,'0')}`
-                      : 'var(--surface-2)',
-                    cursor:'default',
-                  }}
-                />
-              )
-            })}
-          </div>
-        ))}
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:10 }}>
-          <div style={{ fontSize:10,color:'var(--muted)' }}>น้อย</div>
-          {[0.1,0.3,0.5,0.7,0.9].map(v => (
-            <div key={v} style={{ width:16,height:10,borderRadius:3,background:`${color}${Math.round(v*220+20).toString(16).padStart(2,'0')}` }} />
-          ))}
-          <div style={{ fontSize:10,color:'var(--muted)' }}>มาก</div>
-        </div>
-      </div>
     </div>
   )
 }

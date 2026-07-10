@@ -204,7 +204,7 @@ export function PersonnelClient({ rows, currentUserId }: { rows: RosterRow[]; cu
           subtitle={`บุคลากรทั้งหมด ${rows.length} คน`}
           marginBottom={0}
         />
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0, position: 'relative' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0, position: 'relative' }}>
           {hasOwnRecord && (
             <Link href={`/staff/personnel/${currentUserId}`} style={linkBtn}>
               <Icon name="user" size={15} /> โปรไฟล์ของฉัน
@@ -212,6 +212,9 @@ export function PersonnelClient({ rows, currentUserId }: { rows: RosterRow[]; cu
           )}
           <Link href="/staff/personnel/org" style={linkBtn}>
             <Icon name="users" size={15} /> ผังองค์กร
+          </Link>
+          <Link href="/staff/personnel/workforce" style={linkBtn}>
+            <Icon name="chart" size={15} /> อัตรากำลัง
           </Link>
           <Link href="/staff/personnel/compliance" style={linkBtn}>
             <Icon name="shieldCheck" size={15} /> รายงานคุณภาพ

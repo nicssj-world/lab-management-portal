@@ -24,6 +24,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/equipment':        { th: 'ทะเบียนเครื่องมือ',           en: 'Equipment Registry' },
   '/staff/personnel':            { th: 'ทะเบียนบุคลากร',          en: 'MT-CBH Staff' },
   '/staff/personnel/compliance': { th: 'รายงานคุณภาพบุคลากร',     en: 'Personnel Quality Report' },
+  '/staff/personnel/workforce':  { th: 'Dashboard อัตรากำลัง',     en: 'Workforce Dashboard' },
   '/staff/personnel/org':        { th: 'ผังองค์กร',               en: 'Organization Chart' },
   '/staff/admin':            { th: 'จัดการผู้ใช้และสิทธิ์',          en: 'Users & Roles' },
   '/staff/settings':         { th: 'ตั้งค่าระบบ',                  en: 'System Settings' },

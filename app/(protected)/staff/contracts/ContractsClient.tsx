@@ -759,6 +759,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
             const remaining = (c.total ?? 0) - c.used
             const pct = c.total ? (remaining / c.total) * 100 : 0
             const ml = monthsLeft(c.end_date)
+            const alreadyExpired = ml < 0
             const expiring = isExpiring(c)
             const lowBudget = isLowBudget(c)
 
@@ -796,7 +797,12 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.department || 'ไม่ระบุหน่วยงาน'}</span>
                       </span>
                       {/* status badge */}
-                      {expiring ? (
+                      {alreadyExpired ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', padding: '3px 9px', borderRadius: 20 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#DC2626' }} />
+                          หมดอายุแล้ว
+                        </span>
+                      ) : expiring ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', padding: '3px 9px', borderRadius: 20 }}>
                           <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#DC2626' }} />
                           ใกล้หมดอายุ
