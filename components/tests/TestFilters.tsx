@@ -100,7 +100,7 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
           display: 'flex', alignItems: 'center', gap: 4,
           padding: '0 16px', height: 44, borderRadius: 10,
           background: isFiltered ? 'var(--primary-soft)' : 'var(--surface-2)',
-          border: `1.5px solid ${isFiltered ? 'rgba(30,95,173,.25)' : 'var(--border)'}`,
+          border: `1.5px solid ${isFiltered ? 'var(--public-hairline, rgba(30,95,173,.25))' : 'var(--border)'}`,
           whiteSpace: 'nowrap', flexShrink: 0,
         }}>
           <span style={{ fontSize: 18, fontWeight: 800, color: isFiltered ? 'var(--primary)' : 'var(--ink)', lineHeight: 1 }}>

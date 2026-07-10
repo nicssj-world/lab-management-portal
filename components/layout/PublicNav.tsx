@@ -72,6 +72,7 @@ export function PublicNav() {
           position: sticky;
           top: 0;
           z-index: 50;
+          box-shadow: 0 1px 0 rgba(255,255,255,.7), 0 10px 34px rgba(11,22,38,.055);
         }
         .pub-nav-desktop { display: flex; }
         .pub-nav-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
@@ -89,6 +90,51 @@ export function PublicNav() {
           text-decoration: none;
           flex-shrink: 1;
           min-width: 0;
+        }
+        .pub-nav-link {
+          position: relative;
+          box-shadow: inset 0 0 0 1px transparent;
+        }
+        .pub-nav-link:hover {
+          background: var(--primary-soft) !important;
+          color: var(--primary) !important;
+          box-shadow: inset 0 0 0 1px var(--public-hairline);
+        }
+        .pub-nav-link[data-active="true"]::after {
+          content: "";
+          position: absolute;
+          left: 12px;
+          right: 12px;
+          bottom: 5px;
+          height: 2px;
+          border-radius: 999px;
+          background: linear-gradient(90deg, var(--primary), var(--public-accent));
+        }
+        .pub-icon-button {
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.65), var(--public-shadow-sm);
+          transition: border-color .15s ease, color .15s ease, background .15s ease, transform .15s ease, box-shadow .15s ease;
+        }
+        .pub-icon-button:hover {
+          border-color: var(--public-hairline) !important;
+          color: var(--primary) !important;
+          transform: translateY(-1px);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.78), 0 10px 26px rgba(11,22,38,.085);
+        }
+        .pub-profile-chip {
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.72), var(--public-shadow-sm);
+          transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+        }
+        .pub-profile-chip:hover {
+          border-color: var(--public-hairline) !important;
+          transform: translateY(-1px);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 12px 30px rgba(11,22,38,.09);
+        }
+        [data-theme="dark"] .pub-header {
+          box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 12px 36px rgba(0,0,0,.28);
+        }
+        [data-theme="dark"] .pub-icon-button,
+        [data-theme="dark"] .pub-profile-chip {
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.06), var(--public-shadow-sm);
         }
         @media (max-width: 1100px) {
           .pub-header {
@@ -140,8 +186,8 @@ export function PublicNav() {
       <header
         className="pub-header"
         style={{
-          background: 'var(--card)',
-          borderBottom: '1px solid var(--border)', backdropFilter: 'blur(12px)',
+          background: 'color-mix(in srgb, var(--card) 88%, transparent)',
+          borderBottom: '1px solid var(--border)', backdropFilter: 'blur(18px) saturate(1.18)',
         }}
       >
         <div
@@ -159,8 +205,10 @@ export function PublicNav() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  className="pub-nav-link"
+                  data-active={active ? 'true' : 'false'}
                   style={{
-                    padding: '8px 12px', borderRadius: 8, textDecoration: 'none',
+                    padding: '9px 13px 11px', borderRadius: 10, textDecoration: 'none',
                     background: active ? 'var(--primary-soft)' : 'transparent',
                     color: active ? 'var(--primary)' : 'var(--ink)',
                     fontWeight: active ? 600 : 500, fontSize: 13,
@@ -177,6 +225,7 @@ export function PublicNav() {
           <div className="pub-nav-actions">
             <button
               onClick={() => setLang(lang === 'th' ? 'en' : 'th')}
+              className="pub-icon-button"
               style={{
                 width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)',
                 background: 'var(--card)', color: 'var(--ink)', cursor: 'pointer',
@@ -189,6 +238,7 @@ export function PublicNav() {
               onClick={toggleDark}
               title={dark ? 'Light mode' : 'Dark mode'}
               aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="pub-icon-button"
               style={{
                 width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)',
                 background: 'var(--card)', color: 'var(--ink)', cursor: 'pointer',
@@ -199,7 +249,7 @@ export function PublicNav() {
             </button>
             {sessionUser ? (
               <Link href="/staff/profile" style={{ textDecoration: 'none' }}>
-                <div style={{
+                <div className="pub-profile-chip" style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '6px 12px 6px 6px', borderRadius: 10,
                   border: '1px solid var(--border)', background: 'var(--card)',
@@ -242,6 +292,7 @@ export function PublicNav() {
           <div className="pub-hamburger" style={{ marginLeft: 'auto', alignItems: 'center', gap: 8 }}>
             <button
               onClick={() => setLang(lang === 'th' ? 'en' : 'th')}
+              className="pub-icon-button"
               style={{
                 width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)',
                 background: 'var(--card)', color: 'var(--ink)', cursor: 'pointer',
@@ -254,6 +305,7 @@ export function PublicNav() {
               onClick={toggleDark}
               title={dark ? 'Light mode' : 'Dark mode'}
               aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="pub-icon-button"
               style={{
                 width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)',
                 background: 'var(--card)', color: 'var(--ink)', cursor: 'pointer',
@@ -264,6 +316,7 @@ export function PublicNav() {
             </button>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
+              className="pub-icon-button"
               style={{
                 width: 38, height: 38, borderRadius: 8, border: '1px solid var(--border)',
                 background: 'var(--card)', color: 'var(--ink)', cursor: 'pointer',

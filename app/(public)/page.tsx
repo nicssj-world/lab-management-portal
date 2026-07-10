@@ -23,9 +23,32 @@ export default async function PublicHome() {
   const outLabUrl = outLabCat ? `/catalog?cat=${outLabCat.id}` : '/catalog'
 
   return (
-    <main style={{ background: 'var(--bg)' }}>
+    <main style={{ background: 'radial-gradient(circle at 18% 0%, var(--primary-soft) 0, transparent 34%), linear-gradient(180deg, var(--bg) 0%, var(--surface-2) 100%)' }}>
       <style>{`
         .public-hero { padding: 64px 28px 80px; }
+        .public-hero::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(112deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,.07) 31%, transparent 58%),
+            linear-gradient(78deg, rgba(7,23,49,.24) 0%, transparent 43%, rgba(255,255,255,.08) 100%),
+            repeating-linear-gradient(135deg, rgba(255,255,255,.055) 0 1px, transparent 1px 22px);
+          mix-blend-mode: soft-light;
+          pointer-events: none;
+        }
+        .public-hero::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(180deg, transparent 0%, transparent 62%, rgba(7,23,49,.18) 100%),
+            linear-gradient(rgba(255,255,255,.095) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,.085) 1px, transparent 1px);
+          background-size: auto, 48px 48px, 48px 48px;
+          mask-image: linear-gradient(90deg, rgba(0,0,0,.5), rgba(0,0,0,.22) 56%, transparent 94%);
+          pointer-events: none;
+        }
         .public-hero-shell {
           max-width: 1280px;
           min-height: 360px;
@@ -38,6 +61,50 @@ export default async function PublicHome() {
           max-width: 760px;
         }
         .public-hero-title { font-size: 44px; }
+        .public-hero-glow {
+          position: absolute;
+          border-radius: 999px;
+          pointer-events: none;
+          z-index: 0;
+          filter: blur(1px);
+          mix-blend-mode: screen;
+        }
+        .public-hero-glow-main {
+          right: -120px;
+          top: -92px;
+          width: 540px;
+          height: 540px;
+          background:
+            radial-gradient(circle at 42% 38%, rgba(255,255,255,.22), rgba(255,255,255,.085) 34%, rgba(255,255,255,0) 68%);
+          opacity: .88;
+        }
+        .public-hero-glow-low {
+          right: 182px;
+          bottom: -140px;
+          width: 360px;
+          height: 360px;
+          background:
+            radial-gradient(circle at 50% 50%, rgba(176,141,87,.24), rgba(255,255,255,.07) 42%, rgba(255,255,255,0) 72%);
+          opacity: .76;
+        }
+        .public-hero-glow-left {
+          left: -210px;
+          bottom: -190px;
+          width: 460px;
+          height: 460px;
+          background:
+            radial-gradient(circle at 50% 50%, rgba(255,255,255,.11), rgba(255,255,255,.04) 38%, rgba(255,255,255,0) 74%);
+          opacity: .52;
+        }
+        .public-standard-badge {
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.22);
+          transition: transform .16s ease, background .16s ease, border-color .16s ease;
+        }
+        .public-standard-badge:hover {
+          transform: translateY(-1px);
+          background: rgba(255,255,255,.24) !important;
+          border-color: rgba(255,255,255,.42) !important;
+        }
         .public-hero-title-th {
           display: inline-block;
           color: #fff;
@@ -81,6 +148,60 @@ export default async function PublicHome() {
           to { opacity: 1; transform: scaleX(1); }
         }
         .public-hero-actions { display: flex; gap: 12px; }
+        .public-hero-search {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: min(100%, 520px);
+          min-height: 48px;
+          padding: 5px;
+          border-radius: 14px;
+          background: rgba(252,253,255,.97);
+          border: 1px solid rgba(255,255,255,.82);
+          box-shadow: 0 18px 52px rgba(11,22,38,.22), inset 0 1px 0 rgba(255,255,255,.8);
+          transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+        }
+        .public-hero-search:focus-within {
+          border-color: rgba(176,141,87,.55);
+          box-shadow: 0 22px 62px rgba(11,22,38,.28), 0 0 0 4px rgba(176,141,87,.16), inset 0 1px 0 rgba(255,255,255,.86);
+        }
+        .public-hero-search-field {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0 8px 0 12px;
+          color: var(--primary);
+        }
+        .public-hero-search-input {
+          width: 100%;
+          min-height: 38px;
+          border: 0;
+          outline: 0;
+          background: transparent;
+          color: #0F172A;
+          font-size: 15px;
+          font-family: inherit;
+        }
+        .public-hero-search-input::placeholder {
+          color: #64748B;
+        }
+        .public-hero-cta,
+        .public-hero-secondary {
+          min-height: 44px;
+          transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease;
+          touch-action: manipulation;
+        }
+        .public-hero-cta:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 16px 38px rgba(11,22,38,.24);
+        }
+        .public-hero-secondary:hover {
+          background: rgba(176,141,87,.34) !important;
+          border-color: rgba(255,255,255,.72) !important;
+          transform: translateY(-1px);
+        }
         .public-photo-stack {
           position: absolute;
           right: 0px;
@@ -96,18 +217,27 @@ export default async function PublicHome() {
           border: 5px solid #fff;
           border-radius: 14px;
           background: #fff;
-          box-shadow: 0 20px 46px rgba(15,23,42,.22);
+          box-shadow: 0 22px 54px rgba(11,22,38,.24);
           transition: transform .22s ease, box-shadow .22s ease;
+        }
+        .public-photo-card::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border: 1px solid rgba(255,255,255,.55);
+          border-radius: 9px;
+          pointer-events: none;
         }
         .public-photo-card img {
           width: 100%;
           height: 100%;
           display: block;
           object-fit: cover;
+          filter: saturate(1.05) contrast(1.02);
         }
         .public-photo-card:hover {
           z-index: 20 !important;
-          box-shadow: 0 30px 70px rgba(15,23,42,.34);
+          box-shadow: 0 34px 84px rgba(11,22,38,.36);
         }
         /* central lab — main card, centre of stack */
         .public-photo-central {
@@ -151,10 +281,10 @@ export default async function PublicHome() {
           gap: 8px;
           padding: 8px 11px;
           border-radius: 999px;
-          background: rgba(255,255,255,.94);
+          background: rgba(252,253,255,.96);
           color: var(--primary);
-          border: 1px solid rgba(255,255,255,.65);
-          box-shadow: 0 16px 34px rgba(15,23,42,.2);
+          border: 1px solid rgba(255,255,255,.72);
+          box-shadow: 0 16px 38px rgba(11,22,38,.22), inset 0 1px 0 rgba(255,255,255,.8);
           font-size: 12px;
           font-weight: 800;
           white-space: nowrap;
@@ -162,6 +292,32 @@ export default async function PublicHome() {
         .public-section { padding-left: 28px; padding-right: 28px; }
         .public-news-grid { grid-template-columns: 3fr 2fr; }
         .public-category-grid { grid-template-columns: repeat(4, 1fr); }
+        .public-scope-card {
+          border-color: var(--public-hairline) !important;
+          box-shadow: var(--public-shadow-md);
+          background:
+            linear-gradient(135deg, var(--card) 0%, var(--card) 58%, var(--primary-soft) 100%) !important;
+        }
+        .public-scope-icon {
+          box-shadow: inset 0 0 0 1px var(--public-hairline), var(--public-shadow-sm);
+        }
+        .public-category-card {
+          min-height: 148px;
+          border-color: var(--public-hairline) !important;
+          box-shadow: 0 10px 26px rgba(11,22,38,.055);
+        }
+        .public-category-card:hover {
+          transform: translateY(-2px);
+          border-color: rgba(30,95,173,.28) !important;
+          box-shadow: 0 18px 42px rgba(11,22,38,.10) !important;
+        }
+        .public-category-card-icon {
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.35);
+          transition: transform .16s ease;
+        }
+        .public-category-card:hover .public-category-card-icon {
+          transform: scale(1.05);
+        }
 
         @media (max-width: 900px) {
           .public-hero { padding: 42px 20px 58px; }
@@ -174,6 +330,15 @@ export default async function PublicHome() {
             width: 100%;
             height: 280px;
             margin-top: 28px;
+          }
+          .public-hero-glow-main {
+            right: -180px;
+            top: -130px;
+            opacity: .68;
+          }
+          .public-hero-glow-low,
+          .public-hero-glow-left {
+            opacity: .42;
           }
           .public-photo-card { border-width: 4px; }
           .public-photo-central {
@@ -201,6 +366,7 @@ export default async function PublicHome() {
           }
           .public-hero-title { font-size: 34px !important; letter-spacing: 0 !important; }
           .public-hero-actions { flex-direction: column; align-items: stretch; max-width: 360px; }
+          .public-hero-search { width: 100%; }
           .public-hero-actions a, .public-hero-actions button { width: 100%; justify-content: center; }
           .public-section { padding-left: 20px !important; padding-right: 20px !important; }
           .public-news-grid { grid-template-columns: 1fr !important; }
@@ -210,30 +376,80 @@ export default async function PublicHome() {
         @media (max-width: 520px) {
           .public-hero { padding: 36px 16px 48px; }
           .public-photo-stack { display: none; }
+          .public-hero-glow-main {
+            right: -240px;
+            top: -170px;
+            opacity: .52;
+          }
+          .public-hero-glow-low,
+          .public-hero-glow-left {
+            display: none;
+          }
           .public-hero-title { font-size: 30px !important; line-height: 1.18 !important; }
           .public-hero-title-en::after { bottom: -5px; height: 2px; }
           .public-hero-copy { font-size: 14px !important; }
+          .public-hero-search {
+            align-items: stretch;
+            flex-direction: column;
+            padding: 8px;
+          }
+          .public-hero-search-field {
+            min-height: 44px;
+          }
           .public-section { padding-left: 16px !important; padding-right: 16px !important; }
           .public-category-grid { grid-template-columns: 1fr !important; }
         }
-        .line-card { transition: background .18s; }
-        .line-card:hover { background: rgba(255,255,255,.22) !important; }
+        .line-card {
+          transition: background .18s, border-color .18s, transform .18s, box-shadow .18s;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+        }
+        .line-card:hover {
+          background: rgba(255,255,255,.22) !important;
+          border-color: rgba(255,255,255,.36) !important;
+          transform: translateY(-1px);
+          box-shadow: 0 14px 34px rgba(11,22,38,.18);
+        }
+        .public-hero a:focus-visible,
+        .public-section a:focus-visible,
+        .public-hero button:focus-visible,
+        .public-section button:focus-visible {
+          box-shadow: 0 0 0 3px rgba(255,255,255,.36), 0 0 0 6px var(--primary-soft);
+          outline: none;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .public-standard-badge,
+          .public-hero-search,
+          .public-hero-cta,
+          .public-hero-secondary,
+          .public-photo-card,
+          .line-card,
+          .news-featured,
+          .news-sidebar-row,
+          .news-footer-link,
+          .news-view-all,
+          .public-category-card,
+          .public-category-card-icon {
+            animation: none !important;
+            transition: none !important;
+          }
+        }
       `}</style>
       {/* Hero */}
       <section
         className="public-hero"
         style={{
-          background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%)',
+          background: 'linear-gradient(128deg, rgba(7,23,49,.22) 0%, transparent 42%), linear-gradient(135deg, #0E3F7E 0%, var(--primary) 50%, #2563EB 100%)',
           color: '#fff', position: 'relative', overflow: 'hidden',
         }}
       >
-        <div style={{ position: 'absolute', right: -80, top: -40, width: 460, height: 460, borderRadius: '50%', background: 'rgba(255,255,255,.06)' }} />
-        <div style={{ position: 'absolute', right: 120, bottom: -100, width: 280, height: 280, borderRadius: '50%', background: 'rgba(255,255,255,.05)' }} />
+        <div className="public-hero-glow public-hero-glow-main" aria-hidden="true" />
+        <div className="public-hero-glow public-hero-glow-low" aria-hidden="true" />
+        <div className="public-hero-glow public-hero-glow-left" aria-hidden="true" />
         <div className="public-hero-shell">
           <div className="public-hero-text">
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
               {standards.map((s: string) => (
-                <span key={s} style={{
+                <span key={s} className="public-standard-badge" style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   padding: '4px 10px', borderRadius: 20,
                   background: 'rgba(255,255,255,.18)', color: '#fff',
@@ -253,27 +469,43 @@ export default async function PublicHome() {
               ค้นหารายการตรวจวิเคราะห์ คู่มือการเก็บตัวอย่าง และเอกสารแนบต่างๆ<br />ของกลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรีได้ที่นี่
             </p>
             <div className="public-hero-actions" style={{ marginTop: 24 }}>
-              <Link href="/catalog">
+              <form action="/catalog" method="get" className="public-hero-search" role="search">
+                <label className="public-hero-search-field">
+                  <Icon name="search" size={17} />
+                  <input
+                    className="public-hero-search-input"
+                    name="search"
+                    type="search"
+                    aria-label="ค้นหารายการตรวจวิเคราะห์"
+                    placeholder="ค้นหาชื่อ test, รหัส, specimen..."
+                  />
+                </label>
                 <button
+                  type="submit"
+                  className="public-hero-cta"
                   style={{
-                    background: '#fff', color: 'var(--primary)', border: 'none',
-                    padding: '12px 22px', borderRadius: 10, fontSize: 14, fontWeight: 600,
+                    background: 'linear-gradient(135deg, var(--primary), var(--primary-2))', color: '#fff', border: 'none',
+                    padding: '12px 22px', borderRadius: 11, fontSize: 14, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8,
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 10px 24px rgba(11,22,38,.18)',
+                  }}
+                >
+                  ค้นหารายการตรวจ
+                </button>
+              </form>
+              <Link href="/manual">
+                <button
+                  className="public-hero-secondary"
+                  style={{
+                    background: 'rgba(176,141,87,.24)', color: '#fff',
+                    border: '1px solid rgba(255,255,255,.58)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,.2), 0 12px 30px rgba(11,22,38,.16)',
+                    backdropFilter: 'blur(10px)',
+                    padding: '12px 22px', borderRadius: 11, fontSize: 14, fontWeight: 700,
                     cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8,
                   }}
                 >
-                  <Icon name="search" size={16} />
-                  ค้นหารายการตรวจ
-                </button>
-              </Link>
-              <Link href="/manual">
-                <button
-                  style={{
-                    background: 'transparent', color: '#fff',
-                    border: '1px solid rgba(255,255,255,.3)',
-                    padding: '12px 22px', borderRadius: 10, fontSize: 14, fontWeight: 600,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >
+                  <Icon name="book" size={16} />
                   คู่มือห้องปฏิบัติการ
                 </button>
               </Link>
@@ -366,9 +598,10 @@ export default async function PublicHome() {
             </h2>
           </div>
         </div>
-        <Card padding={28}>
+        <Card padding={28} className="public-scope-card">
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 16 }}>
             <div
+              className="public-scope-icon"
               style={{
                 width: 44, height: 44, borderRadius: 12, background: 'var(--primary-soft)',
                 color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -406,10 +639,18 @@ export default async function PublicHome() {
       {/* News */}
       <section className="public-section" style={{ maxWidth: 1280, margin: '0 auto', padding: '56px 28px 0' }}>
         <style>{`
-          .news-featured { transition: box-shadow .2s, transform .2s; }
-          .news-featured:hover { box-shadow: 0 12px 40px rgba(0,0,0,.1); transform: translateY(-2px); }
-          .news-sidebar-row { background: transparent; transition: background .12s; }
-          .news-sidebar-row:hover { background: var(--surface-2) !important; }
+          .news-featured {
+            border-color: var(--public-hairline) !important;
+            box-shadow: 0 12px 30px rgba(11,22,38,.055);
+            transition: box-shadow .2s, transform .2s, border-color .2s;
+          }
+          .news-featured:hover { box-shadow: 0 18px 48px rgba(11,22,38,.11); border-color: rgba(30,95,173,.28) !important; transform: translateY(-2px); }
+          .news-sidebar-panel {
+            border-color: var(--public-hairline) !important;
+            box-shadow: 0 12px 30px rgba(11,22,38,.05);
+          }
+          .news-sidebar-row { background: transparent; transition: background .12s, transform .12s; }
+          .news-sidebar-row:hover { background: var(--surface-2) !important; transform: translateX(2px); }
           .news-footer-link { background: transparent; transition: background .12s; }
           .news-footer-link:hover { background: var(--surface-2) !important; }
           .news-view-all { transition: background .15s, border-color .15s; }
@@ -443,7 +684,8 @@ export default async function PublicHome() {
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
             color: 'var(--primary)', textDecoration: 'none',
-            border: '1.5px solid rgba(30,95,173,.2)', background: 'transparent',
+            border: '1.5px solid var(--public-hairline)', background: 'var(--card)',
+            boxShadow: 'var(--public-shadow-sm)',
           }}>
             ดูทั้งหมด <Icon name="arrowRight" size={12} />
           </Link>
@@ -459,7 +701,7 @@ export default async function PublicHome() {
               {/* Featured card */}
               <Link href={`/news/${featured.id}`} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
                 <div className="news-featured" style={{
-                  background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden',
+                  background: `linear-gradient(135deg, ${featCat?.color ?? 'var(--primary)'}0F, transparent 46%), var(--card)`, borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden',
                   height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
                 }}>
                   <div style={{ height: 4, background: featCat?.color ?? 'var(--primary)', flexShrink: 0 }} />
@@ -518,7 +760,7 @@ export default async function PublicHome() {
               </Link>
 
               {/* Sidebar list */}
-              <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div className="news-sidebar-panel" style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)' }}>
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
                     ข่าวสารล่าสุด
@@ -594,8 +836,9 @@ export default async function PublicHome() {
         <div className="public-category-grid" style={{ display: 'grid', gap: 14 }}>
           {categories.map((c) => (
             <Link key={c.id} href={`/catalog?cat=${c.id}`} style={{ textDecoration: 'none' }}>
-              <Card hoverable padding={20}>
+              <Card hoverable padding={20} className="public-category-card">
                 <div
+                  className="public-category-card-icon"
                   style={{
                     width: 40, height: 40, borderRadius: 10,
                     background: `${c.color}18`, color: c.color,
