@@ -15,6 +15,7 @@ interface NavChild {
   th: string
   en: string
   icon: string
+  color: string
   role?: string | string[]
   docRole?: string | string[]
   resource?: string
@@ -25,6 +26,7 @@ interface NavItem {
   th: string
   en: string
   icon: string
+  color: string
   badge?: string
   role?: string | string[]
   resource?: string
@@ -32,36 +34,41 @@ interface NavItem {
   children?: NavChild[]
 }
 
-const NAV_ITEMS: (NavItem | null)[] = [
-  { href: '/staff/dashboard',  th: 'แดชบอร์ด',           en: 'Dashboard',      icon: 'dash' },
-  { href: '/staff/tests',      th: 'รายการตรวจ',         en: 'Tests',          icon: 'flask',    resource: 'รายการตรวจ' },
-  { href: '/staff/documents/dashboard', th: 'เอกสารคุณภาพ', en: 'Documents', icon: 'doc',
+type NavEntry = NavItem | { section: string }
+
+const isNavItem = (entry: NavEntry): entry is NavItem => 'href' in entry
+
+const NAV_ITEMS: NavEntry[] = [
+  { href: '/staff/dashboard',  th: 'แดชบอร์ด',           en: 'Dashboard',      icon: 'dash',  color: '#1E5FAD' },
+  { section: 'งานหลัก' },
+  { href: '/staff/tests',      th: 'รายการตรวจ',         en: 'Tests',          icon: 'flask',  color: '#1E5FAD', resource: 'รายการตรวจ' },
+  { href: '/staff/documents/dashboard', th: 'เอกสารคุณภาพ', en: 'Documents', icon: 'doc', color: '#0D9488',
     children: [
-      { href: '/staff/documents/dashboard',   th: 'Dashboard',   en: 'Dashboard',   icon: 'dash',  resource: 'เอกสารคุณภาพ' },
-      { href: '/staff/documents',             th: 'คลังเอกสาร',  en: 'Library',     icon: 'doc',   resource: 'เอกสารคุณภาพ' },
-      { href: '/staff/documents/categories',  th: 'หมวดหมู่',    en: 'Categories',  icon: 'inbox', resource: 'เอกสารคุณภาพ' },
-      { href: '/staff/documents/pending',     th: 'รออนุมัติ',   en: 'Pending',     icon: 'clock',
+      { href: '/staff/documents/dashboard',   th: 'Dashboard',   en: 'Dashboard',   icon: 'dash',  color: '#0D9488', resource: 'เอกสารคุณภาพ' },
+      { href: '/staff/documents',             th: 'คลังเอกสาร',  en: 'Library',     icon: 'doc',   color: '#0D9488', resource: 'เอกสารคุณภาพ' },
+      { href: '/staff/documents/categories',  th: 'หมวดหมู่',    en: 'Categories',  icon: 'inbox', color: '#0D9488', resource: 'เอกสารคุณภาพ' },
+      { href: '/staff/documents/pending',     th: 'รออนุมัติ',   en: 'Pending',     icon: 'clock', color: '#0D9488',
         role: ['Admin', 'Document Controller'], docRole: ['Document Controller', 'Reviewer'] },
-      { href: '/staff/documents/read-report', th: 'รายงานการอ่าน', en: 'Read Report', icon: 'eye',
+      { href: '/staff/documents/read-report', th: 'รายงานการอ่าน', en: 'Read Report', icon: 'eye', color: '#0D9488',
         role: ['Admin', 'Document Controller'], docRole: ['Document Controller', 'Quality Manager', 'Laboratory Director'] },
-      { href: '/staff/documents/master-list', th: 'Master List', en: 'Master List', icon: 'book',  resource: 'Master List' },
+      { href: '/staff/documents/master-list', th: 'Master List', en: 'Master List', icon: 'book', color: '#0D9488', resource: 'Master List' },
     ] },
-  { href: '/staff/tests/categories', th: 'หมวดหมู่การตรวจ', en: 'Categories', icon: 'beaker',   resource: 'รายการตรวจ', role: 'Admin' },
-  { href: '/staff/news',       th: 'จัดการข่าวสาร',        en: 'News',           icon: 'bell',     resource: 'ข่าวสาร' },
-  { href: '/staff/risk',       th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',  icon: 'shield',   resource: 'ความเสี่ยง / Rejection' },
-  { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building', resource: 'สัญญา' },
-  { href: '/staff/equipment',  th: 'ทะเบียนเครื่องมือ',   en: 'Equipment',      icon: 'microscope', resource: 'ทะเบียนเครื่องมือ' },
-  { href: '/staff/personnel',  th: 'บุคลากร',             en: 'MT-CBH Staff',   icon: 'shieldCheck', resource: 'บุคลากร' },
-  null,
-  { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',    resource: 'KPI' },
-  { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker',   resource: 'Workload' },
-  { href: '/tat',              th: 'Turnaround Time',     en: 'TAT',            icon: 'clock',    resource: 'TAT' },
-  { href: '/staff/rejection',  th: 'Rejection Log',       en: 'Rejection',      icon: 'alert',    resource: 'ความเสี่ยง / Rejection' },
-  null,
-  { href: '/staff/admin',      th: 'จัดการผู้ใช้',         en: 'Users & Roles',  icon: 'users',    resource: 'User Management' },
-  { href: '/staff/settings',   th: 'ตั้งค่าระบบ',          en: 'Settings',       icon: 'settings', role: 'Admin' },
-  { href: '/staff/activity',   th: 'กิจกรรมทั้งหมด',       en: 'Activity Log',   icon: 'inbox',    resource: 'Activity Log' },
-  { href: '/staff/changelog',  th: 'บันทึกการแก้ไขระบบ',   en: 'Change Log',     icon: 'edit',     resource: 'บันทึกการแก้ไข' },
+  { href: '/staff/tests/categories', th: 'หมวดหมู่การตรวจ', en: 'Categories', icon: 'beaker', color: '#1E5FAD', resource: 'รายการตรวจ', role: 'Admin' },
+  { href: '/staff/news',       th: 'จัดการข่าวสาร',        en: 'News',           icon: 'bell',       color: '#D97706', resource: 'ข่าวสาร' },
+  { href: '/staff/risk',       th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',  icon: 'shield',     color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+  { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
+  { href: '/staff/equipment',  th: 'ทะเบียนเครื่องมือ',   en: 'Equipment',      icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
+  { href: '/staff/personnel',  th: 'บุคลากร',             en: 'MT-CBH Staff',   icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร' },
+  { section: 'Analytics' },
+  { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',  color: '#16A34A', resource: 'KPI' },
+  { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker', color: '#0EA5E9', resource: 'Workload' },
+  { href: '/tat',              th: 'Turnaround Time',     en: 'TAT',            icon: 'clock',  color: '#8B5CF6', resource: 'TAT' },
+  { href: '/staff/rejection',  th: 'Rejection Log',       en: 'Rejection',      icon: 'alert',  color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+  { section: 'ระบบ' },
+  { href: '/staff/admin',      th: 'จัดการผู้ใช้',         en: 'Users & Roles',  icon: 'users',    color: '#475569', resource: 'User Management' },
+  { href: '/staff/settings',   th: 'ตั้งค่าระบบ',          en: 'Settings',       icon: 'settings', color: '#475569', role: 'Admin' },
+  { href: '/staff/activity',   th: 'กิจกรรมทั้งหมด',       en: 'Activity Log',   icon: 'inbox',    color: '#475569', resource: 'Activity Log' },
+  { href: '/staff/changelog',  th: 'บันทึกการแก้ไขระบบ',   en: 'Change Log',     icon: 'edit',     color: '#475569', resource: 'บันทึกการแก้ไข' },
 ]
 
 const DOC_ROLE_COLOR: Record<string, string> = {
@@ -116,8 +123,65 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
 
   const initial = userName?.charAt(0) ?? 'U'
 
+  // A child is visible when its resource permission allows it, OR (for role/docRole
+  // gated items) when either the user's role or doc_role matches.
+  const childVisible = (child: NavChild) => {
+    if (child.role || child.docRole) {
+      const roles = child.role ? (Array.isArray(child.role) ? child.role : [child.role]) : []
+      const docRoles = child.docRole ? (Array.isArray(child.docRole) ? child.docRole : [child.docRole]) : []
+      if (roles.includes(userRole ?? '') || docRoles.includes(userDocRole ?? '')) return true
+      if (!child.resource) return false
+    }
+    if (child.resource) {
+      return (userPermissions?.[child.resource] ?? 'none') !== 'none'
+    }
+    return true
+  }
+
+  function isEntryVisible(item: NavItem): boolean {
+    if (item.role) {
+      const allowed = Array.isArray(item.role) ? item.role : [item.role]
+      if (!allowed.includes(userRole ?? '')) return false
+    }
+    if (item.resource) {
+      const level = userPermissions?.[item.resource] ?? 'none'
+      const managerDocumentProfileAccess = item.href === '/staff/admin' && userRole === 'Manager'
+      if (level === 'none' && !managerDocumentProfileAccess) return false
+      if (item.requireEdit && level !== 'edit') return false
+    }
+    if (item.children) return item.children.some(childVisible)
+    return true
+  }
+
+  // Drop section labels that end up with no visible items under them.
+  const renderList: NavEntry[] = []
+  let pendingSection: string | null = null
+  for (const entry of NAV_ITEMS) {
+    if (!isNavItem(entry)) { pendingSection = entry.section; continue }
+    if (!isEntryVisible(entry)) continue
+    if (pendingSection) { renderList.push({ section: pendingSection }); pendingSection = null }
+    renderList.push(entry)
+  }
+
+  const flatItems = renderList.filter(isNavItem)
+  const flat: { href: string }[] = flatItems.flatMap(item =>
+    item.children ? item.children.filter(childVisible) : [item],
+  )
+  const bestMatch = flat
+    .filter(entry => pathname === entry.href || pathname.startsWith(entry.href + '/'))
+    .sort((a, b) => b.href.length - a.href.length)[0]
+
   return (
     <>
+    <style>{`
+      @keyframes sidebarPulse{0%,100%{opacity:1}50%{opacity:.35}}
+      .staff-nav-link{transition:background .15s, box-shadow .15s, transform .12s}
+      .staff-nav-link:not(.staff-nav-active):hover{background:var(--surface-2) !important; transform:translateX(2px)}
+      .staff-group-link:not(.staff-nav-active):hover{background:var(--surface-2) !important}
+      .staff-child-link:not(.staff-nav-active):hover{background:var(--surface-2) !important; transform:translateX(2px)}
+      .staff-user-card:hover{background:var(--primary-soft) !important}
+      .staff-nav-chip{transition:background .15s,color .15s}
+    `}</style>
     {/* Spacer keeps the flex layout — actual sidebar is fixed */}
     <button
       aria-label="Close navigation"
@@ -163,6 +227,10 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
                 {settings.systemCode}
               </div>
               <div style={{ fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{settings.siteName}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0, animation: 'sidebarPulse 2.2s ease-in-out infinite' }} />
+                <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--success)', letterSpacing: '.03em' }}>ระบบทำงานปกติ</span>
+              </div>
             </div>
           )}
         </Link>
@@ -170,42 +238,18 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: 10, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {(() => {
-          // A child is visible when its resource permission allows it, OR (for role/docRole
-          // gated items) when either the user's role or doc_role matches.
-          const childVisible = (child: NavChild) => {
-            if (child.role || child.docRole) {
-              const roles = child.role ? (Array.isArray(child.role) ? child.role : [child.role]) : []
-              const docRoles = child.docRole ? (Array.isArray(child.docRole) ? child.docRole : [child.docRole]) : []
-              if (roles.includes(userRole ?? '') || docRoles.includes(userDocRole ?? '')) return true
-              if (!child.resource) return false
-            }
-            if (child.resource) {
-              return (userPermissions?.[child.resource] ?? 'none') !== 'none'
-            }
-            return true
+        {renderList.map((entry, i) => {
+          if (!isNavItem(entry)) {
+            return collapsed ? (
+              <div key={`sec-${i}`} style={{ height: 1, background: 'var(--border)', margin: '9px 8px' }} />
+            ) : (
+              <div key={`sec-${i}`} style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.09em', textTransform: 'uppercase', padding: '15px 10px 5px' }}>
+                {entry.section}
+              </div>
+            )
           }
 
-          const items = NAV_ITEMS.filter((item): item is NavItem => item !== null)
-          const flat: { href: string }[] = items.flatMap(item =>
-            item.children ? item.children.filter(childVisible) : [item],
-          )
-          const bestMatch = flat
-            .filter(entry => pathname === entry.href || pathname.startsWith(entry.href + '/'))
-            .sort((a, b) => b.href.length - a.href.length)[0]
-
-          return NAV_ITEMS.map((item, i) => {
-          if (item === null) return <div key={i} style={{ height: 1, background: 'var(--border)', margin: '8px 6px' }} />
-          if (item.role) {
-            const allowed = Array.isArray(item.role) ? item.role : [item.role]
-            if (!allowed.includes(userRole ?? '')) return null
-          }
-          if (item.resource) {
-            const level = userPermissions?.[item.resource] ?? 'none'
-            const managerDocumentProfileAccess = item.href === '/staff/admin' && userRole === 'Manager'
-            if (level === 'none' && !managerDocumentProfileAccess) return null
-            if (item.requireEdit && level !== 'edit') return null
-          }
+          const item = entry
 
           // ── Submenu group ──
           if (item.children) {
@@ -215,6 +259,7 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
             const groupBase = item.href.split('/').slice(0, 3).join('/') // e.g. /staff/documents
             const groupActive = pathname === groupBase || pathname.startsWith(groupBase + '/')
             const expanded = !collapsed && groupActive && collapsedGroup !== groupBase
+            const showActiveRow = groupActive && (collapsed || !expanded)
             return (
               <div key={item.href} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Link
@@ -231,50 +276,67 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
                     }
                   }}
                   title={collapsed ? (lang === 'th' ? item.th : item.en) : undefined}
+                  className={`staff-group-link${showActiveRow ? ' staff-nav-active' : ''}`}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
-                    padding: collapsed ? '10px' : '9px 12px',
-                    borderRadius: 8, textDecoration: 'none',
-                    background: collapsed && groupActive ? 'var(--primary-soft)' : 'transparent',
-                    color: collapsed && groupActive ? 'var(--primary)' : 'var(--ink)',
-                    fontWeight: collapsed && groupActive ? 600 : 500, fontSize: 13,
+                    padding: collapsed ? '9px' : '7px 10px 7px 8px',
+                    borderRadius: 9, textDecoration: 'none',
+                    background: showActiveRow ? `${item.color}14` : 'transparent',
+                    boxShadow: showActiveRow ? `inset 3px 0 0 ${item.color}` : 'inset 3px 0 0 transparent',
+                    fontWeight: groupActive ? 700 : 500, fontSize: 13,
                     justifyContent: collapsed ? 'center' : 'flex-start',
-                    transition: 'background .15s',
                   }}
                 >
-                  <Icon name={item.icon} size={17} />
+                  <span className="staff-nav-chip" style={{
+                    width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: groupActive ? item.color : `${item.color}16`,
+                    color: groupActive ? '#fff' : item.color,
+                  }}>
+                    <Icon name={item.icon} size={14} />
+                  </span>
                   {!collapsed && (
                     <>
-                      <span style={{ flex: 1 }}>{lang === 'th' ? item.th : item.en}</span>
+                      <span style={{ flex: 1, color: 'var(--ink)' }}>{lang === 'th' ? item.th : item.en}</span>
                       {docCount !== null && (
-                        <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 500 }}>{docCount}</span>
+                        <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 20 }}>{docCount}</span>
                       )}
                       <Icon name={expanded ? 'chevDown' : 'chevRight'} size={12} style={{ color: 'var(--muted)', flexShrink: 0 }} />
                     </>
                   )}
                 </Link>
-                {expanded && visibleChildren.map(child => {
-                  const childActive = bestMatch?.href === child.href
-                  return (
-                    <Link
-                      key={child.href}
-                      href={child.href}
-                      onClick={closeMobile}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 9,
-                        padding: '7px 12px 7px 34px',
-                        borderRadius: 8, textDecoration: 'none',
-                        background: childActive ? 'var(--primary-soft)' : 'transparent',
-                        color: childActive ? 'var(--primary)' : 'var(--muted)',
-                        fontWeight: childActive ? 600 : 500, fontSize: 12.5,
-                        transition: 'background .15s',
-                      }}
-                    >
-                      <Icon name={child.icon} size={15} />
-                      <span style={{ flex: 1 }}>{lang === 'th' ? child.th : child.en}</span>
-                    </Link>
-                  )
-                })}
+                {expanded && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginLeft: 13, paddingLeft: 12, borderLeft: '1px solid var(--border)' }}>
+                    {visibleChildren.map(child => {
+                      const childActive = bestMatch?.href === child.href
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          onClick={closeMobile}
+                          className={`staff-child-link${childActive ? ' staff-nav-active' : ''}`}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '6px 10px',
+                            borderRadius: 8, textDecoration: 'none',
+                            background: childActive ? `${child.color}14` : 'transparent',
+                            fontWeight: childActive ? 700 : 500, fontSize: 12.5,
+                          }}
+                        >
+                          <span style={{
+                            width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: childActive ? child.color : `${child.color}14`,
+                            color: childActive ? '#fff' : child.color,
+                          }}>
+                            <Icon name={child.icon} size={11.5} />
+                          </span>
+                          <span style={{ flex: 1, color: childActive ? 'var(--ink)' : 'var(--muted)' }}>{lang === 'th' ? child.th : child.en}</span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )
           }
@@ -286,36 +348,41 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
               href={item.href}
               onClick={closeMobile}
               title={collapsed ? (lang === 'th' ? item.th : item.en) : undefined}
+              className={`staff-nav-link${active ? ' staff-nav-active' : ''}`}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10,
-                padding: collapsed ? '10px' : '9px 12px',
-                borderRadius: 8, textDecoration: 'none',
-                background: active ? 'var(--primary-soft)' : 'transparent',
-                color: active ? 'var(--primary)' : 'var(--ink)',
-                fontWeight: active ? 600 : 500, fontSize: 13,
+                padding: collapsed ? '9px' : '7px 10px 7px 8px',
+                borderRadius: 9, textDecoration: 'none',
+                background: active ? `${item.color}14` : 'transparent',
+                boxShadow: active ? `inset 3px 0 0 ${item.color}` : 'inset 3px 0 0 transparent',
                 justifyContent: collapsed ? 'center' : 'flex-start',
-                transition: 'background .15s',
               }}
             >
-              <Icon name={item.icon} size={17} />
+              <span className="staff-nav-chip" style={{
+                width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: active ? item.color : `${item.color}16`,
+                color: active ? '#fff' : item.color,
+              }}>
+                <Icon name={item.icon} size={14} />
+              </span>
               {!collapsed && (
                 <>
-                  <span style={{ flex: 1 }}>{lang === 'th' ? item.th : item.en}</span>
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: active ? 700 : 500, color: 'var(--ink)' }}>{lang === 'th' ? item.th : item.en}</span>
                   {item.href === '/staff/tests' && testCount !== null
-                    ? <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 500 }}>{testCount}</span>
-                    : item.badge && <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 500 }}>{item.badge}</span>
+                    ? <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 20 }}>{testCount}</span>
+                    : item.badge && <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 20 }}>{item.badge}</span>
                   }
                 </>
               )}
             </Link>
           )
-        })
-        })()}
+        })}
       </nav>
 
       {/* User card */}
       <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, borderRadius: 8, background: 'var(--surface-2)' }}>
+        <div className="staff-user-card" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, borderRadius: 8, background: 'var(--surface-2)', transition: 'background .15s' }}>
           <Link
             href="/staff/profile"
             title="แก้ไขโปรไฟล์"

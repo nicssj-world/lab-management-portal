@@ -342,6 +342,9 @@ export default async function StaffDashboardPage() {
         .activity-timeline::before{content:'';position:absolute;left:3px;top:18px;bottom:18px;width:1px;background:var(--border);z-index:0}
         .more-link{display:block;text-align:center;font-size:12px;font-weight:600;color:var(--muted);padding:9px 0;border-radius:8px;background:var(--surface-2);transition:all .15s;text-decoration:none}
         .more-link:hover{background:var(--primary-soft);color:var(--primary)}
+        @keyframes dashFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        .dash-fade{animation:dashFadeUp .5s cubic-bezier(.22,1,.36,1) backwards}
+        @media (prefers-reduced-motion: reduce){.dash-fade{animation:none}}
         @media(max-width:640px){
           .dash-kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important}
           .dash-main-grid{grid-template-columns:1fr!important;align-items:start!important}
@@ -387,13 +390,13 @@ export default async function StaffDashboardPage() {
         {/* ══ KPI ROW ══ */}
         <div className="dash-kpi-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
           <KpiCard
-            icon="flask" label="รายการตรวจทั้งหมด" accent="#0EA5E9"
+            icon="flask" label="รายการตรวจทั้งหมด" accent="#0EA5E9" delay={0.02}
             value={testCount.toLocaleString()} sub="รายการที่ใช้งานอยู่"
             barLabel="Active" barValue={`${testCount}/${testTotal}`}
             barPct={testTotal ? (testCount / testTotal) * 100 : 0}
           />
           <KpiCard
-            icon="doc" label="เอกสารคุณภาพ" accent="#0D9488"
+            icon="doc" label="เอกสารคุณภาพ" accent="#0D9488" delay={0.08}
             value={docTotal.toLocaleString()} sub={prevMonthLabel}
             change={docNew > 0 ? `+${docNew} ฉบับ` : undefined}
             changeDir="up"
@@ -401,7 +404,7 @@ export default async function StaffDashboardPage() {
             barPct={docTotal > 0 ? (docPublished / docTotal) * 100 : 0}
           />
           <KpiCard
-            icon="alert" label="Rejection Rate" accent="#F59E0B"
+            icon="alert" label="Rejection Rate" accent="#F59E0B" delay={0.14}
             value={rejRate != null ? `${rejRate.toFixed(2)}%` : `${rejThisMonth.toLocaleString()} ราย`}
             sub={rejRate != null ? 'เป้าหมาย: <3%' : prevMonthLabel}
             warn={rejRate != null ? rejRate >= 3 : rejThisMonth > 50}
@@ -411,7 +414,7 @@ export default async function StaffDashboardPage() {
             barPct={rejRate != null ? Math.min(100, (rejRate / 3) * 100) : Math.min(100, (rejThisMonth / 200) * 100)}
           />
           <KpiCard
-            icon="building" label="สัญญาใกล้หมด/งบต่ำ"
+            icon="building" label="สัญญาใกล้หมด/งบต่ำ" delay={0.2}
             accent={criticalContracts.length > 0 ? '#DC2626' : '#16A34A'}
             value={criticalContracts.length.toLocaleString()} sub={`จาก ${contracts.length} สัญญา`}
             warn={criticalContracts.length > 0}
@@ -421,7 +424,7 @@ export default async function StaffDashboardPage() {
         </div>
 
         {/* ══ ACTIVITY + CONTRACTS ══ */}
-        <div className="dash-main-grid" style={{ display:'grid', gridTemplateColumns:'7fr 3fr', gap:16, alignItems:'stretch' }}>
+        <div className="dash-main-grid dash-fade" style={{ display:'grid', gridTemplateColumns:'7fr 3fr', gap:16, alignItems:'stretch', animationDelay:'.26s' }}>
 
           {/* Recent Activity — custom card with timeline */}
           <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', display:'flex', flexDirection:'column' }}>
@@ -535,7 +538,7 @@ export default async function StaffDashboardPage() {
         </div>
 
         {/* ══ PIPELINE ══ */}
-        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
+        <div className="dash-fade" style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', animationDelay:'.32s' }}>
           <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ width:30,height:30,borderRadius:8,background:'rgba(30,95,173,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--primary)' }}>
               <Icon name="trending" size={14} />
@@ -617,7 +620,7 @@ export default async function StaffDashboardPage() {
         </div>
 
         {/* ══ HEATMAPS ══ */}
-        <div className="dash-heat-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+        <div className="dash-heat-grid dash-fade" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, animationDelay:'.38s' }}>
           <HeatmapCard
             title="Heatmap การเจาะเลือด"
             sub={`${phlebCount.toLocaleString()} ราย · ${prevMonthLabel}`}
@@ -646,13 +649,13 @@ export default async function StaffDashboardPage() {
 
 /* ──────────────── COMPONENTS ──────────────── */
 
-function KpiCard({ icon, label, value, sub, accent, warn = false, change, changeDir, barPct, barLabel, barValue }: {
+function KpiCard({ icon, label, value, sub, accent, warn = false, change, changeDir, barPct, barLabel, barValue, delay = 0 }: {
   icon: string; label: string; value: string; sub: string; accent: string; warn?: boolean
   change?: string; changeDir?: 'up' | 'down'
-  barPct?: number; barLabel?: string; barValue?: string
+  barPct?: number; barLabel?: string; barValue?: string; delay?: number
 }) {
   return (
-    <div className="kpi-card" style={{ background:'var(--card)', border:`1px solid ${warn?`${accent}40`:'var(--border)'}`, borderTop:`3px solid ${accent}`, borderRadius:14, padding:'18px 20px', overflow:'hidden', display:'flex', flexDirection:'column' }}>
+    <div className="kpi-card dash-fade" style={{ background:'var(--card)', border:`1px solid ${warn?`${accent}40`:'var(--border)'}`, borderTop:`3px solid ${accent}`, borderRadius:14, padding:'18px 20px', overflow:'hidden', display:'flex', flexDirection:'column', animationDelay:`${delay}s` }}>
       {/* Label + Icon row */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
         <span style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em' }}>{label}</span>
