@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Icon } from '@/components/ui/Icon'
 import { Empty } from '@/components/dashboard/Empty'
-import { monthsLeftUntil, type RiskRow } from '@/lib/dashboard/attention-queue'
+import { monthsLeftUntil, isContractExpiring, daysOverdue, type RiskRow } from '@/lib/dashboard/attention-queue'
 import type { PendingApprovalDoc } from '@/lib/documents/pending'
 import type { ContractWithUsage } from '@/lib/queries/contracts'
 import type { Permissions } from '@/lib/permissions'
@@ -64,7 +64,7 @@ function ContractRow({ contract }: { contract: ContractWithUsage }) {
   const total = contract.total ?? 0
   const remaining = total > 0 ? 100 - (contract.used / total) * 100 : 100
   const months = monthsLeftUntil(contract.end_date)
-  const isExpiry = total > 10_000_000 ? months <= 6 : months <= 3
+  const isExpiry = isContractExpiring(total, months)
   const tag = isExpiry ? (months <= 0 ? 'หมดอายุแล้ว' : `เหลือ ${months} เดือน`) : `งบเหลือ ${remaining.toFixed(0)}%`
   return (
     <div style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
@@ -76,9 +76,10 @@ function ContractRow({ contract }: { contract: ContractWithUsage }) {
 }
 
 function RiskRowItem({ risk }: { risk: RiskRow }) {
+  const todayISO = new Date().toISOString().slice(0, 10)
   const days = Math.max(
-    risk.due_date ? Math.floor((Date.now() - new Date(risk.due_date).getTime()) / 86_400_000) : 0,
-    risk.follow_up_date ? Math.floor((Date.now() - new Date(risk.follow_up_date).getTime()) / 86_400_000) : 0,
+    daysOverdue(risk.due_date, todayISO) ?? 0,
+    daysOverdue(risk.follow_up_date, todayISO) ?? 0,
   )
   return (
     <div style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>

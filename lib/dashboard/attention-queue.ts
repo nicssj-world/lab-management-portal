@@ -58,6 +58,10 @@ export function monthsLeftUntil(endDate: string | null, now = new Date()): numbe
   return Math.floor((new Date(endDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30))
 }
 
+export function isContractExpiring(total: number, monthsLeft: number): boolean {
+  return total > 10_000_000 ? monthsLeft <= 6 : monthsLeft <= 3
+}
+
 export function sortContractsByUrgency<T extends { end_date: string | null; total: number; used: number }>(
   contracts: T[],
 ): T[] {
