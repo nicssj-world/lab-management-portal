@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
 import { usePermission } from '@/context/PermissionContext'
 import { EXPIRY_COLOR, EXPIRY_LABEL_TH, type ExpiryStatus } from '@/lib/personnel/expiry'
+import { filterPersonnelRows, matchesPersonnelSummaryFilter, type PersonnelSummaryFilter } from '@/lib/personnel/filters'
 import { MAIN_PERSONNEL_ROLES, mainPersonnelRole, type MainPersonnelRole } from '@/lib/personnel/roles'
 
 export interface RosterRow {
@@ -68,37 +69,55 @@ function Portrait({ name, dept, photoUrl, ring }: { name: string; dept: string |
 }
 
 // ── Stat card ──
-function StatCard({ label, value, color, icon, warn, delay }: {
-  label: string; value: number; color: string; icon: string; warn?: boolean; delay: number
+function StatCard({ label, value, color, icon, warn, delay, active, onClick }: {
+  label: string; value: number; color: string; icon: string; warn?: boolean; delay: number; active?: boolean; onClick?: () => void
 }) {
   const highlighted = warn && value > 0
   return (
-    <div className="pc-rise" style={{
+    <button
+      type="button"
+      className="pc-rise pc-stat-card"
+      aria-pressed={active}
+      onClick={onClick}
+      style={{
       animationDelay: `${delay}ms`,
       background: 'var(--card)', borderRadius: 13,
-      padding: '15px 16px', border: '1px solid var(--border)',
-      borderTop: `2.5px solid ${highlighted ? color : 'var(--border)'}`,
+      padding: '15px 16px',
+      borderTopWidth: '2.5px',
+      borderRightWidth: 1,
+      borderBottomWidth: 1,
+      borderLeftWidth: 1,
+      borderTopStyle: 'solid',
+      borderRightStyle: 'solid',
+      borderBottomStyle: 'solid',
+      borderLeftStyle: 'solid',
+      borderTopColor: active || highlighted ? color : 'var(--border)',
+      borderRightColor: active ? `${color}88` : 'var(--border)',
+      borderBottomColor: active ? `${color}88` : 'var(--border)',
+      borderLeftColor: active ? `${color}88` : 'var(--border)',
       display: 'flex', alignItems: 'center', gap: 13,
+      width: '100%', textAlign: 'left', fontFamily: 'inherit',
+      cursor: 'pointer',
       transition: 'transform .18s, box-shadow .18s, border-color .18s',
     }}
       onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 26px rgba(15,23,42,.08)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none' }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = active ? `0 10px 24px ${color}18` : 'none' }}
     >
       <div style={{
         width: 40, height: 40, borderRadius: 11,
-        background: highlighted ? `${color}18` : 'var(--surface-2)',
-        color: highlighted ? color : 'var(--muted)',
+        background: active || highlighted ? `${color}18` : 'var(--surface-2)',
+        color: active || highlighted ? color : 'var(--muted)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
       }}>
         <Icon name={icon} size={19} />
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 25, fontWeight: 800, lineHeight: 1, color: highlighted ? color : 'var(--ink)', fontVariantNumeric: 'tabular-nums', letterSpacing: '-.01em' }}>
+        <div style={{ fontSize: 25, fontWeight: 800, lineHeight: 1, color: active || highlighted ? color : 'var(--ink)', fontVariantNumeric: 'tabular-nums', letterSpacing: '-.01em' }}>
           {value}
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.3 }}>{label}</div>
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -123,6 +142,7 @@ export function PersonnelClient({ rows, currentUserId }: { rows: RosterRow[]; cu
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('All')
   const [deptFilter, setDeptFilter] = useState<string>('All')
+  const [summaryFilter, setSummaryFilter] = useState<PersonnelSummaryFilter>('all')
   const hasOwnRecord = Boolean(currentUserId && rows.some((r) => r.id === currentUserId))
 
   const roleCounts = useMemo(() => {
@@ -141,22 +161,14 @@ export function PersonnelClient({ rows, currentUserId }: { rows: RosterRow[]; cu
   const depts = useMemo(() => ['All', ...Array.from(new Set(rows.map((r) => r.dept ?? '').filter(Boolean)))], [rows])
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return rows.filter((r) => {
-      const mainRole = mainPersonnelRole(r.role)
-      if (roleFilter !== 'All' && mainRole !== roleFilter) return false
-      if (deptFilter !== 'All' && (r.dept ?? '') !== deptFilter) return false
-      if (!q) return true
-      return [r.name, r.ephis_id, r.role, mainRole, r.position_title, r.unit, r.dept, r.mt_license_no]
-        .some((v) => (v ?? '').toLowerCase().includes(q))
-    })
-  }, [rows, search, roleFilter, deptFilter])
+    return filterPersonnelRows(rows, { search, roleFilter, deptFilter, summaryFilter })
+  }, [rows, search, roleFilter, deptFilter, summaryFilter])
 
   const summary = useMemo(() => ({
     total: rows.length,
-    licenseExpiring: rows.filter((r) => r.licenseStatus === 'expiring').length,
-    licenseExpired: rows.filter((r) => r.licenseStatus === 'expired').length,
-    certAlerts: rows.reduce((a, r) => a + r.certExpiring + r.certExpired, 0),
+    licenseExpiring: rows.filter((r) => matchesPersonnelSummaryFilter(r, 'license-expiring')).length,
+    licenseExpired: rows.filter((r) => matchesPersonnelSummaryFilter(r, 'license-expired')).length,
+    licenseMissing: rows.filter((r) => matchesPersonnelSummaryFilter(r, 'license-missing')).length,
     compOverdue: rows.reduce((a, r) => a + r.compOverdue, 0),
   }), [rows])
 
@@ -167,9 +179,10 @@ export function PersonnelClient({ rows, currentUserId }: { rows: RosterRow[]; cu
         .pc-rise { opacity: 0; animation: pc-rise .42s cubic-bezier(.22,.68,0,1) forwards; }
         .pc-card:hover { transform: translateY(-3px); }
         .pc-card:hover .pc-arrow { transform: translateX(3px); opacity: 1; }
+        .pc-stat-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
         @media (prefers-reduced-motion: reduce) {
           .pc-rise { animation: none; opacity: 1; }
-          .pc-card:hover, .pc-card:hover .pc-arrow { transform: none; }
+          .pc-card:hover, .pc-card:hover .pc-arrow, .pc-stat-card:hover { transform: none; }
         }
       `}</style>
 
@@ -208,11 +221,11 @@ export function PersonnelClient({ rows, currentUserId }: { rows: RosterRow[]; cu
 
       {/* ── Stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
-        <StatCard label="บุคลากรทั้งหมด"         value={summary.total}           color="#1E5FAD" icon="users" delay={0} />
-        <StatCard label="ใบ ทนพ. ใกล้หมดอายุ"   value={summary.licenseExpiring} color="#D97706" icon="clock" warn delay={40} />
-        <StatCard label="ใบ ทนพ. หมดอายุแล้ว"   value={summary.licenseExpired}  color="#DC2626" icon="alert" warn delay={80} />
-        <StatCard label="ใบรับรองต้องต่ออายุ"    value={summary.certAlerts}      color="#D97706" icon="doc"  warn delay={120} />
-        <StatCard label="ค้างประเมินสมรรถนะ"     value={summary.compOverdue}     color="#DC2626" icon="clock" warn delay={160} />
+        <StatCard label="บุคลากรทั้งหมด"         value={summary.total}           color="#1E5FAD" icon="users" delay={0} active={summaryFilter === 'all'} onClick={() => setSummaryFilter('all')} />
+        <StatCard label="ใบ ทนพ. ใกล้หมดอายุ"   value={summary.licenseExpiring} color="#D97706" icon="clock" warn delay={40} active={summaryFilter === 'license-expiring'} onClick={() => setSummaryFilter('license-expiring')} />
+        <StatCard label="ใบ ทนพ. หมดอายุแล้ว"   value={summary.licenseExpired}  color="#DC2626" icon="alert" warn delay={80} active={summaryFilter === 'license-expired'} onClick={() => setSummaryFilter('license-expired')} />
+        <StatCard label="ใบ ทนพ. ยังไม่บันทึก"  value={summary.licenseMissing}  color="#1E5FAD" icon="doc"  warn delay={120} active={summaryFilter === 'license-missing'} onClick={() => setSummaryFilter('license-missing')} />
+        <StatCard label="ค้างประเมินสมรรถนะ"     value={summary.compOverdue}     color="#DC2626" icon="clock" warn delay={160} active={summaryFilter === 'comp-overdue'} onClick={() => setSummaryFilter('comp-overdue')} />
       </div>
 
       {/* ── Filters ── */}

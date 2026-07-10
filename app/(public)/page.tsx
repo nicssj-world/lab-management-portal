@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { SETTINGS_DEFAULTS } from '@/lib/settings'
 import { getCategories } from '@/lib/queries/categories'
@@ -9,10 +8,9 @@ import { Icon } from '@/components/ui/Icon'
 import { CAT_MAP } from '@/lib/validations/news'
 
 export default async function PublicHome() {
-  const supabase = await createClient()
   const [categories, featuredNews, settingsRow] = await Promise.all([
-    getCategories(supabase).catch(() => []),
-    getNews(supabase, { publishedOnly: true, limit: 5 }).catch(() => []),
+    getCategories(supabaseAdmin).catch(() => []),
+    getNews(supabaseAdmin, { publishedOnly: true, limit: 5 }).catch(() => []),
     supabaseAdmin.from('system_settings').select('standards').eq('id', 1).maybeSingle(),
   ])
 

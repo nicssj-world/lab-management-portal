@@ -22,6 +22,7 @@ export interface ActiveDraftRow {
   status: 'Draft' | 'Review' | 'Approved'
   updatedAt: string
   hasWordUrl: boolean
+  hasOfficialPdf: boolean
 }
 
 // All active (non-cancelled, non-published) working revision drafts, with enough info
@@ -32,7 +33,7 @@ export interface ActiveDraftRow {
 export async function getActiveRevisionDrafts(): Promise<ActiveDraftRow[]> {
   const { data, error } = await supabaseAdmin
     .from('document_revision_drafts')
-    .select('id, document_id, revision, status, updated_at, word_url')
+    .select('id, document_id, revision, status, updated_at, type, word_url, file_url, source_pdf_url')
     .is('cancelled_at', null)
     .neq('status', 'Published')
   if (error) throw new Error(error.message)
@@ -43,5 +44,8 @@ export async function getActiveRevisionDrafts(): Promise<ActiveDraftRow[]> {
     status: d.status as 'Draft' | 'Review' | 'Approved',
     updatedAt: d.updated_at,
     hasWordUrl: Boolean(d.word_url),
+    hasOfficialPdf: d.type === 'QP' || d.type === 'WI'
+      ? Boolean(d.source_pdf_url || d.file_url)
+      : Boolean(d.file_url),
   }))
 }

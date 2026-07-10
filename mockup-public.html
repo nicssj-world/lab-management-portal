@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lab Management Portal — Public Homepage Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800&family=Noto+Sans+Thai:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #F4F7FB;
+    --card: #FFFFFF;
+    --surface-2: #EEF2F8;
+    --border: #E2E8F2;
+    --ink: #0F172A;
+    --muted: #64748B;
+    --primary: #1E5FAD;
+    --primary-2: #164785;
+    --primary-soft: rgba(30,95,173,.10);
+    --primary-light: rgba(30,95,173,.06);
+    --teal: #0891B2;
+    --teal-soft: rgba(8,145,178,.10);
+    --success: #16A34A;
+    --success-soft: rgba(22,163,74,.10);
+    --warning: #D97706;
+    --warning-soft: rgba(217,119,6,.10);
+    --danger: #DC2626;
+    --danger-soft: rgba(220,38,38,.10);
+    --radius: 12px;
+    --shadow: 0 1px 4px rgba(15,23,42,.07), 0 4px 16px rgba(15,23,42,.04);
+    --shadow-md: 0 4px 20px rgba(15,23,42,.10), 0 1px 4px rgba(15,23,42,.05);
+  }
+
+  [data-theme="dark"] {
+    --bg: #0F172A;
+    --card: #1E293B;
+    --surface-2: #273449;
+    --border: #2D3F57;
+    --ink: #F1F5F9;
+    --muted: #94A3B8;
+    --primary-light: rgba(30,95,173,.15);
+  }
+
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Figtree', 'Noto Sans Thai', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+  a { color: inherit; }
+  button { font-family: inherit; cursor: pointer; }
+
+  .wrap { max-width: 1280px; margin: 0 auto; padding-left: 28px; padding-right: 28px; }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  .pub-header {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--card); border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+  }
+  .pub-nav-inner {
+    max-width: 1280px; margin: 0 auto; padding: 12px 28px;
+    display: flex; align-items: center; gap: 20px;
+  }
+  .pub-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .pub-logo img { width: 44px; height: 44px; border-radius: 8px; object-fit: contain; }
+  .pub-logo-title { font-weight: 700; font-size: 14.5px; color: var(--ink); line-height: 1.25; }
+  .pub-logo-sub { font-size: 12px; color: var(--muted); line-height: 1.25; }
+
+  .pub-nav { display: flex; gap: 2px; flex: 1; justify-content: flex-end; }
+  .pub-nav a {
+    padding: 8px 12px; border-radius: 8px; text-decoration: none;
+    font-size: 13px; font-weight: 500; color: var(--ink); white-space: nowrap; transition: all .15s;
+  }
+  .pub-nav a:hover { background: var(--surface-2); }
+  .pub-nav a.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+
+  .pub-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--card); color: var(--ink); display: flex; align-items: center; justify-content: center;
+    transition: background .15s;
+  }
+  .icon-btn:hover { background: var(--surface-2); }
+  .lang-btn { font-size: 11px; font-weight: 700; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 18px; border-radius: 10px;
+    font-size: 13.5px; font-weight: 600; cursor: pointer;
+    transition: all .15s; border: none; text-decoration: none;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-2); }
+  .btn-white { background: #fff; color: var(--primary); }
+  .btn-white:hover { background: #eef4fc; }
+  .btn-ghost-light { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.35); }
+  .btn-ghost-light:hover { background: rgba(255,255,255,.1); }
+
+  /* ── Hero ───────────────────────────────────────────────── */
+  .hero {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
+    color: #fff; position: relative; overflow: hidden;
+    padding: 64px 28px 80px;
+  }
+  .hero::before {
+    content: ''; position: absolute; right: -80px; top: -40px; width: 460px; height: 460px;
+    border-radius: 50%; background: rgba(255,255,255,.06);
+  }
+  .hero::after {
+    content: ''; position: absolute; right: 120px; bottom: -100px; width: 280px; height: 280px;
+    border-radius: 50%; background: rgba(255,255,255,.05);
+  }
+  .hero-shell { max-width: 1280px; margin: 0 auto; position: relative; min-height: 360px; display: flex; align-items: center; }
+  .hero-text { position: relative; z-index: 2; max-width: 560px; }
+  .hero-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 20px;
+    background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.25);
+    font-size: 11.5px; font-weight: 700;
+  }
+  .hero-title { font-size: 42px; font-weight: 700; line-height: 1.16; margin-bottom: 18px; letter-spacing: -.01em; }
+  .hero-title .en {
+    display: inline-block; margin-top: 4px;
+    background: linear-gradient(90deg, #fff 0%, #dbeafe 38%, #fff 72%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    font-size: 30px; letter-spacing: .02em;
+  }
+  .hero-copy { font-size: 15.5px; opacity: .92; line-height: 1.65; max-width: 500px; margin-bottom: 24px; }
+  .hero-actions { display: flex; gap: 12px; margin-bottom: 22px; }
+
+  .line-card {
+    display: inline-flex; align-items: center; gap: 14px;
+    background: rgba(255,255,255,.13); backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,.22); border-radius: 14px;
+    padding: 12px 18px 12px 12px; text-decoration: none; transition: background .18s;
+  }
+  .line-card:hover { background: rgba(255,255,255,.22); }
+  .line-qr { background: #fff; border-radius: 10px; padding: 5px; flex-shrink: 0; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; }
+  .line-qr-grid { width: 46px; height: 46px; display: grid; grid-template-columns: repeat(6,1fr); grid-template-rows: repeat(6,1fr); gap: 2px; }
+  .line-qr-grid span { background: #0F172A; }
+  .line-qr-grid span:nth-child(3n) { background: transparent; }
+  .line-qr-grid span:nth-child(7n) { background: transparent; }
+  .line-label { font-size: 10.5px; color: rgba(255,255,255,.72); margin-bottom: 2px; font-weight: 500; }
+  .line-handle { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .line-handle span { font-size: 15px; font-weight: 800; color: #fff; letter-spacing: .01em; }
+  .line-cta { display: inline-flex; align-items: center; gap: 5px; background: #06C755; color: #fff; padding: 5px 12px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+
+  .photo-stack { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 460px; height: 340px; z-index: 1; }
+  .photo-card {
+    position: absolute; overflow: hidden; border: 5px solid #fff; border-radius: 14px;
+    background: #fff; box-shadow: 0 20px 46px rgba(15,23,42,.22); transition: transform .22s, box-shadow .22s;
+  }
+  .photo-card img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .photo-card:hover { z-index: 20; box-shadow: 0 30px 70px rgba(15,23,42,.34); }
+  .photo-central { left: 50%; top: 50%; transform: translate(-48%,-50%) rotate(-3deg); width: 290px; height: 172px; z-index: 4; }
+  .photo-central:hover { transform: translate(-48%,-56%) rotate(-3deg) scale(1.04); }
+  .photo-blood { right: 8px; bottom: 12px; width: 142px; height: 92px; z-index: 6; transform: rotate(4deg); }
+  .photo-blood:hover { transform: rotate(4deg) translateY(-8px) scale(1.05); }
+  .photo-petri { left: 8px; bottom: 12px; width: 150px; height: 100px; z-index: 5; transform: rotate(-2deg); }
+  .photo-petri:hover { transform: rotate(-2deg) translateY(-8px) scale(1.05); }
+  .photo-sign { right: 24px; top: 8px; width: 146px; height: 82px; z-index: 3; transform: rotate(3deg); }
+  .photo-sign:hover { transform: rotate(3deg) translateY(-8px) scale(1.05); }
+
+  /* ── Section header ─────────────────────────────────────── */
+  .section { max-width: 1280px; margin: 0 auto; padding: 56px 28px 0; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
+  .section-eyebrow-wrap { display: flex; align-items: center; gap: 14px; }
+  .section-bar { width: 3px; height: 44px; border-radius: 2px; background: var(--primary); flex-shrink: 0; }
+  .section-eyebrow { font-size: 11px; font-weight: 700; color: var(--primary); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
+  .section-title { font-size: 24px; font-weight: 800; color: var(--ink); line-height: 1.2; letter-spacing: -.01em; }
+  .section-note { font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+  .view-all {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; color: var(--primary); text-decoration: none;
+    border: 1.5px solid rgba(30,95,173,.2); background: transparent; transition: all .15s;
+  }
+  .view-all:hover { background: var(--primary-soft); border-color: var(--primary); }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+
+  /* ── Catalog entry / search ─────────────────────────────── */
+  .catalog-search-card { padding: 28px; }
+  .catalog-search-row { display: flex; gap: 10px; margin-bottom: 20px; }
+  .catalog-search-input {
+    flex: 1; display: flex; align-items: center; gap: 10px;
+    background: var(--surface-2); border: 1px solid transparent; border-radius: 10px;
+    padding: 12px 16px; transition: border-color .15s;
+  }
+  .catalog-search-input:focus-within { border-color: var(--primary); background: var(--card); }
+  .catalog-search-input input { border: none; background: none; outline: none; font-size: 14px; font-family: inherit; color: var(--ink); width: 100%; }
+  .catalog-search-input svg { color: var(--muted); flex-shrink: 0; }
+
+  .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+  .pill {
+    padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font-size: 12.5px; font-weight: 600; transition: all .15s;
+  }
+  .pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .pill:hover:not(.active) { background: var(--surface-2); }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--surface-2); font-size: 11.5px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .05em; padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--border);
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody td { padding: 13px 16px; font-size: 13px; color: var(--ink); vertical-align: middle; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
+
+  /* ── Categories grid ────────────────────────────────────── */
+  .cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .cat-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; text-decoration: none; box-shadow: var(--shadow); transition: box-shadow .2s, transform .2s, border-color .2s;
+    display: block;
+  }
+  .cat-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); border-color: var(--primary); }
+  .cat-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+  .cat-name { font-weight: 600; font-size: 14.5px; color: var(--ink); }
+  .cat-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .cat-count { font-size: 11px; color: var(--muted); margin-top: 8px; font-weight: 600; }
+
+  /* ── News ───────────────────────────────────────────────── */
+  .news-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; align-items: stretch; }
+  .news-featured { background: var(--card); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; height: 100%; display: flex; flex-direction: column; text-decoration: none; transition: box-shadow .2s, transform .2s; }
+  .news-featured:hover { box-shadow: 0 12px 40px rgba(0,0,0,.1); transform: translateY(-2px); }
+  .news-strip { height: 4px; flex-shrink: 0; }
+  .news-body { padding: 26px 30px 28px; flex: 1; display: flex; flex-direction: column; }
+  .news-meta-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .news-new { background: #DC2626; color: #fff; font-size: 9.5px; font-weight: 800; padding: 3px 8px; border-radius: 4px; letter-spacing: .06em; }
+  .news-cat { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
+  .news-date { font-size: 12px; color: var(--muted); }
+  .news-headline { font-size: 22px; font-weight: 800; color: var(--ink); line-height: 1.35; letter-spacing: -.01em; margin-bottom: 12px; }
+  .news-excerpt { font-size: 14px; color: var(--muted); line-height: 1.75; margin-bottom: 24px; }
+  .news-footer-row { display: flex; align-items: center; justify-content: space-between; padding-top: 18px; border-top: 1px solid var(--border); margin-top: auto; }
+  .news-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .news-author { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+  .news-read-more { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: var(--primary); }
+
+  .news-side { background: var(--card); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
+  .news-side-head { padding: 12px 18px; border-bottom: 1px solid var(--border); font-size: 10.5px; font-weight: 700; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+  .news-row { display: flex; border-bottom: 1px solid var(--border); text-decoration: none; transition: background .12s; }
+  .news-row:hover { background: var(--surface-2); }
+  .news-row-bar { width: 3px; flex-shrink: 0; }
+  .news-row-body { padding: 14px 16px; flex: 1; }
+  .news-row-top { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .news-row-cat { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 3px; }
+  .news-row-title { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.4; }
+  .news-side-footer { padding: 13px 18px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--primary); margin-top: auto; text-decoration: none; }
+
+  /* ── Service scope ──────────────────────────────────────── */
+  .scope-card { padding: 28px; }
+  .scope-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 16px; }
+  .scope-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--primary-soft); color: var(--primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .scope-org { font-size: 15.5px; font-weight: 700; color: var(--ink); }
+  .scope-dept { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .scope-text { font-size: 14px; color: var(--ink); line-height: 1.85; }
+  .scope-text a { color: var(--primary); font-weight: 700; text-decoration: underline; text-decoration-color: rgba(30,95,173,.35); text-underline-offset: 3px; }
+
+  /* ── Footer ─────────────────────────────────────────────── */
+  .footer { background: var(--surface-2); border-top: 1px solid var(--border); padding: 42px 28px 28px; margin-top: 64px; }
+  .footer-grid { max-width: 1280px; margin: 0 auto; display: grid; grid-template-columns: minmax(0,1.6fr) minmax(180px,.75fr) minmax(260px,1fr); gap: 32px; align-items: start; }
+  .footer-brand p { font-size: 12.5px; color: var(--muted); margin-top: 14px; line-height: 1.7; max-width: 340px; }
+  .footer-standards { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  .footer-standard { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 20px; background: var(--card); border: 1px solid var(--border); color: var(--primary); font-size: 11.5px; font-weight: 700; }
+  .footer-col-title { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 800; color: var(--ink); margin-bottom: 12px; }
+  .footer-col-title span { width: 4px; height: 18px; border-radius: 2px; background: var(--primary); display: inline-block; }
+  .footer-links { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .footer-links a { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; font-size: 12.5px; color: var(--muted); text-decoration: none; transition: color .15s, background .15s; }
+  .footer-links a:hover { color: var(--primary); background: var(--primary-soft); }
+  .footer-bottom { max-width: 1280px; margin: 24px auto 0; padding-top: 16px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); display: flex; justify-content: space-between; }
+
+  .theme-toggle {
+    position: fixed; bottom: 20px; right: 20px; width: 44px; height: 44px; border-radius: 50%;
+    background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow-md);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 100;
+    transition: all .2s; font-size: 18px;
+  }
+  .theme-toggle:hover { box-shadow: 0 6px 24px rgba(15,23,42,.15); transform: scale(1.08); }
+
+  /* ── Responsive ─────────────────────────────────────────── */
+  @media (max-width: 1100px) {
+    .pub-nav, .pub-actions { display: none; }
+    .hero-title { font-size: 34px; }
+    .hero-title .en { font-size: 24px; }
+    .photo-stack { display: none; }
+    .hero-shell { min-height: 0; }
+  }
+  @media (max-width: 900px) {
+    .cat-grid { grid-template-columns: repeat(2,1fr); }
+    .news-grid { grid-template-columns: 1fr; }
+    .footer-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header class="pub-header">
+  <div class="pub-nav-inner">
+    <a href="#" class="pub-logo">
+      <img src="public/images/logo-chonburi.png" alt="โรงพยาบาลชลบุรี">
+      <div>
+        <div class="pub-logo-title">กลุ่มงานเทคนิคการแพทย์</div>
+        <div class="pub-logo-sub">โรงพยาบาลชลบุรี</div>
+      </div>
+    </a>
+    <nav class="pub-nav">
+      <a href="#" class="active">หน้าแรก</a>
+      <a href="#catalog">รายการตรวจวิเคราะห์</a>
+      <a href="#">คู่มือห้องปฏิบัติการ</a>
+      <a href="#news">ข่าวสาร</a>
+      <a href="#">โครงสร้างองค์กร</a>
+    </nav>
+    <div class="pub-actions">
+      <button class="icon-btn lang-btn">EN</button>
+      <button class="icon-btn" aria-label="Dark mode" onclick="toggleTheme()">
+        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+      </button>
+      <a href="#" class="btn btn-primary">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        เข้าสู่ระบบ
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="hero-shell wrap">
+    <div class="hero-text">
+      <div class="hero-badges">
+        <span class="hero-badge">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4"/></svg>
+          ISO 15189
+        </span>
+        <span class="hero-badge">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4"/></svg>
+          ISO 15190
+        </span>
+        <span class="hero-badge">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4"/></svg>
+          LA · สพฉ.
+        </span>
+      </div>
+      <h1 class="hero-title">
+        คู่มือการส่งตรวจทางห้องปฏิบัติการ<br>
+        <span class="en">LABORATORY SERVICES</span>
+      </h1>
+      <p class="hero-copy">
+        ค้นหารายการตรวจวิเคราะห์ คู่มือการเก็บตัวอย่าง และเอกสารแนบต่างๆ<br>
+        ของกลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรีได้ที่นี่
+      </p>
+      <div class="hero-actions">
+        <a href="#catalog" class="btn btn-white">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
+          ค้นหารายการตรวจ
+        </a>
+        <a href="#" class="btn btn-ghost-light">คู่มือห้องปฏิบัติการ</a>
+      </div>
+
+      <a href="#" class="line-card">
+        <div class="line-qr">
+          <div class="line-qr-grid">
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+        <div>
+          <div class="line-label">สอบถามข้อมูลรายการตรวจผ่าน LINE</div>
+          <div class="line-handle">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#06C755"><path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zM24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/></svg>
+            <span>@759ksiuc</span>
+          </div>
+          <div class="line-cta">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4v16m8-8H4"/></svg>
+            เพิ่มเพื่อน
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <div class="photo-stack">
+      <div class="photo-card photo-sign"><img src="public/images/hero-lab/medical-technology-sign.png" alt="ป้ายกลุ่มงานเทคนิคการแพทย์"></div>
+      <div class="photo-card photo-central"><img src="public/images/hero-lab/central-laboratory.png" alt="Central Laboratory โรงพยาบาลชลบุรี"></div>
+      <div class="photo-card photo-petri"><img src="public/images/hero-lab/microbiology-petri.jpg" alt="จานเพาะเชื้อ Microbiology"></div>
+      <div class="photo-card photo-blood"><img src="public/images/hero-lab/blood-tube.webp" alt="หลอดเลือด close-up"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Service scope ── -->
+<section class="section">
+  <div class="section-eyebrow-wrap" style="margin-bottom:24px">
+    <div class="section-bar"></div>
+    <div>
+      <div class="section-eyebrow">Service Scope</div>
+      <div class="section-title">ขอบเขตการให้บริการ</div>
+    </div>
+  </div>
+  <div class="card scope-card">
+    <div class="scope-head">
+      <div class="scope-icon">
+        <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18h8M3 22h18M14 22a7 7 0 100-14h-1M9 14h2M9 12a2 2 0 012-2h0a2 2 0 012 2v2H9v-2zM12 6V3a1 1 0 00-1-1h-1a1 1 0 00-1 1v3"/></svg>
+      </div>
+      <div>
+        <div class="scope-org">กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี</div>
+        <div class="scope-dept">Department : Medical Technology</div>
+      </div>
+    </div>
+    <p class="scope-text">
+      มีบทบาทหน้าที่ในการให้บริการตรวจวิเคราะห์ทางห้องปฏิบัติการสำหรับผู้ป่วยใน ผู้ป่วยนอก และผู้ป่วยฉุกเฉิน
+      <strong>ตลอด 24 ชั่วโมง</strong> รวมถึงคลินิกนอกเวลาราชการ ในวันทำการ (วันจันทร์–ศุกร์) เวลา 16.00–24.00 น.
+      และวันหยุดราชการ เวลา 08.00–24.00 น. การตรวจสุขภาพประจำปีแบบหมู่คณะ และผู้มารับบริการทั้งหน่วยงานภายในและภายนอก
+      (เฉพาะในเวลาราชการ 08.00-15.30 น.)
+      <br><br>
+      ส่วนรายการตรวจวิเคราะห์บางรายการที่ยังไม่เปิดให้บริการ จะดำเนินการส่งต่อยังห้องปฏิบัติการภายนอกที่มีคุณภาพมาตรฐานทั้งภาครัฐและภาคเอกชน
+      ผู้รับบริการสามารถดูรายละเอียดตามรายการทดสอบที่หมวดหมู่ <a href="#catalog">ตรวจพิเศษและปฏิบัติการตรวจต่อ (OUT LAB)</a>
+    </p>
+  </div>
+</section>
+
+<!-- ── News ── -->
+<section class="section" id="news">
+  <div class="section-head">
+    <div class="section-eyebrow-wrap">
+      <div class="section-bar"></div>
+      <div>
+        <div class="section-eyebrow">News &amp; Announcements</div>
+        <div class="section-title">แจ้งข่าวสารห้องปฏิบัติการ</div>
+      </div>
+    </div>
+    <a href="#" class="view-all">
+      ดูทั้งหมด
+      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+    </a>
+  </div>
+  <div class="news-grid">
+    <a href="#" class="news-featured">
+      <div class="news-strip" style="background:var(--primary)"></div>
+      <div class="news-body">
+        <div class="news-meta-row">
+          <span class="news-new">NEW</span>
+          <span class="news-cat" style="background:rgba(30,95,173,.1);color:var(--primary)">
+            <span style="width:5px;height:5px;border-radius:50%;background:var(--primary);display:inline-block"></span>
+            ประกาศ
+          </span>
+          <span class="news-date">10 กรกฎาคม 2569</span>
+        </div>
+        <div class="news-headline">เปิดให้บริการตรวจ Anti-HEV IgM/IgG เพิ่มในกลุ่มตรวจไวรัสตับอักเสบ</div>
+        <p class="news-excerpt">
+          กลุ่มงานเทคนิคการแพทย์เปิดให้บริการตรวจวิเคราะห์รายการใหม่ Anti-HEV IgM/IgG สำหรับคัดกรองไวรัสตับอักเสบชนิด E
+          พร้อมให้บริการทั้งผู้ป่วยในและผู้ป่วยนอก เริ่มตั้งแต่วันที่ 15 กรกฎาคม 2569 เป็นต้นไป
+        </p>
+        <div class="news-footer-row">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="news-avatar" style="background:rgba(30,95,173,.2);color:var(--primary)">น</div>
+            <span class="news-author">นพ. สมชาย ใจดี</span>
+          </div>
+          <span class="news-read-more">
+            อ่านต่อ
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+          </span>
+        </div>
+      </div>
+    </a>
+
+    <div class="news-side">
+      <div class="news-side-head">ข่าวสารล่าสุด</div>
+      <a href="#" class="news-row">
+        <div class="news-row-bar" style="background:#0891B2"></div>
+        <div class="news-row-body">
+          <div class="news-row-top">
+            <span class="news-row-cat" style="background:rgba(8,145,178,.15);color:#0891B2">อบรม</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto">3 ก.ค. 2569</span>
+          </div>
+          <div class="news-row-title">อบรมเชิงปฏิบัติการเก็บตัวอย่างเลือดที่ถูกวิธี รุ่นที่ 4/2569</div>
+        </div>
+      </a>
+      <a href="#" class="news-row">
+        <div class="news-row-bar" style="background:#D97706"></div>
+        <div class="news-row-body">
+          <div class="news-row-top">
+            <span class="news-row-cat" style="background:rgba(217,119,6,.15);color:#D97706">แจ้งเตือน</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto">28 มิ.ย. 2569</span>
+          </div>
+          <div class="news-row-title">ปิดปรับปรุงระบบ LIS ชั่วคราว วันที่ 1 ก.ค. 2569 เวลา 22.00–24.00 น.</div>
+        </div>
+      </a>
+      <a href="#" class="news-row" style="border-bottom:none">
+        <div class="news-row-bar" style="background:#16A34A"></div>
+        <div class="news-row-body">
+          <div class="news-row-top">
+            <span class="news-row-cat" style="background:rgba(22,163,74,.15);color:#16A34A">ผลงาน</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto">20 มิ.ย. 2569</span>
+          </div>
+          <div class="news-row-title">ห้องปฏิบัติการผ่านการต่ออายุรับรอง ISO 15189 เรียบร้อยแล้ว</div>
+        </div>
+      </a>
+      <a href="#" class="news-side-footer">
+        ดูข่าวสารทั้งหมด
+        <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Categories / Catalog entry ── -->
+<section class="section" id="catalog" style="padding-bottom:56px">
+  <div class="section-eyebrow-wrap" style="margin-bottom:24px">
+    <div class="section-bar"></div>
+    <div>
+      <div class="section-eyebrow">Categories</div>
+      <div class="section-title">ค้นหารายการตรวจวิเคราะห์ตามหมวดหมู่</div>
+      <div class="section-note">รวม 8 หมวดหมู่ทางห้องปฏิบัติการ · 284 รายการตรวจ</div>
+    </div>
+  </div>
+
+  <div class="cat-grid" style="margin-bottom:32px">
+    <a href="#" class="cat-card">
+      <div class="cat-icon" style="background:rgba(30,95,173,.1);color:var(--primary)">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2s7 8 7 13a7 7 0 11-14 0c0-5 7-13 7-13zM9 14a3 3 0 003 3"/></svg>
+      </div>
+      <div class="cat-name">โลหิตวิทยา</div>
+      <div class="cat-sub">Hematology</div>
+      <div class="cat-count">64 รายการ</div>
+    </a>
+    <a href="#" class="cat-card">
+      <div class="cat-icon" style="background:rgba(217,119,6,.1);color:#D97706">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 3h15M6 3v7l-3 8a2 2 0 002 3h14a2 2 0 002-3l-3-8V3"/></svg>
+      </div>
+      <div class="cat-name">เคมีคลินิก</div>
+      <div class="cat-sub">Clinical Chemistry</div>
+      <div class="cat-count">78 รายการ</div>
+    </a>
+    <a href="#" class="cat-card">
+      <div class="cat-icon" style="background:rgba(124,58,237,.1);color:#7C3AED">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1018 0 9 9 0 00-18 0M2 12h20M7.5 8.5h.01M14.5 8.5h.01M10.5 11.5h.01M16 12h.01M8 15h.01M13.5 15.5h.01"/></svg>
+      </div>
+      <div class="cat-name">จุลชีววิทยา</div>
+      <div class="cat-sub">Microbiology</div>
+      <div class="cat-count">39 รายการ</div>
+    </a>
+    <a href="#" class="cat-card">
+      <div class="cat-icon" style="background:rgba(219,39,119,.1);color:#DB2777">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 3c0 5 8 5 8 10s-8 5-8 10M16 3c0 5-8 5-8 10s8 5 8 10M8.5 6h7M9 10h6M9 14h6M8.5 18h7"/></svg>
+      </div>
+      <div class="cat-name">ภูมิคุ้มกันวิทยา</div>
+      <div class="cat-sub">Immunology</div>
+      <div class="cat-count">45 รายการ</div>
+    </a>
+    <a href="#" class="cat-card">
+      <div class="cat-icon" style="background:rgba(8,145,178,.1);color:#0891B2">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 2h8v3a2 2 0 01-2 2h-4a2 2 0 01-2-2V2zM7 7h10l-1 13a2 2 0 01-2 2h-4a2 2 0 01-2-2L7 7zM10 12h4M12 10v6"/></svg>
+      </div>
+      <div class="cat-name">ธนาคารเลือด</div>
+      <div class="cat-sub">Blood Bank</div>
+      <div class="cat-count">18 รายการ</div>
+    </a>
+    <a href="#" class="cat-card">
+      <div class="cat-icon" style="background:rgba(22,163,74,.1);color:#16A34A">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2s7 8 7 13a7 7 0 11-14 0c0-5 7-13 7-13zM9 14l3-3 3 3"/></svg>
+      </div>
+      <div class="cat-name">ตรวจปัสสาวะ</div>
+      <div class="cat-sub">Urinalysis</div>
+      <div class="cat-count">16 รายการ</div>
+    </a>
+    <a href="#" class="cat-card">
+      <div class="cat-icon" style="background:rgba(30,95,173,.1);color:var(--primary)">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 2l4 4M16.5 3.5L20.5 7.5M21 9l-2-2-9 9-1 4 4-1 9-9-2-2zM12 8l4 4M2 22l4-4"/></svg>
+      </div>
+      <div class="cat-name">การแข็งตัวของเลือด</div>
+      <div class="cat-sub">Coagulation</div>
+      <div class="cat-count">12 รายการ</div>
+    </a>
+    <a href="#" class="cat-card">
+      <div class="cat-icon" style="background:rgba(220,38,38,.1);color:var(--danger)">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18h8M3 22h18M14 22a7 7 0 100-14h-1M9 14h2M9 12a2 2 0 012-2h0a2 2 0 012 2v2H9v-2zM12 6V3a1 1 0 00-1-1h-1a1 1 0 00-1 1v3"/></svg>
+      </div>
+      <div class="cat-name">ตรวจพิเศษ (OUT LAB)</div>
+      <div class="cat-sub">Send-out Tests</div>
+      <div class="cat-count">12 รายการ</div>
+    </a>
+  </div>
+
+  <!-- Quick catalog search preview -->
+  <div class="card catalog-search-card">
+    <div class="catalog-search-row">
+      <div class="catalog-search-input">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
+        <input type="search" placeholder="ค้นหาชื่อรายการตรวจ, รหัสตรวจ..." aria-label="ค้นหารายการตรวจ" value="CBC">
+      </div>
+      <button class="btn btn-primary" style="background:var(--primary)">ค้นหา</button>
+    </div>
+    <div class="pill-row">
+      <button class="pill active">ทั้งหมด <span style="opacity:.75">284</span></button>
+      <button class="pill">โลหิตวิทยา</button>
+      <button class="pill">เคมีคลินิก</button>
+      <button class="pill">จุลชีววิทยา</button>
+      <button class="pill">ภูมิคุ้มกันวิทยา</button>
+    </div>
+    <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      <table>
+        <thead>
+          <tr><th>รหัส / ชื่อรายการ</th><th>หมวดหมู่</th><th>หลอดเก็บตัวอย่าง</th><th>TAT</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><div style="font-weight:600;font-size:13px">Complete Blood Count</div><div style="font-size:11.5px;color:var(--muted)">CBC · รหัส: HEM001</div></td>
+            <td><span class="badge" style="background:rgba(30,95,173,.1);color:var(--primary)">Hematology</span></td>
+            <td>EDTA (ม่วง)</td>
+            <td style="color:var(--success);font-weight:600">2 ชม.</td>
+          </tr>
+          <tr>
+            <td><div style="font-weight:600;font-size:13px">CBC with Differential</div><div style="font-size:11.5px;color:var(--muted)">CBC-Diff · รหัส: HEM002</div></td>
+            <td><span class="badge" style="background:rgba(30,95,173,.1);color:var(--primary)">Hematology</span></td>
+            <td>EDTA (ม่วง)</td>
+            <td style="color:var(--success);font-weight:600">2 ชม.</td>
+          </tr>
+          <tr>
+            <td><div style="font-weight:600;font-size:13px">Reticulocyte Count</div><div style="font-size:11.5px;color:var(--muted)">Retic · รหัส: HEM014</div></td>
+            <td><span class="badge" style="background:rgba(30,95,173,.1);color:var(--primary)">Hematology</span></td>
+            <td>EDTA (ม่วง)</td>
+            <td style="color:var(--warning);font-weight:600">4 ชม.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="text-align:center;margin-top:16px">
+      <a href="#" class="view-all" style="display:inline-flex">
+        ดูรายการตรวจทั้งหมด 284 รายการ
+        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer class="footer">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div style="display:flex;align-items:center;gap:10px">
+        <img src="public/images/logo-chonburi.png" alt="โรงพยาบาลชลบุรี" style="width:56px;height:56px;border-radius:8px;object-fit:contain">
+        <div>
+          <div style="font-weight:700;font-size:16px;color:var(--ink)">กลุ่มงานเทคนิคการแพทย์</div>
+          <div style="font-size:14px;color:var(--muted)">โรงพยาบาลชลบุรี</div>
+        </div>
+      </div>
+      <p>โรงพยาบาลชลบุรี ให้บริการตรวจวิเคราะห์ทางห้องปฏิบัติการที่ได้มาตรฐาน</p>
+      <div class="footer-standards">
+        <span class="footer-standard">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4"/></svg>
+          ISO 15189
+        </span>
+        <span class="footer-standard">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4"/></svg>
+          ISO 15190
+        </span>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title"><span></span>บริการ</div>
+      <ul class="footer-links">
+        <li><a href="#"><svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--primary)"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>คู่มือห้องปฏิบัติการ</a></li>
+        <li><a href="#catalog"><svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--primary)"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>รายการตรวจวิเคราะห์</a></li>
+        <li><a href="#news"><svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--primary)"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>ข่าวสาร</a></li>
+      </ul>
+    </div>
+    <div>
+      <div class="footer-col-title"><span></span>ติดต่อ</div>
+      <ul class="footer-links">
+        <li><a href="#"><svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--primary)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3l2 5-2.5 1.5a11 11 0 005 5L14 14l5 2v3a2 2 0 01-2 2h-1C9.163 21 3 14.837 3 7V5z"/></svg>โทร 038-931-455</a></li>
+        <li><a href="#"><svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--primary)"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>เวลาทำการ 08:00–16:00</a></li>
+        <li><a href="#"><svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--primary)"><circle cx="12" cy="12" r="9"/></svg>Facebook</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Chonburi Hospital — Medical Technology Department.</span>
+    <span style="display:inline-flex;align-items:center;gap:6px">
+      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      v2.4.0
+    </span>
+  </div>
+</footer>
+
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode" id="themeToggle">🌙</button>
+
+<script>
+  function toggleTheme() {
+    const root = document.documentElement;
+    const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    document.getElementById('themeToggle').textContent = next === 'dark' ? '☀️' : '🌙';
+  }
+</script>
+
+</body>
+</html>

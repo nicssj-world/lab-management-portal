@@ -17,6 +17,7 @@ import { isReviewTrackedType, reviewWindowState } from '@/lib/documents/review'
 import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
 import { TYPE_ICON_BG, TYPE_ICON_FG, STATUS_LABEL, STATUS_COLOR, fmtSize, fmtDate } from '@/lib/documents/ui-constants'
 import type { DocStatus } from '@/lib/documents/transitions'
+import type { BulkDownloadKind } from '@/lib/documents/bulk-download'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
 
 // ── Constants ─────────────────────────────────────────────────
@@ -29,6 +30,12 @@ const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green'
 }
 
 const ALL_STATUSES: DocStatus[] = ['Draft', 'Review', 'Approved', 'Published', 'Obsolete']
+
+const BULK_KIND_LABEL: Record<BulkDownloadKind, string> = {
+  pdf: 'PDF',
+  source: 'Word/Excel',
+  both: 'PDF + Word/Excel',
+}
 
 interface StatusHistoryRow {
   to_status: string
@@ -581,6 +588,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
     : ['Laboratory Director', 'Document Controller'].includes(workflowRole ?? '')
   const canRead   = true
   const canViewSourceUploadQueue = userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller'
+  const canBulkDownload = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller' || docRole === 'Reviewer' || userRole === 'Reviewer'
 
   const { toasts, add: toast } = useToast()
 
@@ -598,6 +606,10 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
   const [sourceUploadedOnly, setSourceUploadedOnly] = useState(false)
   const [page, setPage]             = useState(1)
   const [sortDir, setSortDir]       = useState<'asc' | 'desc'>('asc')
+  const [bulkKind, setBulkKind] = useState<BulkDownloadKind>('pdf')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkStep, setBulkStep] = useState('')
+  const [bulkPercent, setBulkPercent] = useState<number | null>(null)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editDoc, setEditDoc]     = useState<Document | null>(null)
@@ -754,6 +766,90 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
     }
   }
 
+  function filenameFromDisposition(header: string | null) {
+    if (!header) return 'documents-export.zip'
+    const encoded = header.match(/filename\*=UTF-8''([^;]+)/)
+    if (encoded?.[1]) return decodeURIComponent(encoded[1])
+    const plain = header.match(/filename="([^"]+)"/)
+    return plain?.[1] ?? 'documents-export.zip'
+  }
+
+  async function handleBulkDownload() {
+    if (bulkBusy) return
+    setBulkBusy(true)
+    setBulkPercent(null)
+    setBulkStep('กำลังค้นหาเอกสาร Published ตาม filter...')
+
+    try {
+      setBulkStep('กำลังดึงไฟล์จากคลัง...')
+      const res = await fetch('/api/admin/documents/bulk-download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: bulkKind,
+          type: activeType,
+          department,
+          search,
+          visibility,
+        }),
+      })
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({} as { error?: string }))
+        throw new Error(json.error ?? 'สร้าง ZIP ไม่สำเร็จ')
+      }
+
+      setBulkStep('กำลังสร้าง ZIP...')
+      const total = Number(res.headers.get('Content-Length') ?? 0)
+      const reader = res.body?.getReader()
+      const chunks: ArrayBuffer[] = []
+      let received = 0
+
+      setBulkStep('กำลังดาวน์โหลด...')
+      setBulkPercent(total > 0 ? 0 : null)
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (!value) continue
+          chunks.push(value.slice().buffer as ArrayBuffer)
+          received += value.byteLength
+          if (total > 0) setBulkPercent(Math.min(100, Math.round((received / total) * 100)))
+        }
+      } else {
+        const blob = await res.blob()
+        chunks.push(await blob.arrayBuffer())
+        received = blob.size
+        if (total > 0) setBulkPercent(100)
+      }
+
+      const blob = new Blob(chunks, { type: 'application/zip' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filenameFromDisposition(res.headers.get('Content-Disposition'))
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+
+      setBulkPercent(100)
+      setBulkStep('เสร็จสิ้น')
+      const exported = res.headers.get('X-Exported-Files') ?? '0'
+      const skipped = res.headers.get('X-Skipped-Files') ?? '0'
+      toast(`ดาวน์โหลด ZIP แล้ว (${exported} ไฟล์, ข้าม ${skipped})`)
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'ดาวน์โหลด ZIP ไม่สำเร็จ', false)
+      setBulkStep('เกิดข้อผิดพลาด')
+    } finally {
+      setTimeout(() => {
+        setBulkBusy(false)
+        setBulkStep('')
+        setBulkPercent(null)
+      }, 900)
+    }
+  }
+
   // ── Delete ───────────────────────────────────────────────────
   async function handleDelete() {
     if (!confirmDoc) return
@@ -887,6 +983,36 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
         ))}
       </div>
 
+      {bulkBusy && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.42)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)' }}>
+          <Card padding={22} style={{ width: '100%', maxWidth: 420 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--primary-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+                <Icon name="download" size={18} />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)' }}>กำลังเตรียม ZIP</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{BULK_KIND_LABEL[bulkKind]} · เฉพาะ Published</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 600, marginBottom: 10 }}>{bulkStep || 'กำลังเริ่มต้น...'}</div>
+            <div style={{ height: 9, borderRadius: 99, background: 'var(--surface-2)', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <div style={{ width: bulkPercent === null ? '38%' : `${bulkPercent}%`, height: '100%', borderRadius: 99, background: 'var(--primary)', transition: 'width .18s ease', animation: bulkPercent === null ? 'bulk-pulse 1.1s ease-in-out infinite alternate' : 'none' }} />
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--muted)' }}>
+              <span>ค้นหาไฟล์ · รวมไฟล์ · สร้าง ZIP · ดาวน์โหลด</span>
+              <span>{bulkPercent === null ? '...' : `${bulkPercent}%`}</span>
+            </div>
+            <style>{`
+              @keyframes bulk-pulse {
+                from { transform: translateX(-18%); opacity: .55; }
+                to { transform: translateX(170%); opacity: 1; }
+              }
+            `}</style>
+          </Card>
+        </div>
+      )}
+
       {/* ── Header ───────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
         <div>
@@ -999,6 +1125,30 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
             >
               ล้าง
             </button>
+          )}
+          {canBulkDownload && (
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <select
+                value={bulkKind}
+                disabled={bulkBusy}
+                onChange={(e) => setBulkKind(e.target.value as BulkDownloadKind)}
+                aria-label="เลือกชนิดไฟล์สำหรับดาวน์โหลดตาม Filter"
+                style={{ padding: '8px 30px 8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12.5, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', outline: 'none', cursor: bulkBusy ? 'not-allowed' : 'pointer' }}
+              >
+                <option value="pdf">{BULK_KIND_LABEL.pdf}</option>
+                <option value="source">{BULK_KIND_LABEL.source}</option>
+                <option value="both">{BULK_KIND_LABEL.both}</option>
+              </select>
+              <button
+                disabled={bulkBusy}
+                onClick={handleBulkDownload}
+                title="ดาวน์โหลด ZIP เฉพาะเอกสาร Published ตาม filter ปัจจุบัน"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--primary)', background: bulkBusy ? 'var(--surface-2)' : 'var(--primary)', color: bulkBusy ? 'var(--muted)' : '#fff', cursor: bulkBusy ? 'not-allowed' : 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+              >
+                <Icon name="download" size={13} />
+                {bulkBusy ? 'กำลังเตรียม...' : 'ดาวน์โหลดตาม Filter'}
+              </button>
+            </div>
           )}
         </div>
         {/* Row 2: Status pills + visibility pills */}

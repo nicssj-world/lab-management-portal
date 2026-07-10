@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Icon } from '@/components/ui/Icon'
@@ -11,12 +11,14 @@ import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
 
 export interface PendingDoc {
   id: string
+  draftId?: string
   document_code: string
   title: string
   type: string
   department: string | null
   revision: string | null
   updated_at: string
+  hasOfficialPdf?: boolean
   /** 'draft' = a working revision draft on an already-Published document (opens the
    *  RevisionPanel to act on); 'document' = the document's own status (opens the detail
    *  modal). */
@@ -85,8 +87,8 @@ function DocButton({ doc, loading, onClick }: { doc: PendingDoc; loading: boolea
   )
 }
 
-function Section({ title, sub, icon, accent, children, count }: {
-  title: string; sub: string; icon: string; accent: string; count: number; children: React.ReactNode
+function Section({ title, sub, icon, accent, children, count, action }: {
+  title: string; sub: string; icon: string; accent: string; count: number; children: React.ReactNode; action?: React.ReactNode
 }) {
   return (
     <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderTop: `2.5px solid ${accent}`, borderRadius: 14, padding: 18 }}>
@@ -101,6 +103,7 @@ function Section({ title, sub, icon, accent, children, count }: {
         <span style={{ fontSize: 13, fontWeight: 800, color: count > 0 ? accent : 'var(--muted)', background: count > 0 ? `${accent}14` : 'var(--surface-2)', padding: '3px 12px', borderRadius: 99, fontVariantNumeric: 'tabular-nums' }}>
           {count}
         </span>
+        {action}
       </div>
       {count === 0 ? (
         <div style={{ fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic', padding: '4px 2px' }}>ไม่มีรายการค้าง</div>
@@ -108,6 +111,44 @@ function Section({ title, sub, icon, accent, children, count }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>{children}</div>
       )}
     </div>
+  )
+}
+
+function ActionCard({ label, count, sub, icon, accent, onClick }: {
+  label: string
+  count: number
+  sub: string
+  icon: string
+  accent: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        minHeight: 92,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: 14,
+        borderRadius: 10,
+        border: '1px solid var(--border)',
+        background: 'var(--card)',
+        cursor: 'pointer',
+        textAlign: 'left',
+        fontFamily: 'inherit',
+      }}
+    >
+      <span style={{ width: 38, height: 38, borderRadius: 10, background: `${accent}16`, color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon name={icon} size={18} />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{label}</span>
+        <span style={{ display: 'block', fontSize: 24, color: count > 0 ? accent : 'var(--ink)', fontWeight: 850, lineHeight: 1.1, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.35 }}>{sub}</span>
+      </span>
+      <Icon name="chevRight" size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+    </button>
   )
 }
 
@@ -119,6 +160,12 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
     ? true
     : ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(workflowRole ?? '')
   const canBulkReview = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller'
+  const canDccSourceDownload = canBulkReview
+
+  const sourceSectionRef = useRef<HTMLDivElement | null>(null)
+  const reviewSectionRef = useRef<HTMLDivElement | null>(null)
+  const approvedSectionRef = useRef<HTMLDivElement | null>(null)
+  const annualSectionRef = useRef<HTMLDivElement | null>(null)
 
   const [sourceDocs, setSourceDocs] = useState<PendingDoc[]>(initialSourceDocs)
   const [reviewDocs, setReviewDocs] = useState<PendingDoc[]>(initialReviewDocs)
@@ -127,6 +174,10 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
   const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkResult, setBulkResult] = useState<string | null>(null)
+  const [sourceBulkBusy, setSourceBulkBusy] = useState(false)
+  const [sourceBulkStep, setSourceBulkStep] = useState('')
+  const [sourceBulkPercent, setSourceBulkPercent] = useState<number | null>(null)
+  const [sourceBulkResult, setSourceBulkResult] = useState<string | null>(null)
   const [revDoc, setRevDoc] = useState<Document | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
@@ -135,6 +186,20 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
   const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
 
   const total = sourceDocs.length + reviewDocs.length + approvedDocs.length + annualDocs.length
+  const sourceWaitingPdfCount = sourceDocs.filter((doc) => !doc.hasOfficialPdf).length
+  const sourceReadyReviewCount = sourceDocs.filter((doc) => doc.hasOfficialPdf).length
+
+  function scrollToSection(ref: React.RefObject<HTMLDivElement | null>) {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function filenameFromDisposition(header: string | null) {
+    if (!header) return 'dcc-source-files.zip'
+    const encoded = header.match(/filename\*=UTF-8''([^;]+)/)
+    if (encoded?.[1]) return decodeURIComponent(encoded[1])
+    const plain = header.match(/filename="([^"]+)"/)
+    return plain?.[1] ?? 'dcc-source-files.zip'
+  }
 
   async function openRevisionPanel(id: string) {
     setLoadingId(id)
@@ -175,6 +240,83 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
     } catch { /* ignore */ }
   }
 
+  async function handleDccSourceDownload() {
+    if (sourceBulkBusy) return
+    const draftIds = sourceDocs
+      .map((doc) => doc.draftId)
+      .filter((id): id is string => Boolean(id))
+    if (draftIds.length === 0) return
+
+    setSourceBulkBusy(true)
+    setSourceBulkResult(null)
+    setSourceBulkPercent(null)
+    setSourceBulkStep('กำลังเตรียมรายการไฟล์ต้นฉบับ...')
+
+    try {
+      setSourceBulkStep('กำลังดึงไฟล์ Word/Excel จากคลัง...')
+      const res = await fetch('/api/admin/documents/pending/source-download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draftIds }),
+      })
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({} as { error?: string }))
+        throw new Error(json.error ?? 'สร้าง ZIP ไม่สำเร็จ')
+      }
+
+      setSourceBulkStep('กำลังสร้าง ZIP...')
+      const totalBytes = Number(res.headers.get('Content-Length') ?? 0)
+      const reader = res.body?.getReader()
+      const chunks: ArrayBuffer[] = []
+      let received = 0
+
+      setSourceBulkStep('กำลังดาวน์โหลด...')
+      setSourceBulkPercent(totalBytes > 0 ? 0 : null)
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (!value) continue
+          chunks.push(value.slice().buffer as ArrayBuffer)
+          received += value.byteLength
+          if (totalBytes > 0) setSourceBulkPercent(Math.min(100, Math.round((received / totalBytes) * 100)))
+        }
+      } else {
+        const blob = await res.blob()
+        chunks.push(await blob.arrayBuffer())
+        received = blob.size
+        if (totalBytes > 0) setSourceBulkPercent(100)
+      }
+
+      const blob = new Blob(chunks, { type: 'application/zip' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filenameFromDisposition(res.headers.get('Content-Disposition'))
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+
+      const exported = res.headers.get('X-Exported-Files') ?? '0'
+      const skipped = res.headers.get('X-Skipped-Files') ?? '0'
+      const summary = `ดาวน์โหลดสำเร็จ ${exported} ไฟล์ · ข้าม ${skipped} ไฟล์`
+      setSourceBulkResult(summary)
+      setSourceBulkPercent(100)
+      setSourceBulkStep('เสร็จสิ้น')
+    } catch (error) {
+      setSourceBulkResult(error instanceof Error ? error.message : 'ดาวน์โหลด ZIP ไม่สำเร็จ')
+      setSourceBulkStep('เกิดข้อผิดพลาด')
+    } finally {
+      setTimeout(() => {
+        setSourceBulkBusy(false)
+        setSourceBulkStep('')
+        setSourceBulkPercent(null)
+      }, 900)
+    }
+  }
+
   function handlePromoted() {
     // Draft reached Published — it drops out of every pending bucket entirely.
     const parentId = revDoc?.id
@@ -196,12 +338,16 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
     if (!bucket || !revDoc) return
     const entry: PendingDoc = {
       id: parentId,
+      draftId: draft.id,
       document_code: revDoc.document_code,
       title: revDoc.title,
       type: revDoc.type,
       department: revDoc.department,
       revision: draft.revision,
       updated_at: draft.updated_at,
+      hasOfficialPdf: draft.type === 'QP' || draft.type === 'WI'
+        ? Boolean(draft.source_pdf_url || draft.file_url)
+        : Boolean(draft.file_url),
       kind: 'draft',
     }
     if (bucket === 'source') setSourceDocs((prev) => [entry, ...prev])
@@ -259,6 +405,59 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {sourceBulkBusy && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 70,
+          background: 'rgba(15,23,42,.28)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 16,
+        }}>
+          <div style={{
+            width: 'min(460px, 100%)',
+            borderRadius: 14,
+            border: '1px solid var(--border)',
+            background: 'var(--card)',
+            boxShadow: '0 24px 70px rgba(15,23,42,.22)',
+            padding: 18,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(147,51,234,.12)', color: '#9333EA', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name="download" size={17} />
+              </span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)' }}>กำลังเตรียม ZIP ไฟล์ต้นฉบับ</div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>ค้นหาไฟล์ · รวมไฟล์ · สร้าง ZIP · ดาวน์โหลด</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)', fontWeight: 650, marginBottom: 10 }}>{sourceBulkStep || 'กำลังเริ่มต้น...'}</div>
+            <div style={{ height: 9, borderRadius: 99, background: 'var(--surface-2)', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <div style={{
+                width: sourceBulkPercent === null ? '38%' : `${sourceBulkPercent}%`,
+                height: '100%',
+                borderRadius: 99,
+                background: '#9333EA',
+                transition: 'width .18s ease',
+                animation: sourceBulkPercent === null ? 'source-bulk-pulse 1.1s ease-in-out infinite alternate' : 'none',
+              }} />
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--muted)' }}>
+              <span>{sourceDocs.length} รายการ</span>
+              <span>{sourceBulkPercent === null ? '...' : `${sourceBulkPercent}%`}</span>
+            </div>
+            <style>{`
+              @keyframes source-bulk-pulse {
+                from { transform: translateX(-18%); opacity: .55; }
+                to { transform: translateX(170%); opacity: 1; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
         padding: 18, borderRadius: 14, border: '1px solid var(--border)',
@@ -279,41 +478,85 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
         </Link>
       </div>
 
-      <Section
-        title="ไฟล์ Word/Excel รอ DCC ดำเนินการ"
-        sub="Working revision ที่อัปโหลดไฟล์ต้นฉบับแล้ว รอ DCC จัดทำ PDF เนื้อหา"
-        icon="upload" accent="#9333EA" count={sourceDocs.length}
-      >
-        {sourceDocs.map((d) => (
-          <DocButton key={d.id} doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
-        ))}
-      </Section>
+      <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 14, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 850, color: 'var(--ink)' }}>DCC Action Center</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>สรุปคิวงานเอกสารที่ต้องดำเนินการต่อ</div>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>รวม {total} รายการ</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: 10 }}>
+          <ActionCard label="รอทำ PDF" count={sourceWaitingPdfCount} sub="มี Word/Excel แล้ว รอ DCC จัดทำ PDF" icon="upload" accent="#9333EA" onClick={() => scrollToSection(sourceSectionRef)} />
+          <ActionCard label="พร้อมส่ง Review" count={sourceReadyReviewCount} sub="มีไฟล์ทางการแล้ว ตรวจและส่งต่อได้" icon="arrowRight" accent="#2563EB" onClick={() => scrollToSection(sourceSectionRef)} />
+          <ActionCard label="รอผู้รับรองตรวจสอบ" count={reviewDocs.length} sub="เอกสารอยู่ในสถานะ Review" icon="eye" accent="#D97706" onClick={() => scrollToSection(reviewSectionRef)} />
+          <ActionCard label="รอเผยแพร่" count={approvedDocs.length} sub="อนุมัติแล้ว รอเผยแพร่เป็น Published" icon="check" accent="#16A34A" onClick={() => scrollToSection(approvedSectionRef)} />
+          <ActionCard label="รอทบทวนประจำปี" count={annualDocs.length} sub="QP/WI ที่ยืนยัน review แล้ว" icon="clock" accent="#0D9488" onClick={() => scrollToSection(annualSectionRef)} />
+        </div>
+      </div>
 
-      <Section
-        title="รอตรวจสอบ (Review)"
-        sub="เอกสารที่ส่งเข้าสถานะ Review รอผู้รับรองตรวจสอบ"
-        icon="eye" accent="#D97706" count={reviewDocs.length}
-      >
-        {reviewDocs.map((d) => (
-          <DocButton key={d.id} doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
-        ))}
-      </Section>
+      <div ref={sourceSectionRef}>
+        <Section
+          title="ไฟล์ Word/Excel รอ DCC ดำเนินการ"
+          sub="Working revision ที่อัปโหลดไฟล์ต้นฉบับแล้ว รอ DCC จัดทำ PDF เนื้อหา"
+          icon="upload" accent="#9333EA" count={sourceDocs.length}
+          action={canDccSourceDownload && sourceDocs.length > 0 ? (
+            <button
+              onClick={handleDccSourceDownload}
+              disabled={sourceBulkBusy}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8,
+                border: '1px solid #9333EA', background: sourceBulkBusy ? 'var(--surface-2)' : '#9333EA',
+                color: sourceBulkBusy ? 'var(--muted)' : '#fff', fontSize: 12.5, fontWeight: 800,
+                fontFamily: 'inherit', cursor: sourceBulkBusy ? 'default' : 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              <Icon name="download" size={13} />
+              {sourceBulkBusy ? 'กำลังเตรียม...' : 'ดาวน์โหลดไฟล์ต้นฉบับทั้งหมด'}
+            </button>
+          ) : null}
+        >
+          {sourceBulkResult && (
+            <div style={{ padding: '9px 12px', borderRadius: 8, background: 'rgba(147,51,234,.08)', border: '1px solid rgba(147,51,234,.22)', color: '#7E22CE', fontSize: 12, lineHeight: 1.45 }}>
+              {sourceBulkResult}
+            </div>
+          )}
+          {sourceDocs.map((d) => (
+            <DocButton key={d.id} doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
+          ))}
+        </Section>
+      </div>
 
-      <Section
-        title="รออนุมัติเผยแพร่ (Approved)"
-        sub="เอกสารที่รับรองแล้ว รอผู้มีอำนาจอนุมัติเผยแพร่เป็น Published"
-        icon="check" accent="#16A34A" count={approvedDocs.length}
-      >
-        {approvedDocs.map((d) => (
-          <DocButton key={d.id} doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
-        ))}
-      </Section>
+      <div ref={reviewSectionRef}>
+        <Section
+          title="รอตรวจสอบ (Review)"
+          sub="เอกสารที่ส่งเข้าสถานะ Review รอผู้รับรองตรวจสอบ"
+          icon="eye" accent="#D97706" count={reviewDocs.length}
+        >
+          {reviewDocs.map((d) => (
+            <DocButton key={d.id} doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
+          ))}
+        </Section>
+      </div>
 
-      <Section
-        title="รอทบทวนประจำปี (Annual Review)"
-        sub="เอกสาร QP/WI ที่ยืนยันการทบทวนแล้ว รอ DCC บันทึก 'ทบทวนแล้ว ไม่มีการแก้ไข' (Rev คงเดิม)"
-        icon="clock" accent="#0D9488" count={annualDocs.length}
-      >
+      <div ref={approvedSectionRef}>
+        <Section
+          title="รออนุมัติเผยแพร่ (Approved)"
+          sub="เอกสารที่รับรองแล้ว รอผู้มีอำนาจอนุมัติเผยแพร่เป็น Published"
+          icon="check" accent="#16A34A" count={approvedDocs.length}
+        >
+          {approvedDocs.map((d) => (
+            <DocButton key={d.id} doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
+          ))}
+        </Section>
+      </div>
+
+      <div ref={annualSectionRef}>
+        <Section
+          title="รอทบทวนประจำปี (Annual Review)"
+          sub="เอกสาร QP/WI ที่ยืนยันการทบทวนแล้ว รอ DCC บันทึก 'ทบทวนแล้ว ไม่มีการแก้ไข' (Rev คงเดิม)"
+          icon="clock" accent="#0D9488" count={annualDocs.length}
+        >
         {bulkResult && (
           <div style={{ padding: '9px 12px', borderRadius: 8, background: 'rgba(13,148,136,.08)', border: '1px solid rgba(13,148,136,.25)', color: '#0F766E', fontSize: 12, lineHeight: 1.45 }}>
             {bulkResult}
@@ -367,7 +610,8 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
             </div>
           </div>
         ))}
-      </Section>
+        </Section>
+      </div>
 
       {revDoc && (
         <RevisionPanel
