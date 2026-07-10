@@ -280,6 +280,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
           onHistory={() => router.push(`/staff/documents?search=${encodeURIComponent(detailDoc.document_code)}&open=${detailDoc.id}`)}
           onEdit={() => router.push(`/staff/documents?search=${encodeURIComponent(detailDoc.document_code)}&open=${detailDoc.id}`)}
           onDownload={handleDownload}
+          onReviewConfirmed={(updated) => setDetailDoc(updated)}
         />
       )}
 

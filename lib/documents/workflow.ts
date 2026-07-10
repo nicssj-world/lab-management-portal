@@ -101,6 +101,7 @@ export function isPublishedMetadataField(field: string) {
     'audience_text',
     'visibility',
     'description',
+    'read_audience_depts',
   ].includes(field)
 }
 

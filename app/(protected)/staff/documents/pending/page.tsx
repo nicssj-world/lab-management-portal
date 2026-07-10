@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getActiveRevisionDrafts } from '@/lib/documents/pending'
-import { PendingClient, type PendingDoc } from './PendingClient'
+import { PendingClient, type PendingDoc, type AnnualReviewDoc } from './PendingClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,12 +32,21 @@ export default async function PendingApprovalPage() {
 
   const draftDocIds = Array.from(new Set(activeDrafts.map((d) => d.documentId)))
 
-  const [draftParentsRes, reviewRes, approvedRes] = await Promise.all([
+  const [draftParentsRes, reviewRes, approvedRes, annualReviewRes] = await Promise.all([
     draftDocIds.length > 0
       ? supabaseAdmin.from('documents').select(DOC_SELECT).in('id', draftDocIds).is('deleted_at', null)
       : Promise.resolve({ data: [] as DocRow[] }),
     supabaseAdmin.from('documents').select(DOC_SELECT).eq('status', 'Review').is('deleted_at', null).order('updated_at', { ascending: false }),
     supabaseAdmin.from('documents').select(DOC_SELECT).eq('status', 'Approved').is('deleted_at', null).order('updated_at', { ascending: false }),
+    // Annual review queue: QP/WI Published docs whose review was confirmed, waiting for the
+    // DCC to run the review-only bulk action (records "ทบทวนแล้ว ไม่มีการแก้ไข", no Rev bump).
+    supabaseAdmin.from('documents')
+      .select('id, document_code, title, type, department, revision, review_confirmed_at, review_confirmed_by_name')
+      .eq('status', 'Published')
+      .in('type', ['QP', 'WI'])
+      .not('review_confirmed_at', 'is', null)
+      .is('deleted_at', null)
+      .order('review_confirmed_at', { ascending: true }),
   ])
 
   const parentById = new Map<string, DocRow>((draftParentsRes.data ?? []).map((d) => [d.id, d as DocRow]))
@@ -74,11 +83,23 @@ export default async function PendingApprovalPage() {
     ...toDraftPendingDocs(draftsApproved),
   ].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
 
+  const annualReviewDocs: AnnualReviewDoc[] = (annualReviewRes.data ?? []).map((d) => ({
+    id: d.id,
+    document_code: d.document_code,
+    title: d.title,
+    type: d.type,
+    department: d.department,
+    revision: d.revision,
+    review_confirmed_at: d.review_confirmed_at as string,
+    review_confirmed_by_name: d.review_confirmed_by_name,
+  }))
+
   return (
     <PendingClient
       sourceDocs={sourceDocs}
       reviewDocs={reviewDocs}
       approvedDocs={approvedDocs}
+      annualReviewDocs={annualReviewDocs}
       userRole={actor?.role ?? undefined}
       docRole={actor?.doc_role ?? undefined}
       userId={user.id}

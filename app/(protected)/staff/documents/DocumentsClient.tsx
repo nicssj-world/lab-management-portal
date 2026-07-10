@@ -13,6 +13,7 @@ import { DocumentDetailModal, PdfViewerModal, type Attachment } from '@/componen
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
 import { allowedTransitions } from '@/lib/documents/transitions'
 import { canMoveToStatus } from '@/lib/documents/workflow'
+import { isReviewTrackedType, reviewWindowState } from '@/lib/documents/review'
 import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
 import { TYPE_ICON_BG, TYPE_ICON_FG, STATUS_LABEL, STATUS_COLOR, fmtSize, fmtDate } from '@/lib/documents/ui-constants'
 import type { DocStatus } from '@/lib/documents/transitions'
@@ -1108,6 +1109,14 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
                     const docStatus = (doc.status ?? 'Draft') as DocStatus
                     const canChangeStatus = allowedTransitions(docStatus, userRole ?? '', docRole).length > 0
                     const hasActiveDraft = docsWithActiveDraft.has(doc.id)
+                    const reviewTracked = docStatus === 'Published' && isReviewTrackedType(doc.type)
+                    const reviewPill = reviewTracked && doc.review_confirmed_at
+                      ? { label: 'รออนุมัติทบทวน', color: '#1E5FAD', bg: 'rgba(30,95,173,.12)', title: `ยืนยันการทบทวนโดย ${doc.review_confirmed_by_name ?? ''} รอ DCC ดำเนินการ` }
+                      : reviewTracked && reviewWindowState(doc) === 'overdue'
+                        ? { label: 'เกินกำหนดทบทวน', color: '#DC2626', bg: 'rgba(220,38,38,.12)', title: 'เกินรอบทบทวนประจำปีแล้ว' }
+                        : reviewTracked && reviewWindowState(doc) === 'due-soon'
+                          ? { label: 'ต้องทบทวน', color: '#D97706', bg: 'rgba(217,119,6,.12)', title: 'ใกล้ครบรอบทบทวนประจำปี (ภายใน 90 วัน)' }
+                          : null
                     return (
                       <tr key={doc.id} className="fade-in" style={{ borderBottom: '1px solid var(--border)', transition: 'background .12s', animationDelay: `${Math.min(docIdx, 12) * 25}ms` }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
@@ -1144,6 +1153,14 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
                           >
                             <Badge color={STATUS_COLOR[docStatus]} size="sm">{STATUS_LABEL[docStatus]}</Badge>
                           </button>
+                          {reviewPill && (
+                            <span
+                              title={reviewPill.title}
+                              style={{ display: 'block', marginTop: 4, fontSize: 9.5, fontWeight: 800, color: reviewPill.color, background: reviewPill.bg, padding: '1px 8px', borderRadius: 99 }}
+                            >
+                              {reviewPill.label}
+                            </span>
+                          )}
                         </td>
 
                         {/* 4. Revision */}
@@ -1293,6 +1310,11 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
           onHistory={() => { setDetailDoc(null); setRevDoc(detailDoc) }}
           onEdit={() => { setDetailDoc(null); setEditDoc(detailDoc); setModalOpen(true) }}
           onDownload={handleDownload}
+          onReviewConfirmed={(updated) => {
+            setDocs((d) => d.map((x) => x.id === updated.id ? updated : x))
+            setDetailDoc(updated)
+            toast('บันทึกการทบทวนแล้ว เอกสารเข้าคิวรอ DCC ดำเนินการ Rev +1')
+          }}
         />
       )}
 

@@ -428,9 +428,9 @@ The `contact_staff` badge uses CSS `@keyframes contactStaffPulse` + `contactStaf
 
 | Table | Purpose |
 |-------|---------|
-| `documents` | Main records. Has `deleted_at`, `obsolete_date`, `obsolete_reason`, `reviewer_name`, `approver_name` |
-| `document_revisions` | Version history. Has `approved_by`, `revised_by`, `revision_note`, `file_url`, `file_name` |
-| `document_access_logs` | Audit log. Actions: `upload`, `download`, `edit`, `delete` |
+| `documents` | Main records. Has `deleted_at`, `obsolete_date`, `obsolete_reason`, `reviewer_name`, `approver_name`, `review_confirmed_at/by/by_name`, `last_reviewed_at`, `read_audience_depts` |
+| `document_revisions` | Version history. Has `approved_by`, `revised_by`, `revision_note`, `file_url`, `file_name`, `history_source` (`workflow`/`backfill`/`legacy`/`review`) |
+| `document_access_logs` | Audit log. Actions: `upload`, `download`, `edit`, `delete`, `view` |
 
 Auto-revision: PATCH handler always fetches current doc; if revision number changes OR a new file is uploaded, the old state is saved to `document_revisions` before updating.
 
@@ -502,13 +502,32 @@ Cover/header handling:
 - Missing source headers should be warning-level during Draft/source upload; the official QP/WI artifact is the final generated PDF.
 - Before moving QP/WI forward, prioritize validating that the content PDF exists and the generated cover/final PDF is correct.
 
+### DCC Enhancements (ISO 15189 8.3)
+
+Schema in `scripts/add-document-annual-review.sql` (adds `documents.review_confirmed_at/by/by_name`, `documents.last_reviewed_at`, `documents.read_audience_depts`, and extends the `document_revisions.history_source` check to allow `review`). Run it manually in Supabase before testing these features.
+
+Obsolete watermark:
+- Transitioning a document to `Obsolete` stamps a diagonal "OBSOLETE / ยกเลิกใช้งาน + date" watermark onto every page of the official PDF (`lib/documents/obsolete-stamp.ts`), applied in the `[id]` PATCH handler.
+- Only when `file_url` is a PDF (Office files are skipped). The pre-stamp key is kept in `cover_metadata.pre_obsolete_file_url` for recovery; the original R2 object is not deleted. Stamp failure is non-fatal (status change still succeeds, warning pushed).
+
+Annual review workflow — **review-only model** (`lib/documents/review.ts`):
+- `REVIEW_TRACKED_TYPES = QP/WI/Manual` drives the "ต้องทบทวน" badge (due = latest of `last_reviewed_at`/`edit_date`/`expiry_date` + 1 year; window opens 90 days before due).
+- `REVIEW_ONLY_TYPES = QP/WI` — only these get the "ทบทวนแล้ว" action + bulk. Manual (QM/MN) has no cover page and gets no system-appended history at publish, so it must go through a normal Rev+ (it still shows the reminder badge).
+- Reviewer/DCC/Admin confirm via `POST /api/admin/documents/[id]/confirm-review` (sets `review_confirmed_*`). Confirmed docs queue in the pending page's "รอทบทวนประจำปี" section.
+- DCC bulk via `POST /api/admin/documents/bulk-annual-review` (`{ ids }`): for each QP/WI doc it inserts a `document_revisions` row (`revision_number='-'`, `history_source='review'`, note "ทบทวนแล้ว ไม่มีการแก้ไข", `revised_by` = person who confirmed, `approved_by` = current Quality Manager for WI / Laboratory Director for QP), regenerates ONLY the appended history page (strip old marker pages + append fresh), and sets `last_reviewed_at`. **Revision, effective date, footer, cover, and body are never changed.** `published_at` is untouched, so read-report counters do not reset.
+- `sortRevisionRows` (revision-history-pdf) sorts by date primarily so the `-` review rows slot in chronologically; identical output for normal revisions. The full Rev+ flow is unchanged.
+
+Read-compliance report (`/staff/documents/read-report`, gate: Admin / DCC / Quality Manager / Laboratory Director):
+- Per Published QP/WI/Manual document, shows read count X/Y with a per-document audience denominator. `documents.read_audience_depts` (null/[] = all active users; otherwise `profiles.dept ∈ list`, using `user-schema DEPARTMENTS`, NOT `documents.department`). Set per-document in the upload modal or in bulk via `POST /api/admin/documents/bulk-read-audience`.
+- "Read" counts distinct `document_access_logs` views with `created_at >= published_at`, so a real Rev+ (new `published_at`) resets counts while review-only does not. Old view logs are never deleted.
+
 ## Module Reference
 
 | Module | Resource Key (lib/permission-resources.ts) | Staff Route | API Routes |
 |--------|---------------------------------------------|-------------|------------|
 | Test Catalog | `รายการตรวจ` | `/staff/tests/*` | `/api/admin/tests/` |
 | Categories | `รายการตรวจ` (Admin only) | `/staff/tests/categories` | `/api/admin/categories` |
-| Documents | `เอกสารคุณภาพ` | `/staff/documents` | `/api/admin/documents/`, `/api/admin/documents/[id]/`, `/api/admin/documents/[id]/revisions/`, `/api/admin/documents/[id]/read`, `/api/admin/documents/purge-deleted` |
+| Documents | `เอกสารคุณภาพ` | `/staff/documents`, `/staff/documents/dashboard`, `/staff/documents/categories`, `/staff/documents/pending`, `/staff/documents/read-report` | `/api/admin/documents/`, `/api/admin/documents/[id]/`, `/api/admin/documents/[id]/revisions/`, `/api/admin/documents/[id]/read`, `/api/admin/documents/[id]/confirm-review`, `/api/admin/documents/bulk-annual-review`, `/api/admin/documents/bulk-read-audience`, `/api/admin/documents/purge-deleted` |
 | Master List | `Master List` | `/staff/documents/master-list` | — |
 | News | `ข่าวสาร` | `/staff/news` | — |
 | Rejection Log | `ความเสี่ยง / Rejection` | `/staff/rejection` | — |

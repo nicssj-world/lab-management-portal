@@ -202,7 +202,7 @@ export async function PATCH(
     // Always fetch current doc (needed for revision history + R2 key)
     const { data: current, error: currentErr } = await supabaseAdmin
       .from('documents')
-      .select('file_url, file_name, file_size, mime_type, source_pdf_url, source_pdf_name, source_pdf_size, source_pdf_mime_type, word_url, word_name, word_size, revision, type, description, owner_name, reviewer_name, approver_name, status, document_code, title, edit_date, effective_date, expiry_date, approved_at, published_at, approved_by_id, published_by_id, reviewer_id, approver_id, audience_text, cover_template_version, cover_generated_at, cover_metadata, imported_current_at, imported_current_by, imported_current_note, legacy_cover_included')
+      .select('file_url, file_name, file_size, mime_type, source_pdf_url, source_pdf_name, source_pdf_size, source_pdf_mime_type, word_url, word_name, word_size, revision, type, description, owner_name, reviewer_name, approver_name, status, document_code, title, edit_date, effective_date, expiry_date, approved_at, published_at, approved_by_id, published_by_id, reviewer_id, approver_id, audience_text, cover_template_version, cover_generated_at, cover_metadata, imported_current_at, imported_current_by, imported_current_note, legacy_cover_included, obsolete_date')
       .eq('id', id)
       .single()
 
@@ -550,6 +550,50 @@ export async function PATCH(
           error: toMsg(err),
         })
         warnings.push('บันทึกข้อมูลแล้ว แต่ stamp footer และ revision history ลง PDF ไม่สำเร็จ')
+      }
+    }
+
+    // ISO 15189 8.3: bake an OBSOLETE watermark into the official PDF so a downloaded copy
+    // can't be mistaken for the in-force version. Office files are left untouched.
+    // Obsolete is terminal, but the pre-stamp key is kept in cover_metadata for recovery.
+    const currentFileIsPdf = current.mime_type === 'application/pdf'
+      || /\.pdf$/i.test((current.file_name as string | null) ?? (current.file_url as string | null) ?? '')
+    if (newStatus === 'Obsolete' && current.status !== 'Obsolete' && current.file_url && currentFileIsPdf) {
+      try {
+        const { stampObsoleteWatermark } = await import('@/lib/documents/obsolete-stamp')
+        const obsoleteDateIso = String((updates as Record<string, unknown>).obsolete_date ?? current.obsolete_date ?? '')
+        const dateText = obsoleteDateIso
+          ? new Date(obsoleteDateIso + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+          : ''
+        const stamped = await stampObsoleteWatermark(await getObjectBuffer(current.file_url), dateText)
+        const safeCode = current.document_code.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const obsoleteKey = `documents/generated/${id}/${Date.now()}-${safeCode}-obsolete.pdf`
+        await r2.send(new PutObjectCommand({
+          Bucket: R2_BUCKET,
+          Key: obsoleteKey,
+          Body: Buffer.from(stamped),
+          ContentType: 'application/pdf',
+        }))
+        updates.file_url = obsoleteKey
+        updates.file_size = stamped.length
+        updates.mime_type = 'application/pdf'
+        updates.cover_metadata = {
+          ...((current.cover_metadata as Record<string, unknown> | null) ?? {}),
+          pre_obsolete_file_url: current.file_url,
+        }
+        supabaseAdmin.from('audit_log').insert({
+          action: 'document.obsolete_stamp',
+          user_id: actor.id,
+          target: current.document_code ?? id,
+          detail: `stamped OBSOLETE watermark · ${obsoleteDateIso}`,
+        }).then(undefined, () => {})
+      } catch (err) {
+        console.error('Obsolete watermark stamp failed; status change saved without it', {
+          documentId: id,
+          code: current.document_code,
+          error: toMsg(err),
+        })
+        warnings.push('เปลี่ยนสถานะแล้ว แต่ stamp ลายน้ำยกเลิกใช้งานลง PDF ไม่สำเร็จ')
       }
     }
 

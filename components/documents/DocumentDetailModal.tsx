@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { isCoverRequiredType } from '@/lib/documents/workflow'
+import { isReviewOnlyType, reviewWindowState } from '@/lib/documents/review'
 import { TYPE_ICON_BG, TYPE_ICON_FG, STATUS_LABEL, fmtSize, fmtDate } from '@/lib/documents/ui-constants'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document } from '@/lib/supabase/types'
@@ -85,7 +86,7 @@ export function PdfViewerModal({ url, title, onClose }: { url: string; title: st
 }
 
 // ── Document Detail Modal ──────────────────────────────────────
-export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, onClose, onRead, onHistory, onEdit, onDownload }: {
+export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole, userId, onClose, onRead, onHistory, onEdit, onDownload, onReviewConfirmed }: {
   doc: Document
   hasRead: boolean
   canUpload: boolean
@@ -97,10 +98,37 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
   onHistory: () => void
   onEdit: () => void
   onDownload: (path: string) => void
+  /** Annual-review: fires with the updated document after "ทบทวนแล้ว" succeeds so the
+   *  caller can refresh its copy. Button is hidden when the callback isn't provided. */
+  onReviewConfirmed?: (updated: Document) => void
 }) {
   const docStatus = doc.status as DocStatus
   const typeColor = TYPE_ICON_FG[doc.type] ?? '#64748B'
   const typeBg    = TYPE_ICON_BG[doc.type] ?? 'rgba(100,116,139,.1)'
+
+  const canConfirmReview = userRole === 'Admin' || userRole === 'Document Controller'
+    || docRole === 'Document Controller' || docRole === 'Reviewer'
+  const showConfirmReview = Boolean(
+    onReviewConfirmed && canConfirmReview
+    && docStatus === 'Published' && isReviewOnlyType(doc.type)
+    && !doc.review_confirmed_at && reviewWindowState(doc) !== 'none',
+  )
+  const [confirmingReview, setConfirmingReview] = useState(false)
+
+  async function handleConfirmReview() {
+    if (!confirm(`ยืนยันว่าได้ทบทวนเอกสาร ${doc.document_code} ประจำปีแล้ว และไม่มีการแก้ไขเนื้อหา?\nเอกสารจะเข้าคิว "รอทบทวนประจำปี" ให้ DCC ดำเนินการ Rev +1`)) return
+    setConfirmingReview(true)
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}/confirm-review`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) { alert(json.error ?? 'ยืนยันการทบทวนไม่สำเร็จ'); return }
+      onReviewConfirmed?.(json as Document)
+    } catch {
+      alert('ยืนยันการทบทวนไม่สำเร็จ')
+    } finally {
+      setConfirmingReview(false)
+    }
+  }
 
   const [attachments, setAttachments]     = useState<Attachment[]>([])
   const [attachLoading, setAttachLoading] = useState(true)
@@ -548,6 +576,16 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--ink)' }}>
               <Icon name="clock" size={14} />ประวัติการแก้ไข
             </button>
+            {showConfirmReview && (
+              <button
+                onClick={handleConfirmReview}
+                disabled={confirmingReview}
+                title="ยืนยันการทบทวนประจำปี — ไม่มีการแก้ไขเนื้อหา"
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 10, background: 'rgba(22,163,74,.1)', color: '#15803D', border: '1px solid rgba(22,163,74,.35)', cursor: confirmingReview ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', transition: 'all .12s', opacity: confirmingReview ? .6 : 1 }}
+              >
+                <Icon name="check" size={14} />{confirmingReview ? 'กำลังบันทึก…' : 'ทบทวนแล้ว'}
+              </button>
+            )}
             <div style={{ flex: 1 }} />
             {canUpload && (
               <button onClick={onEdit} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--muted)', fontFamily: 'inherit', transition: 'all .12s' }}

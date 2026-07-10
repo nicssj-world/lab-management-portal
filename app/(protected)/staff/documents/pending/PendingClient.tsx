@@ -23,10 +23,22 @@ export interface PendingDoc {
   kind: 'document' | 'draft'
 }
 
+export interface AnnualReviewDoc {
+  id: string
+  document_code: string
+  title: string
+  type: string
+  department: string | null
+  revision: string | null
+  review_confirmed_at: string
+  review_confirmed_by_name: string | null
+}
+
 interface Props {
   sourceDocs: PendingDoc[]
   reviewDocs: PendingDoc[]
   approvedDocs: PendingDoc[]
+  annualReviewDocs: AnnualReviewDoc[]
   userRole?: string
   docRole?: string
   userId?: string
@@ -99,17 +111,22 @@ function Section({ title, sub, icon, accent, children, count }: {
   )
 }
 
-export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initialReviewDocs, approvedDocs: initialApprovedDocs, userRole, docRole, userId = '' }: Props) {
+export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initialReviewDocs, approvedDocs: initialApprovedDocs, annualReviewDocs: initialAnnualReviewDocs, userRole, docRole, userId = '' }: Props) {
   const router = useRouter()
   const isAdmin = userRole === 'Admin'
   const workflowRole = docRole ?? userRole
   const canAdd = isAdmin
     ? true
     : ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(workflowRole ?? '')
+  const canBulkReview = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller'
 
   const [sourceDocs, setSourceDocs] = useState<PendingDoc[]>(initialSourceDocs)
   const [reviewDocs, setReviewDocs] = useState<PendingDoc[]>(initialReviewDocs)
   const [approvedDocs, setApprovedDocs] = useState<PendingDoc[]>(initialApprovedDocs)
+  const [annualDocs, setAnnualDocs] = useState<AnnualReviewDoc[]>(initialAnnualReviewDocs)
+  const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkResult, setBulkResult] = useState<string | null>(null)
   const [revDoc, setRevDoc] = useState<Document | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
@@ -117,7 +134,7 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
   const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
 
-  const total = sourceDocs.length + reviewDocs.length + approvedDocs.length
+  const total = sourceDocs.length + reviewDocs.length + approvedDocs.length + annualDocs.length
 
   async function openRevisionPanel(id: string) {
     setLoadingId(id)
@@ -192,6 +209,45 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
     else if (bucket === 'approved') setApprovedDocs((prev) => [entry, ...prev])
   }
 
+  function toggleReviewSelection(id: string) {
+    setSelectedReviewIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleBulkAnnualReview() {
+    const ids = Array.from(selectedReviewIds)
+    if (ids.length === 0) return
+    if (!confirm(`ยืนยันบันทึกทบทวนประจำปี ${ids.length} ฉบับ?\nระบบจะบันทึกแถวประวัติ "ทบทวนแล้ว ไม่มีการแก้ไข" (Rev คงเดิม ไม่แก้เนื้อ/หน้าปก) และอัปเดตหน้าประวัติท้ายเล่ม PDF ให้อัตโนมัติ`)) return
+    setBulkBusy(true)
+    setBulkResult(null)
+    try {
+      const res = await fetch('/api/admin/documents/bulk-annual-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const json = await res.json() as { succeeded?: { id: string; document_code: string }[]; failed?: { document_code: string; error: string }[]; error?: string }
+      if (!res.ok) { setBulkResult(json.error ?? 'ดำเนินการไม่สำเร็จ'); return }
+      const okIds = new Set((json.succeeded ?? []).map((s) => s.id))
+      setAnnualDocs((prev) => prev.filter((d) => !okIds.has(d.id)))
+      setSelectedReviewIds(new Set())
+      const parts = [`สำเร็จ ${json.succeeded?.length ?? 0} ฉบับ`]
+      if (json.failed && json.failed.length > 0) {
+        parts.push(`ไม่สำเร็จ ${json.failed.length} ฉบับ: ${json.failed.map((f) => `${f.document_code} (${f.error})`).join(', ')}`)
+      }
+      setBulkResult(parts.join(' · '))
+      router.refresh()
+    } catch {
+      setBulkResult('ดำเนินการไม่สำเร็จ กรุณาลองใหม่')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   function openPending(d: PendingDoc) {
     if (d.kind === 'draft') openRevisionPanel(d.id)
     else openDetail(d.id)
@@ -253,6 +309,66 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
         ))}
       </Section>
 
+      <Section
+        title="รอทบทวนประจำปี (Annual Review)"
+        sub="เอกสาร QP/WI ที่ยืนยันการทบทวนแล้ว รอ DCC บันทึก 'ทบทวนแล้ว ไม่มีการแก้ไข' (Rev คงเดิม)"
+        icon="clock" accent="#0D9488" count={annualDocs.length}
+      >
+        {bulkResult && (
+          <div style={{ padding: '9px 12px', borderRadius: 8, background: 'rgba(13,148,136,.08)', border: '1px solid rgba(13,148,136,.25)', color: '#0F766E', fontSize: 12, lineHeight: 1.45 }}>
+            {bulkResult}
+          </div>
+        )}
+        {canBulkReview && annualDocs.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink)', cursor: 'pointer', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={annualDocs.length > 0 && annualDocs.every((d) => selectedReviewIds.has(d.id))}
+                onChange={(e) => setSelectedReviewIds(e.target.checked ? new Set(annualDocs.map((d) => d.id)) : new Set())}
+                style={{ accentColor: '#0D9488' }}
+              />
+              เลือกทั้งหมด
+            </label>
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={handleBulkAnnualReview}
+              disabled={bulkBusy || selectedReviewIds.size === 0}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8,
+                border: 'none', background: selectedReviewIds.size > 0 ? '#0D9488' : 'var(--border)',
+                color: selectedReviewIds.size > 0 ? '#fff' : 'var(--muted)', fontSize: 12.5, fontWeight: 700,
+                fontFamily: 'inherit', cursor: bulkBusy || selectedReviewIds.size === 0 ? 'default' : 'pointer',
+                opacity: bulkBusy ? .6 : 1,
+              }}
+            >
+              <Icon name="check" size={13} />
+              {bulkBusy ? 'กำลังดำเนินการ…' : `บันทึกทบทวนประจำปี (${selectedReviewIds.size} ฉบับ)`}
+            </button>
+          </div>
+        )}
+        {annualDocs.map((d) => (
+          <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {canBulkReview && (
+              <input
+                type="checkbox"
+                checked={selectedReviewIds.has(d.id)}
+                onChange={() => toggleReviewSelection(d.id)}
+                disabled={bulkBusy}
+                style={{ accentColor: '#0D9488', width: 15, height: 15, flexShrink: 0, cursor: 'pointer' }}
+              />
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <DocButton
+                doc={{ id: d.id, document_code: d.document_code, title: d.title, type: d.type, department: d.department, revision: d.revision, updated_at: d.review_confirmed_at, kind: 'document' }}
+                loading={detailLoadingId === d.id}
+                onClick={() => openDetail(d.id)}
+              />
+            </div>
+          </div>
+        ))}
+      </Section>
+
       {revDoc && (
         <RevisionPanel
           doc={revDoc}
@@ -280,6 +396,7 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
           onHistory={() => { setRevDoc(detailDoc); setDetailDoc(null) }}
           onEdit={() => router.push(`/staff/documents?search=${encodeURIComponent(detailDoc.document_code)}&open=${detailDoc.id}`)}
           onDownload={handleDownload}
+          onReviewConfirmed={(updated) => { setDetailDoc(updated); router.refresh() }}
         />
       )}
 

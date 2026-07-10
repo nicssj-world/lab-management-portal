@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DEPARTMENTS } from '@/lib/validations/user-schema'
 
 export const DOC_TYPES = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'] as const
 export const DOC_STATUSES = ['Draft', 'Review', 'Approved', 'Published', 'Obsolete'] as const
@@ -30,6 +31,9 @@ export const DocumentSchema = z.object({
   imported_current_note: z.string().optional(),
   legacy_cover_included: z.boolean().optional(),
   import_mode: z.enum(['current']).optional(),
+  // Read audience: profile depts (user-schema DEPARTMENTS) that must read this document;
+  // null/[] = the whole division (every active user).
+  read_audience_depts: z.array(z.enum(DEPARTMENTS)).nullable().optional(),
 })
 
 export type DocumentInput = z.infer<typeof DocumentSchema>

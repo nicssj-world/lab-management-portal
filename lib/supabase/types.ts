@@ -317,6 +317,13 @@ export interface Document {
   obsolete_reason: string | null
   reviewer_name: string | null
   approver_name: string | null
+  // Annual-review workflow (scripts/add-document-annual-review.sql)
+  review_confirmed_at: string | null
+  review_confirmed_by: string | null
+  review_confirmed_by_name: string | null
+  last_reviewed_at: string | null
+  // Read audience: profile depts that must read this document; null/[] = everyone
+  read_audience_depts: string[] | null
   created_at: string
   updated_at: string
 }

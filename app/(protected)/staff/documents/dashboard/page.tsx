@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { getSourceUploadedDocumentIds } from '@/lib/documents/pending'
+import { isReviewTrackedType, reviewDueDate } from '@/lib/documents/review'
 import { Stat } from '@/components/ui/Stat'
 import { Icon } from '@/components/ui/Icon'
 
@@ -21,12 +22,11 @@ interface DashDoc {
   revision: string | null
   edit_date: string | null
   expiry_date: string | null
+  last_reviewed_at: string | null
   updated_at: string
 }
 
 const TYPE_ORDER = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others']
-// Types whose review cadence is tracked closely on the "ใกล้ครบกำหนดทบทวน" widget (MN/QP/WI docs)
-const REVIEW_TRACKED_TYPES = ['QP', 'WI', 'Manual']
 const TYPE_LABEL: Record<string, string> = {
   QP: 'ระเบียบปฏิบัติ (QP)', WI: 'วิธีปฏิบัติงาน (WI)', Form: 'แบบฟอร์ม (Form)',
   Policy: 'นโยบาย (Policy)', Manual: 'คู่มือ (Manual)', Record: 'บันทึกคุณภาพ (Record)',
@@ -57,17 +57,6 @@ function daysUntil(dateStr: string): number {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return Math.round((target.getTime() - today.getTime()) / 86_400_000)
-}
-
-// The document form only stores the last edit/review date (edit_date, mirrored into
-// expiry_date) — there's no separate "due date" field. The review cycle is annual, so the
-// actual due date is that date plus one year.
-function reviewDueDate(doc: { edit_date: string | null; expiry_date: string | null }): string | null {
-  const base = doc.edit_date ?? doc.expiry_date
-  if (!base) return null
-  const d = new Date(base + 'T00:00:00')
-  d.setFullYear(d.getFullYear() + 1)
-  return d.toISOString().split('T')[0]
 }
 
 // SVG donut segments via stroke-dasharray on circles
@@ -128,7 +117,7 @@ export default async function DocumentsDashboardPage() {
   const [{ data }, dccQueueIds] = await Promise.all([
     supabaseAdmin
       .from('documents')
-      .select('id, document_code, title, type, status, department, revision, edit_date, expiry_date, updated_at')
+      .select('id, document_code, title, type, status, department, revision, edit_date, expiry_date, last_reviewed_at, updated_at')
       .is('deleted_at', null),
     isDcc ? getSourceUploadedDocumentIds().catch(() => [] as string[]) : Promise.resolve([] as string[]),
   ])
@@ -153,9 +142,9 @@ export default async function DocumentsDashboardPage() {
 
   // "ใกล้ครบกำหนดทบทวน" widget: narrower scope than the stat cards above — only the core
   // controlled-document types (Manual/QP/WI), and only within 90 days of the due date.
-  const reviewOverdueTracked = reviewOverdue.filter((d) => REVIEW_TRACKED_TYPES.includes(d.type))
+  const reviewOverdueTracked = reviewOverdue.filter((d) => isReviewTrackedType(d.type))
   const reviewDueSoon90 = docs.filter((d) => {
-    if (d.status !== 'Published' || !REVIEW_TRACKED_TYPES.includes(d.type)) return false
+    if (d.status !== 'Published' || !isReviewTrackedType(d.type)) return false
     const due = reviewDueDate(d)
     if (!due) return false
     const days = daysUntil(due)

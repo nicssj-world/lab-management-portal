@@ -42,6 +42,8 @@ const NAV_ITEMS: (NavItem | null)[] = [
       { href: '/staff/documents/categories',  th: 'หมวดหมู่',    en: 'Categories',  icon: 'inbox', resource: 'เอกสารคุณภาพ' },
       { href: '/staff/documents/pending',     th: 'รออนุมัติ',   en: 'Pending',     icon: 'clock',
         role: ['Admin', 'Document Controller'], docRole: ['Document Controller', 'Reviewer'] },
+      { href: '/staff/documents/read-report', th: 'รายงานการอ่าน', en: 'Read Report', icon: 'eye',
+        role: ['Admin', 'Document Controller'], docRole: ['Document Controller', 'Quality Manager', 'Laboratory Director'] },
       { href: '/staff/documents/master-list', th: 'Master List', en: 'Master List', icon: 'book',  resource: 'Master List' },
     ] },
   { href: '/staff/tests/categories', th: 'หมวดหมู่การตรวจ', en: 'Categories', icon: 'beaker',   resource: 'รายการตรวจ', role: 'Admin' },
@@ -86,6 +88,9 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
   const { collapsed, mobileOpen, closeMobile } = useSidebar()
   const [testCount, setTestCount] = useState<number | null>(null)
   const [docCount, setDocCount]   = useState<number | null>(null)
+  // Lets a user collapse a submenu they're currently inside by clicking its parent again.
+  // Cleared whenever they navigate away from that group, so it opens fresh next time.
+  const [collapsedGroup, setCollapsedGroup] = useState<string | null>(null)
   const w = collapsed ? 64 : 248
 
   useEffect(() => {
@@ -98,6 +103,10 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
       .then(j => { if (typeof j.count === 'number') setDocCount(j.count) })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (collapsedGroup && !pathname.startsWith(collapsedGroup)) setCollapsedGroup(null)
+  }, [pathname, collapsedGroup])
 
   async function handleLogout() {
     const supabase = createClient()
@@ -205,12 +214,22 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
             const parentHref = visibleChildren.some(c => c.href === item.href) ? item.href : visibleChildren[0].href
             const groupBase = item.href.split('/').slice(0, 3).join('/') // e.g. /staff/documents
             const groupActive = pathname === groupBase || pathname.startsWith(groupBase + '/')
-            const expanded = !collapsed && groupActive
+            const expanded = !collapsed && groupActive && collapsedGroup !== groupBase
             return (
               <div key={item.href} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Link
                   href={parentHref}
-                  onClick={closeMobile}
+                  onClick={(e) => {
+                    if (groupActive) {
+                      // Already on a page in this group — treat the click as an accordion
+                      // toggle instead of a re-navigation.
+                      e.preventDefault()
+                      setCollapsedGroup((prev) => (prev === groupBase ? null : groupBase))
+                    } else {
+                      setCollapsedGroup(null)
+                      closeMobile()
+                    }
+                  }}
                   title={collapsed ? (lang === 'th' ? item.th : item.en) : undefined}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,

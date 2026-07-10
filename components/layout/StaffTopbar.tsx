@@ -18,6 +18,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/documents/dashboard':   { th: 'แดชบอร์ดเอกสารคุณภาพ',    en: 'Documents Dashboard' },
   '/staff/documents/categories':  { th: 'หมวดหมู่เอกสารคุณภาพ',    en: 'Document Categories' },
   '/staff/documents/pending':     { th: 'เอกสารรออนุมัติ',          en: 'Pending Approval' },
+  '/staff/documents/read-report': { th: 'รายงานการอ่านเอกสาร',      en: 'Read Compliance' },
   '/staff/documents/master-list': { th: 'จัดการทะเบียนเอกสารคุณภาพ', en: 'Documents Master List' },
   '/staff/contracts':        { th: 'บริหารสัญญา',                en: 'Contracts Management' },
   '/staff/equipment':        { th: 'ทะเบียนเครื่องมือ',           en: 'Equipment Registry' },
