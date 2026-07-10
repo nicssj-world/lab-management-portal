@@ -73,7 +73,7 @@ export async function getPendingApprovalDocuments(): Promise<PendingApprovalDoc[
   const draftDocs = drafts.filter(d => d.status === 'Review' || d.status === 'Approved')
   const draftDocIds = Array.from(new Set(draftDocs.map(d => d.documentId)))
   const draftParents = draftDocIds.length > 0
-    ? await supabaseAdmin.from('documents').select('id, document_code, title').in('id', draftDocIds)
+    ? await supabaseAdmin.from('documents').select('id, document_code, title').in('id', draftDocIds).is('deleted_at', null)
     : { data: [] as { id: string; document_code: string; title: string }[] }
 
   const parentById = new Map(
