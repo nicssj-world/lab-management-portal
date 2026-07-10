@@ -1,8 +1,15 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { getContracts } from '@/lib/queries/contracts'
 import { getRejectionLogs } from '@/lib/queries/rejection'
+import { getRolePermissions } from '@/lib/permissions'
+import { getPendingApprovalDocuments } from '@/lib/documents/pending'
+import { sortByOldestUpdated, sortContractsByUrgency, filterUrgentRisks, monthsLeftUntil, type RiskRow } from '@/lib/dashboard/attention-queue'
 import { Icon } from '@/components/ui/Icon'
 import { Empty } from '@/components/dashboard/Empty'
+import { QuickActionsStrip } from '@/components/dashboard/QuickActionsStrip'
+import { AttentionQueue } from '@/components/dashboard/AttentionQueue'
+import { AnalyticsTabs, type TatTrendRow } from '@/components/dashboard/AnalyticsTabs'
 import type { ContractWithUsage } from '@/lib/queries/contracts'
 import Link from 'next/link'
 
@@ -170,6 +177,14 @@ function actionDotColor(action: string | null): string {
 }
 
 export default async function StaffDashboardPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: actor } = user
+    ? await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single()
+    : { data: null }
+  const permissions = actor?.role ? await getRolePermissions(actor.role) : {}
+  const todayISO = new Date().toISOString().slice(0, 10)
+
   const now = new Date()
   const year  = now.getFullYear()
   const month = now.getMonth() + 1
@@ -184,6 +199,18 @@ export default async function StaffDashboardPage() {
   const prevPrevMonth = prevMonth === 1 ? 12 : prevMonth - 1
   const prevPrevYear  = prevMonth === 1 ? prevYear - 1 : prevYear
 
+  const tatTrendMonths: { year: number; month: number }[] = []
+  {
+    let y = prevYear, m = prevMonth
+    for (let i = 0; i < 6; i++) {
+      tatTrendMonths.unshift({ year: y, month: m })
+      m -= 1
+      if (m === 0) { m = 12; y -= 1 }
+    }
+  }
+  const tatTrendPromise = Promise.all(tatTrendMonths.map(({ year, month }) => readCompletedTatSummary(year, month)))
+  const pendingDocsPromise = getPendingApprovalDocuments()
+
   // ── ดึงข้อมูลทั้งหมดพร้อมกัน ──
   const prevMonthStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01T00:00:00`
   const nextMonthStart = prevMonth === 12
@@ -192,6 +219,7 @@ export default async function StaffDashboardPage() {
 
   const [
     contracts,
+    risksResult,
     testActiveResult,
     testTotalResult,
     rejMonthResult,
@@ -207,6 +235,9 @@ export default async function StaffDashboardPage() {
     auditLogResult,
   ] = await Promise.all([
     getContracts(supabaseAdmin),
+    supabaseAdmin.from('risks')
+      .select('id, risk_no, name, severity_level, status, due_date, follow_up_date')
+      .neq('status', 'closed'),
     supabaseAdmin.from('tests').select('*', { count: 'exact', head: true }).eq('active', true),
     supabaseAdmin.from('tests').select('*', { count: 'exact', head: true }),
     getRejectionLogs(supabaseAdmin, { year: prevYear, month: prevMonth, limit: 1 }),
@@ -227,6 +258,20 @@ export default async function StaffDashboardPage() {
       .order('created_at', { ascending: false })
       .limit(20),
   ])
+
+  const tatTrendPayloads = await tatTrendPromise
+  const pendingDocsAll = await pendingDocsPromise
+  const tatTrend: TatTrendRow[] = tatTrendMonths.map(({ month }, i) => {
+    const p = tatTrendPayloads[i]
+    const k = p?.kpi ?? {}
+    return {
+      month,
+      avgTAT: Math.round(k.avg_total_tat_cut_720 ?? k.avg_total_tat ?? k.avg_tat ?? 0),
+      sampleCount: k.sample_count ?? k.total_count ?? 0,
+    }
+  })
+  const pendingDocs = sortByOldestUpdated(pendingDocsAll)
+  const urgentRisksAll = filterUrgentRisks((risksResult.data ?? []) as RiskRow[], todayISO)
 
   const testCount    = testActiveResult.count ?? 0
   const testTotal    = testTotalResult.count ?? 0
@@ -295,16 +340,12 @@ export default async function StaffDashboardPage() {
   const phlebCount   = (tatData.phleb_heatmap ?? []).reduce((s, c) => s + c.count, 0)
   const tatCount     = (tatData.heatmap ?? []).reduce((s, c) => s + c.count, 0)
 
-  function monthsLeft(endDate: string | null) {
-    if (!endDate) return 999
-    return Math.floor((new Date(endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30))
-  }
-  const criticalContracts = contracts.filter(c => {
-    const ml = monthsLeft(c.end_date)
+  const criticalContractsAll = sortContractsByUrgency(contracts.filter(c => {
+    const ml = monthsLeftUntil(c.end_date)
     const isExpiring = c.total > 10_000_000 ? ml <= 6 : ml <= 3
     const budgetRemaining = c.total > 0 ? ((c.total - c.used) / c.total) * 100 : 100
     return isExpiring || budgetRemaining < 30
-  })
+  }))
 
   const todayStr = now.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   const timeStr  = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
@@ -315,6 +356,7 @@ export default async function StaffDashboardPage() {
     { label: 'รับ Specimen', from: 'เจาะเสร็จ', to: 'รับ Specimen', metric: 'ขนส่งตัวอย่างเฉลี่ย', value: avgTransport, icon: 'cup', color: '#D97706' },
     { label: 'รายงานผล', from: 'รับ Specimen', to: 'รายงานผล', metric: 'วิเคราะห์ในแลปเฉลี่ย', value: avgLabStage, icon: 'chart', color: '#16A34A' },
   ].filter((step): step is { label: string; from: string; to: string; metric: string; value: number; icon: string; color: string } => typeof step.value === 'number' && step.value > 0)
+  const totalPipelineMinutes = PIPELINE.reduce((sum, step) => sum + step.value, 0)
 
   const DOW_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
   const SLOTS   = ['00','04','08','12','16','20']
@@ -348,6 +390,8 @@ export default async function StaffDashboardPage() {
         @media (prefers-reduced-motion: reduce){.dash-fade{animation:none}}
         @media(max-width:640px){
           .dash-kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important}
+          .dash-attention-grid{grid-template-columns:repeat(2,1fr)!important}
+          .dash-qa-strip{grid-template-columns:repeat(2,1fr)!important}
           .dash-main-grid{grid-template-columns:1fr!important;align-items:start!important}
           .dash-heat-grid{grid-template-columns:1fr!important}
           .dash-hero{padding:16px 18px!important}
@@ -416,126 +460,39 @@ export default async function StaffDashboardPage() {
           />
           <KpiCard
             icon="building" label="สัญญาใกล้หมด/งบต่ำ" delay={0.2}
-            accent={criticalContracts.length > 0 ? '#DC2626' : '#16A34A'}
-            value={criticalContracts.length.toLocaleString()} sub={`จาก ${contracts.length} สัญญา`}
-            warn={criticalContracts.length > 0}
-            barLabel="ต้องดูแล" barValue={`${criticalContracts.length}/${contracts.length}`}
-            barPct={contracts.length ? (criticalContracts.length / contracts.length) * 100 : 0}
+            accent={criticalContractsAll.length > 0 ? '#DC2626' : '#16A34A'}
+            value={criticalContractsAll.length.toLocaleString()} sub={`จาก ${contracts.length} สัญญา`}
+            warn={criticalContractsAll.length > 0}
+            barLabel="ต้องดูแล" barValue={`${criticalContractsAll.length}/${contracts.length}`}
+            barPct={contracts.length ? (criticalContractsAll.length / contracts.length) * 100 : 0}
           />
         </div>
 
-        {/* ══ ACTIVITY + CONTRACTS ══ */}
-        <div className="dash-main-grid dash-fade" style={{ display:'grid', gridTemplateColumns:'7fr 3fr', gap:16, alignItems:'stretch', animationDelay:'.26s' }}>
+        {/* ══ QUICK ACTIONS ══ */}
+        <div className="dash-fade" style={{ animationDelay: '.22s' }}>
+          <QuickActionsStrip />
+        </div>
 
-          {/* Recent Activity — custom card with timeline */}
-          <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', display:'flex', flexDirection:'column' }}>
-            <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <div style={{ width:30,height:30,borderRadius:8,background:'rgba(30,95,173,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--primary)',flexShrink:0 }}>
-                  <Icon name="bell" size={14} />
-                </div>
-                <div>
-                  <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>กิจกรรมล่าสุด</div>
-                  <div style={{ fontSize:11,color:'var(--muted)',marginTop:1 }}>อัปเดตวันนี้</div>
-                </div>
-              </div>
-            </div>
-            <div style={{ padding:'8px 20px 0', flex:1, display:'flex', flexDirection:'column' }}>
-              {auditLogs.length > 0 ? (
-                <div className="activity-timeline">
-                  {auditLogs.slice(0, 10).map((entry, i) => (
-                    <ActivityFeedItem
-                      key={entry.id}
-                      entry={entry}
-                      profileName={entry.user_id ? (profileMap[entry.user_id] ?? '') : ''}
-                      isLast={i === Math.min(9, auditLogs.length - 1)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <Empty text="ยังไม่มีกิจกรรมในระบบ" icon="clock" />
-              )}
-              <div style={{ marginTop:'auto', padding:'12px 0 16px' }}>
-                <Link href="/staff/activity" className="more-link">
-                  ดูกิจกรรมทั้งหมด →
-                </Link>
-              </div>
-            </div>
-          </div>
+        {/* ══ ATTENTION QUEUE ══ */}
+        <div className="dash-fade" style={{ animationDelay: '.26s' }}>
+          <AttentionQueue
+            pendingDocs={pendingDocs}
+            totalPendingDocs={pendingDocs.length}
+            contracts={criticalContractsAll}
+            totalContracts={criticalContractsAll.length}
+            urgentRisks={urgentRisksAll}
+            totalUrgentRisks={urgentRisksAll.length}
+            rejectionAlert={rejRate != null && rejRate >= 3 ? {
+              rate: rejRate,
+              changeText: rejRateChange != null ? `${Math.abs(rejRateChange).toFixed(2)}% ${rejRateChange <= 0 ? 'ดีขึ้น' : 'แย่ลง'}` : null,
+            } : null}
+            permissions={permissions}
+          />
+        </div>
 
-          {/* Right column */}
-          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-
-            {/* Contracts */}
-            <SectionCard title="สัญญาใกล้หมดอายุ/งบต่ำ" sub="งบเหลือ < 30% หรือใกล้หมดอายุ" href="/staff/contracts" hrefLabel="ดูทั้งหมด" icon="building" iconColor="#D97706" plainLink>
-              {criticalContracts.length > 0 ? (
-                <div style={{ display:'flex',flexDirection:'column',gap:9 }}>
-                  {criticalContracts.slice(0, 6).map(c => <ContractCard key={c.id} contract={c} />)}
-                </div>
-              ) : (
-                <Empty text="ไม่มีสัญญาใกล้หมดอายุหรืองบต่ำ" icon="shieldCheck" />
-              )}
-            </SectionCard>
-
-            {/* Quick Actions + Doc Status */}
-            <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', flex:1, display:'flex', flexDirection:'column' }}>
-              <div style={{ padding:'13px 16px 11px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)' }}>
-                <div style={{ fontSize:13, fontWeight:800, color:'var(--ink)' }}>Quick Actions</div>
-              </div>
-              <div style={{ padding:'12px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                {([
-                  { href:'/staff/tests',    icon:'plus',   accent:'#1E5FAD', th:'เพิ่มรายการตรวจ',  en:'Add new test item' },
-                  { href:'/staff/documents',icon:'upload',  accent:'#0D9488', th:'Upload เอกสาร',    en:'SOP / WI / Form' },
-                  { href:'/staff/rejection',icon:'alert',   accent:'#DC2626', th:'บันทึก Rejection', en:'Log specimen rejection' },
-                  { href:'/kpi/dashboard',  icon:'chart',  accent:'#16A34A', th:'รายงาน KPI',        en:'Monthly report' },
-                ] as const).map(item => (
-                  <Link key={item.href} href={item.href} style={{ textDecoration:'none' }}>
-                    <div className="qa-tile" style={{
-                      padding:'11px 10px', borderRadius:10,
-                      border:'1px solid var(--border)',
-                      background:'var(--surface-2)',
-                      cursor:'pointer',
-                      display:'flex', flexDirection:'column', gap:6,
-                    }}>
-                      <div style={{ width:28,height:28,borderRadius:7,background:`${item.accent}18`,display:'flex',alignItems:'center',justifyContent:'center',color:item.accent }}>
-                        <Icon name={item.icon} size={14} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize:12,fontWeight:700,color:'var(--ink)',lineHeight:1.3 }}>{item.th}</div>
-                        <div style={{ fontSize:10.5,color:'var(--muted)',marginTop:2 }}>{item.en}</div>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-
-              {/* Document status bars */}
-              <div style={{ padding:'0 14px 14px' }}>
-                <div style={{ fontSize:10.5,fontWeight:700,color:'var(--muted)',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:10,paddingTop:10,borderTop:'1px solid var(--border)' }}>เอกสารตามสถานะ</div>
-                {([
-                  { label:'Published', count:docPublished, color:'#16A34A' },
-                  { label:'Review',    count:docReview,    color:'#1E5FAD' },
-                  { label:'Draft',     count:docDraft,     color:'#D97706' },
-                  { label:'Obsolete',  count:docObsolete,  color:'#DC2626' },
-                ] as const).map(({ label, count, color }) => {
-                  const pct = docTotal > 0 ? (count / docTotal) * 100 : 0
-                  const barWidth = Math.max(pct, count > 0 ? 2 : 0)
-                  return (
-                    <div key={label} style={{ marginBottom:9 }}>
-                      <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
-                        <span style={{ fontSize:12,color:'var(--ink)',fontWeight:600 }}>{label}</span>
-                        <span style={{ fontSize:12,color,fontWeight:700 }}>{count} ฉบับ</span>
-                      </div>
-                      <div style={{ height:4,background:'var(--border)',borderRadius:99,overflow:'hidden' }}>
-                        <div style={{ height:'100%',width:`${barWidth}%`,background:color,borderRadius:99 }} />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-          </div>
+        {/* ══ ANALYTICS ══ */}
+        <div className="dash-fade" style={{ animationDelay: '.3s' }}>
+          <AnalyticsTabs tatTrend={tatTrend} />
         </div>
 
         {/* ══ PIPELINE ══ */}
@@ -573,7 +530,7 @@ export default async function StaffDashboardPage() {
                 </div>
                 <div className="dash-pipeline-steps" style={{ display:'flex', gap:0, alignItems:'stretch' }}>
                   {PIPELINE.map((step, i) => (
-                    <div key={step.label} style={{ flex:1, display:'flex', alignItems:'center', minWidth:0 }}>
+                    <div key={step.label} style={{ flex: Math.max(step.value, totalPipelineMinutes * 0.12), display:'flex', alignItems:'center', minWidth:120 }}>
                       <div className="workflow-step" style={{
                         flex:1,
                         padding:'14px 16px',
@@ -642,6 +599,75 @@ export default async function StaffDashboardPage() {
           />
         </div>
 
+        {/* ══ ACTIVITY + DOCUMENT STATUS ══ */}
+        <div className="dash-main-grid dash-fade" style={{ display:'grid', gridTemplateColumns:'7fr 3fr', gap:16, alignItems:'stretch', animationDelay:'.44s' }}>
+
+          {/* Recent Activity — custom card with timeline */}
+          <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+            <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ width:30,height:30,borderRadius:8,background:'rgba(30,95,173,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--primary)',flexShrink:0 }}>
+                  <Icon name="bell" size={14} />
+                </div>
+                <div>
+                  <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>กิจกรรมล่าสุด</div>
+                  <div style={{ fontSize:11,color:'var(--muted)',marginTop:1 }}>อัปเดตวันนี้</div>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding:'8px 20px 0', flex:1, display:'flex', flexDirection:'column' }}>
+              {auditLogs.length > 0 ? (
+                <div className="activity-timeline">
+                  {auditLogs.slice(0, 5).map((entry, i) => (
+                    <ActivityFeedItem
+                      key={entry.id}
+                      entry={entry}
+                      profileName={entry.user_id ? (profileMap[entry.user_id] ?? '') : ''}
+                      isLast={i === Math.min(4, auditLogs.length - 1)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Empty text="ยังไม่มีกิจกรรมในระบบ" icon="clock" />
+              )}
+              <div style={{ marginTop:'auto', padding:'12px 0 16px' }}>
+                <Link href="/staff/activity" className="more-link">
+                  ดูกิจกรรมทั้งหมด →
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Document status bars */}
+          <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
+            <div style={{ padding:'13px 16px 11px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)' }}>
+              <div style={{ fontSize:13, fontWeight:800, color:'var(--ink)' }}>เอกสารตามสถานะ</div>
+            </div>
+            <div style={{ padding:'14px 16px' }}>
+              {([
+                { label:'Published', count:docPublished, color:'#16A34A' },
+                { label:'Review',    count:docReview,    color:'#1E5FAD' },
+                { label:'Draft',     count:docDraft,     color:'#D97706' },
+                { label:'Obsolete',  count:docObsolete,  color:'#DC2626' },
+              ] as const).map(({ label, count, color }) => {
+                const pct = docTotal > 0 ? (count / docTotal) * 100 : 0
+                const barWidth = Math.max(pct, count > 0 ? 2 : 0)
+                return (
+                  <div key={label} style={{ marginBottom:9 }}>
+                    <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
+                      <span style={{ fontSize:12,color:'var(--ink)',fontWeight:600 }}>{label}</span>
+                      <span style={{ fontSize:12,color,fontWeight:700 }}>{count} ฉบับ</span>
+                    </div>
+                    <div style={{ height:4,background:'var(--border)',borderRadius:99,overflow:'hidden' }}>
+                      <div style={{ height:'100%',width:`${barWidth}%`,background:color,borderRadius:99 }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+        </div>
 
       </div>
     </>
@@ -754,73 +780,6 @@ function HeatmapCard({ title, sub, grid, color, dowLabels, slotLabels, href }: {
           ))}
           <div style={{ fontSize:10,color:'var(--muted)' }}>มาก</div>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function SectionCard({ title, sub, href, hrefLabel, icon, iconColor, children, plainLink = false }: {
-  title: string; sub: string; href: string; hrefLabel: string; icon: string; iconColor: string; children: React.ReactNode; plainLink?: boolean
-}) {
-  return (
-    <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
-      <div style={{ padding:'14px 20px 12px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-        <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-          <div style={{ width:30,height:30,borderRadius:8,background:`${iconColor}18`,display:'flex',alignItems:'center',justifyContent:'center',color:iconColor,flexShrink:0 }}>
-            <Icon name={icon} size={14} />
-          </div>
-          <div>
-            <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>{title}</div>
-            <div style={{ fontSize:11,color:'var(--muted)',marginTop:1 }}>{sub}</div>
-          </div>
-        </div>
-        <Link href={href} style={{ textDecoration:'none' }}>
-          {plainLink ? (
-            <span style={{ fontSize:12.5,fontWeight:600,color:'var(--primary)',whiteSpace:'nowrap' }}>{hrefLabel} →</span>
-          ) : (
-            <div className="section-link" style={{ display:'flex',alignItems:'center',gap:4,fontSize:11.5,fontWeight:700,color:'var(--muted)',padding:'5px 10px',borderRadius:7,background:'var(--surface-2)',whiteSpace:'nowrap' }}>
-              {hrefLabel} <Icon name="arrowRight" size={11} />
-            </div>
-          )}
-        </Link>
-      </div>
-      <div style={{ padding:'16px 20px' }}>{children}</div>
-    </div>
-  )
-}
-
-function ContractCard({ contract }: { contract: ContractWithUsage }) {
-  const total    = contract.total ?? 0
-  const pct      = total > 0 ? Math.min((contract.used / total) * 100, 100) : 0
-  const remaining = 100 - pct
-  const ml = contract.end_date
-    ? Math.floor((new Date(contract.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30))
-    : 999
-  const isExpiry = total > 10_000_000 ? ml <= 6 : ml <= 3
-  const isLowBudget = remaining < 30
-  const barColor = isExpiry ? '#DC2626' : isLowBudget ? '#D97706' : '#16A34A'
-  const tags: string[] = []
-  if (isExpiry) tags.push(ml <= 0 ? 'หมดอายุแล้ว' : `เหลือ ${ml} เดือน`)
-  if (isLowBudget) tags.push(`งบเหลือ ${remaining.toFixed(0)}%`)
-
-  return (
-    <div className="contract-card" style={{ padding:'10px 12px', borderRadius:9, border:`1px solid ${isExpiry?'#FECACA':isLowBudget?'#FDE68A':'var(--border)'}`, background:isExpiry?'rgba(220,38,38,.04)':isLowBudget?'rgba(217,119,6,.04)':'var(--surface-2)' }}>
-      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6 }}>
-        <div style={{ minWidth:0 }}>
-          <div style={{ fontSize:12.5,fontWeight:700,color:'var(--ink)',wordBreak:'break-word' }}>{contract.vendor}</div>
-          <div style={{ fontSize:11,color:'var(--muted)',marginTop:1,wordBreak:'break-word' }}>{contract.product}</div>
-        </div>
-        <div style={{ display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,flexShrink:0,marginLeft:8 }}>
-          {tags.map(tag => (
-            <span key={tag} style={{ fontSize:9.5,fontWeight:800,color:isExpiry?'#DC2626':'#D97706',background:isExpiry?'#FEE2E2':'#FEF3C7',padding:'1px 7px',borderRadius:20,whiteSpace:'nowrap' }}>{tag}</span>
-          ))}
-        </div>
-      </div>
-      <div style={{ height:4,background:'var(--border)',borderRadius:99,overflow:'hidden' }}>
-        <div style={{ height:'100%',width:`${pct}%`,background:barColor,borderRadius:99 }} />
-      </div>
-      <div className="dmono" style={{ fontSize:10.5,color:'var(--muted)',marginTop:4 }}>
-        ใช้ {contract.used.toLocaleString()} / {total.toLocaleString()} {contract.unit ?? ''}
       </div>
     </div>
   )
