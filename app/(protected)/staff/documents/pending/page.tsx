@@ -58,12 +58,14 @@ export default async function PendingApprovalPage() {
         if (!parent) return null
         return {
           id: parent.id,
+          draftId: d.draftId,
           document_code: parent.document_code,
           title: parent.title,
           type: parent.type,
           department: parent.department,
           revision: d.revision,
           updated_at: d.updatedAt,
+          hasOfficialPdf: d.hasOfficialPdf,
           kind: 'draft',
         }
       })

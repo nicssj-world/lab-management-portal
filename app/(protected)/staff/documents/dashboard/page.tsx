@@ -23,6 +23,7 @@ interface DashDoc {
   edit_date: string | null
   expiry_date: string | null
   last_reviewed_at: string | null
+  published_at: string | null
   updated_at: string
 }
 
@@ -117,7 +118,7 @@ export default async function DocumentsDashboardPage() {
   const [{ data }, dccQueueIds] = await Promise.all([
     supabaseAdmin
       .from('documents')
-      .select('id, document_code, title, type, status, department, revision, edit_date, expiry_date, last_reviewed_at, updated_at')
+      .select('id, document_code, title, type, status, department, revision, edit_date, expiry_date, last_reviewed_at, published_at, updated_at')
       .is('deleted_at', null),
     isDcc ? getSourceUploadedDocumentIds().catch(() => [] as string[]) : Promise.resolve([] as string[]),
   ])
@@ -158,7 +159,7 @@ export default async function DocumentsDashboardPage() {
 
   const statusCounts = STATUS_META.map((s) => ({ ...s, value: byStatus(s.key) }))
 
-  const recent = [...docs].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 8)
+  const recent = [...docs].sort((a, b) => (b.published_at ?? '').localeCompare(a.published_at ?? '')).slice(0, 8)
   const expiring = [...reviewOverdueTracked, ...reviewDueSoon90]
     .sort((a, b) => (reviewDueDate(a) ?? '').localeCompare(reviewDueDate(b) ?? ''))
     .slice(0, 8)
@@ -272,7 +273,7 @@ export default async function DocumentsDashboardPage() {
                   <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)', flexShrink: 0 }}>{d.document_code}</span>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: tone.color, background: tone.bg, padding: '2px 9px', borderRadius: 99, flexShrink: 0 }}>{d.status}</span>
-                  <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtDate(d.updated_at)}</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtDate(d.published_at)}</span>
                 </Link>
               )
             })}
