@@ -92,6 +92,14 @@ scripts/quality-document-workflow-v2.sql
 - Backfilled entries do not change the current document, `file_url`, status, or revision.
 - Backfilled entries can be edited/deleted by Admin/Document Controller; workflow-generated revision history remains immutable.
 
+### DCC Tools (ISO 15189 8.3)
+
+Run `scripts/add-document-annual-review.sql` in Supabase before using these.
+
+- **Obsolete watermark** — marking a document `Obsolete` stamps an "OBSOLETE / ยกเลิกใช้งาน" watermark onto every page of its official PDF so a printed/downloaded copy can't be mistaken for the in-force version. The pre-stamp file is kept for recovery; Office files are skipped.
+- **Annual review reminder + one-click review** — QP/WI/Manual Published documents show a "ต้องทบทวน" badge as their yearly review approaches (and "เกินกำหนดทบทวน" when overdue). A Reviewer/DCC/Admin marks a QP/WI as "ทบทวนแล้ว"; confirmed documents queue under "รอทบทวนประจำปี" where a DCC records them in one click. This **does not bump the revision or change any content/dates** — it appends a "ทบทวนแล้ว ไม่มีการแก้ไข" (Rev "-") row to the document's revision-history page and resets the review clock. Manual (QM/MN) documents are reminded but must be reviewed through a normal Rev+.
+- **Read-compliance report** (`/staff/documents/read-report`, Admin/DCC/Quality Manager/Laboratory Director) — shows how many staff have read each Published QP/WI/Manual document (X/Y), with per-document read audiences (whole division or specific departments, settable in the upload form or in bulk). Read counts are measured against the current revision's publish date, so a real content revision resets them while a no-change review does not.
+
 ## Getting Started
 
 First, run the development server:

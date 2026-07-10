@@ -178,14 +178,20 @@ function rowDate(row: RevisionHistoryRow) {
   return fmtThaiDate(row.edit_date ?? row.effective_date ?? row.approved_at ?? row.published_at ?? row.created_at)
 }
 
+function rawRowDate(row: RevisionHistoryRow): string {
+  return row.edit_date ?? row.effective_date ?? row.approved_at ?? row.published_at ?? row.created_at
+}
+
 function sortRevisionRows(rows: RevisionHistoryRow[]) {
+  // Sort by date primarily so review-only rows (revision_number "-") slot in chronologically
+  // among the numbered revisions. For normal revisions rev number and date are monotonic, so
+  // this yields the same order as sorting by revision number; the numeric-revision compare is
+  // only a tiebreaker for same-date rows.
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
   return [...rows].sort((a, b) => {
-    const revisionOrder = collator.compare(a.revision_number, b.revision_number)
-    if (revisionOrder !== 0) return revisionOrder
-    const aDate = a.edit_date ?? a.effective_date ?? a.approved_at ?? a.published_at ?? a.created_at
-    const bDate = b.edit_date ?? b.effective_date ?? b.approved_at ?? b.published_at ?? b.created_at
-    return new Date(aDate).getTime() - new Date(bDate).getTime()
+    const dateOrder = new Date(rawRowDate(a)).getTime() - new Date(rawRowDate(b)).getTime()
+    if (dateOrder !== 0) return dateOrder
+    return collator.compare(a.revision_number, b.revision_number)
   })
 }
 
