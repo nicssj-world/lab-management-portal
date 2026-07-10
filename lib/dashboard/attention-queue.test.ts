@@ -55,12 +55,12 @@ assert.equal(monthsLeftUntil('2026-10-11', new Date('2026-07-11')), 3)
 // sortContractsByUrgency: nearest end_date first, then lowest budget-remaining %
 const contracts = [
   { id: 1, end_date: '2027-06-11', total: 100, used: 90 },  // far out, low budget remaining (10%)
-  { id: 2, end_date: '2026-08-11', total: 100, used: 10 },  // 1 month left, high budget remaining
-  { id: 3, end_date: '2026-08-11', total: 100, used: 50 },  // same months-left, more budget remaining than #2
+  { id: 2, end_date: '2026-08-11', total: 100, used: 10 },  // 1 month left, high budget remaining (90%)
+  { id: 3, end_date: '2026-08-11', total: 100, used: 50 },  // same months-left, less budget remaining than #2 (50%)
 ]
 assert.deepEqual(
   sortContractsByUrgency(contracts).map(c => c.id),
-  [2, 3, 1],
+  [3, 2, 1],
 )
 
 console.log('lib/dashboard/attention-queue.test.ts: all assertions passed')

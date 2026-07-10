@@ -67,6 +67,6 @@ export function sortContractsByUrgency<T extends { end_date: string | null; tota
     if (monthsA !== monthsB) return monthsA - monthsB
     const remainingA = a.total > 0 ? ((a.total - a.used) / a.total) * 100 : 100
     const remainingB = b.total > 0 ? ((b.total - b.used) / b.total) * 100 : 100
-    return remainingB - remainingA
+    return remainingA - remainingB
   })
 }
