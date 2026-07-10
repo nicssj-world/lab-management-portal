@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   daysOverdue, isRiskUrgent, filterUrgentRisks, sortByOldestUpdated,
-  monthsLeftUntil, sortContractsByUrgency, type RiskRow,
+  monthsLeftUntil, sortContractsByUrgency, isContractExpiring, type RiskRow,
 } from './attention-queue'
 
 const TODAY = '2026-07-11'
@@ -62,5 +62,11 @@ assert.deepEqual(
   sortContractsByUrgency(contracts).map(c => c.id),
   [3, 2, 1],
 )
+
+// isContractExpiring
+assert.equal(isContractExpiring(15_000_000, 6), true)  // large contract, exactly at 6-month threshold
+assert.equal(isContractExpiring(15_000_000, 7), false) // large contract, outside threshold
+assert.equal(isContractExpiring(5_000_000, 3), true)   // small contract, exactly at 3-month threshold
+assert.equal(isContractExpiring(5_000_000, 4), false)  // small contract, outside threshold
 
 console.log('lib/dashboard/attention-queue.test.ts: all assertions passed')

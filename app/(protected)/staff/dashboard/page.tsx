@@ -4,7 +4,7 @@ import { getContracts } from '@/lib/queries/contracts'
 import { getRejectionLogs } from '@/lib/queries/rejection'
 import { getRolePermissions } from '@/lib/permissions'
 import { getPendingApprovalDocuments } from '@/lib/documents/pending'
-import { sortByOldestUpdated, sortContractsByUrgency, filterUrgentRisks, monthsLeftUntil, type RiskRow } from '@/lib/dashboard/attention-queue'
+import { sortByOldestUpdated, sortContractsByUrgency, filterUrgentRisks, monthsLeftUntil, isContractExpiring, type RiskRow } from '@/lib/dashboard/attention-queue'
 import { Icon } from '@/components/ui/Icon'
 import { Empty } from '@/components/dashboard/Empty'
 import { QuickActionsStrip } from '@/components/dashboard/QuickActionsStrip'
@@ -341,7 +341,7 @@ export default async function StaffDashboardPage() {
 
   const criticalContractsAll = sortContractsByUrgency(contracts.filter(c => {
     const ml = monthsLeftUntil(c.end_date)
-    const isExpiring = c.total > 10_000_000 ? ml <= 6 : ml <= 3
+    const isExpiring = isContractExpiring(c.total, ml)
     const budgetRemaining = c.total > 0 ? ((c.total - c.used) / c.total) * 100 : 100
     return isExpiring || budgetRemaining < 30
   }))
