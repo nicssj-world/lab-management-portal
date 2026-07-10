@@ -10,7 +10,6 @@ import { Empty } from '@/components/dashboard/Empty'
 import { QuickActionsStrip } from '@/components/dashboard/QuickActionsStrip'
 import { AttentionQueue } from '@/components/dashboard/AttentionQueue'
 import { AnalyticsTabs, type TatTrendRow } from '@/components/dashboard/AnalyticsTabs'
-import type { ContractWithUsage } from '@/lib/queries/contracts'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
