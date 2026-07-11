@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { Spinner } from '@/components/ui/Spinner'
 import { DOC_TYPES, DOC_VISIBILITIES } from '@/lib/validations/document'
+import { TYPE_LABEL } from '@/lib/documents/type-labels'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import type { Document } from '@/lib/supabase/types'
 
@@ -107,12 +108,12 @@ const DEPT_BY_PREFIX: Record<string, string> = {
 
 const TYPE_BY_PREFIX: Record<string, string> = {
   QP: 'QP', WI: 'WI',
-  QM: 'Manual', MN: 'Manual',
+  QM: 'QM', MN: 'Manual',
   FM: 'Form', FR: 'Form',
   PL: 'Policy', PO: 'Policy',
-  RC: 'Record', RD: 'Record',
   RF: 'Reference',
   CF: 'Card file',
+  LB: 'Lb',
 }
 
 function typeFromCode(code: string): string | null {
@@ -820,7 +821,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                 onChange={(e) => setType(e.target.value)}
                 style={isPublishedCorrection ? lockedInputStyle : { ...inputStyle }}
               >
-                {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                {DOC_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>)}
               </select>
             </div>
           </div>
