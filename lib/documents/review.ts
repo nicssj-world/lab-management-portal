@@ -6,11 +6,11 @@
 // actual due date is that date plus one year.
 
 // Controlled-document types whose review cadence is tracked — shows the "ต้องทบทวน" badge.
-export const REVIEW_TRACKED_TYPES = ['QP', 'WI', 'Manual'] as const
+export const REVIEW_TRACKED_TYPES = ['QP', 'WI', 'Manual', 'QM'] as const
 
-// Types eligible for the one-click "ทบทวนแล้ว ไม่มีการแก้ไข" (review-only) flow. Manual
-// (QM/MN) has no cover page and a different layout, so it must go through a full Rev+ —
-// it still gets the reminder badge (REVIEW_TRACKED_TYPES) but not the review-only action.
+// Types eligible for the one-click "ทบทวนแล้ว ไม่มีการแก้ไข" (review-only) flow. Manual and QM
+// have no cover page and a different layout, so they must go through a full Rev+ — they still
+// get the reminder badge (REVIEW_TRACKED_TYPES) but not the review-only action.
 export const REVIEW_ONLY_TYPES = ['QP', 'WI'] as const
 
 // How many days before the due date the "ต้องทบทวน" window opens.
