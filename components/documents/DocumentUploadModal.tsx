@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Spinner } from '@/components/ui/Spinner'
 import { DOC_TYPES, DOC_VISIBILITIES } from '@/lib/validations/document'
 import { TYPE_LABEL } from '@/lib/documents/type-labels'
+import { REVIEW_TRACKED_TYPES } from '@/lib/documents/review'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import type { Document } from '@/lib/supabase/types'
 
@@ -615,7 +616,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         approver_name:  approverName.trim()  || undefined,
         department:     department.trim()    || undefined,
         description:    description.trim() || undefined,
-        read_audience_depts: audienceMode === 'depts' && audienceDepts.length > 0 ? audienceDepts : null,
+        read_audience_depts: (REVIEW_TRACKED_TYPES as readonly string[]).includes(type) && audienceMode === 'depts' && audienceDepts.length > 0 ? audienceDepts : null,
       }
       const meta: Record<string, string | boolean | string[] | null | undefined> = isPublishedCorrection
         ? baseMetadata
@@ -842,38 +843,41 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
             </div>
           </div>
 
-          {/* กลุ่มผู้ที่ต้องอ่าน (read audience) */}
-          <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)' }}>กลุ่มผู้ที่ต้องอ่านเอกสารนี้</div>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
-                <input type="radio" name="read-audience-mode" checked={audienceMode === 'all'} onChange={() => setAudienceMode('all')} style={{ accentColor: 'var(--primary)' }} />
-                ทั้งกลุ่มงาน (ทุกคน)
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
-                <input type="radio" name="read-audience-mode" checked={audienceMode === 'depts'} onChange={() => setAudienceMode('depts')} style={{ accentColor: 'var(--primary)' }} />
-                ระบุแผนก
-              </label>
-            </div>
-            {audienceMode === 'depts' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6, paddingTop: 2 }}>
-                {DEPARTMENTS.map((dept) => (
-                  <label key={dept} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color: 'var(--ink)', cursor: 'pointer', lineHeight: 1.35 }}>
-                    <input
-                      type="checkbox"
-                      checked={audienceDepts.includes(dept)}
-                      onChange={(e) => setAudienceDepts((prev) => e.target.checked ? [...prev, dept] : prev.filter((d) => d !== dept))}
-                      style={{ accentColor: 'var(--primary)', marginTop: 2, flexShrink: 0 }}
-                    />
-                    {dept}
-                  </label>
-                ))}
+          {/* กลุ่มผู้ที่ต้องอ่าน (read audience) — only meaningful for the controlled-document
+              types tracked on the read-compliance report (QM/QP/WI/Manual) */}
+          {(REVIEW_TRACKED_TYPES as readonly string[]).includes(type) && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)' }}>กลุ่มผู้ที่ต้องอ่านเอกสารนี้</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
+                  <input type="radio" name="read-audience-mode" checked={audienceMode === 'all'} onChange={() => setAudienceMode('all')} style={{ accentColor: 'var(--primary)' }} />
+                  ทั้งกลุ่มงาน (ทุกคน)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
+                  <input type="radio" name="read-audience-mode" checked={audienceMode === 'depts'} onChange={() => setAudienceMode('depts')} style={{ accentColor: 'var(--primary)' }} />
+                  ระบุแผนก
+                </label>
               </div>
-            )}
-            {audienceMode === 'depts' && audienceDepts.length === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--warning)' }}>ยังไม่ได้เลือกแผนก — ระบบจะถือว่าทั้งกลุ่มงานต้องอ่าน</div>
-            )}
-          </div>
+              {audienceMode === 'depts' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6, paddingTop: 2 }}>
+                  {DEPARTMENTS.map((dept) => (
+                    <label key={dept} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color: 'var(--ink)', cursor: 'pointer', lineHeight: 1.35 }}>
+                      <input
+                        type="checkbox"
+                        checked={audienceDepts.includes(dept)}
+                        onChange={(e) => setAudienceDepts((prev) => e.target.checked ? [...prev, dept] : prev.filter((d) => d !== dept))}
+                        style={{ accentColor: 'var(--primary)', marginTop: 2, flexShrink: 0 }}
+                      />
+                      {dept}
+                    </label>
+                  ))}
+                </div>
+              )}
+              {audienceMode === 'depts' && audienceDepts.length === 0 && (
+                <div style={{ fontSize: 11, color: 'var(--warning)' }}>ยังไม่ได้เลือกแผนก — ระบบจะถือว่าทั้งกลุ่มงานต้องอ่าน</div>
+              )}
+            </div>
+          )}
 
           {/* Revision + แผนก */}
           <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12 }}>

@@ -137,7 +137,7 @@ export default async function DocumentsDashboardPage() {
   })
 
   // "ใกล้ครบกำหนดทบทวน" widget: narrower scope than the stat cards above — only the core
-  // controlled-document types (Manual/QP/WI), and only within 90 days of the due date.
+  // controlled-document types (QM/Manual/QP/WI), and only within 90 days of the due date.
   const reviewOverdueTracked = reviewOverdue.filter((d) => isReviewTrackedType(d.type))
   const reviewDueSoon90 = docs.filter((d) => {
     if (d.status !== 'Published' || !isReviewTrackedType(d.type)) return false
@@ -284,7 +284,7 @@ export default async function DocumentsDashboardPage() {
               : undefined}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {expiring.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic' }}>ไม่มีเอกสาร Manual/QP/WI ที่ใกล้ครบกำหนดทบทวนภายใน 90 วัน</div>}
+            {expiring.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic' }}>ไม่มีเอกสาร QM/Manual/QP/WI ที่ใกล้ครบกำหนดทบทวนภายใน 90 วัน</div>}
             {expiring.map((d, i) => {
               const due = reviewDueDate(d)
               const days = due ? daysUntil(due) : null
