@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
+import { Input } from '@/components/ui/Input'
 import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/DocumentDetailModal'
 import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
@@ -60,6 +61,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
 
   const [expandedDept, setExpandedDept] = useState<string | null>(null)
   const [expandedType, setExpandedType] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null)
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
@@ -124,6 +126,32 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
     })
   }, [docs])
 
+  const isSearching = search.trim().length > 0
+
+  // Light in-page filter — narrows the browse tree to matching branches and auto-expands
+  // them, rather than a full-text search like the document library page. Matches department
+  // name, type label, document code, or title.
+  const visibleGroups = useMemo(() => {
+    if (!isSearching) return groups
+    const q = search.trim().toLowerCase()
+    return groups
+      .map((g) => {
+        const deptMatches = g.dept.toLowerCase().includes(q)
+        const types = g.types
+          .map((t) => {
+            const typeMatches = deptMatches || (TYPE_LABEL[t.type] ?? t.type).toLowerCase().includes(q)
+            const matchedDocs = typeMatches
+              ? t.docs
+              : t.docs.filter((d) => d.document_code.toLowerCase().includes(q) || d.title.toLowerCase().includes(q))
+            return { type: t.type, docs: matchedDocs }
+          })
+          .filter((t) => t.docs.length > 0)
+        const total = types.reduce((sum, t) => sum + t.docs.length, 0)
+        return { dept: g.dept, total, types }
+      })
+      .filter((g) => g.types.length > 0)
+  }, [groups, search, isSearching])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{
@@ -138,23 +166,36 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
           subtitle={`จัดกลุ่มตามหน่วยงานและชนิดเอกสาร · ${docs.length} ฉบับ`}
           marginBottom={0}
         />
-        <Link href="/staff/documents" className="dash-btn-secondary" style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
-          border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
-          fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0,
-        }}>
-          <Icon name="doc" size={15} /> เปิดคลังเอกสาร
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <Input
+            icon="search"
+            placeholder="กรองตามแผนก ประเภท รหัส หรือชื่อเอกสาร..."
+            value={search}
+            onChange={setSearch}
+            style={{ width: 280 }}
+          />
+          <Link href="/staff/documents" className="dash-btn-secondary" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
+            border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
+            fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0,
+          }}>
+            <Icon name="doc" size={15} /> เปิดคลังเอกสาร
+          </Link>
+        </div>
       </div>
 
       {groups.length === 0 ? (
         <div style={{ padding: 48, textAlign: 'center', background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 13.5 }}>
           ยังไม่มีเอกสารในระบบ
         </div>
+      ) : isSearching && visibleGroups.length === 0 ? (
+        <div style={{ padding: 48, textAlign: 'center', background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 13.5 }}>
+          ไม่พบเอกสารที่ตรงกับ &quot;{search.trim()}&quot;
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {groups.map((g, gIdx) => {
-            const expanded = expandedDept === g.dept
+          {visibleGroups.map((g, gIdx) => {
+            const expanded = isSearching || expandedDept === g.dept
             return (
               <div key={g.dept} className="fade-in-up qd-card" style={{ background: 'var(--card)', border: `1.5px solid ${expanded ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 14, overflow: 'hidden', transition: 'border-color .15s', animationDelay: `${Math.min(gIdx, 10) * 30}ms` }}>
                 {/* Department header (folder) */}
@@ -186,7 +227,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
                 {expanded && (
                   <div style={{ borderTop: '1px solid var(--border)', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {g.types.map(({ type, docs: typeDocs }) => {
-                      const typeExpanded = expandedType === type
+                      const typeExpanded = isSearching || expandedType === type
                       return (
                         <div key={type} style={{ borderRadius: 10, overflow: 'hidden', border: typeExpanded ? '1px solid var(--border)' : 'none' }}>
                           <button
