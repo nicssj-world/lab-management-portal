@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
-import { isPdfLike } from '@/lib/pdf-viewer-utils'
+import { documentPdfProxyUrl, isPdfLike } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
 
 // ── Constants ─────────────────────────────────────────────────
@@ -91,7 +91,7 @@ const { toasts, add: toast } = useToast()
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({})
   const [exportMenu, setExportMenu]       = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
-  const [viewer, setViewer] = useState<{ url: string; title: string } | null>(null)
+  const [viewer, setViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
 
   const timer = useRef<NodeJS.Timeout | null>(null)
   const exportMenuRef = useRef<HTMLDivElement>(null)
@@ -167,7 +167,7 @@ const { toasts, add: toast } = useToast()
       const { url } = await res.json()
       if (!url) { toast('ไม่สามารถดาวน์โหลดได้', false); return }
       if (isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type })) {
-        setViewer({ url, title: doc.file_name ?? doc.title })
+        setViewer({ url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.file_name ?? doc.title })
       } else {
         window.open(url, '_blank')
       }
@@ -629,7 +629,7 @@ const { toasts, add: toast } = useToast()
           onSaved={handleAdded}
         />
       )}
-      {viewer && <PdfViewerModal url={viewer.url} title={viewer.title} onClose={() => setViewer(null)} />}
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
 
       {/* Toasts */}
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>

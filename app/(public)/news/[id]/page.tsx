@@ -186,7 +186,7 @@ export default async function NewsDetailPage({ params }: Props) {
           {/* Action buttons */}
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             {news.pdf_path && (
-              <NewsPdfButton url={`/api/news/${news.id}/pdf`} title={news.title} />
+              <NewsPdfButton url={`/api/news/${news.id}/pdf`} pdfJsUrl={`/api/news/${news.id}/pdf?proxy=1`} title={news.title} />
             )}
             <NewsShareButton title={news.title} />
           </div>

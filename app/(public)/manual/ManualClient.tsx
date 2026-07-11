@@ -7,7 +7,7 @@ import { Icon } from '@/components/ui/Icon'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
-import { isPdfLike } from '@/lib/pdf-viewer-utils'
+import { documentPdfProxyUrl, isPdfLike } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
 
 const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Others'] as const
@@ -26,7 +26,7 @@ function fmtSize(bytes: number | null): string {
 export function ManualClient({ docs }: Props) {
   const [activeType, setActiveType] = useState<string>('All')
   const [downloading, setDownloading] = useState<string | null>(null)
-  const [viewer, setViewer] = useState<{ url: string; title: string } | null>(null)
+  const [viewer, setViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
 
   const filtered = activeType === 'All' ? docs : docs.filter((d) => d.type === activeType)
 
@@ -38,7 +38,7 @@ export function ManualClient({ docs }: Props) {
       const json = await res.json()
       if (json.url) {
         if (isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type })) {
-          setViewer({ url: json.url, title: doc.file_name ?? doc.title })
+          setViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(doc.file_url, 'public'), title: doc.file_name ?? doc.title })
         } else {
           window.open(json.url, '_blank')
         }
@@ -117,7 +117,7 @@ export function ManualClient({ docs }: Props) {
           </StickyScroll>
         </Card>
       )}
-      {viewer && <PdfViewerModal url={viewer.url} title={viewer.title} onClose={() => setViewer(null)} />}
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
     </>
   )
 }

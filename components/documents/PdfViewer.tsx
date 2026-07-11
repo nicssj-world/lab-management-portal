@@ -32,6 +32,7 @@ interface PdfLoadingTask {
 
 interface PdfViewerProps {
   url: string
+  pdfJsUrl?: string | null
   fileName?: string | null
   mimeType?: string | null
 }
@@ -172,7 +173,7 @@ function PdfPageCanvas({
   )
 }
 
-export function PdfViewer({ url, fileName, mimeType }: PdfViewerProps) {
+export function PdfViewer({ url, pdfJsUrl, fileName, mimeType }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pdf, setPdf] = useState<PdfDocument | null>(null)
   const [pages, setPages] = useState<PdfPageMeta[]>([])
@@ -183,6 +184,7 @@ export function PdfViewer({ url, fileName, mimeType }: PdfViewerProps) {
   const [usePdfJs, setUsePdfJs] = useState(false)
 
   const title = fileName || 'PDF'
+  const viewerUrl = usePdfJs ? (pdfJsUrl || url) : url
   const canAttemptPdf = useMemo(() => isPdfLike({ fileName, mimeType }), [fileName, mimeType])
 
   useEffect(() => {
@@ -229,7 +231,7 @@ export function PdfViewer({ url, fileName, mimeType }: PdfViewerProps) {
       try {
         const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
         pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/legacy/build/pdf.worker.min.mjs', import.meta.url).toString()
-        loadingTask = pdfjs.getDocument({ url, disableAutoFetch: false, disableStream: false }) as unknown as PdfLoadingTask
+        loadingTask = pdfjs.getDocument({ url: viewerUrl, disableAutoFetch: false, disableStream: false }) as unknown as PdfLoadingTask
         const document = await loadingTask.promise
         if (disposed) return
 
@@ -252,7 +254,7 @@ export function PdfViewer({ url, fileName, mimeType }: PdfViewerProps) {
       disposed = true
       loadingTask?.destroy().catch(() => {})
     }
-  }, [canAttemptPdf, url, usePdfJs])
+  }, [canAttemptPdf, usePdfJs, viewerUrl])
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0, background: '#525659', overflow: 'hidden' }}>

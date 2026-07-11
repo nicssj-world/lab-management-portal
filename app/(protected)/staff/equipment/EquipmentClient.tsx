@@ -21,7 +21,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cel
 type EquipmentStatus = Equipment['status']
 type RiskLevel = 'High' | 'Medium' | 'Low'
 type EquipmentSortKey = 'name' | 'code'
-type ViewerState = { url: string; title: string }
+type ViewerState = { url: string; pdfJsUrl?: string | null; title: string }
 type ResponsibleUser = {
   id: string
   ephis_id: string | null
@@ -30,9 +30,9 @@ type ResponsibleUser = {
   role: string | null
 }
 
-function openPdfOrNewTab(url: string, filePath: string | null | undefined, title: string, setViewer: (viewer: ViewerState) => void) {
+function openPdfOrNewTab(url: string, filePath: string | null | undefined, title: string, setViewer: (viewer: ViewerState) => void, pdfJsUrl?: string | null) {
   if (isPdfLike({ fileName: filePath })) {
-    setViewer({ url, title })
+    setViewer({ url, pdfJsUrl, title })
   } else {
     window.open(url, '_blank')
   }
@@ -1223,7 +1223,7 @@ function DocDownloadRow({ label, equipmentId, docType, filePath }: { label: stri
       const res = await fetch(`/api/admin/equipment/${equipmentId}/docs?doc_type=${docType}`)
       if (!res.ok) return
       const { url } = await res.json()
-      openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer)
+      openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer, `/api/admin/equipment/${equipmentId}/docs?doc_type=${encodeURIComponent(docType)}&proxy=1`)
     } finally { setLoading(false) }
   }
 
@@ -1238,7 +1238,7 @@ function DocDownloadRow({ label, equipmentId, docType, filePath }: { label: stri
           {loading ? 'กำลังโหลด...' : isPdfLike({ fileName: filePath }) ? 'อ่าน' : 'ดาวน์โหลด'}
         </button>
       </div>
-      {viewer && <PdfViewerModal url={viewer.url} title={viewer.title} onClose={() => setViewer(null)} />}
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
     </>
   )
 }
@@ -1323,7 +1323,7 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
     const res = await fetch(`/api/admin/equipment/${item.id}/cert`)
     if (!res.ok) return
     const { url } = await res.json()
-    if (url) openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer)
+    if (url) openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer, `/api/admin/equipment/${item.id}/cert?proxy=1`)
   }
 
   const resultColor = (r: string | null) => {
@@ -1642,7 +1642,7 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
           )}
         </div>
       </div>
-      {viewer && <PdfViewerModal url={viewer.url} title={viewer.title} onClose={() => setViewer(null)} />}
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
     </div>
   )
 }
@@ -2975,7 +2975,7 @@ export default function EquipmentClient({
                                 if (!filePath) return
                                 const res = await fetch(`/api/admin/equipment/${item.id}/cert`)
                                 const { url } = await res.json()
-                                if (url) openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer)
+                                if (url) openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer, `/api/admin/equipment/${item.id}/cert?proxy=1`)
                               }}
                               style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}
                             >
@@ -3021,7 +3021,7 @@ export default function EquipmentClient({
       {importModal && <ImportModal onClose={() => setImportModal(false)} onImported={handleImported} />}
       {detailItem && <EquipmentDetailModal item={detailItem} onClose={() => setDetailItem(null)} onEdit={canEdit ? (i) => { setDetailItem(null); setEditItem(i) } : undefined} />}
       {photoViewItem && <PhotoViewModal item={photoViewItem} onClose={() => setPhotoViewItem(null)} />}
-      {viewer && <PdfViewerModal url={viewer.url} title={viewer.title} onClose={() => setViewer(null)} />}
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
       {pmCalItem && (
         <PmCalModal
           item={pmCalItem}

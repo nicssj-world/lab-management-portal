@@ -314,7 +314,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
   const [filterDept, setFilterDept] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
-  const [viewer, setViewer] = useState<{ url: string; title: string } | null>(null)
+  const [viewer, setViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toasts, add: toast } = useToast()
 
@@ -382,7 +382,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
     if (!res.ok) { toast('ไม่สามารถดาวน์โหลดไฟล์ได้', false); return }
     const { url } = await res.json()
     if (isPdfLike({ fileName: contract.file_url })) {
-      setViewer({ url, title: viewerFileNameFromPath(contract.file_url) })
+      setViewer({ url, pdfJsUrl: `/api/admin/contracts/${contract.id}/file?proxy=1`, title: viewerFileNameFromPath(contract.file_url) })
     } else {
       window.open(url, '_blank')
     }
@@ -1379,7 +1379,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
       )}
 
       {/* ── Toasts ── */}
-      {viewer && <PdfViewerModal url={viewer.url} title={viewer.title} onClose={() => setViewer(null)} />}
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {toasts.map(t => (
           <div key={t.id} style={{

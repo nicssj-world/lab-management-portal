@@ -17,6 +17,7 @@ import { canMoveToStatus } from '@/lib/documents/workflow'
 import { isReviewTrackedType, reviewWindowState } from '@/lib/documents/review'
 import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
 import { TYPE_ICON_BG, TYPE_ICON_FG, STATUS_LABEL, STATUS_COLOR, fmtSize, fmtDate } from '@/lib/documents/ui-constants'
+import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { BulkDownloadKind } from '@/lib/documents/bulk-download'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
@@ -455,7 +456,7 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
               <span style={{ fontSize: 14, color: 'rgba(255,255,255,.7)' }}>{errMsg}</span>
             </div>
           ) : isPdf && url ? (
-            <PdfViewer url={url} fileName={doc.file_name ?? doc.title} mimeType={mime} />
+            <PdfViewer url={url} pdfJsUrl={documentPdfProxyUrl(doc.file_url)} fileName={doc.file_name ?? doc.title} mimeType={mime} />
           ) : (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ background: 'var(--card)', borderRadius: 16, padding: 36, textAlign: 'center', maxWidth: 380 }}>

@@ -5,6 +5,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { NextRequest, NextResponse } from 'next/server'
 import { buildDocumentDownloadFilename, contentDispositionForDownload, contentDispositionForInline } from '@/lib/documents/download-filename'
 import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
+import { r2ObjectResponse } from '@/lib/r2/stream-response'
 
 type DownloadDocument = {
   id: string
@@ -126,6 +127,7 @@ export async function GET(req: NextRequest) {
   const path = req.nextUrl.searchParams.get('path')
   if (!path) return NextResponse.json({ error: 'Missing path' }, { status: 422 })
   const inline = req.nextUrl.searchParams.get('inline') === '1'
+  const proxy = req.nextUrl.searchParams.get('proxy') === '1'
 
   const docRow = await getDocumentForDownload(path)
   if (!docRow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -136,6 +138,19 @@ export async function GET(req: NextRequest) {
   const disposition = filename
     ? (inline ? contentDispositionForInline(filename) : contentDispositionForDownload(filename))
     : undefined
+
+  if (proxy) {
+    const object = await r2.send(new GetObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: path,
+      Range: req.headers.get('range') ?? undefined,
+      ...(disposition ? { ResponseContentDisposition: disposition } : {}),
+    }))
+    return r2ObjectResponse(object, {
+      contentType: docRow.mime_type || 'application/pdf',
+      contentDisposition: disposition,
+    })
+  }
 
   const url = await getSignedUrl(
     r2,

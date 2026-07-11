@@ -41,3 +41,9 @@ export function shouldUsePdfJsViewer(input: { userAgent?: string | null; platfor
   // iPadOS can report itself as MacIntel while still exposing touch points.
   return platform === 'MacIntel' && (input.maxTouchPoints ?? 0) > 1
 }
+
+export function documentPdfProxyUrl(path: string | null | undefined, scope: 'admin' | 'public' = 'admin') {
+  if (!path) return null
+  const base = scope === 'public' ? '/api/documents/download' : '/api/admin/documents/download'
+  return `${base}?path=${encodeURIComponent(path)}&inline=1&proxy=1`
+}

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 
-export function NewsPdfButton({ url, title }: { url: string; title: string }) {
+export function NewsPdfButton({ url, pdfJsUrl, title }: { url: string; pdfJsUrl?: string | null; title: string }) {
   const [viewerOpen, setViewerOpen] = useState(false)
 
   return (
@@ -29,7 +29,7 @@ export function NewsPdfButton({ url, title }: { url: string; title: string }) {
         <Icon name="doc" size={14} />
         อ่าน PDF
       </a>
-      {viewerOpen && <PdfViewerModal url={url} title={title} onClose={() => setViewerOpen(false)} />}
+      {viewerOpen && <PdfViewerModal url={url} pdfJsUrl={pdfJsUrl} title={title} onClose={() => setViewerOpen(false)} />}
     </>
   )
 }
