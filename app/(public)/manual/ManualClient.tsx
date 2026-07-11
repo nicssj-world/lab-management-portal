@@ -9,10 +9,11 @@ import { StickyScroll } from '@/components/ui/StickyScroll'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { documentPdfProxyUrl, isPdfLike } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
+import { TYPE_LABEL } from '@/lib/documents/type-labels'
 
-const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Others'] as const
+const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'QM', 'Lb', 'Others'] as const
 const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray'> = {
-  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray', Others: 'gray',
+  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', QM: 'green', Lb: 'purple', Others: 'gray',
 }
 
 interface Props { docs: Document[] }
@@ -66,7 +67,7 @@ export function ManualClient({ docs }: Props) {
                 cursor: 'pointer', fontFamily: 'inherit',
               }}
             >
-              {tab} ({count})
+              {tab === 'All' ? tab : (TYPE_LABEL[tab] ?? tab)} ({count})
             </button>
           )
         })}
