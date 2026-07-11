@@ -322,8 +322,10 @@ export interface Document {
   review_confirmed_by: string | null
   review_confirmed_by_name: string | null
   last_reviewed_at: string | null
-  // Read audience: profile depts that must read this document; null/[] = everyone
+  // Read audience: profile depts and/or specific users that must read this document;
+  // both null/[] = everyone.
   read_audience_depts: string[] | null
+  read_audience_user_ids: string[] | null
   created_at: string
   updated_at: string
 }
