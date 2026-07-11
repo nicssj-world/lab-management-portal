@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
 import { DEPARTMENTS, DEPT_ABBR } from '@/lib/validations/user-schema'
 import { TYPE_ICON_BG, TYPE_ICON_FG } from '@/lib/documents/ui-constants'
+import { DOC_TYPES as TYPE_ORDER } from '@/lib/documents/type-labels'
 import { buildReadAudiencePayload, buildReadAudiencePickerState, resolveReadAudience } from '@/lib/documents/read-audience'
 import { buildReadLogSummaryHtml } from '@/lib/documents/read-log-summary'
 
@@ -37,7 +38,6 @@ interface Props {
   canAssign: boolean
 }
 
-const TYPE_ORDER = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others']
 
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '—'
