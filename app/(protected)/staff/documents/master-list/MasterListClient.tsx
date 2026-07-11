@@ -203,7 +203,7 @@ const { toasts, add: toast } = useToast()
 
     const filterParts: string[] = []
     if (scope === 'filtered') {
-      if (activeType && activeType !== 'All') filterParts.push(`ประเภท: ${activeType}`)
+      if (activeType && activeType !== 'All') filterParts.push(`ประเภท: ${TYPE_LABEL[activeType] ?? activeType}`)
       if (statusFilter) filterParts.push(`สถานะ: ${statusFilter}`)
       if (department) filterParts.push(`แผนก: ${department}`)
       if (search) filterParts.push(`ค้นหา: "${search}"`)
@@ -243,7 +243,7 @@ const { toasts, add: toast } = useToast()
           <td class="c muted">${rowIdx++}</td>
           <td class="c mono">${doc.document_code}</td>
           <td class="l wrap col-fill">${doc.title}</td>
-          <td class="c">${doc.type}</td>
+          <td class="c">${TYPE_LABEL[doc.type] ?? doc.type}</td>
           <td class="c muted">${doc.revision}</td>
           <td class="c">${doc.status}</td>
           <td class="c muted">${fmtD(doc.edit_date ?? doc.expiry_date)}</td>
@@ -268,7 +268,7 @@ const { toasts, add: toast } = useToast()
           <div class="page-footer">
             <span class="footer-spacer"></span>
             <span class="footer-center">เอกสารนี้เป็นสมบัติของกลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี ห้ามนำออกไปใช้ภายนอกหรือทำซ้ำโดยไม่ได้รับอนุญาต</span>
-            <span class="footer-right">Fm-QP-LAB-01/ML</span>
+            <span class="footer-right">FM-QP-LAB-01/01</span>
           </div>
         </div>`
     }).join('')
