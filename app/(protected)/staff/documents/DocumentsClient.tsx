@@ -12,6 +12,7 @@ import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import { DocumentDetailModal, PdfViewerModal, type Attachment } from '@/components/documents/DocumentDetailModal'
 import { PdfViewer } from '@/components/documents/PdfViewer'
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
+import { QuickUpdateModal } from '@/components/documents/QuickUpdateModal'
 import { allowedTransitions } from '@/lib/documents/transitions'
 import { canMoveToStatus } from '@/lib/documents/workflow'
 import { isReviewTrackedType, reviewWindowState } from '@/lib/documents/review'
@@ -489,6 +490,8 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
     ? true
     : ['Laboratory Director', 'Document Controller'].includes(workflowRole ?? '')
   const canRead   = true
+  // Admin/DCC can publish directly; other upload-capable roles (e.g. Reviewer) queue for approval.
+  const canPublishQuick = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller'
   const canViewSourceUploadQueue = userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller'
   const canBulkDownload = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller' || docRole === 'Reviewer' || userRole === 'Reviewer'
 
@@ -524,6 +527,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
 
   const [statusDoc, setStatusDoc]   = useState<Document | null>(null)
   const [revDoc, setRevDoc]         = useState<Document | null>(null)
+  const [quickDoc, setQuickDoc]     = useState<Document | null>(null)
   const [readDoc, setReadDoc]       = useState<Document | null>(null)
   const [detailDoc, setDetailDoc]   = useState<Document | null>(null)
 
@@ -860,6 +864,12 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
     setDocs((d) => d.map((x) => x.id === updated.id ? updated : x))
     setRevDoc(updated)
     toast(`เลื่อน Rev. ${updated.revision} ขึ้นมาเป็นเวอร์ชันล่าสุดแล้ว`)
+  }
+
+  function handleQuickUpdateDone({ published }: { published: boolean }) {
+    setQuickDoc(null)
+    fetchDocs()
+    toast(published ? 'อัปเดตและเผยแพร่เอกสารแล้ว' : 'ส่งเข้าคิว "รอเผยแพร่" ให้ DCC/Admin แล้ว')
   }
 
   const totalPages = Math.ceil(count / PAGE_SIZE)
@@ -1283,12 +1293,21 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
                               <Icon name="clock" size={14} />
                             </button>
                             {canUpload && doc.status === 'Published' && (
-                              <button onClick={() => handleCreateRevisionDraft(doc)} title={hasActiveDraft ? 'มีฉบับแก้ไข (Rev+) กำลังดำเนินการ — คลิกเพื่อเปิด' : 'สร้าง Revision ใหม่'}
-                                style={{ width: 42, height: 32, borderRadius: 7, border: `1px solid ${hasActiveDraft ? 'var(--warning)' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: hasActiveDraft ? 'var(--warning)' : 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
-                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
-                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = hasActiveDraft ? 'var(--warning)' : 'var(--border)'; e.currentTarget.style.color = hasActiveDraft ? 'var(--warning)' : 'var(--muted)' }}>
-                                Rev+
-                              </button>
+                              !isReviewTrackedType(doc.type) && !hasActiveDraft ? (
+                                <button onClick={() => setQuickDoc(doc)} title="อัปเดตเอกสาร (เปลี่ยนไฟล์ + Rev+1)"
+                                  style={{ width: 42, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                                  Upd+
+                                </button>
+                              ) : (
+                                <button onClick={() => handleCreateRevisionDraft(doc)} title={hasActiveDraft ? 'มีฉบับแก้ไข (Rev+) กำลังดำเนินการ — คลิกเพื่อเปิด' : 'สร้าง Revision ใหม่'}
+                                  style={{ width: 42, height: 32, borderRadius: 7, border: `1px solid ${hasActiveDraft ? 'var(--warning)' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: hasActiveDraft ? 'var(--warning)' : 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = hasActiveDraft ? 'var(--warning)' : 'var(--border)'; e.currentTarget.style.color = hasActiveDraft ? 'var(--warning)' : 'var(--muted)' }}>
+                                  Rev+
+                                </button>
+                              )
                             )}
                             {/* Edit */}
                             {canUpload && (doc.status !== 'Published' || userRole === 'Admin' || docRole === 'Document Controller') && (
@@ -1419,6 +1438,16 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
           userRole={userRole ?? ''}
           docRole={docRole}
           canAdd={canUpload}
+        />
+      )}
+
+      {/* Quick Update (Upd+) for non-controlled document types */}
+      {quickDoc && (
+        <QuickUpdateModal
+          doc={quickDoc}
+          canPublish={canPublishQuick}
+          onClose={() => setQuickDoc(null)}
+          onDone={handleQuickUpdateDone}
         />
       )}
 
