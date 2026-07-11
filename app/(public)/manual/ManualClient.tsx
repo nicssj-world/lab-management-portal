@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StickyScroll } from '@/components/ui/StickyScroll'
+import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
+import { isPdfLike } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
 
 const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Others'] as const
@@ -24,6 +26,7 @@ function fmtSize(bytes: number | null): string {
 export function ManualClient({ docs }: Props) {
   const [activeType, setActiveType] = useState<string>('All')
   const [downloading, setDownloading] = useState<string | null>(null)
+  const [viewer, setViewer] = useState<{ url: string; title: string } | null>(null)
 
   const filtered = activeType === 'All' ? docs : docs.filter((d) => d.type === activeType)
 
@@ -33,7 +36,13 @@ export function ManualClient({ docs }: Props) {
     try {
       const res = await fetch(`/api/documents/download?path=${encodeURIComponent(doc.file_url)}`)
       const json = await res.json()
-      if (json.url) window.open(json.url, '_blank')
+      if (json.url) {
+        if (isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type })) {
+          setViewer({ url: json.url, title: doc.file_name ?? doc.title })
+        } else {
+          window.open(json.url, '_blank')
+        }
+      }
     } finally {
       setDownloading(null)
     }
@@ -98,7 +107,7 @@ export function ManualClient({ docs }: Props) {
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontFamily: 'inherit', fontWeight: 600, opacity: downloading === doc.id ? .5 : 1 }}
                       >
                         <Icon name="download" size={14} />
-                        {downloading === doc.id ? 'กำลังโหลด...' : 'ดาวน์โหลด'}
+                        {downloading === doc.id ? 'กำลังโหลด...' : isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type }) ? 'อ่าน' : 'ดาวน์โหลด'}
                       </button>
                     </td>
                   </tr>
@@ -108,6 +117,7 @@ export function ManualClient({ docs }: Props) {
           </StickyScroll>
         </Card>
       )}
+      {viewer && <PdfViewerModal url={viewer.url} title={viewer.title} onClose={() => setViewer(null)} />}
     </>
   )
 }

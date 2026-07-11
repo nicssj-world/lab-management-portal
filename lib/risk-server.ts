@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
-import { mapIorStatusToStatus, requiresRca, riskLevel, riskScore } from '@/lib/risk-utils'
+import { mapIorStatusToStatus, normalizeIsoDate, requiresRca, riskLevel, riskScore } from '@/lib/risk-utils'
+
+const DATE_FIELDS = ['event_date', 'recorded_date', 'due_date', 'follow_up_date'] as const
 
 export async function getRiskActor() {
   const supabase = await createClient()
@@ -59,6 +61,10 @@ export function normalizeRiskPayload(input: Record<string, unknown>) {
     residual_score: residualScore,
     residual_level: riskLevel(residualScore),
     updated_at: new Date().toISOString(),
+  }
+
+  for (const field of DATE_FIELDS) {
+    if (field in input) payload[field] = normalizeIsoDate(input[field])
   }
 
   if (!payload.status) payload.status = mapIorStatusToStatus(toText(input.ior_status))

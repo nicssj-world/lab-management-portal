@@ -4,6 +4,8 @@ import { useState, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
+import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
+import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
 import type { ContractWithUsage } from '@/lib/queries/contracts'
 import type { ContractUsage } from '@/lib/supabase/types'
 
@@ -312,6 +314,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
   const [filterDept, setFilterDept] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [viewer, setViewer] = useState<{ url: string; title: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toasts, add: toast } = useToast()
 
@@ -374,11 +377,15 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
     setEditModal(c)
   }
 
-  async function downloadFile(contractId: number) {
-    const res = await fetch(`/api/admin/contracts/${contractId}/file`)
+  async function downloadFile(contract: ContractWithUsage) {
+    const res = await fetch(`/api/admin/contracts/${contract.id}/file`)
     if (!res.ok) { toast('ไม่สามารถดาวน์โหลดไฟล์ได้', false); return }
     const { url } = await res.json()
-    window.open(url, '_blank')
+    if (isPdfLike({ fileName: contract.file_url })) {
+      setViewer({ url, title: viewerFileNameFromPath(contract.file_url) })
+    } else {
+      window.open(url, '_blank')
+    }
   }
 
   function openUsage(c: ContractWithUsage) {
@@ -819,7 +826,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                         </span>
                       )}
                       {c.file_url && (
-                        <button onClick={() => downloadFile(c.id)} title="ดาวน์โหลดไฟล์สัญญา" style={{ padding: 5, borderRadius: 6, border: 'none', background: 'var(--surface-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--primary)' }}>
+                        <button onClick={() => downloadFile(c)} title={isPdfLike({ fileName: c.file_url }) ? 'อ่านไฟล์สัญญา' : 'ดาวน์โหลดไฟล์สัญญา'} style={{ padding: 5, borderRadius: 6, border: 'none', background: 'var(--surface-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--primary)' }}>
                           <Icon name="download" size={13} />
                         </button>
                       )}
@@ -1372,6 +1379,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
       )}
 
       {/* ── Toasts ── */}
+      {viewer && <PdfViewerModal url={viewer.url} title={viewer.title} onClose={() => setViewer(null)} />}
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {toasts.map(t => (
           <div key={t.id} style={{

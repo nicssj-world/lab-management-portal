@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getNewsById, getAdjacentNews } from '@/lib/queries/news'
 import { Icon } from '@/components/ui/Icon'
 import { NewsShareButton } from '@/components/news/NewsShareButton'
+import { NewsPdfButton } from '@/components/news/NewsPdfButton'
 import { CAT_MAP, CATEGORIES } from '@/lib/validations/news'
 import type { News } from '@/lib/supabase/types'
 import { sanitizeRichHtml } from '@/lib/html-sanitize'
@@ -185,22 +186,7 @@ export default async function NewsDetailPage({ params }: Props) {
           {/* Action buttons */}
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             {news.pdf_path && (
-              <a
-                href={`/api/news/${news.id}/pdf`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 7,
-                  height: 38, padding: '0 18px', borderRadius: 9,
-                  border: 'none', background: 'var(--primary)',
-                  boxShadow: '0 2px 8px rgba(30,95,173,.30)',
-                  textDecoration: 'none', fontSize: 13.5, color: '#fff', fontWeight: 700,
-                  letterSpacing: '.01em',
-                }}
-              >
-                <Icon name="download" size={14} />
-                ดาวน์โหลด PDF
-              </a>
+              <NewsPdfButton url={`/api/news/${news.id}/pdf`} title={news.title} />
             )}
             <NewsShareButton title={news.title} />
           </div>
