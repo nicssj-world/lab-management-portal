@@ -442,6 +442,30 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
     if (file) handleWordFile(file)
   }, [handleWordFile])
 
+  // Early duplicate-code warning — reuses the same error/duplicateDocumentId state (and its
+  // "เปิดเอกสารเดิม" button) that the save-time 409 response drives, so the user sees the
+  // warning the moment a code is extracted/typed instead of only after clicking บันทึก.
+  // The final save still re-checks server-side; this is a best-effort early heads-up.
+  async function checkDuplicateCode(code: string) {
+    const trimmed = code.trim().toUpperCase()
+    if (!trimmed) return
+    try {
+      const res = await fetch(`/api/admin/documents?code=${encodeURIComponent(trimmed)}&pageSize=1`)
+      if (!res.ok) return
+      const json = await res.json()
+      const existing = (json.data as Document[] | undefined)?.[0]
+      if (existing && existing.id !== doc?.id) {
+        setDuplicateDocumentId(existing.id)
+        setError(`รหัสเอกสารนี้มีอยู่ในระบบแล้ว (${existing.document_code}, Rev. ${existing.revision})`)
+      } else if (duplicateDocumentId) {
+        setDuplicateDocumentId(null)
+        setError('')
+      }
+    } catch {
+      // silent — best-effort early check only
+    }
+  }
+
   async function extractFromFile() {
     if (!selectedFile) return
     setExtracting(true)
@@ -454,6 +478,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           setDocumentCode(formCode)
           const docType = typeFromCode(formCode)
           if (docType) setType(docType)
+          checkDuplicateCode(formCode)
         }
         if (formTitle) setTitle(formTitle)
 
@@ -489,6 +514,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           if (dept) setDepartment(dept)
           const docType = typeFromCode(code)
           if (docType) setType(docType)
+          checkDuplicateCode(code)
         }
         if (fields.revision)      setRevision(fields.revision)
         if (fields.ownerName)     setOwnerName(fields.ownerName)
@@ -526,6 +552,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         if (dept) setDepartment(dept)
         const docType = typeFromCode(code)
         if (docType) setType(docType)
+        checkDuplicateCode(code)
       }
       if (fields.revision)     setRevision(fields.revision)
       if (fields.ownerName)    setOwnerName(fields.ownerName)
@@ -810,6 +837,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                   const docType = typeFromCode(val)
                   if (docType) setType(docType)
                 }}
+                onBlur={(e) => checkDuplicateCode(e.target.value)}
                 style={isPublishedCorrection ? lockedInputStyle : inputStyle}
                 placeholder="เช่น QM-LAB-01"
               />
