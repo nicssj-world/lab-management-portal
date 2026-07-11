@@ -7,6 +7,7 @@ import { getSourceUploadedDocumentIds } from '@/lib/documents/pending'
 import { isReviewTrackedType, reviewDueDate } from '@/lib/documents/review'
 import { Stat } from '@/components/ui/Stat'
 import { Icon } from '@/components/ui/Icon'
+import { DOC_TYPES as TYPE_ORDER, TYPE_LABEL } from '@/lib/documents/type-labels'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,12 +28,6 @@ interface DashDoc {
   updated_at: string
 }
 
-const TYPE_ORDER = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others']
-const TYPE_LABEL: Record<string, string> = {
-  QP: 'ระเบียบปฏิบัติ (QP)', WI: 'วิธีปฏิบัติงาน (WI)', Form: 'แบบฟอร์ม (Form)',
-  Policy: 'นโยบาย (Policy)', Manual: 'คู่มือ (Manual)', Record: 'บันทึกคุณภาพ (Record)',
-  Reference: 'เอกสารอ้างอิง (Reference)', 'Card file': 'Card file', Others: 'อื่นๆ',
-}
 const STATUS_META: { key: string; th: string; color: string }[] = [
   { key: 'Draft',     th: 'ฉบับร่าง',        color: '#64748B' },
   { key: 'Review',    th: 'อยู่ระหว่างทบทวน', color: '#D97706' },
@@ -153,7 +148,7 @@ export default async function DocumentsDashboardPage() {
   })
 
   const typeCounts = TYPE_ORDER
-    .map((t) => ({ type: t, count: docs.filter((d) => (TYPE_ORDER.includes(d.type) ? d.type : 'Others') === t).length }))
+    .map((t) => ({ type: t, count: docs.filter((d) => ((TYPE_ORDER as readonly string[]).includes(d.type) ? d.type : 'Others') === t).length }))
     .filter((t) => t.count > 0)
   const maxTypeCount = Math.max(1, ...typeCounts.map((t) => t.count))
 
