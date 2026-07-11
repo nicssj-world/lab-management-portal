@@ -276,7 +276,7 @@ export interface Document {
   id: string
   document_code: string
   title: string
-  type: 'QP' | 'WI' | 'Form' | 'Policy' | 'Manual' | 'Record' | 'Reference' | 'Card file' | 'Others'
+  type: 'QP' | 'WI' | 'Form' | 'Policy' | 'Manual' | 'QM' | 'Reference' | 'Card file' | 'Lb' | 'Others'
   department: string | null
   revision: string
   status: 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolete'
