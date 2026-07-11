@@ -329,6 +329,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
   const [extractingWord, setExtractingWord] = useState(false)
   const [error, setError] = useState('')
   const [duplicateDocumentId, setDuplicateDocumentId] = useState<string | null>(null)
+  const [duplicateCode, setDuplicateCode] = useState('')
   const [coverDetailsOpen, setCoverDetailsOpen] = useState(isEdit)
 
   const [title, setTitle]               = useState(doc?.title ?? '')
@@ -456,9 +457,11 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
       const existing = (json.data as Document[] | undefined)?.[0]
       if (existing && existing.id !== doc?.id) {
         setDuplicateDocumentId(existing.id)
+        setDuplicateCode(trimmed)
         setError(`รหัสเอกสารนี้มีอยู่ในระบบแล้ว (${existing.document_code}, Rev. ${existing.revision})`)
       } else if (duplicateDocumentId) {
         setDuplicateDocumentId(null)
+        setDuplicateCode('')
         setError('')
       }
     } catch {
@@ -572,6 +575,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
 
   async function handleSave() {
     setDuplicateDocumentId(null)
+    setDuplicateCode('')
     setUploadProgress(null)
     if (!title.trim())         { setError('กรุณากรอกชื่อเอกสาร'); return }
     if (!documentCode.trim())  { setError('กรุณากรอกรหัสเอกสาร'); return }
@@ -698,7 +702,9 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
 
       const json = await readJsonOrError(res)
       if (!res.ok) {
-        setDuplicateDocumentId(typeof json.documentId === 'string' ? json.documentId : null)
+        const dupId = typeof json.documentId === 'string' ? json.documentId : null
+        setDuplicateDocumentId(dupId)
+        setDuplicateCode(dupId ? documentCode.trim().toUpperCase() : '')
         setError(json.error ?? 'เกิดข้อผิดพลาด')
         setSaving(false)
         return
@@ -724,6 +730,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
       onSaved(finalDoc)
     } catch {
       setDuplicateDocumentId(null)
+      setDuplicateCode('')
       setError('เกิดข้อผิดพลาด กรุณาลองใหม่')
       setSaving(false)
     }
@@ -1199,7 +1206,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           >
             ยกเลิก
           </button>
-          <Button variant="primary" onClick={handleSave} disabled={saving || !!revisionWarning}>
+          <Button variant="primary" onClick={handleSave} disabled={saving || !!revisionWarning || (!!duplicateDocumentId && documentCode.trim().toUpperCase() === duplicateCode)}>
             {saving
               ? (isEdit ? 'กำลังบันทึก...' : (isImportCurrent ? 'กำลังนำเข้า...' : publishImmediately ? 'กำลังเผยแพร่...' : 'กำลังสร้าง Draft...'))
               : (isEdit ? 'บันทึกการแก้ไข' : (isImportCurrent ? 'นำเข้าเป็น Published' : publishImmediately ? 'สร้างและเผยแพร่ทันที' : 'บันทึกเป็น Draft'))}
