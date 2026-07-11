@@ -32,8 +32,9 @@ export const DocumentSchema = z.object({
   legacy_cover_included: z.boolean().optional(),
   import_mode: z.enum(['current']).optional(),
   // Read audience: profile depts (user-schema DEPARTMENTS) that must read this document;
-  // null/[] = the whole division (every active user).
+  // together with specific profile ids. Both null/[] = the whole division (every active user).
   read_audience_depts: z.array(z.enum(DEPARTMENTS)).nullable().optional(),
+  read_audience_user_ids: z.array(z.string().uuid()).nullable().optional(),
 })
 
 export type DocumentInput = z.infer<typeof DocumentSchema>

@@ -21,7 +21,7 @@ export default async function ReadReportPage() {
   const [docsRes, peopleRes, logsRes] = await Promise.all([
     // Read compliance is tracked for controlled documents that staff must read (QP/WI/Manual).
     supabaseAdmin.from('documents')
-      .select('id, document_code, title, type, department, revision, published_at, read_audience_depts')
+      .select('id, document_code, title, type, department, revision, published_at, read_audience_depts, read_audience_user_ids')
       .eq('status', 'Published')
       .in('type', ['QP', 'WI', 'Manual'])
       .is('deleted_at', null)
@@ -65,6 +65,7 @@ export default async function ReadReportPage() {
     revision: d.revision,
     published_at: d.published_at,
     read_audience_depts: d.read_audience_depts,
+    read_audience_user_ids: d.read_audience_user_ids,
     readers: Array.from(readersByDoc.get(d.id)?.entries() ?? []).map(([userId, lastRead]) => ({ userId, lastRead })),
   }))
 
