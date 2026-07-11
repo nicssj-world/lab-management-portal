@@ -148,9 +148,11 @@ export function QuickUpdateModal({ doc, canPublish, onClose, onDone }: Props) {
           }}
         >
           <input ref={inputRef} type="file" accept={ACCEPT} hidden onChange={(e) => pickFile(e.target.files?.[0] ?? null)} />
-          <Icon name="upload" size={20} style={{ color: dragOver ? 'var(--primary)' : 'var(--muted)' }} />
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginTop: 6 }}>
-            {file ? file.name : dragOver ? 'ปล่อยไฟล์ที่นี่' : 'เลือกไฟล์ใหม่ หรือลากไฟล์มาวาง (PDF, DOC, DOCX, XLS, XLSX)'}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <Icon name="upload" size={20} style={{ color: dragOver ? 'var(--primary)' : 'var(--muted)', flexShrink: 0 }} />
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
+              {file ? file.name : dragOver ? 'ปล่อยไฟล์ที่นี่' : 'เลือกไฟล์ใหม่ หรือลากไฟล์มาวาง (PDF, DOC, DOCX, XLS, XLSX)'}
+            </div>
           </div>
           {file && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{(file.size / 1024).toFixed(0)} KB</div>}
         </div>
