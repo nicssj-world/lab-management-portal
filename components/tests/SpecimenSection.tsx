@@ -24,12 +24,57 @@ function TubeIcon({ color }: { color: string }) {
   )
 }
 
+export function parseNumberedSpecimenText(value: string | null | undefined) {
+  const lines = String(value ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines.length === 0) return null
+
+  const items: { value: number; text: string }[] = []
+
+  for (const line of lines) {
+    const match = line.match(/^(\d+)[.)]\s*(.*)$/)
+
+    if (match) {
+      items.push({ value: Number(match[1]), text: match[2].trim() })
+      continue
+    }
+
+    const previous = items.at(-1)
+    if (!previous) return null
+    previous.text = [previous.text, line].filter(Boolean).join(' ')
+  }
+
+  return items.length > 0 ? items : null
+}
+
+function TextValue({ value }: { value: string }) {
+  const numberedItems = parseNumberedSpecimenText(value)
+
+  if (numberedItems) {
+    return (
+      <ol className="specimen-numbered-list" style={{ whiteSpace: 'normal' }}>
+        {numberedItems.map((item) => (
+          <li key={`${item.value}-${item.text}`}>
+            <span className="specimen-numbered-marker">{item.value}.</span>
+            <span>{item.text}</span>
+          </li>
+        ))}
+      </ol>
+    )
+  }
+
+  return <div style={{ fontSize: 13, color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>{value}</div>
+}
+
 function Row({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null
   return (
     <div className="specimen-detail-row" style={{ display: 'flex', gap: 12, paddingBottom: 10, marginBottom: 10, borderBottom: '1px solid var(--border)' }}>
       <span style={{ fontSize: 13, color: 'var(--muted)', minWidth: 140, flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 13, color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>{value}</span>
+      <TextValue value={value} />
     </div>
   )
 }
@@ -42,6 +87,28 @@ export function SpecimenSection({ test }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <style>{`
+        .specimen-numbered-list {
+          margin: 0;
+          padding-left: 0;
+          color: var(--ink);
+          font-size: 13px;
+          line-height: 1.55;
+          list-style: none;
+          white-space: normal;
+        }
+        .specimen-numbered-list li {
+          display: grid;
+          grid-template-columns: 24px minmax(0, 1fr);
+          column-gap: 4px;
+          align-items: start;
+          margin: 0 0 2px;
+        }
+        .specimen-numbered-marker {
+          color: var(--ink);
+          display: inline-block;
+          text-align: right;
+          font-variant-numeric: tabular-nums;
+        }
         @media (max-width: 767px) {
           .specimen-detail-row {
             display: block !important;

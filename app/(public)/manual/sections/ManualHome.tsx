@@ -203,6 +203,78 @@ export function ManualHome({ lang, goto }: Props) {
           opacity: 1 !important;
           box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 14px 30px rgba(30,95,173,.30);
         }
+        [data-theme="dark"] .manual-home {
+          --manual-accent: #60A5FA;
+          --manual-accent-soft: rgba(96,165,250,.15);
+          --manual-accent-border: rgba(96,165,250,.28);
+          --manual-gold: #FBBF24;
+          --manual-shadow-sm: 0 10px 24px rgba(0,0,0,.22);
+          --manual-shadow-md: 0 18px 40px rgba(0,0,0,.32);
+          --primary: #60A5FA;
+          --primary-soft: rgba(96,165,250,.15);
+          background:
+            radial-gradient(circle at 92% 4%, rgba(96,165,250,.18), transparent 30%),
+            radial-gradient(circle at 5% 100%, rgba(251,191,36,.12), transparent 32%),
+            linear-gradient(180deg, rgba(15,23,42,.96), rgba(30,41,59,.88));
+          border-color: rgba(96,165,250,.22);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+        }
+        [data-theme="dark"] .manual-home::before {
+          background:
+            linear-gradient(rgba(96,165,250,.055) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(96,165,250,.045) 1px, transparent 1px);
+        }
+        [data-theme="dark"] .manual-home-kicker {
+          background: rgba(15,23,42,.74);
+          border-color: rgba(96,165,250,.26);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.08), var(--manual-shadow-sm);
+        }
+        [data-theme="dark"] .manual-stat-card,
+        [data-theme="dark"] .manual-info-card,
+        [data-theme="dark"] .manual-team-card,
+        [data-theme="dark"] .manual-section-link,
+        [data-theme="dark"] .manual-pdf-card {
+          box-shadow: var(--manual-shadow-sm), inset 0 1px 0 rgba(255,255,255,.07) !important;
+        }
+        [data-theme="dark"] .manual-stat-card {
+          background: linear-gradient(135deg, rgba(30,41,59,.94), var(--stat-tone-soft, rgba(96,165,250,.13))) !important;
+          border-color: rgba(148,163,184,.24) !important;
+        }
+        [data-theme="dark"] .manual-info-card {
+          background: rgba(30,41,59,.88) !important;
+          border-color: rgba(148,163,184,.24) !important;
+        }
+        [data-theme="dark"] .manual-team-card {
+          background: linear-gradient(135deg, rgba(30,41,59,.90), rgba(15,23,42,.72)) !important;
+          border-color: rgba(148,163,184,.22) !important;
+        }
+        [data-theme="dark"] .manual-info-card:hover,
+        [data-theme="dark"] .manual-team-card:hover,
+        [data-theme="dark"] .manual-stat-card:hover {
+          box-shadow: var(--manual-shadow-md), inset 0 1px 0 rgba(255,255,255,.09) !important;
+        }
+        [data-theme="dark"] .manual-team-icon,
+        [data-theme="dark"] .manual-section-icon {
+          background: rgba(96,165,250,.12) !important;
+          border-color: rgba(96,165,250,.24);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+        }
+        [data-theme="dark"] .manual-section-link {
+          background: linear-gradient(135deg, rgba(30,41,59,.95), rgba(15,23,42,.78)) !important;
+          border-color: rgba(148,163,184,.22) !important;
+        }
+        [data-theme="dark"] .manual-section-link:hover,
+        [data-theme="dark"] .manual-section-link:focus-visible {
+          background: linear-gradient(135deg, rgba(96,165,250,.18), rgba(30,41,59,.96) 58%, rgba(251,191,36,.08)) !important;
+          box-shadow: var(--manual-shadow-md), inset 0 1px 0 rgba(255,255,255,.10) !important;
+        }
+        [data-theme="dark"] .manual-section-index {
+          color: rgba(148,163,184,.30) !important;
+        }
+        [data-theme="dark"] .manual-pdf-card {
+          background: linear-gradient(135deg, rgba(96,165,250,.16), rgba(30,41,59,.88) 46%, rgba(15,23,42,.78)) !important;
+          border-color: rgba(96,165,250,.28) !important;
+        }
         @media (prefers-reduced-motion: reduce) {
           .manual-stat-card,
           .manual-info-card,
