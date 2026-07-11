@@ -11,7 +11,7 @@ import { documentPdfProxyUrl, isPdfLike } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
 import { TYPE_LABEL } from '@/lib/documents/type-labels'
 
-const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'QM', 'Lb', 'Others'] as const
+const TYPE_TABS = ['All', 'QM', 'QP', 'WI', 'Form', 'Lb', 'Manual', 'Policy', 'Others'] as const
 const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray'> = {
   QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', QM: 'green', Lb: 'purple', Others: 'gray',
 }

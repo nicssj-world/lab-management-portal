@@ -4,14 +4,14 @@
 export { DOC_TYPES } from '@/lib/validations/document'
 
 export const TYPE_LABEL: Record<string, string> = {
+  QM: 'คู่มือคุณภาพ (QM)',
   QP: 'ระเบียบปฏิบัติ (QP)',
   WI: 'วิธีปฏิบัติงาน (WI)',
-  Form: 'แบบฟอร์ม (Fm)',
-  Policy: 'นโยบาย (CBH)',
-  Manual: 'คู่มือ (MN)',
-  QM: 'คู่มือคุณภาพ (QM)',
   Reference: 'เอกสารอ้างอิง (Rf)',
+  Form: 'แบบฟอร์ม (Fm)',
   'Card file': 'เอกสารประกอบการปฏิบัติงาน (Cf)',
   Lb: 'สมุดบันทึก (Lb)',
+  Manual: 'คู่มือ (MN)',
+  Policy: 'นโยบาย (CBH)',
   Others: 'เอกสารอื่นๆ',
 }
