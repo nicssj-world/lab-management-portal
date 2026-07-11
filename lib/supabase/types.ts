@@ -382,6 +382,8 @@ export interface News {
   image_path: string | null
   pdf_path: string | null
   views: number
+  line_sent_at?: string | null
+  line_sent_by?: string | null
   created_at: string
   updated_at: string
 }
