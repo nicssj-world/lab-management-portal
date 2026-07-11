@@ -44,6 +44,7 @@ export function QuickUpdateModal({ doc, canPublish, onClose, onDone }: Props) {
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
   const [error, setError] = useState('')
+  const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const nextRev = nextRevisionValue(doc.revision)
@@ -132,12 +133,24 @@ export function QuickUpdateModal({ doc, canPublish, onClose, onDone }: Props) {
         {/* File picker */}
         <div
           onClick={() => !busy && inputRef.current?.click()}
-          style={{ border: '2px dashed var(--border)', borderRadius: 10, padding: 20, textAlign: 'center', cursor: busy ? 'not-allowed' : 'pointer', background: 'var(--surface-2)', marginBottom: 14 }}
+          onDragOver={(e) => { e.preventDefault(); if (!busy) setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault()
+            setDragOver(false)
+            if (busy) return
+            pickFile(e.dataTransfer.files?.[0] ?? null)
+          }}
+          style={{
+            border: `2px dashed ${dragOver ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 10, padding: 20, textAlign: 'center',
+            cursor: busy ? 'not-allowed' : 'pointer', background: dragOver ? 'var(--primary-soft)' : 'var(--surface-2)',
+            marginBottom: 14, transition: 'border-color .12s, background .12s',
+          }}
         >
           <input ref={inputRef} type="file" accept={ACCEPT} hidden onChange={(e) => pickFile(e.target.files?.[0] ?? null)} />
-          <Icon name="upload" size={20} style={{ color: 'var(--muted)' }} />
+          <Icon name="upload" size={20} style={{ color: dragOver ? 'var(--primary)' : 'var(--muted)' }} />
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginTop: 6 }}>
-            {file ? file.name : 'เลือกไฟล์ใหม่ (PDF, DOC, DOCX, XLS, XLSX)'}
+            {file ? file.name : dragOver ? 'ปล่อยไฟล์ที่นี่' : 'เลือกไฟล์ใหม่ หรือลากไฟล์มาวาง (PDF, DOC, DOCX, XLS, XLSX)'}
           </div>
           {file && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{(file.size / 1024).toFixed(0)} KB</div>}
         </div>
