@@ -44,10 +44,15 @@ export async function POST(req: NextRequest) {
   if (!rows.success) return NextResponse.json({ error: 'รูปแบบไฟล์ไม่ตรง template หรือมีข้อมูลบางคอลัมน์อ่านไม่ได้' }, { status: 422 })
 
   const errors: string[] = []
+  const todayBangkok = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
   const payloads = rows.data.map((row, index) => {
     const eventDate = normalizeIsoDate(row.event_date)
     const recordedDate = normalizeIsoDate(row.recorded_date)
     const eventDetail = toText(row.event_detail)
+    if ((eventDate && eventDate > todayBangkok) || (recordedDate && recordedDate > todayBangkok)) {
+      errors.push(`แถว ${index + 2}: วันที่เกิดเหตุ/วันที่บันทึกเกินวันปัจจุบัน (ตรวจสอบรูปแบบ พ.ศ./ค.ศ. ให้ถูกต้อง)`)
+      return null
+    }
     const externalNo = toText(row.external_no)
     const mainCategory = toText(row.event_main_category)
     const subCategory = toText(row.event_sub_category)

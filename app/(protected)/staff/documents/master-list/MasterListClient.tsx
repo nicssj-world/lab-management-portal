@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
+import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
+import { isPdfLike } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
 
 // ── Constants ─────────────────────────────────────────────────
@@ -89,6 +91,7 @@ const { toasts, add: toast } = useToast()
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({})
   const [exportMenu, setExportMenu]       = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
+  const [viewer, setViewer] = useState<{ url: string; title: string } | null>(null)
 
   const timer = useRef<NodeJS.Timeout | null>(null)
   const exportMenuRef = useRef<HTMLDivElement>(null)
@@ -163,7 +166,11 @@ const { toasts, add: toast } = useToast()
       const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(doc.file_url)}`)
       const { url } = await res.json()
       if (!url) { toast('ไม่สามารถดาวน์โหลดได้', false); return }
-      window.open(url, '_blank')
+      if (isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type })) {
+        setViewer({ url, title: doc.file_name ?? doc.title })
+      } else {
+        window.open(url, '_blank')
+      }
     } catch { toast('เกิดข้อผิดพลาด', false) }
   }
 
@@ -622,6 +629,7 @@ const { toasts, add: toast } = useToast()
           onSaved={handleAdded}
         />
       )}
+      {viewer && <PdfViewerModal url={viewer.url} title={viewer.title} onClose={() => setViewer(null)} />}
 
       {/* Toasts */}
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>

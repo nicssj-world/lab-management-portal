@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { PdfViewer } from '@/components/documents/PdfViewer'
 import { createClient } from '@/lib/supabase/server'
 import { getRolePermissions } from '@/lib/permissions'
 import { staffFileTypeForPath } from '@/lib/personnel/storage'
@@ -86,9 +87,9 @@ export default async function PersonnelAttachmentPreviewPage(ctx: {
               <img src={fileUrl} alt={fileName} style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 132px)', objectFit: 'contain' }} />
             </div>
           ) : isPdf(contentType) ? (
-            <object data={fileUrl} type="application/pdf" style={{ width: '100%', height: 'calc(100vh - 100px)', border: 0 }}>
-              <iframe src={fileUrl} title={fileName} style={{ width: '100%', height: 'calc(100vh - 100px)', border: 0 }} />
-            </object>
+            <div style={{ height: 'calc(100vh - 100px)' }}>
+              <PdfViewer url={fileUrl} fileName={fileName} mimeType={contentType} />
+            </div>
           ) : (
             <div style={{ padding: 24, color: 'var(--muted)', fontSize: 13 }}>
               ไม่รองรับการพรีวิวไฟล์ชนิดนี้ กรุณากดเปิดไฟล์ในหน้านี้

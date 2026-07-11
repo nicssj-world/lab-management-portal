@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import { DocumentDetailModal, PdfViewerModal, type Attachment } from '@/components/documents/DocumentDetailModal'
+import { PdfViewer } from '@/components/documents/PdfViewer'
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
 import { allowedTransitions } from '@/lib/documents/transitions'
 import { canMoveToStatus } from '@/lib/documents/workflow'
@@ -407,8 +408,7 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
     win.addEventListener('load', () => { win.print(); URL.revokeObjectURL(blobUrl) }, { once: true })
   }
 
-  const isPdf = mime?.includes('pdf')
-  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)
+  const isPdf = mime?.includes('pdf') || /\.pdf$/i.test(doc.file_name ?? doc.file_url ?? '')
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 1100, display: 'flex', flexDirection: 'column' }}>
@@ -454,25 +454,8 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
               <Icon name="alert" size={40} style={{ color: 'rgba(255,255,255,.5)' }} />
               <span style={{ fontSize: 14, color: 'rgba(255,255,255,.7)' }}>{errMsg}</span>
             </div>
-          ) : isPdf && !isIOS ? (
-            <iframe
-              src={url!}
-              style={{ width: '100%', height: '100%', border: 'none' }}
-              title={doc.title}
-            />
-          ) : isPdf && isIOS ? (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ background: 'var(--card)', borderRadius: 16, padding: 36, textAlign: 'center', maxWidth: 380 }}>
-                <div style={{ width: 64, height: 64, borderRadius: 16, background: 'rgba(30,95,173,.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  <Icon name="doc" size={28} style={{ color: 'var(--primary)' }} />
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>{doc.title}</div>
-                <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>แตะปุ่มด้านล่างเพื่อเปิด PDF ใน Safari</div>
-                <button onClick={() => window.open(url!, '_blank')} style={{ background: 'none', border: 0, padding: 0 }}>
-                  <Button variant="primary" icon="eye">เปิด PDF</Button>
-                </button>
-              </div>
-            </div>
+          ) : isPdf && url ? (
+            <PdfViewer url={url} fileName={doc.file_name ?? doc.title} mimeType={mime} />
           ) : (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ background: 'var(--card)', borderRadius: 16, padding: 36, textAlign: 'center', maxWidth: 380 }}>
