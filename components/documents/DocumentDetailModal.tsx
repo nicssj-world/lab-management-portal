@@ -252,6 +252,11 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
     links.filter(l => l.documents?.file_url).length +
     attachments.length
 
+  // "ดาวน์โหลดทั้งหมด" is restricted to Reviewer/DCC/Admin — other roles use the per-file
+  // download buttons on each FileCard instead.
+  const canDownloadAll = userRole === 'Admin' || userRole === 'Document Controller' || userRole === 'Reviewer'
+    || docRole === 'Document Controller' || docRole === 'Reviewer'
+
   const STATUS_CHIP: Record<DocStatus, { bg: string; color: string }> = {
     Draft:     { bg: 'rgba(100,116,139,.12)', color: '#475569' },
     Review:    { bg: 'rgba(217,119,6,.12)',   color: '#B45309' },
@@ -366,7 +371,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
             <div>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', flex: 1 }}>ดาวน์โหลดไฟล์</div>
-                {downloadAllCount > 1 && (
+                {downloadAllCount > 1 && canDownloadAll && (
                   <button
                     onClick={handleDownloadAll}
                     disabled={downloadingAll || attachLoading}

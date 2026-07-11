@@ -75,6 +75,10 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
 }) {
 
   const canDownloadRevision = userRole === 'Admin' || docRole === 'Document Controller'
+  // "ดาวน์โหลดทั้งหมด (ZIP)" is restricted to Reviewer/DCC/Admin — other roles use the
+  // per-file download buttons on each attachment instead.
+  const canDownloadAll = userRole === 'Admin' || userRole === 'Document Controller' || userRole === 'Reviewer'
+    || docRole === 'Document Controller' || docRole === 'Reviewer'
   const allowRevisionHistoryBackfill = canAdd && (userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller')
   const canSkipSystemCover = userRole === 'Admin'
     || userRole === 'Quality Manager'
@@ -990,7 +994,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
                     <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', flex: 1 }}>
                       ไฟล์แนบ ({draftAttachments.length})
                     </div>
-                    {(draftAttachments.length > 0 || activeDraft.word_url || activeDraft.file_url) && (
+                    {(draftAttachments.length > 0 || activeDraft.word_url || activeDraft.file_url) && canDownloadAll && (
                       <button
                         onClick={handleDownloadDraftZip}
                         disabled={zipBusy}
