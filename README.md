@@ -100,6 +100,33 @@ Run `scripts/add-document-annual-review.sql` in Supabase before using these.
 - **Annual review reminder + one-click review** — QP/WI/Manual Published documents show a "ต้องทบทวน" badge as their yearly review approaches (and "เกินกำหนดทบทวน" when overdue). A Reviewer/DCC/Admin marks a QP/WI as "ทบทวนแล้ว"; confirmed documents queue under "รอทบทวนประจำปี" where a DCC records them in one click. This **does not bump the revision or change any content/dates** — it appends a "ทบทวนแล้ว ไม่มีการแก้ไข" (Rev "-") row to the document's revision-history page and resets the review clock. Manual (QM/MN) documents are reminded but must be reviewed through a normal Rev+.
 - **Read-compliance report** (`/staff/documents/read-report`, Admin/DCC/Quality Manager/Laboratory Director) — shows how many staff have read each Published QP/WI/Manual document (X/Y), with per-document read audiences (whole division or specific departments, settable in the upload form or in bulk). Read counts are measured against the current revision's publish date, so a real content revision resets them while a no-change review does not.
 
+## Changelog
+
+### 2026-07-12
+
+**Risk Register date fix**
+- Fixed Buddhist-Era/Christian-Era date parsing in the Risk Register import pipeline (`lib/risk-utils.ts`) — 4-digit BE years, 2-digit years, and day/month order were all previously mishandled; unified into one parser shared by slash- and dash-formatted dates.
+- Added future-date validation on import; the risk register UI blocks picking a future event date.
+- One-time data cleanup: nulled `event_date`/`recorded_date` on 22 existing rows that had been imported with future dates by the old parser; `scripts/fix-risk-be-dates.sql` added for the separate BE/century-shift corruption pattern found in historical data.
+
+**Document types**
+- Added `QM` (Quality Manual) and `Lb` (Log book); removed the unused `Record` type. `QM` was split out of `Manual` (`QM-`prefixed document codes used to be filed as `Manual`) — the one existing Quality Manual document (`QM-LAB-01`) was migrated.
+- Consolidated the "ชื่อเต็ม (Code)" type labels that used to be duplicated (inconsistently) across ~6 files into one shared source, `lib/documents/type-labels.ts`.
+- Set a fixed display order everywhere types are listed: QM, QP, WI, Reference, Form, Card file, Lb, Manual, Policy, Others.
+- `QM` now participates in the annual-review workflow and the read-compliance report, same as QP/WI/Manual.
+- Master List PDF export: type column now shows the full label instead of the bare code; fixed the footer form code (`FM-QP-LAB-01/01`).
+
+**Document workflow**
+- New "Upd+" quick-update button for non-controlled document types (Reference, Form, Card file, Lb, Policy, Others) — one dialog to swap the file and bump the revision, instead of the full Rev+ revision-draft flow. Admin/DCC publish immediately; Reviewer queues for DCC/Admin approval (one-click "Published" shortcut added to the pending page).
+- Server now enforces that only Admin/DCC can publish a revision draft (previously any edit-capable role could).
+- Document code duplicate check now runs immediately (on data extract / on blur) instead of only on Save, and the Save button disables while a duplicate is still showing.
+- "ดาวน์โหลดทั้งหมด" (download-all) buttons restricted to Reviewer/DCC/Admin; other roles use the per-file download buttons.
+- Categories page (`/staff/documents/categories`) gained an in-page filter that narrows the existing browse tree (department → type → docs) and auto-expands matches — distinct from the document library's full-text search.
+- "หมวดหมู่การตรวจ" moved from the general sidebar section into "ระบบ" (System).
+
+**Maintenance**
+- Added `scripts/archive-audit-log.sql` (see Maintenance section below) since `audit_log` has no automatic cleanup.
+
 ## Maintenance
 
 - **Audit log archive** — `audit_log` (backs `/staff/activity`) has no automatic cleanup or cron; it just grows. Periodically (e.g. once a year) run `scripts/archive-audit-log.sql` in Supabase Dashboard > SQL Editor to move rows older than 1 year into `audit_log_archive` (cold storage, not deleted — audit_log is the QMS audit trail and should stay recoverable). Safe to re-run; no-ops on rows already archived. There's no reminder system for this — it has to be done manually when someone remembers.
