@@ -12,9 +12,10 @@ import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { documentPdfProxyUrl, isPdfLike } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
+import { TYPE_LABEL } from '@/lib/documents/type-labels'
 
 // ── Constants ─────────────────────────────────────────────────
-const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'] as const
+const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'QM', 'Reference', 'Card file', 'Lb', 'Others'] as const
 
 const DEPARTMENTS = [
   'กลุ่มงานเทคนิคการแพทย์',
@@ -30,13 +31,13 @@ const DEPARTMENTS = [
 ] as const
 
 const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray' | 'red'> = {
-  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray',
-  Reference: 'red', 'Card file': 'amber', Others: 'gray',
+  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', QM: 'green',
+  Reference: 'red', 'Card file': 'amber', Lb: 'purple', Others: 'gray',
 }
 const TYPE_DOT_FG: Record<string, string> = {
   QP: '#1E5FAD', WI: '#0D9488', Form: '#9333EA',
-  Policy: '#D97706', Manual: '#16A34A', Record: '#64748B',
-  Reference: '#EA580C', 'Card file': '#F59E0B', Others: '#64748B',
+  Policy: '#D97706', Manual: '#16A34A', QM: '#059669',
+  Reference: '#EA580C', 'Card file': '#F59E0B', Lb: '#4F46E5', Others: '#64748B',
 }
 
 type DocStatus = 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolete'
@@ -449,7 +450,7 @@ const { toasts, add: toast } = useToast()
             color: activeType === t ? 'var(--ink)' : 'var(--muted)',
             fontWeight: activeType === t ? 700 : 500,
           }}>
-            {t}
+            {t === 'All' ? t : (TYPE_LABEL[t] ?? t)}
           </button>
         ))}
       </div>
