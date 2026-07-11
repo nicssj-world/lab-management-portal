@@ -100,6 +100,10 @@ Run `scripts/add-document-annual-review.sql` in Supabase before using these.
 - **Annual review reminder + one-click review** — QP/WI/Manual Published documents show a "ต้องทบทวน" badge as their yearly review approaches (and "เกินกำหนดทบทวน" when overdue). A Reviewer/DCC/Admin marks a QP/WI as "ทบทวนแล้ว"; confirmed documents queue under "รอทบทวนประจำปี" where a DCC records them in one click. This **does not bump the revision or change any content/dates** — it appends a "ทบทวนแล้ว ไม่มีการแก้ไข" (Rev "-") row to the document's revision-history page and resets the review clock. Manual (QM/MN) documents are reminded but must be reviewed through a normal Rev+.
 - **Read-compliance report** (`/staff/documents/read-report`, Admin/DCC/Quality Manager/Laboratory Director) — shows how many staff have read each Published QP/WI/Manual document (X/Y), with per-document read audiences (whole division or specific departments, settable in the upload form or in bulk). Read counts are measured against the current revision's publish date, so a real content revision resets them while a no-change review does not.
 
+## Maintenance
+
+- **Audit log archive** — `audit_log` (backs `/staff/activity`) has no automatic cleanup or cron; it just grows. Periodically (e.g. once a year) run `scripts/archive-audit-log.sql` in Supabase Dashboard > SQL Editor to move rows older than 1 year into `audit_log_archive` (cold storage, not deleted — audit_log is the QMS audit trail and should stay recoverable). Safe to re-run; no-ops on rows already archived. There's no reminder system for this — it has to be done manually when someone remembers.
+
 ## Getting Started
 
 First, run the development server:
