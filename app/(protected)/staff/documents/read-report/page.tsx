@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { ReadReportClient, type ReportPerson, type ReportRow } from './ReadReportClient'
+import { REVIEW_TRACKED_TYPES } from '@/lib/documents/review'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,11 +20,11 @@ export default async function ReadReportPage() {
   if (!allowed) redirect('/staff/documents/dashboard')
 
   const [docsRes, peopleRes, logsRes] = await Promise.all([
-    // Read compliance is tracked for controlled documents that staff must read (QP/WI/Manual).
+    // Read compliance is tracked for controlled documents that staff must read (QM/QP/WI/Manual).
     supabaseAdmin.from('documents')
       .select('id, document_code, title, type, department, revision, published_at, read_audience_depts, read_audience_user_ids')
       .eq('status', 'Published')
-      .in('type', ['QP', 'WI', 'Manual'])
+      .in('type', REVIEW_TRACKED_TYPES)
       .is('deleted_at', null)
       .order('document_code'),
     supabaseAdmin.from('profiles')
