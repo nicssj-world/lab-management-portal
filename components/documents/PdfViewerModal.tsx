@@ -3,7 +3,7 @@
 import { Icon } from '@/components/ui/Icon'
 import { PdfViewer } from '@/components/documents/PdfViewer'
 
-export function PdfViewerModal({ url, pdfJsUrl, title, onClose }: { url: string; pdfJsUrl?: string | null; title: string; onClose: () => void }) {
+export function PdfViewerModal({ url, pdfJsUrl, title, mimeType = 'application/pdf', onClose }: { url: string; pdfJsUrl?: string | null; title: string; mimeType?: string | null; onClose: () => void }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 2000, display: 'flex', flexDirection: 'column' }}>
       <div style={{ height: 48, background: 'var(--card)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0 }}>
@@ -16,7 +16,7 @@ export function PdfViewerModal({ url, pdfJsUrl, title, onClose }: { url: string;
         </button>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
-        <PdfViewer url={url} pdfJsUrl={pdfJsUrl} fileName={title} />
+        <PdfViewer url={url} pdfJsUrl={pdfJsUrl} fileName={title} mimeType={mimeType} />
       </div>
     </div>
   )
