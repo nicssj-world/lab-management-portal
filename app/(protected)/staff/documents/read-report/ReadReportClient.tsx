@@ -7,10 +7,12 @@ import { Icon } from '@/components/ui/Icon'
 import { DEPARTMENTS, DEPT_ABBR } from '@/lib/validations/user-schema'
 import { TYPE_ICON_BG, TYPE_ICON_FG } from '@/lib/documents/ui-constants'
 import { buildReadAudiencePayload, buildReadAudiencePickerState, resolveReadAudience } from '@/lib/documents/read-audience'
+import { buildReadLogSummaryHtml } from '@/lib/documents/read-log-summary'
 
 export interface ReportPerson {
   id: string
   name: string
+  role: string | null
   position: string | null
   dept: string | null
 }
@@ -251,6 +253,31 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
     ? detailStats.audience.filter((p) => !detailRow.readers.some((r) => r.userId === p.id))
     : []
 
+  function downloadDetailReadSummary(row: ReportRow) {
+    const html = buildReadLogSummaryHtml(
+      { title: row.title, document_code: row.document_code, type: row.type },
+      row.readers
+        .map((reader) => {
+          const person = peopleById.get(reader.userId)
+          if (!person) return null
+          return {
+            userId: reader.userId,
+            name: person.name,
+            position: person.position,
+            role: person.role,
+            lastRead: reader.lastRead,
+          }
+        })
+        .filter((reader): reader is { userId: string; name: string; position: string | null; role: string | null; lastRead: string } => Boolean(reader)),
+    )
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const blobUrl = URL.createObjectURL(blob)
+    const win = window.open(blobUrl, '_blank')
+    if (!win) { URL.revokeObjectURL(blobUrl); return }
+    win.addEventListener('load', () => { win.print(); URL.revokeObjectURL(blobUrl) }, { once: true })
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Header */}
@@ -426,9 +453,34 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
                     {detailRow.document_code} · Rev.{detailRow.revision ?? '-'} · เผยแพร่ {fmtDateTime(detailRow.published_at)}
                   </div>
                 </div>
-                <button onClick={() => setDetailRow(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'flex', flexShrink: 0 }}>
-                  <Icon name="x" size={15} />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                  {detailReaders.length > 0 && (
+                    <button
+                      onClick={() => downloadDetailReadSummary(detailRow)}
+                      title="ดาวน์โหลด PDF สรุปการอ่าน"
+                      aria-label="ดาวน์โหลด PDF สรุปการอ่าน"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 32,
+                        height: 32,
+                        padding: 0,
+                        borderRadius: 8,
+                        border: '1px solid rgba(30,95,173,.28)',
+                        background: 'var(--primary-soft)',
+                        color: 'var(--primary)',
+                        cursor: 'pointer',
+                        boxShadow: '0 6px 14px rgba(30,95,173,.14)',
+                      }}
+                    >
+                      <Icon name="download" size={16} />
+                    </button>
+                  )}
+                  <button onClick={() => setDetailRow(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'flex' }}>
+                    <Icon name="x" size={15} />
+                  </button>
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
                 {([['read', `อ่านแล้ว (${detailReaders.length})`], ['unread', `ยังไม่อ่าน (${detailNonReaders.length})`]] as const).map(([tab, label]) => (

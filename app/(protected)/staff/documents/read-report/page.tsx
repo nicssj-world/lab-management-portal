@@ -27,7 +27,7 @@ export default async function ReadReportPage() {
       .is('deleted_at', null)
       .order('document_code'),
     supabaseAdmin.from('profiles')
-      .select('id, name, document_position, dept')
+      .select('id, name, role, document_position, dept')
       .eq('status', 'active')
       .order('name'),
     supabaseAdmin.from('document_access_logs')
@@ -38,7 +38,7 @@ export default async function ReadReportPage() {
 
   const docs = docsRes.data ?? []
   const people: ReportPerson[] = (peopleRes.data ?? []).map((p) => ({
-    id: p.id, name: p.name, position: p.document_position, dept: p.dept,
+    id: p.id, name: p.name, role: p.role, position: p.document_position, dept: p.dept,
   }))
 
   // Read status resets each revision: only views logged after the current revision's
