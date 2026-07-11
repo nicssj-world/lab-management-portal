@@ -25,7 +25,7 @@ import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
 import { TYPE_LABEL } from '@/lib/documents/type-labels'
 
 // ── Constants ─────────────────────────────────────────────────
-const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'QM', 'Reference', 'Card file', 'Lb', 'Others'] as const
+const TYPE_TABS = ['All', 'QM', 'QP', 'WI', 'Reference', 'Form', 'Card file', 'Lb', 'Manual', 'Policy', 'Others'] as const
 
 const DEPARTMENTS = DOCUMENT_DEPARTMENTS
 

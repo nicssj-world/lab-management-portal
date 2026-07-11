@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { DOC_TYPES, TYPE_LABEL } from './type-labels'
 
-const expected = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'QM', 'Reference', 'Card file', 'Lb', 'Others']
+// Display order: QM > QP > WI > Rf > Fm > Cf > Lb > Mn > Policy > Others, everywhere types
+// are listed (filters, categories) — see lib/validations/document.ts DOC_TYPES.
+const expected = ['QM', 'QP', 'WI', 'Reference', 'Form', 'Card file', 'Lb', 'Manual', 'Policy', 'Others']
 assert.deepEqual([...DOC_TYPES], expected)
 assert.ok(!DOC_TYPES.includes('Record' as never), 'Record must be removed')
 
