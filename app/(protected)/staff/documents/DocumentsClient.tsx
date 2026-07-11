@@ -22,14 +22,15 @@ import { buildReadLogSummaryHtml } from '@/lib/documents/read-log-summary'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { BulkDownloadKind } from '@/lib/documents/bulk-download'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
+import { TYPE_LABEL } from '@/lib/documents/type-labels'
 
 // ── Constants ─────────────────────────────────────────────────
-const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'] as const
+const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'QM', 'Reference', 'Card file', 'Lb', 'Others'] as const
 
 const DEPARTMENTS = DOCUMENT_DEPARTMENTS
 
 const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray' | 'red'> = {
-  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray', Reference: 'red', 'Card file': 'amber', Others: 'gray',
+  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', QM: 'green', Reference: 'red', 'Card file': 'amber', Lb: 'purple', Others: 'gray',
 }
 
 const ALL_STATUSES: DocStatus[] = ['Draft', 'Review', 'Approved', 'Published', 'Obsolete']
@@ -1015,7 +1016,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
               style={{ width: '100%', padding: '8px 32px 8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', color: activeType !== 'All' ? 'var(--ink)' : 'var(--muted)', background: 'var(--card)', outline: 'none', cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none' }}
             >
               <option value="All">ทุกประเภท</option>
-              {TYPE_TABS.filter(t => t !== 'All').map((t) => <option key={t} value={t}>{t}</option>)}
+              {TYPE_TABS.filter(t => t !== 'All').map((t) => <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>)}
             </select>
             <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', fontSize: 11 }}>▾</span>
           </div>
