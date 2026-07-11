@@ -7,6 +7,7 @@ import { Icon } from '@/components/ui/Icon'
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
 import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/DocumentDetailModal'
 import { TYPE_ICON_BG, TYPE_ICON_FG, fmtDate } from '@/lib/documents/ui-constants'
+import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
 
 export interface PendingDoc {
@@ -183,7 +184,7 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null)
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
-  const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
 
   const total = sourceDocs.length + reviewDocs.length + approvedDocs.length + annualDocs.length
   const sourceWaitingPdfCount = sourceDocs.filter((doc) => !doc.hasOfficialPdf).length
@@ -227,7 +228,7 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
     try {
       const res = await fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
       const json = await res.json()
-      if (json.url) { setPdfViewer({ url: json.url, title: doc.file_name ?? doc.title }); setReadDocIds((prev) => new Set(prev).add(doc.id)) }
+      if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.file_name ?? doc.title }); setReadDocIds((prev) => new Set(prev).add(doc.id)) }
     } catch { /* ignore */ }
   }
 
@@ -644,7 +645,7 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
         />
       )}
 
-      {pdfViewer && <PdfViewerModal url={pdfViewer.url} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { isCoverRequiredType } from '@/lib/documents/workflow'
 import { isReviewOnlyType, reviewWindowState } from '@/lib/documents/review'
 import { TYPE_ICON_BG, TYPE_ICON_FG, STATUS_LABEL, fmtSize, fmtDate } from '@/lib/documents/ui-constants'
+import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document } from '@/lib/supabase/types'
 
@@ -131,7 +132,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
   const [linkSearching, setLinkSearching] = useState(false)
   const [showLinkResults, setShowLinkResults] = useState(false)
   const linkSearchRef = useRef<HTMLDivElement>(null)
-  const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
 
   useEffect(() => {
     fetch(`/api/admin/documents/${doc.id}/attachments`)
@@ -218,7 +219,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
     try {
       const res = await fetch(`/api/admin/documents/${docId}/read`, { method: 'POST' })
       const json = await res.json()
-      if (json.url) { setPdfViewer({ url: json.url, title: fileName }); return }
+      if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(fileUrl), title: fileName }); return }
     } catch { /* ignore */ }
     openAttachmentInline(fileUrl, fileName)
   }
@@ -229,7 +230,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
     try {
       const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(fileUrl)}${qs}`)
       const json = await res.json()
-      if (json.url) setPdfViewer({ url: json.url, title: fileName })
+      if (json.url) setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(fileUrl), title: fileName })
     } catch { /* ignore */ }
   }
 
@@ -583,7 +584,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
 
         </div>
       </div>
-      {pdfViewer && <PdfViewerModal url={pdfViewer.url} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
     </>
   )
 }

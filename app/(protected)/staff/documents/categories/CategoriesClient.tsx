@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
 import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/DocumentDetailModal'
 import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
+import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
 
 export interface CategoryDoc {
@@ -67,7 +68,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null)
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
-  const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
 
   function toggleDept(dept: string) {
     setExpandedDept((prev) => (prev === dept ? null : dept))
@@ -85,11 +86,11 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
     }
   }
 
-  async function quickRead(id: string, title: string) {
+  async function quickRead(doc: Pick<CategoryDoc, 'id' | 'title' | 'file_url'>) {
     try {
-      const res = await fetch(`/api/admin/documents/${id}/read`, { method: 'POST' })
+      const res = await fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
       const json = await res.json()
-      if (json.url) { setPdfViewer({ url: json.url, title }); setReadDocIds((prev) => new Set(prev).add(id)) }
+      if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.title }); setReadDocIds((prev) => new Set(prev).add(doc.id)) }
     } catch { /* ignore */ }
   }
 
@@ -240,7 +241,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
                                     </button>
                                     {d.file_url ? (
                                       <button
-                                        onClick={() => quickRead(d.id, d.title)}
+                                        onClick={() => quickRead(d)}
                                         title="อ่านเอกสาร"
                                         style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 9px', height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', flexShrink: 0 }}
                                       >
@@ -276,7 +277,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
           docRole={docRole ?? null}
           userId={userId}
           onClose={() => setDetailDoc(null)}
-          onRead={() => quickRead(detailDoc.id, detailDoc.title)}
+          onRead={() => quickRead(detailDoc)}
           onHistory={() => router.push(`/staff/documents?search=${encodeURIComponent(detailDoc.document_code)}&open=${detailDoc.id}`)}
           onEdit={() => router.push(`/staff/documents?search=${encodeURIComponent(detailDoc.document_code)}&open=${detailDoc.id}`)}
           onDownload={handleDownload}
@@ -284,7 +285,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
         />
       )}
 
-      {pdfViewer && <PdfViewerModal url={pdfViewer.url} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
     </div>
   )
 }
