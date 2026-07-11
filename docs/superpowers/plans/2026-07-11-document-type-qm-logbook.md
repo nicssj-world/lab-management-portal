@@ -176,28 +176,30 @@ git commit -m "Update Document['type'] union for QM/Lb, remove Record"
 Create `scripts/add-document-types-quality-manual-logbook.sql`:
 ```sql
 -- Add Quality Manual (QM) and Log book (Lb) document types, remove the unused Record type.
--- Run manually in Supabase Dashboard > SQL Editor, one statement block at a time.
+-- Run manually in Supabase Dashboard > SQL Editor, one statement block at a time, IN ORDER —
+-- the constraint update (STEP 2) must run before the data update (STEP 3), or STEP 3's
+-- type='QM' will be rejected by the old CHECK constraint.
 
--- STEP 1: preview — confirm this returns exactly one row (QM-LAB-01) before running STEP 2.
+-- STEP 1: preview — confirm this returns exactly one row (QM-LAB-01) before running STEP 3.
 select id, document_code, title, type
 from documents
 where type = 'Manual' and document_code ilike 'QM-%';
 
--- STEP 2: reclassify the existing Quality Manual document (QM-prefixed, was bucketed under
--- the generic Manual type before QM existed as its own type).
-update documents
-set type = 'QM'
-where document_code = 'QM-LAB-01' and type = 'Manual';
-
--- STEP 3: confirm no documents are using the type being removed (expect 0 rows).
-select id, document_code, title from documents where type = 'Record';
-
--- STEP 4: update the CHECK constraint — drop Record, add QM and Lb.
+-- STEP 2: update the CHECK constraint first — drop Record, add QM and Lb.
 ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_type_check;
 
 ALTER TABLE documents
   ADD CONSTRAINT documents_type_check
   CHECK (type IN ('QP','WI','Form','Policy','Manual','QM','Reference','Card file','Lb','Others'));
+
+-- STEP 3: reclassify the existing Quality Manual document (QM-prefixed, was bucketed under
+-- the generic Manual type before QM existed as its own type). Only valid now that STEP 2 ran.
+update documents
+set type = 'QM'
+where document_code = 'QM-LAB-01' and type = 'Manual';
+
+-- STEP 4: confirm no documents are using the type that was removed (expect 0 rows).
+select id, document_code, title from documents where type = 'Record';
 ```
 
 - [ ] **Step 2: Commit**
@@ -925,7 +927,7 @@ git commit -m "Derive current-revision route's type allow-list from the shared D
 
 - [ ] **Step 1: Run the DB migration**
 
-Open Supabase Dashboard > SQL Editor, paste and run `scripts/add-document-types-quality-manual-logbook.sql` from Task 3, one statement block at a time as its comments describe. Confirm STEP 1's preview returns exactly the `QM-LAB-01` row, and STEP 3 returns 0 rows, before running STEP 2 and STEP 4.
+Open Supabase Dashboard > SQL Editor, paste and run `scripts/add-document-types-quality-manual-logbook.sql` from Task 3, one statement block at a time, in order (STEP 1 preview → STEP 2 constraint update → STEP 3 data update → STEP 4 confirm). Confirm STEP 1's preview returns exactly the `QM-LAB-01` row before running STEP 2/3, and confirm STEP 4 returns 0 rows afterward. This step must be run by a human with Supabase Dashboard access — the app only has a PostgREST-based Supabase client (no direct Postgres connection), which cannot execute `ALTER TABLE` DDL.
 
 - [ ] **Step 2: Full type-check**
 
