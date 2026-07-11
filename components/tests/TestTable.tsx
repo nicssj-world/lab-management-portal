@@ -24,6 +24,7 @@ interface Props {
   onDelete?: (id: number) => void
   onBulkDelete?: (ids: number[]) => void
   getHref?: (t: Test) => string
+  onOpen?: (t: Test) => void
   nameSortKey?: string
   headerFontSize?: number
 }
@@ -85,7 +86,7 @@ export function TestTable({
   canDelete = canEdit,
   page, pageSize, total,
   sortBy = 'code', sortDir = 'asc',
-  onSort, onPageChange, onDelete, onBulkDelete, getHref,
+  onSort, onPageChange, onDelete, onBulkDelete, getHref, onOpen,
   nameSortKey = 'th',
   headerFontSize,
 }: Props) {
@@ -138,6 +139,22 @@ export function TestTable({
     <div>
       <style>{`
         .test-table-mobile-list { display: none; }
+        .test-table-mobile-card-button {
+          width: 100%;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: inherit;
+          font: inherit;
+          text-align: left;
+          cursor: pointer;
+          touch-action: manipulation;
+        }
+        .test-table-mobile-card-button:focus-visible article {
+          outline: 3px solid color-mix(in srgb, var(--primary) 36%, transparent);
+          outline-offset: 2px;
+          border-color: var(--primary) !important;
+        }
 
         @media (max-width: 767px) {
           .test-table-desktop-wrap { display: none !important; }
@@ -241,6 +258,8 @@ export function TestTable({
                   const tubeColor = t.tube_color ?? '#94A3B8'
                   const tatDisplay = t.tat_minutes ?? t.tat ?? '—'
                   const isSelected = selected.has(t.id)
+                  const href = getHref ? getHref(t) : `/staff/tests/${t.id}`
+                  const openTest = () => onOpen ? onOpen(t) : router.push(href)
 
                   return (
                     <tr
@@ -252,7 +271,7 @@ export function TestTable({
                         background: isSelected ? 'var(--primary-soft)' : 'transparent',
                         boxShadow: isSelected ? 'inset 3px 0 0 var(--primary)' : 'none',
                       }}
-                      onClick={() => router.push(getHref ? getHref(t) : `/staff/tests/${t.id}`)}
+                      onClick={openTest}
                       onMouseEnter={e => {
                         if (!isSelected) {
                           e.currentTarget.style.background = 'var(--surface-2)'
@@ -279,12 +298,22 @@ export function TestTable({
 
                       {/* Code */}
                       <td style={{ ...TD, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                        <Link
-                          href={getHref ? getHref(t) : `/staff/tests/${t.id}`}
-                          style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'none', fontFamily: 'monospace', fontSize: 12.5, letterSpacing: '.02em' }}
-                        >
-                          {t.code}
-                        </Link>
+                        {onOpen ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpen(t)}
+                            style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'none', fontFamily: 'monospace', fontSize: 12.5, letterSpacing: '.02em', background: 'transparent', border: 0, padding: 0, cursor: 'pointer' }}
+                          >
+                            {t.code}
+                          </button>
+                        ) : (
+                          <Link
+                            href={href}
+                            style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'none', fontFamily: 'monospace', fontSize: 12.5, letterSpacing: '.02em' }}
+                          >
+                            {t.code}
+                          </Link>
+                        )}
                       </td>
 
                       {/* CGD */}
@@ -421,95 +450,103 @@ export function TestTable({
               const tubeColor = t.tube_color ?? '#94A3B8'
               const href = getHref ? getHref(t) : `/staff/tests/${t.id}`
               const tatDisplay = t.tat_minutes ?? t.tat ?? '—'
-
-              return (
-                <Link key={t.id} href={href} style={{ textDecoration: 'none' }}>
-                  <article
-                    style={{
-                      background: 'var(--card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      padding: 16,
-                      color: 'var(--ink)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.35, color: 'var(--ink)' }}>
-                          {t.th}
-                        </div>
-                        {t.en && (
-                          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4, marginTop: 3 }}>
-                            {t.en}
-                          </div>
-                        )}
+              const card = (
+                <article
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 12,
+                    padding: 16,
+                    color: 'var(--ink)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.35, color: 'var(--ink)' }}>
+                        {t.th}
                       </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 10.5 }}>
-                          รหัสกรมบัญชีกลาง
+                      {t.en && (
+                        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4, marginTop: 3 }}>
+                          {t.en}
                         </div>
-                        <div style={{ color: 'var(--primary)', fontWeight: 800, fontSize: 13 }}>
-                          {t.cgd ?? '—'}
-                        </div>
-                        <div style={{ color: 'var(--ink)', fontWeight: 800, fontSize: 13, marginTop: 4 }}>
-                          {t.price != null ? `฿${Number(t.price).toLocaleString()}` : '—'}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
-                      {cat && (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 5,
-                          padding: '4px 10px', borderRadius: 20,
-                          background: cat.color + '18', color: cat.color,
-                          fontSize: 12, fontWeight: 700, border: `1px solid ${cat.color}33`,
-                        }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
-                          {cat.th}
-                        </span>
-                      )}
-                      {t.tube && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--ink)', fontSize: 12.5 }}>
-                          <span style={{ width: 9, height: 9, borderRadius: 3, background: tubeColor, flexShrink: 0 }} />
-                          {t.tube}
-                        </span>
                       )}
                     </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-                      <div>
-                        <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>รหัส E-PHIS</div>
-                        <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{t.code}</div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 10.5 }}>
+                        รหัสกรมบัญชีกลาง
                       </div>
-                      <div>
-                        <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>TAT</div>
-                        <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{tatDisplay}</div>
+                      <div style={{ color: 'var(--primary)', fontWeight: 800, fontSize: 13 }}>
+                        {t.cgd ?? '—'}
                       </div>
-                      <div style={{ gridColumn: '1 / -1' }}>
-                        <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>วัน-เวลาที่ตรวจวิเคราะห์</div>
-                        <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>
-                          {t.available_24hr ? '24 ชั่วโมง' : (t.service ?? '—')}
-                        </div>
+                      <div style={{ color: 'var(--ink)', fontWeight: 800, fontSize: 13, marginTop: 4 }}>
+                        {t.price != null ? `฿${Number(t.price).toLocaleString()}` : '—'}
                       </div>
                     </div>
+                  </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          color: 'var(--primary)',
-                          fontSize: 12.5,
-                          fontWeight: 700,
-                        }}
-                      >
-                        ดูรายละเอียด
-                        <Icon name="arrowRight" size={13} />
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                    {cat && (
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '4px 10px', borderRadius: 20,
+                        background: cat.color + '18', color: cat.color,
+                        fontSize: 12, fontWeight: 700, border: `1px solid ${cat.color}33`,
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
+                        {cat.th}
                       </span>
+                    )}
+                    {t.tube && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--ink)', fontSize: 12.5 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: 3, background: tubeColor, flexShrink: 0 }} />
+                        {t.tube}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                    <div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>รหัส E-PHIS</div>
+                      <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{t.code}</div>
                     </div>
-                  </article>
+                    <div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>TAT</div>
+                      <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{tatDisplay}</div>
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>วัน-เวลาที่ตรวจวิเคราะห์</div>
+                      <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>
+                        {t.available_24hr ? '24 ชั่วโมง' : (t.service ?? '—')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        minHeight: 44,
+                        color: 'var(--primary)',
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                      }}
+                    >
+                      ดูรายละเอียด
+                      <Icon name="arrowRight" size={13} />
+                    </span>
+                  </div>
+                </article>
+              )
+
+              return onOpen ? (
+                <button key={t.id} type="button" className="test-table-mobile-card-button" onClick={() => onOpen(t)}>
+                  {card}
+                </button>
+              ) : (
+                <Link key={t.id} href={href} style={{ textDecoration: 'none' }}>
+                  {card}
                 </Link>
               )
             })}

@@ -5,6 +5,7 @@ import { getCategories } from '@/lib/queries/categories'
 import { getNews } from '@/lib/queries/news'
 import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
+import { PublicHeroSearch } from '@/components/public/PublicHeroSearch'
 import { CAT_MAP } from '@/lib/validations/news'
 
 export default async function PublicHome() {
@@ -26,6 +27,9 @@ export default async function PublicHome() {
     <main style={{ background: 'radial-gradient(circle at 18% 0%, var(--primary-soft) 0, transparent 34%), linear-gradient(180deg, var(--bg) 0%, var(--surface-2) 100%)' }}>
       <style>{`
         .public-hero { padding: 64px 28px 80px; }
+        .public-hero:has(.public-hero-search-wrap.is-open) {
+          overflow: visible !important;
+        }
         .public-hero::before {
           content: "";
           position: absolute;
@@ -188,7 +192,7 @@ export default async function PublicHome() {
           color: #64748B;
         }
         .public-hero-cta,
-        .public-hero-secondary {
+        .manual-card {
           min-height: 44px;
           transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease;
           touch-action: manipulation;
@@ -197,10 +201,12 @@ export default async function PublicHome() {
           transform: translateY(-1px);
           box-shadow: 0 16px 38px rgba(11,22,38,.24);
         }
-        .public-hero-secondary:hover {
-          background: rgba(176,141,87,.34) !important;
-          border-color: rgba(255,255,255,.72) !important;
-          transform: translateY(-1px);
+        .public-hero-secondary-links {
+          display: flex;
+          align-items: stretch;
+          gap: 12px;
+          margin-top: 20px;
+          max-width: 560px;
         }
         .public-photo-stack {
           position: absolute;
@@ -366,8 +372,11 @@ export default async function PublicHome() {
           }
           .public-hero-title { font-size: 34px !important; letter-spacing: 0 !important; }
           .public-hero-actions { flex-direction: column; align-items: stretch; max-width: 360px; }
+          .public-hero-search-wrap { width: 100%; }
           .public-hero-search { width: 100%; }
-          .public-hero-actions a, .public-hero-actions button { width: 100%; justify-content: center; }
+          .public-hero-cta { width: 100%; justify-content: center; }
+          .public-hero-secondary-links { flex-direction: column; max-width: 360px; }
+          .line-card, .manual-card { width: 100%; box-sizing: border-box; }
           .public-section { padding-left: 20px !important; padding-right: 20px !important; }
           .public-news-grid { grid-template-columns: 1fr !important; }
           .public-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
@@ -403,7 +412,12 @@ export default async function PublicHome() {
           transition: background .18s, border-color .18s, transform .18s, box-shadow .18s;
           box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
         }
-        .line-card:hover {
+        .manual-card {
+          transition: background .18s, border-color .18s, transform .18s, box-shadow .18s;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.14);
+        }
+        .line-card:hover,
+        .manual-card:hover {
           background: rgba(255,255,255,.22) !important;
           border-color: rgba(255,255,255,.36) !important;
           transform: translateY(-1px);
@@ -420,7 +434,7 @@ export default async function PublicHome() {
           .public-standard-badge,
           .public-hero-search,
           .public-hero-cta,
-          .public-hero-secondary,
+          .manual-card,
           .public-photo-card,
           .line-card,
           .news-featured,
@@ -469,102 +483,101 @@ export default async function PublicHome() {
               ค้นหารายการตรวจวิเคราะห์ คู่มือการเก็บตัวอย่าง และเอกสารแนบต่างๆ<br />ของกลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรีได้ที่นี่
             </p>
             <div className="public-hero-actions" style={{ marginTop: 24 }}>
-              <form action="/catalog" method="get" className="public-hero-search" role="search">
-                <label className="public-hero-search-field">
-                  <Icon name="search" size={17} />
-                  <input
-                    className="public-hero-search-input"
-                    name="search"
-                    type="search"
-                    aria-label="ค้นหารายการตรวจวิเคราะห์"
-                    placeholder="ค้นหาชื่อ test, รหัส, specimen..."
-                  />
-                </label>
-                <button
-                  type="submit"
-                  className="public-hero-cta"
-                  style={{
-                    background: 'linear-gradient(135deg, var(--primary), var(--primary-2))', color: '#fff', border: 'none',
-                    padding: '12px 22px', borderRadius: 11, fontSize: 14, fontWeight: 700,
-                    cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8,
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 10px 24px rgba(11,22,38,.18)',
-                  }}
-                >
-                  ค้นหารายการตรวจ
-                </button>
-              </form>
-              <Link href="/manual">
-                <button
-                  className="public-hero-secondary"
-                  style={{
-                    background: 'rgba(176,141,87,.24)', color: '#fff',
-                    border: '1px solid rgba(255,255,255,.58)',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,.2), 0 12px 30px rgba(11,22,38,.16)',
-                    backdropFilter: 'blur(10px)',
-                    padding: '12px 22px', borderRadius: 11, fontSize: 14, fontWeight: 700,
-                    cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8,
-                  }}
-                >
-                  <Icon name="book" size={16} />
-                  คู่มือห้องปฏิบัติการ
-                </button>
-              </Link>
+              <PublicHeroSearch />
             </div>
 
-            {/* LINE Add Friend card */}
-            <a
-              href="https://line.me/R/ti/p/@759ksiuc"
-              target="_blank"
-              rel="noreferrer"
-              style={{ textDecoration: 'none', display: 'inline-block', marginTop: 20 }}
-            >
-              <div className="line-card" style={{
-                display: 'flex', alignItems: 'center', gap: 14,
-                background: 'rgba(255,255,255,.13)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,.22)',
-                borderRadius: 14, padding: '12px 18px 12px 12px',
-              }}>
-                {/* QR code */}
-                <div style={{
-                  background: '#fff', borderRadius: 10, padding: 5,
-                  flexShrink: 0, lineHeight: 0,
+            <div className="public-hero-secondary-links" aria-label="ช่องทางเสริม">
+              {/* LINE Add Friend card */}
+              <a
+                href="https://line.me/R/ti/p/@759ksiuc"
+                target="_blank"
+                rel="noreferrer"
+                style={{ textDecoration: 'none', display: 'block' }}
+              >
+                <div className="line-card" style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  minHeight: 100,
+                  background: 'rgba(255,255,255,.13)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,.22)',
+                  borderRadius: 14, padding: '12px 18px 12px 12px',
                 }}>
-                  <img
-                    src="https://qr-official.line.me/gs/M_759ksiuc_BW.png"
-                    alt="LINE QR Code @759ksiuc"
-                    width={64} height={64}
-                    style={{ display: 'block', borderRadius: 6 }}
-                  />
-                </div>
-                {/* Text */}
-                <div>
-                  <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.72)', marginBottom: 2, fontWeight: 500 }}>
-                    สอบถามข้อมูลรายการตรวจผ่าน LINE
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                    {/* LINE icon */}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="#06C755">
-                      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
-                    </svg>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', letterSpacing: '.01em' }}>
-                      @759ksiuc
-                    </span>
-                  </div>
+                  {/* QR code */}
                   <div style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    background: '#06C755', color: '#fff',
-                    padding: '5px 12px', borderRadius: 999,
-                    fontSize: 11.5, fontWeight: 700,
+                    background: '#fff', borderRadius: 10, padding: 5,
+                    flexShrink: 0, lineHeight: 0,
                   }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
-                    </svg>
-                    เพิ่มเพื่อน
+                    <img
+                      src="https://qr-official.line.me/gs/M_759ksiuc_BW.png"
+                      alt="LINE QR Code @759ksiuc"
+                      width={64} height={64}
+                      style={{ display: 'block', borderRadius: 6 }}
+                    />
+                  </div>
+                  {/* Text */}
+                  <div>
+                    <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.72)', marginBottom: 2, fontWeight: 500 }}>
+                      ระบบตอบข้อมูลอัตโนมัติผ่าน LINE
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      {/* LINE icon */}
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="#06C755">
+                        <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
+                      </svg>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', letterSpacing: '.01em' }}>
+                        @759ksiuc
+                      </span>
+                    </div>
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      background: '#06C755', color: '#fff',
+                      padding: '5px 12px', borderRadius: 999,
+                      fontSize: 11.5, fontWeight: 700,
+                    }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
+                      </svg>
+                      เพิ่มเพื่อน
+                    </div>
                   </div>
                 </div>
-              </div>
-            </a>
+              </a>
+              <Link
+                href="/manual"
+                className="manual-card"
+                style={{
+                  textDecoration: 'none',
+                  minHeight: 100,
+                  minWidth: 214,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  background: 'rgba(255,255,255,.13)',
+                  color: '#fff',
+                  border: '1px solid rgba(255,255,255,.22)',
+                  borderRadius: 14,
+                  padding: '14px 18px',
+                  backdropFilter: 'blur(10px)',
+                }}
+              >
+                <span style={{
+                  width: 44, height: 44, borderRadius: 12,
+                  background: 'rgba(255,255,255,.16)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <Icon name="book" size={21} />
+                </span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                  <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,.72)', fontWeight: 500 }}>
+                    เปิดดูเอกสาร
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', lineHeight: 1.25 }}>
+                    คู่มือห้องปฏิบัติการ
+                  </span>
+                </span>
+              </Link>
+            </div>
           </div>
 
           <div className="public-photo-stack" aria-label="ภาพห้องปฏิบัติการ">

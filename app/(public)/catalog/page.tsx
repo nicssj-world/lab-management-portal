@@ -5,11 +5,18 @@ import { useSearchParams } from 'next/navigation'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { TestFilters } from '@/components/tests/TestFilters'
 import { TestTable } from '@/components/tests/TestTable'
+import { CatalogDetailModal } from '@/components/tests/CatalogDetailModal'
+import { buildCatalogFilterUrl } from '@/lib/catalog/filter-url'
 import { createClient } from '@/lib/supabase/client'
 import { getCategories } from '@/lib/queries/categories'
 import type { Test, Category } from '@/lib/supabase/types'
 
 const PAGE_SIZE = 20
+
+function parseOpenId(value: string | null) {
+  const id = Number(value)
+  return Number.isInteger(id) && id > 0 ? id : null
+}
 
 function CatalogContent() {
   const searchParams = useSearchParams()
@@ -25,8 +32,10 @@ function CatalogContent() {
   const [sortBy, setSortBy] = useState('display_name_alpha')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [error, setError] = useState('')
+  const [selectedTestId, setSelectedTestId] = useState<number | null>(() => parseOpenId(searchParams.get('open')))
   const timer = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
+  const selectedTest = tests.find((test) => test.id === selectedTestId) ?? null
 
   useEffect(() => {
     getCategories(supabase, true).then(setCategories)
@@ -55,6 +64,15 @@ function CatalogContent() {
       setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    const nextUrl = buildCatalogFilterUrl({ search, categoryId, tube, openId: selectedTestId })
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+
+    if (currentUrl !== nextUrl) {
+      window.history.replaceState(null, '', nextUrl)
+    }
+  }, [search, categoryId, tube, selectedTestId])
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current)
@@ -147,8 +165,15 @@ function CatalogContent() {
           onSort={handleSort}
           onPageChange={handlePageChange}
           getHref={(t) => `/catalog/${t.id}`}
+          onOpen={(test) => setSelectedTestId(test.id)}
           nameSortKey="display_name_alpha"
           headerFontSize={11.5}
+        />
+        <CatalogDetailModal
+          testId={selectedTestId}
+          fallbackTest={selectedTest}
+          categories={categories}
+          onClose={() => setSelectedTestId(null)}
         />
       </div>
     </main>
