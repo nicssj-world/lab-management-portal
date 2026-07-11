@@ -459,6 +459,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const statusAfter = (nextStatus ?? draft.status) as string
+
+    // Only DCC/Admin may publish a revision draft — Reviewers can prepare and move a draft up
+    // to Approved, but the final "go live" step (which archives the current revision and
+    // promotes the draft onto the live document) is reserved for DCC/Admin.
+    if (nextStatus === 'Published' && nextStatus !== draft.status) {
+      const canPublish = actor.role === 'Admin'
+        || actor.role === 'Document Controller'
+        || actor.doc_role === 'Document Controller'
+      if (!canPublish) {
+        return NextResponse.json({ error: 'เฉพาะ DCC หรือ Admin เท่านั้นที่เผยแพร่เอกสารได้' }, { status: 403 })
+      }
+    }
+
     if (nextStatus && nextStatus !== draft.status) {
       const workflowCheck = canMoveToStatus({
         type: targetType,
