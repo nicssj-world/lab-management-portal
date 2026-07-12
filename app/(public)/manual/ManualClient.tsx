@@ -26,26 +26,32 @@ function fmtSize(bytes: number | null): string {
 
 export function ManualClient({ docs }: Props) {
   const [activeType, setActiveType] = useState<string>('All')
-  const [downloading, setDownloading] = useState<string | null>(null)
-  const [viewer, setViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
+  const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [viewer, setViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string; forcePdfJs?: boolean } | null>(null)
 
   const filtered = activeType === 'All' ? docs : docs.filter((d) => d.type === activeType)
 
-  async function handleDownload(doc: Document) {
+  async function openPreview(doc: Document) {
     if (!doc.file_url) return
-    setDownloading(doc.id)
+    setLoadingId(doc.id)
     try {
-      const res = await fetch(`/api/documents/download?path=${encodeURIComponent(doc.file_url)}`)
+      const res = await fetch(`/api/documents/download?path=${encodeURIComponent(doc.file_url)}&variant=preview&inline=1`)
       const json = await res.json()
-      if (json.url) {
-        if (isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type })) {
-          setViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(doc.file_url, 'public'), title: doc.file_name ?? doc.title })
-        } else {
-          window.open(json.url, '_blank')
-        }
-      }
+      if (json.url) setViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(doc.file_url, 'public'), title: doc.file_name ?? doc.title, forcePdfJs: json.preview_uncontrolled === true })
     } finally {
-      setDownloading(null)
+      setLoadingId(null)
+    }
+  }
+
+  async function download(doc: Document) {
+    if (!doc.file_url) return
+    setLoadingId(doc.id)
+    try {
+      const res = await fetch(`/api/documents/download?path=${encodeURIComponent(doc.file_url)}&variant=download`)
+      const json = await res.json()
+      if (json.url) window.open(json.url, '_blank')
+    } finally {
+      setLoadingId(null)
     }
   }
 
@@ -102,14 +108,34 @@ export function ManualClient({ docs }: Props) {
                     </td>
                     <td style={{ padding: '12px 16px', color: 'var(--muted)', fontSize: 12 }}>{fmtSize(doc.file_size)}</td>
                     <td style={{ padding: '12px 16px' }}>
-                      <button
-                        onClick={() => handleDownload(doc)}
-                        disabled={downloading === doc.id}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontFamily: 'inherit', fontWeight: 600, opacity: downloading === doc.id ? .5 : 1 }}
-                      >
-                        <Icon name="download" size={14} />
-                        {downloading === doc.id ? 'กำลังโหลด...' : isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type }) ? 'อ่าน' : 'ดาวน์โหลด'}
-                      </button>
+                      {isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type }) ? (
+                        <div style={{ display: 'flex', gap: 10 }}>
+                          <button
+                            onClick={() => openPreview(doc)}
+                            disabled={loadingId === doc.id}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontFamily: 'inherit', fontWeight: 600, opacity: loadingId === doc.id ? .5 : 1 }}
+                          >
+                            <Icon name="eye" size={14} />
+                            {loadingId === doc.id ? 'กำลังโหลด...' : 'อ่าน'}
+                          </button>
+                          <button
+                            onClick={() => download(doc)}
+                            disabled={loadingId === doc.id}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontFamily: 'inherit', fontWeight: 600, opacity: loadingId === doc.id ? .5 : 1 }}
+                          >
+                            <Icon name="download" size={14} /> ดาวน์โหลด
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => download(doc)}
+                          disabled={loadingId === doc.id}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontFamily: 'inherit', fontWeight: 600, opacity: loadingId === doc.id ? .5 : 1 }}
+                        >
+                          <Icon name="download" size={14} />
+                          {loadingId === doc.id ? 'กำลังโหลด...' : 'ดาวน์โหลด'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -118,7 +144,7 @@ export function ManualClient({ docs }: Props) {
           </StickyScroll>
         </Card>
       )}
-      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} forcePdfJs={viewer.forcePdfJs} onClose={() => setViewer(null)} />}
     </>
   )
 }

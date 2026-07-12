@@ -24,8 +24,9 @@ export default async function KpiInputPage() {
   const canEditAll = (perms['KPI'] ?? 'none') === 'edit'
   const isAdmin = profile?.role?.toLowerCase() === 'admin'
   // Allow if the user can edit KPI OR is an assigned filler for at least one dept
+  // (config tables have no RLS read policy → read via admin client)
   if (!canEditAll) {
-    const assigned = await getAssignedDeptIds(supabase, user.id)
+    const assigned = await getAssignedDeptIds(supabaseAdmin, user.id)
     if (assigned.length === 0) redirect('/kpi/dashboard')
   }
 
@@ -38,7 +39,7 @@ export default async function KpiInputPage() {
         <PageHeader eyebrow="KPI" title="บันทึกข้อมูล KPI" subtitle="กรอกข้อมูลรายเดือนสำหรับแต่ละแผนก" marginBottom={0} />
         {isAdmin && (
           <Link href="/kpi/settings" style={{ marginLeft: 'auto' }}>
-            <Button variant="secondary" size="sm" icon="settings">ตั้งค่าผู้กรอก</Button>
+            <Button variant="secondary" size="sm" icon="settings">Setting</Button>
           </Link>
         )}
       </div>

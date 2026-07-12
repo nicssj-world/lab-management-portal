@@ -4,6 +4,12 @@ import { buildDocumentDownloadFilename, contentDispositionForDownload } from '@/
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { NextResponse } from 'next/server'
+import {
+  UnsupportedEligibleDocumentError,
+  resolveServedKey,
+} from '@/lib/documents/document-delivery-variant'
+
+export const runtime = 'nodejs'
 
 function codeCandidates(filename: string) {
   const decoded = decodeURIComponent(filename)
@@ -33,15 +39,35 @@ export async function GET(
     .is('deleted_at', null)
     .maybeSingle()
 
-  if (error || !doc || doc.visibility !== 'Public') {
+  if (error || !doc || doc.visibility !== 'Public' || doc.status !== 'Published' || !doc.file_url) {
     return NextResponse.json({ error: 'Document not found' }, { status: 404 })
+  }
+
+  let servedKey: string
+  try {
+    servedKey = (await resolveServedKey({
+      document: {
+        id: doc.id,
+        file_url: doc.file_url,
+        file_name: doc.file_name ?? null,
+        mime_type: doc.mime_type ?? null,
+        type: doc.type ?? '',
+        status: doc.status ?? '',
+      },
+      audience: 'public',
+      variant: 'download',
+      now: new Date(),
+    })).key
+  } catch (cause) {
+    if (cause instanceof UnsupportedEligibleDocumentError) return NextResponse.json({ error: cause.message }, { status: 415 })
+    return NextResponse.json({ error: 'ไม่สามารถสร้างเอกสารไม่ควบคุมได้ กรุณาลองใหม่อีกครั้ง' }, { status: 503 })
   }
 
   const url = await getSignedUrl(
     r2,
     new GetObjectCommand({
       Bucket: R2_BUCKET,
-      Key: doc.file_url,
+      Key: servedKey,
       ResponseContentDisposition: contentDispositionForDownload(
         buildDocumentDownloadFilename(doc)
       ),

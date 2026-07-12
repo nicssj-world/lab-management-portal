@@ -65,7 +65,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null)
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
-  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string; forcePdfJs?: boolean } | null>(null)
 
   function toggleDept(dept: string) {
     setExpandedDept((prev) => (prev === dept ? null : dept))
@@ -87,14 +87,14 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
     try {
       const res = await fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
       const json = await res.json()
-      if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.title }); setReadDocIds((prev) => new Set(prev).add(doc.id)) }
+      if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.title, forcePdfJs: json.preview_uncontrolled === true }); setReadDocIds((prev) => new Set(prev).add(doc.id)) }
     } catch { /* ignore */ }
   }
 
   async function handleDownload(path: string | null | undefined) {
     if (!path) return
     try {
-      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(path)}`)
+      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(path)}&variant=download`)
       const json = await res.json()
       if (json.url) window.open(json.url, '_blank')
     } catch { /* ignore */ }
@@ -321,7 +321,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
         />
       )}
 
-      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} forcePdfJs={pdfViewer.forcePdfJs} onClose={() => setPdfViewer(null)} />}
     </div>
   )
 }

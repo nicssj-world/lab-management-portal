@@ -35,6 +35,7 @@ interface PdfViewerProps {
   pdfJsUrl?: string | null
   fileName?: string | null
   mimeType?: string | null
+  forcePdfJs?: boolean
 }
 
 function openInNewTab(url: string) {
@@ -50,7 +51,7 @@ function Spinner({ label }: { label: string }) {
   )
 }
 
-function FallbackCard({ url, title, message }: { url: string; title: string; message: string }) {
+function FallbackCard({ url, title, message, allowOpenInNewTab }: { url: string; title: string; message: string; allowOpenInNewTab: boolean }) {
   return (
     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ background: 'var(--card)', borderRadius: 16, padding: 34, textAlign: 'center', maxWidth: 390, boxShadow: '0 20px 60px rgba(15,23,42,.2)' }}>
@@ -59,7 +60,7 @@ function FallbackCard({ url, title, message }: { url: string; title: string; mes
         </div>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>{title}</div>
         <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.55 }}>{message}</div>
-        <Button variant="primary" icon="eye" onClick={() => openInNewTab(url)}>เปิด PDF ในแท็บใหม่</Button>
+        {allowOpenInNewTab && <Button variant="primary" icon="eye" onClick={() => openInNewTab(url)}>เปิด PDF ในแท็บใหม่</Button>}
       </div>
     </div>
   )
@@ -173,7 +174,7 @@ function PdfPageCanvas({
   )
 }
 
-export function PdfViewer({ url, pdfJsUrl, fileName, mimeType }: PdfViewerProps) {
+export function PdfViewer({ url, pdfJsUrl, fileName, mimeType, forcePdfJs = false }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pdf, setPdf] = useState<PdfDocument | null>(null)
   const [pages, setPages] = useState<PdfPageMeta[]>([])
@@ -192,8 +193,9 @@ export function PdfViewer({ url, pdfJsUrl, fileName, mimeType }: PdfViewerProps)
       userAgent: window.navigator.userAgent,
       platform: window.navigator.platform,
       maxTouchPoints: window.navigator.maxTouchPoints,
+      forcePdfJs,
     }))
-  }, [])
+  }, [forcePdfJs])
 
   useEffect(() => {
     const node = containerRef.current
@@ -259,7 +261,7 @@ export function PdfViewer({ url, pdfJsUrl, fileName, mimeType }: PdfViewerProps)
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0, background: '#525659', overflow: 'hidden' }}>
       {status === 'loading' && <Spinner label="กำลังโหลด PDF..." />}
-      {status === 'fallback' && <FallbackCard url={url} title={title} message={error || 'ไม่สามารถเปิด PDF ในแอปได้'} />}
+      {status === 'fallback' && <FallbackCard url={url} title={title} message={error || 'ไม่สามารถเปิด PDF ในแอปได้'} allowOpenInNewTab={!forcePdfJs} />}
       {status === 'ready' && canAttemptPdf && !usePdfJs && <NativePdfFrame url={url} title={title} />}
       {status === 'ready' && pdf && (
         <>

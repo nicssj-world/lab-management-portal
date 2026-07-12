@@ -33,7 +33,8 @@ export function buildPdfPageMetasFromFirstViewport(pageCount: number, viewport: 
   }))
 }
 
-export function shouldUsePdfJsViewer(input: { userAgent?: string | null; platform?: string | null; maxTouchPoints?: number | null }) {
+export function shouldUsePdfJsViewer(input: { userAgent?: string | null; platform?: string | null; maxTouchPoints?: number | null; forcePdfJs?: boolean }) {
+  if (input.forcePdfJs) return true
   const userAgent = input.userAgent ?? ''
   const platform = input.platform ?? ''
   if (/iPad|iPhone|iPod/i.test(userAgent) || /iPad|iPhone|iPod/i.test(platform)) return true
@@ -45,5 +46,5 @@ export function shouldUsePdfJsViewer(input: { userAgent?: string | null; platfor
 export function documentPdfProxyUrl(path: string | null | undefined, scope: 'admin' | 'public' = 'admin') {
   if (!path) return null
   const base = scope === 'public' ? '/api/documents/download' : '/api/admin/documents/download'
-  return `${base}?path=${encodeURIComponent(path)}&inline=1&proxy=1`
+  return `${base}?path=${encodeURIComponent(path)}&variant=preview&inline=1&proxy=1`
 }

@@ -92,7 +92,7 @@ const { toasts, add: toast } = useToast()
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({})
   const [exportMenu, setExportMenu]       = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
-  const [viewer, setViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
+  const [viewer, setViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string; forcePdfJs?: boolean } | null>(null)
 
   const timer = useRef<NodeJS.Timeout | null>(null)
   const exportMenuRef = useRef<HTMLDivElement>(null)
@@ -164,11 +164,13 @@ const { toasts, add: toast } = useToast()
       return
     }
     try {
-      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(doc.file_url)}`)
-      const { url } = await res.json()
+      const isPdf = isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type })
+      const intent = isPdf ? '&variant=preview&inline=1' : '&variant=download'
+      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(doc.file_url)}${intent}`)
+      const { url, preview_uncontrolled } = await res.json()
       if (!url) { toast('ไม่สามารถดาวน์โหลดได้', false); return }
-      if (isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type })) {
-        setViewer({ url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.file_name ?? doc.title })
+      if (isPdf) {
+        setViewer({ url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.file_name ?? doc.title, forcePdfJs: preview_uncontrolled === true })
       } else {
         window.open(url, '_blank')
       }
@@ -630,7 +632,7 @@ const { toasts, add: toast } = useToast()
           onSaved={handleAdded}
         />
       )}
-      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} forcePdfJs={viewer.forcePdfJs} onClose={() => setViewer(null)} />}
 
       {/* Toasts */}
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>

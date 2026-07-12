@@ -10,7 +10,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Stat } from '@/components/ui/Stat'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { getFiscalMonths, getThaiMonthLabel, calcResult } from '@/lib/kpi-utils'
-import type { AnnualKpiRow } from '@/lib/supabase/types'
+import type { AnnualKpiRow, KpiDefinition } from '@/lib/supabase/types'
 
 interface Props {
   year: number
@@ -22,6 +22,14 @@ const GREEN = 'var(--success)'
 const ORANGE = 'var(--warning)'
 const RED = 'var(--danger)'
 const BLUE = 'var(--primary)'
+
+// Fine-tuning for specific KPI codes whose typical value range benefits from a
+// narrower y-axis or a distinct line color. New KPI codes fall back to LineKpiCard's
+// own defaults, so adding a KPI still auto-renders a reasonable chart without this.
+const CHART_TUNING: Record<string, { yMin?: number; lineColor?: string }> = {
+  TAT_CRITICAL: { yMin: 50 },
+  RISK_NEARMISS: { yMin: 70, lineColor: BLUE },
+}
 
 // ── Linear regression trendline ──────────────────────────────────
 function linearTrend(values: (number | null)[]): (number | null)[] {
@@ -46,7 +54,15 @@ function fmt(v: number | null | undefined): string {
 
 export function KpiPresentationDashboard({ year, deptCode }: Props) {
   const [rows, setRows] = useState<AnnualKpiRow[]>([])
+  const [defs, setDefs] = useState<KpiDefinition[]>([])
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/kpi/api/definitions')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setDefs(d) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -112,6 +128,61 @@ export function KpiPresentationDashboard({ year, deptCode }: Props) {
   const totalKpis = rows.length
   const passRate = totalKpis > 0 ? Math.round((passCount / totalKpis) * 100) : 0
 
+  // ── Build cards in KPI definition order ──────────────────────────
+  // TAT_UNCROSS / ERR_REPORT / the IPSG1 trio get bespoke visualizations (bar+badge,
+  // gauge, combined pie) that can't be auto-generated. Every other KPI — including any
+  // new one added via Settings — renders automatically: a trend line if it has a
+  // denominator (percentage KPI), or a zero-incident badge if it's count-only.
+  const orderedCodes = defs.length > 0 ? defs.map(d => d.code) : rows.map(r => r.kpi_code)
+  const cards: React.ReactNode[] = []
+  let zeroBuf: AnnualKpiRow[] = []
+  let ipsgDone = false
+
+  const flushZero = () => {
+    if (zeroBuf.length === 0) return
+    cards.push(
+      <div key={`zerogrid-${zeroBuf[0].kpi_code}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+        {zeroBuf.map(r => <ZeroIncidentCard key={r.kpi_code} title={r.kpi_name} total={countTotal(r.kpi_code)} />)}
+      </div>
+    )
+    zeroBuf = []
+  }
+
+  for (const code of orderedCodes) {
+    if (code === 'TAT_UNCROSS') { flushZero(); cards.push(<UncrossCard key={code} series={monthSeries(code)} />); continue }
+    if (code === 'ERR_REPORT') { flushZero(); cards.push(<ErrorRateCard key={code} series={monthSeries(code)} />); continue }
+    if (code === 'RISK_ID_OPD' || code === 'RISK_ID_WARD' || code === 'RISK_STICKER') {
+      if (ipsgDone) continue
+      ipsgDone = true
+      flushZero()
+      cards.push(
+        <IpsgCard
+          key="ipsg"
+          opd={countTotal('RISK_ID_OPD')} ward={countTotal('RISK_ID_WARD')} sticker={countTotal('RISK_STICKER')}
+          opdSeries={monthSeries('RISK_ID_OPD')} wardSeries={monthSeries('RISK_ID_WARD')} stickerSeries={monthSeries('RISK_STICKER')}
+        />
+      )
+      continue
+    }
+
+    const row = byCode(code)
+    if (!row) continue // no data for this dept/year filter
+    const hasDenominator = Object.values(row.months).some(m => m.denominator !== null)
+    if (hasDenominator && row.target_type !== 'eq') {
+      flushZero()
+      const tuning = CHART_TUNING[code]
+      cards.push(
+        <LineKpiCard
+          key={code} title={row.kpi_name} target={row.target_val} targetType={row.target_type as 'gte' | 'lte'}
+          series={monthSeries(code)} yMin={tuning?.yMin} lineColor={tuning?.lineColor}
+        />
+      )
+    } else {
+      zeroBuf.push(row)
+    }
+  }
+  flushZero()
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Hero summary row — latest month snapshot */}
@@ -122,37 +193,7 @@ export function KpiPresentationDashboard({ year, deptCode }: Props) {
         <Stat label="อัตราผ่านล่าสุด" value={`${passRate}%`} icon="trending" color={passRate >= 80 ? 'green' : passRate >= 50 ? 'amber' : 'red'} />
       </div>
 
-      {/* 1.1 Routine LAB */}
-      <LineKpiCard title="TAT — Routine LAB" target={95} targetType="gte" series={monthSeries('TAT_ROUTINE')} />
-      {/* 1.2 Stroke */}
-      <LineKpiCard title="TAT — Stroke Fast Tract" target={100} targetType="gte" series={monthSeries('TAT_STROKE')} />
-      {/* 1.3 Critical */}
-      <LineKpiCard title="TAT — ค่าวิกฤติ (15 นาที)" target={100} targetType="gte" series={monthSeries('TAT_CRITICAL')} yMin={50} />
-      {/* 1.4 Uncrossmatch */}
-      <UncrossCard series={monthSeries('TAT_UNCROSS')} />
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-        {/* 3. Wrong blood */}
-        <ZeroIncidentCard title="ผู้ป่วยได้รับเลือดผิดคน/ผิดหมู่" total={countTotal('RISK_BLOOD')} />
-        {/* 4.5 Sentinel */}
-        <ZeroIncidentCard title="Sentinel Event (G-I)" total={countTotal('RISK_SENTINEL')} />
-      </div>
-
-      {/* 2. Error rate */}
-      <ErrorRateCard series={monthSeries('ERR_REPORT')} />
-
-      {/* 4.1 IPSG1 pie */}
-      <IpsgCard
-        opd={countTotal('RISK_ID_OPD')}
-        ward={countTotal('RISK_ID_WARD')}
-        sticker={countTotal('RISK_STICKER')}
-        opdSeries={monthSeries('RISK_ID_OPD')}
-        wardSeries={monthSeries('RISK_ID_WARD')}
-        stickerSeries={monthSeries('RISK_STICKER')}
-      />
-
-      {/* 4.2 Near miss */}
-      <LineKpiCard title="Near Miss A-B (อุบัติการณ์)" target={75} targetType="gte" series={monthSeries('RISK_NEARMISS')} yMin={70} lineColor={BLUE} />
+      {cards}
     </div>
   )
 }

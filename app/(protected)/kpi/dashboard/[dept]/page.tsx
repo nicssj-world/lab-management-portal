@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getDeptTrend, getDepartments, getDefinitions, getExclusions } from '@/lib/queries/kpi'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -22,7 +23,7 @@ export default async function KpiDeptPage({ params }: Props) {
     getDeptTrend(supabase, dept, year),
     getDepartments(supabase),
     getDefinitions(supabase),
-    getExclusions(supabase),
+    getExclusions(supabaseAdmin), // config table has no RLS read policy
   ])
 
   const deptInfo = depts.find((d) => d.code === dept)

@@ -132,7 +132,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
   const [linkSearching, setLinkSearching] = useState(false)
   const [showLinkResults, setShowLinkResults] = useState(false)
   const linkSearchRef = useRef<HTMLDivElement>(null)
-  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string; forcePdfJs?: boolean } | null>(null)
 
   useEffect(() => {
     fetch(`/api/admin/documents/${doc.id}/attachments`)
@@ -219,7 +219,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
     try {
       const res = await fetch(`/api/admin/documents/${docId}/read`, { method: 'POST' })
       const json = await res.json()
-      if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(fileUrl), title: fileName }); return }
+      if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(fileUrl), title: fileName, forcePdfJs: json.preview_uncontrolled === true }); return }
     } catch { /* ignore */ }
     openAttachmentInline(fileUrl, fileName)
   }
@@ -589,7 +589,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
 
         </div>
       </div>
-      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} forcePdfJs={pdfViewer.forcePdfJs} onClose={() => setPdfViewer(null)} />}
     </>
   )
 }
