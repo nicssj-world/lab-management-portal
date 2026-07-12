@@ -322,6 +322,8 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
   const wordDragCounter = useRef(0)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [selectedWordFile, setSelectedWordFile] = useState<File | null>(null)
+  const [officialFileUpload, setOfficialFileUpload] = useState<{ key: string; name: string; size: number; type: string } | null>(null)
+  const [sourceFileUpload, setSourceFileUpload] = useState<{ key: string; name: string; size: number; type: string } | null>(null)
   const [saveRevision, setSaveRevision] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
@@ -385,6 +387,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
     }
     setError('')
     setSelectedFile(file)
+    setOfficialFileUpload(null)
   }, [type])
 
   const handleWordFile = useCallback((file: File) => {
@@ -398,6 +401,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
     }
     setError('')
     setSelectedWordFile(file)
+    setSourceFileUpload(null)
     setEditDate((current) => current || todayIsoDate())
   }, [])
 
@@ -469,6 +473,53 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
     }
   }
 
+  async function presignOfficialFile(file: File): Promise<{ key: string; name: string; size: number; type: string }> {
+    const presignParams = new URLSearchParams({
+      fileName: file.name,
+      fileType: file.type || 'application/octet-stream',
+      fileSize: String(file.size),
+      type,
+    })
+    const presignRes = await fetch(`/api/admin/documents/presign-file?${presignParams}`)
+    const presignJson = await readJsonOrError(presignRes)
+    if (!presignRes.ok) throw new Error(presignJson.error ?? 'สร้าง URL อัปโหลดไฟล์ทางการไม่สำเร็จ')
+    const { uploadMode, uploadUrl, key, contentType } = presignJson as { uploadMode?: string; uploadUrl: string; key: string; contentType: string }
+    if (uploadMode !== 'direct-r2') throw new Error('production อาจยังไม่ใช่โค้ด direct upload ล่าสุด กรุณา redeploy แล้วลองใหม่')
+    setUploadProgress(0)
+    await uploadFileWithProgress(uploadUrl, file, contentType, setUploadProgress)
+    const uploaded = { key, name: file.name, size: file.size, type: contentType }
+    setOfficialFileUpload(uploaded)
+    return uploaded
+  }
+
+  async function presignSourceFile(file: File): Promise<{ key: string; name: string; size: number; type: string }> {
+    const presignParams = new URLSearchParams({
+      fileName: file.name,
+      fileType: file.type || 'application/octet-stream',
+      fileSize: String(file.size),
+      docType: type.toLowerCase(),
+    })
+    const presignRes = await fetch(`/api/admin/documents/presign-word?${presignParams}`)
+    const presignJson = await readJsonOrError(presignRes)
+    if (!presignRes.ok) throw new Error(presignJson.error ?? 'สร้าง URL อัปโหลดไฟล์ต้นฉบับไม่สำเร็จ')
+    const { uploadMode, uploadUrl, key, contentType } = presignJson as { uploadMode?: string; uploadUrl: string; key: string; contentType: string }
+    if (uploadMode !== 'direct-r2') throw new Error('production อาจยังไม่ใช่โค้ด direct upload ล่าสุด กรุณา redeploy แล้วลองใหม่')
+    setUploadProgress(0)
+    await uploadFileWithProgress(uploadUrl, file, contentType, setUploadProgress)
+    const uploaded = { key, name: file.name, size: file.size, type: contentType }
+    setSourceFileUpload(uploaded)
+    return uploaded
+  }
+
+  function reuseOrPresign(
+    file: File,
+    cached: { key: string; name: string; size: number; type: string } | null,
+    presign: (file: File) => Promise<{ key: string; name: string; size: number; type: string }>,
+  ) {
+    if (cached && cached.name === file.name && cached.size === file.size) return Promise.resolve(cached)
+    return presign(file)
+  }
+
   async function extractFromFile() {
     if (!selectedFile) return
     setExtracting(true)
@@ -503,9 +554,12 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           setCoverDetailsOpen(true)
         }
       } else {
-        const fd = new FormData()
-        fd.append('file', selectedFile)
-        const res = await fetch('/api/admin/documents/extract', { method: 'POST', body: fd })
+        const uploaded = await reuseOrPresign(selectedFile, officialFileUpload, presignOfficialFile)
+        const res = await fetch('/api/admin/documents/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_key: uploaded.key, file_name: uploaded.name }),
+        })
         const json = await readJsonOrError(res)
         if (!res.ok) throw new Error(json.error ?? 'ไม่สามารถอ่านไฟล์ได้')
         const fields = parseExtractedText(json.text as string)
@@ -533,6 +587,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
       setError(err instanceof Error ? err.message : 'ดึงข้อมูลไม่สำเร็จ')
     } finally {
       setExtracting(false)
+      setUploadProgress(null)
     }
   }
 
@@ -541,9 +596,12 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
     setExtractingWord(true)
     setError('')
     try {
-      const fd = new FormData()
-      fd.append('file', selectedWordFile)
-      const res = await fetch('/api/admin/documents/extract', { method: 'POST', body: fd })
+      const uploaded = await reuseOrPresign(selectedWordFile, sourceFileUpload, presignSourceFile)
+      const res = await fetch('/api/admin/documents/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_key: uploaded.key, file_name: uploaded.name }),
+      })
       const json = await readJsonOrError(res)
       if (!res.ok) throw new Error(json.error ?? 'ไม่สามารถอ่านไฟล์ได้')
       const fields = parseExtractedText(json.text as string)
@@ -570,6 +628,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
       setError(err instanceof Error ? err.message : 'ดึงข้อมูลไม่สำเร็จ')
     } finally {
       setExtractingWord(false)
+      setUploadProgress(null)
     }
   }
 
@@ -600,43 +659,44 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
     setError('')
 
     try {
-      // Pre-upload word/excel file directly to R2 via presigned URL to bypass
-      // Vercel's 4.5 MB API-route body-size limit.
+      // Pre-upload word/excel and official files directly to R2 via presigned URL to bypass
+      // Vercel's 4.5 MB API-route body-size limit. Reuse an upload already done by the
+      // "ดึงข้อมูล" preview button when it matches the currently selected file, instead of
+      // uploading the same bytes twice.
       let wordFileKey: string | null = null
       let wordFileName: string | null = null
       let wordFileSize: number | null = null
       if (selectedWordFile) {
-        const presignParams = new URLSearchParams({
-          fileName: selectedWordFile.name,
-          fileType: selectedWordFile.type || 'application/octet-stream',
-          fileSize: String(selectedWordFile.size),
-          docType: type.toLowerCase(),
-        })
-        const presignRes = await fetch(`/api/admin/documents/presign-word?${presignParams}`)
-        const presignJson = await readJsonOrError(presignRes)
-        if (!presignRes.ok) {
-          setError(presignJson.error ?? 'สร้าง URL อัปโหลดไฟล์ต้นฉบับไม่สำเร็จ')
-          setSaving(false)
-          return
-        }
-        const { uploadMode, uploadUrl, key, contentType } = presignJson as { uploadMode?: string; uploadUrl: string; key: string; contentType: string }
-        if (uploadMode !== 'direct-r2') {
-          setError('production อาจยังไม่ใช่โค้ด direct upload ล่าสุด กรุณา redeploy แล้วลองใหม่')
-          setSaving(false)
-          return
-        }
         try {
-          setUploadProgress(0)
-          await uploadFileWithProgress(uploadUrl, selectedWordFile, contentType, setUploadProgress)
+          const uploaded = await reuseOrPresign(selectedWordFile, sourceFileUpload, presignSourceFile)
+          wordFileKey = uploaded.key
+          wordFileName = uploaded.name
+          wordFileSize = uploaded.size
         } catch (err) {
           setError(`อัปโหลดไฟล์ต้นฉบับไม่สำเร็จ ${err instanceof Error ? err.message : String(err)}`)
           setSaving(false)
           setUploadProgress(null)
           return
         }
-        wordFileKey = key
-        wordFileName = selectedWordFile.name
-        wordFileSize = selectedWordFile.size
+      }
+
+      let officialFileKey: string | null = null
+      let officialFileName: string | null = null
+      let officialFileSize: number | null = null
+      let officialFileType: string | null = null
+      if (selectedFile) {
+        try {
+          const uploaded = await reuseOrPresign(selectedFile, officialFileUpload, presignOfficialFile)
+          officialFileKey = uploaded.key
+          officialFileName = uploaded.name
+          officialFileSize = uploaded.size
+          officialFileType = uploaded.type
+        } catch (err) {
+          setError(`อัปโหลดไฟล์ทางการไม่สำเร็จ ${err instanceof Error ? err.message : String(err)}`)
+          setSaving(false)
+          setUploadProgress(null)
+          return
+        }
       }
 
       const baseMetadata = {
@@ -671,9 +731,14 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
 
       if (isEdit) {
         const editUrl = `/api/admin/documents/${doc!.id}${!saveRevision ? '?skipRevision=1' : ''}`
-        if (!isPublishedCorrection && (selectedFile || wordFileKey)) {
+        if (!isPublishedCorrection && (officialFileKey || wordFileKey)) {
           const fd = new FormData()
-          if (selectedFile) fd.append('file', selectedFile)
+          if (officialFileKey) {
+            fd.append('file_key', officialFileKey)
+            fd.append('file_name', officialFileName!)
+            fd.append('file_size', String(officialFileSize!))
+            fd.append('file_type', officialFileType ?? '')
+          }
           if (wordFileKey) {
             fd.append('word_file_key', wordFileKey)
             fd.append('word_file_name', wordFileName!)
@@ -690,7 +755,12 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         }
       } else {
         const fd = new FormData()
-        if (selectedFile) fd.append('file', selectedFile)
+        if (officialFileKey) {
+          fd.append('file_key', officialFileKey)
+          fd.append('file_name', officialFileName!)
+          fd.append('file_size', String(officialFileSize!))
+          fd.append('file_type', officialFileType ?? '')
+        }
         if (wordFileKey) {
           fd.append('word_file_key', wordFileKey)
           fd.append('word_file_name', wordFileName!)
@@ -1069,7 +1139,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedFile.name}</div>
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtSize(selectedFile.size)}</div>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); setSelectedFile(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', flexShrink: 0 }}>
+                    <button onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setOfficialFileUpload(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', flexShrink: 0 }}>
                       <Icon name="x" size={12} />
                     </button>
                   </div>
@@ -1129,7 +1199,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedWordFile.name}</div>
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtSize(selectedWordFile.size)}</div>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); setSelectedWordFile(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', flexShrink: 0 }}>
+                    <button onClick={(e) => { e.stopPropagation(); setSelectedWordFile(null); setSourceFileUpload(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', flexShrink: 0 }}>
                       <Icon name="x" size={12} />
                     </button>
                   </div>
