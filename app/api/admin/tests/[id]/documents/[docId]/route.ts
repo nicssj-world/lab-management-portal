@@ -5,6 +5,7 @@ import { GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { canEditTests } from '@/lib/tests/permissions'
 import { getActor, getPermissionLevel, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
+import { normalizeDocumentAccess } from '@/lib/tests/document-access'
 
 type Params = { params: Promise<{ id: string; docId: string }> }
 
@@ -30,6 +31,34 @@ export async function GET(_req: NextRequest, { params }: Params) {
   )
 
   return NextResponse.json({ url })
+}
+
+export async function PATCH(req: NextRequest, { params }: Params) {
+  try {
+    const actor = await getActor()
+    if (!actor) return jsonUnauthorized()
+    const permissionLevel = await getPermissionLevel(actor, 'รายการตรวจ')
+    if (!canEditTests(actor, permissionLevel)) return jsonForbidden()
+
+    const { id, docId } = await params
+    const testId = Number(id)
+    const documentId = Number(docId)
+    if (!Number.isInteger(testId) || !Number.isInteger(documentId)) return NextResponse.json({ error: 'Invalid id' }, { status: 422 })
+
+    const body = await req.json()
+    const access = normalizeDocumentAccess(body.visibility, body.access_mode)
+    const { data, error } = await supabaseAdmin
+      .from('test_documents')
+      .update({ visibility: access.visibility, access_mode: access.accessMode })
+      .eq('id', documentId)
+      .eq('test_id', testId)
+      .select()
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data)
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
