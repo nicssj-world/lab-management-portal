@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
+import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { extractDocxHeaderMetadata } from '@/lib/documents/docx-header'
 import { extractXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
 
@@ -12,32 +14,69 @@ function fileTooLargeResponse() {
   )
 }
 
+async function getObjectBuffer(key: string) {
+  const object = await r2.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+  const body = object.Body
+  if (!body) throw new Error('ไม่พบไฟล์ที่อัปโหลดใน R2')
+  if ('transformToByteArray' in body && typeof body.transformToByteArray === 'function') {
+    return Buffer.from(await body.transformToByteArray())
+  }
+  const chunks: Uint8Array[] = []
+  for await (const chunk of body as AsyncIterable<Uint8Array | Buffer>) {
+    chunks.push(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk))
+  }
+  return Buffer.concat(chunks)
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const contentLength = Number(req.headers.get('content-length') ?? 0)
-  if (contentLength > EXTRACT_MAX_BYTES) return fileTooLargeResponse()
+  const contentType = req.headers.get('content-type') ?? ''
+  let buffer: Buffer
+  let fileName: string
 
-  let form: FormData
-  try {
-    form = await req.formData()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const status = /large|size|body|payload/i.test(msg) ? 413 : 400
-    return NextResponse.json(
-      { error: status === 413 ? 'ไฟล์ใหญ่เกินขนาดที่ระบบอ่านอัตโนมัติได้ กรุณาลดขนาดไฟล์หรือกรอกข้อมูลเอง' : `ไม่สามารถอ่านข้อมูลไฟล์ได้: ${msg}` },
-      { status },
-    )
+  if (contentType.includes('application/json')) {
+    // File was already uploaded directly to R2 via presigned URL — fetch it server-side.
+    // This path has no Vercel request-body size limit, so it can use the app's own 20 MB cap.
+    const body = await req.json() as { file_key?: string; file_name?: string }
+    const fileKey = (body.file_key ?? '').trim()
+    fileName = (body.file_name ?? '').trim()
+    if (!fileKey || !fileName) return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
+
+    const size = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: fileKey }))
+      .then((o) => o.ContentLength ?? 0)
+      .catch(() => null)
+    if (size === null) return NextResponse.json({ error: 'ไม่พบไฟล์ที่อัปโหลดใน storage' }, { status: 422 })
+    if (size > EXTRACT_MAX_BYTES) return fileTooLargeResponse()
+
+    buffer = await getObjectBuffer(fileKey)
+  } else {
+    const contentLength = Number(req.headers.get('content-length') ?? 0)
+    if (contentLength > EXTRACT_MAX_BYTES) return fileTooLargeResponse()
+
+    let form: FormData
+    try {
+      form = await req.formData()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const status = /large|size|body|payload/i.test(msg) ? 413 : 400
+      return NextResponse.json(
+        { error: status === 413 ? 'ไฟล์ใหญ่เกินขนาดที่ระบบอ่านอัตโนมัติได้ กรุณาลดขนาดไฟล์หรือกรอกข้อมูลเอง' : `ไม่สามารถอ่านข้อมูลไฟล์ได้: ${msg}` },
+        { status },
+      )
+    }
+
+    const file = form.get('file') as File | null
+    if (!file) return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
+    if (file.size > EXTRACT_MAX_BYTES) return fileTooLargeResponse()
+
+    fileName = file.name
+    buffer = Buffer.from(await file.arrayBuffer())
   }
 
-  const file = form.get('file') as File | null
-  if (!file) return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
-  if (file.size > EXTRACT_MAX_BYTES) return fileTooLargeResponse()
-
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
-  const buffer = Buffer.from(await file.arrayBuffer())
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
   let text = ''
 
   try {
