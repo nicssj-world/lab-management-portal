@@ -12,7 +12,7 @@ function canBackfillRevisionHistory(actor: { role: string; doc_role: string | nu
   return actor.role === 'Admin' || actor.role === 'Document Controller' || actor.doc_role === 'Document Controller'
 }
 
-function isAllowedHistoryFile(file: File) {
+function isAllowedHistoryFile(file: { name: string }) {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
   return ALLOWED_HISTORY_FILE_EXTENSIONS.has(ext)
 }
@@ -102,6 +102,11 @@ export async function POST(
 
     const fileRaw = form.get('file')
     const file = fileRaw instanceof File && fileRaw.size > 0 ? fileRaw : null
+    const fileKey = (form.get('file_key') as string | null)?.trim() || null
+    const fileKeyName = (form.get('file_name') as string | null)?.trim() || null
+    const fileKeyType = (form.get('file_type') as string | null)?.trim() || null
+    const fileKeySizeRaw = form.get('file_size')
+    const fileKeySize = fileKeySizeRaw ? Number(fileKeySizeRaw) : null
     let fileFields: Record<string, unknown> = {
       file_url: null,
       file_name: null,
@@ -122,6 +127,19 @@ export async function POST(
         file_name: file.name,
         file_size: uploaded.size,
         mime_type: file.type || 'application/octet-stream',
+      }
+    } else if (fileKey) {
+      if (fileKeyName && !isAllowedHistoryFile({ name: fileKeyName })) {
+        return NextResponse.json({ error: 'ไฟล์ประวัติย้อนหลังรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
+      }
+      if (fileKeySize && fileKeySize > MAX_HISTORY_FILE_SIZE) {
+        return NextResponse.json({ error: 'ไฟล์ประวัติย้อนหลังใหญ่เกิน 50 MB' }, { status: 422 })
+      }
+      fileFields = {
+        file_url: fileKey,
+        file_name: fileKeyName ?? fileKey.split('/').pop() ?? 'file',
+        file_size: fileKeySize,
+        mime_type: fileKeyType || 'application/octet-stream',
       }
     }
 

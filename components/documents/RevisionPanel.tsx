@@ -566,13 +566,47 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
     if (!formRev.trim()) { setFormError('กรุณากรอกหมายเลข Revision'); return }
     setFormSaving(true); setFormError('')
     try {
+      let fileKey: string | null = null
+      let fileKeyName: string | null = null
+      let fileKeySize: number | null = null
+      let fileKeyType: string | null = null
+      if (formFile) {
+        const fileType = formFile.type || 'application/octet-stream'
+        const presignParams = new URLSearchParams({
+          fileName: formFile.name,
+          fileType,
+          fileSize: String(formFile.size),
+        })
+        const presignRes = await fetch(`/api/admin/documents/${doc.id}/revisions/presign?${presignParams.toString()}`)
+        const presignText = await presignRes.text()
+        const presignJson = parseDraftUploadResponse(presignText)
+        if (!presignRes.ok) {
+          setFormError(presignJson.error ?? `สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ (${presignRes.status})`)
+          return
+        }
+        if (presignJson.uploadMode !== 'direct-r2' || !presignJson.uploadUrl || !presignJson.key) {
+          setFormError('สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ: production อาจยังไม่ใช่โค้ด direct upload ล่าสุด กรุณา redeploy แล้วลองใหม่')
+          return
+        }
+        await uploadFileWithProgress(presignJson.uploadUrl, formFile, presignJson.contentType ?? fileType, () => {})
+        fileKey = presignJson.key
+        fileKeyName = formFile.name
+        fileKeySize = formFile.size
+        fileKeyType = presignJson.contentType ?? fileType
+      }
+
       const fd = new FormData()
       fd.append('revision_number', formRev.trim())
       if (formNote.trim()) fd.append('revision_note', formNote.trim())
       if (formRevisedBy.trim()) fd.append('revised_by', formRevisedBy.trim())
       if (formApprover.trim()) fd.append('approved_by', formApprover.trim())
       if (formDate) fd.append('revision_date', formDate)
-      if (formFile) fd.append('file', formFile)
+      if (fileKey) {
+        fd.append('file_key', fileKey)
+        fd.append('file_name', fileKeyName!)
+        fd.append('file_size', String(fileKeySize!))
+        fd.append('file_type', fileKeyType ?? '')
+      }
       const res = await fetch(`/api/admin/documents/${doc.id}/revisions`, { method: 'POST', body: fd })
       const json = await res.json()
       if (!res.ok) { setFormError(json.error ?? 'เกิดข้อผิดพลาด'); return }
