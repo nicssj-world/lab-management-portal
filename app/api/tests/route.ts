@@ -1,53 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getTests } from '@/lib/queries/tests'
-import type { Test } from '@/lib/supabase/types'
+import { sanitizeTest } from '@/lib/catalog/public-test'
 
 const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 100
-
-const PUBLIC_TEST_FIELDS = [
-  'id',
-  'code',
-  'cgd',
-  'loinc',
-  'th',
-  'en',
-  'category_id',
-  'tube',
-  'volume',
-  'method',
-  'tat',
-  'tat_hours',
-  'service',
-  'price',
-  'ref',
-  'stability',
-  'reject',
-  'priority',
-  'popular',
-  'active',
-  'updated_at',
-  'lis_code',
-  'short_name',
-  'description',
-  'department',
-  'instrument',
-  'methodology_note',
-  'tat_minutes',
-  'urgent_tat_minutes',
-  'available_24hr',
-  'tube_color',
-  'transport_condition',
-  'specimen_note',
-  'contact_name',
-  'contact_phone',
-  'contact_email',
-  'contact_note',
-  'ref_note',
-  'contact_staff',
-  'related_doc_ids',
-] as const
 
 function toMsg(err: unknown): string {
   if (err && typeof err === 'object') {
@@ -60,12 +17,6 @@ function toMsg(err: unknown): string {
 function toNumber(value: string | null, fallback: number) {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
-}
-
-function sanitizeTest(test: Test) {
-  return Object.fromEntries(
-    PUBLIC_TEST_FIELDS.map((field) => [field, test[field]])
-  )
 }
 
 export async function GET(req: NextRequest) {

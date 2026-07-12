@@ -10,23 +10,28 @@ import { Input } from '@/components/ui/Input'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import { DocumentDetailModal, PdfViewerModal, type Attachment } from '@/components/documents/DocumentDetailModal'
+import { PdfViewer } from '@/components/documents/PdfViewer'
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
+import { QuickUpdateModal } from '@/components/documents/QuickUpdateModal'
 import { allowedTransitions } from '@/lib/documents/transitions'
 import { canMoveToStatus } from '@/lib/documents/workflow'
 import { isReviewTrackedType, reviewWindowState } from '@/lib/documents/review'
 import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
 import { TYPE_ICON_BG, TYPE_ICON_FG, STATUS_LABEL, STATUS_COLOR, fmtSize, fmtDate } from '@/lib/documents/ui-constants'
+import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
+import { buildReadLogSummaryHtml } from '@/lib/documents/read-log-summary'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { BulkDownloadKind } from '@/lib/documents/bulk-download'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
+import { TYPE_LABEL } from '@/lib/documents/type-labels'
 
 // ── Constants ─────────────────────────────────────────────────
-const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'] as const
+const TYPE_TABS = ['All', 'QM', 'QP', 'WI', 'Reference', 'Form', 'Card file', 'Lb', 'Manual', 'Policy', 'Others'] as const
 
 const DEPARTMENTS = DOCUMENT_DEPARTMENTS
 
 const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray' | 'red'> = {
-  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray', Reference: 'red', 'Card file': 'amber', Others: 'gray',
+  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', QM: 'green', Reference: 'red', 'Card file': 'amber', Lb: 'purple', Others: 'gray',
 }
 
 const ALL_STATUSES: DocStatus[] = ['Draft', 'Review', 'Approved', 'Published', 'Obsolete']
@@ -305,100 +310,16 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
   }
 
   function downloadReadLog() {
-    const TYPE_LABEL: Record<string, string> = {
-      QP: 'ระเบียบปฏิบัติ QP',
-      WI: 'วิธีปฏิบัติ (WI)',
-      Manual: 'คู่มือคุณภาพ (QM)',
-      Form: 'แบบฟอร์ม (Form)',
-      Policy: 'นโยบาย (Policy)',
-      Record: 'บันทึกคุณภาพ (Record)',
-      Reference: 'เอกสารอ้างอิง (Reference)',
-      'Card file': 'Card file',
-      Others: 'เอกสารอื่นๆ',
-    }
-    const posLabel = (role: string | undefined) => {
-      if (role === 'Manager' || role === 'Medical Technologist' || role === 'Document Controller' || role === 'Admin') return 'นักเทคนิคการแพทย์'
-      if (role === 'Assistant') return 'พนักงานประจำห้องทดลอง'
-      if (role === 'Medical Science Technician') return 'เจ้าพนักงานวิทยาศาสตร์การแพทย์'
-      return ''
-    }
-    const fmtDate = (iso: string) =>
-      new Date(iso).toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-
-    // Deduplicate: keep latest record per user (all roles)
-    const seen = new Map<string, ReadLog>()
-    for (const log of logs) {
-      const uid = log.user_id
-      if (!seen.has(uid) || new Date(log.created_at) > new Date(seen.get(uid)!.created_at)) {
-        seen.set(uid, log)
-      }
-    }
-    const unique = Array.from(seen.values()).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-
-    const ROWS_PER_PAGE = 25
-    const pages: ReadLog[][] = []
-    for (let i = 0; i < Math.max(unique.length, 1); i += ROWS_PER_PAGE) {
-      pages.push(unique.slice(i, i + ROWS_PER_PAGE))
-    }
-
-    const headerBlock = `
-      <div class="page-header">
-        <div class="main-title">แบบบันทึกการลงชื่อรับทราบ การศึกษาและทำความเข้าใจเอกสารคุณภาพ</div>
-        <div class="sub-title">กลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี</div>
-        <div class="doc-meta">ประเภทเอกสาร ${TYPE_LABEL[doc.type] ?? doc.type}</div>
-        <div class="doc-meta">เรื่อง ${doc.title}&nbsp;&nbsp;&nbsp;รหัส ${doc.document_code}</div>
-      </div>`
-
-    const theadHtml = `<thead><tr><th class="col-no">ลำดับที่</th><th class="col-name">ชื่อ-สกุล</th><th class="col-pos">ตำแหน่ง</th><th class="col-date">วันที่ - เวลา</th></tr></thead>`
-
-    let rowIdx = 1
-    const pagesHtml = pages.map((page, pageIndex) => {
-      const isLastPage = pageIndex === pages.length - 1
-      const filledRows = [...page]
-      // Fill blank rows only on non-last pages to maintain consistent page height
-      if (!isLastPage) {
-        while (filledRows.length < ROWS_PER_PAGE) filledRows.push(null as unknown as ReadLog)
-      }
-      const tbodyHtml = filledRows.map((log) =>
-        log
-          ? `<tr><td class="center">${rowIdx++}</td><td>${log.profiles?.name ?? ''}</td><td class="center">${log.profiles?.document_position || posLabel(log.profiles?.role)}</td><td class="center">${fmtDate(log.created_at)}</td></tr>`
-          : `<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>`
-      ).join('')
-      return `
-        <div class="page">
-          ${headerBlock}
-          <table>${theadHtml}<tbody>${tbodyHtml}</tbody></table>
-          <div class="page-footer">
-            <span class="footer-spacer"></span>
-            <span class="footer-center">เอกสารนี้เป็นสมบัติของกลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี ห้ามนำออกไปใช้ภายนอกหรือทำซ้ำโดยไม่ได้รับอนุญาต</span>
-            <span class="footer-right">Fm-QP-LAB-01/05</span>
-          </div>
-        </div>`
-    }).join('')
-
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fm-QP-LAB-01-05</title><style>
-      @page { size: A4 portrait; margin: 12mm 15mm 12mm 15mm; }
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: 'TH Sarabun New', 'Sarabun', 'Cordia New', Arial, sans-serif; font-size: 14pt; color: #000; }
-      .page { page-break-after: always; display: flex; flex-direction: column; height: 273mm; }
-      .page:last-child { page-break-after: avoid; }
-      .page-header { text-align: center; margin-bottom: 8px; flex-shrink: 0; }
-      .main-title { font-size: 17pt; font-weight: bold; line-height: 1.5; }
-      .sub-title { font-size: 16pt; font-weight: bold; line-height: 1.5; }
-      .doc-meta { font-size: 14pt; font-weight: bold; margin-top: 4px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 8px; flex-shrink: 0; }
-      th, td { border: 1.5px solid #000; padding: 3px 6px; font-size: 13pt; height: 26px; }
-      th { background: #f5f5f5; font-weight: bold; text-align: center; }
-      .col-no { width: 10%; text-align: center; }
-      .col-name { width: 30%; }
-      .col-pos { width: 30%; text-align: center; }
-      .col-date { width: 30%; text-align: center; }
-      .center { text-align: center; }
-      .page-footer { display: flex; align-items: center; font-size: 10.5pt; color: #555; margin-top: auto; padding-top: 4px; border-top: 1px solid #bbb; }
-      .footer-spacer { flex: 1; }
-      .footer-center { flex: 0 1 auto; text-align: center; }
-      .footer-right { flex: 1; text-align: right; white-space: nowrap; }
-    </style></head><body>${pagesHtml}</body></html>`
+    const html = buildReadLogSummaryHtml(
+      { title: doc.title, document_code: doc.document_code, type: doc.type },
+      logs.map((log) => ({
+        userId: log.user_id,
+        name: log.profiles?.name ?? '',
+        position: log.profiles?.document_position ?? null,
+        role: log.profiles?.role ?? null,
+        lastRead: log.created_at,
+      })),
+    )
 
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const blobUrl = URL.createObjectURL(blob)
@@ -407,8 +328,7 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
     win.addEventListener('load', () => { win.print(); URL.revokeObjectURL(blobUrl) }, { once: true })
   }
 
-  const isPdf = mime?.includes('pdf')
-  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)
+  const isPdf = mime?.includes('pdf') || /\.pdf$/i.test(doc.file_name ?? doc.file_url ?? '')
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 1100, display: 'flex', flexDirection: 'column' }}>
@@ -454,25 +374,8 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
               <Icon name="alert" size={40} style={{ color: 'rgba(255,255,255,.5)' }} />
               <span style={{ fontSize: 14, color: 'rgba(255,255,255,.7)' }}>{errMsg}</span>
             </div>
-          ) : isPdf && !isIOS ? (
-            <iframe
-              src={url!}
-              style={{ width: '100%', height: '100%', border: 'none' }}
-              title={doc.title}
-            />
-          ) : isPdf && isIOS ? (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ background: 'var(--card)', borderRadius: 16, padding: 36, textAlign: 'center', maxWidth: 380 }}>
-                <div style={{ width: 64, height: 64, borderRadius: 16, background: 'rgba(30,95,173,.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  <Icon name="doc" size={28} style={{ color: 'var(--primary)' }} />
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>{doc.title}</div>
-                <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>แตะปุ่มด้านล่างเพื่อเปิด PDF ใน Safari</div>
-                <button onClick={() => window.open(url!, '_blank')} style={{ background: 'none', border: 0, padding: 0 }}>
-                  <Button variant="primary" icon="eye">เปิด PDF</Button>
-                </button>
-              </div>
-            </div>
+          ) : isPdf && url ? (
+            <PdfViewer url={url} pdfJsUrl={documentPdfProxyUrl(doc.file_url)} fileName={doc.file_name ?? doc.title} mimeType={mime} />
           ) : (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ background: 'var(--card)', borderRadius: 16, padding: 36, textAlign: 'center', maxWidth: 380 }}>
@@ -587,6 +490,8 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
     ? true
     : ['Laboratory Director', 'Document Controller'].includes(workflowRole ?? '')
   const canRead   = true
+  // Admin/DCC can publish directly; other upload-capable roles (e.g. Reviewer) queue for approval.
+  const canPublishQuick = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller'
   const canViewSourceUploadQueue = userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller'
   const canBulkDownload = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller' || docRole === 'Reviewer' || userRole === 'Reviewer'
 
@@ -622,6 +527,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
 
   const [statusDoc, setStatusDoc]   = useState<Document | null>(null)
   const [revDoc, setRevDoc]         = useState<Document | null>(null)
+  const [quickDoc, setQuickDoc]     = useState<Document | null>(null)
   const [readDoc, setReadDoc]       = useState<Document | null>(null)
   const [detailDoc, setDetailDoc]   = useState<Document | null>(null)
 
@@ -960,6 +866,12 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
     toast(`เลื่อน Rev. ${updated.revision} ขึ้นมาเป็นเวอร์ชันล่าสุดแล้ว`)
   }
 
+  function handleQuickUpdateDone({ published }: { published: boolean }) {
+    setQuickDoc(null)
+    fetchDocs()
+    toast(published ? 'อัปเดตและเผยแพร่เอกสารแล้ว' : 'ส่งเข้าคิว "รอเผยแพร่" ให้ DCC/Admin แล้ว')
+  }
+
   const totalPages = Math.ceil(count / PAGE_SIZE)
   const hasFilters = !!(search || filterStatus || visibility || department || sourceUploadedOnly || activeType !== DEFAULT_TYPE_FILTER)
   const typeEntries = (Object.entries(typeCounts) as [string, number][])
@@ -1114,7 +1026,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
               style={{ width: '100%', padding: '8px 32px 8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', color: activeType !== 'All' ? 'var(--ink)' : 'var(--muted)', background: 'var(--card)', outline: 'none', cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none' }}
             >
               <option value="All">ทุกประเภท</option>
-              {TYPE_TABS.filter(t => t !== 'All').map((t) => <option key={t} value={t}>{t}</option>)}
+              {TYPE_TABS.filter(t => t !== 'All').map((t) => <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>)}
             </select>
             <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', fontSize: 11 }}>▾</span>
           </div>
@@ -1381,12 +1293,21 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
                               <Icon name="clock" size={14} />
                             </button>
                             {canUpload && doc.status === 'Published' && (
-                              <button onClick={() => handleCreateRevisionDraft(doc)} title={hasActiveDraft ? 'มีฉบับแก้ไข (Rev+) กำลังดำเนินการ — คลิกเพื่อเปิด' : 'สร้าง Revision ใหม่'}
-                                style={{ width: 42, height: 32, borderRadius: 7, border: `1px solid ${hasActiveDraft ? 'var(--warning)' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: hasActiveDraft ? 'var(--warning)' : 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
-                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
-                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = hasActiveDraft ? 'var(--warning)' : 'var(--border)'; e.currentTarget.style.color = hasActiveDraft ? 'var(--warning)' : 'var(--muted)' }}>
-                                Rev+
-                              </button>
+                              !isReviewTrackedType(doc.type) && !hasActiveDraft ? (
+                                <button onClick={() => setQuickDoc(doc)} title="อัปเดตเอกสาร (เปลี่ยนไฟล์ + Rev+1)"
+                                  style={{ width: 42, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                                  Upd+
+                                </button>
+                              ) : (
+                                <button onClick={() => handleCreateRevisionDraft(doc)} title={hasActiveDraft ? 'มีฉบับแก้ไข (Rev+) กำลังดำเนินการ — คลิกเพื่อเปิด' : 'สร้าง Revision ใหม่'}
+                                  style={{ width: 42, height: 32, borderRadius: 7, border: `1px solid ${hasActiveDraft ? 'var(--warning)' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: hasActiveDraft ? 'var(--warning)' : 'var(--muted)', transition: 'all .12s', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = hasActiveDraft ? 'var(--warning)' : 'var(--border)'; e.currentTarget.style.color = hasActiveDraft ? 'var(--warning)' : 'var(--muted)' }}>
+                                  Rev+
+                                </button>
+                              )
                             )}
                             {/* Edit */}
                             {canUpload && (doc.status !== 'Published' || userRole === 'Admin' || docRole === 'Document Controller') && (
@@ -1517,6 +1438,16 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
           userRole={userRole ?? ''}
           docRole={docRole}
           canAdd={canUpload}
+        />
+      )}
+
+      {/* Quick Update (Upd+) for non-controlled document types */}
+      {quickDoc && (
+        <QuickUpdateModal
+          doc={quickDoc}
+          canPublish={canPublishQuick}
+          onClose={() => setQuickDoc(null)}
+          onDone={handleQuickUpdateDone}
         />
       )}
 

@@ -1,15 +1,19 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
 import { DEPARTMENTS, DEPT_ABBR } from '@/lib/validations/user-schema'
 import { TYPE_ICON_BG, TYPE_ICON_FG } from '@/lib/documents/ui-constants'
+import { DOC_TYPES as TYPE_ORDER } from '@/lib/documents/type-labels'
+import { buildReadAudiencePayload, buildReadAudiencePickerState, resolveReadAudience } from '@/lib/documents/read-audience'
+import { buildReadLogSummaryHtml } from '@/lib/documents/read-log-summary'
 
 export interface ReportPerson {
   id: string
   name: string
+  role: string | null
   position: string | null
   dept: string | null
 }
@@ -23,6 +27,7 @@ export interface ReportRow {
   revision: string | null
   published_at: string | null
   read_audience_depts: string[] | null
+  read_audience_user_ids: string[] | null
   /** Distinct users who viewed the current revision (views after published_at). */
   readers: { userId: string; lastRead: string }[]
 }
@@ -33,7 +38,6 @@ interface Props {
   canAssign: boolean
 }
 
-const TYPE_ORDER = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others']
 
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '—'
@@ -46,6 +50,36 @@ function pctColor(pct: number): string {
   return '#DC2626'
 }
 
+function DeptAudienceCheckbox({
+  checked,
+  indeterminate,
+  disabled,
+  onChange,
+}: {
+  checked: boolean
+  indeterminate: boolean
+  disabled?: boolean
+  onChange: (checked: boolean) => void
+}) {
+  const ref = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate
+  }, [indeterminate])
+
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.checked)}
+      onClick={(e) => e.stopPropagation()}
+      style={{ accentColor: 'var(--primary)', marginTop: 2, flexShrink: 0, cursor: disabled ? 'default' : 'pointer' }}
+    />
+  )
+}
+
 export function ReadReportClient({ rows: initialRows, people, canAssign }: Props) {
   const [rows, setRows] = useState<ReportRow[]>(initialRows)
   const [search, setSearch] = useState('')
@@ -56,19 +90,31 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
   const [detailTab, setDetailTab] = useState<'read' | 'unread'>('read')
   const [assignOpen, setAssignOpen] = useState(false)
   const [assignMode, setAssignMode] = useState<'all' | 'depts'>('all')
-  const [assignDepts, setAssignDepts] = useState<string[]>([])
+  const [assignUserIds, setAssignUserIds] = useState<Set<string>>(new Set())
+  const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set())
   const [assignBusy, setAssignBusy] = useState(false)
   const [assignErr, setAssignErr] = useState('')
 
   const peopleById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people])
+  const audienceGroups = useMemo(() => {
+    const groups: { key: string; label: string; members: ReportPerson[] }[] = DEPARTMENTS.map((dept) => ({
+      key: dept,
+      label: dept,
+      members: people.filter((person) => person.dept === dept),
+    }))
+    const unassigned = people.filter((person) => person.dept == null)
+    if (unassigned.length > 0) {
+      groups.push({ key: '__no_dept__', label: 'ไม่ระบุแผนก', members: unassigned })
+    }
+    return groups
+  }, [people])
 
-  // Per-row audience + read stats: the denominator is the audience (all active users, or
-  // only users in the assigned depts); readers outside the audience don't count toward X.
+  // Per-row audience + read stats: the denominator is the resolved audience; readers
+  // outside that audience don't count toward X.
   const stats = useMemo(() => {
     const map = new Map<string, { audience: ReportPerson[]; readIn: number; pct: number }>()
     for (const row of rows) {
-      const depts = row.read_audience_depts
-      const audience = depts && depts.length > 0 ? people.filter((p) => p.dept && depts.includes(p.dept)) : people
+      const audience = resolveReadAudience(people, row.read_audience_depts, row.read_audience_user_ids)
       const audienceIds = new Set(audience.map((p) => p.id))
       const readIn = row.readers.filter((r) => audienceIds.has(r.userId)).length
       const pct = audience.length > 0 ? Math.round((readIn / audience.length) * 100) : 0
@@ -117,24 +163,77 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
     })
   }
 
+  function toggleExpanded(key: string) {
+    setExpandedDepts((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function toggleDeptMembers(members: ReportPerson[]) {
+    if (members.length === 0) return
+    setAssignUserIds((prev) => {
+      const next = new Set(prev)
+      const allSelected = members.every((person) => next.has(person.id))
+      for (const person of members) {
+        if (allSelected) next.delete(person.id)
+        else next.add(person.id)
+      }
+      return next
+    })
+  }
+
+  function toggleAssignUser(id: string) {
+    setAssignUserIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function openAssignModal() {
+    setAssignErr('')
+    const selectedRows = rows.filter((row) => selected.has(row.id))
+    if (selectedRows.length === 1) {
+      const row = selectedRows[0]
+      const initialState = buildReadAudiencePickerState(people, row.read_audience_depts, row.read_audience_user_ids)
+      setAssignMode(initialState.mode)
+      setAssignUserIds(new Set(initialState.selected_user_ids))
+      setExpandedDepts(new Set(initialState.expanded_keys))
+    } else {
+      setAssignMode('all')
+      setAssignUserIds(new Set())
+      setExpandedDepts(new Set())
+    }
+    setAssignOpen(true)
+  }
+
   async function handleAssign() {
     setAssignBusy(true)
     setAssignErr('')
     try {
-      const depts = assignMode === 'depts' && assignDepts.length > 0 ? assignDepts : null
+      const payload = assignMode === 'depts'
+        ? buildReadAudiencePayload(assignUserIds, people, DEPARTMENTS)
+        : { depts: [], user_ids: [] }
+      const depts = assignMode === 'depts' && payload.depts.length > 0 ? payload.depts : null
+      const userIds = assignMode === 'depts' && payload.user_ids.length > 0 ? payload.user_ids : null
       const res = await fetch('/api/admin/documents/bulk-read-audience', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: Array.from(selected), depts }),
+        body: JSON.stringify({ ids: Array.from(selected), depts, user_ids: userIds }),
       })
       const json = await res.json()
       if (!res.ok) { setAssignErr(json.error ?? 'บันทึกไม่สำเร็จ'); return }
       const updated = new Set((json.updated ?? []) as string[])
-      setRows((prev) => prev.map((r) => updated.has(r.id) ? { ...r, read_audience_depts: depts } : r))
+      setRows((prev) => prev.map((r) => updated.has(r.id) ? { ...r, read_audience_depts: depts, read_audience_user_ids: userIds } : r))
       setSelected(new Set())
       setAssignOpen(false)
       setAssignMode('all')
-      setAssignDepts([])
+      setAssignUserIds(new Set())
+      setExpandedDepts(new Set())
     } catch {
       setAssignErr('บันทึกไม่สำเร็จ กรุณาลองใหม่')
     } finally {
@@ -153,6 +252,31 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
   const detailNonReaders = detailRow && detailStats
     ? detailStats.audience.filter((p) => !detailRow.readers.some((r) => r.userId === p.id))
     : []
+
+  function downloadDetailReadSummary(row: ReportRow) {
+    const html = buildReadLogSummaryHtml(
+      { title: row.title, document_code: row.document_code, type: row.type },
+      row.readers
+        .map((reader) => {
+          const person = peopleById.get(reader.userId)
+          if (!person) return null
+          return {
+            userId: reader.userId,
+            name: person.name,
+            position: person.position,
+            role: person.role,
+            lastRead: reader.lastRead,
+          }
+        })
+        .filter((reader): reader is { userId: string; name: string; position: string | null; role: string | null; lastRead: string } => Boolean(reader)),
+    )
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const blobUrl = URL.createObjectURL(blob)
+    const win = window.open(blobUrl, '_blank')
+    if (!win) { URL.revokeObjectURL(blobUrl); return }
+    win.addEventListener('load', () => { win.print(); URL.revokeObjectURL(blobUrl) }, { once: true })
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -222,7 +346,7 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
         <div style={{ flex: 1 }} />
         {canAssign && (
           <button
-            onClick={() => { setAssignErr(''); setAssignOpen(true) }}
+            onClick={openAssignModal}
             disabled={selected.size === 0}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
@@ -264,7 +388,14 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
               {filtered.map((r) => {
                 const s = stats.get(r.id)
                 if (!s) return null
-                const depts = r.read_audience_depts
+                const depts = r.read_audience_depts ?? []
+                const userIds = r.read_audience_user_ids ?? []
+                const hasAudienceLimit = depts.length > 0 || userIds.length > 0
+                const deptLabel = depts.length > 0
+                  ? (depts.length <= 2 ? depts.map((d) => DEPT_ABBR[d] ?? d).join(', ') : `${depts.length} แผนก`)
+                  : ''
+                const personLabel = userIds.length > 0 ? `${depts.length > 0 ? '+' : ''}${userIds.length} คน` : ''
+                const audienceLabel = [deptLabel, personLabel].filter(Boolean).join(' ')
                 return (
                   <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background .12s' }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
@@ -283,9 +414,9 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
                       <span style={{ fontSize: 10.5, fontWeight: 700, color: TYPE_ICON_FG[r.type] ?? 'var(--muted)', background: TYPE_ICON_BG[r.type] ?? 'var(--surface-2)', padding: '2px 9px', borderRadius: 99 }}>{r.type}</span>
                     </td>
                     <td style={{ padding: '10px 14px', textAlign: 'center', maxWidth: 180 }}>
-                      {depts && depts.length > 0 ? (
-                        <span title={depts.join(', ')} style={{ fontSize: 10.5, fontWeight: 600, color: '#7C3AED', background: 'rgba(124,58,237,.1)', padding: '2px 9px', borderRadius: 99 }}>
-                          {depts.length <= 2 ? depts.map((d) => DEPT_ABBR[d] ?? d).join(', ') : `${depts.length} แผนก`}
+                      {hasAudienceLimit ? (
+                        <span title={[depts.join(', '), userIds.length > 0 ? `รายบุคคล ${userIds.length} คน` : ''].filter(Boolean).join(' + ')} style={{ fontSize: 10.5, fontWeight: 600, color: '#7C3AED', background: 'rgba(124,58,237,.1)', padding: '2px 9px', borderRadius: 99 }}>
+                          {audienceLabel}
                         </span>
                       ) : (
                         <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--muted)', background: 'var(--surface-2)', padding: '2px 9px', borderRadius: 99 }}>ทั้งกลุ่มงาน</span>
@@ -322,9 +453,34 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
                     {detailRow.document_code} · Rev.{detailRow.revision ?? '-'} · เผยแพร่ {fmtDateTime(detailRow.published_at)}
                   </div>
                 </div>
-                <button onClick={() => setDetailRow(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'flex', flexShrink: 0 }}>
-                  <Icon name="x" size={15} />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                  {detailReaders.length > 0 && (
+                    <button
+                      onClick={() => downloadDetailReadSummary(detailRow)}
+                      title="ดาวน์โหลด PDF สรุปการอ่าน"
+                      aria-label="ดาวน์โหลด PDF สรุปการอ่าน"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 32,
+                        height: 32,
+                        padding: 0,
+                        borderRadius: 8,
+                        border: '1px solid rgba(30,95,173,.28)',
+                        background: 'var(--primary-soft)',
+                        color: 'var(--primary)',
+                        cursor: 'pointer',
+                        boxShadow: '0 6px 14px rgba(30,95,173,.14)',
+                      }}
+                    >
+                      <Icon name="download" size={16} />
+                    </button>
+                  )}
+                  <button onClick={() => setDetailRow(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'flex' }}>
+                    <Icon name="x" size={15} />
+                  </button>
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
                 {([['read', `อ่านแล้ว (${detailReaders.length})`], ['unread', `ยังไม่อ่าน (${detailNonReaders.length})`]] as const).map(([tab, label]) => (
@@ -385,26 +541,70 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
                 <input type="radio" name="assign-audience-mode" checked={assignMode === 'depts'} onChange={() => setAssignMode('depts')} style={{ accentColor: 'var(--primary)' }} />
-                ระบุแผนก
+                ระบุแผนก/รายคน
               </label>
             </div>
             {assignMode === 'depts' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 6, maxHeight: 260, overflowY: 'auto', padding: '4px 2px', marginBottom: 6 }}>
-                {DEPARTMENTS.map((dept) => (
-                  <label key={dept} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color: 'var(--ink)', cursor: 'pointer', lineHeight: 1.35 }}>
-                    <input
-                      type="checkbox"
-                      checked={assignDepts.includes(dept)}
-                      onChange={(e) => setAssignDepts((prev) => e.target.checked ? [...prev, dept] : prev.filter((d) => d !== dept))}
-                      style={{ accentColor: 'var(--primary)', marginTop: 2, flexShrink: 0 }}
-                    />
-                    {dept}
-                  </label>
-                ))}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 5, maxHeight: 260, overflowY: 'auto', padding: '4px 2px', marginBottom: 6 }}>
+                {audienceGroups.map((group) => {
+                  const selectedCount = group.members.filter((person) => assignUserIds.has(person.id)).length
+                  const checked = group.members.length > 0 && selectedCount === group.members.length
+                  const indeterminate = selectedCount > 0 && selectedCount < group.members.length
+                  const expanded = expandedDepts.has(group.key)
+                  const disabled = group.members.length === 0
+
+                  return (
+                    <div key={group.key}>
+                      <div
+                        onClick={() => { if (!disabled) toggleExpanded(group.key) }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 7,
+                          fontSize: 12,
+                          color: disabled ? 'var(--muted)' : 'var(--ink)',
+                          cursor: disabled ? 'default' : 'pointer',
+                          lineHeight: 1.35,
+                          padding: '4px 2px',
+                        }}
+                      >
+                        <DeptAudienceCheckbox
+                          checked={checked}
+                          indeterminate={indeterminate}
+                          disabled={disabled}
+                          onChange={() => toggleDeptMembers(group.members)}
+                        />
+                        <Icon name={expanded ? 'chevDown' : 'chevRight'} size={12} style={{ color: 'var(--muted)', flexShrink: 0, marginTop: 3 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ fontWeight: 600 }}>{group.label}</span>
+                          <span style={{ color: 'var(--muted)', marginLeft: 5 }}>({group.members.length} คน)</span>
+                        </div>
+                      </div>
+                      {expanded && group.members.length > 0 && (
+                        <div style={{ display: 'grid', gap: 4, padding: '2px 0 4px 32px' }}>
+                          {group.members.map((person) => (
+                            <label key={person.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color: 'var(--ink)', cursor: 'pointer', lineHeight: 1.35 }}>
+                              <input
+                                type="checkbox"
+                                checked={assignUserIds.has(person.id)}
+                                onChange={() => toggleAssignUser(person.id)}
+                                style={{ accentColor: 'var(--primary)', marginTop: 2, flexShrink: 0 }}
+                              />
+                              <span>
+                                <span style={{ fontWeight: 600 }}>{person.name}</span>
+                                <span style={{ color: 'var(--muted)', marginLeft: 5 }}>{person.position ?? ''}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
-            {assignMode === 'depts' && assignDepts.length === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--warning)', marginBottom: 4 }}>ยังไม่ได้เลือกแผนก — ระบบจะบันทึกเป็นทั้งกลุ่มงาน</div>
+            {assignMode === 'depts' && assignUserIds.size === 0 && (
+              <div style={{ fontSize: 11, color: 'var(--warning)', marginBottom: 4 }}>ยังไม่ได้เลือกแผนก/รายคน — ระบบจะบันทึกเป็นทั้งกลุ่มงาน</div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
               <button onClick={() => setAssignOpen(false)} disabled={assignBusy}

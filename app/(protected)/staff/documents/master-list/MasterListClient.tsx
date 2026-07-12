@@ -9,10 +9,13 @@ import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
+import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
+import { documentPdfProxyUrl, isPdfLike } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
+import { TYPE_LABEL } from '@/lib/documents/type-labels'
 
 // ── Constants ─────────────────────────────────────────────────
-const TYPE_TABS = ['All', 'QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'] as const
+const TYPE_TABS = ['All', 'QM', 'QP', 'WI', 'Reference', 'Form', 'Card file', 'Lb', 'Manual', 'Policy', 'Others'] as const
 
 const DEPARTMENTS = [
   'กลุ่มงานเทคนิคการแพทย์',
@@ -28,13 +31,13 @@ const DEPARTMENTS = [
 ] as const
 
 const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray' | 'red'> = {
-  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', Record: 'gray',
-  Reference: 'red', 'Card file': 'amber', Others: 'gray',
+  QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', QM: 'green',
+  Reference: 'red', 'Card file': 'amber', Lb: 'purple', Others: 'gray',
 }
 const TYPE_DOT_FG: Record<string, string> = {
   QP: '#1E5FAD', WI: '#0D9488', Form: '#9333EA',
-  Policy: '#D97706', Manual: '#16A34A', Record: '#64748B',
-  Reference: '#EA580C', 'Card file': '#F59E0B', Others: '#64748B',
+  Policy: '#D97706', Manual: '#16A34A', QM: '#059669',
+  Reference: '#EA580C', 'Card file': '#F59E0B', Lb: '#4F46E5', Others: '#64748B',
 }
 
 type DocStatus = 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolete'
@@ -89,6 +92,7 @@ const { toasts, add: toast } = useToast()
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({})
   const [exportMenu, setExportMenu]       = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
+  const [viewer, setViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
 
   const timer = useRef<NodeJS.Timeout | null>(null)
   const exportMenuRef = useRef<HTMLDivElement>(null)
@@ -163,7 +167,11 @@ const { toasts, add: toast } = useToast()
       const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(doc.file_url)}`)
       const { url } = await res.json()
       if (!url) { toast('ไม่สามารถดาวน์โหลดได้', false); return }
-      window.open(url, '_blank')
+      if (isPdfLike({ fileName: doc.file_name ?? doc.file_url, mimeType: doc.mime_type })) {
+        setViewer({ url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.file_name ?? doc.title })
+      } else {
+        window.open(url, '_blank')
+      }
     } catch { toast('เกิดข้อผิดพลาด', false) }
   }
 
@@ -195,7 +203,7 @@ const { toasts, add: toast } = useToast()
 
     const filterParts: string[] = []
     if (scope === 'filtered') {
-      if (activeType && activeType !== 'All') filterParts.push(`ประเภท: ${activeType}`)
+      if (activeType && activeType !== 'All') filterParts.push(`ประเภท: ${TYPE_LABEL[activeType] ?? activeType}`)
       if (statusFilter) filterParts.push(`สถานะ: ${statusFilter}`)
       if (department) filterParts.push(`แผนก: ${department}`)
       if (search) filterParts.push(`ค้นหา: "${search}"`)
@@ -235,7 +243,7 @@ const { toasts, add: toast } = useToast()
           <td class="c muted">${rowIdx++}</td>
           <td class="c mono">${doc.document_code}</td>
           <td class="l wrap col-fill">${doc.title}</td>
-          <td class="c">${doc.type}</td>
+          <td class="c">${TYPE_LABEL[doc.type] ?? doc.type}</td>
           <td class="c muted">${doc.revision}</td>
           <td class="c">${doc.status}</td>
           <td class="c muted">${fmtD(doc.edit_date ?? doc.expiry_date)}</td>
@@ -260,7 +268,7 @@ const { toasts, add: toast } = useToast()
           <div class="page-footer">
             <span class="footer-spacer"></span>
             <span class="footer-center">เอกสารนี้เป็นสมบัติของกลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี ห้ามนำออกไปใช้ภายนอกหรือทำซ้ำโดยไม่ได้รับอนุญาต</span>
-            <span class="footer-right">Fm-QP-LAB-01/ML</span>
+            <span class="footer-right">FM-QP-LAB-01/01</span>
           </div>
         </div>`
     }).join('')
@@ -442,7 +450,7 @@ const { toasts, add: toast } = useToast()
             color: activeType === t ? 'var(--ink)' : 'var(--muted)',
             fontWeight: activeType === t ? 700 : 500,
           }}>
-            {t}
+            {t === 'All' ? t : (TYPE_LABEL[t] ?? t)}
           </button>
         ))}
       </div>
@@ -622,6 +630,7 @@ const { toasts, add: toast } = useToast()
           onSaved={handleAdded}
         />
       )}
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
 
       {/* Toasts */}
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>

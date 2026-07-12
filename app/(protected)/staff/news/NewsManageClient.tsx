@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CATEGORIES, CAT_MAP } from '@/lib/validations/news'
+import { firstBodyImage } from '@/lib/line/news-flex'
 import type { News } from '@/lib/supabase/types'
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -772,6 +773,159 @@ function NewsFormModal({ item, onClose, onSaved, toast }: ModalProps) {
   )
 }
 
+// ─── LineSendModal ─────────────────────────────────────────────────────────────
+
+// LINE brand green — fixed external-brand color, not themed by the app
+const LINE_GREEN = '#06C755'
+
+function LineIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C6.48 2 2 5.64 2 10.13c0 2.6 1.5 4.91 3.83 6.4-.13.48-.72 2.62-.75 2.79 0 0-.01.12.06.17.08.05.17.02.17.02.23-.03 2.9-1.9 3.36-2.22.75.11 1.53.17 2.33.17 5.52 0 10-3.64 10-8.13S17.52 2 12 2z" />
+    </svg>
+  )
+}
+
+interface LineSendModalProps {
+  item: News
+  onClose: () => void
+  onSent: (id: number, sentAt: string, sentBy: string | null) => void
+  toast: (msg: string, ok?: boolean) => void
+}
+
+function LineSendModal({ item, onClose, onSent, toast }: LineSendModalProps) {
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+
+  const cat = CAT_MAP[item.cat as keyof typeof CAT_MAP]
+  const catColor = cat?.color ?? '#1E5FAD'
+  const catLabel = cat?.th ?? 'ข่าวสาร'
+  const heroUrl = firstBodyImage(item.body)
+  const longDate = new Date(item.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
+
+  async function handleSend() {
+    setSending(true); setError('')
+    try {
+      const res = await fetch(`/api/admin/news/${item.id}/line-broadcast`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error ?? 'ส่งไม่สำเร็จ'); return }
+      toast('ส่งข่าวเข้า LINE แล้ว')
+      onSent(item.id, json.line_sent_at, json.line_sent_by)
+    } catch {
+      setError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)',
+      zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <div style={{
+        background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 420,
+        maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 20px 60px rgba(0,0,0,.25)',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14.5, fontWeight: 700, color: 'var(--ink)' }}>
+            <span style={{ width: 24, height: 24, borderRadius: 6, background: LINE_GREEN, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <LineIcon size={14} />
+            </span>
+            ส่งข่าวผ่าน LINE Official
+          </span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}>
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+
+        {/* Preview — mimics LINE chat rendering, colors are LINE's fixed appearance */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px', background: '#8CABD9' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,.85)', letterSpacing: '.05em', marginBottom: 8, textAlign: 'center' }}>
+            ตัวอย่างการแสดงผลในแชท LINE
+          </div>
+          <div style={{ maxWidth: 300, margin: '0 auto', background: '#FFFFFF', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}>
+            {/* Card header */}
+            <div style={{ background: catColor, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,.7)' }}>ข่าวสารห้องปฏิบัติการ</span>
+                {item.is_new && (
+                  <span style={{ background: '#DC2626', color: '#fff', fontSize: 9, fontWeight: 800, padding: '2px 10px', borderRadius: 10, letterSpacing: '.06em' }}>NEW</span>
+                )}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#FFFFFF' }}>{catLabel}</div>
+            </div>
+            {/* Hero image (first image in body) */}
+            {heroUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={heroUrl} alt="" style={{ width: '100%', aspectRatio: '20/13', objectFit: 'cover', display: 'block' }} />
+            )}
+            {/* Card body */}
+            <div style={{ padding: 16 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', lineHeight: 1.45 }}>{item.title}</div>
+              {item.excerpt && (
+                <div style={{ fontSize: 12, color: '#64748B', lineHeight: 1.55, marginTop: 8 }}>{item.excerpt}</div>
+              )}
+              <div style={{ height: 1, background: '#E5EAF0', margin: '12px 0' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <div style={{ fontSize: 11, color: '#64748B' }}>📅 {longDate}</div>
+                {item.author && <div style={{ fontSize: 11, color: '#64748B' }}>✍️ {item.author}</div>}
+              </div>
+            </div>
+            {/* Card footer buttons */}
+            <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: catColor, color: '#fff', fontSize: 12.5, fontWeight: 600, textAlign: 'center', padding: '9px 0', borderRadius: 8 }}>
+                อ่านรายละเอียด
+              </div>
+              {item.pdf_path && (
+                <div style={{ background: '#F1F4F9', color: '#0F172A', fontSize: 12.5, fontWeight: 600, textAlign: 'center', padding: '9px 0', borderRadius: 8 }}>
+                  เปิดเอกสารแนบ (PDF)
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Warnings + actions */}
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--warning)', display: 'flex', gap: 6, alignItems: 'flex-start', lineHeight: 1.5 }}>
+            <Icon name="alert" size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>ข้อความจะถูกส่ง (Broadcast) ถึงผู้ติดตาม LINE Official ทุกคน และไม่สามารถเรียกคืนได้</span>
+          </div>
+          {item.line_sent_at && (
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5 }}>
+              ข่าวนี้เคยส่งแล้วเมื่อ {fmtDate(item.line_sent_at)}{item.line_sent_by ? ` โดย ${item.line_sent_by}` : ''} — การกดส่งอีกครั้งจะเป็นการส่งซ้ำ
+            </div>
+          )}
+          {error && (
+            <div style={{ fontSize: 12.5, color: 'var(--danger)', padding: '8px 12px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA' }}>
+              {error}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button variant="secondary" onClick={onClose} disabled={sending}>ยกเลิก</Button>
+            <button
+              onClick={handleSend}
+              disabled={sending}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px',
+                borderRadius: 8, border: 'none', background: LINE_GREEN, color: '#fff',
+                fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                cursor: sending ? 'default' : 'pointer', opacity: sending ? 0.6 : 1,
+              }}
+            >
+              <LineIcon size={14} />
+              {sending ? 'กำลังส่ง...' : item.line_sent_at ? 'ส่งซ้ำอีกครั้ง' : 'ยืนยันส่งเข้า LINE'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Skeleton Row ──────────────────────────────────────────────────────────────
 
 function SkeletonRow() {
@@ -806,6 +960,7 @@ export function NewsManageClient({ canEdit }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft' | 'new'>('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<News | null>(null)
+  const [lineTarget, setLineTarget] = useState<News | null>(null)
   const { toasts, add: toast } = useToast()
 
   // Debounce search
@@ -867,6 +1022,11 @@ export function NewsManageClient({ canEdit }: Props) {
     } else {
       toast('ลบไม่สำเร็จ', false)
     }
+  }
+
+  function handleLineSent(id: number, sentAt: string, sentBy: string | null) {
+    setAllNews(prev => prev.map(n => n.id === id ? { ...n, line_sent_at: sentAt, line_sent_by: sentBy } : n))
+    setLineTarget(null)
   }
 
   function handleSaved(saved: News) {
@@ -1041,6 +1201,11 @@ export function NewsManageClient({ canEdit }: Props) {
                     </span>
                   </div>
                   <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtDate(n.created_at)}</span>
+                  {n.line_sent_at && (
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: '#06C755', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <LineIcon size={10} /> ส่งแล้ว {fmtDate(n.line_sent_at)}
+                    </span>
+                  )}
                 </div>
 
                 {/* Content: title + excerpt + author + views */}
@@ -1081,6 +1246,21 @@ export function NewsManageClient({ canEdit }: Props) {
                       onMouseLeave={e => { e.currentTarget.style.borderColor = n.published ? 'rgba(22,163,74,.3)' : 'var(--border)'; e.currentTarget.style.background = n.published ? 'rgba(22,163,74,.06)' : 'transparent' }}
                     >
                       <Icon name="globe" size={13} style={{ color: n.published ? 'var(--success)' : 'var(--muted)' }} />
+                    </button>
+                  )}
+
+                  {/* Send via LINE OA — manual broadcast, published news only */}
+                  {canEdit && n.published && (
+                    <button
+                      onClick={() => setLineTarget(n)}
+                      title={n.line_sent_at ? `ส่ง LINE แล้ว ${fmtDate(n.line_sent_at)} — กดเพื่อส่งซ้ำ` : 'ส่งข่าวผ่าน LINE Official'}
+                      style={{ width: 30, height: 30, borderRadius: 7, border: `1px solid ${n.line_sent_at ? 'rgba(6,199,85,.35)' : 'var(--border)'}`, background: n.line_sent_at ? 'rgba(6,199,85,.08)' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .12s' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#06C755'; e.currentTarget.style.background = 'rgba(6,199,85,.12)' }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = n.line_sent_at ? 'rgba(6,199,85,.35)' : 'var(--border)'; e.currentTarget.style.background = n.line_sent_at ? 'rgba(6,199,85,.08)' : 'transparent' }}
+                    >
+                      <span style={{ color: n.line_sent_at ? '#06C755' : 'var(--muted)', display: 'flex' }}>
+                        <LineIcon size={14} />
+                      </span>
                     </button>
                   )}
 
@@ -1142,6 +1322,16 @@ export function NewsManageClient({ canEdit }: Props) {
           item={editTarget}
           onClose={() => { setModalOpen(false); setEditTarget(null) }}
           onSaved={handleSaved}
+          toast={toast}
+        />
+      )}
+
+      {/* LINE send modal */}
+      {lineTarget && (
+        <LineSendModal
+          item={lineTarget}
+          onClose={() => setLineTarget(null)}
+          onSent={handleLineSent}
           toast={toast}
         />
       )}

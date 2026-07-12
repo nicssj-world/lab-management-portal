@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 import { NextRequest, NextResponse } from 'next/server'
 import type { Document } from '@/lib/supabase/types'
+import { DOC_TYPES } from '@/lib/documents/type-labels'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -44,7 +45,7 @@ type RevisionArchive = {
   created_at: string
 }
 
-const DOCUMENT_TYPES = new Set(['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'])
+const DOCUMENT_TYPES = new Set<string>(DOC_TYPES)
 
 function canRollbackCurrentRevision(actor: { role: string; doc_role?: string | null }) {
   return actor.role === 'Admin' || actor.role === 'Document Controller' || actor.doc_role === 'Document Controller'

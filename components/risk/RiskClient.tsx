@@ -261,7 +261,8 @@ function formatRiskShortDate(value?: string | null) {
   if (!value) return '—'
   const d = parseDateOnly(value)
   if (!d) return value.slice(0, 10)
-  return `${d.getDate()}/${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`
+  const beYear = d.getFullYear() + 543
+  return `${d.getDate()}/${d.getMonth() + 1}/${String(beYear).slice(2)}`
 }
 
 function compareSeverityFilter(a: string, b: string) {
@@ -1019,7 +1020,7 @@ function RegisterTable({ title, scope, query, setQuery, status, setStatus, sever
                     </td>
                   )}
                   <td style={td}>{riskNo(risk)}</td>
-                  <td style={td}>{risk.event_date ?? risk.recorded_date ?? '—'}</td>
+                  <td style={td}>{formatThaiDate(risk.event_date ?? risk.recorded_date)}</td>
                   <td style={{ ...td, maxWidth: 340 }}>
                     <div style={{ fontWeight: 800, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{risk.name}</div>
                     <div style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{risk.event_detail ?? risk.event_sub_category ?? '—'}</div>
@@ -1336,7 +1337,7 @@ function RiskFields({ form, setForm, compact = false }: { form: FormState; setFo
   return (
     <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
       <Field label="รหัสความเสี่ยง"><input value={form.risk_no ?? ''} onChange={e => updateForm({ risk_no: e.target.value })} style={inputStyle} /></Field>
-      <Field label={isRiskAssessment ? 'วันที่ประเมิน' : 'วันที่เกิดเหตุ'}><input type="date" value={form.event_date ?? ''} onChange={e => updateForm({ event_date: e.target.value })} style={inputStyle} /></Field>
+      <Field label={isRiskAssessment ? 'วันที่ประเมิน' : 'วันที่เกิดเหตุ'}><input type="date" max={today()} value={form.event_date ?? ''} onChange={e => updateForm({ event_date: e.target.value })} style={inputStyle} /></Field>
       <Field label="ประเภท"><select value={form.event_type ?? ''} onChange={e => updateForm({ event_type: e.target.value })} style={inputStyle}>{RISK_EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></Field>
       {isRiskAssessment ? (
         <Field label="ระดับความเสี่ยง">

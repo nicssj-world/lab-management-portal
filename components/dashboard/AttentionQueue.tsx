@@ -5,6 +5,7 @@ import { monthsLeftUntil, isContractExpiring } from '@/lib/dashboard/attention-q
 import type { PendingApprovalDoc } from '@/lib/documents/pending'
 import type { ContractWithUsage } from '@/lib/queries/contracts'
 import type { Permissions } from '@/lib/permissions'
+import type { QualityTaskOccurrence } from '@/lib/quality-tasks/types'
 
 interface AttentionQueueProps {
   pendingDocs: PendingApprovalDoc[]
@@ -14,6 +15,15 @@ interface AttentionQueueProps {
   staffLicenseExpired: number
   staffLicenseExpiring: number
   permissions: Permissions
+  qualityTasks: QualityTaskOccurrence[]
+}
+
+function QualityTaskRow({ task }: { task: QualityTaskOccurrence }) {
+  return <div style={{ padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+    <div style={{ fontSize:12.5, fontWeight:700, color:'var(--ink)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{task.template.title}</div>
+    <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{task.periodLabel} · {task.template.ownerText}</div>
+    <div style={{ fontSize:10.5, color:task.urgency==='overdue'?'#DC2626':'#D97706', fontWeight:800, marginTop:3 }}>{task.urgency==='overdue'?'เกินกำหนด':'ใกล้กำหนด'} · {new Date(`${task.effectiveDueDate}T00:00:00+07:00`).toLocaleDateString('th-TH',{day:'numeric',month:'short'})}</div>
+  </div>
 }
 
 function daysWaiting(updatedAt: string): number {
@@ -128,15 +138,17 @@ function StaffLicenseStat({ expired, expiring }: { expired: number; expiring: nu
 export function AttentionQueue({
   pendingDocs, totalPendingDocs, contracts, totalContracts,
   staffLicenseExpired, staffLicenseExpiring, permissions,
+  qualityTasks,
 }: AttentionQueueProps) {
   const canSeeDocs = (permissions['เอกสารคุณภาพ'] ?? 'none') !== 'none'
   const canSeeContracts = (permissions['สัญญา'] ?? 'none') !== 'none'
   const canSeeStaff = (permissions['บุคลากร'] ?? 'none') !== 'none'
+  const canSeeQualityTasks = (permissions['งานคุณภาพ'] ?? 'none') !== 'none'
   const staffLicenseTotal = staffLicenseExpired + staffLicenseExpiring
 
-  if (!canSeeDocs && !canSeeContracts && !canSeeStaff) return null
+  if (!canSeeDocs && !canSeeContracts && !canSeeStaff && !canSeeQualityTasks) return null
 
-  const visibleCount = [canSeeDocs, canSeeContracts, canSeeStaff].filter(Boolean).length
+  const visibleCount = [canSeeDocs, canSeeContracts, canSeeStaff, canSeeQualityTasks].filter(Boolean).length
 
   return (
     <div>
@@ -163,6 +175,11 @@ export function AttentionQueue({
             {pendingDocs.length > 0
               ? pendingDocs.slice(0, 3).map(doc => <DocumentRow key={doc.id} doc={doc} />)
               : <Empty text="ไม่มีเอกสารรอเผยแพร่" icon="shieldCheck" />}
+          </GroupShell>
+        )}
+        {canSeeQualityTasks && (
+          <GroupShell title="งานคุณภาพ" icon="calendar" iconColor="#0891B2" href="/staff/quality-tasks" count={qualityTasks.length}>
+            {qualityTasks.length > 0 ? qualityTasks.slice(0,3).map(task=><QualityTaskRow key={task.key} task={task}/>) : <Empty text="ไม่มีงานคุณภาพเร่งด่วน" icon="shieldCheck" />}
           </GroupShell>
         )}
       </div>

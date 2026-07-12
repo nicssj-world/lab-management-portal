@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 
-export const DOC_TYPES = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others'] as const
+// Display order: QM > QP > WI > Rf > Fm > Cf > Lb > Mn > Policy > อื่น — used everywhere types
+// are listed (filters, dropdowns, category groups, dashboard bars).
+export const DOC_TYPES = ['QM', 'QP', 'WI', 'Reference', 'Form', 'Card file', 'Lb', 'Manual', 'Policy', 'Others'] as const
 export const DOC_STATUSES = ['Draft', 'Review', 'Approved', 'Published', 'Obsolete'] as const
 export const DOC_VISIBILITIES = ['Public', 'Internal'] as const
 
@@ -32,8 +34,9 @@ export const DocumentSchema = z.object({
   legacy_cover_included: z.boolean().optional(),
   import_mode: z.enum(['current']).optional(),
   // Read audience: profile depts (user-schema DEPARTMENTS) that must read this document;
-  // null/[] = the whole division (every active user).
+  // together with specific profile ids. Both null/[] = the whole division (every active user).
   read_audience_depts: z.array(z.enum(DEPARTMENTS)).nullable().optional(),
+  read_audience_user_ids: z.array(z.string().uuid()).nullable().optional(),
 })
 
 export type DocumentInput = z.infer<typeof DocumentSchema>

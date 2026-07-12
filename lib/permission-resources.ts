@@ -17,6 +17,7 @@ export const RESOURCES = [
   'User Management',
   'Activity Log',
   'บุคลากร',
+  'งานคุณภาพ',
 ] as const
 
 export type ResourceKey = typeof RESOURCES[number]

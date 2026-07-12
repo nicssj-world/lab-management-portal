@@ -5,6 +5,7 @@ import { getRolePermissions } from '@/lib/permissions'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { r2ObjectResponse } from '@/lib/r2/stream-response'
 
 async function getActor() {
   const supabase = await createClient()
@@ -56,6 +57,17 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   if (error || !data?.file_url)
     return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 404 })
+
+  if (sp.get('proxy') === '1') {
+    const object = await r2.send(new GetObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: data.file_url,
+      Range: req.headers.get('range') ?? undefined,
+    }))
+    return r2ObjectResponse(object, {
+      contentType: data.file_url.toLowerCase().endsWith('.pdf') ? 'application/pdf' : undefined,
+    })
+  }
 
   const url = await getSignedUrl(
     r2,

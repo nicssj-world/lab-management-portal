@@ -7,6 +7,7 @@ import { PdfViewerModal, type Attachment } from '@/components/documents/Document
 import { allowedTransitions } from '@/lib/documents/transitions'
 import { canMoveToStatus, COVER_GENERATION_ENABLED } from '@/lib/documents/workflow'
 import { STATUS_COLOR, STATUS_LABEL, fmtDate } from '@/lib/documents/ui-constants'
+import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
 
@@ -74,6 +75,10 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
 }) {
 
   const canDownloadRevision = userRole === 'Admin' || docRole === 'Document Controller'
+  // "ดาวน์โหลดทั้งหมด (ZIP)" is restricted to Reviewer/DCC/Admin — other roles use the
+  // per-file download buttons on each attachment instead.
+  const canDownloadAll = userRole === 'Admin' || userRole === 'Document Controller' || userRole === 'Reviewer'
+    || docRole === 'Document Controller' || docRole === 'Reviewer'
   const allowRevisionHistoryBackfill = canAdd && (userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller')
   const canSkipSystemCover = userRole === 'Admin'
     || userRole === 'Quality Manager'
@@ -108,7 +113,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
   const [draftDescriptionEditing, setDraftDescriptionEditing] = useState(true)
   const [loading, setLoading]     = useState(true)
   const [deletingCurrent, setDeletingCurrent] = useState(false)
-  const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
 
   // Add form state
   const [showForm, setShowForm]           = useState(false)
@@ -312,7 +317,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
       const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(path)}&inline=1`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      setPdfViewer({ url: json.url, title: fileName })
+      setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(path), title: fileName })
     } catch {
       alert('เปิดไฟล์ไม่สำเร็จ')
     }
@@ -989,7 +994,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
                     <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', flex: 1 }}>
                       ไฟล์แนบ ({draftAttachments.length})
                     </div>
-                    {(draftAttachments.length > 0 || activeDraft.word_url || activeDraft.file_url) && (
+                    {(draftAttachments.length > 0 || activeDraft.word_url || activeDraft.file_url) && canDownloadAll && (
                       <button
                         onClick={handleDownloadDraftZip}
                         disabled={zipBusy}
@@ -1406,7 +1411,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
         </div>
       </div>
       </div>
-      {pdfViewer && <PdfViewerModal url={pdfViewer.url} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
     </>
   )
 }

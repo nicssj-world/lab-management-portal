@@ -7,6 +7,7 @@ import { Icon } from '@/components/ui/Icon'
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
 import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/DocumentDetailModal'
 import { TYPE_ICON_BG, TYPE_ICON_FG, fmtDate } from '@/lib/documents/ui-constants'
+import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
 
 export interface PendingDoc {
@@ -180,10 +181,11 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
   const [sourceBulkResult, setSourceBulkResult] = useState<string | null>(null)
   const [revDoc, setRevDoc] = useState<Document | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [publishingId, setPublishingId] = useState<string | null>(null)
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null)
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
-  const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
 
   const total = sourceDocs.length + reviewDocs.length + approvedDocs.length + annualDocs.length
   const sourceWaitingPdfCount = sourceDocs.filter((doc) => !doc.hasOfficialPdf).length
@@ -227,7 +229,7 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
     try {
       const res = await fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
       const json = await res.json()
-      if (json.url) { setPdfViewer({ url: json.url, title: doc.file_name ?? doc.title }); setReadDocIds((prev) => new Set(prev).add(doc.id)) }
+      if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.file_name ?? doc.title }); setReadDocIds((prev) => new Set(prev).add(doc.id)) }
     } catch { /* ignore */ }
   }
 
@@ -399,6 +401,29 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
     else openDetail(d.id)
   }
 
+  // One-click publish shortcut for DCC/Admin on an Approved working revision draft — promotes
+  // it onto the live document (archives the current revision, bumps Rev) without opening the
+  // full revision panel. Used mainly for the Reviewer-submitted "Upd+" queue.
+  async function handleQuickPublishDraft(d: PendingDoc) {
+    if (!d.draftId || publishingId) return
+    if (!confirm(`เผยแพร่ "${d.document_code}" Rev.${d.revision ?? ''} เป็น Published?\nไฟล์เดิมจะถูกเก็บเข้าประวัติการแก้ไข`)) return
+    setPublishingId(d.id)
+    try {
+      const res = await fetch(`/api/admin/documents/${d.id}/revision-drafts/${d.draftId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Published' }),
+      })
+      const json = await res.json()
+      if (!res.ok) { alert(json.error ?? 'เผยแพร่ไม่สำเร็จ'); return }
+      setApprovedDocs((prev) => prev.filter((x) => !(x.kind === 'draft' && x.id === d.id)))
+      router.refresh()
+    } catch {
+      alert('เผยแพร่ไม่สำเร็จ')
+    } finally {
+      setPublishingId(null)
+    }
+  }
+
   function isLoading(d: PendingDoc) {
     return d.kind === 'draft' ? loadingId === d.id : detailLoadingId === d.id
   }
@@ -546,7 +571,28 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
           icon="check" accent="#16A34A" count={approvedDocs.length}
         >
           {approvedDocs.map((d) => (
-            <DocButton key={d.id} doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
+            (d.kind === 'draft' && d.draftId && canBulkReview) ? (
+              <div key={d.id} style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <DocButton doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
+                </div>
+                <button
+                  onClick={() => handleQuickPublishDraft(d)}
+                  disabled={publishingId === d.id}
+                  title="เผยแพร่เป็น Published (Rev+1, เก็บไฟล์เดิมเข้าประวัติ)"
+                  style={{
+                    flexShrink: 0, padding: '0 16px', borderRadius: 10, border: '1px solid #16A34A',
+                    background: 'rgba(22,163,74,.10)', color: '#15803D', fontFamily: 'inherit',
+                    fontSize: 12.5, fontWeight: 700, cursor: publishingId === d.id ? 'default' : 'pointer',
+                    opacity: publishingId === d.id ? .6 : 1, whiteSpace: 'nowrap',
+                  }}
+                >
+                  {publishingId === d.id ? 'กำลังเผยแพร่...' : 'Published'}
+                </button>
+              </div>
+            ) : (
+              <DocButton key={d.id} doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
+            )
           ))}
         </Section>
       </div>
@@ -644,7 +690,7 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
         />
       )}
 
-      {pdfViewer && <PdfViewerModal url={pdfViewer.url} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
     </div>
   )
 }

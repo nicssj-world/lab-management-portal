@@ -7,6 +7,7 @@ import { getSourceUploadedDocumentIds } from '@/lib/documents/pending'
 import { isReviewTrackedType, reviewDueDate } from '@/lib/documents/review'
 import { Stat } from '@/components/ui/Stat'
 import { Icon } from '@/components/ui/Icon'
+import { DOC_TYPES as TYPE_ORDER, TYPE_LABEL } from '@/lib/documents/type-labels'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,12 +28,6 @@ interface DashDoc {
   updated_at: string
 }
 
-const TYPE_ORDER = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others']
-const TYPE_LABEL: Record<string, string> = {
-  QP: 'ระเบียบปฏิบัติ (QP)', WI: 'วิธีปฏิบัติงาน (WI)', Form: 'แบบฟอร์ม (Form)',
-  Policy: 'นโยบาย (Policy)', Manual: 'คู่มือ (Manual)', Record: 'บันทึกคุณภาพ (Record)',
-  Reference: 'เอกสารอ้างอิง (Reference)', 'Card file': 'Card file', Others: 'อื่นๆ',
-}
 const STATUS_META: { key: string; th: string; color: string }[] = [
   { key: 'Draft',     th: 'ฉบับร่าง',        color: '#64748B' },
   { key: 'Review',    th: 'อยู่ระหว่างทบทวน', color: '#D97706' },
@@ -142,7 +137,7 @@ export default async function DocumentsDashboardPage() {
   })
 
   // "ใกล้ครบกำหนดทบทวน" widget: narrower scope than the stat cards above — only the core
-  // controlled-document types (Manual/QP/WI), and only within 90 days of the due date.
+  // controlled-document types (QM/Manual/QP/WI), and only within 90 days of the due date.
   const reviewOverdueTracked = reviewOverdue.filter((d) => isReviewTrackedType(d.type))
   const reviewDueSoon90 = docs.filter((d) => {
     if (d.status !== 'Published' || !isReviewTrackedType(d.type)) return false
@@ -153,7 +148,7 @@ export default async function DocumentsDashboardPage() {
   })
 
   const typeCounts = TYPE_ORDER
-    .map((t) => ({ type: t, count: docs.filter((d) => (TYPE_ORDER.includes(d.type) ? d.type : 'Others') === t).length }))
+    .map((t) => ({ type: t, count: docs.filter((d) => ((TYPE_ORDER as readonly string[]).includes(d.type) ? d.type : 'Others') === t).length }))
     .filter((t) => t.count > 0)
   const maxTypeCount = Math.max(1, ...typeCounts.map((t) => t.count))
 
@@ -289,7 +284,7 @@ export default async function DocumentsDashboardPage() {
               : undefined}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {expiring.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic' }}>ไม่มีเอกสาร Manual/QP/WI ที่ใกล้ครบกำหนดทบทวนภายใน 90 วัน</div>}
+            {expiring.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic' }}>ไม่มีเอกสาร QM/Manual/QP/WI ที่ใกล้ครบกำหนดทบทวนภายใน 90 วัน</div>}
             {expiring.map((d, i) => {
               const due = reviewDueDate(d)
               const days = due ? daysUntil(due) : null
