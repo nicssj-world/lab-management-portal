@@ -19,7 +19,9 @@ function btn(bg: string, fg: string, border = 'transparent'): React.CSSPropertie
 }
 function emptyRow(schema: TableSchema): EditableRow {
   const r: EditableRow = {}
-  for (const c of schema.columns) r[c.key] = c.kind === 'lines' ? [''] : ''
+  for (const c of schema.columns) {
+    r[c.key] = c.kind === 'lines' ? [''] : c.kind === 'select' ? (c.options?.[0]?.value ?? '') : ''
+  }
   return r
 }
 
@@ -99,10 +101,7 @@ export function ManualTableEditor({
             {schema.columns.filter(visibleCols).map(col => (
               <div key={col.key}>
                 <label style={labelStyle}>{col.label}</label>
-                {col.kind === 'text' ? (
-                  <input style={inputStyle} value={String(row[col.key] ?? '')}
-                    onChange={e => setCell(i, col.key, e.target.value)} />
-                ) : (
+                {col.kind === 'lines' ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {((row[col.key] as string[] | undefined) ?? ['']).map((line, li) => (
                       <div key={li} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -120,6 +119,23 @@ export function ManualTableEditor({
                     <button onClick={() => setCell(i, col.key, [...((row[col.key] as string[] | undefined) ?? ['']), ''])}
                       style={{ ...btn('var(--primary-soft)', 'var(--primary)'), alignSelf: 'flex-start' }}>＋ เพิ่มบรรทัด</button>
                   </div>
+                ) : col.kind === 'select' ? (
+                  <select style={inputStyle} value={String(row[col.key] ?? '')}
+                    onChange={e => setCell(i, col.key, e.target.value)}>
+                    {(col.options ?? []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                ) : col.kind === 'color' ? (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input type="color"
+                      value={/^#[0-9a-fA-F]{6}$/.test(String(row[col.key] ?? '')) ? String(row[col.key]) : '#000000'}
+                      onChange={e => setCell(i, col.key, e.target.value)}
+                      style={{ width: 42, height: 34, padding: 0, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', cursor: 'pointer' }} />
+                    <input style={inputStyle} value={String(row[col.key] ?? '')}
+                      onChange={e => setCell(i, col.key, e.target.value)} placeholder="#RRGGBB" />
+                  </div>
+                ) : (
+                  <input style={inputStyle} value={String(row[col.key] ?? '')}
+                    onChange={e => setCell(i, col.key, e.target.value)} />
                 )}
               </div>
             ))}

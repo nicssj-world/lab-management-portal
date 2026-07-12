@@ -27,6 +27,16 @@ assert.match(
   /ระบบตอบข้อมูลอัตโนมัติผ่าน LINE/,
   'LINE card should clearly describe the account as an automated information channel',
 )
+const mobileHeroCssStart = source.indexOf('@media (max-width: 900px)')
+const mobileHeroCssEnd = source.indexOf('@media (max-width: 520px)', mobileHeroCssStart)
+const mobileHeroCss = mobileHeroCssStart >= 0 && mobileHeroCssEnd >= 0
+  ? source.slice(mobileHeroCssStart, mobileHeroCssEnd)
+  : ''
+assert.match(
+  mobileHeroCss,
+  /\.public-hero-actions,\s*\.public-hero-secondary-links\s*\{[\s\S]*?margin-inline:\s*auto;/,
+  'mobile hero search and secondary cards should share equal gutters and be centered',
+)
 assert.doesNotMatch(
   source,
   /ไม่มีเจ้าหน้าที่ตอบแชทสด/,

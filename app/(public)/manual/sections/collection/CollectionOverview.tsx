@@ -1,11 +1,16 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { H3, Callout, Th, TblRow } from '../../_primitives'
-import { CONTAINERS, type Lang } from '../../data'
+import { CONTAINERS, type Container, type Lang } from '../../data'
 import { ORDER_OF_DRAW, SITES_TO_AVOID, PATIENT_PREP } from '../collection-data'
+import { useManualTable } from '../../ManualTablesContext'
+import { ManualTableEditor } from '@/components/manual/ManualTableEditor'
+import { TABLE_SCHEMAS, type EditableRow } from '../../tables'
 
 interface Props { lang: Lang }
 
 export function CollectionOverview({ lang }: Props) {
+  const [editing, setEditing] = useState(false)
+  const containers = useManualTable<Container>('containers', 'collection', CONTAINERS)
   return (
     <div>
       {/* ID notice */}
@@ -44,6 +49,19 @@ export function CollectionOverview({ lang }: Props) {
       <h3 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
         {lang === 'th' ? 'ภาชนะสำหรับเก็บสิ่งตัวอย่างส่งตรวจ' : 'Specimen Containers Reference'}
       </h3>
+      {containers.canEdit && !editing && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <button onClick={() => setEditing(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            แก้ตาราง
+          </button>
+        </div>
+      )}
+      {editing ? (
+        <ManualTableEditor schema={TABLE_SCHEMAS.containers} rows={containers.rows as unknown as EditableRow[]}
+          onSaved={rows => { containers.setRows(rows as unknown as Container[]); setEditing(false) }}
+          onCancel={() => setEditing(false)} />
+      ) : (
       <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', maxHeight: 480, overflowY: 'auto', marginBottom: 20 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
           <thead>
@@ -54,8 +72,10 @@ export function CollectionOverview({ lang }: Props) {
             </tr>
           </thead>
           <tbody>
-            {CONTAINERS.map((c) => (
-              <TblRow key={c.cap}>
+            {containers.rows.map((row, ci) => {
+              const c = row as unknown as Container
+              return (
+              <TblRow key={ci}>
                 <td style={{ padding: '9px 12px' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ width: 8, height: 22, borderRadius: 3, background: `linear-gradient(180deg, ${c.color} 28%, #f3f4f6 28%)`, border: '1px solid rgba(0,0,0,.08)', flexShrink: 0 }} />
@@ -65,10 +85,12 @@ export function CollectionOverview({ lang }: Props) {
                 <td style={{ padding: '9px 12px', color: 'var(--ink)', fontSize: 12.5 }}>{c.use}</td>
                 <td style={{ padding: '9px 12px', color: 'var(--muted)', whiteSpace: 'nowrap', fontSize: 12 }}>{c.req}</td>
               </TblRow>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
+      )}
 
       {/* Sites to avoid */}
       <h3 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
