@@ -12,7 +12,7 @@ export function formatTestReply(
   lines.push(`🧪 ${title}`)
   if (test.en && test.en !== title) lines.push(test.en)
   if (test.method) lines.push(`หลักการ: ${test.method}`)
-  lines.push(`รหัส E-Phis: ${test.code}`)
+  lines.push(`🔢 รหัส E-Phis: ${test.code}`)
   lines.push('')
   lines.push('📋 ข้อมูลหลัก')
   if (test.price != null)       lines.push(`ราคา: ${new Intl.NumberFormat('th-TH').format(test.price)} บาท`)
