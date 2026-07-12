@@ -11,6 +11,7 @@ export function formatTestReply(
   const title = test.th || test.en || 'รายละเอียดรายการตรวจ'
   lines.push(`🧪 ${title}`)
   if (test.en && test.en !== title) lines.push(test.en)
+  if (test.method) lines.push(`หลักการ: ${test.method}`)
   lines.push(`รหัส E-Phis: ${test.code}`)
   lines.push('')
   lines.push('📋 ข้อมูลหลัก')
@@ -48,7 +49,10 @@ export function formatTestReply(
 export function formatListReply(tests: Test[]): string {
   const shown = tests.slice(0, 5)
   const items = shown
-    .map((t, i) => `${i + 1}. ${t.th || t.en}\n   🔢 รหัส E-Phis: ${t.code}`)
+    .map((t, i) => {
+      const methodLine = t.method ? `\n   หลักการ: ${t.method}` : ''
+      return `${i + 1}. ${t.th || t.en}${methodLine}\n   🔢 รหัส E-Phis: ${t.code}`
+    })
     .join('\n')
   const example = shown[0]?.code ?? ''
   const shownLabel = tests.length > shown.length ? ` (แสดง ${shown.length} รายการแรก)` : ''
