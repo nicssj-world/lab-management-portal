@@ -1,7 +1,10 @@
-import type { CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { Callout, Section } from '../_primitives'
-import { MANUAL_SECTIONS, TEAM, type Lang } from '../data'
+import { MANUAL_SECTIONS, TEAM, type TeamMember, type Lang } from '../data'
+import { useManualTable } from '../ManualTablesContext'
+import { ManualTableEditor } from '@/components/manual/ManualTableEditor'
+import { TABLE_SCHEMAS, type EditableRow } from '../tables'
 
 interface Props {
   lang: Lang
@@ -21,6 +24,8 @@ const SECTION_TONE = {
 }
 
 export function ManualHome({ lang, goto }: Props) {
+  const [editingTeam, setEditingTeam] = useState(false)
+  const team = useManualTable<TeamMember>('team', 'home', TEAM)
   return (
     <Section>
       <style>{`
@@ -349,13 +354,26 @@ export function ManualHome({ lang, goto }: Props) {
 
       {/* ── Team ── */}
       <div style={{ marginBottom: 22 }}>
-        <div className="manual-section-title" style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 10 }}>
-          {lang === 'th' ? 'หัวหน้างานและทีม' : 'Heads of Section'}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+          <div className="manual-section-title" style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase' }}>
+            {lang === 'th' ? 'หัวหน้างานและทีม' : 'Heads of Section'}
+          </div>
+          {team.canEdit && !editingTeam && (
+            <button onClick={() => setEditingTeam(true)}
+              style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              แก้รายชื่อ
+            </button>
+          )}
         </div>
+        {editingTeam ? (
+          <ManualTableEditor schema={TABLE_SCHEMAS.team} rows={team.rows as unknown as EditableRow[]}
+            onSaved={rows => { team.setRows(rows as unknown as TeamMember[]); setEditingTeam(false) }}
+            onCancel={() => setEditingTeam(false)} />
+        ) : (
         <div className="manual-team-grid">
-          {TEAM.map((t) => (
+          {team.rows.map((t, ti) => (
             <div
-              key={t.name}
+              key={ti}
               className="manual-team-card"
               style={{
                 '--team-tone': TEAM_TONE.color,
@@ -382,6 +400,7 @@ export function ManualHome({ lang, goto }: Props) {
             </div>
           ))}
         </div>
+        )}
       </div>
 
       {/* ── Section navigation ── */}
