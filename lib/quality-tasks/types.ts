@@ -30,6 +30,8 @@ export interface QualityTaskTemplate {
   evidenceRequired: boolean
   active: boolean
   defaultAssigneeIds: string[]
+  defaultParticipantDepts: string[]
+  defaultParticipantUserIds: string[]
   schedules: QualityTaskSchedule[]
 }
 
@@ -58,6 +60,9 @@ export interface QualityTaskOccurrence {
   completedBy: string | null
   completedAt: string | null
   assigneeIds: string[]
+  participantDepts: string[]
+  participantUserIds: string[]
+  participants: { id: string; name: string; documentPosition: string | null }[]
   attachments: QualityTaskAttachment[]
   scheduling: TaskSchedulingState
   urgency: TaskUrgency
@@ -69,7 +74,7 @@ export type OccurrenceCreatePayload =
   | { mode: 'adHoc'; templateId: string; label: string; dueDate: string; assigneeIds: string[] }
 
 export type OccurrenceActionPayload =
-  | { action: 'schedule'; plannedDate: string | null; note?: string | null; assigneeIds?: string[] }
+  | { action: 'schedule'; plannedDate: string | null; note?: string | null; assigneeIds?: string[]; participantDepts?: string[]; participantUserIds?: string[] }
   | { action: 'complete'; completionNote?: string | null }
   | { action: 'reopen'; reason: string }
 

@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
 import { bangkokToday, canMutateOccurrence, completionBlockReason, deriveTaskState, generatePeriods, occurrenceKey, resolveAssigneeIds } from './logic'
+import { resolveParticipantSelection, resolveParticipants } from './participants'
 import type {
   OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskAttachment, QualityTaskOccurrence,
   QualityTaskSchedule, QualityTaskTemplate, TaskIntervalUnit, TaskKind,
@@ -45,7 +46,10 @@ export async function getQualityTaskTemplates(activeOnly = false): Promise<Quali
     activityNo: row.activity_no == null ? null : Number(row.activity_no), title: str(row.title), description: nullable(row.description),
     referenceCode: nullable(row.reference_code), frequencyText: str(row.frequency_text), ownerText: str(row.owner_text),
     taskKind: str(row.task_kind) as TaskKind, reminderDays: Number(row.reminder_days), evidenceRequired: Boolean(row.evidence_required),
-    active: Boolean(row.active), defaultAssigneeIds: defaults.get(str(row.id)) ?? [], schedules: schedules.get(str(row.id)) ?? [],
+    active: Boolean(row.active), defaultAssigneeIds: defaults.get(str(row.id)) ?? [],
+    defaultParticipantDepts: (row.default_participant_depts ?? []) as string[],
+    defaultParticipantUserIds: (row.default_participant_user_ids ?? []) as string[],
+    schedules: schedules.get(str(row.id)) ?? [],
   }))
 }
 
@@ -58,6 +62,7 @@ function periodLabel(start: string, end: string) {
 
 export async function getQualityTaskOccurrences(input: { from: string; to: string; actorId: string; level: PermLevel; scope?: 'mine' | 'all' }) {
   const templates = await getQualityTaskTemplates(true)
+  const people = await listTaskPeople()
   const { data: instanceRows, error } = await supabaseAdmin.from('quality_task_instances').select('*').lte('period_start', input.to).gte('period_end', input.from)
   fail(error)
   const instanceIds = ((instanceRows ?? []) as Row[]).map(r => str(r.id))
@@ -89,11 +94,17 @@ export async function getQualityTaskOccurrences(input: { from: string; to: strin
         const row = instanceByKey.get(key)
         const instanceId = row ? str(row.id) : null
         const assigned = resolveAssigneeIds(template.defaultAssigneeIds, instanceId ? assignees.get(instanceId) ?? [] : [])
+        const rowDepts = row ? ((row.participant_depts ?? []) as string[]) : []
+        const rowUserIds = row ? ((row.participant_user_ids ?? []) as string[]) : []
+        const selection = resolveParticipantSelection(template.defaultParticipantDepts, template.defaultParticipantUserIds, rowDepts, rowUserIds)
+        const resolvedParticipants = resolveParticipants(people, selection.depts, selection.userIds)
         const state = deriveTaskState({ status: row?.status === 'completed' ? 'completed' : 'open', plannedDate: nullable(row?.planned_date), periodEnd: period.end, reminderDays: template.reminderDays }, today)
         result.push({ key, instanceId, template, scheduleId: schedule.id, periodStart: period.start, periodEnd: period.end,
           periodLabel: row ? str(row.period_label) : periodLabel(period.start, period.end), plannedDate: nullable(row?.planned_date),
           status: row?.status === 'completed' ? 'completed' : 'open', note: nullable(row?.note), completionNote: nullable(row?.completion_note),
           completedBy: nullable(row?.completed_by), completedAt: nullable(row?.completed_at), assigneeIds: assigned,
+          participantDepts: rowDepts, participantUserIds: rowUserIds,
+          participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), documentPosition: nullable((p as Row).document_position) })),
           attachments: instanceId ? attachments.get(instanceId) ?? [] : [], ...state })
       }
     }
@@ -104,11 +115,17 @@ export async function getQualityTaskOccurrences(input: { from: string; to: strin
     if (!template) continue
     const instanceId = str(row.id)
     const assigned = resolveAssigneeIds(template.defaultAssigneeIds, assignees.get(instanceId) ?? [])
+    const rowDepts = (row.participant_depts ?? []) as string[]
+    const rowUserIds = (row.participant_user_ids ?? []) as string[]
+    const selection = resolveParticipantSelection(template.defaultParticipantDepts, template.defaultParticipantUserIds, rowDepts, rowUserIds)
+    const resolvedParticipants = resolveParticipants(people, selection.depts, selection.userIds)
     const state = deriveTaskState({ status: row.status === 'completed' ? 'completed' : 'open', plannedDate: nullable(row.planned_date), periodEnd: str(row.period_end), reminderDays: template.reminderDays }, today)
     result.push({ key: occurrenceKey(null, template.id, str(row.period_start)), instanceId, template, scheduleId: null,
       periodStart: str(row.period_start), periodEnd: str(row.period_end), periodLabel: str(row.period_label), plannedDate: nullable(row.planned_date),
       status: row.status === 'completed' ? 'completed' : 'open', note: nullable(row.note), completionNote: nullable(row.completion_note),
       completedBy: nullable(row.completed_by), completedAt: nullable(row.completed_at), assigneeIds: assigned,
+      participantDepts: rowDepts, participantUserIds: rowUserIds,
+      participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), documentPosition: nullable((p as Row).document_position) })),
       attachments: attachments.get(instanceId) ?? [], ...state })
   }
   const scoped = input.scope === 'mine' && input.level !== 'edit' ? result.filter(o => o.assigneeIds.includes(input.actorId)) : result
@@ -156,8 +173,13 @@ export async function getOccurrenceAccess(instanceId: string, actor: Actor, leve
 export async function updateOccurrence(instanceId: string, payload: OccurrenceActionPayload, actor: Actor, level: PermLevel) {
   const access = await getOccurrenceAccess(instanceId, actor, level)
   if (payload.action === 'schedule') {
-    if (payload.assigneeIds && level !== 'edit') throw new Error('Forbidden')
-    const { error } = await supabaseAdmin.from('quality_task_instances').update({ planned_date: payload.plannedDate || null, note: payload.note?.trim() || null, updated_by: actor.id, updated_at: new Date().toISOString() }).eq('id', instanceId)
+    if ((payload.assigneeIds || payload.participantDepts || payload.participantUserIds) && level !== 'edit') throw new Error('Forbidden')
+    const { error } = await supabaseAdmin.from('quality_task_instances').update({
+      planned_date: payload.plannedDate || null, note: payload.note?.trim() || null,
+      updated_by: actor.id, updated_at: new Date().toISOString(),
+      ...(payload.participantDepts ? { participant_depts: payload.participantDepts } : {}),
+      ...(payload.participantUserIds ? { participant_user_ids: payload.participantUserIds } : {}),
+    }).eq('id', instanceId)
     fail(error); if (payload.assigneeIds) await replaceAssignees(instanceId, payload.assigneeIds)
   } else if (payload.action === 'complete') {
     if (access.instance.status === 'completed') return access.instance
@@ -175,7 +197,7 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
 }
 
 export async function saveTemplate(input: Omit<QualityTaskTemplate, 'id' | 'sourceKey'>, actor: Actor, id?: string) {
-  const payload = { category_code: input.categoryCode, category_name: input.categoryName, activity_no: input.activityNo, title: input.title.trim(), description: input.description?.trim() || null, reference_code: input.referenceCode?.trim() || null, frequency_text: input.frequencyText.trim(), owner_text: input.ownerText.trim(), task_kind: input.taskKind, reminder_days: input.reminderDays, evidence_required: input.evidenceRequired, active: input.active, updated_at: new Date().toISOString() }
+  const payload = { category_code: input.categoryCode, category_name: input.categoryName, activity_no: input.activityNo, title: input.title.trim(), description: input.description?.trim() || null, reference_code: input.referenceCode?.trim() || null, frequency_text: input.frequencyText.trim(), owner_text: input.ownerText.trim(), task_kind: input.taskKind, reminder_days: input.reminderDays, evidence_required: input.evidenceRequired, active: input.active, default_participant_depts: input.defaultParticipantDepts, default_participant_user_ids: input.defaultParticipantUserIds, updated_at: new Date().toISOString() }
   const result = id ? await supabaseAdmin.from('quality_task_templates').update(payload).eq('id', id).select('id').single() : await supabaseAdmin.from('quality_task_templates').insert({ ...payload, created_by: actor.id }).select('id').single()
   fail(result.error); if (!result.data) throw new Error('Template was not saved'); const templateId = str(result.data.id)
   const { data: existingSchedules, error: existingScheduleError } = await supabaseAdmin.from('quality_task_schedules').select('id').eq('template_id', templateId)
@@ -195,6 +217,6 @@ export async function saveTemplate(input: Omit<QualityTaskTemplate, 'id' | 'sour
 }
 
 export async function listTaskPeople() {
-  const { data, error } = await supabaseAdmin.from('profiles').select('id,name,dept,role').is('deleted_at', null).order('name')
+  const { data, error } = await supabaseAdmin.from('profiles').select('id,name,dept,role,document_position').is('deleted_at', null).order('name')
   fail(error); return data ?? []
 }
