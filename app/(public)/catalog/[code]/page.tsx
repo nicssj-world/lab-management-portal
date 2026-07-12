@@ -8,7 +8,10 @@ import { TestDetailCard } from '@/components/tests/TestDetailCard'
 import { SpecimenSection } from '@/components/tests/SpecimenSection'
 import { RefRangeModal } from '@/components/tests/RefRangeModal'
 import { isJsonTable } from '@/lib/utils/refTable'
-import { DocDownloadButton } from '@/components/tests/DocDownloadButton'
+import { PublicTestDocumentActions } from '@/components/tests/PublicTestDocumentActions'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { orderRelatedTestDocuments } from '@/lib/documents/related-test-documents'
+import { normalizeDocumentAccess } from '@/lib/tests/document-access'
 import type { Category, TestDocument, TestReferenceRange } from '@/lib/supabase/types'
 
 const DOC_TYPE_COLOR: Record<string, string> = {
@@ -28,13 +31,21 @@ export default async function CatalogDetailPage({ params }: Props) {
   const test = await getTestByCatalogParam(supabase, code)
   if (!test) notFound()
 
-  const [rangesRes, docsRes] = await Promise.all([
-    supabase.from('test_reference_ranges').select('*').eq('test_id', test.id).order('sort_order'),
-    supabase.from('test_documents').select('*').eq('test_id', test.id).order('created_at'),
+  const relatedDocIds = test.related_doc_ids ?? []
+  const [rangesRes, docsRes, relatedRes] = await Promise.all([
+    supabaseAdmin.from('test_reference_ranges').select('*').eq('test_id', test.id).order('sort_order'),
+    supabaseAdmin.from('test_documents').select('*').eq('test_id', test.id).eq('visibility', 'Public').order('created_at'),
+    relatedDocIds.length
+      ? supabaseAdmin.from('documents').select('id,document_code,title,type,visibility,status').in('id', relatedDocIds).is('deleted_at', null).eq('visibility', 'Public').eq('status', 'Published')
+      : Promise.resolve({ data: [] }),
   ])
 
   const referenceRanges = (rangesRes.data ?? []) as TestReferenceRange[]
   const documents = (docsRes.data ?? []) as TestDocument[]
+  const relatedDocuments = orderRelatedTestDocuments(relatedDocIds, relatedRes.data ?? []).map((doc) => ({
+    ...doc,
+    accessMode: normalizeDocumentAccess(doc.visibility, test.related_doc_access?.[doc.id]).accessMode,
+  }))
   const category = (test as any).categories as Category | undefined
 
   return (
@@ -170,21 +181,27 @@ export default async function CatalogDetailPage({ params }: Props) {
           <div className="catalog-detail-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Card className="catalog-detail-side-card" padding={16}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>เอกสารที่เกี่ยวข้อง</div>
-              {documents.length === 0 ? (
+              {documents.length === 0 && relatedDocuments.length === 0 ? (
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>ยังไม่มีเอกสาร</div>
               ) : (
-                documents.map((doc) => (
-                  <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBlock: 8, borderBottom: '1px solid var(--border)' }}>
-                    <Icon name="doc" size={14} style={{ color: '#2563EB', flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{doc.name}</span>
-                    <span style={{
-                      fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, flexShrink: 0,
-                      background: (DOC_TYPE_COLOR[doc.doc_type as keyof typeof DOC_TYPE_COLOR] ?? '#6B7280') + '18',
-                      color: DOC_TYPE_COLOR[doc.doc_type as keyof typeof DOC_TYPE_COLOR] ?? '#6B7280',
-                    }}>{doc.doc_type}</span>
-                    <DocDownloadButton testId={test.id} docId={doc.id} docName={doc.name} />
-                  </div>
-                ))
+                <>
+                  {relatedDocuments.map((doc) => (
+                    <div key={`library-${doc.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBlock: 8, borderBottom: '1px solid var(--border)' }}>
+                      <Icon name="doc" size={14} style={{ color: '#2563EB', flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{doc.document_code} — {doc.title}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, flexShrink: 0, background: (DOC_TYPE_COLOR[doc.type as keyof typeof DOC_TYPE_COLOR] ?? '#6B7280') + '18', color: DOC_TYPE_COLOR[doc.type as keyof typeof DOC_TYPE_COLOR] ?? '#6B7280' }}>{doc.type}</span>
+                      <PublicTestDocumentActions testId={test.id} source="library" documentId={doc.id} accessMode={doc.accessMode} />
+                    </div>
+                  ))}
+                  {documents.map((doc) => (
+                    <div key={`attachment-${doc.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBlock: 8, borderBottom: '1px solid var(--border)' }}>
+                      <Icon name="doc" size={14} style={{ color: '#2563EB', flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{doc.name}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, flexShrink: 0, background: (DOC_TYPE_COLOR[doc.doc_type as keyof typeof DOC_TYPE_COLOR] ?? '#6B7280') + '18', color: DOC_TYPE_COLOR[doc.doc_type as keyof typeof DOC_TYPE_COLOR] ?? '#6B7280' }}>{doc.doc_type}</span>
+                      <PublicTestDocumentActions testId={test.id} source="attachment" documentId={String(doc.id)} accessMode={normalizeDocumentAccess(doc.visibility, doc.access_mode).accessMode} />
+                    </div>
+                  ))}
+                </>
               )}
             </Card>
 

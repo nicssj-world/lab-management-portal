@@ -7,10 +7,11 @@ import { TestDetailCard } from '@/components/tests/TestDetailCard'
 import { SpecimenSection } from '@/components/tests/SpecimenSection'
 import { ReferenceRangeTable } from '@/components/tests/ReferenceRangeTable'
 import { RawTableView } from '@/components/tests/ReferenceRangePaste'
+import { PublicTestDocumentActions } from '@/components/tests/PublicTestDocumentActions'
 import { buildTestDetailHref } from '@/lib/catalog/quick-search'
 import { decodeTable } from '@/lib/utils/refTable'
 import type { Category, Test, TestReferenceRange } from '@/lib/supabase/types'
-import type { PublicTestDocument } from '@/lib/catalog/public-test'
+import type { PublicRelatedTestDocument, PublicTestDocument } from '@/lib/catalog/public-test'
 
 const DOC_TYPE_COLOR: Record<string, string> = {
   QP: '#2563EB',
@@ -28,6 +29,7 @@ interface DetailPayload {
   category: Category | null
   referenceRanges: TestReferenceRange[]
   documents: PublicTestDocument[]
+  relatedDocuments: PublicRelatedTestDocument[]
 }
 
 interface Props {
@@ -130,6 +132,7 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
 
   const referenceRanges = detail?.referenceRanges ?? []
   const documents = detail?.documents ?? []
+  const relatedDocuments = detail?.relatedDocuments ?? []
   const table = decodeTable(activeTest?.ref)
   const showReference = referenceRanges.length > 0 || table || activeTest?.ref || activeTest?.ref_note
 
@@ -522,29 +525,38 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
 
               <aside className="catalog-detail-modal-sidebar catalog-detail-modal-stack">
                 <Section icon="doc" title="เอกสารที่เกี่ยวข้อง">
-                  {loading && documents.length === 0 ? (
+                  {loading && documents.length === 0 && relatedDocuments.length === 0 ? (
                     <div style={{ display: 'grid', gap: 10 }}>
                       <LoadingLine width="85%" />
                       <LoadingLine width="70%" />
                     </div>
-                  ) : documents.length === 0 ? (
+                  ) : documents.length === 0 && relatedDocuments.length === 0 ? (
                     <div style={{ color: 'var(--muted)', fontSize: 13 }}>ยังไม่มีเอกสาร</div>
                   ) : (
-                    documents.map((doc) => {
-                      const color = DOC_TYPE_COLOR[doc.doc_type] ?? DOC_TYPE_COLOR.Other
-                      return (
-                        <div className="catalog-detail-modal-doc" key={doc.id}>
-                          <Icon name="doc" size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                          <span className="catalog-detail-modal-doc-name">{doc.name}</span>
-                          <span
-                            className="catalog-detail-modal-doc-type"
-                            style={{ background: `${color}18`, color }}
-                          >
-                            {doc.doc_type}
-                          </span>
-                        </div>
-                      )
-                    })
+                    <>
+                      {relatedDocuments.map((doc) => {
+                        const color = DOC_TYPE_COLOR[doc.type] ?? DOC_TYPE_COLOR.Other
+                        return (
+                          <div className="catalog-detail-modal-doc" key={`library-${doc.id}`}>
+                            <Icon name="doc" size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                            <span className="catalog-detail-modal-doc-name">{doc.document_code} — {doc.title}</span>
+                            <span className="catalog-detail-modal-doc-type" style={{ background: `${color}18`, color }}>{doc.type}</span>
+                            {activeTest && <PublicTestDocumentActions testId={activeTest.id} source="library" documentId={doc.id} accessMode={doc.accessMode} />}
+                          </div>
+                        )
+                      })}
+                      {documents.map((doc) => {
+                        const color = DOC_TYPE_COLOR[doc.doc_type] ?? DOC_TYPE_COLOR.Other
+                        return (
+                          <div className="catalog-detail-modal-doc" key={`attachment-${doc.id}`}>
+                            <Icon name="doc" size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                            <span className="catalog-detail-modal-doc-name">{doc.name}</span>
+                            <span className="catalog-detail-modal-doc-type" style={{ background: `${color}18`, color }}>{doc.doc_type}</span>
+                            {activeTest && <PublicTestDocumentActions testId={activeTest.id} source="attachment" documentId={String(doc.id)} accessMode={doc.accessMode} />}
+                          </div>
+                        )
+                      })}
+                    </>
                   )}
                 </Section>
 
