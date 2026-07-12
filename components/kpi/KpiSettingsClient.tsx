@@ -30,6 +30,7 @@ export function KpiSettingsClient() {
   const [excluded, setExcluded] = useState<Set<string>>(new Set()) // "dept_id|kpi_id"
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [defModal, setDefModal] = useState<{ mode: 'new' } | { mode: 'edit'; def: KpiDefinition } | null>(null)
   const { toasts, add } = useToast()
 
   useEffect(() => {
@@ -92,12 +93,86 @@ export function KpiSettingsClient() {
     }
   }
 
+  // ── Definition CRUD (immediate, own API calls) ──────────────────
+  function upsertDefInState(def: KpiDefinition) {
+    setDefs((prev) => {
+      const exists = prev.some((d) => d.id === def.id)
+      const next = exists ? prev.map((d) => (d.id === def.id ? def : d)) : [...prev, def]
+      return next.sort((a, b) => a.sort_order - b.sort_order)
+    })
+  }
+
+  async function handleSaveDef(payload: Record<string, unknown>, id?: number) {
+    const res = await fetch(id ? `/kpi/api/definitions/${id}` : '/kpi/api/definitions', {
+      method: id ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) { add(j.error ?? 'บันทึกตัวชี้วัดไม่สำเร็จ', false); return }
+    upsertDefInState(j as KpiDefinition)
+    add(id ? 'แก้ไขตัวชี้วัดสำเร็จ ✓' : 'เพิ่มตัวชี้วัดสำเร็จ ✓', true)
+    setDefModal(null)
+  }
+
+  async function handleDeleteDef(def: KpiDefinition) {
+    if (!confirm(`ลบตัวชี้วัด "${def.name_th}" ?\nการลบจะมีผลทันที`)) return
+    const res = await fetch(`/kpi/api/definitions/${def.id}`, { method: 'DELETE' })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) { add(j.error ?? 'ลบไม่สำเร็จ', false); return }
+    setDefs((prev) => prev.filter((d) => d.id !== def.id))
+    setExcluded((prev) => {
+      const next = new Set(prev)
+      for (const k of next) if (k.endsWith(`|${def.id}`)) next.delete(k)
+      return next
+    })
+    add('ลบตัวชี้วัดสำเร็จ ✓', true)
+  }
+
   if (loading) {
     return <div style={{ padding: 48, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>กำลังโหลด...</div>
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Definitions manager */}
+      <Card padding={24}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <Icon name="chart" size={18} />
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>จัดการตัวชี้วัด KPI</h3>
+            </div>
+            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--muted)' }}>เพิ่ม แก้ไข หรือลบตัวชี้วัด — การเปลี่ยนแปลงมีผลกับทุกแผนกและทุกหน้าจอทันที</p>
+          </div>
+          <Button variant="primary" size="sm" icon="plus" onClick={() => setDefModal({ mode: 'new' })}>เพิ่มตัวชี้วัด</Button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+          {defs.map((def) => (
+            <div key={def.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '10px 14px', background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
+                  {def.sub_code ? <span style={{ color: 'var(--muted)', marginRight: 6 }}>{def.sub_code}</span> : null}
+                  {def.name_th}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                  {def.code} · {def.category} · เป้า {def.target_type === 'eq' ? '=' : def.target_type === 'gte' ? '≥' : '≤'} {def.target_val}{def.unit ?? '%'}
+                  {def.denominator !== null ? ' · คำนวณ %' : ' · นับจำนวน'}
+                </div>
+              </div>
+              <button onClick={() => setDefModal({ mode: 'edit', def })} title="แก้ไข" aria-label="แก้ไข"
+                style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>
+                <Icon name="edit" size={15} />
+              </button>
+              <button onClick={() => handleDeleteDef(def)} title="ลบ" aria-label="ลบ"
+                style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)' }}>
+                <Icon name="trash" size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </Card>
+
       {/* Assignees */}
       <Card padding={24}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -180,6 +255,15 @@ export function KpiSettingsClient() {
         </Button>
       </div>
 
+      {/* Definition add/edit modal */}
+      {defModal && (
+        <DefinitionModal
+          def={defModal.mode === 'edit' ? defModal.def : null}
+          onClose={() => setDefModal(null)}
+          onSave={handleSaveDef}
+        />
+      )}
+
       {/* Toasts */}
       <div style={{ position: 'fixed', bottom: 20, right: 20, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 2000 }}>
         {toasts.map((t) => (
@@ -187,6 +271,141 @@ export function KpiSettingsClient() {
             {t.msg}
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)',
+  fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', outline: 'none', boxSizing: 'border-box',
+}
+const labelStyle: React.CSSProperties = {
+  fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 4, display: 'block',
+}
+
+function DefinitionModal({ def, onClose, onSave }: {
+  def: KpiDefinition | null
+  onClose: () => void
+  onSave: (payload: Record<string, unknown>, id?: number) => Promise<void>
+}) {
+  const [code, setCode] = useState(def?.code ?? '')
+  const [nameTh, setNameTh] = useState(def?.name_th ?? '')
+  const [category, setCategory] = useState<'TAT' | 'ERROR' | 'RISK'>((def?.category as 'TAT' | 'ERROR' | 'RISK') ?? 'TAT')
+  const [subCode, setSubCode] = useState(def?.sub_code ?? '')
+  const [unit, setUnit] = useState(def?.unit ?? '%')
+  const [targetType, setTargetType] = useState<'gte' | 'lte' | 'eq'>(def?.target_type ?? 'gte')
+  const [targetVal, setTargetVal] = useState(def ? String(def.target_val) : '')
+  const [hasDen, setHasDen] = useState(def ? def.denominator !== null : true)
+  const [denLabel, setDenLabel] = useState(def?.denominator ?? 'จำนวนทั้งหมด')
+  const [sortOrder, setSortOrder] = useState(def ? String(def.sort_order) : '')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function submit() {
+    setErr('')
+    if (!def && !/^[A-Z0-9_]+$/.test(code.trim())) { setErr('รหัส (code) ใช้ได้เฉพาะ A-Z, 0-9 และ _'); return }
+    if (!nameTh.trim()) { setErr('กรุณากรอกชื่อตัวชี้วัด'); return }
+    const tv = parseFloat(targetVal)
+    if (isNaN(tv)) { setErr('กรุณากรอกค่าเป้าหมายเป็นตัวเลข'); return }
+    const payload: Record<string, unknown> = {
+      category, sub_code: subCode.trim() || null, name_th: nameTh.trim(),
+      unit: unit.trim() || null, target_type: targetType, target_val: tv,
+      denominator: hasDen ? (denLabel.trim() || 'จำนวนทั้งหมด') : null,
+    }
+    if (sortOrder.trim() !== '') payload.sort_order = parseInt(sortOrder, 10)
+    if (!def) payload.code = code.trim().toUpperCase()
+    setSaving(true)
+    await onSave(payload, def?.id)
+    setSaving(false)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>{def ? 'แก้ไขตัวชี้วัด' : 'เพิ่มตัวชี้วัด'}</div>
+          <button onClick={onClose} aria-label="ปิด" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}><Icon name="x" size={18} /></button>
+        </div>
+
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {err && <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(220,38,38,.08)', color: 'var(--danger)', fontSize: 13 }}>{err}</div>}
+
+          <div>
+            <label style={labelStyle}>ชื่อตัวชี้วัด (ไทย) <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <input style={inputStyle} value={nameTh} onChange={(e) => setNameTh(e.target.value)} placeholder="เช่น Routine LAB ทันเวลา" autoFocus />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>รหัส (code) <span style={{ color: 'var(--danger)' }}>*</span></label>
+              <input
+                style={{ ...inputStyle, textTransform: 'uppercase', opacity: def ? 0.6 : 1 }}
+                value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="เช่น TAT_ROUTINE" disabled={!!def}
+              />
+              {def && <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 3 }}>แก้รหัสไม่ได้หลังสร้างแล้ว</div>}
+            </div>
+            <div>
+              <label style={labelStyle}>หมวด</label>
+              <select style={{ ...inputStyle, cursor: 'pointer' }} value={category} onChange={(e) => setCategory(e.target.value as 'TAT' | 'ERROR' | 'RISK')}>
+                <option value="TAT">TAT (ความทันเวลา)</option>
+                <option value="ERROR">ERROR (ความคลาดเคลื่อน)</option>
+                <option value="RISK">RISK (ความเสี่ยง)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>เลขข้อ (sub-code)</label>
+              <input style={inputStyle} value={subCode} onChange={(e) => setSubCode(e.target.value)} placeholder="เช่น 1.5" />
+            </div>
+            <div>
+              <label style={labelStyle}>ลำดับการแสดง</label>
+              <input type="number" style={inputStyle} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} placeholder="เว้นว่าง = ต่อท้าย" />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>เงื่อนไขเป้า</label>
+              <select style={{ ...inputStyle, cursor: 'pointer' }} value={targetType} onChange={(e) => setTargetType(e.target.value as 'gte' | 'lte' | 'eq')}>
+                <option value="gte">≥ (มากกว่าเท่ากับ)</option>
+                <option value="lte">≤ (น้อยกว่าเท่ากับ)</option>
+                <option value="eq">= (เท่ากับ)</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>ค่าเป้า <span style={{ color: 'var(--danger)' }}>*</span></label>
+              <input type="number" style={inputStyle} value={targetVal} onChange={(e) => setTargetVal(e.target.value)} placeholder="เช่น 95" />
+            </div>
+            <div>
+              <label style={labelStyle}>หน่วย</label>
+              <input style={inputStyle} value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="% หรือ ครั้ง" />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--ink)' }}>
+              <input type="checkbox" checked={hasDen} onChange={(e) => setHasDen(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer' }} />
+              คำนวณเป็นร้อยละ (มีตัวตั้ง / ตัวหาร)
+            </label>
+            {hasDen ? (
+              <div style={{ marginTop: 8 }}>
+                <label style={labelStyle}>ป้ายกำกับตัวหาร</label>
+                <input style={inputStyle} value={denLabel} onChange={(e) => setDenLabel(e.target.value)} placeholder="เช่น จำนวนส่งตรวจทั้งหมด" />
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>นับจำนวนอย่างเดียว (เช่น จำนวนครั้งของอุบัติการณ์)</div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Button variant="secondary" onClick={onClose}>ยกเลิก</Button>
+          <Button variant="primary" icon="check" onClick={submit} disabled={saving}>{saving ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
+        </div>
       </div>
     </div>
   )

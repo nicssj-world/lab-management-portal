@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['canvas', 'sharp'],
+  serverExternalPackages: ['canvas', '@napi-rs/canvas', 'sharp'],
   experimental: {
     serverActions: { bodySizeLimit: '50mb' },
     proxyClientMaxBodySize: '50mb',

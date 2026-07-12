@@ -253,6 +253,7 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
 }) {
   const [url, setUrl]         = useState<string | null>(null)
   const [mime, setMime]       = useState<string | null>(null)
+  const [forcePdfJs, setForcePdfJs] = useState(false)
   const [loading, setLoading] = useState(true)
   const [errMsg, setErrMsg]   = useState('')
   const [logs, setLogs]       = useState<ReadLog[]>([])
@@ -272,7 +273,7 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
     fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
       .then((r) => r.json())
       .then((d) => {
-        if (d.url) { setUrl(d.url); setMime(d.mime_type ?? ''); onReadLogged(doc.id) }
+        if (d.url) { setUrl(d.url); setMime(d.mime_type ?? ''); setForcePdfJs(d.preview_uncontrolled === true); onReadLogged(doc.id) }
         else setErrMsg(d.error ?? 'ไม่สามารถเปิดได้')
       })
       .catch(() => setErrMsg('เกิดข้อผิดพลาด'))
@@ -291,7 +292,7 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
   async function downloadCurrentFile() {
     if (!doc.file_url) return
     try {
-      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(doc.file_url)}`)
+      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(doc.file_url)}&variant=download`)
       const json = await res.json()
       if (json.url) window.open(json.url, '_blank')
     } catch {}
@@ -375,7 +376,7 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
               <span style={{ fontSize: 14, color: 'rgba(255,255,255,.7)' }}>{errMsg}</span>
             </div>
           ) : isPdf && url ? (
-            <PdfViewer url={url} pdfJsUrl={documentPdfProxyUrl(doc.file_url)} fileName={doc.file_name ?? doc.title} mimeType={mime} />
+            <PdfViewer url={url} pdfJsUrl={documentPdfProxyUrl(doc.file_url)} fileName={doc.file_name ?? doc.title} mimeType={mime} forcePdfJs={forcePdfJs} />
           ) : (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ background: 'var(--card)', borderRadius: 16, padding: 36, textAlign: 'center', maxWidth: 380 }}>
@@ -662,7 +663,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
       return
     }
     try {
-      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(path)}`)
+      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(path)}&variant=download`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       window.open(json.url, '_blank')

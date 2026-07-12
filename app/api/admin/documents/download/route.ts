@@ -6,6 +6,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { buildDocumentDownloadFilename, contentDispositionForDownload, contentDispositionForInline } from '@/lib/documents/download-filename'
 import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 import { r2ObjectResponse } from '@/lib/r2/stream-response'
+import {
+  InvalidDeliveryVariantError,
+  UnsupportedEligibleDocumentError,
+  parseDeliveryVariant,
+  resolveDownloadAudience,
+  resolveServedKey,
+} from '@/lib/documents/document-delivery-variant'
+
+export const runtime = 'nodejs'
 
 type DownloadDocument = {
   id: string
@@ -126,12 +135,50 @@ export async function GET(req: NextRequest) {
 
   const path = req.nextUrl.searchParams.get('path')
   if (!path) return NextResponse.json({ error: 'Missing path' }, { status: 422 })
-  const inline = req.nextUrl.searchParams.get('inline') === '1'
+  let variant
+  try {
+    variant = parseDeliveryVariant(req.nextUrl.searchParams.get('variant'))
+  } catch (error) {
+    if (error instanceof InvalidDeliveryVariantError) return NextResponse.json({ error: error.message }, { status: 422 })
+    throw error
+  }
   const proxy = req.nextUrl.searchParams.get('proxy') === '1'
 
   const docRow = await getDocumentForDownload(path)
   if (!docRow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (docRow.visibility !== 'Public' && !(await canAccessDocuments(actor, 'view'))) return jsonForbidden()
+
+  const audience = resolveDownloadAudience({ publicRoute: false, actor })
+  if (audience === 'viewer' && (docRow.status !== 'Published' || docRow.file_url !== path)) {
+    return jsonForbidden()
+  }
+
+  let servedKey = path
+  let uncontrolledPreview = false
+  try {
+    if (docRow.file_url === path) {
+      const served = await resolveServedKey({
+        document: {
+          id: docRow.id,
+          file_url: docRow.file_url,
+          file_name: docRow.file_name ?? null,
+          mime_type: docRow.mime_type ?? null,
+          type: docRow.type ?? '',
+          status: docRow.status ?? '',
+        },
+        audience,
+        variant,
+        now: new Date(),
+      })
+      servedKey = served.key
+      uncontrolledPreview = served.uncontrolled
+    }
+  } catch (error) {
+    if (error instanceof UnsupportedEligibleDocumentError) return NextResponse.json({ error: error.message }, { status: 415 })
+    return NextResponse.json({ error: 'ไม่สามารถสร้างเอกสารไม่ควบคุมได้ กรุณาลองใหม่อีกครั้ง' }, { status: 503 })
+  }
+
+  const inline = variant === 'preview'
 
   const filename = buildDocumentDownloadFilename(docRow)
 
@@ -142,7 +189,7 @@ export async function GET(req: NextRequest) {
   if (proxy) {
     const object = await r2.send(new GetObjectCommand({
       Bucket: R2_BUCKET,
-      Key: path,
+      Key: servedKey,
       Range: req.headers.get('range') ?? undefined,
       ...(disposition ? { ResponseContentDisposition: disposition } : {}),
     }))
@@ -156,15 +203,17 @@ export async function GET(req: NextRequest) {
     r2,
     new GetObjectCommand({
       Bucket: R2_BUCKET,
-      Key: path,
+      Key: servedKey,
       ...(disposition ? { ResponseContentDisposition: disposition } : {}),
     }),
     { expiresIn: 3600 }
   )
 
-  supabaseAdmin.from('document_access_logs')
-    .insert({ document_id: docRow.id, user_id: actor.id, action: 'download' })
-    .then(undefined, () => {})
+  if (variant === 'download') {
+    supabaseAdmin.from('document_access_logs')
+      .insert({ document_id: docRow.id, user_id: actor.id, action: 'download' })
+      .then(undefined, () => {})
+  }
 
-  return NextResponse.json({ url })
+  return NextResponse.json({ url, preview_uncontrolled: variant === 'preview' && uncontrolledPreview })
 }
