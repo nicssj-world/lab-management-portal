@@ -1,6 +1,9 @@
-import { type CSSProperties, type ReactNode } from 'react'
+import { useState } from 'react'
 import { H2, Section } from '../_primitives'
 import { type Lang } from '../data'
+import { useManualTable } from '../ManualTablesContext'
+import { ManualTableEditor } from '@/components/manual/ManualTableEditor'
+import { TABLE_SCHEMAS, type EditableRow } from '../tables'
 
 interface Props { lang: Lang }
 
@@ -103,12 +106,11 @@ const ADDON_LIMITS: AddonLimitItem[] = [
 
 interface RetentionItem {
   sectionTh: string; sectionEn: string
-  durationTh: ReactNode[]; tempTh: string
+  durationTh: string[]; tempTh: string
   scale: 'hours' | 'days' | 'weeks' | 'special'
   heroTh: string; heroEn: string
   emoji: string
 }
-const bold: CSSProperties = { fontWeight: 700, color: 'var(--ink)' }
 const RETENTION: RetentionItem[] = [
   {
     sectionTh: 'จุลทรรศนศาสตร์คลินิก', sectionEn: 'Clinical Microscopy',
@@ -138,9 +140,9 @@ const RETENTION: RetentionItem[] = [
     sectionTh: 'ภูมิคุ้มกันวิทยาคลินิก', sectionEn: 'Immunology',
     durationTh: [
       '7 วันทำการ 2–8°C',
-      <><strong style={bold}>Anti-HIV Positive</strong>: 15 วันทำการ</>,
-      <>ตัวอย่างส่งตรวจ <strong style={bold}>Acid phosphatase for semen</strong> (ที่เหลือจากการตรวจวิเคราะห์) เก็บนาน 5 ปีที่อุณหภูมิห้อง</>,
-      <>สไลด์จากการย้อม <strong style={bold}>Spermatozoa (คดี)</strong> เก็บนาน 10 ปี ที่อุณหภูมิห้อง</>,
+      '<strong>Anti-HIV Positive</strong>: 15 วันทำการ',
+      'ตัวอย่างส่งตรวจ <strong>Acid phosphatase for semen</strong> (ที่เหลือจากการตรวจวิเคราะห์) เก็บนาน 5 ปีที่อุณหภูมิห้อง',
+      'สไลด์จากการย้อม <strong>Spermatozoa (คดี)</strong> เก็บนาน 10 ปี ที่อุณหภูมิห้อง',
     ], tempTh: '2–8°C',
     scale: 'weeks', heroTh: '7 วัน', heroEn: '7 d',
     emoji: '🛡️',
@@ -186,6 +188,9 @@ const SCALE_STYLE: Record<RetentionItem['scale'], { color: string; bg: string; b
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ManualAddon({ lang }: Props) {
+  const [editing, setEditing] = useState<string | null>(null)
+  const addon = useManualTable<EditableRow>('addonLimits', 'addon', ADDON_LIMITS as unknown as EditableRow[])
+  const retention = useManualTable<EditableRow>('retention', 'addon', RETENTION as unknown as EditableRow[])
   return (
     <>
       {/* ══════════════════════════════════════════════════════════════════
@@ -277,6 +282,19 @@ export function ManualAddon({ lang }: Props) {
           {lang === 'th' ? 'ระยะเวลาของการเพิ่มรายการทดสอบโดยใช้ตัวอย่างเดิม' : 'Add-on Test Time Limit (Existing Specimen)'}
         </h3>
 
+        {addon.canEdit && editing !== 'addonLimits' && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <button onClick={() => setEditing('addonLimits')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              แก้ตาราง
+            </button>
+          </div>
+        )}
+        {editing === 'addonLimits' ? (
+          <ManualTableEditor schema={TABLE_SCHEMAS.addonLimits} rows={addon.rows}
+            onSaved={rows => { addon.setRows(rows); setEditing(null) }}
+            onCancel={() => setEditing(null)} />
+        ) : (
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -290,9 +308,11 @@ export function ManualAddon({ lang }: Props) {
               </tr>
             </thead>
             <tbody>
-              {ADDON_LIMITS.map((a, i) => (
-                <tr key={a.sectionTh}
-                  style={{ borderBottom: i < ADDON_LIMITS.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background .1s' }}
+              {addon.rows.map((row, i) => {
+                const a = row as unknown as AddonLimitItem
+                return (
+                <tr key={i}
+                  style={{ borderBottom: i < addon.rows.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background .1s' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                 >
@@ -315,10 +335,12 @@ export function ManualAddon({ lang }: Props) {
                     {lang === 'th' ? a.limitTh : a.limitEn}
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Note */}
         <div style={{
@@ -344,7 +366,21 @@ export function ManualAddon({ lang }: Props) {
         <h3 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 700, color: 'var(--ink)', paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
           {lang === 'th' ? 'ระยะเวลาเก็บสิ่งตัวอย่างหลังการตรวจวิเคราะห์' : 'Post-analysis Specimen Retention'}
         </h3>
+        <style>{`.retention-dur strong { color: var(--ink); font-weight: 700; }`}</style>
 
+        {retention.canEdit && editing !== 'retention' && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <button onClick={() => setEditing('retention')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              แก้ตาราง
+            </button>
+          </div>
+        )}
+        {editing === 'retention' ? (
+          <ManualTableEditor schema={TABLE_SCHEMAS.retention} rows={retention.rows}
+            onSaved={rows => { retention.setRows(rows); setEditing(null) }}
+            onCancel={() => setEditing(null)} />
+        ) : (
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -358,9 +394,11 @@ export function ManualAddon({ lang }: Props) {
               </tr>
             </thead>
             <tbody>
-              {RETENTION.map((r, i) => (
-                <tr key={r.sectionTh}
-                  style={{ borderBottom: i < RETENTION.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background .1s' }}
+              {retention.rows.map((row, i) => {
+                const r = row as unknown as RetentionItem
+                return (
+                <tr key={i}
+                  style={{ borderBottom: i < retention.rows.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background .1s' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                 >
@@ -374,16 +412,18 @@ export function ManualAddon({ lang }: Props) {
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '10px 14px', fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
+                  <td style={{ padding: '10px 14px', fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }} className="retention-dur">
                     {r.durationTh.map((line, li) => (
-                      <div key={li}>: {line}</div>
+                      <div key={li}>: <span dangerouslySetInnerHTML={{ __html: line }} /></div>
                     ))}
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Expired specimen notice */}
         <div style={{
