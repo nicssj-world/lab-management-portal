@@ -8,6 +8,12 @@ export async function GET() {
   return NextResponse.json({ ok: true })
 }
 
+// among rows sharing a code, prefer the row from a "main" department (anything
+// other than ศูนย์สุขภาพชุมชนเมืองชลบุรี) as the primary contact/link target
+function pickPrimaryRow<T extends { contact_name?: string | null }>(rows: T[]): T {
+  return rows.find(r => !(r.contact_name ?? '').includes('ศูนย์สุขภาพชุมชนเมืองชลบุรี')) ?? rows[0]
+}
+
 export async function POST(req: NextRequest) {
   const rawBody = await req.text()
   const sig = req.headers.get('x-line-signature') ?? ''
@@ -34,8 +40,8 @@ export async function POST(req: NextRequest) {
         .eq('active', true)
 
       if (exactRows && exactRows.length > 0) {
-        const primary = exactRows[0]
-        const extraContacts = exactRows.slice(1)
+        const primary = pickPrimaryRow(exactRows)
+        const extraContacts = exactRows.filter(t => t !== primary)
           .map(t => [t.contact_name, t.contact_phone].filter(Boolean).join(' '))
           .filter(Boolean)
         const { data: docs } = await supabaseAdmin
@@ -64,8 +70,9 @@ export async function POST(req: NextRequest) {
       const data = [...groups.values()].slice(0, 10)
 
       if (data.length === 1) {
-        const [primary, ...rest] = data[0]
-        const extraContacts = rest
+        const rows = data[0]
+        const primary = pickPrimaryRow(rows)
+        const extraContacts = rows.filter(t => t !== primary)
           .map(t => [t.contact_name, t.contact_phone].filter(Boolean).join(' '))
           .filter(Boolean)
         const { data: docs } = await supabaseAdmin
