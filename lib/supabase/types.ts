@@ -270,6 +270,7 @@ export interface TestDetail {
   test: Test
   referenceRanges: TestReferenceRange[]
   documents: TestDocument[]
+  relatedDocuments: import('@/lib/documents/related-test-documents').RelatedTestDocument[]
 }
 
 export interface Document {

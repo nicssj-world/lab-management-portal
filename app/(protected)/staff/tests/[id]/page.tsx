@@ -11,6 +11,7 @@ import { SpecimenSection } from '@/components/tests/SpecimenSection'
 import { RefRangeModal } from '@/components/tests/RefRangeModal'
 import { isJsonTable } from '@/components/tests/ReferenceRangePaste'
 import { DocDownloadButton } from '@/components/tests/DocDownloadButton'
+import { QualityDocumentReadButton } from '@/components/tests/QualityDocumentReadButton'
 import { createClient } from '@/lib/supabase/client'
 import { usePermission } from '@/context/PermissionContext'
 import { canDeleteTests, canEditTests } from '@/lib/tests/permissions'
@@ -98,7 +99,7 @@ export default function TestDetailPage() {
     return <div style={{ textAlign: 'center', padding: 60, color: 'var(--muted)' }}>ไม่พบข้อมูล</div>
   }
 
-  const { test, referenceRanges, documents } = detail
+  const { test, referenceRanges, documents, relatedDocuments } = detail
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -192,21 +193,35 @@ export default function TestDetailPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Card padding={16}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>เอกสารที่เกี่ยวข้อง</div>
-            {documents.length === 0 ? (
+            {documents.length === 0 && relatedDocuments.length === 0 ? (
               <div style={{ fontSize: 12, color: 'var(--muted)' }}>ยังไม่มีเอกสาร</div>
             ) : (
-              documents.map((doc) => (
-                <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBlock: 8, borderBottom: '1px solid var(--border)' }}>
-                  <Icon name="doc" size={14} style={{ color: '#2563EB', flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{doc.name}</span>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, flexShrink: 0,
-                    background: (DOC_TYPE_COLOR[doc.doc_type] ?? '#6B7280') + '18',
-                    color: DOC_TYPE_COLOR[doc.doc_type] ?? '#6B7280',
-                  }}>{doc.doc_type}</span>
-                  <DocDownloadButton testId={Number(id)} docId={doc.id} docName={doc.name} />
-                </div>
-              ))
+              <>
+                {relatedDocuments.map((doc) => (
+                  <div key={`quality-${doc.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBlock: 8, borderBottom: '1px solid var(--border)' }}>
+                    <Icon name="doc" size={14} style={{ color: '#2563EB', flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{doc.document_code} — {doc.title}</span>
+                    <span style={{
+                      fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, flexShrink: 0,
+                      background: (DOC_TYPE_COLOR[doc.type] ?? '#6B7280') + '18',
+                      color: DOC_TYPE_COLOR[doc.type] ?? '#6B7280',
+                    }}>{doc.type}</span>
+                    <QualityDocumentReadButton documentId={doc.id} documentName={`${doc.document_code} ${doc.title}`} />
+                  </div>
+                ))}
+                {documents.map((doc) => (
+                  <div key={`attachment-${doc.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBlock: 8, borderBottom: '1px solid var(--border)' }}>
+                    <Icon name="doc" size={14} style={{ color: '#2563EB', flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{doc.name}</span>
+                    <span style={{
+                      fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, flexShrink: 0,
+                      background: (DOC_TYPE_COLOR[doc.doc_type] ?? '#6B7280') + '18',
+                      color: DOC_TYPE_COLOR[doc.doc_type] ?? '#6B7280',
+                    }}>{doc.doc_type}</span>
+                    <DocDownloadButton testId={Number(id)} docId={doc.id} docName={doc.name} />
+                  </div>
+                ))}
+              </>
             )}
           </Card>
 
