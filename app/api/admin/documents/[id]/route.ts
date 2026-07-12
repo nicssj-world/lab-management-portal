@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { DocumentSchema } from '@/lib/validations/document'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 import { canAccessDocuments } from '@/lib/auth/guards'
 import { allowedTransitions, type DocStatus } from '@/lib/documents/transitions'
@@ -68,6 +68,11 @@ async function getObjectBuffer(key: string) {
     chunks.push(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk))
   }
   return Buffer.concat(chunks)
+}
+
+async function getStoredObjectSize(key: string) {
+  const object = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+  return object.ContentLength ?? null
 }
 
 async function patchR2DocxObject(key: string, metadata: DocxHeaderMetadata) {
@@ -171,6 +176,10 @@ export async function PATCH(
     let wordFileKey: string | null = null
     let wordFileName: string | null = null
     let wordFileSizePre: number | null = null
+    let fileKey: string | null = null
+    let fileKeyName: string | null = null
+    let fileKeyType: string | null = null
+    let fileKeySizePre: number | null = null
 
     if (contentType.includes('multipart/form-data')) {
       const form = await req.formData()
@@ -181,6 +190,10 @@ export async function PATCH(
       wordFileKey = (form.get('word_file_key') as string | null)?.trim() || null
       wordFileName = (form.get('word_file_name') as string | null)?.trim() || null
       wordFileSizePre = (form.get('word_file_size') != null) ? Number(form.get('word_file_size')) : null
+      fileKey = (form.get('file_key') as string | null)?.trim() || null
+      fileKeyName = (form.get('file_name') as string | null)?.trim() || null
+      fileKeyType = (form.get('file_type') as string | null)?.trim() || null
+      fileKeySizePre = (form.get('file_size') != null) ? Number(form.get('file_size')) : null
 
       const metaRaw = form.get('meta')
       if (metaRaw) {
@@ -212,7 +225,7 @@ export async function PATCH(
     // Enforce status transition rules server-side
     const requestedStatus = updates.status as string | undefined
     if (requestedStatus && current?.status && requestedStatus !== current.status) {
-      if (newFile || (newWordFile && newWordFile.size > 0) || wordFileKey) {
+      if (newFile || fileKey || (newWordFile && newWordFile.size > 0) || wordFileKey) {
         return NextResponse.json({ error: 'การเปลี่ยนสถานะต้องทำแยกจากการอัปโหลดไฟล์' }, { status: 422 })
       }
       const invalidStatusField = Object.keys(updates).find((key) => !STATUS_CHANGE_INPUT_FIELDS.has(key))
@@ -226,7 +239,7 @@ export async function PATCH(
     }
 
     if (current.status === 'Published') {
-      if (newFile || (newWordFile && newWordFile.size > 0) || wordFileKey) {
+      if (newFile || fileKey || (newWordFile && newWordFile.size > 0) || wordFileKey) {
         return NextResponse.json({ error: 'เอกสาร Published ต้องสร้าง Revision ใหม่ก่อนเปลี่ยนไฟล์เนื้อหา' }, { status: 409 })
       }
 
@@ -286,35 +299,60 @@ export async function PATCH(
       updates.edit_date = updates.expiry_date
     }
 
-    if (newFile) {
-      if (newFile.size > 50 * 1024 * 1024) {
+    if (newFile || fileKey) {
+      const fileSizeForCheck = newFile ? newFile.size : fileKeySizePre
+      if (fileSizeForCheck && fileSizeForCheck > 50 * 1024 * 1024) {
         return NextResponse.json({ error: 'ไฟล์ใหญ่เกิน 50 MB' }, { status: 422 })
       }
 
       const type = (updates.type as string) ?? current?.type ?? 'others'
-      if (isCoverRequiredType(type) && !isPdfFile(newFile)) {
+      const fileRef = newFile ?? { name: fileKeyName ?? '', type: fileKeyType ?? '' }
+      if (isCoverRequiredType(type) && !isPdfFile(fileRef)) {
         return NextResponse.json({ error: 'QP/WI ต้องใช้ PDF เนื้อหาในช่องไฟล์ทางการ' }, { status: 422 })
       }
-      if (!isCoverRequiredType(type) && !isPdfFile(newFile) && !isSourceFile(newFile)) {
+      if (!isCoverRequiredType(type) && !isPdfFile(fileRef) && !isSourceFile(fileRef)) {
         return NextResponse.json({ error: 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
       }
 
-      const headerMetadata: DocxHeaderMetadata = buildDocxHeaderMetadata({
-        ...current,
-        ...updates,
-      })
-      const uploaded = await uploadDocumentObject(newFile, type, '', headerMetadata)
-      const r2Key = uploaded.key
+      let r2Key: string
+      let uploadedSize: number
+      let finalName: string
+      let finalType: string
 
+      if (newFile) {
+        const headerMetadata: DocxHeaderMetadata = buildDocxHeaderMetadata({
+          ...current,
+          ...updates,
+        })
+        const uploaded = await uploadDocumentObject(newFile, type, '', headerMetadata)
+        r2Key = uploaded.key
+        uploadedSize = uploaded.size
+        finalName = newFile.name
+        finalType = newFile.type
+      } else {
+        // File was already uploaded directly to R2 via presigned URL. DOCX/XLSX header
+        // metadata still gets patched — the unconditional patchTarget block below re-fetches
+        // whatever updates.file_url ends up being and patches it in place either way.
+        r2Key = fileKey as string
+        finalName = fileKeyName ?? r2Key.split('/').pop() ?? 'file'
+        finalType = fileKeyType ?? ''
+        uploadedSize = fileKeySizePre && Number.isFinite(fileKeySizePre)
+          ? fileKeySizePre
+          : (await getStoredObjectSize(r2Key)) ?? 0
+      }
+
+      // Two different fallbacks on purpose, copied from the original code: mime_type
+      // defaults to octet-stream, but source_pdf_mime_type (only set for cover-required
+      // types, i.e. an already-validated PDF) defaults to application/pdf.
       updates.file_url  = r2Key
-      updates.file_name = newFile.name
-      updates.file_size = uploaded.size
-      updates.mime_type = newFile.type || 'application/octet-stream'
+      updates.file_name = finalName
+      updates.file_size = uploadedSize
+      updates.mime_type = finalType || 'application/octet-stream'
       if (isCoverRequiredType(type)) {
         updates.source_pdf_url = r2Key
-        updates.source_pdf_name = newFile.name
-        updates.source_pdf_size = uploaded.size
-        updates.source_pdf_mime_type = newFile.type || 'application/pdf'
+        updates.source_pdf_name = finalName
+        updates.source_pdf_size = uploadedSize
+        updates.source_pdf_mime_type = finalType || 'application/pdf'
       }
     }
 
@@ -348,7 +386,7 @@ export async function PATCH(
     // Save old revision to history when revision number changes OR file is replaced
     const skipRevision = req.nextUrl.searchParams.get('skipRevision') === '1'
     const revisionChanged = updates.revision !== undefined && updates.revision !== current?.revision
-    if (!skipRevision && (revisionChanged || newFile) && current?.file_url) {
+    if (!skipRevision && (revisionChanged || newFile || fileKey) && current?.file_url) {
       supabaseAdmin.from('document_revisions').insert({
         document_id:     id,
         revision_number: current.revision ?? '1',
