@@ -36,6 +36,7 @@ export const testSchema = z.object({
   ref:                 z.string().nullish(),
   ref_note:            z.string().nullish(),
   related_doc_ids:     z.array(z.string()).optional(),
+  related_doc_access:  z.record(z.enum(['view', 'download', 'both'])).optional(),
 })
 
 export const referenceRangeSchema = z.object({

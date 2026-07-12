@@ -1,3 +1,5 @@
+import type { DocumentAccessMode, DocumentVisibility } from '@/lib/tests/document-access'
+
 export type Role = 'Admin' | 'Manager' | 'Medical Technologist' | 'Assistant' | 'Document Controller' | 'Medical Science Technician'
 
 export interface ManualSection {
@@ -241,6 +243,7 @@ export interface Test {
   ref_note?: string | null
   contact_staff?: boolean
   related_doc_ids?: string[] | null
+  related_doc_access?: Record<string, DocumentAccessMode> | null
 }
 
 export interface TestReferenceRange {
@@ -264,6 +267,8 @@ export interface TestDocument {
   storage_path: string
   uploaded_by: string | null
   created_at: string
+  visibility: DocumentVisibility
+  access_mode: DocumentAccessMode
 }
 
 export interface TestDetail {
