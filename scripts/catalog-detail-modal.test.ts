@@ -50,7 +50,7 @@ assert.match(tableSource, /onOpen \? \(/, 'mobile rendering should branch away f
 
 const apiSource = readFileSync('app/api/tests/[id]/route.ts', 'utf8')
 assert.match(apiSource, /getTestByCatalogParam/, 'detail API should support existing id/code catalog params')
-assert.match(apiSource, /PUBLIC_TEST_FIELDS/, 'detail API should reuse the public test allow-list')
+assert.match(apiSource, /sanitizeTest/, 'detail API should sanitize the test through the public allow-list')
 assert.doesNotMatch(apiSource, /storage_path/, 'detail API should not expose document storage paths')
 assert.match(apiSource, /test_reference_ranges/, 'detail API should include reference ranges')
 assert.match(apiSource, /test_documents/, 'detail API should include related document metadata')
