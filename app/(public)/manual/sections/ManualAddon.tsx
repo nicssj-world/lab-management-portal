@@ -281,7 +281,7 @@ export function ManualAddon({ lang }: Props) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)', borderBottom: '2px solid var(--border)' }}>
-                <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', width: '52%' }}>
+                <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', width: '52%', borderRight: '1px solid var(--border)' }}>
                   {lang === 'th' ? 'งาน' : 'Section'}
                 </th>
                 <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase' }}>
@@ -296,7 +296,7 @@ export function ManualAddon({ lang }: Props) {
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                 >
-                  <td style={{ padding: '10px 14px' }}>
+                  <td style={{ padding: '10px 14px', borderRight: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                       <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1.5 }}>{a.emoji}</span>
                       <div>
@@ -349,7 +349,7 @@ export function ManualAddon({ lang }: Props) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)', borderBottom: '2px solid var(--border)' }}>
-                <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', width: '38%' }}>
+                <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', width: '38%', borderRight: '1px solid var(--border)' }}>
                   {lang === 'th' ? 'งาน' : 'Section'}
                 </th>
                 <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase' }}>
@@ -364,7 +364,7 @@ export function ManualAddon({ lang }: Props) {
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                 >
-                  <td style={{ padding: '10px 14px' }}>
+                  <td style={{ padding: '10px 14px', borderRight: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 16, flexShrink: 0 }}>{r.emoji}</span>
                       <div>
