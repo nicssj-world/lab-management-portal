@@ -29,6 +29,12 @@ Fiscal year 2569 example mapping:
 | `0469` | 2026-04 |
 | `0569` | 2026-05 |
 
+## Quality Task List
+
+Run `scripts/quality-task-module.sql` in Supabase Dashboard → SQL Editor before opening `/staff/quality-tasks`. The script creates the task registry, recurring schedules, per-period work records, assignees, R2 attachment metadata, permission defaults, and the 44 ISO/QMS activities from `Quality_Task_List_CBH.xlsx`. Runtime reminders are calculated in the portal; v1 does not require cron, email, or LINE configuration.
+
+Meeting evidence is PDF-only (maximum 20 MB) and is uploaded directly to the existing Cloudflare R2 bucket. Managers administer templates and assignments through the `งานคุณภาพ:edit` permission; assigned staff with `งานคุณภาพ:view` can schedule, attach evidence, and complete their work.
+
 ## Quality Document Workflow V2
 
 Run the schema script before using the workflow in a real environment:

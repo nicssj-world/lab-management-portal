@@ -557,3 +557,4 @@ Read-compliance report (`/staff/documents/read-report`, gate: Admin / DCC / Qual
 | Lab Workload | `Workload` | `/lab-workload/*` | — |
 | TAT | `TAT` | `/tat/*` | — |
 | Users & Roles | `User Management` | `/staff/admin` | `/api/admin/users/`, `/api/admin/permissions` |
+| Quality Tasks | `งานคุณภาพ` | `/staff/quality-tasks/*` | `/api/admin/quality-tasks/*` |
