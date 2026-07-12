@@ -47,11 +47,11 @@ export async function POST(req: NextRequest) {
       }
 
       const { data: rawData } = await getTests(supabaseAdmin, { search: q, active: true, pageSize: 20 })
-      // deduplicate by code (handles duplicate DB rows)
+      // deduplicate by id (rows sharing a code across different categories are distinct entries)
       const seen = new Set<string>()
       const data = rawData.filter(t => {
-        if (seen.has(t.code)) return false
-        seen.add(t.code)
+        if (seen.has(t.id)) return false
+        seen.add(t.id)
         return true
       }).slice(0, 10)
 
