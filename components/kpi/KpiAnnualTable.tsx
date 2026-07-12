@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { StickyScroll } from '@/components/ui/StickyScroll'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { calcResult, isPass, getFiscalMonths, getThaiMonthLabel } from '@/lib/kpi-utils'
 import type { AnnualKpiRow } from '@/lib/supabase/types'
 
@@ -57,16 +58,16 @@ export function KpiAnnualTable({ year, deptCode }: Props) {
 
   if (loading) {
     return (
-      <div style={{ padding: 48, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-        <div style={{ width: 28, height: 28, borderRadius: '50%', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', animation: 'kpiSpin .7s linear infinite', margin: '0 auto 12px' }} />
-        กำลังโหลด...
-        <style>{`@keyframes kpiSpin { to { transform: rotate(360deg) } }`}</style>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {[...Array(8)].map((_, i) => (
+          <div key={i} style={{ height: 28, borderRadius: 6, background: 'var(--surface-2)' }} />
+        ))}
       </div>
     )
   }
 
   if (rows.length === 0) {
-    return <div style={{ padding: 48, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>ยังไม่มีข้อมูล KPI สำหรับปีงบนี้</div>
+    return <EmptyState icon="chart" title="ยังไม่มีข้อมูล KPI" hint="ยังไม่มีข้อมูลสำหรับปีงบนี้" />
   }
 
   const thStyle: React.CSSProperties = {

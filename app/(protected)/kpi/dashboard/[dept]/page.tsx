@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getDeptTrend, getDepartments, getDefinitions } from '@/lib/queries/kpi'
+import { getDeptTrend, getDepartments, getDefinitions, getExclusions } from '@/lib/queries/kpi'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -18,13 +18,18 @@ export default async function KpiDeptPage({ params }: Props) {
   const supabase = await createClient()
   const year = getCurrentThaiFiscalYear()
 
-  const [deptTrend, depts, defs] = await Promise.all([
+  const [deptTrend, depts, defs, exclusions] = await Promise.all([
     getDeptTrend(supabase, dept, year),
     getDepartments(supabase),
     getDefinitions(supabase),
+    getExclusions(supabase),
   ])
 
   const deptInfo = depts.find((d) => d.code === dept)
+  // Hide KPI cards that this department is not required to fill
+  const applicableDefs = deptInfo
+    ? defs.filter((d) => !exclusions.has(`${deptInfo.id}|${d.id}`))
+    : defs
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -40,7 +45,7 @@ export default async function KpiDeptPage({ params }: Props) {
       </div>
 
       {CATEGORIES.map((cat) => {
-        const catDefs = defs.filter((d) => d.category === cat)
+        const catDefs = applicableDefs.filter((d) => d.category === cat)
         if (catDefs.length === 0) return null
         return (
           <div key={cat}>

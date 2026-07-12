@@ -1,12 +1,17 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { requireResource } from '@/lib/auth/guards'
-import { getDashboard, upsertEntries } from '@/lib/queries/kpi'
+import { getActor, canAccessResource, jsonUnauthorized, jsonForbidden } from '@/lib/auth/guards'
+import { getDashboard, upsertEntries, getAssignedDeptIds, getExclusions } from '@/lib/queries/kpi'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export async function GET(request: NextRequest) {
-  const guard = await requireResource('KPI', 'view')
-  if (guard.response) return guard.response
+  const actor = await getActor()
+  if (!actor) return jsonUnauthorized()
+  if (!(await canAccessResource(actor, 'KPI', 'view'))) {
+    // Assigned fillers (no KPI:view perm) can still read to prefill the form
+    const assigned = await createClient().then((s) => getAssignedDeptIds(s, actor.id))
+    if (assigned.length === 0) return jsonForbidden()
+  }
 
   const supabase = await createClient()
 
@@ -22,18 +27,36 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const guard = await requireResource('KPI', 'edit')
-  if (guard.response) return guard.response
+  const actor = await getActor()
+  if (!actor) return jsonUnauthorized()
 
   const supabase = await createClient()
+  const canEditAll = await canAccessResource(actor, 'KPI', 'edit')
+  const assignedDeptIds = canEditAll ? [] : await getAssignedDeptIds(supabase, actor.id)
+  if (!canEditAll && assignedDeptIds.length === 0) return jsonForbidden()
 
   const { entries } = await request.json()
   if (!Array.isArray(entries)) return NextResponse.json({ error: 'entries must be an array' }, { status: 400 })
+  if (entries.length === 0) return NextResponse.json({ ok: true })
+
+  // Scope check: assigned fillers may only write to their departments
+  if (!canEditAll) {
+    const allowed = new Set(assignedDeptIds)
+    if (entries.some((e) => !allowed.has(e.dept_id))) {
+      return NextResponse.json({ error: 'ไม่มีสิทธิ์กรอกข้อมูลของแผนกนี้' }, { status: 403 })
+    }
+  }
+
+  // Reject entries for dept×kpi combos that are excluded (not filled by that dept)
+  const exclusions = await getExclusions(supabase)
+  if (entries.some((e) => exclusions.has(`${e.dept_id}|${e.kpi_id}`))) {
+    return NextResponse.json({ error: 'ตัวชี้วัดนี้ไม่เกี่ยวข้องกับแผนกที่เลือก' }, { status: 422 })
+  }
 
   await upsertEntries(supabase, entries)
   supabaseAdmin.from('audit_log').insert({
     action: 'kpi.entry',
-    user_id: guard.actor.id,
+    user_id: actor.id,
     target: entries[0] ? `${entries[0].fiscal_year}/${String(entries[0].month).padStart(2, '0')}` : undefined,
     detail: `บันทึก KPI ${entries.length} รายการ`,
   }).then(undefined, () => {})

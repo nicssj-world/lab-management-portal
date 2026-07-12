@@ -659,6 +659,18 @@ export interface VwKpiDashboardRow {
   is_pass: boolean | null
 }
 
+export interface KpiDeptAssignee {
+  id: number
+  dept_id: number
+  user_id: string
+}
+
+export interface KpiDeptExclusion {
+  id: number
+  dept_id: number
+  kpi_id: number
+}
+
 export interface KpiSatisfaction {
   id: number
   metric_code: string

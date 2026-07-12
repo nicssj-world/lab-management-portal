@@ -32,7 +32,7 @@ export function TrendChart({ data, targetType, targetVal, unit = '%' }: Props) {
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
           formatter={(v) => [`${v as number}${unit}`, 'ผล']}
         />
-        <ReferenceLine y={targetVal} stroke="#D97706" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: `Target: ${targetVal}${unit}`, fill: '#D97706', fontSize: 10 }} />
+        <ReferenceLine y={targetVal} stroke="var(--warning)" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: `Target: ${targetVal}${unit}`, fill: 'var(--warning)', fontSize: 10 }} />
         <Line type="monotone" dataKey="value" stroke="var(--primary)" strokeWidth={2} dot={{ r: 3, fill: 'var(--primary)' }} connectNulls />
       </LineChart>
     </ResponsiveContainer>

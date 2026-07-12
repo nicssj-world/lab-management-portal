@@ -32,6 +32,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/activity':         { th: 'กิจกรรมทั้งหมด',               en: 'Activity Log' },
   '/kpi/dashboard':          { th: 'KPI Dashboard',                en: 'KPI Dashboard' },
   '/kpi/input':              { th: 'บันทึกข้อมูล KPI',             en: 'KPI Data Entry' },
+  '/kpi/settings':           { th: 'ตั้งค่าการกรอก KPI',           en: 'KPI Entry Settings' },
   '/lab-workload/dashboard': { th: 'Lab Workload',                 en: 'Lab Workload' },
   '/lab-workload/annual':    { th: 'ภาพรวมภาระงานทั้งปี',          en: 'Annual Workload Overview' },
   '/lab-workload/input':     { th: 'บันทึกข้อมูลภาระงาน',          en: 'Workload Entry' },
