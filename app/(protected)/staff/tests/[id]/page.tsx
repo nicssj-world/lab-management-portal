@@ -10,11 +10,11 @@ import { TestDetailCard } from '@/components/tests/TestDetailCard'
 import { SpecimenSection } from '@/components/tests/SpecimenSection'
 import { RefRangeModal } from '@/components/tests/RefRangeModal'
 import { isJsonTable } from '@/components/tests/ReferenceRangePaste'
-import { DocDownloadButton } from '@/components/tests/DocDownloadButton'
-import { QualityDocumentReadButton } from '@/components/tests/QualityDocumentReadButton'
+import { TestDocumentActions } from '@/components/tests/TestDocumentActions'
 import { createClient } from '@/lib/supabase/client'
 import { usePermission } from '@/context/PermissionContext'
 import { canDeleteTests, canEditTests } from '@/lib/tests/permissions'
+import { normalizeDocumentAccess } from '@/lib/tests/document-access'
 import type { TestDetail, Category } from '@/lib/supabase/types'
 
 const DOC_TYPE_COLOR: Record<string, string> = {
@@ -206,7 +206,7 @@ export default function TestDetailPage() {
                       background: (DOC_TYPE_COLOR[doc.type] ?? '#6B7280') + '18',
                       color: DOC_TYPE_COLOR[doc.type] ?? '#6B7280',
                     }}>{doc.type}</span>
-                    <QualityDocumentReadButton documentId={doc.id} documentName={`${doc.document_code} ${doc.title}`} />
+                    <TestDocumentActions testId={Number(id)} source="library" documentId={doc.id} accessMode={doc.accessMode} />
                   </div>
                 ))}
                 {documents.map((doc) => (
@@ -218,7 +218,7 @@ export default function TestDetailPage() {
                       background: (DOC_TYPE_COLOR[doc.doc_type] ?? '#6B7280') + '18',
                       color: DOC_TYPE_COLOR[doc.doc_type] ?? '#6B7280',
                     }}>{doc.doc_type}</span>
-                    <DocDownloadButton testId={Number(id)} docId={doc.id} docName={doc.name} />
+                    <TestDocumentActions testId={Number(id)} source="attachment" documentId={String(doc.id)} accessMode={normalizeDocumentAccess(doc.visibility, doc.access_mode).accessMode} />
                   </div>
                 ))}
               </>

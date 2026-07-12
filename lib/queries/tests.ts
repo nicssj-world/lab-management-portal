@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Test, TestReferenceRange, TestDetail } from '@/lib/supabase/types'
 import type { ReferenceRangeRow } from '@/lib/validations/test-schema'
 import { orderRelatedTestDocuments, type RelatedTestDocument } from '@/lib/documents/related-test-documents'
+import { normalizeDocumentAccess } from '@/lib/tests/document-access'
 
 export interface TestFilters {
   category?: string
@@ -121,18 +122,22 @@ export async function deleteTest(supabase: SupabaseClient, id: number): Promise<
 export async function getRelatedTestDocuments(
   supabase: SupabaseClient,
   relatedDocumentIds: readonly string[] | null | undefined,
+  relatedDocumentAccess: Record<string, string> | null | undefined,
 ): Promise<RelatedTestDocument[]> {
   const ids = [...new Set(relatedDocumentIds ?? [])]
   if (ids.length === 0) return []
 
   const { data, error } = await supabase
     .from('documents')
-    .select('id, document_code, title, type, file_url, file_name')
+    .select('id, document_code, title, type, file_url, file_name, visibility')
     .is('deleted_at', null)
     .in('id', ids)
 
   if (error) throw error
-  return orderRelatedTestDocuments(ids, (data ?? []) as RelatedTestDocument[])
+  return orderRelatedTestDocuments(ids, data ?? []).map((document) => {
+    const access = normalizeDocumentAccess(document.visibility, relatedDocumentAccess?.[document.id])
+    return { ...document, visibility: access.visibility, accessMode: access.accessMode } as RelatedTestDocument
+  })
 }
 
 export async function getTestDetail(supabase: SupabaseClient, id: number): Promise<TestDetail> {
@@ -143,7 +148,7 @@ export async function getTestDetail(supabase: SupabaseClient, id: number): Promi
   const [rangesRes, docsRes, relatedDocuments] = await Promise.all([
     supabase.from('test_reference_ranges').select('*').eq('test_id', id).order('sort_order'),
     supabase.from('test_documents').select('*').eq('test_id', id).order('created_at'),
-    getRelatedTestDocuments(supabase, (test as Test).related_doc_ids),
+    getRelatedTestDocuments(supabase, (test as Test).related_doc_ids, (test as Test).related_doc_access),
   ])
   return {
     test: test as Test,
