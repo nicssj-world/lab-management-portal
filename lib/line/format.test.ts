@@ -33,6 +33,7 @@ const listReply = formatListReply([
   { th: 'รายการตรวจ 2', en: null, code: '30082' },
 ] as any)
 assert.match(listReply, /^🔎 พบ 2 รายการ:/)
+assert.match(listReply, /🔢 รหัส E-Phis: 30074/)
 assert.match(listReply, /💬 พิมพ์รหัส E-Phis เพื่อดูรายละเอียด เช่น 30074$/)
 
 console.log('lib/line/format.test.ts: all assertions passed')

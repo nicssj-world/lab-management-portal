@@ -48,7 +48,7 @@ export function formatTestReply(
 export function formatListReply(tests: Test[]): string {
   const shown = tests.slice(0, 5)
   const items = shown
-    .map((t, i) => `${i + 1}. ${t.th || t.en}\n   E-Phis: ${t.code}`)
+    .map((t, i) => `${i + 1}. ${t.th || t.en}\n   🔢 รหัส E-Phis: ${t.code}`)
     .join('\n')
   const example = shown[0]?.code ?? ''
   const shownLabel = tests.length > shown.length ? ` (แสดง ${shown.length} รายการแรก)` : ''
