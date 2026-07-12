@@ -1,3 +1,4 @@
+import { type CSSProperties, type ReactNode } from 'react'
 import { H2, Section } from '../_primitives'
 import { type Lang } from '../data'
 
@@ -43,59 +44,133 @@ const STEPS: Step[] = [
   },
 ]
 
+interface AddonLimitItem {
+  sectionTh: string; sectionEn: string
+  examplesTh?: string; examplesEn?: string
+  limitTh: string; limitEn: string
+  emoji: string
+}
+const ADDON_LIMITS: AddonLimitItem[] = [
+  {
+    sectionTh: 'จุลทรรศนศาสตร์คลินิก', sectionEn: 'Clinical Microscopy',
+    examplesTh: 'เพิ่มรายการตรวจวิเคราะห์ เช่น Occult Blood, Urine Pregnancy test, การตรวจปัสสาวะหาสารเสพติด เป็นต้น',
+    examplesEn: 'Add-on e.g. Occult Blood, Urine Pregnancy test, urine drug screening',
+    limitTh: 'ภายในระยะเวลาไม่เกิน 1 ชั่วโมงนับจากระยะเวลารับสิ่งส่งตรวจ', limitEn: 'Within 1 hour of specimen receipt',
+    emoji: '🔬',
+  },
+  {
+    sectionTh: 'เคมีคลินิก', sectionEn: 'Clinical Chemistry',
+    examplesTh: 'เพิ่มรายการตรวจวิเคราะห์ เช่น Glucose, BUN, Creatinine, Electrolyte, Lactate, LFT, Thyriod hormone, Troponin-T, NT-proNT เป็นต้น',
+    examplesEn: 'Add-on e.g. Glucose, BUN, Creatinine, Electrolyte, Lactate, LFT, Thyroid hormone, Troponin-T, NT-proBNP',
+    limitTh: 'ภายในระยะเวลาไม่เกิน 2 ชั่วโมงนับจากระยะเวลารับสิ่งส่งตรวจ', limitEn: 'Within 2 hours of specimen receipt',
+    emoji: '⚗️',
+  },
+  {
+    sectionTh: 'ภูมิคุ้มกันวิทยาคลินิก', sectionEn: 'Immunology',
+    examplesTh: 'เพิ่มรายการตรวจวิเคราะห์ เช่น Anti-HIV, Anti HCV, HBs Ag, Anti-HBs, Anti HBc, Troponin I, Procalcitonin เป็นต้น',
+    examplesEn: 'Add-on e.g. Anti-HIV, Anti-HCV, HBsAg, Anti-HBs, Anti-HBc, Troponin I, Procalcitonin',
+    limitTh: 'ภายในระยะเวลาไม่เกิน 6 ชั่วโมงนับจากระยะเวลารับสิ่งส่งตรวจ', limitEn: 'Within 6 hours of specimen receipt',
+    emoji: '🛡️',
+  },
+  {
+    sectionTh: 'โลหิตวิทยาคลินิก', sectionEn: 'Hematology',
+    examplesTh: 'เพิ่มรายการตรวจวิเคราะห์ เช่น CBC, PT INR, PTT, Reticulocyte count, ESR, ขอไถสไลด์ Blood Smear เป็นต้น',
+    examplesEn: 'Add-on e.g. CBC, PT/INR, PTT, Reticulocyte count, ESR, Blood Smear review',
+    limitTh: 'ภายในระยะเวลาไม่เกิน 4 ชั่วโมงนับจากระยะเวลารับสิ่งส่งตรวจ', limitEn: 'Within 4 hours of specimen receipt',
+    emoji: '🩸',
+  },
+  {
+    sectionTh: 'จุลชีววิทยาคลินิก', sectionEn: 'Microbiology',
+    limitTh: 'ภายในระยะเวลาไม่เกิน 2 ชั่วโมงนับจากระยะเวลารับสิ่งส่งตรวจ', limitEn: 'Within 2 hours of specimen receipt',
+    emoji: '🧫',
+  },
+  {
+    sectionTh: 'คลังเลือด', sectionEn: 'Blood Bank',
+    limitTh: 'ภายในระยะเวลาไม่เกิน 24 ชั่วโมงนับจากระยะเวลารับสิ่งส่งตรวจ', limitEn: 'Within 24 hours of specimen receipt',
+    emoji: '🩸',
+  },
+  {
+    sectionTh: 'อณูชีววิทยา', sectionEn: 'Biomolecular',
+    limitTh: 'เก็บสิ่งตัวอย่างส่งตรวจใหม่', limitEn: 'Recollect a new specimen',
+    emoji: '🧬',
+  },
+  {
+    sectionTh: 'ตรวจพิเศษ', sectionEn: 'Specialist',
+    limitTh: 'เก็บสิ่งตัวอย่างส่งตรวจใหม่', limitEn: 'Recollect a new specimen',
+    emoji: '🔗',
+  },
+]
+
 interface RetentionItem {
   sectionTh: string; sectionEn: string
-  durationTh: string; tempTh: string
+  durationTh: ReactNode[]; tempTh: string
   scale: 'hours' | 'days' | 'weeks' | 'special'
   heroTh: string; heroEn: string
   emoji: string
 }
+const bold: CSSProperties = { fontWeight: 700, color: 'var(--ink)' }
 const RETENTION: RetentionItem[] = [
   {
     sectionTh: 'จุลทรรศนศาสตร์คลินิก', sectionEn: 'Clinical Microscopy',
-    durationTh: '24 ชม. อุณหภูมิห้อง', tempTh: 'อุณหภูมิห้อง',
+    durationTh: [
+      '24 ชม. อุณหภูมิห้อง',
+      'Urine ที่ส่งตรวจหาสารเสพติดและให้ผล Positive จะเก็บตัวอย่างนาน 2 เดือนในตู้เย็น 2-8 °C',
+    ], tempTh: 'อุณหภูมิห้อง',
     scale: 'hours', heroTh: '24 ชม.', heroEn: '24 h',
     emoji: '🔬',
   },
   {
     sectionTh: 'เคมีคลินิก', sectionEn: 'Clinical Chemistry',
-    durationTh: '24 ชม. 2–8°C', tempTh: '2–8°C',
+    durationTh: ['24 ชม. 2–8°C'], tempTh: '2–8°C',
     scale: 'hours', heroTh: '24 ชม.', heroEn: '24 h',
     emoji: '⚗️',
   },
   {
     sectionTh: 'โลหิตวิทยาคลินิก', sectionEn: 'Hematology',
-    durationTh: '3 วัน 2–8°C · Blood Smear 7 วัน อุณหภูมิห้อง', tempTh: '2–8°C',
+    durationTh: [
+      '3 วัน 2–8°C',
+      'สไลด์ Blood Smear 7 วัน อุณหภูมิห้อง',
+    ], tempTh: '2–8°C',
     scale: 'days', heroTh: '3 วัน', heroEn: '3 d',
     emoji: '🩸',
   },
   {
     sectionTh: 'ภูมิคุ้มกันวิทยาคลินิก', sectionEn: 'Immunology',
-    durationTh: '7 วันทำการ 2–8°C · Anti-HIV Positive: 15 วันทำการ', tempTh: '2–8°C',
+    durationTh: [
+      '7 วันทำการ 2–8°C',
+      <><strong style={bold}>Anti-HIV Positive</strong>: 15 วันทำการ</>,
+      <>ตัวอย่างส่งตรวจ <strong style={bold}>Acid phosphatase for semen</strong> (ที่เหลือจากการตรวจวิเคราะห์) เก็บนาน 5 ปีที่อุณหภูมิห้อง</>,
+      <>สไลด์จากการย้อม <strong style={bold}>Spermatozoa (คดี)</strong> เก็บนาน 10 ปี ที่อุณหภูมิห้อง</>,
+    ], tempTh: '2–8°C',
     scale: 'weeks', heroTh: '7 วัน', heroEn: '7 d',
     emoji: '🛡️',
   },
   {
     sectionTh: 'จุลชีววิทยาคลินิก', sectionEn: 'Microbiology',
-    durationTh: '4 วัน 2–8°C', tempTh: '2–8°C',
+    durationTh: ['4 วัน 2–8°C'], tempTh: '2–8°C',
     scale: 'days', heroTh: '4 วัน', heroEn: '4 d',
     emoji: '🧫',
   },
   {
     sectionTh: 'คลังเลือด', sectionEn: 'Blood Bank',
-    durationTh: '7 วัน 2–6°C', tempTh: '2–6°C',
+    durationTh: ['7 วัน 2–6°C'], tempTh: '2–6°C',
     scale: 'weeks', heroTh: '7 วัน', heroEn: '7 d',
     emoji: '🩸',
   },
   {
     sectionTh: 'อณูชีววิทยา', sectionEn: 'Biomolecular',
-    durationTh: 'CD4 / Pharmacogenetics 7 วัน · Viral load 1 เดือน 2–8°C · DNA/RNA 2 ปี −20°C', tempTh: 'ขึ้นกับประเภท',
+    durationTh: [
+      'CD4 / Pharmacogenetics 7 วัน',
+      'Viral load 1 เดือน 2–8°C',
+      'Viral load ที่ต้องส่ง Drug resistance: 3 เดือน ในตู้เย็น -20 °C',
+      'DNA/RNA 2 ปี -20°C',
+    ], tempTh: 'ขึ้นกับประเภท',
     scale: 'special', heroTh: 'หลากหลาย', heroEn: 'Varies',
     emoji: '🧬',
   },
   {
     sectionTh: 'ตรวจพิเศษ / OUT LAB', sectionEn: 'Specialist / OUT LAB',
-    durationTh: 'Quadruple test 14 วัน 2–8°C', tempTh: '2–8°C',
+    durationTh: ['Quadruple test 14 วัน 2–8°C'], tempTh: '2–8°C',
     scale: 'weeks', heroTh: '14 วัน', heroEn: '14 d',
     emoji: '🔗',
   },
@@ -195,7 +270,75 @@ export function ManualAddon({ lang }: Props) {
       </Section>
 
       {/* ══════════════════════════════════════════════════════════════════
-          3. RETENTION — clean reference table
+          3. ADD-ON TIME LIMIT — clean reference table
+      ══════════════════════════════════════════════════════════════════ */}
+      <Section>
+        <h3 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 700, color: 'var(--ink)', paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+          {lang === 'th' ? 'ระยะเวลาของการเพิ่มรายการทดสอบโดยใช้ตัวอย่างเดิม' : 'Add-on Test Time Limit (Existing Specimen)'}
+        </h3>
+
+        <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--surface-2)', borderBottom: '2px solid var(--border)' }}>
+                <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', width: '52%' }}>
+                  {lang === 'th' ? 'งาน' : 'Section'}
+                </th>
+                <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase' }}>
+                  {lang === 'th' ? 'ระยะเวลาเพิ่มรายการตรวจวิเคราะห์โดยใช้ตัวอย่างเดิม' : 'Add-on Time Limit'}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {ADDON_LIMITS.map((a, i) => (
+                <tr key={a.sectionTh}
+                  style={{ borderBottom: i < ADDON_LIMITS.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background .1s' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                >
+                  <td style={{ padding: '10px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1.5 }}>{a.emoji}</span>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
+                          {lang === 'th' ? `งาน${a.sectionTh}` : a.sectionEn}
+                        </div>
+                        {(a.examplesTh || a.examplesEn) && (
+                          <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.6, marginTop: 2 }}>
+                            ({lang === 'th' ? a.examplesTh : a.examplesEn})
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: '10px 14px', fontSize: 13, color: 'var(--muted)', lineHeight: 1.65 }}>
+                    {lang === 'th' ? a.limitTh : a.limitEn}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Note */}
+        <div style={{
+          display: 'flex', gap: 10, marginTop: 12,
+          padding: '11px 14px',
+          background: 'var(--primary-soft)',
+          border: '1px solid rgba(30,95,173,.2)',
+          borderRadius: 9,
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1.4 }}>📋</span>
+          <div style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.65 }}>
+            {lang === 'th'
+              ? <span><strong>หมายเหตุ:</strong> เกณฑ์การพิจารณาการตรวจวิเคราะห์โดยใช้ตัวอย่างเดิม พิจารณาจากข้อแนะนำในการเก็บสิ่งตัวอย่างส่งตรวจ (specimen collection) ของวิธีการตรวจวิเคราะห์แต่ละรายการ</span>
+              : <span><strong>Note:</strong> Eligibility to reuse an existing specimen is judged against the specimen collection guidance for each individual test method.</span>}
+          </div>
+        </div>
+      </Section>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          4. RETENTION — clean reference table
       ══════════════════════════════════════════════════════════════════ */}
       <Section>
         <h3 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 700, color: 'var(--ink)', paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
@@ -231,8 +374,10 @@ export function ManualAddon({ lang }: Props) {
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '10px 14px', fontSize: 13, color: 'var(--muted)', lineHeight: 1.65 }}>
-                    {r.durationTh}
+                  <td style={{ padding: '10px 14px', fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
+                    {r.durationTh.map((line, li) => (
+                      <div key={li}>: {line}</div>
+                    ))}
                   </td>
                 </tr>
               ))}
