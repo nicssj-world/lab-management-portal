@@ -213,7 +213,7 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
         }
         .catalog-detail-modal-title-row {
           display: flex;
-          align-items: flex-start;
+          align-items: flex-end;
           gap: 12px;
           min-width: 0;
         }
