@@ -33,5 +33,8 @@ assert.match(source, /className="specimen-numbered-marker"/, 'numbers should be 
 assert.match(source, /\{item\.value\}\./, 'each numbered item should print its original number explicitly')
 assert.match(source, /list-style:\s*none/, 'browser markers should be disabled after explicit numbers are rendered')
 assert.match(source, /whiteSpace:\s*'normal'/, 'numbered text should not preserve accidental source line breaks')
+assert.match(source, /\.specimen-detail-row > \*\s*\{/, 'mobile row styling must target only direct label/value elements')
+assert.match(source, /\.specimen-detail-row > \* \+ \*\s*\{/, 'mobile spacing must not shift nested numbered-list text')
+assert.doesNotMatch(source, /\.specimen-detail-row span \+ span\s*\{/, 'nested numbered-list spans must keep their grid alignment')
 
 console.log('specimen section format tests passed')
