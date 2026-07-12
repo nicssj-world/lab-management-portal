@@ -31,7 +31,7 @@ async function main() {
 
   const detailPageSource = readFileSync('app/(protected)/staff/tests/[id]/page.tsx', 'utf8')
   assert.match(detailPageSource, /relatedDocuments/, 'staff test detail should render the linked quality documents')
-  assert.match(detailPageSource, /QualityDocumentReadButton/, 'staff test detail should provide an action to open a linked quality document')
+  assert.match(detailPageSource, /TestDocumentActions/, 'staff test detail should provide permitted actions for a linked quality document')
 
   console.log('related quality documents tests passed')
 }
