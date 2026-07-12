@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { DocumentSchema } from '@/lib/validations/document'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
-import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 import { canMoveToStatus, isCoverRequiredType, isPdfFile, isSourceFile } from '@/lib/documents/workflow'
@@ -78,6 +78,25 @@ async function uploadDocumentObject(
     ContentType: file.type || 'application/octet-stream',
   }))
   return { key: r2Key, size: body.length }
+}
+
+async function getObjectBuffer(key: string) {
+  const object = await r2.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+  const body = object.Body
+  if (!body) throw new Error('ไม่พบไฟล์ที่อัปโหลดใน R2')
+  if ('transformToByteArray' in body && typeof body.transformToByteArray === 'function') {
+    return Buffer.from(await body.transformToByteArray())
+  }
+  const chunks: Uint8Array[] = []
+  for await (const chunk of body as AsyncIterable<Uint8Array | Buffer>) {
+    chunks.push(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk))
+  }
+  return Buffer.concat(chunks)
+}
+
+async function getStoredObjectSize(key: string) {
+  const object = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+  return object.ContentLength ?? null
 }
 
 export async function GET(req: NextRequest) {
@@ -158,6 +177,11 @@ export async function POST(req: NextRequest) {
     const wordFileName = (form.get('word_file_name') as string | null)?.trim() || null
     const wordFileSizeRaw = form.get('word_file_size')
     const wordFileSizePresigned = wordFileSizeRaw ? Number(wordFileSizeRaw) : null
+    const fileKey = (form.get('file_key') as string | null)?.trim() || null
+    const fileKeyName = (form.get('file_name') as string | null)?.trim() || null
+    const fileKeyType = (form.get('file_type') as string | null)?.trim() || null
+    const fileKeySizeRaw = form.get('file_size')
+    const fileKeySizePresigned = fileKeySizeRaw ? Number(fileKeySizeRaw) : null
     const hasWordFile = Boolean(wordFile || wordFileKey)
 
     const metaRaw = form.get('meta')
@@ -183,6 +207,9 @@ export async function POST(req: NextRequest) {
     if (file && file.size > 50 * 1024 * 1024) {
       return NextResponse.json({ error: 'ไฟล์ทางการใหญ่เกิน 50 MB' }, { status: 422 })
     }
+    if (fileKeySizePresigned && fileKeySizePresigned > 50 * 1024 * 1024) {
+      return NextResponse.json({ error: 'ไฟล์ทางการใหญ่เกิน 50 MB' }, { status: 422 })
+    }
     if (wordFile && wordFile.size > 50 * 1024 * 1024) {
       return NextResponse.json({ error: 'ไฟล์ Word/Excel ใหญ่เกิน 50 MB' }, { status: 422 })
     }
@@ -192,13 +219,22 @@ export async function POST(req: NextRequest) {
     if (file && !isCoverRequiredType(meta.type) && !isPdfFile(file) && !isSourceFile(file)) {
       return NextResponse.json({ error: 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
     }
+    if (fileKey && fileKeyName) {
+      const fileKeyRef = { name: fileKeyName, type: fileKeyType ?? '' }
+      if (isCoverRequiredType(meta.type) && !isPdfFile(fileKeyRef)) {
+        return NextResponse.json({ error: 'QP/WI ต้องใช้ PDF เนื้อหาในช่องไฟล์ทางการ' }, { status: 422 })
+      }
+      if (!isCoverRequiredType(meta.type) && !isPdfFile(fileKeyRef) && !isSourceFile(fileKeyRef)) {
+        return NextResponse.json({ error: 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
+      }
+    }
     if (wordFile && !isSourceFile(wordFile)) {
       return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
     }
     if (wordFileKey && wordFileName && !isSourceFile({ name: wordFileName })) {
       return NextResponse.json({ error: 'ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น' }, { status: 422 })
     }
-    if (isImportCurrent && !file) {
+    if (isImportCurrent && !file && !fileKey) {
       return NextResponse.json({ error: 'โหมดนำเข้าเอกสารเดิม Rev.>0 ต้องแนบไฟล์ทางการ Rev ปัจจุบัน' }, { status: 422 })
     }
     if (isImportCurrent && isCoverRequiredType(meta.type) && !meta.legacy_cover_included) {
@@ -274,37 +310,73 @@ export async function POST(req: NextRequest) {
       document_code: documentCode,
     })
 
-    if (file) {
+    if (file || fileKey) {
       const shouldStampImportedLegacyPdf =
         isImportCurrent &&
         isCoverRequiredType(meta.type) &&
         Boolean(resolvedMeta.legacy_cover_included) &&
-        isPdfFile(file)
+        isPdfFile(file ?? { name: fileKeyName ?? '', type: fileKeyType ?? '' })
       const importedEffectiveDate = shouldStampImportedLegacyPdf
         ? parseDateOnly(resolvedMeta.effective_date ?? null)
         : null
-      const uploaded = await uploadDocumentObject(
-        file,
-        meta.type,
-        '',
-        headerMetadata,
-        importedEffectiveDate
-          ? (body) => stampPublishedPdfFooter(body, documentCode, meta.revision, importedEffectiveDate)
-          : undefined,
-      )
-      const r2Key = uploaded.key
-      uploadedKeys.push(r2Key)
+
+      let r2Key: string
+      let uploadedSize: number
+      let finalName: string
+      let finalType: string
+
+      if (file) {
+        const uploaded = await uploadDocumentObject(
+          file,
+          meta.type,
+          '',
+          headerMetadata,
+          importedEffectiveDate
+            ? (body) => stampPublishedPdfFooter(body, documentCode, meta.revision, importedEffectiveDate)
+            : undefined,
+        )
+        r2Key = uploaded.key
+        uploadedSize = uploaded.size
+        finalName = file.name
+        finalType = file.type
+        uploadedKeys.push(r2Key)
+      } else {
+        // File was already uploaded directly to R2 via presigned URL (bypasses Vercel's
+        // 4.5 MB API-route body-size limit). DOCX/XLSX header metadata is intentionally
+        // not patched here for this path — same accepted trade-off as word_file_key above.
+        r2Key = fileKey as string
+        finalName = fileKeyName ?? r2Key.split('/').pop() ?? 'file'
+        finalType = fileKeyType ?? ''
+        uploadedSize = fileKeySizePresigned && Number.isFinite(fileKeySizePresigned)
+          ? fileKeySizePresigned
+          : (await getStoredObjectSize(r2Key)) ?? 0
+        if (importedEffectiveDate) {
+          const original = await getObjectBuffer(r2Key)
+          const stamped = await stampPublishedPdfFooter(original, documentCode, meta.revision, importedEffectiveDate)
+          await r2.send(new PutObjectCommand({
+            Bucket: R2_BUCKET,
+            Key: r2Key,
+            Body: stamped,
+            ContentType: 'application/pdf',
+          }))
+          uploadedSize = stamped.length
+        }
+      }
+
       officialFields = {
         file_url: r2Key,
-        file_name: file.name,
-        file_size: uploaded.size,
-        mime_type: file.type || 'application/octet-stream',
+        file_name: finalName,
+        file_size: uploadedSize,
+        // Two different fallbacks on purpose, copied from the original raw-upload code:
+        // mime_type defaults to octet-stream, but source_pdf_mime_type (only ever set here
+        // for an already-validated PDF) defaults to application/pdf.
+        mime_type: finalType || 'application/octet-stream',
         ...(isCoverRequiredType(meta.type) && !resolvedMeta.legacy_cover_included
           ? {
               source_pdf_url: r2Key,
-              source_pdf_name: file.name,
-              source_pdf_size: uploaded.size,
-              source_pdf_mime_type: file.type || 'application/pdf',
+              source_pdf_name: finalName,
+              source_pdf_size: uploadedSize,
+              source_pdf_mime_type: finalType || 'application/pdf',
             }
           : {}),
       }
