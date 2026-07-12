@@ -4,6 +4,7 @@ import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { canEditTests } from '@/lib/tests/permissions'
 import { getActor, getPermissionLevel, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
+import { normalizeDocumentAccess } from '@/lib/tests/document-access'
 
 type Params = { params: Promise<{ id: string }> }
 const MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -37,6 +38,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     const formData = await req.formData()
     const file = formData.get('file') as File | null
     const docType = (formData.get('doc_type') as string) || 'Other'
+    const access = normalizeDocumentAccess(
+      formData.get('visibility') as string | null,
+      formData.get('access_mode') as string | null,
+    )
 
     if (!file) return NextResponse.json({ error: 'ไม่มีไฟล์' }, { status: 422 })
     if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'ขนาดไฟล์เกิน 50 MB' }, { status: 422 })
@@ -56,7 +61,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const docName = file.name.replace(`.${ext}`, '')
     const { data: doc, error: dbErr } = await supabaseAdmin
       .from('test_documents')
-      .insert({ test_id: testId, doc_type: docType, name: docName, storage_path: r2Key, uploaded_by: actor.id })
+      .insert({ test_id: testId, doc_type: docType, name: docName, storage_path: r2Key, uploaded_by: actor.id, visibility: access.visibility, access_mode: access.accessMode })
       .select().single()
 
     if (dbErr) {

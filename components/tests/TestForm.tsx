@@ -10,6 +10,7 @@ import { ReferenceRangePaste, isJsonTable } from './ReferenceRangePaste'
 import { TestDocuments } from './TestDocuments'
 import type { TestFormData, ReferenceRangeRow } from '@/lib/validations/test-schema' // ReferenceRangeRow used by initialRanges prop
 import type { Category } from '@/lib/supabase/types'
+import { normalizeDocumentAccess, type DocumentAccessMode } from '@/lib/tests/document-access'
 
 interface Props {
   categories: Category[]
@@ -22,6 +23,7 @@ interface Props {
 const EMPTY: TestFormData = {
   code: '', category_id: '', th: '', en: '', active: true, contact_staff: false, popular: false, available_24hr: false,
   related_doc_ids: [],
+  related_doc_access: {},
 }
 
 const TUBE_OPTIONS: { label: string; color: string }[] = [
@@ -140,7 +142,7 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
   const [savedTestId, setSavedTestId] = useState<number | undefined>(testId)
 
   // Related documents (from quality docs module)
-  const [allDocs, setAllDocs] = useState<{ id: string; title: string; document_code: string; type: string }[]>([])
+  const [allDocs, setAllDocs] = useState<{ id: string; title: string; document_code: string; type: string; visibility: string }[]>([])
   const [docSearch, setDocSearch] = useState('')
   const [showDocDrop, setShowDocDrop] = useState(false)
   const docInputRef = useRef<HTMLInputElement>(null)
@@ -226,6 +228,7 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
   ]
 
   const relatedDocIds = (form.related_doc_ids ?? []) as string[]
+  const relatedDocAccess = form.related_doc_access ?? {}
   const filteredDocs = allDocs
     .filter(d =>
       !relatedDocIds.includes(d.id) &&
@@ -528,6 +531,10 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
                     onMouseDown={e => {
                       e.preventDefault()
                       set('related_doc_ids', [...relatedDocIds, doc.id])
+                      set('related_doc_access', {
+                        ...relatedDocAccess,
+                        [doc.id]: normalizeDocumentAccess(doc.visibility, undefined).accessMode,
+                      })
                       setDocSearch('')
                       docInputRef.current?.focus()
                     }}
@@ -554,20 +561,43 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: isEdit && testId != null ? 20 : 0 }}>
             {relatedDocIds.map(id => {
               const doc = allDocs.find(d => d.id === id)
+              const access = normalizeDocumentAccess(doc?.visibility, relatedDocAccess[id])
               return (
                 <div key={id} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   padding: '3px 6px 3px 10px', borderRadius: 20,
                   border: '1px solid var(--border)', background: 'var(--surface-2)',
-                  fontSize: 12, color: 'var(--ink)', maxWidth: 340,
+                  fontSize: 12, color: 'var(--ink)', maxWidth: 520,
                 }}>
                   <Icon name="doc" size={11} style={{ color: 'var(--primary)', flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {doc ? `${doc.document_code} — ${doc.title}` : id.slice(0, 8) + '…'}
                   </span>
+                  <span style={{ fontSize: 10.5, fontWeight: 600, color: access.visibility === 'Public' ? '#2563EB' : 'var(--muted)', flexShrink: 0 }}>
+                    {access.visibility === 'Public' ? 'เผยแพร่' : 'ภายใน'}
+                  </span>
+                  <select
+                    value={access.accessMode}
+                    disabled={access.visibility === 'Internal'}
+                    onChange={(event) => set('related_doc_access', {
+                      ...relatedDocAccess,
+                      [id]: event.target.value as DocumentAccessMode,
+                    })}
+                    style={{ height: 24, padding: '0 4px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 10.5, fontFamily: 'inherit', cursor: access.visibility === 'Internal' ? 'not-allowed' : 'pointer', opacity: access.visibility === 'Internal' ? .65 : 1 }}
+                    title={access.visibility === 'Internal' ? 'เอกสารภายในเปิดดูได้อย่างเดียว' : 'เลือกสิทธิ์การใช้งาน'}
+                  >
+                    <option value="view">View</option>
+                    <option value="download">Download</option>
+                    <option value="both">View + Download</option>
+                  </select>
                   <button
                     type="button"
-                    onClick={() => set('related_doc_ids', relatedDocIds.filter(x => x !== id))}
+                    onClick={() => {
+                      set('related_doc_ids', relatedDocIds.filter(x => x !== id))
+                      const nextAccess = { ...relatedDocAccess }
+                      delete nextAccess[id]
+                      set('related_doc_access', nextAccess)
+                    }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: '0 2px', display: 'flex', lineHeight: 1, flexShrink: 0 }}
                   >
                     <Icon name="x" size={10} />

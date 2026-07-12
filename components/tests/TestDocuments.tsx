@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import type { TestDocument } from '@/lib/supabase/types'
+import { normalizeDocumentAccess, type DocumentAccessMode, type DocumentVisibility } from '@/lib/tests/document-access'
 
 const DOC_TYPES = ['QP', 'WI', 'RF', 'Form', 'Method Validation', 'Method Correlation', 'Measurement Uncertainty', 'Other'] as const
 type DocType = typeof DOC_TYPES[number]
@@ -20,6 +21,8 @@ export function TestDocuments({ testId }: Props) {
   const [docs, setDocs] = useState<TestDocument[]>([])
   const [uploading, setUploading] = useState(false)
   const [docType, setDocType] = useState<DocType>('QP')
+  const [visibility, setVisibility] = useState<DocumentVisibility>('Internal')
+  const [accessMode, setAccessMode] = useState<DocumentAccessMode>('view')
   const [dragOver, setDragOver] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -37,6 +40,8 @@ export function TestDocuments({ testId }: Props) {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('doc_type', docType)
+      fd.append('visibility', visibility)
+      fd.append('access_mode', accessMode)
       const res = await fetch(`/api/admin/tests/${testId}/documents`, { method: 'POST', body: fd })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'เกิดข้อผิดพลาด')
@@ -53,6 +58,22 @@ export function TestDocuments({ testId }: Props) {
     const res = await fetch(`/api/admin/tests/${testId}/documents/${doc.id}`)
     const json = await res.json()
     if (json.url) window.open(json.url, '_blank')
+  }
+
+  async function updateSettings(doc: TestDocument, nextVisibility: string, nextAccessMode: string) {
+    const access = normalizeDocumentAccess(nextVisibility, nextAccessMode)
+    try {
+      const res = await fetch(`/api/admin/tests/${testId}/documents/${doc.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visibility: access.visibility, access_mode: access.accessMode }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'บันทึกการตั้งค่าไม่สำเร็จ')
+      setDocs(prev => prev.map(item => item.id === doc.id ? json as TestDocument : item))
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'บันทึกการตั้งค่าไม่สำเร็จ')
+    }
   }
 
   async function handleDelete(doc: TestDocument) {
@@ -85,6 +106,26 @@ export function TestDocuments({ testId }: Props) {
                 background: TYPE_COLOR[doc.doc_type as DocType] + '18',
                 color: TYPE_COLOR[doc.doc_type as DocType],
               }}>{doc.doc_type}</span>
+              <select
+                value={doc.visibility ?? 'Internal'}
+                onChange={e => void updateSettings(doc, e.target.value, doc.access_mode ?? 'view')}
+                style={{ height: 28, padding: '0 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 11, fontFamily: 'inherit' }}
+                title="การเผยแพร่"
+              >
+                <option value="Internal">ภายใน</option>
+                <option value="Public">เผยแพร่</option>
+              </select>
+              <select
+                value={normalizeDocumentAccess(doc.visibility, doc.access_mode).accessMode}
+                disabled={(doc.visibility ?? 'Internal') === 'Internal'}
+                onChange={e => void updateSettings(doc, doc.visibility ?? 'Internal', e.target.value)}
+                style={{ height: 28, padding: '0 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 11, fontFamily: 'inherit', opacity: (doc.visibility ?? 'Internal') === 'Internal' ? .65 : 1 }}
+                title={(doc.visibility ?? 'Internal') === 'Internal' ? 'เอกสารภายในเปิดดูได้อย่างเดียว' : 'สิทธิ์การใช้งาน'}
+              >
+                <option value="view">View</option>
+                <option value="download">Download</option>
+                <option value="both">View + Download</option>
+              </select>
               <button
                 onClick={() => handleDownload(doc)}
                 title="ดาวน์โหลด"
@@ -113,6 +154,31 @@ export function TestDocuments({ testId }: Props) {
           style={{ height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0 }}
         >
           {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+
+        <select
+          value={visibility}
+          onChange={e => {
+            const nextVisibility = e.target.value as DocumentVisibility
+            setVisibility(nextVisibility)
+            if (nextVisibility === 'Internal') setAccessMode('view')
+          }}
+          style={{ height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0 }}
+        >
+          <option value="Internal">ภายใน</option>
+          <option value="Public">เผยแพร่</option>
+        </select>
+
+        <select
+          value={accessMode}
+          disabled={visibility === 'Internal'}
+          onChange={e => setAccessMode(e.target.value as DocumentAccessMode)}
+          style={{ height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontFamily: 'inherit', cursor: visibility === 'Internal' ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: visibility === 'Internal' ? .65 : 1 }}
+          title={visibility === 'Internal' ? 'เอกสารภายในเปิดดูได้อย่างเดียว' : 'สิทธิ์การใช้งาน'}
+        >
+          <option value="view">View</option>
+          <option value="download">Download</option>
+          <option value="both">View + Download</option>
         </select>
 
         {/* Drop zone */}
