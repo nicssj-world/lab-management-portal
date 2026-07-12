@@ -213,7 +213,7 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
         }
         .catalog-detail-modal-title-row {
           display: flex;
-          align-items: flex-end;
+          align-items: flex-start;
           gap: 12px;
           min-width: 0;
         }
@@ -229,8 +229,9 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
         }
         .catalog-detail-modal-actions {
           display: inline-flex;
-          align-items: center;
-          gap: 8px;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 10px;
           flex-shrink: 0;
         }
         .catalog-detail-modal-full-link {
@@ -470,16 +471,6 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
                 </h2>
                 {activeTest?.en && <div className="catalog-detail-modal-subtitle">{activeTest.en}</div>}
               </div>
-              {activeTest && (
-                <Link
-                  href={buildTestDetailHref(activeTest)}
-                  className="catalog-detail-modal-full-link"
-                  aria-label="เปิดรายละเอียดรายการตรวจแบบหน้าเต็ม"
-                >
-                  <span>เปิดหน้าเต็ม</span>
-                  <Icon name="arrowRight" size={13} />
-                </Link>
-              )}
             </div>
           </div>
           <div className="catalog-detail-modal-actions">
@@ -491,6 +482,16 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
             >
               <Icon name="x" size={18} />
             </button>
+            {activeTest && (
+              <Link
+                href={buildTestDetailHref(activeTest)}
+                className="catalog-detail-modal-full-link"
+                aria-label="เปิดรายละเอียดรายการตรวจแบบหน้าเต็ม"
+              >
+                <span>เปิดหน้าเต็ม</span>
+                <Icon name="arrowRight" size={13} />
+              </Link>
+            )}
           </div>
         </header>
 
