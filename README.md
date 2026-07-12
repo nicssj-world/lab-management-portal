@@ -130,6 +130,12 @@ Run `scripts/add-document-annual-review.sql` in Supabase before using these.
 - Categories page (`/staff/documents/categories`) gained an in-page filter that narrows the existing browse tree (department → type → docs) and auto-expands matches — distinct from the document library's full-text search.
 - "หมวดหมู่การตรวจ" moved from the general sidebar section into "ระบบ" (System).
 
+**Document uploads — Vercel 4.5MB body-limit fix**
+- Vercel Functions have a hard, non-configurable 4.5 MB request-body limit — this was silently breaking the official document file (and the revision-history backfill file) on any upload/revision over ~4.5 MB, despite app-level validation claiming up to 50 MB was fine. The auto-extract ("ดึงข้อมูล") preview had the same problem against its own 20 MB cap.
+- Fixed by extending the presign-then-direct-R2-PUT pattern already used for Word/Excel source files to the official file too: the browser now uploads straight to Cloudflare R2 via a presigned URL (new `presign-file` route, plus a dedicated one for revision-history backfill), and only the resulting R2 key is sent to the API route — never the raw bytes.
+- The extract/auto-read route now also accepts an R2 key (fetched server-side) instead of requiring raw multipart bytes, and reuses the same upload the "ดึงข้อมูล" preview already made instead of uploading the file twice.
+- No workflow/state-machine behavior changed — `file_url` semantics, the Published-immutability guards, and the working-revision-draft requirement are all unaffected; only how the file bytes reach R2 changed.
+
 **Maintenance**
 - Added `scripts/archive-audit-log.sql` (see Maintenance section below) since `audit_log` has no automatic cleanup.
 
