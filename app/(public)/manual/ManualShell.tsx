@@ -14,6 +14,7 @@ import { ManualOutLab } from './sections/ManualOutLab'
 import { ManualMicrobiology } from './sections/ManualMicrobiology'
 import { ManualBloodBank } from './sections/ManualBloodBank'
 import { ManualAmendment } from './sections/ManualAmendment'
+import { ManualTablesProvider, type DbTables } from './ManualTablesContext'
 
 // ─── Editor helpers ─────────────────────────────────────────────────────────────
 
@@ -80,12 +81,13 @@ function useToast() {
 
 interface Props {
   dbSections?: Record<string, { th: string; en: string }>
+  dbTables?: DbTables
   canEdit?: boolean
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────────
 
-export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
+export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }: Props) {
   const { lang } = useLang()
   const { toasts, add: toast } = useToast()
 
@@ -227,6 +229,7 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
   const usesStaticComponent = ['collection', 'transport', 'micro'].includes(activeSection)
 
   return (
+    <ManualTablesProvider initial={dbTables} canEdit={canEdit}>
     <>
       <style>{`
         /* ── Editor ── */
@@ -682,5 +685,6 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
         ))}
       </div>
     </>
+    </ManualTablesProvider>
   )
 }
