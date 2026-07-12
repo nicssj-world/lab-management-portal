@@ -1,7 +1,10 @@
 import type { Test } from '@/lib/supabase/types'
 import { sanitizeRichHtml } from '@/lib/html-sanitize'
 
-interface Props { test: Test }
+interface Props {
+  test: Test
+  showNote?: boolean
+}
 
 const TUBE_ICON_NAMES = [
   'Sodium citrate (ฟ้า)',
@@ -79,10 +82,10 @@ function Row({ label, value }: { label: string; value: string | null | undefined
   )
 }
 
-export function SpecimenSection({ test }: Props) {
-  const hasData = test.tube || test.stability || test.reject || test.transport_condition || test.specimen_note
+export function SpecimenSection({ test, showNote = true }: Props) {
+  const hasData = test.tube || test.stability || test.reject || test.transport_condition || (showNote && test.specimen_note)
   const showTubeIcon = test.tube ? TUBE_ICON_NAMES.includes(test.tube) : false
-  const safeSpecimenNote = sanitizeRichHtml(test.specimen_note)
+  const safeSpecimenNote = showNote ? sanitizeRichHtml(test.specimen_note) : ''
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
