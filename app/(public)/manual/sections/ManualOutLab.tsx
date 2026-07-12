@@ -1,8 +1,11 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { Badge } from '@/components/ui/Badge'
 import { H2, H3, P, Callout, Section } from '../_primitives'
-import { OUTLAB_PARTNERS, type Lang } from '../data'
+import { OUTLAB_PARTNERS, type OutLabPartner, type Lang } from '../data'
+import { useManualTable } from '../ManualTablesContext'
+import { ManualTableEditor } from '@/components/manual/ManualTableEditor'
+import { TABLE_SCHEMAS, type EditableRow } from '../tables'
 
 interface Props { lang: Lang }
 
@@ -111,8 +114,10 @@ function DocChain({ steps, color = 'var(--primary)', bg = 'var(--primary-soft)',
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ManualOutLab({ lang }: Props) {
-  const govt = OUTLAB_PARTNERS.filter((p) => p.sector === 'gov')
-  const priv = OUTLAB_PARTNERS.filter((p) => p.sector === 'priv')
+  const [editing, setEditing] = useState(false)
+  const partners = useManualTable<OutLabPartner>('outlabPartners', 'outlab', OUTLAB_PARTNERS)
+  const govt = partners.rows.filter((p) => p.sector === 'gov')
+  const priv = partners.rows.filter((p) => p.sector === 'priv')
 
   return (
     <>
@@ -127,6 +132,20 @@ export function ManualOutLab({ lang }: Props) {
             : 'Tests not performed in-house are forwarded to accredited reference laboratories. The OUT LAB section (ext. 1461) handles packaging, shipment, follow-up, and returning the result via HIS.'}
         </P>
 
+        {partners.canEdit && !editing && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <button onClick={() => setEditing(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              แก้รายชื่อหน่วยงาน
+            </button>
+          </div>
+        )}
+        {editing ? (
+          <ManualTableEditor schema={TABLE_SCHEMAS.outlabPartners} rows={partners.rows as unknown as EditableRow[]}
+            onSaved={rows => { partners.setRows(rows as unknown as OutLabPartner[]); setEditing(false) }}
+            onCancel={() => setEditing(false)} />
+        ) : (
+        <>
         <H3>{lang === 'th' ? 'หน่วยงานที่ส่งตรวจต่อ — ภาครัฐ' : 'Reference labs — government'}</H3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {govt.map((o) => (
@@ -158,6 +177,8 @@ export function ManualOutLab({ lang }: Props) {
             </div>
           ))}
         </div>
+        </>
+        )}
 
         <Callout tone="info" icon="mail">
           {lang === 'th'
