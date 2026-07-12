@@ -7,6 +7,8 @@ import {
 } from 'recharts'
 import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
+import { Stat } from '@/components/ui/Stat'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { getFiscalMonths, getThaiMonthLabel, calcResult } from '@/lib/kpi-utils'
 import type { AnnualKpiRow } from '@/lib/supabase/types'
 
@@ -16,10 +18,10 @@ interface Props {
 }
 
 const MONTHS = getFiscalMonths()
-const GREEN = '#166534'
-const ORANGE = '#D97706'
-const RED = '#DC2626'
-const BLUE = '#2563EB'
+const GREEN = 'var(--success)'
+const ORANGE = 'var(--warning)'
+const RED = 'var(--danger)'
+const BLUE = 'var(--primary)'
 
 // ── Linear regression trendline ──────────────────────────────────
 function linearTrend(values: (number | null)[]): (number | null)[] {
@@ -59,16 +61,25 @@ export function KpiPresentationDashboard({ year, deptCode }: Props) {
 
   if (loading) {
     return (
-      <div style={{ padding: 48, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-        <div style={{ width: 28, height: 28, borderRadius: '50%', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', animation: 'kpiSpin .7s linear infinite', margin: '0 auto 12px' }} />
-        กำลังโหลด...
-        <style>{`@keyframes kpiSpin { to { transform: rotate(360deg) } }`}</style>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+          {[...Array(4)].map((_, i) => (
+            <div key={i} style={{ height: 88, borderRadius: 12, background: 'var(--surface-2)' }} />
+          ))}
+        </div>
+        {[...Array(3)].map((_, i) => (
+          <div key={i} style={{ height: 260, borderRadius: 12, background: 'var(--surface-2)' }} />
+        ))}
       </div>
     )
   }
 
   if (rows.length === 0) {
-    return <div style={{ padding: 48, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>ยังไม่มีข้อมูล KPI สำหรับปีงบนี้</div>
+    return (
+      <Card padding={0}>
+        <EmptyState icon="chart" title="ยังไม่มีข้อมูล KPI" hint="ยังไม่มีข้อมูลสำหรับปีงบและแผนกที่เลือก — ลองเปลี่ยนตัวกรองด้านบน" />
+      </Card>
+    )
   }
 
   const byCode = (code: string) => rows.find(r => r.kpi_code === code)
@@ -90,8 +101,27 @@ export function KpiPresentationDashboard({ year, deptCode }: Props) {
     return MONTHS.reduce((s, m) => s + (row.months[m]?.numerator ?? 0), 0)
   }
 
+  // Hero summary: for each KPI, take the most recent month with data and classify pass/fail
+  let passCount = 0, failCount = 0
+  for (const row of rows) {
+    const latestMonth = [...MONTHS].reverse().find((m) => row.months[m] != null)
+    const latest = latestMonth != null ? row.months[latestMonth] : undefined
+    if (latest?.is_pass === true) passCount++
+    else if (latest?.is_pass === false) failCount++
+  }
+  const totalKpis = rows.length
+  const passRate = totalKpis > 0 ? Math.round((passCount / totalKpis) * 100) : 0
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Hero summary row — latest month snapshot */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+        <Stat label="ตัวชี้วัดทั้งหมด" value={totalKpis} icon="chart" color="blue" />
+        <Stat label="ผ่านเป้าหมาย" value={passCount} icon="shieldCheck" color="green" />
+        <Stat label="ไม่ผ่านเป้าหมาย" value={failCount} icon="alert" color="red" />
+        <Stat label="อัตราผ่านล่าสุด" value={`${passRate}%`} icon="trending" color={passRate >= 80 ? 'green' : passRate >= 50 ? 'amber' : 'red'} />
+      </div>
+
       {/* 1.1 Routine LAB */}
       <LineKpiCard title="TAT — Routine LAB" target={95} targetType="gte" series={monthSeries('TAT_ROUTINE')} />
       {/* 1.2 Stroke */}
@@ -207,10 +237,13 @@ function UncrossCard({ series }: { series: { month: string; num: number | null; 
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
               <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} width={36} />
               <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v) => [`${v} ครั้ง`, 'จำนวน']} />
-              <Bar dataKey="count" fill="#16A34A" radius={[4, 4, 0, 0]} maxBarSize={36} />
+              <Bar dataKey="count" fill={GREEN} radius={[4, 4, 0, 0]} maxBarSize={36} />
             </BarChart>
           </ResponsiveContainer>
-          <div style={{ textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: 700, color: '#16A34A' }}>ทันเวลา 100.00% ทุกเดือน ✓</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6, fontSize: 13, fontWeight: 700, color: 'var(--success)' }}>
+            <Icon name="check" size={14} stroke={3} />
+            ทันเวลา 100.00% ทุกเดือน
+          </div>
           <MiniTable
             series={series}
             rows={[
@@ -287,12 +320,12 @@ function ErrorRateCard({ series }: { series: { month: string; num: number | null
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center' }}>
         {/* Gauge */}
         <svg width={220} height={130} viewBox="0 0 220 130">
-          <path d={arc(0, tgtFrac, r)} fill="none" stroke="#16A34A" strokeWidth={20} strokeLinecap="round" />
-          <path d={arc(tgtFrac, 1, r)} fill="none" stroke="#DC2626" strokeWidth={20} strokeLinecap="round" />
+          <path d={arc(0, tgtFrac, r)} fill="none" stroke={GREEN} strokeWidth={20} strokeLinecap="round" />
+          <path d={arc(tgtFrac, 1, r)} fill="none" stroke={RED} strokeWidth={20} strokeLinecap="round" />
           <line x1={cx} y1={cy} x2={needle.x} y2={needle.y} stroke="var(--ink)" strokeWidth={3} strokeLinecap="round" />
           <circle cx={cx} cy={cy} r={6} fill="var(--ink)" />
           <text x={polar(tgtFrac, r + 16).x} y={polar(tgtFrac, r + 16).y} fontSize={11} fill={RED} textAnchor="middle">0.05</text>
-          <text x={cx} y={cy + 22} fontSize={15} fontWeight={700} fill={pass ? '#16A34A' : '#DC2626'} textAnchor="middle">{rate.toFixed(3)}%</text>
+          <text x={cx} y={cy + 22} fontSize={15} fontWeight={700} fill={pass ? GREEN : RED} textAnchor="middle">{rate.toFixed(3)}%</text>
         </svg>
 
         {/* Summary */}
@@ -300,7 +333,7 @@ function ErrorRateCard({ series }: { series: { month: string; num: number | null
           <div style={{ fontSize: 13, color: 'var(--muted)' }}>คลาดเคลื่อนรวมทั้งปี</div>
           <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--ink)' }}>{totalErr} <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--muted)' }}>ครั้ง</span></div>
           <div style={{ marginTop: 8, padding: '8px 14px', borderRadius: 8, background: 'rgba(22,163,74,.1)', display: 'inline-block' }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#15803D' }}>Accuracy Rate = {accuracy.toFixed(3)}%</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)' }}>Accuracy Rate = {accuracy.toFixed(3)}%</span>
           </div>
         </div>
       </div>
@@ -325,7 +358,7 @@ function IpsgCard({ opd, ward, sticker, opdSeries, wardSeries, stickerSeries }: 
   stickerSeries: { month: string; num: number | null }[]
 }) {
   const pieData = [
-    { name: 'เจาะเลือดผิด OPD', value: opd, color: '#16A34A' },
+    { name: 'เจาะเลือดผิด OPD', value: opd, color: GREEN },
     { name: 'เจาะเลือดผิด Ward', value: ward, color: ORANGE },
     { name: 'ติดสติ๊กเกอร์ผิด', value: sticker, color: BLUE },
   ].filter(d => d.value > 0)

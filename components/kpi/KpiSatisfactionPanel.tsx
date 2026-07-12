@@ -156,7 +156,11 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
   }
 
   if (loading) return (
-    <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>กำลังโหลด...</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {[...Array(3)].map((_, i) => (
+        <div key={i} style={{ height: 44, borderRadius: 8, background: 'var(--surface-2)' }} />
+      ))}
+    </div>
   )
 
   const thStyle: React.CSSProperties = {
@@ -276,9 +280,10 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
 
       {/* ── Table ───────────────────────────────────────────────── */}
       <div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+          <Icon name="shieldCheck" size={14} />
           อัตราความพึงพอใจของผู้ใช้บริการ (ผู้ป่วยนอก, ผู้ป่วยใน, ผู้รับบริจาคโลหิต) · เป้าหมาย &gt;80%
-          {canEdit && <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--primary)' }}>คลิกค่าที่ต้องการแก้ไข</span>}
+          {canEdit && <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--primary)' }}>· คลิกค่าที่ต้องการแก้ไข</span>}
         </div>
 
         <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>

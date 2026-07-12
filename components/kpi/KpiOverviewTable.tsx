@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { StickyScroll } from '@/components/ui/StickyScroll'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from './StatusBadge'
 import type { Department, KpiDefinition, VwKpiDashboardRow } from '@/lib/supabase/types'
 
@@ -16,26 +17,39 @@ export function KpiOverviewTable({ year, month }: Props) {
   const [depts, setDepts] = useState<Department[]>([])
   const [defs, setDefs] = useState<KpiDefinition[]>([])
   const [entries, setEntries] = useState<VwKpiDashboardRow[]>([])
+  const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       setLoading(true)
-      const [deptsRes, defsRes, entriesRes] = await Promise.all([
+      const [deptsRes, defsRes, entriesRes, configRes] = await Promise.all([
         fetch('/kpi/api/departments').then((r) => r.json()),
         fetch('/kpi/api/definitions').then((r) => r.json()),
         fetch(`/kpi/api/entries?year=${year}&month=${month}`).then((r) => r.json()),
+        fetch('/kpi/api/config').then((r) => r.json()).catch(() => ({})),
       ])
       setDepts(Array.isArray(deptsRes) ? deptsRes : [])
       setDefs(Array.isArray(defsRes) ? defsRes : [])
       setEntries(Array.isArray(entriesRes) ? entriesRes : [])
+      setExcluded(new Set(Array.isArray(configRes?.exclusions) ? configRes.exclusions : []))
       setLoading(false)
     }
     load()
   }, [year, month])
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 48, color: 'var(--muted)', fontSize: 13 }}>กำลังโหลด...</div>
-  if (depts.length === 0 || defs.length === 0) return <div style={{ textAlign: 'center', padding: 48, color: 'var(--muted)', fontSize: 13 }}>ไม่มีข้อมูล</div>
+  if (loading) {
+    return (
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {[...Array(6)].map((_, i) => (
+          <div key={i} style={{ height: 32, borderRadius: 6, background: 'var(--surface-2)' }} />
+        ))}
+      </div>
+    )
+  }
+  if (depts.length === 0 || defs.length === 0) {
+    return <EmptyState icon="users" title="ไม่มีข้อมูล" hint="ยังไม่มีแผนกหรือตัวชี้วัด KPI ในระบบ" />
+  }
 
   const entryMap = new Map<string, VwKpiDashboardRow>()
   for (const e of entries) {
@@ -72,6 +86,14 @@ export function KpiOverviewTable({ year, month }: Props) {
                 {dept.name_th}
               </td>
               {defs.map((def) => {
+                const isExcluded = excluded.has(`${dept.id}|${def.id}`)
+                if (isExcluded) {
+                  return (
+                    <td key={def.id} style={{ padding: '8px 12px', textAlign: 'center', background: 'var(--surface-2)' }}>
+                      <span title="ไม่เกี่ยวข้องกับหน่วยงานนี้" style={{ color: '#CBD5E1', fontSize: 11 }}>N/A</span>
+                    </td>
+                  )
+                }
                 const entry = entryMap.get(`${dept.code}|${def.code}`)
                 const isPass = entry?.is_pass ?? null
                 return (
