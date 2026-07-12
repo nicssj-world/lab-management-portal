@@ -1,4 +1,5 @@
 import type { Test, TestDocument } from '@/lib/supabase/types'
+import type { DocumentAccessMode } from '@/lib/tests/document-access'
 
 export const PUBLIC_TEST_FIELDS = [
   'id',
@@ -42,6 +43,7 @@ export const PUBLIC_TEST_FIELDS = [
   'ref_note',
   'contact_staff',
   'related_doc_ids',
+  'related_doc_access',
 ] as const
 
 const PUBLIC_DOCUMENT_FIELDS = [
@@ -50,9 +52,22 @@ const PUBLIC_DOCUMENT_FIELDS = [
   'doc_type',
   'name',
   'created_at',
+  'access_mode',
 ] as const
 
-export type PublicTestDocument = Pick<TestDocument, typeof PUBLIC_DOCUMENT_FIELDS[number]>
+export type PublicTestDocument = Pick<TestDocument, typeof PUBLIC_DOCUMENT_FIELDS[number]> & {
+  source: 'attachment'
+  accessMode: DocumentAccessMode
+}
+
+export interface PublicRelatedTestDocument {
+  id: string
+  document_code: string
+  title: string
+  type: string
+  source: 'library'
+  accessMode: DocumentAccessMode
+}
 
 export function sanitizeTest(test: Test): Partial<Test> {
   return Object.fromEntries(
@@ -61,7 +76,11 @@ export function sanitizeTest(test: Test): Partial<Test> {
 }
 
 export function sanitizeTestDocument(doc: TestDocument): PublicTestDocument {
-  return Object.fromEntries(
+  return {
+    ...Object.fromEntries(
     PUBLIC_DOCUMENT_FIELDS.map((field) => [field, doc[field]])
-  ) as PublicTestDocument
+    ),
+    source: 'attachment',
+    accessMode: doc.access_mode,
+  } as PublicTestDocument
 }
