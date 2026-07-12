@@ -58,6 +58,11 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
   { href: '/staff/equipment',  th: 'ทะเบียนเครื่องมือ',   en: 'Equipment',      icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
   { href: '/staff/personnel',  th: 'บุคลากร',             en: 'MT-CBH Staff',   icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร' },
+  { href: '/staff/quality-tasks', th: 'งานคุณภาพ', en: 'Quality Tasks', icon: 'calendar', color: '#0891B2', resource: 'งานคุณภาพ',
+    children: [
+      { href: '/staff/quality-tasks', th: 'ปฏิทินและงาน', en: 'Dashboard', icon: 'calendar', color: '#0891B2', resource: 'งานคุณภาพ' },
+      { href: '/staff/quality-tasks/registry', th: 'ทะเบียนกิจกรรม', en: 'Registry', icon: 'inbox', color: '#0891B2', resource: 'งานคุณภาพ' },
+    ] },
   { section: 'Analytics' },
   { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',  color: '#16A34A', resource: 'KPI' },
   { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker', color: '#0EA5E9', resource: 'Workload' },

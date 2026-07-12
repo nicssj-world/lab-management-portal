@@ -10,6 +10,8 @@ import { Empty } from '@/components/dashboard/Empty'
 import { AttentionQueue } from '@/components/dashboard/AttentionQueue'
 import { AnalyticsTabs } from '@/components/dashboard/AnalyticsTabs'
 import Link from 'next/link'
+import { getQualityTaskOccurrences } from '@/lib/quality-tasks/server'
+import type { PermLevel } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -123,6 +125,13 @@ export default async function StaffDashboardPage() {
 
   const pendingDocsAll = await pendingDocsPromise
   const pendingDocs = sortByOldestUpdated(pendingDocsAll)
+
+  const qualityLevel = (permissions['งานคุณภาพ'] ?? 'none') as PermLevel
+  const qualityToday = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+  const qualityYear = Number(qualityToday.slice(0, 4)); const qualityMonth = Number(qualityToday.slice(5, 7))
+  const qualityFiscalStart = `${qualityMonth >= 10 ? qualityYear : qualityYear - 1}-10-01`
+  const qualityFiscalEnd = `${qualityMonth >= 10 ? qualityYear + 1 : qualityYear}-09-30`
+  const qualityTasks = qualityLevel === 'none' || !user ? [] : (await getQualityTaskOccurrences({ from: qualityFiscalStart, to: qualityFiscalEnd, actorId: user.id, level: qualityLevel, scope: qualityLevel === 'edit' ? 'all' : 'mine' })).filter(t => t.urgency === 'due-soon' || t.urgency === 'overdue')
 
   let staffLicenseExpired = 0
   let staffLicenseExpiring = 0
@@ -309,6 +318,7 @@ export default async function StaffDashboardPage() {
             staffLicenseExpired={staffLicenseExpired}
             staffLicenseExpiring={staffLicenseExpiring}
             permissions={permissions}
+            qualityTasks={qualityTasks}
           />
         </div>
 

@@ -3,7 +3,7 @@
 -- Safe to re-run: deletes existing non-Admin rows first, then inserts defaults
 
 DELETE FROM role_permissions
-WHERE role IN ('Manager', 'Medical Technologist', 'Assistant');
+WHERE role IN ('Manager', 'Medical Technologist', 'Medical Science Technician', 'Assistant');
 
 INSERT INTO role_permissions (role, resource, granted) VALUES
 -- Manager: edit on all except KPI (view) and User Management (none)
@@ -16,6 +16,7 @@ INSERT INTO role_permissions (role, resource, granted) VALUES
 ('Manager', 'KPI:view',                    true),
 ('Manager', 'TAT (นำเข้า):edit',           true),
 ('Manager', 'บุคลากร:edit',                true),
+('Manager', 'งานคุณภาพ:edit',              true),
 
 -- Medical Technologist: view on most, none on ข่าวสาร and User Management
 ('Medical Technologist', 'รายการตรวจ:view',             true),
@@ -26,6 +27,10 @@ INSERT INTO role_permissions (role, resource, granted) VALUES
 ('Medical Technologist', 'KPI:view',                    true),
 ('Medical Technologist', 'TAT (นำเข้า):view',           true),
 ('Medical Technologist', 'บุคลากร:view',                true),
+('Medical Technologist', 'งานคุณภาพ:view',               true),
+
+-- Medical Science Technician: view quality task assignments
+('Medical Science Technician', 'งานคุณภาพ:view', true),
 
 -- Assistant: same as Medical Technologist
 ('Assistant', 'รายการตรวจ:view',             true),
@@ -36,3 +41,7 @@ INSERT INTO role_permissions (role, resource, granted) VALUES
 ('Assistant', 'KPI:view',                    true),
 ('Assistant', 'TAT (นำเข้า):view',           true),
 ('Assistant', 'บุคลากร:view',                true);
+-- Keep the task list visible to assigned assistants.
+insert into role_permissions (role, resource, granted) values
+('Assistant', 'งานคุณภาพ:view', true)
+on conflict (role, resource) do update set granted = excluded.granted;
