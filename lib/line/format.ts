@@ -8,42 +8,49 @@ export function formatTestReply(
   extraContacts: string[] = [],
 ): string {
   const lines: string[] = []
-  lines.push(`⭐ รหัส E-Phis: ${test.code}`)
-  lines.push(`🔬 ${test.th}${test.en ? ` (${test.en})` : ''}`)
-  if (test.price != null)       lines.push(`💰 ราคา: ${test.price} บาท`)
-  if (test.tube)                lines.push(`🧪 สิ่งส่งตรวจ: ${test.tube}${test.volume ? ` ปริมาตร ${test.volume}` : ''}`)
+  const title = test.th || test.en || 'รายละเอียดรายการตรวจ'
+  lines.push(title)
+  if (test.en && test.en !== title) lines.push(test.en)
+  lines.push(`รหัส E-Phis: ${test.code}`)
+  lines.push('')
+  lines.push('ข้อมูลหลัก')
+  if (test.price != null)       lines.push(`ราคา: ${new Intl.NumberFormat('th-TH').format(test.price)} บาท`)
+  if (test.tube)                lines.push(`สิ่งส่งตรวจ: ${test.tube}${test.volume ? ` ปริมาตร ${test.volume}` : ''}`)
   const tat = test.tat_minutes ?? (test.tat_hours != null ? `${test.tat_hours} ชั่วโมง` : test.tat)
-  if (tat)                      lines.push(`⏱ ระยะเวลา (TAT): ${tat}`)
-  if (test.available_24hr)      lines.push(`🕐 เวลาให้บริการ: 24 ชั่วโมง`)
-  else if (test.service)        lines.push(`🕐 เวลาให้บริการ: ${test.service}`)
-  if (test.transport_condition) lines.push(`📋 การเก็บรักษาตัวอย่างก่อนนำส่ง: ${test.transport_condition}`)
+  if (tat)                      lines.push(`ระยะเวลา: ${tat}`)
+  if (test.available_24hr)      lines.push('เวลาบริการ: 24 ชั่วโมง')
+  else if (test.service)        lines.push(`เวลาบริการ: ${test.service}`)
+  if (test.transport_condition) lines.push(`การเก็บรักษา: ${test.transport_condition}`)
   if (test.reject) {
-    const rejectLines = test.reject.split('\n').map(l => `   ${l.trim()}`).filter(l => l.trim())
-    lines.push(`⛔ เกณฑ์ปฏิเสธ:\n${rejectLines.join('\n')}`)
+    const rejectCount = test.reject.split('\n').map(line => line.trim()).filter(Boolean).length
+    if (rejectCount > 0) lines.push(`เกณฑ์ปฏิเสธ: มี ${rejectCount} ข้อ (ดูรายละเอียดเต็ม)`)
   }
-  if (test.specimen_note)       lines.push(`📝 หมายเหตุ: ${test.specimen_note}`)
-  if (test.contact_staff)       lines.push(`⚠️ ติดต่อเจ้าหน้าที่ก่อนเก็บตัวอย่าง`)
+  if (test.specimen_note)       lines.push(`หมายเหตุ: ${test.specimen_note}`)
+  if (test.contact_staff)       lines.push('ติดต่อเจ้าหน้าที่ก่อนเก็บตัวอย่าง')
   // collect contacts from primary row + duplicate rows, deduplicated
   const primaryContact = [test.contact_name, test.contact_phone].filter(Boolean).join(' ')
   const allContacts = [...new Set([primaryContact, ...extraContacts].filter(Boolean))]
-  allContacts.forEach(c => lines.push(`☎️ ติดต่อ: ${c}`))
+  allContacts.forEach(c => lines.push(`ติดต่อ: ${c}`))
   if (docs.length > 0) {
-    lines.push(`📎 เอกสารแนบ (${docs.length} รายการ):`)
-    docs.forEach(d => lines.push(`  • ${d.doc_type} - ${d.name}`))
+    lines.push(`เอกสารแนบ: ${docs.length} รายการ`)
+    docs.slice(0, 3).forEach(d => lines.push(`- ${d.doc_type} - ${d.name}`))
+    if (docs.length > 3) lines.push(`และอีก ${docs.length - 3} รายการ`)
   }
-  if (APP_URL)                  lines.push(`🔗 ${APP_URL}/catalog/${test.id}`)
+  if (APP_URL) {
+    lines.push('')
+    lines.push(`ดูรายละเอียดเต็ม: ${APP_URL}/catalog/${test.id}`)
+  }
   return lines.join('\n')
 }
 
-const NUMBER_EMOJI = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
-
 export function formatListReply(tests: Test[]): string {
-  const shown = tests.slice(0, 10)
+  const shown = tests.slice(0, 5)
   const items = shown
-    .map((t, i) => `${NUMBER_EMOJI[i]} ${t.th || t.en}\n   ⭐ รหัส E-Phis: ${t.code}`)
+    .map((t, i) => `${i + 1}. ${t.th || t.en}\n   E-Phis: ${t.code}`)
     .join('\n')
   const example = shown[0]?.code ?? ''
-  return `🔍 พบ ${tests.length} รายการ:\n\n${items}\n\n💬 พิมพ์รหัส E-Phis เพื่อดูรายละเอียด${example ? ` เช่น ${example}` : ''}`
+  const shownLabel = tests.length > shown.length ? ` (แสดง ${shown.length} รายการแรก)` : ''
+  return `พบ ${tests.length} รายการ${shownLabel}:\n\n${items}\n\nพิมพ์รหัส E-Phis เพื่อดูรายละเอียด${example ? ` เช่น ${example}` : ''}`
 }
 
 export function formatNotFound(q: string): string {
