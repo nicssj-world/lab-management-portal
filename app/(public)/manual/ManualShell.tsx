@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
 import { sanitizeRichHtml } from '@/lib/html-sanitize'
-import { MANUAL_SECTIONS, PHONE_DIRECTORY } from './data'
+import { MANUAL_SECTIONS } from './data'
+import { PhoneDirectoryCard } from '@/components/manual/PhoneDirectoryCard'
 import { ManualHome } from './sections/ManualHome'
 import { ManualCollection } from './sections/ManualCollection'
 import { ManualTransport } from './sections/ManualTransport'
@@ -379,18 +380,7 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
             })}
           </div>
 
-          <div className="manual-phone-dir">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink)', fontWeight: 700, fontSize: 12.5, marginBottom: 8 }}>
-              <Icon name="phone" size={13} style={{ color: 'var(--primary)' }} />
-              {lang === 'th' ? 'เบอร์โทรภายใน' : 'Internal extensions'}
-            </div>
-            {PHONE_DIRECTORY.map(({ label, ext }, i) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: i < PHONE_DIRECTORY.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                <span>{label}</span>
-                <strong style={{ color: 'var(--ink)', fontFamily: '"IBM Plex Mono",monospace' }}>{ext}</strong>
-              </div>
-            ))}
-          </div>
+          <PhoneDirectoryCard lang={lang} />
 
           {/* Head-of-department contact QR */}
           <div className="manual-qr-box">

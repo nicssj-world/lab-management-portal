@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { Callout, Section } from '../_primitives'
-import { MANUAL_SECTIONS, TEAM, type TeamMember, type Lang } from '../data'
+import { MANUAL_SECTIONS, TEAM, PHONE_DIRECTORY, type TeamMember, type PhoneEntry, type Lang } from '../data'
 import { useManualTable } from '../ManualTablesContext'
 import { ManualTableEditor } from '@/components/manual/ManualTableEditor'
 import { TABLE_SCHEMAS, type EditableRow } from '../tables'
@@ -26,6 +26,8 @@ const SECTION_TONE = {
 export function ManualHome({ lang, goto }: Props) {
   const [editingTeam, setEditingTeam] = useState(false)
   const team = useManualTable<TeamMember>('team', 'home', TEAM)
+  const [editingPhone, setEditingPhone] = useState(false)
+  const phone = useManualTable<PhoneEntry>('phoneDirectory', 'home', PHONE_DIRECTORY)
   return (
     <Section>
       <style>{`
@@ -402,6 +404,22 @@ export function ManualHome({ lang, goto }: Props) {
         </div>
         )}
       </div>
+
+      {/* ── Phone directory management (managers only; displayed in the sidebar) ── */}
+      {phone.canEdit && (
+        <div style={{ marginBottom: 22 }}>
+          {editingPhone ? (
+            <ManualTableEditor schema={TABLE_SCHEMAS.phoneDirectory} rows={phone.rows as unknown as EditableRow[]}
+              onSaved={rows => { phone.setRows(rows as unknown as PhoneEntry[]); setEditingPhone(false) }}
+              onCancel={() => setEditingPhone(false)} />
+          ) : (
+            <button onClick={() => setEditingPhone(true)}
+              style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              แก้เบอร์โทรภายใน
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Section navigation ── */}
       <div style={{ marginBottom: 22 }}>
