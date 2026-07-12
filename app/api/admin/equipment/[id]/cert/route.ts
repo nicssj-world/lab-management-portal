@@ -5,6 +5,7 @@ import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { r2ObjectResponse } from '@/lib/r2/stream-response'
 
 async function getActor() {
   const supabase = await createClient()
@@ -34,6 +35,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (error || !eq) return NextResponse.json({ error: 'ไม่พบข้อมูล' }, { status: 404 })
     const fileUrl = (eq.pm_cal_data as { certificate_file_url?: string } | null)?.certificate_file_url
     if (!fileUrl) return NextResponse.json({ error: 'ไม่มีไฟล์ใบ Certificate' }, { status: 404 })
+
+    if (_req.nextUrl.searchParams.get('proxy') === '1') {
+      const object = await r2.send(new GetObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: fileUrl,
+        Range: _req.headers.get('range') ?? undefined,
+      }))
+      return r2ObjectResponse(object, {
+        contentType: fileUrl.toLowerCase().endsWith('.pdf') ? 'application/pdf' : undefined,
+      })
+    }
 
     const url = await getSignedUrl(
       r2,

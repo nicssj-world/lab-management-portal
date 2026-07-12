@@ -270,13 +270,14 @@ export interface TestDetail {
   test: Test
   referenceRanges: TestReferenceRange[]
   documents: TestDocument[]
+  relatedDocuments: import('@/lib/documents/related-test-documents').RelatedTestDocument[]
 }
 
 export interface Document {
   id: string
   document_code: string
   title: string
-  type: 'QP' | 'WI' | 'Form' | 'Policy' | 'Manual' | 'Record' | 'Reference' | 'Card file' | 'Others'
+  type: 'QP' | 'WI' | 'Form' | 'Policy' | 'Manual' | 'QM' | 'Reference' | 'Card file' | 'Lb' | 'Others'
   department: string | null
   revision: string
   status: 'Draft' | 'Review' | 'Approved' | 'Published' | 'Obsolete'
@@ -322,8 +323,10 @@ export interface Document {
   review_confirmed_by: string | null
   review_confirmed_by_name: string | null
   last_reviewed_at: string | null
-  // Read audience: profile depts that must read this document; null/[] = everyone
+  // Read audience: profile depts and/or specific users that must read this document;
+  // both null/[] = everyone.
   read_audience_depts: string[] | null
+  read_audience_user_ids: string[] | null
   created_at: string
   updated_at: string
 }
@@ -382,6 +385,8 @@ export interface News {
   image_path: string | null
   pdf_path: string | null
   views: number
+  line_sent_at?: string | null
+  line_sent_by?: string | null
   created_at: string
   updated_at: string
 }

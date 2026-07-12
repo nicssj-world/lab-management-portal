@@ -5,9 +5,12 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
+import { Input } from '@/components/ui/Input'
 import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/DocumentDetailModal'
 import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
+import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
+import { DOC_TYPES as TYPE_ORDER, TYPE_LABEL } from '@/lib/documents/type-labels'
 
 export interface CategoryDoc {
   id: string
@@ -29,20 +32,14 @@ interface Props {
   userId?: string
 }
 
-const TYPE_ORDER = ['QP', 'WI', 'Form', 'Policy', 'Manual', 'Record', 'Reference', 'Card file', 'Others']
-const TYPE_LABEL: Record<string, string> = {
-  QP: 'ระเบียบปฏิบัติ (QP)', WI: 'วิธีปฏิบัติงาน (WI)', Form: 'แบบฟอร์ม (Form)',
-  Policy: 'นโยบาย (Policy)', Manual: 'คู่มือ (Manual)', Record: 'บันทึกคุณภาพ (Record)',
-  Reference: 'เอกสารอ้างอิง (Reference)', 'Card file': 'เอกสารประกอบการปฏิบัติงาน (Card file)', Others: 'เอกสารอื่นๆ',
-}
 const TYPE_ICON_BG: Record<string, string> = {
   QP: 'rgba(30,95,173,.10)', WI: 'rgba(13,148,136,.10)', Form: 'rgba(147,51,234,.10)',
-  Policy: 'rgba(217,119,6,.10)', Manual: 'rgba(22,163,74,.10)',
-  Record: 'rgba(100,116,139,.10)', Reference: 'rgba(234,88,12,.10)', 'Card file': 'rgba(245,158,11,.10)', Others: 'rgba(100,116,139,.10)',
+  Policy: 'rgba(217,119,6,.10)', Manual: 'rgba(22,163,74,.10)', QM: 'rgba(5,150,105,.10)',
+  Reference: 'rgba(234,88,12,.10)', 'Card file': 'rgba(245,158,11,.10)', Lb: 'rgba(79,70,229,.10)', Others: 'rgba(100,116,139,.10)',
 }
 const TYPE_ICON_FG: Record<string, string> = {
   QP: '#1E5FAD', WI: '#0D9488', Form: '#9333EA',
-  Policy: '#D97706', Manual: '#16A34A', Record: '#64748B', Reference: '#EA580C', 'Card file': '#F59E0B', Others: '#64748B',
+  Policy: '#D97706', Manual: '#16A34A', QM: '#059669', Reference: '#EA580C', 'Card file': '#F59E0B', Lb: '#4F46E5', Others: '#64748B',
 }
 const STATUS_TONE: Record<string, { bg: string; color: string }> = {
   Draft:     { bg: 'rgba(100,116,139,.12)', color: '#475569' },
@@ -64,10 +61,11 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
 
   const [expandedDept, setExpandedDept] = useState<string | null>(null)
   const [expandedType, setExpandedType] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null)
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
-  const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
 
   function toggleDept(dept: string) {
     setExpandedDept((prev) => (prev === dept ? null : dept))
@@ -85,11 +83,11 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
     }
   }
 
-  async function quickRead(id: string, title: string) {
+  async function quickRead(doc: Pick<CategoryDoc, 'id' | 'title' | 'file_url'>) {
     try {
-      const res = await fetch(`/api/admin/documents/${id}/read`, { method: 'POST' })
+      const res = await fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
       const json = await res.json()
-      if (json.url) { setPdfViewer({ url: json.url, title }); setReadDocIds((prev) => new Set(prev).add(id)) }
+      if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.title }); setReadDocIds((prev) => new Set(prev).add(doc.id)) }
     } catch { /* ignore */ }
   }
 
@@ -119,7 +117,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
       const deptDocs = byDept.get(dept)!
       const byType = new Map<string, CategoryDoc[]>()
       for (const d of deptDocs) {
-        const type = TYPE_ORDER.includes(d.type) ? d.type : 'Others'
+        const type = (TYPE_ORDER as readonly string[]).includes(d.type) ? d.type : 'Others'
         if (!byType.has(type)) byType.set(type, [])
         byType.get(type)!.push(d)
       }
@@ -127,6 +125,32 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
       return { dept, total: deptDocs.length, types }
     })
   }, [docs])
+
+  const isSearching = search.trim().length > 0
+
+  // Light in-page filter — narrows the browse tree to matching branches and auto-expands
+  // them, rather than a full-text search like the document library page. Matches department
+  // name, type label, document code, or title.
+  const visibleGroups = useMemo(() => {
+    if (!isSearching) return groups
+    const q = search.trim().toLowerCase()
+    return groups
+      .map((g) => {
+        const deptMatches = g.dept.toLowerCase().includes(q)
+        const types = g.types
+          .map((t) => {
+            const typeMatches = deptMatches || (TYPE_LABEL[t.type] ?? t.type).toLowerCase().includes(q)
+            const matchedDocs = typeMatches
+              ? t.docs
+              : t.docs.filter((d) => d.document_code.toLowerCase().includes(q) || d.title.toLowerCase().includes(q))
+            return { type: t.type, docs: matchedDocs }
+          })
+          .filter((t) => t.docs.length > 0)
+        const total = types.reduce((sum, t) => sum + t.docs.length, 0)
+        return { dept: g.dept, total, types }
+      })
+      .filter((g) => g.types.length > 0)
+  }, [groups, search, isSearching])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -142,23 +166,36 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
           subtitle={`จัดกลุ่มตามหน่วยงานและชนิดเอกสาร · ${docs.length} ฉบับ`}
           marginBottom={0}
         />
-        <Link href="/staff/documents" className="dash-btn-secondary" style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
-          border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
-          fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0,
-        }}>
-          <Icon name="doc" size={15} /> เปิดคลังเอกสาร
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <Input
+            icon="search"
+            placeholder="กรองตามแผนก ประเภท รหัส หรือชื่อเอกสาร..."
+            value={search}
+            onChange={setSearch}
+            style={{ width: 280 }}
+          />
+          <Link href="/staff/documents" className="dash-btn-secondary" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
+            border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
+            fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0,
+          }}>
+            <Icon name="doc" size={15} /> เปิดคลังเอกสาร
+          </Link>
+        </div>
       </div>
 
       {groups.length === 0 ? (
         <div style={{ padding: 48, textAlign: 'center', background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 13.5 }}>
           ยังไม่มีเอกสารในระบบ
         </div>
+      ) : isSearching && visibleGroups.length === 0 ? (
+        <div style={{ padding: 48, textAlign: 'center', background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 13.5 }}>
+          ไม่พบเอกสารที่ตรงกับ &quot;{search.trim()}&quot;
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {groups.map((g, gIdx) => {
-            const expanded = expandedDept === g.dept
+          {visibleGroups.map((g, gIdx) => {
+            const expanded = isSearching || expandedDept === g.dept
             return (
               <div key={g.dept} className="fade-in-up qd-card" style={{ background: 'var(--card)', border: `1.5px solid ${expanded ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 14, overflow: 'hidden', transition: 'border-color .15s', animationDelay: `${Math.min(gIdx, 10) * 30}ms` }}>
                 {/* Department header (folder) */}
@@ -190,7 +227,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
                 {expanded && (
                   <div style={{ borderTop: '1px solid var(--border)', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {g.types.map(({ type, docs: typeDocs }) => {
-                      const typeExpanded = expandedType === type
+                      const typeExpanded = isSearching || expandedType === type
                       return (
                         <div key={type} style={{ borderRadius: 10, overflow: 'hidden', border: typeExpanded ? '1px solid var(--border)' : 'none' }}>
                           <button
@@ -240,7 +277,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
                                     </button>
                                     {d.file_url ? (
                                       <button
-                                        onClick={() => quickRead(d.id, d.title)}
+                                        onClick={() => quickRead(d)}
                                         title="อ่านเอกสาร"
                                         style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 9px', height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', flexShrink: 0 }}
                                       >
@@ -276,7 +313,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
           docRole={docRole ?? null}
           userId={userId}
           onClose={() => setDetailDoc(null)}
-          onRead={() => quickRead(detailDoc.id, detailDoc.title)}
+          onRead={() => quickRead(detailDoc)}
           onHistory={() => router.push(`/staff/documents?search=${encodeURIComponent(detailDoc.document_code)}&open=${detailDoc.id}`)}
           onEdit={() => router.push(`/staff/documents?search=${encodeURIComponent(detailDoc.document_code)}&open=${detailDoc.id}`)}
           onDownload={handleDownload}
@@ -284,7 +321,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
         />
       )}
 
-      {pdfViewer && <PdfViewerModal url={pdfViewer.url} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
     </div>
   )
 }

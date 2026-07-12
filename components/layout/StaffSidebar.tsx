@@ -53,12 +53,16 @@ const NAV_ITEMS: NavEntry[] = [
         role: ['Admin', 'Document Controller'], docRole: ['Document Controller', 'Quality Manager', 'Laboratory Director'] },
       { href: '/staff/documents/master-list', th: 'Master List', en: 'Master List', icon: 'book', color: '#0D9488', resource: 'Master List' },
     ] },
-  { href: '/staff/tests/categories', th: 'หมวดหมู่การตรวจ', en: 'Categories', icon: 'beaker', color: '#1E5FAD', resource: 'รายการตรวจ', role: 'Admin' },
   { href: '/staff/news',       th: 'จัดการข่าวสาร',        en: 'News',           icon: 'bell',       color: '#D97706', resource: 'ข่าวสาร' },
   { href: '/staff/risk',       th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',  icon: 'shield',     color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
   { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
   { href: '/staff/equipment',  th: 'ทะเบียนเครื่องมือ',   en: 'Equipment',      icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
   { href: '/staff/personnel',  th: 'บุคลากร',             en: 'MT-CBH Staff',   icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร' },
+  { href: '/staff/quality-tasks', th: 'งานคุณภาพ', en: 'Quality Tasks', icon: 'calendar', color: '#0891B2', resource: 'งานคุณภาพ',
+    children: [
+      { href: '/staff/quality-tasks', th: 'ปฏิทินและงาน', en: 'Dashboard', icon: 'calendar', color: '#0891B2', resource: 'งานคุณภาพ' },
+      { href: '/staff/quality-tasks/registry', th: 'ทะเบียนกิจกรรม', en: 'Registry', icon: 'inbox', color: '#0891B2', resource: 'งานคุณภาพ' },
+    ] },
   { section: 'Analytics' },
   { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',  color: '#16A34A', resource: 'KPI' },
   { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker', color: '#0EA5E9', resource: 'Workload' },
@@ -69,6 +73,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/settings',   th: 'ตั้งค่าระบบ',          en: 'Settings',       icon: 'settings', color: '#475569', role: 'Admin' },
   { href: '/staff/activity',   th: 'กิจกรรมทั้งหมด',       en: 'Activity Log',   icon: 'inbox',    color: '#475569', resource: 'Activity Log' },
   { href: '/staff/changelog',  th: 'บันทึกการแก้ไขระบบ',   en: 'Change Log',     icon: 'edit',     color: '#475569', resource: 'บันทึกการแก้ไข' },
+  { href: '/staff/tests/categories', th: 'หมวดหมู่การตรวจ', en: 'Categories', icon: 'beaker', color: '#475569', resource: 'รายการตรวจ', role: 'Admin' },
 ]
 
 const DOC_ROLE_COLOR: Record<string, string> = {

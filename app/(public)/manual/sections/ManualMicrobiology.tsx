@@ -301,6 +301,47 @@ const MICRO_STYLE = `
     font-weight: 800;
     line-height: 1.2;
   }
+  [data-theme="dark"] .micro-page {
+    --micro: #2DD4BF;
+    --micro-2: #67E8F9;
+    --micro-soft: rgba(45,212,191,.14);
+    --micro-line: rgba(45,212,191,.28);
+  }
+  [data-theme="dark"] .micro-hero {
+    background: linear-gradient(135deg, rgba(45,212,191,.12), rgba(14,165,233,.08));
+    border-color: var(--micro-line);
+  }
+  [data-theme="dark"] .micro-stat {
+    background: rgba(15,23,42,.72);
+    border-color: rgba(45,212,191,.26);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  [data-theme="dark"] .micro-stat b {
+    color: var(--micro);
+  }
+  [data-theme="dark"] .micro-label-card {
+    background:
+      linear-gradient(180deg, rgba(30,41,59,.95), rgba(15,23,42,.82)),
+      radial-gradient(circle at top left, rgba(45,212,191,.16), transparent 44%);
+    border-color: rgba(148,163,184,.24);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  [data-theme="dark"] .micro-label-card:hover {
+    border-color: var(--micro-line);
+    box-shadow: 0 10px 24px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.08);
+  }
+  [data-theme="dark"] .micro-label-no {
+    color: rgba(45,212,191,.42);
+  }
+  [data-theme="dark"] .micro-icon {
+    background: rgba(45,212,191,.12);
+    border-color: rgba(45,212,191,.25);
+  }
+  [data-theme="dark"] .micro-placement {
+    background: rgba(45,212,191,.12);
+    border-color: rgba(45,212,191,.28);
+    color: #67E8F9;
+  }
   @media (max-width: 640px) {
     .micro-hero {
       grid-template-columns: 1fr;

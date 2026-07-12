@@ -9,8 +9,10 @@ import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/Select'
 import { StickyScroll } from '@/components/ui/StickyScroll'
+import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
+import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
 import type { Equipment, EquipmentSummaryCounts } from '@/lib/queries/equipment'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 
@@ -19,12 +21,21 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cel
 type EquipmentStatus = Equipment['status']
 type RiskLevel = 'High' | 'Medium' | 'Low'
 type EquipmentSortKey = 'name' | 'code'
+type ViewerState = { url: string; pdfJsUrl?: string | null; title: string }
 type ResponsibleUser = {
   id: string
   ephis_id: string | null
   name: string
   dept: string | null
   role: string | null
+}
+
+function openPdfOrNewTab(url: string, filePath: string | null | undefined, title: string, setViewer: (viewer: ViewerState) => void, pdfJsUrl?: string | null) {
+  if (isPdfLike({ fileName: filePath })) {
+    setViewer({ url, pdfJsUrl, title })
+  } else {
+    window.open(url, '_blank')
+  }
 }
 
 const STATUS_TABS: { value: string; label: string }[] = [
@@ -1191,7 +1202,7 @@ function EquipmentDetailModal({ item, onClose, onEdit }: {
                 {([
                   { key: 'manual' as const, label: 'คู่มือการใช้งานเครื่องมือ', url: item.manual_url },
                 ]).filter(d => d.url).map(d => (
-                  <DocDownloadRow key={d.key} label={d.label} equipmentId={item.id} docType={d.key} />
+                  <DocDownloadRow key={d.key} label={d.label} equipmentId={item.id} docType={d.key} filePath={d.url} />
                 ))}
               </div>
             </>
@@ -1202,8 +1213,9 @@ function EquipmentDetailModal({ item, onClose, onEdit }: {
   )
 }
 
-function DocDownloadRow({ label, equipmentId, docType }: { label: string; equipmentId: string; docType: string }) {
+function DocDownloadRow({ label, equipmentId, docType, filePath }: { label: string; equipmentId: string; docType: string; filePath: string }) {
   const [loading, setLoading] = useState(false)
+  const [viewer, setViewer] = useState<ViewerState | null>(null)
 
   async function handleDownload() {
     setLoading(true)
@@ -1211,20 +1223,23 @@ function DocDownloadRow({ label, equipmentId, docType }: { label: string; equipm
       const res = await fetch(`/api/admin/equipment/${equipmentId}/docs?doc_type=${docType}`)
       if (!res.ok) return
       const { url } = await res.json()
-      window.open(url, '_blank')
+      openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer, `/api/admin/equipment/${equipmentId}/docs?doc_type=${encodeURIComponent(docType)}&proxy=1`)
     } finally { setLoading(false) }
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)' }}>
-      <Icon name="doc" size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-      <span style={{ fontSize: 13, color: 'var(--ink)', flex: 1 }}>{label}</span>
-      <button onClick={handleDownload} disabled={loading}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', color: 'var(--primary)', opacity: loading ? .6 : 1 }}>
-        <Icon name="download" size={12} />
-        {loading ? 'กำลังโหลด...' : 'ดาวน์โหลด'}
-      </button>
-    </div>
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)' }}>
+        <Icon name="doc" size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: 'var(--ink)', flex: 1 }}>{label}</span>
+        <button onClick={handleDownload} disabled={loading}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', color: 'var(--primary)', opacity: loading ? .6 : 1 }}>
+          <Icon name="download" size={12} />
+          {loading ? 'กำลังโหลด...' : isPdfLike({ fileName: filePath }) ? 'อ่าน' : 'ดาวน์โหลด'}
+        </button>
+      </div>
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
+    </>
   )
 }
 
@@ -1253,6 +1268,7 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
   const [err, setErr] = useState('')
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [viewer, setViewer] = useState<ViewerState | null>(null)
   const certFileRef = useRef<HTMLInputElement>(null)
   const currentFiscalYear = getCurrentThaiFiscalYear()
 
@@ -1301,6 +1317,13 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
     const updated = { ...form, certificate_file_url: null }
     setForm(updated)
     onSaved({ ...item, pm_cal_data: updated })
+  }
+
+  async function handleOpenCertificate(filePath: string) {
+    const res = await fetch(`/api/admin/equipment/${item.id}/cert`)
+    if (!res.ok) return
+    const { url } = await res.json()
+    if (url) openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer, `/api/admin/equipment/${item.id}/cert?proxy=1`)
   }
 
   const resultColor = (r: string | null) => {
@@ -1577,14 +1600,10 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   {form.certificate_file_url && (
                     <button
-                      onClick={async () => {
-                        const res = await fetch(`/api/admin/equipment/${item.id}/cert`)
-                        const { url } = await res.json()
-                        if (url) window.open(url, '_blank')
-                      }}
+                      onClick={() => form.certificate_file_url && handleOpenCertificate(form.certificate_file_url)}
                       style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: 'var(--ink)' }}
                     >
-                      <Icon name="download" size={13} /> ดาวน์โหลด
+                      <Icon name="download" size={13} /> {isPdfLike({ fileName: form.certificate_file_url }) ? 'อ่าน' : 'ดาวน์โหลด'}
                     </button>
                   )}
                   {canEdit && (
@@ -1623,6 +1642,7 @@ function PmCalModal({ item, canEdit, onClose, onSaved }: {
           )}
         </div>
       </div>
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
     </div>
   )
 }
@@ -2115,6 +2135,7 @@ export default function EquipmentClient({
   const [detailItem, setDetailItem] = useState<Equipment | null>(null)
   const [photoViewItem, setPhotoViewItem] = useState<Equipment | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [viewer, setViewer] = useState<ViewerState | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [exportMenu, setExportMenu] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
@@ -2948,11 +2969,13 @@ export default function EquipmentClient({
                           )}
                           {item.pm_cal_data?.certificate_file_url && (
                             <button
-                              title="ดาวน์โหลดใบ Certificate"
+                              title={isPdfLike({ fileName: item.pm_cal_data.certificate_file_url }) ? 'อ่านใบ Certificate' : 'ดาวน์โหลดใบ Certificate'}
                               onClick={async () => {
+                                const filePath = item.pm_cal_data?.certificate_file_url
+                                if (!filePath) return
                                 const res = await fetch(`/api/admin/equipment/${item.id}/cert`)
                                 const { url } = await res.json()
-                                if (url) window.open(url, '_blank')
+                                if (url) openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer, `/api/admin/equipment/${item.id}/cert?proxy=1`)
                               }}
                               style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}
                             >
@@ -2998,6 +3021,7 @@ export default function EquipmentClient({
       {importModal && <ImportModal onClose={() => setImportModal(false)} onImported={handleImported} />}
       {detailItem && <EquipmentDetailModal item={detailItem} onClose={() => setDetailItem(null)} onEdit={canEdit ? (i) => { setDetailItem(null); setEditItem(i) } : undefined} />}
       {photoViewItem && <PhotoViewModal item={photoViewItem} onClose={() => setPhotoViewItem(null)} />}
+      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
       {pmCalItem && (
         <PmCalModal
           item={pmCalItem}

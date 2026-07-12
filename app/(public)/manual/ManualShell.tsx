@@ -14,6 +14,7 @@ import { ManualOutLab } from './sections/ManualOutLab'
 import { ManualMicrobiology } from './sections/ManualMicrobiology'
 import { ManualBloodBank } from './sections/ManualBloodBank'
 import { ManualAmendment } from './sections/ManualAmendment'
+import { ManualTablesProvider, type DbTables } from './ManualTablesContext'
 
 // ─── Editor helpers ─────────────────────────────────────────────────────────────
 
@@ -80,12 +81,13 @@ function useToast() {
 
 interface Props {
   dbSections?: Record<string, { th: string; en: string }>
+  dbTables?: DbTables
   canEdit?: boolean
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────────
 
-export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
+export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }: Props) {
   const { lang } = useLang()
   const { toasts, add: toast } = useToast()
 
@@ -227,6 +229,7 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
   const usesStaticComponent = ['collection', 'transport', 'micro'].includes(activeSection)
 
   return (
+    <ManualTablesProvider initial={dbTables} canEdit={canEdit}>
     <>
       <style>{`
         /* ── Editor ── */
@@ -585,6 +588,14 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
           ) : (
             /* ── VIEW MODE ── */
             <>
+              {canEdit && !usesStaticComponent && hasCustomContent && (
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 14px', marginBottom: 12, background: 'rgba(217,119,6,.07)', border: '1px solid rgba(217,119,6,.3)', borderLeft: '3px solid #D97706', borderRadius: 9 }}>
+                  <span style={{ fontSize: 15, flexShrink: 0, lineHeight: 1.4 }}>⚠️</span>
+                  <div style={{ fontSize: 12.5, color: 'var(--ink)', lineHeight: 1.6 }}>
+                    หน้านี้กำลังแสดง<strong>เนื้อหาที่แก้เอง</strong> — การอัปเดตจากระบบจะไม่ปรากฏจนกว่าจะกด “ล้าง → ใช้เนื้อหาต้นฉบับ” ในโหมดแก้ไข
+                  </div>
+                </div>
+              )}
               {/* Edit button — hidden for sections whose layout lives in sub-component files, not DB HTML */}
               {canEdit && !usesStaticComponent && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
@@ -682,5 +693,6 @@ export function ManualShell({ dbSections = {}, canEdit = false }: Props) {
         ))}
       </div>
     </>
+    </ManualTablesProvider>
   )
 }

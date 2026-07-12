@@ -391,6 +391,8 @@ supabaseAdmin.from('audit_log').insert({ action, user_id, target, detail })
 
 SQL scripts are in `scripts/`. Run them manually via **Supabase Dashboard → SQL Editor**. There is no automated migration runner for schema changes.
 
+`audit_log` has no automatic retention and grows indefinitely. `scripts/archive-audit-log.sql` moves rows older than 1 year into `audit_log_archive` (cold storage, not deleted — it's the QMS audit trail). There is no cron in this project; it has to be re-run manually/periodically (see README "Maintenance").
+
 
 ### Soft Delete Pattern
 
@@ -435,6 +437,24 @@ The `contact_staff` badge uses CSS `@keyframes contactStaffPulse` + `contactStaf
 Auto-revision: PATCH handler always fetches current doc; if revision number changes OR a new file is uploaded, the old state is saved to `document_revisions` before updating.
 
 Status workflow: `Draft → Review → Approved → Published → Obsolete`. Transitioning to Obsolete auto-sets `obsolete_date`; leaving Obsolete clears both `obsolete_date` and `obsolete_reason`.
+
+### Document Types
+
+`lib/validations/document.ts`'s `DOC_TYPES` is the single source of truth for valid `documents.type` values (feeds the zod schema). `lib/documents/type-labels.ts` re-exports it and adds `TYPE_LABEL` — the "ชื่อเต็ม (Code)" display string for each type (e.g. `QM: 'คู่มือคุณภาพ (QM)'`). Every filter/dropdown/category view imports from `type-labels.ts` rather than hand-rolling its own label map — this used to be duplicated across ~6 files with inconsistent Thai wording; don't reintroduce that.
+
+Current types, in required display order: `QM, QP, WI, Reference, Form, Card file, Lb, Manual, Policy, Others`. `Record` was removed (unused, 0 documents). `QM` (Quality Manual) was split out of `Manual` — a `QM-`prefixed document code auto-detects type `QM`, not `Manual`, via `TYPE_BY_PREFIX` in `DocumentUploadModal.tsx`.
+
+Per-file icon/badge *colors* (`TYPE_ICON_BG/FG`, `TYPE_COLORS`) are intentionally **not** consolidated — each file keeps its own color map; just keep it in sync with the current type list when types change.
+
+Compact table/badge cells (MasterListClient rows, DocumentsClient library table, ManualClient public badges) show the bare type code; filters, dropdowns, category headers, and dashboard bars show the full `TYPE_LABEL`.
+
+### Quick Update ("Upd+")
+
+For non-controlled types (everything except QM/QP/WI/Manual — Reference, Form, Card file, Lb, Policy, Others), `DocumentsClient.tsx` shows an "Upd+" button instead of "Rev+" on Published documents with no active draft. `components/documents/QuickUpdateModal.tsx` orchestrates the same revision-draft endpoints Rev+ uses (create draft → presign/upload → finalize) in one dialog instead of the full revision panel:
+- **Admin/DCC**: finalizes straight to `Published` — one-shot (archives the old file, Rev+1).
+- **Reviewer**: finalizes to `Approved` — queues in the pending page's "รอเผยแพร่" bucket, where a green one-click "Published" button lets DCC/Admin publish it without opening the full revision panel.
+
+`PATCH /api/admin/documents/[id]/revision-drafts/[draftId]` enforces server-side that only Admin/DCC may set a draft's status to `Published` (Reviewer → `Approved` is fine; Reviewer → `Published` is rejected with 403). This guard applies to both Upd+ and the ordinary Rev+ flow — do not remove it.
 
 ### Quality Document Workflow V2
 
@@ -511,14 +531,14 @@ Obsolete watermark:
 - Only when `file_url` is a PDF (Office files are skipped). The pre-stamp key is kept in `cover_metadata.pre_obsolete_file_url` for recovery; the original R2 object is not deleted. Stamp failure is non-fatal (status change still succeeds, warning pushed).
 
 Annual review workflow — **review-only model** (`lib/documents/review.ts`):
-- `REVIEW_TRACKED_TYPES = QP/WI/Manual` drives the "ต้องทบทวน" badge (due = latest of `last_reviewed_at`/`edit_date`/`expiry_date` + 1 year; window opens 90 days before due).
-- `REVIEW_ONLY_TYPES = QP/WI` — only these get the "ทบทวนแล้ว" action + bulk. Manual (QM/MN) has no cover page and gets no system-appended history at publish, so it must go through a normal Rev+ (it still shows the reminder badge).
+- `REVIEW_TRACKED_TYPES = QP/WI/Manual/QM` drives the "ต้องทบทวน" badge (due = latest of `last_reviewed_at`/`edit_date`/`expiry_date` + 1 year; window opens 90 days before due).
+- `REVIEW_ONLY_TYPES = QP/WI` — only these get the "ทบทวนแล้ว" action + bulk. Manual and QM (QM used to be bucketed under Manual; now a separate type — see "Document Types" below) have no cover page and get no system-appended history at publish, so they must go through a normal Rev+ (they still show the reminder badge).
 - Reviewer/DCC/Admin confirm via `POST /api/admin/documents/[id]/confirm-review` (sets `review_confirmed_*`). Confirmed docs queue in the pending page's "รอทบทวนประจำปี" section.
 - DCC bulk via `POST /api/admin/documents/bulk-annual-review` (`{ ids }`): for each QP/WI doc it inserts a `document_revisions` row (`revision_number='-'`, `history_source='review'`, note "ทบทวนแล้ว ไม่มีการแก้ไข", `revised_by` = person who confirmed, `approved_by` = current Quality Manager for WI / Laboratory Director for QP), regenerates ONLY the appended history page (strip old marker pages + append fresh), and sets `last_reviewed_at`. **Revision, effective date, footer, cover, and body are never changed.** `published_at` is untouched, so read-report counters do not reset.
 - `sortRevisionRows` (revision-history-pdf) sorts by date primarily so the `-` review rows slot in chronologically; identical output for normal revisions. The full Rev+ flow is unchanged.
 
 Read-compliance report (`/staff/documents/read-report`, gate: Admin / DCC / Quality Manager / Laboratory Director):
-- Per Published QP/WI/Manual document, shows read count X/Y with a per-document audience denominator. `documents.read_audience_depts` (null/[] = all active users; otherwise `profiles.dept ∈ list`, using `user-schema DEPARTMENTS`, NOT `documents.department`). Set per-document in the upload modal or in bulk via `POST /api/admin/documents/bulk-read-audience`.
+- Per Published QM/QP/WI/Manual document (query derives the type list from `REVIEW_TRACKED_TYPES`, not a hardcoded array — keep it that way), shows read count X/Y with a per-document audience denominator. `documents.read_audience_depts` (null/[] = all active users; otherwise `profiles.dept ∈ list`, using `user-schema DEPARTMENTS`, NOT `documents.department`). Set per-document in the upload modal or in bulk via `POST /api/admin/documents/bulk-read-audience`.
 - "Read" counts distinct `document_access_logs` views with `created_at >= published_at`, so a real Rev+ (new `published_at`) resets counts while review-only does not. Old view logs are never deleted.
 
 ## Module Reference
@@ -537,3 +557,4 @@ Read-compliance report (`/staff/documents/read-report`, gate: Admin / DCC / Qual
 | Lab Workload | `Workload` | `/lab-workload/*` | — |
 | TAT | `TAT` | `/tat/*` | — |
 | Users & Roles | `User Management` | `/staff/admin` | `/api/admin/users/`, `/api/admin/permissions` |
+| Quality Tasks | `งานคุณภาพ` | `/staff/quality-tasks/*` | `/api/admin/quality-tasks/*` |

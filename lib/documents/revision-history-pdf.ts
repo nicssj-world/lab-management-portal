@@ -3,6 +3,7 @@ import path from 'path'
 import fontkit from '@pdf-lib/fontkit'
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { TYPE_LABEL } from '@/lib/documents/type-labels'
 
 export const PORTAL_REVISION_HISTORY_MARKER = 'CARS_PORTAL_REVISION_HISTORY'
 
@@ -52,18 +53,6 @@ type RevisionHistoryDocument = {
 type RevisionHistoryInput = {
   document: RevisionHistoryDocument
   revisions: RevisionHistoryRow[]
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  QP: 'ระเบียบปฏิบัติ QP',
-  WI: 'วิธีปฏิบัติ (WI)',
-  Manual: 'คู่มือคุณภาพ (QM)',
-  Form: 'แบบฟอร์ม (Form)',
-  Policy: 'นโยบาย (Policy)',
-  Record: 'บันทึกคุณภาพ (Record)',
-  Reference: 'เอกสารอ้างอิง (Reference)',
-  'Card file': 'Card file',
-  Others: 'เอกสารอื่นๆ',
 }
 
 function mm(value: number) {
@@ -220,7 +209,7 @@ function drawHeader(page: PDFPage, doc: RevisionHistoryDocument, fonts: Fonts) {
   const width = A4.width - mm(20)
   drawCentered(page, 'แบบบันทึกประวัติการแก้ไข/ทบทวนเอกสาร', x, A4.height - mm(14), width, fonts.bold, 16)
   drawCentered(page, 'กลุ่มงานเทคนิคการแพทย์โรงพยาบาลชลบุรี', x, A4.height - mm(23), width, fonts.bold, 14)
-  drawCentered(page, `ประเภทเอกสาร ${TYPE_LABELS[doc.type] ?? doc.type}`, x, A4.height - mm(32), width, fonts.regular, 12)
+  drawCentered(page, `ประเภทเอกสาร ${TYPE_LABEL[doc.type] ?? doc.type}`, x, A4.height - mm(32), width, fonts.regular, 12)
   drawCentered(page, `เรื่อง ${doc.title}   หมายเลขเอกสาร ${doc.document_code}`, x, A4.height - mm(41), width, fonts.regular, 12)
 }
 

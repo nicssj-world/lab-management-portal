@@ -170,3 +170,26 @@ export function sanitizeRichHtml(html: string | null | undefined): string {
     return `<${tag}${sanitizeAttrs(tag, rawAttrs)}${VOID_TAGS.has(tag) ? ' />' : '>'}`
   })
 }
+
+const INLINE_ALLOWED = new Set(['strong', 'em', 'br'])
+const INLINE_VOID = new Set(['br'])
+
+/**
+ * Strict inline sanitizer for single-cell rich text (manual table cells).
+ * Allows only <strong>, <em>, <br>; drops all attributes and other tags
+ * (keeping their text). Blocked block-level content is removed entirely.
+ */
+export function sanitizeInlineHtml(html: string | null | undefined): string {
+  if (!html) return ''
+  const withoutBlocked = String(html)
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\s*(script|style|iframe|object|embed|link|meta|base|form|input|button|textarea|select|option)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/<\s*\/?\s*(script|style|iframe|object|embed|link|meta|base|form|input|button|textarea|select|option)\b[^>]*>/gi, '')
+
+  return withoutBlocked.replace(/<\s*(\/?)\s*([a-zA-Z0-9-]+)([^>]*)>/g, (_full, closing: string, tagName: string) => {
+    const tag = tagName.toLowerCase()
+    if (!INLINE_ALLOWED.has(tag)) return ''
+    if (closing) return INLINE_VOID.has(tag) ? '' : `</${tag}>`
+    return INLINE_VOID.has(tag) ? '<br />' : `<${tag}>`
+  })
+}

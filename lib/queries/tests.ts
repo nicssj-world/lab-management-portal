@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Test, TestReferenceRange, TestDetail } from '@/lib/supabase/types'
 import type { ReferenceRangeRow } from '@/lib/validations/test-schema'
+import { orderRelatedTestDocuments, type RelatedTestDocument } from '@/lib/documents/related-test-documents'
 
 export interface TestFilters {
   category?: string
@@ -117,17 +118,38 @@ export async function deleteTest(supabase: SupabaseClient, id: number): Promise<
   if (error) throw error
 }
 
+export async function getRelatedTestDocuments(
+  supabase: SupabaseClient,
+  relatedDocumentIds: readonly string[] | null | undefined,
+): Promise<RelatedTestDocument[]> {
+  const ids = [...new Set(relatedDocumentIds ?? [])]
+  if (ids.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id, document_code, title, type, file_url, file_name')
+    .is('deleted_at', null)
+    .in('id', ids)
+
+  if (error) throw error
+  return orderRelatedTestDocuments(ids, (data ?? []) as RelatedTestDocument[])
+}
+
 export async function getTestDetail(supabase: SupabaseClient, id: number): Promise<TestDetail> {
-  const [testRes, rangesRes, docsRes] = await Promise.all([
-    supabase.from('tests').select('*, categories(*)').eq('id', id).single(),
+  const { data: test, error: testError } = await supabase
+    .from('tests').select('*, categories(*)').eq('id', id).single()
+  if (testError) throw testError
+
+  const [rangesRes, docsRes, relatedDocuments] = await Promise.all([
     supabase.from('test_reference_ranges').select('*').eq('test_id', id).order('sort_order'),
     supabase.from('test_documents').select('*').eq('test_id', id).order('created_at'),
+    getRelatedTestDocuments(supabase, (test as Test).related_doc_ids),
   ])
-  if (testRes.error) throw testRes.error
   return {
-    test: testRes.data as Test,
+    test: test as Test,
     referenceRanges: (rangesRes.data ?? []) as TestReferenceRange[],
     documents: docsRes.data ?? [],
+    relatedDocuments,
   }
 }
 

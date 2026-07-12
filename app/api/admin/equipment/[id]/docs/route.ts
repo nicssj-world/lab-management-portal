@@ -5,6 +5,7 @@ import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { r2ObjectResponse } from '@/lib/r2/stream-response'
 
 type DocType = 'method_validation' | 'method_correlation' | 'manual'
 
@@ -54,6 +55,17 @@ export async function GET(req: NextRequest, { params }: Params) {
   const { data: eq } = await supabaseAdmin.from('equipment').select(col).eq('id', id).single()
   const key = eq?.[col as keyof typeof eq] as string | null
   if (!key) return NextResponse.json({ error: 'ไม่มีไฟล์' }, { status: 404 })
+
+  if (req.nextUrl.searchParams.get('proxy') === '1') {
+    const object = await r2.send(new GetObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: key,
+      Range: req.headers.get('range') ?? undefined,
+    }))
+    return r2ObjectResponse(object, {
+      contentType: key.toLowerCase().endsWith('.pdf') ? 'application/pdf' : undefined,
+    })
+  }
 
   const url = await getSignedUrl(
     r2,

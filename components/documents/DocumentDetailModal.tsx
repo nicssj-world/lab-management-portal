@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
+import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { isCoverRequiredType } from '@/lib/documents/workflow'
 import { isReviewOnlyType, reviewWindowState } from '@/lib/documents/review'
 import { TYPE_ICON_BG, TYPE_ICON_FG, STATUS_LABEL, fmtSize, fmtDate } from '@/lib/documents/ui-constants'
+import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document } from '@/lib/supabase/types'
+
+export { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 
 // ── Attachment type ───────────────────────────────────────────
 export interface Attachment {
@@ -65,24 +69,6 @@ function fileAccentColor(name: string | null | undefined): string {
   if (ext === 'doc' || ext === 'docx') return '#2563EB'
   if (ext === 'xls' || ext === 'xlsx') return '#059669'
   return '#DC2626'
-}
-
-// ── Inline PDF Viewer ──────────────────────────────────────────
-export function PdfViewerModal({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 2000, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ height: 48, background: 'var(--card)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0 }}>
-        <Icon name="doc" size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
-        <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
-        <button onClick={onClose} title="ปิด" style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
-          <Icon name="x" size={14} />
-        </button>
-      </div>
-      <iframe src={url} style={{ flex: 1, border: 'none', width: '100%' }} title={title} />
-    </div>
-  )
 }
 
 // ── Document Detail Modal ──────────────────────────────────────
@@ -146,7 +132,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
   const [linkSearching, setLinkSearching] = useState(false)
   const [showLinkResults, setShowLinkResults] = useState(false)
   const linkSearchRef = useRef<HTMLDivElement>(null)
-  const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null)
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string } | null>(null)
 
   useEffect(() => {
     fetch(`/api/admin/documents/${doc.id}/attachments`)
@@ -233,7 +219,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
     try {
       const res = await fetch(`/api/admin/documents/${docId}/read`, { method: 'POST' })
       const json = await res.json()
-      if (json.url) { setPdfViewer({ url: json.url, title: fileName }); return }
+      if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(fileUrl), title: fileName }); return }
     } catch { /* ignore */ }
     openAttachmentInline(fileUrl, fileName)
   }
@@ -244,7 +230,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
     try {
       const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(fileUrl)}${qs}`)
       const json = await res.json()
-      if (json.url) setPdfViewer({ url: json.url, title: fileName })
+      if (json.url) setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(fileUrl), title: fileName })
     } catch { /* ignore */ }
   }
 
@@ -265,6 +251,11 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
     (canDownloadSource && doc.word_url ? 1 : 0) +
     links.filter(l => l.documents?.file_url).length +
     attachments.length
+
+  // "ดาวน์โหลดทั้งหมด" is restricted to Reviewer/DCC/Admin — other roles use the per-file
+  // download buttons on each FileCard instead.
+  const canDownloadAll = userRole === 'Admin' || userRole === 'Document Controller' || userRole === 'Reviewer'
+    || docRole === 'Document Controller' || docRole === 'Reviewer'
 
   const STATUS_CHIP: Record<DocStatus, { bg: string; color: string }> = {
     Draft:     { bg: 'rgba(100,116,139,.12)', color: '#475569' },
@@ -380,7 +371,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
             <div>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', flex: 1 }}>ดาวน์โหลดไฟล์</div>
-                {downloadAllCount > 1 && (
+                {downloadAllCount > 1 && canDownloadAll && (
                   <button
                     onClick={handleDownloadAll}
                     disabled={downloadingAll || attachLoading}
@@ -598,7 +589,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
 
         </div>
       </div>
-      {pdfViewer && <PdfViewerModal url={pdfViewer.url} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
+      {pdfViewer && <PdfViewerModal url={pdfViewer.url} pdfJsUrl={pdfViewer.pdfJsUrl} title={pdfViewer.title} onClose={() => setPdfViewer(null)} />}
     </>
   )
 }

@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { Spinner } from '@/components/ui/Spinner'
 import { DOC_TYPES, DOC_VISIBILITIES } from '@/lib/validations/document'
+import { TYPE_LABEL } from '@/lib/documents/type-labels'
+import { REVIEW_TRACKED_TYPES } from '@/lib/documents/review'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import type { Document } from '@/lib/supabase/types'
 
@@ -107,12 +109,12 @@ const DEPT_BY_PREFIX: Record<string, string> = {
 
 const TYPE_BY_PREFIX: Record<string, string> = {
   QP: 'QP', WI: 'WI',
-  QM: 'Manual', MN: 'Manual',
+  QM: 'QM', MN: 'Manual',
   FM: 'Form', FR: 'Form',
   PL: 'Policy', PO: 'Policy',
-  RC: 'Record', RD: 'Record',
   RF: 'Reference',
   CF: 'Card file',
+  LB: 'Lb',
 }
 
 function typeFromCode(code: string): string | null {
@@ -327,6 +329,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
   const [extractingWord, setExtractingWord] = useState(false)
   const [error, setError] = useState('')
   const [duplicateDocumentId, setDuplicateDocumentId] = useState<string | null>(null)
+  const [duplicateCode, setDuplicateCode] = useState('')
   const [coverDetailsOpen, setCoverDetailsOpen] = useState(isEdit)
 
   const [title, setTitle]               = useState(doc?.title ?? '')
@@ -440,6 +443,32 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
     if (file) handleWordFile(file)
   }, [handleWordFile])
 
+  // Early duplicate-code warning — reuses the same error/duplicateDocumentId state (and its
+  // "เปิดเอกสารเดิม" button) that the save-time 409 response drives, so the user sees the
+  // warning the moment a code is extracted/typed instead of only after clicking บันทึก.
+  // The final save still re-checks server-side; this is a best-effort early heads-up.
+  async function checkDuplicateCode(code: string) {
+    const trimmed = code.trim().toUpperCase()
+    if (!trimmed) return
+    try {
+      const res = await fetch(`/api/admin/documents?code=${encodeURIComponent(trimmed)}&pageSize=1`)
+      if (!res.ok) return
+      const json = await res.json()
+      const existing = (json.data as Document[] | undefined)?.[0]
+      if (existing && existing.id !== doc?.id) {
+        setDuplicateDocumentId(existing.id)
+        setDuplicateCode(trimmed)
+        setError(`รหัสเอกสารนี้มีอยู่ในระบบแล้ว (${existing.document_code}, Rev. ${existing.revision})`)
+      } else if (duplicateDocumentId) {
+        setDuplicateDocumentId(null)
+        setDuplicateCode('')
+        setError('')
+      }
+    } catch {
+      // silent — best-effort early check only
+    }
+  }
+
   async function extractFromFile() {
     if (!selectedFile) return
     setExtracting(true)
@@ -452,6 +481,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           setDocumentCode(formCode)
           const docType = typeFromCode(formCode)
           if (docType) setType(docType)
+          checkDuplicateCode(formCode)
         }
         if (formTitle) setTitle(formTitle)
 
@@ -487,6 +517,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           if (dept) setDepartment(dept)
           const docType = typeFromCode(code)
           if (docType) setType(docType)
+          checkDuplicateCode(code)
         }
         if (fields.revision)      setRevision(fields.revision)
         if (fields.ownerName)     setOwnerName(fields.ownerName)
@@ -524,6 +555,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         if (dept) setDepartment(dept)
         const docType = typeFromCode(code)
         if (docType) setType(docType)
+        checkDuplicateCode(code)
       }
       if (fields.revision)     setRevision(fields.revision)
       if (fields.ownerName)    setOwnerName(fields.ownerName)
@@ -543,6 +575,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
 
   async function handleSave() {
     setDuplicateDocumentId(null)
+    setDuplicateCode('')
     setUploadProgress(null)
     if (!title.trim())         { setError('กรุณากรอกชื่อเอกสาร'); return }
     if (!documentCode.trim())  { setError('กรุณากรอกรหัสเอกสาร'); return }
@@ -614,7 +647,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         approver_name:  approverName.trim()  || undefined,
         department:     department.trim()    || undefined,
         description:    description.trim() || undefined,
-        read_audience_depts: audienceMode === 'depts' && audienceDepts.length > 0 ? audienceDepts : null,
+        read_audience_depts: (REVIEW_TRACKED_TYPES as readonly string[]).includes(type) && audienceMode === 'depts' && audienceDepts.length > 0 ? audienceDepts : null,
       }
       const meta: Record<string, string | boolean | string[] | null | undefined> = isPublishedCorrection
         ? baseMetadata
@@ -669,7 +702,9 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
 
       const json = await readJsonOrError(res)
       if (!res.ok) {
-        setDuplicateDocumentId(typeof json.documentId === 'string' ? json.documentId : null)
+        const dupId = typeof json.documentId === 'string' ? json.documentId : null
+        setDuplicateDocumentId(dupId)
+        setDuplicateCode(dupId ? documentCode.trim().toUpperCase() : '')
         setError(json.error ?? 'เกิดข้อผิดพลาด')
         setSaving(false)
         return
@@ -695,6 +730,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
       onSaved(finalDoc)
     } catch {
       setDuplicateDocumentId(null)
+      setDuplicateCode('')
       setError('เกิดข้อผิดพลาด กรุณาลองใหม่')
       setSaving(false)
     }
@@ -808,6 +844,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                   const docType = typeFromCode(val)
                   if (docType) setType(docType)
                 }}
+                onBlur={(e) => checkDuplicateCode(e.target.value)}
                 style={isPublishedCorrection ? lockedInputStyle : inputStyle}
                 placeholder="เช่น QM-LAB-01"
               />
@@ -820,7 +857,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                 onChange={(e) => setType(e.target.value)}
                 style={isPublishedCorrection ? lockedInputStyle : { ...inputStyle }}
               >
-                {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                {DOC_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>)}
               </select>
             </div>
           </div>
@@ -841,38 +878,41 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
             </div>
           </div>
 
-          {/* กลุ่มผู้ที่ต้องอ่าน (read audience) */}
-          <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)' }}>กลุ่มผู้ที่ต้องอ่านเอกสารนี้</div>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
-                <input type="radio" name="read-audience-mode" checked={audienceMode === 'all'} onChange={() => setAudienceMode('all')} style={{ accentColor: 'var(--primary)' }} />
-                ทั้งกลุ่มงาน (ทุกคน)
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
-                <input type="radio" name="read-audience-mode" checked={audienceMode === 'depts'} onChange={() => setAudienceMode('depts')} style={{ accentColor: 'var(--primary)' }} />
-                ระบุแผนก
-              </label>
-            </div>
-            {audienceMode === 'depts' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6, paddingTop: 2 }}>
-                {DEPARTMENTS.map((dept) => (
-                  <label key={dept} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color: 'var(--ink)', cursor: 'pointer', lineHeight: 1.35 }}>
-                    <input
-                      type="checkbox"
-                      checked={audienceDepts.includes(dept)}
-                      onChange={(e) => setAudienceDepts((prev) => e.target.checked ? [...prev, dept] : prev.filter((d) => d !== dept))}
-                      style={{ accentColor: 'var(--primary)', marginTop: 2, flexShrink: 0 }}
-                    />
-                    {dept}
-                  </label>
-                ))}
+          {/* กลุ่มผู้ที่ต้องอ่าน (read audience) — only meaningful for the controlled-document
+              types tracked on the read-compliance report (QM/QP/WI/Manual) */}
+          {(REVIEW_TRACKED_TYPES as readonly string[]).includes(type) && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)' }}>กลุ่มผู้ที่ต้องอ่านเอกสารนี้</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
+                  <input type="radio" name="read-audience-mode" checked={audienceMode === 'all'} onChange={() => setAudienceMode('all')} style={{ accentColor: 'var(--primary)' }} />
+                  ทั้งกลุ่มงาน (ทุกคน)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
+                  <input type="radio" name="read-audience-mode" checked={audienceMode === 'depts'} onChange={() => setAudienceMode('depts')} style={{ accentColor: 'var(--primary)' }} />
+                  ระบุแผนก
+                </label>
               </div>
-            )}
-            {audienceMode === 'depts' && audienceDepts.length === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--warning)' }}>ยังไม่ได้เลือกแผนก — ระบบจะถือว่าทั้งกลุ่มงานต้องอ่าน</div>
-            )}
-          </div>
+              {audienceMode === 'depts' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6, paddingTop: 2 }}>
+                  {DEPARTMENTS.map((dept) => (
+                    <label key={dept} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color: 'var(--ink)', cursor: 'pointer', lineHeight: 1.35 }}>
+                      <input
+                        type="checkbox"
+                        checked={audienceDepts.includes(dept)}
+                        onChange={(e) => setAudienceDepts((prev) => e.target.checked ? [...prev, dept] : prev.filter((d) => d !== dept))}
+                        style={{ accentColor: 'var(--primary)', marginTop: 2, flexShrink: 0 }}
+                      />
+                      {dept}
+                    </label>
+                  ))}
+                </div>
+              )}
+              {audienceMode === 'depts' && audienceDepts.length === 0 && (
+                <div style={{ fontSize: 11, color: 'var(--warning)' }}>ยังไม่ได้เลือกแผนก — ระบบจะถือว่าทั้งกลุ่มงานต้องอ่าน</div>
+              )}
+            </div>
+          )}
 
           {/* Revision + แผนก */}
           <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12 }}>
@@ -1166,7 +1206,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           >
             ยกเลิก
           </button>
-          <Button variant="primary" onClick={handleSave} disabled={saving || !!revisionWarning}>
+          <Button variant="primary" onClick={handleSave} disabled={saving || !!revisionWarning || (!!duplicateDocumentId && documentCode.trim().toUpperCase() === duplicateCode)}>
             {saving
               ? (isEdit ? 'กำลังบันทึก...' : (isImportCurrent ? 'กำลังนำเข้า...' : publishImmediately ? 'กำลังเผยแพร่...' : 'กำลังสร้าง Draft...'))
               : (isEdit ? 'บันทึกการแก้ไข' : (isImportCurrent ? 'นำเข้าเป็น Published' : publishImmediately ? 'สร้างและเผยแพร่ทันที' : 'บันทึกเป็น Draft'))}
