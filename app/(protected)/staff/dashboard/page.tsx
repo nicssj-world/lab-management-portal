@@ -497,6 +497,7 @@ const ACTION_LABELS: Record<string, string> = {
   'category.update':                              'แก้ไขหมวดหมู่',
   // เอกสาร — workflow เดิม
   'document.upload':                              'อัปโหลดเอกสาร',
+  'document.import_current':                      'นำเข้าเอกสารฉบับปัจจุบัน (Legacy)',
   'document.edit':                                'แก้ไขเอกสาร',
   'document.delete':                              'ลบเอกสาร',
   'document.status_change':                       'เปลี่ยนสถานะเอกสาร',
@@ -512,10 +513,17 @@ const ACTION_LABELS: Record<string, string> = {
   'document.revision_history_backfill_update':    'แก้ไขประวัติการแก้ไขย้อนหลัง',
   'document.revision_history_backfill_delete':    'ลบประวัติการแก้ไขย้อนหลัง',
   'document.revision_history_date_update':        'แก้ไขวันที่ประวัติการแก้ไข',
+  // เอกสาร — DCC Tools (ISO 15189 8.3)
+  'document.review_confirmed':                    'ยืนยันทบทวนเอกสารประจำปี',
+  'document.annual_review':                       'บันทึกทบทวนประจำปี (ไม่มีการแก้ไข)',
+  'document.obsolete_stamp':                      'ประทับตรา OBSOLETE บนเอกสาร',
+  'document.footer_stamp':                        'ประทับ Metadata หน้าเอกสารใหม่',
+  'document.read_audience_bulk':                  'ตั้งค่ากลุ่มผู้อ่านเอกสาร (กลุ่ม)',
   // เครื่องมือ
   'equipment.create':                             'เพิ่มเครื่องมือ',
   'equipment.update':                             'แก้ไขเครื่องมือ',
   'equipment.delete':                             'ลบเครื่องมือ',
+  'equipment.permission.update':                  'แก้ไขสิทธิ์ผู้แก้ไขเครื่องมือ',
   // สัญญา
   'contract.create':                              'เพิ่มสัญญา',
   'contract.update':                              'แก้ไขสัญญา',
@@ -529,16 +537,37 @@ const ACTION_LABELS: Record<string, string> = {
   'rejection.create':                             'บันทึก Rejection',
   // KPI
   'kpi.entry':                                    'บันทึก KPI',
+  // งานคุณภาพ
+  'quality_task.attachment.upload':               'อัปโหลดไฟล์แนบงานคุณภาพ',
+  'quality_task.attachment.delete':               'ลบไฟล์แนบงานคุณภาพ',
   // ข่าวสาร
   'create_news':                                  'เพิ่มข่าวสาร',
   'update_news':                                  'แก้ไขข่าวสาร',
   'delete_news':                                  'ลบข่าวสาร',
+  'line_broadcast_news':                          'ส่งข่าวสารผ่าน LINE OA',
   // บุคลากร
   'personnel.profile.update':                     'แก้ไขโปรไฟล์บุคลากร',
   'personnel.org.create':                         'เพิ่มโครงสร้างองค์กร',
   'personnel.org.delete':                         'ลบโครงสร้างองค์กร',
   'personnel.jd.create':                          'เพิ่มข้อกำหนดตำแหน่งงาน',
   'personnel.jd.update':                          'แก้ไขข้อกำหนดตำแหน่งงาน',
+  // บุคลากร — สมรรถนะ / อบรม / ใบรับรอง / มอบหมายงาน
+  'personnel.staff_competencies.create':           'เพิ่มรายการประเมินสมรรถนะ',
+  'personnel.staff_competencies.update':           'แก้ไขรายการประเมินสมรรถนะ',
+  'personnel.staff_competencies.delete':           'ลบรายการประเมินสมรรถนะ',
+  'personnel.competency_signoff':                  'ลงนามรับรองสมรรถนะ (Sign-off)',
+  'personnel.staff_training.create':               'เพิ่มประวัติการอบรม',
+  'personnel.staff_training.update':               'แก้ไขประวัติการอบรม',
+  'personnel.staff_training.delete':               'ลบประวัติการอบรม',
+  'personnel.staff_training_plan.create':          'เพิ่มแผนการอบรม',
+  'personnel.staff_training_plan.update':          'แก้ไขแผนการอบรม',
+  'personnel.staff_training_plan.delete':          'ลบแผนการอบรม',
+  'personnel.staff_certifications.create':         'เพิ่มใบรับรอง/ใบอนุญาต',
+  'personnel.staff_certifications.update':         'แก้ไขใบรับรอง/ใบอนุญาต',
+  'personnel.staff_certifications.delete':         'ลบใบรับรอง/ใบอนุญาต',
+  'personnel.staff_authorizations.create':         'เพิ่มการมอบหมายงาน (Authorization)',
+  'personnel.staff_authorizations.update':         'แก้ไขการมอบหมายงาน (Authorization)',
+  'personnel.staff_authorizations.delete':         'ลบการมอบหมายงาน (Authorization)',
   // โปรไฟล์เอกสาร / ลายเซ็น
   'document_profile.update':                      'แก้ไขโปรไฟล์เอกสาร',
   'document_profile.update_self':                 'แก้ไขโปรไฟล์เอกสาร (ตัวเอง)',
@@ -553,6 +582,7 @@ const ACTION_LABELS: Record<string, string> = {
   'permission.update':                            'แก้ไขสิทธิ์ผู้ใช้',
   'settings.update':                              'แก้ไขการตั้งค่าระบบ',
   'phleb_upload_init':                            'อัปโหลดข้อมูล Phlebotomy',
+  'delete':                                       'ล้างประวัติการอ่านเอกสาร',
 }
 
 const STATUS_TH: Record<string, string> = {

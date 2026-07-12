@@ -4,6 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requirePersonnelEdit } from '@/lib/auth/guards'
 import { toMsg } from '@/lib/personnel/crud'
 
+const ROLE_LABEL = { assessor: 'ผู้ประเมิน (Assessor)', assessee: 'ผู้ถูกประเมิน (Assessee)' } as const
+
 const SignoffSchema = z.object({ role: z.enum(['assessor', 'assessee']), value: z.boolean() })
 
 // POST peer-assessment sign-off: assessor sign-off or assessee acknowledgement
@@ -20,6 +22,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       : { assessee_ack: parsed.data.value, assessee_ack_at: now }
     const { data, error } = await supabaseAdmin.from('staff_competencies').update(patch).eq('id', compId).select().single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    supabaseAdmin.from('audit_log')
+      .insert({
+        action: 'personnel.competency_signoff',
+        user_id: actor.id,
+        target: compId,
+        detail: `${ROLE_LABEL[parsed.data.role]} · ${parsed.data.value ? 'ยืนยันแล้ว' : 'ยกเลิกการยืนยัน'}`,
+      })
+      .then(undefined, () => {})
+
     return NextResponse.json(data)
   } catch (err) {
     return NextResponse.json({ error: toMsg(err) }, { status: 500 })
