@@ -93,6 +93,8 @@ export default function EditTestPage() {
     contact_note: test.contact_note ?? undefined,
     ref: test.ref ?? undefined,
     ref_note: test.ref_note ?? undefined,
+    related_doc_ids: test.related_doc_ids ?? [],
+    related_doc_access: test.related_doc_access ?? {},
   }
 
 
