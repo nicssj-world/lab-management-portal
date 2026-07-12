@@ -113,10 +113,10 @@ export function SpecimenSection({ test }: Props) {
           .specimen-detail-row {
             display: block !important;
           }
-          .specimen-detail-row span {
+          .specimen-detail-row > * {
             display: block;
           }
-          .specimen-detail-row span + span {
+          .specimen-detail-row > * + * {
             margin-top: 4px;
           }
         }
