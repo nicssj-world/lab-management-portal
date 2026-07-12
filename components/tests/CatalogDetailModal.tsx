@@ -189,14 +189,14 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
         }
         .catalog-detail-modal-header-content {
           min-width: 0;
-          flex: 1;
+          width: 100%;
         }
-        .catalog-detail-modal-header-lower {
+        .catalog-detail-modal-action-row {
           display: flex;
-          align-items: flex-start;
+          align-items: center;
           justify-content: space-between;
-          gap: 16px;
-          min-width: 0;
+          gap: 12px;
+          width: 100%;
         }
         .catalog-detail-modal-chip {
           display: inline-flex;
@@ -232,13 +232,6 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
           color: var(--muted);
           font-size: 13px;
           line-height: 1.5;
-        }
-        .catalog-detail-modal-actions {
-          display: inline-flex;
-          flex-direction: column;
-          align-items: flex-end;
-          gap: 10px;
-          flex-shrink: 0;
         }
         .catalog-detail-modal-full-link {
           min-height: 44px;
@@ -403,7 +396,7 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
             padding: 14px 14px 12px;
             gap: 10px;
           }
-          .catalog-detail-modal-header-lower {
+          .catalog-detail-modal-action-row {
             gap: 10px;
           }
           .catalog-detail-modal-title-row {
@@ -472,37 +465,35 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
               </span>
             )}
           </div>
-          <div className="catalog-detail-modal-header-lower">
-            <div className="catalog-detail-modal-header-content">
-              <div className="catalog-detail-modal-title-row">
-                <div className="catalog-detail-modal-title-copy">
-                  <h2 id="catalog-detail-modal-title" className="catalog-detail-modal-title">
-                    {activeTest?.th ?? 'รายละเอียดรายการตรวจ'}
-                  </h2>
-                  {activeTest?.en && <div className="catalog-detail-modal-subtitle">{activeTest.en}</div>}
-                </div>
+          <div className="catalog-detail-modal-header-content">
+            <div className="catalog-detail-modal-title-row">
+              <div className="catalog-detail-modal-title-copy">
+                <h2 id="catalog-detail-modal-title" className="catalog-detail-modal-title">
+                  {activeTest?.th ?? 'รายละเอียดรายการตรวจ'}
+                </h2>
+                {activeTest?.en && <div className="catalog-detail-modal-subtitle">{activeTest.en}</div>}
               </div>
             </div>
-            <div className="catalog-detail-modal-actions">
-              <button
-                type="button"
-                className="catalog-detail-modal-close"
-                onClick={onClose}
-                aria-label="ปิดรายละเอียดรายการตรวจ"
+          </div>
+          <div className="catalog-detail-modal-action-row">
+            {activeTest && (
+              <Link
+                href={buildTestDetailHref(activeTest)}
+                className="catalog-detail-modal-full-link"
+                aria-label="เปิดรายละเอียดรายการตรวจแบบหน้าเต็ม"
               >
-                <Icon name="x" size={18} />
-              </button>
-              {activeTest && (
-                <Link
-                  href={buildTestDetailHref(activeTest)}
-                  className="catalog-detail-modal-full-link"
-                  aria-label="เปิดรายละเอียดรายการตรวจแบบหน้าเต็ม"
-                >
-                  <span>เปิดหน้าเต็ม</span>
-                  <Icon name="arrowRight" size={13} />
-                </Link>
-              )}
-            </div>
+                <span>เปิดหน้าเต็ม</span>
+                <Icon name="arrowRight" size={13} />
+              </Link>
+            )}
+            <button
+              type="button"
+              className="catalog-detail-modal-close"
+              onClick={onClose}
+              aria-label="ปิดรายละเอียดรายการตรวจ"
+            >
+              <Icon name="x" size={18} />
+            </button>
           </div>
         </header>
 
