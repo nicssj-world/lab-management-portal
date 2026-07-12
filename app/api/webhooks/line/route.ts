@@ -47,22 +47,34 @@ export async function POST(req: NextRequest) {
       }
 
       const { data: rawData } = await getTests(supabaseAdmin, { search: q, active: true, pageSize: 20 })
-      // deduplicate by id (rows sharing a code across different categories are distinct entries)
-      const seen = new Set<number>()
-      const data = rawData.filter(t => {
-        if (seen.has(t.id)) return false
-        seen.add(t.id)
+      // dedupe by id, then group by code — rows sharing a code across different
+      // categories are the same catalog entry with multiple department contacts
+      const seenIds = new Set<number>()
+      const uniqueRows = rawData.filter(t => {
+        if (seenIds.has(t.id)) return false
+        seenIds.add(t.id)
         return true
-      }).slice(0, 10)
+      })
+      const groups = new Map<string, typeof uniqueRows>()
+      for (const t of uniqueRows) {
+        const group = groups.get(t.code)
+        if (group) group.push(t)
+        else groups.set(t.code, [t])
+      }
+      const data = [...groups.values()].slice(0, 10)
 
       if (data.length === 1) {
+        const [primary, ...rest] = data[0]
+        const extraContacts = rest
+          .map(t => [t.contact_name, t.contact_phone].filter(Boolean).join(' '))
+          .filter(Boolean)
         const { data: docs } = await supabaseAdmin
           .from('test_documents')
           .select('name, doc_type')
-          .eq('test_id', data[0].id)
-        await replyMessage(replyToken, [{ type: 'text', text: formatTestReply(data[0], docs ?? []) }])
+          .eq('test_id', primary.id)
+        await replyMessage(replyToken, [{ type: 'text', text: formatTestReply(primary, docs ?? [], extraContacts) }])
       } else if (data.length > 1) {
-        await replyMessage(replyToken, [{ type: 'text', text: formatListReply(data) }])
+        await replyMessage(replyToken, [{ type: 'text', text: formatListReply(data.map(rows => rows[0])) }])
       } else {
         await replyMessage(replyToken, [{ type: 'text', text: formatNotFound(q) }])
       }
