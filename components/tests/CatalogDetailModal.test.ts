@@ -5,6 +5,8 @@ import { resolve } from 'node:path'
 const source = readFileSync(resolve(process.cwd(), 'components/tests/CatalogDetailModal.tsx'), 'utf8')
 
 assert.match(source, /catalog-detail-modal-title-row/)
+assert.match(source, /catalog-detail-modal-header-lower/)
+assert.match(source, /catalog-detail-modal-kicker[\s\S]*catalog-detail-modal-header-lower/)
 assert.match(source, /\.catalog-detail-modal-actions \{[\s\S]*flex-direction: column;[\s\S]*align-items: flex-end;/)
 assert.match(source, /catalog-detail-modal-actions[\s\S]*catalog-detail-modal-close[\s\S]*catalog-detail-modal-full-link/)
 
