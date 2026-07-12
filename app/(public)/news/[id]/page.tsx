@@ -9,6 +9,7 @@ import { NewsPdfButton } from '@/components/news/NewsPdfButton'
 import { CAT_MAP, CATEGORIES } from '@/lib/validations/news'
 import type { News } from '@/lib/supabase/types'
 import { sanitizeRichHtml } from '@/lib/html-sanitize'
+import { extractNewsTags } from '@/lib/news-tags'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,20 +19,6 @@ interface Props {
 
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
-}
-
-function extractTags(body: string | null, cat: string | null): string[] {
-  const tags: string[] = []
-  const catInfo = CAT_MAP[cat as keyof typeof CAT_MAP]
-  if (catInfo) tags.push(catInfo.th)
-  if (body) {
-    const matches = body.match(/#[\w฀-๿-]+/g) ?? []
-    for (const m of matches) {
-      const tag = m.slice(1)
-      if (!tags.includes(tag)) tags.push(tag)
-    }
-  }
-  return tags
 }
 
 function newsCode(id: number, createdAt: string) {
@@ -81,7 +68,7 @@ export default async function NewsDetailPage({ params }: Props) {
 
   const cat = CAT_MAP[news.cat as keyof typeof CAT_MAP]
   const safeBody = sanitizeRichHtml(news.body)
-  const tags = extractTags(safeBody, news.cat)
+  const tags = extractNewsTags(safeBody, news.cat)
   const initial = (news.author ?? 'ก').charAt(0).toUpperCase()
   const code = newsCode(news.id, news.created_at)
 
