@@ -174,9 +174,8 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
           top: 0;
           z-index: 2;
           display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 16px;
+          flex-direction: column;
+          gap: 12px;
           padding: 18px 20px;
           border-bottom: 1px solid var(--border);
           background: color-mix(in srgb, var(--card) 94%, transparent);
@@ -186,11 +185,18 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
           display: flex;
           gap: 8px;
           flex-wrap: wrap;
-          margin-bottom: 8px;
+          margin-bottom: 0;
         }
         .catalog-detail-modal-header-content {
           min-width: 0;
           flex: 1;
+        }
+        .catalog-detail-modal-header-lower {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          min-width: 0;
         }
         .catalog-detail-modal-chip {
           display: inline-flex;
@@ -397,6 +403,9 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
             padding: 14px 14px 12px;
             gap: 10px;
           }
+          .catalog-detail-modal-header-lower {
+            gap: 10px;
+          }
           .catalog-detail-modal-title-row {
             gap: 8px;
             flex-wrap: wrap;
@@ -451,47 +460,49 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
         aria-labelledby="catalog-detail-modal-title"
       >
         <header className="catalog-detail-modal-header">
-          <div className="catalog-detail-modal-header-content">
-            <div className="catalog-detail-modal-kicker">
-              <span className="catalog-detail-modal-chip">รหัส E-Phis: {activeTest?.code ?? '-'}</span>
-              <span className="catalog-detail-modal-chip">กรมบัญชีกลาง: {activeTest?.cgd ?? '-'}</span>
-              {activeCategory && (
-                <span
-                  className="catalog-detail-modal-chip"
-                  style={{ color: activeCategory.color, borderColor: `${activeCategory.color}33`, background: `${activeCategory.color}14` }}
-                >
-                  {activeCategory.th}
-                </span>
-              )}
-            </div>
-            <div className="catalog-detail-modal-title-row">
-              <div className="catalog-detail-modal-title-copy">
-                <h2 id="catalog-detail-modal-title" className="catalog-detail-modal-title">
-                  {activeTest?.th ?? 'รายละเอียดรายการตรวจ'}
-                </h2>
-                {activeTest?.en && <div className="catalog-detail-modal-subtitle">{activeTest.en}</div>}
+          <div className="catalog-detail-modal-kicker">
+            <span className="catalog-detail-modal-chip">รหัส E-Phis: {activeTest?.code ?? '-'}</span>
+            <span className="catalog-detail-modal-chip">กรมบัญชีกลาง: {activeTest?.cgd ?? '-'}</span>
+            {activeCategory && (
+              <span
+                className="catalog-detail-modal-chip"
+                style={{ color: activeCategory.color, borderColor: `${activeCategory.color}33`, background: `${activeCategory.color}14` }}
+              >
+                {activeCategory.th}
+              </span>
+            )}
+          </div>
+          <div className="catalog-detail-modal-header-lower">
+            <div className="catalog-detail-modal-header-content">
+              <div className="catalog-detail-modal-title-row">
+                <div className="catalog-detail-modal-title-copy">
+                  <h2 id="catalog-detail-modal-title" className="catalog-detail-modal-title">
+                    {activeTest?.th ?? 'รายละเอียดรายการตรวจ'}
+                  </h2>
+                  {activeTest?.en && <div className="catalog-detail-modal-subtitle">{activeTest.en}</div>}
+                </div>
               </div>
             </div>
-          </div>
-          <div className="catalog-detail-modal-actions">
-            <button
-              type="button"
-              className="catalog-detail-modal-close"
-              onClick={onClose}
-              aria-label="ปิดรายละเอียดรายการตรวจ"
-            >
-              <Icon name="x" size={18} />
-            </button>
-            {activeTest && (
-              <Link
-                href={buildTestDetailHref(activeTest)}
-                className="catalog-detail-modal-full-link"
-                aria-label="เปิดรายละเอียดรายการตรวจแบบหน้าเต็ม"
+            <div className="catalog-detail-modal-actions">
+              <button
+                type="button"
+                className="catalog-detail-modal-close"
+                onClick={onClose}
+                aria-label="ปิดรายละเอียดรายการตรวจ"
               >
-                <span>เปิดหน้าเต็ม</span>
-                <Icon name="arrowRight" size={13} />
-              </Link>
-            )}
+                <Icon name="x" size={18} />
+              </button>
+              {activeTest && (
+                <Link
+                  href={buildTestDetailHref(activeTest)}
+                  className="catalog-detail-modal-full-link"
+                  aria-label="เปิดรายละเอียดรายการตรวจแบบหน้าเต็ม"
+                >
+                  <span>เปิดหน้าเต็ม</span>
+                  <Icon name="arrowRight" size={13} />
+                </Link>
+              )}
+            </div>
           </div>
         </header>
 
