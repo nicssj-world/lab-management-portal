@@ -1,6 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { H2, Section } from '../_primitives'
-import { CRITICAL_VALUES, type Lang } from '../data'
+import { CRITICAL_VALUES, type CriticalValue, type Lang } from '../data'
+import { useManualTable } from '../ManualTablesContext'
+import { ManualTableEditor } from '@/components/manual/ManualTableEditor'
+import { TABLE_SCHEMAS, type EditableRow } from '../tables'
 
 interface Props { lang: Lang }
 
@@ -53,6 +56,8 @@ const ISBAR_COLORS = ['#DC2626', '#EA580C', '#D97706', '#16A34A', '#1E5FAD']
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ManualReport({ lang }: Props) {
+  const [editing, setEditing] = useState(false)
+  const critical = useManualTable<CriticalValue>('criticalValues', 'report', CRITICAL_VALUES)
   return (
     <>
       {/* ══════════════════════════════════════════════════════════════════
@@ -215,6 +220,19 @@ export function ManualReport({ lang }: Props) {
           </div>
         </div>
 
+        {critical.canEdit && !editing && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <button onClick={() => setEditing(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              แก้ตาราง
+            </button>
+          </div>
+        )}
+        {editing ? (
+          <ManualTableEditor schema={TABLE_SCHEMAS.criticalValues} rows={critical.rows as unknown as EditableRow[]}
+            onSaved={rows => { critical.setRows(rows as unknown as CriticalValue[]); setEditing(false) }}
+            onCancel={() => setEditing(false)} />
+        ) : (
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
@@ -236,7 +254,7 @@ export function ManualReport({ lang }: Props) {
             <tbody>
               {CV_CATEGORIES.map(cat => {
                 const s = CAT_STYLE[cat.labelTh]
-                const rows = CRITICAL_VALUES.filter(v => cat.keys.includes(v.test))
+                const rows = critical.rows.filter(v => v.cat === cat.labelTh)
                 return (
                   <React.Fragment key={cat.labelTh}>
                     {/* Category header row */}
@@ -287,6 +305,7 @@ export function ManualReport({ lang }: Props) {
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Review footnote */}
         <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.6, padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 7, border: '1px solid var(--border)' }}>

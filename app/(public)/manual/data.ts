@@ -106,6 +106,8 @@ export const COLLECTION_TABS: CollectionTab[] = [
 ]
 
 export interface CriticalValue {
+  /** category label — must match a CV_CATEGORIES labelTh in ManualReport for grouping */
+  cat: string
   test: string
   adult: string
   child: string
@@ -113,16 +115,16 @@ export interface CriticalValue {
 }
 
 export const CRITICAL_VALUES: CriticalValue[] = [
-  { test: 'Sodium (Na)',              adult: '—',                                   child: '< 125, > 150',              unit: 'mEq/L' },
-  { test: 'Potassium (K)',            adult: '< 2.5, > 5.5  (HD: < 2.5, > 6)',      child: '< 3.0, > 6.0',              unit: 'mEq/L' },
-  { test: 'Glucose',                  adult: '< 55, > 600',                          child: '—',                         unit: 'mg/dL' },
-  { test: 'Magnesium',                adult: '> 8',                                  child: '—',                         unit: 'mg/dL' },
-  { test: 'Troponin T (hs)',          adult: '— (ยกเลิกตามมติ IPSG-2 พ.ย. 65)',      child: '≥ 100',                     unit: 'ng/L' },
-  { test: 'WBC',                      adult: '—',                                   child: '> 50,000 · > 100,000 (สูง)', unit: 'cells/mm³' },
-  { test: 'Platelet',                 adult: '< 5,000 (ศัลยกรรม)',                  child: '< 100,000',                 unit: 'cells/mm³' },
-  { test: 'PT INR',                   adult: '> 4.0',                               child: '> 3.0',                     unit: '' },
-  { test: 'PTT',                      adult: '> 2× upper limit (ยกเว้นศัลยกรรม)',   child: '> 2× upper limit',          unit: 'sec' },
-  { test: 'Hemoculture / Body fluid', adult: 'พบเชื้อแบคทีเรีย',                    child: 'พบเชื้อแบคทีเรีย',         unit: '—' },
+  { cat: 'เคมีคลินิก',  test: 'Sodium (Na)',              adult: '—',                                   child: '< 125, > 150',              unit: 'mEq/L' },
+  { cat: 'เคมีคลินิก',  test: 'Potassium (K)',            adult: '< 2.5, > 5.5  (HD: < 2.5, > 6)',      child: '< 3.0, > 6.0',              unit: 'mEq/L' },
+  { cat: 'เคมีคลินิก',  test: 'Glucose',                  adult: '< 55, > 600',                          child: '—',                         unit: 'mg/dL' },
+  { cat: 'เคมีคลินิก',  test: 'Magnesium',                adult: '> 8',                                  child: '—',                         unit: 'mg/dL' },
+  { cat: 'เคมีคลินิก',  test: 'Troponin T (hs)',          adult: '— (ยกเลิกตามมติ IPSG-2 พ.ย. 65)',      child: '≥ 100',                     unit: 'ng/L' },
+  { cat: 'โลหิตวิทยา',  test: 'WBC',                      adult: '—',                                   child: '> 50,000 · > 100,000 (สูง)', unit: 'cells/mm³' },
+  { cat: 'โลหิตวิทยา',  test: 'Platelet',                 adult: '< 5,000 (ศัลยกรรม)',                  child: '< 100,000',                 unit: 'cells/mm³' },
+  { cat: 'โลหิตวิทยา',  test: 'PT INR',                   adult: '> 4.0',                               child: '> 3.0',                     unit: '' },
+  { cat: 'โลหิตวิทยา',  test: 'PTT',                      adult: '> 2× upper limit (ยกเว้นศัลยกรรม)',   child: '> 2× upper limit',          unit: 'sec' },
+  { cat: 'จุลชีววิทยา', test: 'Hemoculture / Body fluid', adult: 'พบเชื้อแบคทีเรีย',                    child: 'พบเชื้อแบคทีเรีย',         unit: '—' },
 ]
 
 export interface OutLabPartner {

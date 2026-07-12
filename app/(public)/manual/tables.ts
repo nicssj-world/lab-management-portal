@@ -81,6 +81,11 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     sectionId: 'report',
     title: 'ค่าวิกฤติ (Critical Values)',
     columns: [
+      { key: 'cat', label: 'หมวด', kind: 'select', options: [
+        { value: 'เคมีคลินิก', label: 'เคมีคลินิก' },
+        { value: 'โลหิตวิทยา', label: 'โลหิตวิทยา' },
+        { value: 'จุลชีววิทยา', label: 'จุลชีววิทยา' },
+      ] },
       { key: 'test', label: 'การตรวจ', kind: 'text' },
       { key: 'adult', label: 'ผู้ใหญ่', kind: 'text' },
       { key: 'child', label: 'เด็ก', kind: 'text' },
