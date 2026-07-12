@@ -371,6 +371,10 @@ export default async function PublicHome() {
             font-size: 11.5px;
           }
           .public-hero-title { font-size: 34px !important; letter-spacing: 0 !important; }
+          .public-hero-actions,
+          .public-hero-secondary-links {
+            margin-inline: auto;
+          }
           .public-hero-actions { flex-direction: column; align-items: stretch; max-width: 360px; }
           .public-hero-search-wrap { width: 100%; }
           .public-hero-search { width: 100%; }
