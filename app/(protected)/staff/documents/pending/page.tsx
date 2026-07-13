@@ -15,7 +15,7 @@ export default async function PendingApprovalPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data: actor } = await supabase
-    .from('profiles').select('role, doc_role').eq('id', user.id).single()
+    .from('profiles').select('role, doc_role, name').eq('id', user.id).single()
 
   const role = actor?.role ?? ''
   const docRole = actor?.doc_role ?? ''
@@ -136,6 +136,7 @@ export default async function PendingApprovalPage() {
       sets={sets}
       userRole={actor?.role ?? undefined}
       docRole={actor?.doc_role ?? undefined}
+      userName={actor?.name ?? undefined}
       userId={user.id}
     />
   )

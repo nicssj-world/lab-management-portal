@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
 import { Input } from '@/components/ui/Input'
 import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/DocumentDetailModal'
+import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
 import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
@@ -29,6 +30,7 @@ interface Props {
   docs: CategoryDoc[]
   userRole?: string
   docRole?: string
+  userName?: string
   userId?: string
 }
 
@@ -51,7 +53,7 @@ const STATUS_TONE: Record<string, { bg: string; color: string }> = {
 
 const UNASSIGNED = 'ไม่ระบุหน่วยงาน'
 
-export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props) {
+export function CategoriesClient({ docs, userRole, docRole, userName, userId = '' }: Props) {
   const router = useRouter()
   const isAdmin = userRole === 'Admin'
   const workflowRole = docRole ?? userRole
@@ -167,6 +169,7 @@ export function CategoriesClient({ docs, userRole, docRole, userId = '' }: Props
           marginBottom={0}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />
           <Input
             icon="search"
             placeholder="กรองตามแผนก ประเภท รหัส หรือชื่อเอกสาร..."

@@ -34,6 +34,7 @@ export default async function DocumentCategoriesPage() {
       docs={(data ?? []) as CategoryDoc[]}
       userRole={actor?.role ?? undefined}
       docRole={actor?.doc_role ?? undefined}
+      userName={actor?.name ?? undefined}
       userId={user.id}
     />
   )

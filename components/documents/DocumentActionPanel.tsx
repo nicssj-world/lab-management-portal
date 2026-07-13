@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { allowedTransitions, type DocStatus } from '@/lib/documents/transitions'
-import { canMoveToStatus, isCoverRequiredType } from '@/lib/documents/workflow'
+import { canMoveToStatus, isCoverRequiredType, isSourceFile } from '@/lib/documents/workflow'
 import { STATUS_COLOR, STATUS_LABEL, TYPE_ICON_BG, TYPE_ICON_FG, fmtSize } from '@/lib/documents/ui-constants'
 import { uploadFileWithProgress } from '@/lib/documents/upload-with-progress'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
@@ -26,9 +26,13 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  const [wordUploadProgress, setWordUploadProgress] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const dragCounter = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [wordDragOver, setWordDragOver] = useState(false)
+  const wordDragCounter = useRef(0)
+  const wordFileInputRef = useRef<HTMLInputElement>(null)
   const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string; mimeType?: string | null } | null>(null)
 
   // Same gate as RevisionPanel's canManageDraftOfficial — only DCC/Admin set the content PDF.
@@ -82,6 +86,46 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
       setBusy(false)
     }
   }, [busy, canManageOfficial, doc.id, isQpWi, onUpdated])
+
+  const handleUploadWordSource = useCallback(async (file: File | null) => {
+    if (!file || busy || !canManageOfficial) return
+    if (file.size > 50 * 1024 * 1024) { setActionError('ไฟล์ต้นฉบับใหญ่เกิน 50 MB'); return }
+    if (!isSourceFile(file)) { setActionError('ไฟล์ต้นฉบับรองรับ DOC, DOCX, XLS, XLSX เท่านั้น'); return }
+    setBusy(true)
+    setActionError('')
+    try {
+      const presignParams = new URLSearchParams({
+        fileName: file.name,
+        fileType: file.type || 'application/octet-stream',
+        fileSize: String(file.size),
+        docType: doc.type.toLowerCase(),
+      })
+      const presignRes = await fetch(`/api/admin/documents/presign-word?${presignParams}`)
+      const presignJson = await presignRes.json().catch(() => ({}))
+      if (!presignRes.ok) { setActionError(presignJson.error ?? 'สร้าง URL อัปโหลดไฟล์ต้นฉบับไม่สำเร็จ'); return }
+      const { uploadMode, uploadUrl, key, contentType } = presignJson as { uploadMode?: string; uploadUrl?: string; key?: string; contentType?: string }
+      if (uploadMode !== 'direct-r2' || !uploadUrl || !key) { setActionError('สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ: production อาจยังไม่ใช่โค้ด direct upload ล่าสุด'); return }
+
+      setWordUploadProgress(0)
+      await uploadFileWithProgress(uploadUrl, file, contentType ?? file.type, setWordUploadProgress)
+
+      const fd = new FormData()
+      fd.append('word_file_key', key)
+      fd.append('word_file_name', file.name)
+      fd.append('word_file_size', String(file.size))
+      const patchRes = await fetch(`/api/admin/documents/${doc.id}`, { method: 'PATCH', body: fd })
+      const patchJson = await patchRes.json().catch(() => ({}))
+      if (!patchRes.ok) { setActionError(patchJson.error ?? 'บันทึกไฟล์ต้นฉบับไม่สำเร็จ'); return }
+      setDoc(patchJson as Document)
+      onUpdated(patchJson as Document)
+    } catch (err) {
+      setActionError(`อัปโหลดไฟล์ไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      if (wordFileInputRef.current) wordFileInputRef.current.value = ''
+      setWordUploadProgress(null)
+      setBusy(false)
+    }
+  }, [busy, canManageOfficial, doc.id, doc.type, onUpdated])
 
   async function handleConfirmOfficial() {
     if (busy || !canManageOfficial || !doc.pending_file_url) return
@@ -179,6 +223,14 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
     const file = e.dataTransfer.files[0]
     if (file && !busy) void handleUploadOfficial(file)
   }, [busy, handleUploadOfficial])
+
+  const onWordDragEnter = useCallback((e: React.DragEvent) => { e.preventDefault(); wordDragCounter.current += 1; setWordDragOver(true) }, [])
+  const onWordDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); wordDragCounter.current -= 1; if (wordDragCounter.current === 0) setWordDragOver(false) }, [])
+  const onWordDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation(); wordDragCounter.current = 0; setWordDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file && !busy) void handleUploadWordSource(file)
+  }, [busy, handleUploadWordSource])
 
   const officialIsPdf = /\.pdf$/i.test(doc.file_name ?? doc.file_url ?? '')
 
@@ -282,6 +334,34 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
                 </button>
               </div>
             )}
+            {isQpWi && canManageOfficial && doc.status !== 'Published' && doc.status !== 'Obsolete' && (
+              <div
+                onClick={() => !busy && wordFileInputRef.current?.click()}
+                onKeyDown={(event) => {
+                  if (!busy && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault()
+                    wordFileInputRef.current?.click()
+                  }
+                }}
+                role="button"
+                tabIndex={busy ? -1 : 0}
+                aria-disabled={busy}
+                onDragEnter={onWordDragEnter}
+                onDragOver={(e) => e.preventDefault()}
+                onDragLeave={onWordDragLeave}
+                onDrop={onWordDrop}
+                style={{ border: `2px dashed ${wordDragOver ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 10, padding: '12px', background: wordDragOver ? 'var(--primary-soft)' : 'var(--surface-2)', cursor: busy ? 'default' : 'pointer', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: busy ? .7 : 1 }}
+              >
+                <Icon name="upload" size={13} style={{ color: wordDragOver ? 'var(--primary)' : 'var(--muted)', flexShrink: 0 }} />
+                <div style={{ fontSize: 12, fontWeight: 600, color: wordDragOver ? 'var(--primary)' : 'var(--ink)' }}>
+                  {wordUploadProgress !== null
+                    ? `กำลังอัปโหลด... ${wordUploadProgress}%`
+                    : (doc.word_url ? 'ลากไฟล์ Word/Excel มาวางเพื่อแทนที่ไฟล์ต้นฉบับ หรือคลิกเพื่อเลือก' : 'ลากไฟล์ Word/Excel มาวาง หรือคลิกเพื่อเลือกไฟล์ต้นฉบับ')}
+                </div>
+              </div>
+            )}
+            <input ref={wordFileInputRef} type="file" accept=".doc,.docx,.xls,.xlsx" style={{ display: 'none' }}
+              onChange={(e) => { if (e.target.files?.[0]) handleUploadWordSource(e.target.files[0]) }} />
           </div>
 
           {/* Upload / replace content PDF */}

@@ -14,6 +14,7 @@ import { DocumentDetailModal, PdfViewerModal, type Attachment } from '@/componen
 import { PdfViewer } from '@/components/documents/PdfViewer'
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
 import { QuickUpdateModal } from '@/components/documents/QuickUpdateModal'
+import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
 import { allowedTransitions } from '@/lib/documents/transitions'
 import { canMoveToStatus } from '@/lib/documents/workflow'
 import { isReviewTrackedType, reviewWindowState } from '@/lib/documents/review'
@@ -472,14 +473,6 @@ function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, onReadL
 }
 
 // ── Main component ─────────────────────────────────────────────
-const DOC_ROLE_COLOR: Record<string, { bg: string; color: string; dot: string }> = {
-  'Laboratory Director': { bg: 'rgba(30,95,173,.09)',  color: '#1E5FAD', dot: '#1E5FAD' },
-  'Quality Manager':     { bg: 'rgba(13,148,136,.09)', color: '#0D9488', dot: '#0D9488' },
-  'Document Controller': { bg: 'rgba(147,51,234,.09)', color: '#9333EA', dot: '#9333EA' },
-  'Reviewer':            { bg: 'rgba(217,119,6,.09)',  color: '#B45309', dot: '#D97706' },
-  'Viewer':              { bg: 'rgba(100,116,139,.09)',color: '#64748B', dot: '#94A3B8' },
-}
-
 interface Props { userRole?: string; docRole?: string; userName?: string; userId?: string; initialSearch?: string; initialOpenId?: string; initialReadId?: string; initialCreate?: boolean }
 
 export function DocumentsClient({ userRole, docRole, userName, userId = '', initialSearch, initialOpenId, initialReadId, initialCreate }: Props) {
@@ -947,7 +940,12 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
       )}
 
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
+        marginBottom: 20, padding: 18, borderRadius: 14, border: '1px solid var(--border)',
+        background: 'linear-gradient(135deg, var(--card) 0%, var(--surface-2) 100%)',
+        boxShadow: '0 14px 36px rgba(15,23,42,.08)',
+      }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 5 }}>
             Documents Control
@@ -972,34 +970,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* User identity badge */}
-          {(userName || docRole) && (() => {
-            const scheme = docRole ? DOC_ROLE_COLOR[docRole] : undefined
-            return (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '7px 12px', borderRadius: 10,
-                background: scheme?.bg ?? 'var(--surface-2)',
-                border: `1px solid ${scheme ? scheme.color + '33' : 'var(--border)'}`,
-              }}>
-                <div style={{
-                  width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                  background: scheme?.dot ?? 'var(--muted)',
-                  boxShadow: scheme ? `0 0 0 2px ${scheme.dot}33` : 'none',
-                }} />
-                <div>
-                  {userName && (
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
-                      {userName}
-                    </div>
-                  )}
-                  <div style={{ fontSize: 11, color: scheme?.color ?? 'var(--muted)', fontWeight: 600, lineHeight: 1.3, whiteSpace: 'nowrap' }}>
-                    {docRole ?? userRole ?? 'Staff'}
-                  </div>
-                </div>
-              </div>
-            )
-          })()}
+          <UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />
           {canDelete && deletedCount > 0 && (
             <button
               onClick={handlePurge}

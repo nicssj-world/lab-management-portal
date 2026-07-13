@@ -32,8 +32,19 @@ const listReply = formatListReply([
   { th: 'รายการตรวจ 1', en: null, code: '30074' },
   { th: 'รายการตรวจ 2', en: null, code: '30082' },
 ] as any)
-assert.match(listReply, /^🔎 พบ 2 รายการ:/)
+assert.match(listReply, /^🔎 พบ 2 รายการ\n\n1\. รายการตรวจ 1/)
 assert.match(listReply, /🔢 รหัส E-Phis: 30074/)
 assert.match(listReply, /💬 พิมพ์รหัส E-Phis เพื่อดูรายละเอียด เช่น 30074$/)
+assert.doesNotMatch(listReply, /ดูเพิ่มเติม/)
+
+// Beyond a page (10 results, default page size 5): shows a range label + "more" hint
+const manyTests = Array.from({ length: 10 }, (_, i) => ({ th: `รายการตรวจ ${i + 1}`, en: null, code: `${30000 + i}` })) as any
+const page1 = formatListReply(manyTests, 0)
+assert.match(page1, /^🔎 พบ 10 รายการ \(แสดงรายการที่ 1-5\)/)
+assert.match(page1, /ยังมีอีก 5 รายการ กดปุ่ม "ดูเพิ่มเติม"/)
+const page2 = formatListReply(manyTests, 5)
+assert.match(page2, /^🔎 พบ 10 รายการ \(แสดงรายการที่ 6-10\)/)
+assert.match(page2, /6\. รายการตรวจ 6/)
+assert.doesNotMatch(page2, /ดูเพิ่มเติม/)
 
 console.log('lib/line/format.test.ts: all assertions passed')

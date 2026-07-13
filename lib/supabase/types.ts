@@ -337,6 +337,9 @@ export interface Document {
   // both null/[] = everyone.
   read_audience_depts: string[] | null
   read_audience_user_ids: string[] | null
+  // Registration-set ZIP download tracking (scripts/add-registration-set-download-tracking.sql)
+  set_last_downloaded_at: string | null
+  set_last_downloaded_by_name: string | null
   created_at: string
   updated_at: string
 }

@@ -7,6 +7,7 @@ import { Icon } from '@/components/ui/Icon'
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
 import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/DocumentDetailModal'
 import { DocumentActionPanel } from '@/components/documents/DocumentActionPanel'
+import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
 import { TYPE_ICON_BG, TYPE_ICON_FG, fmtDate } from '@/lib/documents/ui-constants'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import {
@@ -60,6 +61,7 @@ interface Props {
   sets: RegistrationSet[]
   userRole?: string
   docRole?: string
+  userName?: string
   userId?: string
 }
 
@@ -84,11 +86,32 @@ function routedSetStatus(document: RegistrationSetDocument, activeDraft?: Regist
 }
 
 function setFileState(document: RegistrationSetDocument, activeDraft?: RegistrationSetActiveDraft | null) {
-  if (activeDraft) return `Rev+ ${activeDraft.revision} · ${activeDraft.status}`
-  if (document.status === 'Published') return 'Published (ลิงก์)'
-  if (document.hasPendingFile) return 'PDF รอยืนยัน'
-  if (document.hasOfficialFile) return 'มีไฟล์ทางการ'
-  return 'รอ DCC ทำ PDF'
+  if (activeDraft) return { label: `Rev+ ${activeDraft.revision} · ${activeDraft.status}`, color: '#7E22CE', background: 'rgba(147,51,234,.08)', border: 'rgba(147,51,234,.25)' }
+  if (document.status === 'Published') return { label: 'Published (ลิงก์)', color: '#0369A1', background: 'rgba(14,165,233,.10)', border: 'rgba(14,165,233,.25)' }
+  if (document.hasPendingFile) return { label: 'PDF รอยืนยัน', color: '#B45309', background: 'rgba(217,119,6,.10)', border: 'rgba(217,119,6,.25)' }
+  if (document.hasOfficialFile) return { label: 'มีไฟล์ทางการ', color: '#15803D', background: 'rgba(22,163,74,.10)', border: 'rgba(22,163,74,.25)' }
+  return { label: 'รอ DCC ทำ PDF', color: 'var(--muted)', background: 'var(--card)', border: 'var(--border)' }
+}
+
+function fmtSetDownloadTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function SetDownloadedBadge({ downloadedAt, downloadedByName }: { downloadedAt: string; downloadedByName: string | null }) {
+  const title = `ดาวน์โหลดล่าสุด: ${fmtDate(downloadedAt)} · ${fmtSetDownloadTime(downloadedAt)} น.${downloadedByName ? ` โดย ${downloadedByName}` : ''}`
+  return (
+    <span
+      title={title}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 9px', borderRadius: 99,
+        background: 'rgba(22,163,74,.10)', border: '1px solid rgba(22,163,74,.25)', color: '#15803D',
+        fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      <Icon name="check" size={11} />
+      {fmtDate(downloadedAt)} · {fmtSetDownloadTime(downloadedAt)}
+    </span>
+  )
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -116,6 +139,7 @@ function SetDocumentRow({
   onClick?: () => void
 }) {
   const status = routedSetStatus(document, activeDraft)
+  const fileState = setFileState(document, activeDraft)
   const rowStyle: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 11px',
     border: '1px solid var(--border)', borderRadius: 9, background: 'var(--surface-2)',
@@ -141,8 +165,8 @@ function SetDocumentRow({
       </span>
       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
         <StatusBadge status={status} />
-        <span style={{ fontSize: 10.5, fontWeight: 750, color: activeDraft ? '#7E22CE' : 'var(--muted)', background: activeDraft ? 'rgba(147,51,234,.08)' : 'var(--card)', border: '1px solid var(--border)', borderRadius: 99, padding: '3px 8px', whiteSpace: 'nowrap' }}>
-          {setFileState(document, activeDraft)}
+        <span style={{ fontSize: 10.5, fontWeight: 750, color: fileState.color, background: fileState.background, border: `1px solid ${fileState.border}`, borderRadius: 99, padding: '3px 8px', whiteSpace: 'nowrap' }}>
+          {fileState.label}
         </span>
         {interactive ? <Icon name="chevRight" size={13} style={{ color: 'var(--muted)' }} /> : null}
       </span>
@@ -158,6 +182,8 @@ function RegistrationSetCard({
   controlsBusy,
   progress,
   result,
+  selected,
+  onToggleSelect,
   onOpenMain,
   onOpenMember,
   onDownload,
@@ -168,6 +194,8 @@ function RegistrationSetCard({
   controlsBusy: boolean
   progress: SetProgress | null
   result?: string
+  selected: boolean
+  onToggleSelect: () => void
   onOpenMain: () => void
   onOpenMember: (member: RegistrationSetMember) => void
   onDownload: () => void
@@ -181,10 +209,20 @@ function RegistrationSetCard({
   return (
     <article style={{ border: '1px solid var(--border)', borderRadius: 11, background: 'var(--card)', padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, color: 'var(--ink)', fontWeight: 800 }}>{set.mainDocument.documentCode} · {set.members.length} สมาชิก</div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-            ไฟล์แนบชั่วคราว {set.ephemeralAttachmentCount} ไฟล์
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+          {canManage && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              style={{ accentColor: '#0F766E', width: 15, height: 15, flexShrink: 0, cursor: 'pointer' }}
+            />
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)', fontWeight: 800 }}>{set.mainDocument.documentCode} · {set.members.length} เอกสารสนับสนุน</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+              ไฟล์แนบชั่วคราว {set.ephemeralAttachmentCount} ไฟล์
+            </div>
           </div>
         </div>
         {canManage ? (
@@ -198,6 +236,12 @@ function RegistrationSetCard({
               <Icon name="download" size={12} />
               ดาวน์โหลดทั้งชุด (ZIP)
             </button>
+            {set.mainDocument.setLastDownloadedAt ? (
+              <SetDownloadedBadge
+                downloadedAt={set.mainDocument.setLastDownloadedAt}
+                downloadedByName={set.mainDocument.setLastDownloadedByName}
+              />
+            ) : null}
             {availableAction ? (
               <button
                 type="button"
@@ -225,7 +269,7 @@ function RegistrationSetCard({
             key={member.linkId}
             document={member.document}
             activeDraft={member.activeDraft}
-            label={`สมาชิก ${index + 1}`}
+            label={`เอกสารสนับสนุน ${index + 1}`}
             disabled={controlsBusy}
             interactive={canManage}
             onClick={canManage ? () => onOpenMember(member) : undefined}
@@ -359,7 +403,7 @@ function ActionCard({ label, count, sub, icon, accent, onClick }: {
   )
 }
 
-export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSourceDocs, reviewDocs: initialReviewDocs, approvedDocs: initialApprovedDocs, annualReviewDocs: initialAnnualReviewDocs, sets, userRole, docRole, userId = '' }: Props) {
+export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSourceDocs, reviewDocs: initialReviewDocs, approvedDocs: initialApprovedDocs, annualReviewDocs: initialAnnualReviewDocs, sets, userRole, docRole, userName, userId = '' }: Props) {
   const router = useRouter()
   const isAdmin = userRole === 'Admin'
   const workflowRole = docRole ?? userRole
@@ -393,6 +437,11 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   const [sourceBulkResult, setSourceBulkResult] = useState<string | null>(null)
   const [setProgress, setSetProgress] = useState<SetProgress | null>(null)
   const [setResults, setSetResults] = useState<Record<string, string>>({})
+  const [selectedSetIds, setSelectedSetIds] = useState<Set<string>>(new Set())
+  const [setsBulkBusy, setSetsBulkBusy] = useState(false)
+  const [setsBulkStep, setSetsBulkStep] = useState('')
+  const [setsBulkPercent, setSetsBulkPercent] = useState<number | null>(null)
+  const [setsBulkResult, setSetsBulkResult] = useState<string | null>(null)
   const [revDoc, setRevDoc] = useState<Document | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [publishingId, setPublishingId] = useState<string | null>(null)
@@ -635,11 +684,90 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
       anchor.remove()
       URL.revokeObjectURL(url)
       setSetResults((prev) => ({ ...prev, [mainId]: 'ดาวน์โหลดทั้งชุดสำเร็จ' }))
+      router.refresh()
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'ดาวน์โหลด ZIP ไม่สำเร็จ'
       setSetResults((prev) => ({ ...prev, [mainId]: `ดาวน์โหลดไม่สำเร็จ: ${reason}` }))
     } finally {
       setSetProgress(null)
+    }
+  }
+
+  function toggleSetSelection(mainId: string) {
+    setSelectedSetIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(mainId)) next.delete(mainId)
+      else next.add(mainId)
+      return next
+    })
+  }
+
+  async function handleBulkSetZip() {
+    if (setsBulkBusy) return
+    const mainIds = Array.from(selectedSetIds)
+    if (mainIds.length === 0) return
+    setSetsBulkBusy(true)
+    setSetsBulkResult(null)
+    setSetsBulkStep('กำลังเตรียม ZIP หลายชุด...')
+    setSetsBulkPercent(null)
+
+    try {
+      const res = await fetch('/api/admin/documents/bulk-set-zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mainIds }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({} as { error?: string })) as { error?: string }
+        throw new Error(json.error ?? `ดาวน์โหลดไม่สำเร็จ (${res.status})`)
+      }
+
+      const totalBytes = Number(res.headers.get('Content-Length') ?? 0)
+      const reader = res.body?.getReader()
+      const chunks: ArrayBuffer[] = []
+      let received = 0
+      setSetsBulkStep('กำลังดาวน์โหลด ZIP...')
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (!value) continue
+          chunks.push(value.slice().buffer as ArrayBuffer)
+          received += value.byteLength
+          if (totalBytes > 0) setSetsBulkPercent(Math.min(100, Math.round((received / totalBytes) * 100)))
+        }
+      } else {
+        const blob = await res.blob()
+        chunks.push(await blob.arrayBuffer())
+      }
+
+      const skippedCount = Number(res.headers.get('X-Skipped-Sets') ?? 0)
+      const includedCount = Number(res.headers.get('X-Included-Sets') ?? mainIds.length)
+
+      const blob = new Blob(chunks, { type: 'application/zip' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filenameFromDisposition(res.headers.get('Content-Disposition'), `document-sets-${includedCount}.zip`)
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+
+      setSetsBulkResult(
+        skippedCount > 0
+          ? `ดาวน์โหลดสำเร็จ ${includedCount} ชุด · ข้าม ${skippedCount} ชุด (ดูรายละเอียดใน _download-notes.txt)`
+          : `ดาวน์โหลดสำเร็จ ${includedCount} ชุด`,
+      )
+      setSelectedSetIds(new Set())
+      router.refresh()
+    } catch (error) {
+      setSetsBulkResult(error instanceof Error ? error.message : 'ดาวน์โหลด ZIP ไม่สำเร็จ')
+    } finally {
+      setSetsBulkBusy(false)
+      setSetsBulkStep('')
+      setSetsBulkPercent(null)
     }
   }
 
@@ -656,7 +784,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
       }))
       return
     }
-    if (!confirm(`ยืนยัน ${plan.actionLabel} สำหรับ ${set.mainDocument.documentCode} และสมาชิก ${set.members.length} ฉบับ?`)) return
+    if (!confirm(`ยืนยัน ${plan.actionLabel} สำหรับ ${set.mainDocument.documentCode} และเอกสารสนับสนุน ${set.members.length} ฉบับ?`)) return
 
     const totalItems = plan.targets.length
     setSetResults((prev) => {
@@ -915,13 +1043,16 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink)', marginTop: 2 }}>รออนุมัติ / งานค้างใน Workflow</div>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>รายการที่รอการดำเนินการ · {total} รายการ</div>
         </div>
-        <Link href="/staff/documents" style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
-          border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
-          fontSize: 13, fontWeight: 600, textDecoration: 'none',
-        }}>
-          <Icon name="doc" size={15} /> เปิดคลังเอกสาร
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />
+          <Link href="/staff/documents" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
+            border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
+            fontSize: 13, fontWeight: 600, textDecoration: 'none',
+          }}>
+            <Icon name="doc" size={15} /> เปิดคลังเอกสาร
+          </Link>
+        </div>
       </div>
 
       <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 14, padding: 16 }}>
@@ -933,7 +1064,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           <div style={{ fontSize: 12, color: 'var(--muted)' }}>รวม {total} รายการ</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: 10 }}>
-          <ActionCard label="ชุดเอกสารลงทะเบียนใหม่" count={sets.length} sub="เอกสารหลักและสมาชิกที่ต้องเดิน Workflow ร่วมกัน" icon="doc" accent="#0F766E" onClick={() => scrollToSection(setSectionRef)} />
+          <ActionCard label="ชุดเอกสารลงทะเบียนใหม่" count={sets.length} sub="เอกสารหลักและเอกสารสนับสนุนที่ต้องเดิน Workflow ร่วมกัน" icon="doc" accent="#0F766E" onClick={() => scrollToSection(setSectionRef)} />
           <ActionCard label="เอกสารใหม่ รอจัดทำ PDF" count={newDocs.length} sub="เอกสาร Rev.00 มีไฟล์ต้นฉบับแล้ว รอ DCC" icon="plus" accent="#0EA5E9" onClick={() => scrollToSection(newSectionRef)} />
           <ActionCard label="รอทำ PDF (Rev+)" count={sourceWaitingPdfCount} sub="มี Word/Excel แล้ว รอ DCC จัดทำ PDF" icon="upload" accent="#9333EA" onClick={() => scrollToSection(sourceSectionRef)} />
           <ActionCard label="พร้อมส่ง Review" count={sourceReadyReviewCount} sub="มีไฟล์ทางการแล้ว ตรวจและส่งต่อได้" icon="arrowRight" accent="#2563EB" onClick={() => scrollToSection(sourceSectionRef)} />
@@ -946,9 +1077,42 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
       <div ref={setSectionRef}>
         <Section
           title="ชุดเอกสารลงทะเบียนใหม่"
-          sub="ติดตามเอกสารหลักและสมาชิกในชุดเดียวกัน โดยดำเนินการสมาชิกก่อนเอกสารหลัก"
+          sub="ติดตามเอกสารหลักและเอกสารสนับสนุนในชุดเดียวกัน โดยดำเนินการเอกสารสนับสนุนก่อนเอกสารหลัก"
           icon="doc" accent="#0F766E" count={sets.length}
         >
+          {setsBulkResult && (
+            <div style={{ padding: '9px 12px', borderRadius: 8, background: 'rgba(15,118,110,.08)', border: '1px solid rgba(15,118,110,.25)', color: '#0F766E', fontSize: 12, lineHeight: 1.45 }}>
+              {setsBulkResult}
+            </div>
+          )}
+          {canManageSets && sets.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink)', cursor: 'pointer', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={sets.length > 0 && sets.every((set) => selectedSetIds.has(set.mainDocument.id))}
+                  onChange={(e) => setSelectedSetIds(e.target.checked ? new Set(sets.map((set) => set.mainDocument.id)) : new Set())}
+                  style={{ accentColor: '#0F766E' }}
+                />
+                เลือกทั้งหมด
+              </label>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={handleBulkSetZip}
+                disabled={setsBulkBusy || selectedSetIds.size === 0}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8,
+                  border: 'none', background: selectedSetIds.size > 0 ? '#0F766E' : 'var(--border)',
+                  color: selectedSetIds.size > 0 ? '#fff' : 'var(--muted)', fontSize: 12.5, fontWeight: 700,
+                  fontFamily: 'inherit', cursor: setsBulkBusy || selectedSetIds.size === 0 ? 'default' : 'pointer',
+                  opacity: setsBulkBusy ? .6 : 1,
+                }}
+              >
+                <Icon name="download" size={13} />
+                {setsBulkBusy ? (setsBulkStep || 'กำลังเตรียม ZIP...') + (setsBulkPercent !== null ? ` ${setsBulkPercent}%` : '') : `ดาวน์โหลดที่เลือก (${selectedSetIds.size} ชุด)`}
+              </button>
+            </div>
+          )}
           {sets.map((set) => (
             <RegistrationSetCard
               key={set.mainDocument.id}
@@ -957,6 +1121,8 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
               controlsBusy={setProgress !== null}
               progress={setProgress?.mainId === set.mainDocument.id ? setProgress : null}
               result={setResults[set.mainDocument.id]}
+              selected={selectedSetIds.has(set.mainDocument.id)}
+              onToggleSelect={() => toggleSetSelection(set.mainDocument.id)}
               onOpenMain={() => openActionPanel(set.mainDocument.id)}
               onOpenMember={(member) => openSetMember(member)}
               onDownload={() => handleSetZip(set)}

@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
+import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
 import { documentPdfProxyUrl, isPdfLike } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
 import { TYPE_LABEL } from '@/lib/documents/type-labels'
@@ -62,9 +63,9 @@ function useToast() {
 const PAGE_SIZE = 50
 
 // ── Main Component ─────────────────────────────────────────────
-interface Props { userRole?: string }
+interface Props { userRole?: string; docRole?: string; userName?: string }
 
-export function MasterListClient({ userRole }: Props) {
+export function MasterListClient({ userRole, docRole, userName }: Props) {
 const { toasts, add: toast } = useToast()
 
   const [docs, setDocs]         = useState<Document[]>([])
@@ -333,11 +334,16 @@ const { toasts, add: toast } = useToast()
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 12,
+        padding: 18, borderRadius: 14, border: '1px solid var(--border)',
+        background: 'linear-gradient(135deg, var(--card) 0%, var(--surface-2) 100%)',
+        boxShadow: '0 14px 36px rgba(15,23,42,.08)',
+      }}>
         <PageHeader
           eyebrow="Documents Master List"
           title="ทะเบียนเอกสารคุณภาพ"
-          actions={undefined}
+          actions={<UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />}
           marginBottom={0}
         />
         {/* Type count summary */}

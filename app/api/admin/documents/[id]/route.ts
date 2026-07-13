@@ -244,6 +244,7 @@ export async function PATCH(
     let fileKeyType: string | null = null
     let fileKeySizePre: number | null = null
     let pendingFileKeyToDelete: string | null = null
+    let wordFileKeyToDelete: string | null = null
 
     if (contentType.includes('multipart/form-data')) {
       const form = await req.formData()
@@ -461,6 +462,7 @@ export async function PATCH(
       updates.word_url  = wordFileKey
       updates.word_name = wordFileName ?? wordFileKey.split('/').pop() ?? 'file'
       if (wordFileSizePre && Number.isFinite(wordFileSizePre)) updates.word_size = wordFileSizePre
+      if (current.word_url && current.word_url !== wordFileKey) wordFileKeyToDelete = current.word_url
     } else if (newWordFile && newWordFile.size > 0) {
       if (newWordFile.size > 50 * 1024 * 1024) {
         return NextResponse.json({ error: 'ไฟล์ Word/Excel ใหญ่เกิน 50 MB' }, { status: 422 })
@@ -478,6 +480,7 @@ export async function PATCH(
       updates.word_url  = wordKey
       updates.word_name = newWordFile.name
       updates.word_size = uploaded.size
+      if (current.word_url && current.word_url !== wordKey) wordFileKeyToDelete = current.word_url
     }
 
     // Save old revision to history when revision number changes OR file is replaced
@@ -747,6 +750,11 @@ export async function PATCH(
 
     if (pendingFileKeyToDelete) {
       await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: pendingFileKeyToDelete }))
+        .catch(() => {})
+    }
+
+    if (wordFileKeyToDelete) {
+      await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: wordFileKeyToDelete }))
         .catch(() => {})
     }
 
