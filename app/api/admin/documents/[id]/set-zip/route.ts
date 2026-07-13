@@ -17,6 +17,13 @@ type ZipTarget = {
   label: string
 }
 
+type DraftAttachment = {
+  id: string
+  draft_id: string
+  file_url: string
+  file_name: string
+}
+
 const UNSAFE_PATH_CHARS = /[<>:"/\\|?*\x00-\x1F]/g
 
 function safePathPart(value: string | null | undefined, fallback: string) {
@@ -119,7 +126,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'ไม่พบเอกสารสมาชิกในชุด' }, { status: 404 })
   }
 
-  const [membersResult, draftsResult, attachmentsResult, draftAttachmentsResult] = await Promise.all([
+  const [membersResult, draftsResult, attachmentsResult] = await Promise.all([
     supabaseAdmin
       .from('documents')
       .select('id, document_code, file_url, file_name, pending_file_url, pending_file_name, word_url, word_name')
@@ -136,15 +143,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .eq('document_id', id)
       .eq('ephemeral', true)
       .order('created_at', { ascending: true }),
-    supabaseAdmin
-      .from('document_revision_draft_attachments')
-      .select('id, draft_id, document_id, file_url, file_name')
-      .in('document_id', memberIds)
-      .order('created_at', { ascending: true }),
   ])
 
-  for (const result of [membersResult, draftsResult, attachmentsResult, draftAttachmentsResult]) {
+  for (const result of [membersResult, draftsResult, attachmentsResult]) {
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
+  }
+
+  const activeDraftIds = (draftsResult.data ?? []).map((draft) => draft.id)
+  let draftAttachments: DraftAttachment[] = []
+  if (activeDraftIds.length > 0) {
+    const draftAttachmentsResult = await supabaseAdmin
+      .from('document_revision_draft_attachments')
+      .select('id, draft_id, file_url, file_name')
+      .in('draft_id', activeDraftIds)
+      .order('created_at', { ascending: true })
+
+    if (draftAttachmentsResult.error) {
+      return NextResponse.json({ error: draftAttachmentsResult.error.message }, { status: 500 })
+    }
+    draftAttachments = draftAttachmentsResult.data ?? []
   }
 
   const memberById = new Map((membersResult.data ?? []).map((member) => [member.id, member] as const))
@@ -157,8 +174,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const draftByDocumentId = new Map(
     (draftsResult.data ?? []).map((draft) => [draft.document_id, draft] as const),
   )
-  const draftAttachmentsByDraftId = new Map<string, NonNullable<typeof draftAttachmentsResult.data>>()
-  for (const attachment of draftAttachmentsResult.data ?? []) {
+  const draftAttachmentsByDraftId = new Map<string, DraftAttachment[]>()
+  for (const attachment of draftAttachments) {
     const grouped = draftAttachmentsByDraftId.get(attachment.draft_id) ?? []
     grouped.push(attachment)
     draftAttachmentsByDraftId.set(attachment.draft_id, grouped)
