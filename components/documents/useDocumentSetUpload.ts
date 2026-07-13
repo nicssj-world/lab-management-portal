@@ -162,7 +162,7 @@ export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
       code,
       title: item.title || extractFormTitle(item.file.name) || item.file.name.replace(/\.[^.]+$/, ''),
       type: inferredType(code, mainDoc.type),
-      department: deptFromCode(code) ?? mainDoc.department ?? '',
+      department: mainDoc.department ?? deptFromCode(code) ?? '',
       duplicate: code ? { status: 'checking' } : { status: 'idle' },
       duplicateChoice: null,
     } : item))
@@ -178,7 +178,7 @@ export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
         ...entry,
         code,
         type: parsedType && (DOC_TYPES as readonly string[]).includes(parsedType) ? parsedType as DocType : entry.type,
-        department: deptFromCode(code) ?? entry.department,
+        department: mainDoc.department ?? deptFromCode(code) ?? entry.department,
         duplicate: code.trim() ? { status: 'checking' } : { status: 'idle' },
         duplicateChoice: null,
       }
@@ -223,18 +223,29 @@ export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
     const presignType = entry.group === 'register' && entry.duplicate.status === 'found' && entry.duplicate.document.status === 'Published'
       ? entry.duplicate.document.type
       : entry.group === 'register' ? entry.type : mainDoc.type
-    const params = new URLSearchParams({ fileName: entry.file.name, fileType: mime, fileSize: String(entry.file.size), type: presignType })
-    if (entry.group === 'attach') params.set('kind', 'attachment')
+    const setItemKind = entry.group === 'attach'
+      ? 'attach'
+      : entry.duplicate.status === 'found' && entry.duplicateChoice === 'revise-existing'
+        ? 'revise-existing'
+        : 'register'
+    const params = new URLSearchParams({
+      fileName: entry.file.name,
+      fileType: mime,
+      fileSize: String(entry.file.size),
+      type: presignType,
+      mainDocumentId: mainDoc.id,
+      setItemKind,
+    })
     const response = await fetch(`/api/admin/documents/presign-file?${params}`)
-    const presign = await parseRegisterSetResponse(response) as RegisterSetResponse & { uploadUrl?: string; key?: string; contentType?: string }
-    if (!response.ok || !presign.uploadUrl || !presign.key) throw new Error(presign.error ?? 'สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ')
+    const presign = await parseRegisterSetResponse(response) as RegisterSetResponse & { uploadUrl?: string; uploadId?: string; key?: string; contentType?: string }
+    if (!response.ok || !presign.uploadUrl || !presign.uploadId || !presign.key) throw new Error(presign.error ?? 'สร้าง URL อัปโหลดไฟล์ไม่สำเร็จ')
     const resolvedMime = presign.contentType || mime
     await uploadFileWithProgress(presign.uploadUrl, entry.file, resolvedMime, (percent) => {
       if (!mounted.current) return
       setCurrentProgress(percent)
       setOverallProgress(Math.round(((completed + percent / 100) / total) * 100))
     })
-    const uploaded = { key: presign.key, name: entry.file.name, size: entry.file.size, mime: resolvedMime }
+    const uploaded = { upload_id: presign.uploadId, key: presign.key, name: entry.file.name, size: entry.file.size, mime: resolvedMime }
     if (mounted.current) setEntries((current) => current.map((item) => item.id === entry.id ? { ...item, uploaded } : item))
     return uploaded
   }

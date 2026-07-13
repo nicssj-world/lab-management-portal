@@ -31,6 +31,9 @@ interface LinkedDoc {
   linked_doc_id: string
   created_by: string | null
   created_at: string
+  link_kind: 'related' | 'set'
+  set_mode: 'registered' | 'linked' | 'revision' | null
+  set_draft_id: string | null
   documents: {
     id: string
     document_code: string
@@ -458,6 +461,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</div>
                                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{d.document_code} · {d.type} · {fmtSize(d.file_size)}</div>
+                                  {l.link_kind === 'set' && <div style={{ fontSize: 10.5, color: '#B45309', marginTop: 2 }}>สมาชิกชุดเอกสาร · อ่านอย่างเดียว</div>}
                                 </div>
                               </div>
                               {d.file_url && d.file_name?.toLowerCase().endsWith('.pdf') && (
@@ -474,7 +478,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
                                 onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
                                 <Icon name="download" size={12} />
                               </button>
-                              {canDeleteAttach(l.created_by) && (['Draft', 'Review'].includes(doc.status) || ['Admin', 'Manager'].includes(userRole) || docRole === 'Document Controller') && (
+                              {l.link_kind !== 'set' && canDeleteAttach(l.created_by) && (['Draft', 'Review'].includes(doc.status) || ['Admin', 'Manager'].includes(userRole) || docRole === 'Document Controller') && (
                                 <button onClick={() => handleUnlinkDoc(l.id)} title="ยกเลิกการเชื่อมโยง"
                                   style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', flexShrink: 0 }}
                                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--danger)'; e.currentTarget.style.color = 'var(--danger)' }}

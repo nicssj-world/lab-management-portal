@@ -22,6 +22,10 @@ import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header
 import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
 import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
 import { purgeEphemeralAttachments } from '@/lib/documents/ephemeral-attachments'
+import {
+  findRegistrationSetTransitionBlocker,
+  type RegistrationSetMode,
+} from '@/lib/documents/registration-set-contracts'
 
 async function getActor() {
   const supabase = await createClient()
@@ -131,6 +135,62 @@ function canDeleteDocument(role: string, docRole: string | null) {
   return DOC_DELETE_ROLES.includes(docRole ?? role)
 }
 
+async function getRegistrationSetTransitionBlocker(documentId: string, targetStatus: string) {
+  const linksResult = await supabaseAdmin
+    .from('document_links')
+    .select('linked_doc_id, set_mode, set_draft_id')
+    .eq('document_id', documentId)
+    .eq('link_kind', 'set')
+  if (linksResult.error) throw linksResult.error
+  const links = linksResult.data ?? []
+  if (links.length === 0) return null
+
+  const memberIds = Array.from(new Set(links.map((link) => link.linked_doc_id)))
+  const draftIds = Array.from(new Set(
+    links.filter((link) => link.set_mode === 'revision' && link.set_draft_id).map((link) => link.set_draft_id as string),
+  ))
+  const [documentsResult, draftsResult] = await Promise.all([
+    supabaseAdmin.from('documents').select('id, document_code, status').in('id', memberIds).is('deleted_at', null),
+    draftIds.length > 0
+      ? supabaseAdmin.from('document_revision_drafts').select('id, document_id, status').in('id', draftIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (documentsResult.error) throw documentsResult.error
+  if (draftsResult.error) throw draftsResult.error
+
+  return findRegistrationSetTransitionBlocker(
+    links.map((link) => ({
+      linked_doc_id: link.linked_doc_id,
+      set_mode: link.set_mode as RegistrationSetMode,
+      set_draft_id: link.set_draft_id,
+    })),
+    new Map((documentsResult.data ?? []).map((document) => [document.id, document] as const)),
+    new Map((draftsResult.data ?? []).map((draft) => [draft.id, draft] as const)),
+    targetStatus,
+  )
+}
+
+async function findActiveRegistrationSet(documentId: string) {
+  const linksResult = await supabaseAdmin
+    .from('document_links')
+    .select('document_id, linked_doc_id')
+    .eq('link_kind', 'set')
+    .or(`document_id.eq.${documentId},linked_doc_id.eq.${documentId}`)
+  if (linksResult.error) throw linksResult.error
+  const mainIds = Array.from(new Set((linksResult.data ?? []).map((link) => link.document_id)))
+  if (mainIds.length === 0) return null
+  const mainResult = await supabaseAdmin
+    .from('documents')
+    .select('id, document_code, status')
+    .in('id', mainIds)
+    .in('status', ['Draft', 'Review', 'Approved'])
+    .is('deleted_at', null)
+    .limit(1)
+    .maybeSingle()
+  if (mainResult.error) throw mainResult.error
+  return mainResult.data
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -237,6 +297,15 @@ export async function PATCH(
       const allowed = allowedTransitions(current.status as DocStatus, actor.role, actor.doc_role ?? undefined)
       if (!allowed.includes(requestedStatus as DocStatus)) {
         return NextResponse.json({ error: 'สถานะที่เปลี่ยนไม่ได้รับอนุญาต' }, { status: 403 })
+      }
+      if (['Review', 'Approved', 'Published'].includes(requestedStatus)) {
+        const blocker = await getRegistrationSetTransitionBlocker(id, requestedStatus)
+        if (blocker) {
+          return NextResponse.json({
+            error: `ยังเปลี่ยนสถานะเอกสารหลักไม่ได้: ${blocker.documentCode} — ${blocker.reason}`,
+            blocker,
+          }, { status: 422 })
+        }
       }
     }
 
@@ -750,6 +819,13 @@ export async function DELETE(
   const { id } = await params
 
   try {
+    const activeSet = await findActiveRegistrationSet(id)
+    if (activeSet) {
+      return NextResponse.json({
+        error: `ไม่สามารถลบเอกสารที่อยู่ในชุด ${activeSet.document_code} ขณะที่ชุดยังอยู่ในสถานะ ${activeSet.status}`,
+      }, { status: 409 })
+    }
+
     const { data: deletedDoc, error: dbErr } = await supabaseAdmin
       .from('documents')
       .update({ deleted_at: new Date().toISOString() })

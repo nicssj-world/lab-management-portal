@@ -18,6 +18,7 @@ export type DuplicateState =
   | { status: 'found'; document: Document }
 
 export type UploadedFile = {
+  upload_id: string
   key: string
   name: string
   size: number
@@ -94,7 +95,7 @@ export function createUploadEntry(file: File, mainDoc: Document): UploadEntry {
     code,
     title: extractFormTitle(file.name) ?? withoutExtension(file.name),
     type: inferredType(code, mainDoc.type),
-    department: deptFromCode(code) ?? mainDoc.department ?? '',
+    department: mainDoc.department ?? deptFromCode(code) ?? '',
     duplicate: registration ? { status: 'checking' } : { status: 'idle' },
     duplicateChoice: null,
     uploaded: null,

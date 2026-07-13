@@ -9,7 +9,7 @@ import type { RegisterSetItem } from '@/lib/validations/document-set'
 
 const item: Extract<RegisterSetItem, { kind: 'register' }> = {
   kind: 'register',
-  file: { key: 'documents/form/2569/stable.pdf', name: 'Fm-QP-01.pdf', size: 123, mime: 'application/pdf' },
+  file: { upload_id: '550e8400-e29b-41d4-a716-446655440000', key: 'documents/form/2569/stable.pdf', name: 'Fm-QP-01.pdf', size: 123, mime: 'application/pdf' },
   document_code: 'FM-QP-01',
   title: 'แบบฟอร์มทดสอบ',
   type: 'Form',

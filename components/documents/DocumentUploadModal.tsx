@@ -18,6 +18,7 @@ import { REVIEW_TRACKED_TYPES } from '@/lib/documents/review'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import type { Document } from '@/lib/supabase/types'
 import {
+  canOfferRegistrationSet,
   completeSuccessfulDocumentSave,
   normalizeRegisterSetSelection,
   requiresControlledCover as requiresCover,
@@ -881,7 +882,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
             </div>
           </div>
 
-          {!isEdit && !isImportCurrent && requiresCover(type) && (
+          {canOfferRegistrationSet({ isEdit, isImportCurrent, type, hasCallback: Boolean(onRegisterSet) }) && (
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '11px 13px', borderRadius: 10, border: '1px solid rgba(30,95,173,.2)', background: 'rgba(30,95,173,.05)', cursor: 'pointer' }}>
               <input
                 type="checkbox"

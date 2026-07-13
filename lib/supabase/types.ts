@@ -340,6 +340,32 @@ export interface Document {
   updated_at: string
 }
 
+export interface DocumentLink {
+  id: string
+  document_id: string
+  linked_doc_id: string
+  link_kind: 'related' | 'set'
+  set_mode: 'registered' | 'linked' | 'revision' | null
+  set_draft_id: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface DocumentSetUpload {
+  id: string
+  document_id: string
+  actor_id: string
+  upload_kind: 'register' | 'attach' | 'revise-existing'
+  storage_key: string
+  file_name: string
+  file_size: number
+  mime_type: string
+  expires_at: string
+  claimed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface DocumentRevision {
   id: string
   document_id: string

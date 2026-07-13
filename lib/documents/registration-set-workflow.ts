@@ -1,4 +1,5 @@
 import { canMoveToStatus } from './workflow'
+import type { RegistrationSetMode } from './registration-set-contracts'
 
 export type RegistrationSetNextStatus = 'Review' | 'Approved' | 'Published'
 
@@ -23,6 +24,7 @@ export interface RegistrationSetWorkflowDraft {
 }
 
 export interface RegistrationSetWorkflowMember {
+  setMode?: RegistrationSetMode
   document: RegistrationSetWorkflowDocument
   activeDraft: RegistrationSetWorkflowDraft | null
 }
@@ -120,8 +122,19 @@ export function planRegistrationSetTransition(set: RegistrationSetWorkflowInput)
 
   const targets: RegistrationSetMutationTarget[] = []
   for (const member of set.members) {
-    if (!member.activeDraft && member.document.status === 'Published') continue
-    const routed = member.activeDraft ?? member.document
+    if (member.setMode === 'linked') continue
+    const activeDraft = member.setMode === 'registered' ? null : member.activeDraft
+    if (member.setMode === 'revision' && !activeDraft) {
+      return {
+        nextStatus: action.nextStatus,
+        actionLabel: action.label,
+        targets,
+        blocker: { documentCode: member.document.documentCode, reason: 'ไม่พบ working revision ที่ชุดนี้เป็นเจ้าของ' },
+      }
+    }
+    // Backward-compatible fallback for callers without persisted mode metadata.
+    if (!member.setMode && !activeDraft && member.document.status === 'Published') continue
+    const routed = activeDraft ?? member.document
     if (routed.status === action.nextStatus) continue
     if (routed.status !== set.mainDocument.status) {
       return {
@@ -136,7 +149,7 @@ export function planRegistrationSetTransition(set: RegistrationSetWorkflowInput)
     }
     const blocker = readinessBlocker(member.document.documentCode, routed, action.nextStatus)
     if (blocker) return { nextStatus: action.nextStatus, actionLabel: action.label, targets, blocker }
-    targets.push(mutationTarget(member.document, member.activeDraft, action.nextStatus, false))
+    targets.push(mutationTarget(member.document, activeDraft, action.nextStatus, false))
   }
 
   const mainBlocker = readinessBlocker(set.mainDocument.documentCode, set.mainDocument, action.nextStatus)

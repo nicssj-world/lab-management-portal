@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getActiveRevisionDrafts, getNewDraftDocuments, getRegistrationSets } from '@/lib/documents/pending'
+import { registrationSetQueueExcludedIds } from '@/lib/documents/registration-set-contracts'
 import { PendingClient, type PendingDoc, type AnnualReviewDoc } from './PendingClient'
 
 export const dynamic = 'force-dynamic'
@@ -37,7 +38,10 @@ export default async function PendingApprovalPage() {
   // source uploaded — the "เอกสารใหม่ รอจัดทำ PDF" queue.
   const draftsInReview = activeDrafts.filter((d) => d.status === 'Review')
   const draftsApproved = activeDrafts.filter((d) => d.status === 'Approved')
-  const setMemberIds = new Set(sets.flatMap((set) => set.memberIds))
+  const setQueueExcludedIds = registrationSetQueueExcludedIds(sets.map((set) => ({
+    mainDocumentId: set.mainDocument.id,
+    memberIds: set.memberIds,
+  })))
 
   const draftDocIds = Array.from(new Set(activeDrafts.map((d) => d.documentId)))
 
@@ -83,22 +87,22 @@ export default async function PendingApprovalPage() {
   }
 
   const sourceDocs = toDraftPendingDocs(draftsAwaitingDcc)
-    .filter((doc) => !setMemberIds.has(doc.id))
+    .filter((doc) => !setQueueExcludedIds.has(doc.id))
 
   const reviewDocs: PendingDoc[] = [
     ...((reviewRes.data ?? []) as DocRow[]).map((d) => ({ ...d, kind: 'document' as const })),
     ...toDraftPendingDocs(draftsInReview),
-  ].filter((doc) => !setMemberIds.has(doc.id))
+  ].filter((doc) => !setQueueExcludedIds.has(doc.id))
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
 
   const approvedDocs: PendingDoc[] = [
     ...((approvedRes.data ?? []) as DocRow[]).map((d) => ({ ...d, kind: 'document' as const })),
     ...toDraftPendingDocs(draftsApproved),
-  ].filter((doc) => !setMemberIds.has(doc.id))
+  ].filter((doc) => !setQueueExcludedIds.has(doc.id))
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
 
   const newDocs: PendingDoc[] = newDraftRows
-    .filter((d) => !setMemberIds.has(d.id))
+    .filter((d) => !setQueueExcludedIds.has(d.id))
     .map((d) => ({
       id: d.id,
       document_code: d.document_code,
