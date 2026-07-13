@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized, type Actor } from '@/lib/auth/guards'
 import { isPdfFile, isSourceFile, nextRevisionValue } from '@/lib/documents/workflow'
+import {
+  classifyRegisterRetry,
+  hasMatchingFileKey,
+  hasMatchingSourceKey,
+  type RegisteredRetryDocument,
+} from '@/lib/documents/register-set-idempotency'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { RegisterSetSchema, type RegisterSetItem } from '@/lib/validations/document-set'
 
@@ -101,20 +107,94 @@ async function linkExistingDocument(mainDocumentId: string, existingDocumentId: 
   }
 }
 
-async function registerDocument(mainDocumentId: string, item: Extract<RegisterSetItem, { kind: 'register' }>, actor: Actor) {
-  const documentCode = item.document_code.trim().toUpperCase()
-  const duplicate = await supabaseAdmin
+const REGISTER_RETRY_COLUMNS = 'id, document_code, title, type, department, revision, status, visibility, owner_id, owner_name, reviewer_name, approver_name, edit_date, effective_date, word_url, pending_file_url, deleted_at'
+
+async function findDocumentByCode(documentCode: string) {
+  const result = await supabaseAdmin
     .from('documents')
-    .select('id, revision, deleted_at')
+    .select(REGISTER_RETRY_COLUMNS)
     .eq('document_code', documentCode)
     .maybeSingle()
-  throwIfError(duplicate.error)
-  if (duplicate.data) {
-    const state = duplicate.data.deleted_at ? ' (ถูกลบแบบ soft-delete)' : ''
-    throw new Error(`รหัสเอกสาร ${documentCode} มีอยู่ในระบบแล้ว${state} (document_id: ${duplicate.data.id})`)
-  }
+  throwIfError(result.error)
+  return result.data as RegisteredRetryDocument | null
+}
 
+async function reuseRegisteredDocument(
+  mainDocumentId: string,
+  document: RegisteredRetryDocument,
+  item: Extract<RegisterSetItem, { kind: 'register' }>,
+  actor: Actor,
+  kind: 'pdf' | 'source',
+) {
+  const links = await supabaseAdmin
+    .from('document_links')
+    .select('id, document_id')
+    .eq('linked_doc_id', document.id)
+    .eq('link_kind', 'set')
+  throwIfError(links.error)
+  const classification = classifyRegisterRetry({
+    document,
+    item,
+    actorId: actor.id,
+    mainDocumentId,
+    setLinkMainIds: (links.data ?? []).map((link) => link.document_id),
+    fileKind: kind,
+  })
+  if (classification === 'linked-retry') {
+    return { document, link: links.data?.find((link) => link.document_id === mainDocumentId) ?? null, reused: true }
+  }
+  if (classification === 'stranded-retry') {
+    return {
+      document,
+      link: await setLink(mainDocumentId, document.id, actor),
+      reused: true,
+      completedStranded: true,
+    }
+  }
+  const state = document.deleted_at ? ' (ถูกลบแบบ soft-delete)' : ''
+  throw new Error(`รหัสเอกสาร ${document.document_code} มีอยู่ในระบบแล้ว${state} (document_id: ${document.id})`)
+}
+
+async function findDocumentAttachment(mainDocumentId: string, fileKey: string) {
+  const matches = await supabaseAdmin
+    .from('document_attachments')
+    .select('*')
+    .eq('document_id', mainDocumentId)
+    .eq('file_url', fileKey)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+  throwIfError(matches.error)
+  const [canonical, ...duplicates] = matches.data ?? []
+  if (duplicates.length > 0) {
+    const cleaned = await supabaseAdmin.from('document_attachments').delete().in('id', duplicates.map((row) => row.id))
+    throwIfError(cleaned.error)
+  }
+  return canonical ?? null
+}
+
+async function findDraftAttachment(draftId: string, fileKey: string) {
+  const matches = await supabaseAdmin
+    .from('document_revision_draft_attachments')
+    .select('*')
+    .eq('draft_id', draftId)
+    .eq('file_url', fileKey)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+  throwIfError(matches.error)
+  const [canonical, ...duplicates] = matches.data ?? []
+  if (duplicates.length > 0) {
+    const cleaned = await supabaseAdmin.from('document_revision_draft_attachments').delete().in('id', duplicates.map((row) => row.id))
+    throwIfError(cleaned.error)
+  }
+  return canonical ?? null
+}
+
+async function registerDocument(mainDocumentId: string, item: Extract<RegisterSetItem, { kind: 'register' }>, actor: Actor) {
+  const documentCode = item.document_code.trim().toUpperCase()
   const kind = fileKind(item.file)
+  const duplicate = await findDocumentByCode(documentCode)
+  if (duplicate) return reuseRegisteredDocument(mainDocumentId, duplicate, item, actor, kind)
+
   const fileFields = kind === 'source'
     ? {
         word_url: item.file.key,
@@ -149,6 +229,10 @@ async function registerDocument(mainDocumentId: string, item: Extract<RegisterSe
     })
     .select()
     .single()
+  if (inserted.error?.code === '23505') {
+    const racedDocument = await findDocumentByCode(documentCode)
+    if (racedDocument) return reuseRegisteredDocument(mainDocumentId, racedDocument, item, actor, kind)
+  }
   throwIfError(inserted.error)
   const document = inserted.data
 
@@ -186,6 +270,11 @@ async function registerDocument(mainDocumentId: string, item: Extract<RegisterSe
 }
 
 async function attachFile(mainDocumentId: string, item: Extract<RegisterSetItem, { kind: 'attach' }>, actor: Actor) {
+  const existing = await findDocumentAttachment(mainDocumentId, item.file.key)
+  if (hasMatchingFileKey(existing, item.file.key)) {
+    return { attachment: existing, reused: true }
+  }
+
   const inserted = await supabaseAdmin
     .from('document_attachments')
     .insert({
@@ -200,7 +289,7 @@ async function attachFile(mainDocumentId: string, item: Extract<RegisterSetItem,
     .select()
     .single()
   throwIfError(inserted.error)
-  return { attachment: inserted.data }
+  return { attachment: await findDocumentAttachment(mainDocumentId, item.file.key) ?? inserted.data }
 }
 
 async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetItem, { kind: 'revise-existing' }>, actor: Actor) {
@@ -266,35 +355,44 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
   const kind = fileKind(item.file)
   let fileResult: unknown
   if (kind === 'source') {
-    const updated = await supabaseAdmin
-      .from('document_revision_drafts')
-      .update({
-        word_url: item.file.key,
-        word_name: item.file.name,
-        word_size: item.file.size,
-      })
-      .eq('id', draft.id)
-      .select()
-      .single()
-    throwIfError(updated.error)
-    draft = updated.data
-    fileResult = updated.data
+    if (hasMatchingSourceKey(draft, item.file.key)) {
+      fileResult = draft
+    } else {
+      const updated = await supabaseAdmin
+        .from('document_revision_drafts')
+        .update({
+          word_url: item.file.key,
+          word_name: item.file.name,
+          word_size: item.file.size,
+        })
+        .eq('id', draft.id)
+        .select()
+        .single()
+      throwIfError(updated.error)
+      draft = updated.data
+      fileResult = updated.data
+    }
   } else {
-    const inserted = await supabaseAdmin
-      .from('document_revision_draft_attachments')
-      .insert({
-        draft_id: draft.id,
-        document_id: current.id,
-        file_url: item.file.key,
-        file_name: item.file.name,
-        file_size: item.file.size,
-        mime_type: item.file.mime,
-        uploaded_by: actor.id,
-      })
-      .select()
-      .single()
-    throwIfError(inserted.error)
-    fileResult = inserted.data
+    const existingFile = await findDraftAttachment(draft.id, item.file.key)
+    if (hasMatchingFileKey(existingFile, item.file.key)) {
+      fileResult = existingFile
+    } else {
+      const inserted = await supabaseAdmin
+        .from('document_revision_draft_attachments')
+        .insert({
+          draft_id: draft.id,
+          document_id: current.id,
+          file_url: item.file.key,
+          file_name: item.file.name,
+          file_size: item.file.size,
+          mime_type: item.file.mime,
+          uploaded_by: actor.id,
+        })
+        .select()
+        .single()
+      throwIfError(inserted.error)
+      fileResult = await findDraftAttachment(draft.id, item.file.key) ?? inserted.data
+    }
   }
 
   return { document: current, draft, file: fileResult, reused: !created }
