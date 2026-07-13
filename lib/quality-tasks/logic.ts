@@ -1,5 +1,5 @@
 import type { PermLevel } from '@/lib/permissions'
-import type { QualityTaskSchedule, TaskSchedulingState, TaskStatus, TaskUrgency } from './types'
+import type { AssigneeEntry, QualityTaskSchedule, TaskSchedulingState, TaskStatus, TaskUrgency } from './types'
 
 const DAY_MS = 86_400_000
 
@@ -48,8 +48,10 @@ export function deriveTaskState(
   return { scheduling, urgency, effectiveDueDate }
 }
 
-export function resolveAssigneeIds(defaultIds: string[], overrideIds: string[]) {
-  return overrideIds.length ? [...new Set(overrideIds)] : [...new Set(defaultIds)]
+// Same "non-empty override replaces the default wholesale" rule the old resolveAssigneeIds
+// used, generalized to entries that may be a linked user or a manually-typed name.
+export function resolveAssigneeEntries(defaultEntries: AssigneeEntry[], overrideEntries: AssigneeEntry[]) {
+  return overrideEntries.length ? overrideEntries : defaultEntries
 }
 
 export function canMutateOccurrence(level: PermLevel, isAssigned: boolean, _isUnassigned: boolean) {

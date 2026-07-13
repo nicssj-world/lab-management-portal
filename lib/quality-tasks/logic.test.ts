@@ -4,7 +4,7 @@ import {
   completionBlockReason,
   deriveTaskState,
   generatePeriods,
-  resolveAssigneeIds,
+  resolveAssigneeEntries,
 } from './logic'
 import type { QualityTaskSchedule } from './types'
 
@@ -47,8 +47,15 @@ assert.equal(
   'completed',
 )
 
-assert.deepEqual(resolveAssigneeIds(['default-a', 'default-b'], []), ['default-a', 'default-b'])
-assert.deepEqual(resolveAssigneeIds(['default-a'], ['override-a']), ['override-a'])
+assert.deepEqual(
+  resolveAssigneeEntries([{ userId: 'default-a', manualName: null }, { userId: 'default-b', manualName: null }], []),
+  [{ userId: 'default-a', manualName: null }, { userId: 'default-b', manualName: null }],
+)
+assert.deepEqual(
+  resolveAssigneeEntries([{ userId: 'default-a', manualName: null }], [{ userId: null, manualName: 'Manual Name' }]),
+  [{ userId: null, manualName: 'Manual Name' }],
+  'a non-empty override (even a manual-only entry) replaces the default wholesale',
+)
 assert.equal(canMutateOccurrence('edit', false, false), true, 'edit permission can manage unassigned work')
 assert.equal(canMutateOccurrence('view', true, false), true, 'assigned viewer can perform work')
 assert.equal(canMutateOccurrence('view', false, false), false)

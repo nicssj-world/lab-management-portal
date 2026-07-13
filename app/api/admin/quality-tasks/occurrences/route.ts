@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { qualityTaskContext, qualityTaskError } from '@/lib/quality-tasks/api'
 import { getQualityTaskOccurrences, materializeOccurrence } from '@/lib/quality-tasks/server'
+import { assigneeEntrySchema } from '../templates/route'
 
 const createSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('scheduled'), scheduleId: z.string().uuid(), periodStart: z.string().date() }),
-  z.object({ mode: z.literal('adHoc'), templateId: z.string().uuid(), label: z.string().trim().min(1), dueDate: z.string().date(), assigneeIds: z.array(z.string().uuid()) }),
+  z.object({ mode: z.literal('adHoc'), templateId: z.string().uuid(), label: z.string().trim().min(1), dueDate: z.string().date(), assignees: z.array(assigneeEntrySchema) }),
 ])
 
 export async function GET(req: NextRequest) {
