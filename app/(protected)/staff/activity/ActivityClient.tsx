@@ -71,6 +71,14 @@ const ACTION_LABELS: Record<string, string> = {
   // งานคุณภาพ
   'quality_task.attachment.upload':               'อัปโหลดไฟล์แนบงานคุณภาพ',
   'quality_task.attachment.delete':               'ลบไฟล์แนบงานคุณภาพ',
+  'quality_task.instance.create':                 'สร้างงานเฉพาะกิจ (งานคุณภาพ)',
+  'quality_task.instance.materialize':             'ระบบสร้างงานตามรอบ (งานคุณภาพ)',
+  'quality_task.instance.schedule':                'กำหนดวัน/แก้ไขรายละเอียด (งานคุณภาพ)',
+  'quality_task.instance.complete':                'ทำงานคุณภาพเสร็จ',
+  'quality_task.instance.reopen':                  'เปิดงานคุณภาพใหม่',
+  'quality_task.template.create':                 'เพิ่มกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
+  'quality_task.template.update':                 'แก้ไขกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
+  'quality_task.template.delete':                  'ลบกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   // ข่าวสาร
   'create_news':                                  'เพิ่มข่าวสาร',
   'update_news':                                  'แก้ไขข่าวสาร',
@@ -123,6 +131,7 @@ const CATEGORIES = [
   { key: 'risk', label: 'ความเสี่ยง' },
   { key: 'kpi', label: 'KPI' },
   { key: 'news', label: 'ข่าวสาร' },
+  { key: 'quality_task', label: 'งานคุณภาพ' },
 ]
 
 function dotColor(action: string | null) {
@@ -134,6 +143,7 @@ function dotColor(action: string | null) {
   if (a.startsWith('risk.') || a.startsWith('rejection.')) return '#DC2626'
   if (a.startsWith('kpi.'))                                 return '#16A34A'
   if (a.includes('news'))                                   return '#D97706'
+  if (a.startsWith('quality_task.'))                        return '#9333EA'
   return '#64748B'
 }
 

@@ -14,6 +14,12 @@ const CATEGORY_ACTIONS: Record<string, string[]> = {
   risk:     ['risk.create', 'risk.update', 'risk.delete', 'risk.close'],
   kpi:      ['kpi.entry'],
   news:     ['create_news', 'update_news', 'delete_news'],
+  quality_task: [
+    'quality_task.instance.create', 'quality_task.instance.materialize', 'quality_task.instance.schedule',
+    'quality_task.instance.complete', 'quality_task.instance.reopen',
+    'quality_task.template.create', 'quality_task.template.update', 'quality_task.template.delete',
+    'quality_task.attachment.upload', 'quality_task.attachment.delete',
+  ],
 }
 
 async function getActor() {
