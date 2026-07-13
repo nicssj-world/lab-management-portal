@@ -11,6 +11,7 @@ import {
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { RegisterSetSchema, type RegisterSetItem } from '@/lib/validations/document-set'
 import {
+  decideSetLinkConversion,
   validateSetUploadClaim,
   validateSetUploadFile,
   validateSetUploadObject,
@@ -90,17 +91,25 @@ async function setLink(
   if (existing) {
     assertMatchingSetLink(existing, mode, draftId)
     if (existing.link_kind === 'set') return existing
+    const desired = { link_kind: 'set', set_mode: mode, set_draft_id: draftId }
     const converted = await supabaseAdmin
       .from('document_links')
-      .update({ link_kind: 'set', set_mode: mode, set_draft_id: draftId })
+      .update(desired)
       .eq('id', existing.id)
+      .eq('link_kind', 'related')
+      .is('set_mode', null)
+      .is('set_draft_id', null)
       .select()
-      .single()
-    if (converted.error?.code === '23505' && draftId) {
-      throw new Error(`working revision ${draftId} เป็นสมาชิกของชุดเอกสารอื่นอยู่แล้ว`)
+      .maybeSingle()
+    if (converted.error && converted.error.code !== '23505') throw converted.error
+    const reread = converted.data ? null : await findLink(documentId, linkedDocumentId)
+    if (decideSetLinkConversion({ updated: converted.data, reread }, desired) !== 'accepted') {
+      if (converted.error?.code === '23505' && draftId) {
+        throw new Error(`working revision ${draftId} เป็นสมาชิกของชุดเอกสารอื่นอยู่แล้ว`)
+      }
+      throw new Error('ลิงก์เอกสารถูกแก้ไขพร้อมกันด้วยโหมดอื่น กรุณาลองใหม่')
     }
-    throwIfError(converted.error)
-    return converted.data
+    return converted.data ?? reread
   }
 
   const inserted = await supabaseAdmin
@@ -593,13 +602,28 @@ async function requestedDocumentType(item: RegisterSetItem) {
   return result.data.type
 }
 
-async function verifySetUpload(mainDocumentId: string, item: RegisterSetItem, actor: Actor) {
+type VerifiedSetUpload = { uploadId: string; leaseToken: string | null }
+
+const REGISTER_LEASE_MS = 15 * 60 * 1000
+
+async function releaseSetUploadLease(uploadId: string, leaseToken: string) {
+  const result = await supabaseAdmin
+    .from('document_set_uploads')
+    .update({ lease_token: null, lease_kind: null, lease_expires_at: null, updated_at: new Date().toISOString() })
+    .eq('id', uploadId)
+    .eq('lease_token', leaseToken)
+    .eq('lease_kind', 'register')
+    .is('claimed_at', null)
+  throwIfError(result.error)
+}
+
+async function verifySetUpload(mainDocumentId: string, item: RegisterSetItem, actor: Actor): Promise<VerifiedSetUpload | null> {
   const uploadKind = setUploadKind(item)
   if (!uploadKind || !('file' in item)) return null
 
-  const ticketResult = await supabaseAdmin
+  let ticketResult = await supabaseAdmin
     .from('document_set_uploads')
-    .select('id, document_id, actor_id, upload_kind, storage_key, file_name, file_size, mime_type, expires_at, claimed_at')
+    .select('id, document_id, actor_id, upload_kind, storage_key, file_name, file_size, mime_type, expires_at, claimed_at, lease_token, lease_kind, lease_expires_at')
     .eq('id', item.file.upload_id)
     .maybeSingle()
   throwIfError(ticketResult.error)
@@ -623,38 +647,125 @@ async function verifySetUpload(mainDocumentId: string, item: RegisterSetItem, ac
   )
   if (!claimValidation.ok) throw new Error(`upload ticket ไม่ถูกต้อง: ${claimValidation.error}`)
 
-  const type = await requestedDocumentType(item)
-  const fileValidation = validateSetUploadFile({
-    uploadKind,
-    documentType: type,
-    name: item.file.name,
-    key: item.file.key,
-    mime: item.file.mime,
-  })
-  if (!fileValidation.ok) throw new Error(`ข้อมูลไฟล์ไม่ถูกต้อง: ${fileValidation.error}`)
-
-  let object
-  try {
-    object = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: item.file.key }))
-  } catch {
-    throw new Error('ไม่พบไฟล์ที่อัปโหลดใน R2')
+  let leaseToken: string | null = null
+  if (!ticketResult.data.claimed_at) {
+    const now = new Date()
+    const nowIso = now.toISOString()
+    leaseToken = crypto.randomUUID()
+    const leased = await supabaseAdmin
+      .from('document_set_uploads')
+      .update({
+        lease_token: leaseToken,
+        lease_kind: 'register',
+        lease_expires_at: new Date(now.getTime() + REGISTER_LEASE_MS).toISOString(),
+        updated_at: nowIso,
+      })
+      .eq('id', item.file.upload_id)
+      .eq('document_id', mainDocumentId)
+      .eq('actor_id', actor.id)
+      .eq('upload_kind', uploadKind)
+      .eq('storage_key', item.file.key)
+      .eq('file_name', item.file.name)
+      .eq('file_size', item.file.size)
+      .eq('mime_type', item.file.mime)
+      .is('claimed_at', null)
+      .gt('expires_at', nowIso)
+      .or(`lease_token.is.null,lease_expires_at.lt.${nowIso}`)
+      .select('id, document_id, actor_id, upload_kind, storage_key, file_name, file_size, mime_type, expires_at, claimed_at, lease_token, lease_kind, lease_expires_at')
+      .maybeSingle()
+    throwIfError(leased.error)
+    if (leased.data) {
+      ticketResult = leased
+    } else {
+      leaseToken = null
+      const reread = await supabaseAdmin
+        .from('document_set_uploads')
+        .select('id, document_id, actor_id, upload_kind, storage_key, file_name, file_size, mime_type, expires_at, claimed_at, lease_token, lease_kind, lease_expires_at')
+        .eq('id', item.file.upload_id)
+        .maybeSingle()
+      throwIfError(reread.error)
+      if (!reread.data) throw new Error('upload ticket ถูกลบหรือหมดอายุระหว่างดำเนินการ')
+      const concurrentRetry = await isExactIdempotentRetry(mainDocumentId, item, actor)
+      const rereadValidation = validateSetUploadClaim(
+        reread.data as SetUploadClaimContract,
+        {
+          uploadId: item.file.upload_id,
+          mainDocumentId,
+          actorId: actor.id,
+          uploadKind,
+          key: item.file.key,
+          name: item.file.name,
+          size: item.file.size,
+          mime: item.file.mime,
+        },
+        new Date(),
+        concurrentRetry,
+      )
+      if (!rereadValidation.ok || !reread.data.claimed_at) {
+        throw new Error('upload ticket กำลังถูกใช้งาน หมดอายุ หรือมีข้อมูลเปลี่ยนแปลง')
+      }
+      ticketResult = reread
+    }
   }
-  const objectValidation = validateSetUploadObject(item.file.size, item.file.mime, {
-    contentLength: object.ContentLength,
-    contentType: object.ContentType,
-  })
-  if (!objectValidation.ok) throw new Error(`ไฟล์ใน R2 ไม่ตรงกับ upload ticket: ${objectValidation.error}`)
-  return ticketResult.data.id as string
+
+  try {
+    const type = await requestedDocumentType(item)
+    const fileValidation = validateSetUploadFile({
+      uploadKind,
+      documentType: type,
+      name: item.file.name,
+      key: item.file.key,
+      mime: item.file.mime,
+    })
+    if (!fileValidation.ok) throw new Error(`ข้อมูลไฟล์ไม่ถูกต้อง: ${fileValidation.error}`)
+
+    let object
+    try {
+      object = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: item.file.key }))
+    } catch {
+      throw new Error('ไม่พบไฟล์ที่อัปโหลดใน R2')
+    }
+    const objectValidation = validateSetUploadObject(item.file.size, item.file.mime, {
+      contentLength: object.ContentLength,
+      contentType: object.ContentType,
+    })
+    if (!objectValidation.ok) throw new Error(`ไฟล์ใน R2 ไม่ตรงกับ upload ticket: ${objectValidation.error}`)
+    if (!ticketResult.data) throw new Error('upload ticket หายไประหว่างตรวจสอบไฟล์')
+    return { uploadId: ticketResult.data.id as string, leaseToken }
+  } catch (error) {
+    if (leaseToken) {
+      try {
+        await releaseSetUploadLease(item.file.upload_id, leaseToken)
+      } catch (releaseError) {
+        console.error('Set upload verification lease release failed', {
+          uploadId: item.file.upload_id,
+          error: errorMessage(releaseError),
+        })
+      }
+    }
+    throw error
+  }
 }
 
-async function markSetUploadClaimed(uploadId: string) {
+async function markSetUploadClaimed(uploadId: string, leaseToken: string) {
   const now = new Date().toISOString()
   const result = await supabaseAdmin
     .from('document_set_uploads')
-    .update({ claimed_at: now, updated_at: now })
+    .update({
+      claimed_at: now,
+      lease_token: null,
+      lease_kind: null,
+      lease_expires_at: null,
+      updated_at: now,
+    })
     .eq('id', uploadId)
+    .eq('lease_token', leaseToken)
+    .eq('lease_kind', 'register')
     .is('claimed_at', null)
+    .select('id')
+    .maybeSingle()
   throwIfError(result.error)
+  if (!result.data) throw new Error('ไม่สามารถยืนยันการใช้ upload ticket เพราะ lease เปลี่ยนแปลง')
 }
 
 async function processItem(mainDocumentId: string, item: RegisterSetItem, actor: Actor) {
@@ -703,13 +814,26 @@ export async function POST(req: NextRequest, { params }: Params) {
   const succeeded: ItemSuccess[] = []
   const failed: ItemFailure[] = []
   for (const [index, item] of parsed.data.items.entries()) {
+    let verifiedUpload: VerifiedSetUpload | null = null
     try {
       await requireDraftMainDocument(id)
-      const uploadId = await verifySetUpload(id, item, actor)
+      verifiedUpload = await verifySetUpload(id, item, actor)
       const data = await processItem(id, item, actor)
-      if (uploadId) await markSetUploadClaimed(uploadId)
+      if (verifiedUpload?.leaseToken) {
+        await markSetUploadClaimed(verifiedUpload.uploadId, verifiedUpload.leaseToken)
+      }
       succeeded.push({ index, kind: item.kind, item, data })
     } catch (error) {
+      if (verifiedUpload?.leaseToken) {
+        try {
+          await releaseSetUploadLease(verifiedUpload.uploadId, verifiedUpload.leaseToken)
+        } catch (releaseError) {
+          console.error('Set upload register lease release failed', {
+            uploadId: verifiedUpload.uploadId,
+            error: errorMessage(releaseError),
+          })
+        }
+      }
       failed.push({ index, kind: item.kind, item, error: errorMessage(error) })
     }
   }

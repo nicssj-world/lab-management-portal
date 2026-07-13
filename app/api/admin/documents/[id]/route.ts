@@ -24,8 +24,10 @@ import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
 import { purgeEphemeralAttachments } from '@/lib/documents/ephemeral-attachments'
 import {
   findRegistrationSetTransitionBlocker,
+  validateIncomingSetTransition,
   type RegistrationSetMode,
 } from '@/lib/documents/registration-set-contracts'
+import { getActiveIncomingDocumentSetMemberships } from '@/lib/documents/active-registration-sets'
 
 async function getActor() {
   const supabase = await createClient()
@@ -297,6 +299,19 @@ export async function PATCH(
       const allowed = allowedTransitions(current.status as DocStatus, actor.role, actor.doc_role ?? undefined)
       if (!allowed.includes(requestedStatus as DocStatus)) {
         return NextResponse.json({ error: 'สถานะที่เปลี่ยนไม่ได้รับอนุญาต' }, { status: 403 })
+      }
+      const incomingMemberships = await getActiveIncomingDocumentSetMemberships(id)
+      const incomingBlocker = validateIncomingSetTransition(
+        incomingMemberships,
+        current.status,
+        requestedStatus,
+        'document',
+      )
+      if (incomingBlocker) {
+        return NextResponse.json({
+          error: `สถานะสมาชิกไม่ตรงกับชุดเอกสาร ${incomingBlocker.mainDocumentCode}: ${incomingBlocker.reason}`,
+          blocker: incomingBlocker,
+        }, { status: 422 })
       }
       if (['Review', 'Approved', 'Published'].includes(requestedStatus)) {
         const blocker = await getRegistrationSetTransitionBlocker(id, requestedStatus)
@@ -735,7 +750,7 @@ export async function PATCH(
         .catch(() => {})
     }
 
-    if (newStatus === 'Published' && current.status !== 'Published') {
+    if (doc.status === 'Published') {
       try {
         await purgeEphemeralAttachments(id)
       } catch (err) {

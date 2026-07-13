@@ -2,12 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   findRegistrationSetTransitionBlocker,
+  decideSetLinkConversion,
+  decideSetUploadLease,
   isEphemeralSetStorageKey,
   registrationSetQueueExcludedIds,
   selectRegistrationSetDraft,
   validateSetUploadClaim,
   validateSetUploadFile,
   validateSetUploadObject,
+  validateIncomingSetTransition,
 } from './registration-set-contracts'
 
 function validationError(result: { ok: true } | { ok: false; error: string }) {
@@ -100,6 +103,9 @@ test('upload claim matching enforces identity, namespace, metadata, expiry, and 
   assert.match(validationError(validateSetUploadClaim(claim, submission, new Date('2026-07-13T01:00:00.000Z'), false)), /expired/)
   assert.match(validationError(validateSetUploadClaim({ ...claim, claimed_at: '2026-07-13T00:58:00.000Z' }, submission, new Date('2026-07-13T00:59:00.000Z'), false)), /claimed/)
   assert.equal(validateSetUploadClaim({ ...claim, claimed_at: '2026-07-13T00:58:00.000Z' }, submission, new Date('2026-07-13T00:59:00.000Z'), true).ok, true)
+  const expiredClaimed = { ...claim, expires_at: '2026-07-12T23:00:00.000Z', claimed_at: '2026-07-12T22:00:00.000Z' }
+  assert.equal(validateSetUploadClaim(expiredClaimed, submission, new Date('2026-07-13T00:59:00.000Z'), true).ok, true)
+  assert.match(validationError(validateSetUploadClaim(expiredClaimed, submission, new Date('2026-07-13T00:59:00.000Z'), false)), /claimed/)
 })
 
 test('set file validation cross-checks extension, MIME, key, and requested document type', () => {
@@ -125,4 +131,65 @@ test('R2 HEAD verification requires exact size and reliable content type', () =>
   assert.match(validationError(validateSetUploadObject(12, 'application/pdf', { contentLength: 11, contentType: 'application/pdf' })), /size/)
   assert.match(validationError(validateSetUploadObject(12, 'application/pdf', { contentLength: 12, contentType: 'text/plain' })), /content type/)
   assert.equal(validateSetUploadObject(12, 'application/pdf', { contentLength: 12, contentType: 'application/octet-stream' }).ok, true)
+})
+
+test('related-link conversion accepts only a won CAS or exact concurrent winner', () => {
+  const desired = { link_kind: 'set', set_mode: 'revision', set_draft_id: 'draft-1' } as const
+  assert.equal(decideSetLinkConversion({ updated: desired, reread: null }, desired), 'accepted')
+  assert.equal(decideSetLinkConversion({ updated: null, reread: desired }, desired), 'accepted')
+  assert.equal(decideSetLinkConversion({
+    updated: null,
+    reread: { link_kind: 'set', set_mode: 'linked', set_draft_id: null },
+  }, desired), 'conflict')
+  assert.equal(decideSetLinkConversion({
+    updated: null,
+    reread: { link_kind: 'related', set_mode: null, set_draft_id: null },
+  }, desired), 'conflict')
+})
+
+test('register and cleanup leases are mutually exclusive and recover after expiry', () => {
+  const base = {
+    claimed_at: null,
+    expires_at: '2026-07-13T01:00:00.000Z',
+    lease_token: null,
+    lease_kind: null,
+    lease_expires_at: null,
+  }
+  const now = new Date('2026-07-13T00:30:00.000Z')
+  assert.equal(decideSetUploadLease(base, 'register', now), 'acquire')
+  assert.equal(decideSetUploadLease(base, 'cleanup', now), 'ticket-active')
+  assert.equal(decideSetUploadLease({
+    ...base, lease_token: 'cleanup-token', lease_kind: 'cleanup', lease_expires_at: '2026-07-13T00:40:00.000Z',
+  }, 'register', now), 'lease-active')
+  assert.equal(decideSetUploadLease({
+    ...base, expires_at: '2026-07-13T00:20:00.000Z', lease_token: 'register-token', lease_kind: 'register', lease_expires_at: '2026-07-13T00:40:00.000Z',
+  }, 'cleanup', now), 'lease-active')
+  assert.equal(decideSetUploadLease({
+    ...base, expires_at: '2026-07-13T00:20:00.000Z', lease_token: 'register-token', lease_kind: 'register', lease_expires_at: '2026-07-13T00:25:00.000Z',
+  }, 'cleanup', now), 'acquire')
+  assert.equal(decideSetUploadLease({ ...base, claimed_at: '2026-07-13T00:10:00.000Z' }, 'register', now), 'claimed')
+})
+
+test('incoming registered member transition follows exactly one stage ahead of every active main', () => {
+  const draftMain = [{ mainDocumentId: 'main-1', mainDocumentCode: 'QP-01', mainStatus: 'Draft', setMode: 'registered', setDraftId: null }] as const
+  assert.equal(validateIncomingSetTransition(draftMain, 'Draft', 'Review', 'document'), null)
+  assert.match(validateIncomingSetTransition(draftMain, 'Draft', 'Approved', 'document')?.reason ?? '', /Review/)
+  assert.match(validateIncomingSetTransition(draftMain, 'Review', 'Draft', 'document')?.reason ?? '', /Draft/)
+  assert.match(validateIncomingSetTransition(draftMain, 'Draft', 'Obsolete', 'document')?.reason ?? '', /Review/)
+
+  const conflictingMains = [
+    ...draftMain,
+    { mainDocumentId: 'main-2', mainDocumentCode: 'QP-02', mainStatus: 'Review', setMode: 'registered' as const, setDraftId: null },
+  ] as const
+  assert.match(validateIncomingSetTransition(conflictingMains, 'Draft', 'Review', 'document')?.reason ?? '', /QP-02/)
+})
+
+test('linked documents are immutable and exact revision drafts follow the main stage', () => {
+  const linked = [{ mainDocumentId: 'main-1', mainDocumentCode: 'QP-01', mainStatus: 'Draft', setMode: 'linked', setDraftId: null }] as const
+  assert.match(validateIncomingSetTransition(linked, 'Published', 'Obsolete', 'document')?.reason ?? '', /linked/)
+
+  const revision = [{ mainDocumentId: 'main-1', mainDocumentCode: 'QP-01', mainStatus: 'Approved', setMode: 'revision', setDraftId: 'draft-1' }] as const
+  assert.equal(validateIncomingSetTransition(revision, 'Approved', 'Published', 'revision-draft', 'draft-1'), null)
+  assert.match(validateIncomingSetTransition(revision, 'Review', 'Published', 'revision-draft', 'draft-1')?.reason ?? '', /Approved/)
+  assert.match(validateIncomingSetTransition(revision, 'Approved', 'Published', 'revision-draft', 'other-draft')?.reason ?? '', /exact/)
 })

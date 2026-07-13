@@ -121,6 +121,103 @@ export interface SetUploadSubmissionContract {
 
 export type SetUploadClaimValidation = { ok: true } | { ok: false; error: string }
 
+type SetLinkState = {
+  link_kind: string
+  set_mode: string | null
+  set_draft_id: string | null
+}
+
+export function decideSetLinkConversion(
+  result: { updated: SetLinkState | null; reread: SetLinkState | null },
+  desired: SetLinkState,
+): 'accepted' | 'conflict' {
+  const candidate = result.updated ?? result.reread
+  return candidate
+    && candidate.link_kind === desired.link_kind
+    && candidate.set_mode === desired.set_mode
+    && candidate.set_draft_id === desired.set_draft_id
+    ? 'accepted'
+    : 'conflict'
+}
+
+export type SetUploadLeaseKind = 'register' | 'cleanup'
+export type SetUploadLeaseDecision = 'acquire' | 'claimed' | 'ticket-active' | 'ticket-expired' | 'lease-active'
+
+export function decideSetUploadLease(
+  row: {
+    claimed_at: string | null
+    expires_at: string
+    lease_token: string | null
+    lease_kind: SetUploadLeaseKind | null
+    lease_expires_at: string | null
+  },
+  requestedKind: SetUploadLeaseKind,
+  now: Date,
+): SetUploadLeaseDecision {
+  if (row.claimed_at) return 'claimed'
+  const nowMs = now.getTime()
+  const ticketExpiresAt = Date.parse(row.expires_at)
+  const leaseExpiresAt = row.lease_expires_at ? Date.parse(row.lease_expires_at) : Number.NaN
+  if (row.lease_token && Number.isFinite(leaseExpiresAt) && leaseExpiresAt > nowMs) return 'lease-active'
+  if (requestedKind === 'register') {
+    return Number.isFinite(ticketExpiresAt) && ticketExpiresAt > nowMs ? 'acquire' : 'ticket-expired'
+  }
+  return Number.isFinite(ticketExpiresAt) && ticketExpiresAt <= nowMs ? 'acquire' : 'ticket-active'
+}
+
+export interface ActiveIncomingSetMembership {
+  mainDocumentId: string
+  mainDocumentCode: string
+  mainStatus: 'Draft' | 'Review' | 'Approved'
+  setMode: RegistrationSetMode
+  setDraftId: string | null
+}
+
+const MEMBER_STAGE: Record<ActiveIncomingSetMembership['mainStatus'], string> = {
+  Draft: 'Review',
+  Review: 'Approved',
+  Approved: 'Published',
+}
+
+export function validateIncomingSetTransition(
+  memberships: readonly ActiveIncomingSetMembership[],
+  currentStatus: string,
+  nextStatus: string,
+  resourceKind: 'document' | 'revision-draft',
+  draftId?: string,
+): { mainDocumentId: string; mainDocumentCode: string; reason: string } | null {
+  for (const membership of memberships) {
+    if (resourceKind === 'document') {
+      if (membership.setMode === 'linked' || membership.setMode === 'revision') {
+        return {
+          mainDocumentId: membership.mainDocumentId,
+          mainDocumentCode: membership.mainDocumentCode,
+          reason: `${membership.setMode} member document status is read-only while set ${membership.mainDocumentCode} is active`,
+        }
+      }
+    } else {
+      if (membership.setMode !== 'revision' || membership.setDraftId !== draftId) {
+        return {
+          mainDocumentId: membership.mainDocumentId,
+          mainDocumentCode: membership.mainDocumentCode,
+          reason: `only the exact set-owned revision draft may transition for ${membership.mainDocumentCode}`,
+        }
+      }
+    }
+
+    const expectedCurrent = membership.mainStatus
+    const expectedNext = MEMBER_STAGE[membership.mainStatus]
+    if (currentStatus !== expectedCurrent || nextStatus !== expectedNext) {
+      return {
+        mainDocumentId: membership.mainDocumentId,
+        mainDocumentCode: membership.mainDocumentCode,
+        reason: `set ${membership.mainDocumentCode} requires member ${expectedCurrent} → ${expectedNext}`,
+      }
+    }
+  }
+  return null
+}
+
 export function validateSetUploadClaim(
   claim: SetUploadClaimContract,
   submission: SetUploadSubmissionContract,
@@ -138,9 +235,13 @@ export function validateSetUploadClaim(
   if (claim.file_name !== submission.name) return { ok: false, error: 'upload file name mismatch' }
   if (claim.file_size !== submission.size) return { ok: false, error: 'upload file size mismatch' }
   if (claim.mime_type !== submission.mime) return { ok: false, error: 'upload MIME mismatch' }
+  if (claim.claimed_at) {
+    return allowClaimedIdempotentRetry
+      ? { ok: true }
+      : { ok: false, error: 'upload ticket already claimed' }
+  }
   const expiresAt = Date.parse(claim.expires_at)
   if (!Number.isFinite(expiresAt) || expiresAt <= now.getTime()) return { ok: false, error: 'upload ticket expired' }
-  if (claim.claimed_at && !allowClaimedIdempotentRetry) return { ok: false, error: 'upload ticket already claimed' }
   return { ok: true }
 }
 

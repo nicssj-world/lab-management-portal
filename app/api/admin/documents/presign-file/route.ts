@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { requiredEnv } from '@/lib/env'
@@ -10,7 +10,7 @@ import {
   validateSetUploadFile,
   type SetUploadKind,
 } from '@/lib/documents/registration-set-contracts'
-import { cleanupExpiredSetUploads } from '@/lib/documents/set-upload-cleanup'
+import { cleanupExpiredSetUploads, pruneClaimedSetUploads } from '@/lib/documents/set-upload-cleanup'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 const MAX_OFFICIAL_FILE_SIZE = 50 * 1024 * 1024
@@ -86,8 +86,13 @@ export async function GET(req: NextRequest) {
       if (mainResult.data.status !== 'Draft') {
         return NextResponse.json({ error: 'อัปโหลดไฟล์ชุดได้เฉพาะเอกสารหลักสถานะ Draft' }, { status: 409 })
       }
-      void cleanupExpiredSetUploads(10).catch((error) => {
-        console.error('Expired set upload cleanup failed', { error: error instanceof Error ? error.message : String(error) })
+      after(async () => {
+        try {
+          await cleanupExpiredSetUploads(10)
+          await pruneClaimedSetUploads(25, 30)
+        } catch (error) {
+          console.error('Set upload maintenance failed', { error: error instanceof Error ? error.message : String(error) })
+        }
       })
     }
 

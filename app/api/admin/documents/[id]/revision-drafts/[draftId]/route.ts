@@ -13,6 +13,8 @@ import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
 import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
 import { archiveCurrentRevision } from '@/lib/documents/revisions'
 import type { Document } from '@/lib/supabase/types'
+import { validateIncomingSetTransition } from '@/lib/documents/registration-set-contracts'
+import { getActiveOwnedRevisionSetMemberships } from '@/lib/documents/active-registration-sets'
 
 type Params = { params: Promise<{ id: string; draftId: string }> }
 const STATUS_CHANGE_INPUT_FIELDS = new Set(['status', 'obsolete_reason'])
@@ -362,6 +364,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       const allowed = allowedTransitions(draft.status as DocStatus, actor.role, actor.doc_role ?? undefined)
       if (!allowed.includes(nextStatus as DocStatus)) {
         return NextResponse.json({ error: 'สถานะที่เปลี่ยนไม่ได้รับอนุญาต' }, { status: 403 })
+      }
+      const incomingMemberships = await getActiveOwnedRevisionSetMemberships(draftId)
+      const incomingBlocker = validateIncomingSetTransition(
+        incomingMemberships,
+        draft.status,
+        nextStatus,
+        'revision-draft',
+        draftId,
+      )
+      if (incomingBlocker) {
+        return NextResponse.json({
+          error: `สถานะ revision draft ไม่ตรงกับชุดเอกสาร ${incomingBlocker.mainDocumentCode}: ${incomingBlocker.reason}`,
+          blocker: incomingBlocker,
+        }, { status: 422 })
       }
     }
 
@@ -758,6 +774,14 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     if (!(await canAccessDocuments(actor, 'edit'))) return jsonForbidden()
     const { id, draftId } = await params
     const reason = req.nextUrl.searchParams.get('reason')
+
+    const incomingMemberships = await getActiveOwnedRevisionSetMemberships(draftId)
+    if (incomingMemberships.length > 0) {
+      return NextResponse.json({
+        error: `ยกเลิก revision draft ไม่ได้ เพราะยังเป็นสมาชิกชุดเอกสาร ${incomingMemberships[0].mainDocumentCode}`,
+        blocker: incomingMemberships[0],
+      }, { status: 409 })
+    }
 
     const { data, error } = await supabaseAdmin
       .from('document_revision_drafts')
