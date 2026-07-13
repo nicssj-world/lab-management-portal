@@ -13,9 +13,10 @@ export default async function ContractsPage() {
   if ((perms['สัญญา'] ?? 'none') === 'none') redirect('/staff/dashboard')
   const canEdit = perms['สัญญา'] === 'edit'
 
-  const [contracts, profilesRes] = await Promise.all([
+  const [contracts, profilesRes, usersRes] = await Promise.all([
     getContracts(supabase),
     supabaseAdmin.from('profiles').select('dept').not('dept', 'is', null),
+    supabaseAdmin.from('profiles').select('id, name, role').eq('status', 'active').is('deleted_at', null).order('name'),
   ])
 
   const departments = [...new Set(
@@ -30,6 +31,8 @@ export default async function ContractsPage() {
       canEdit={canEdit}
       lastUpdated={lastUpdated}
       departments={departments}
+      currentUserId={user!.id}
+      users={usersRes.data ?? []}
     />
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
@@ -147,11 +147,15 @@ function exportExcel(contract: ContractWithUsage, history: ContractUsage[]) {
   XLSX.writeFile(wb, filename)
 }
 
+interface UserRow { id: string; name: string | null; role: string | null }
+
 interface Props {
   contracts: ContractWithUsage[]
   canEdit: boolean
   lastUpdated: string | null
   departments: string[]
+  currentUserId: string
+  users: UserRow[]
 }
 
 // ── business logic helpers ──────────────────────────────────────────────────
@@ -210,8 +214,8 @@ const statusFilters: { value: ContractStatus; label: string; tone: string; bg: s
   { value: 'pending', label: 'รอดำเนินการ', tone: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
 ]
 
-function emptyForm(): { contract_number: string; vendor: string; product: string; total: string; start_date: string; end_date: string; department: string; status: ContractStatus } {
-  return { contract_number: '', vendor: '', product: '', total: '', start_date: '', end_date: '', department: '', status: 'active' }
+function emptyForm(): { contract_number: string; vendor: string; product: string; total: string; start_date: string; end_date: string; department: string; status: ContractStatus; responsible_user_ids: string[] } {
+  return { contract_number: '', vendor: '', product: '', total: '', start_date: '', end_date: '', department: '', status: 'active', responsible_user_ids: [] }
 }
 
 // ── ContractBattery ──────────────────────────────────────────────────────────
@@ -293,9 +297,86 @@ function compareContractNo(a: ContractWithUsage, b: ContractWithUsage) {
   return aa.raw.localeCompare(bb.raw, 'th')
 }
 
+// ── responsible user picker ─────────────────────────────────────────────────
+
+function ResponsibleUserPicker({ users, selected, onChange }: {
+  users: UserRow[]
+  selected: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const [search, setSearch] = useState('')
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
+  const matches = users.filter(u => {
+    const q = search.trim().toLowerCase()
+    return !q || (u.name ?? '').toLowerCase().includes(q) || (u.role ?? '').toLowerCase().includes(q)
+  })
+
+  function toggle(id: string) {
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id])
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <div
+        onClick={() => setOpen(true)}
+        style={{ minHeight: 40, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'text' }}
+      >
+        {selected.map(id => {
+          const u = users.find(x => x.id === id)
+          return (
+            <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 14, background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 12, fontWeight: 600 }}>
+              {u?.name ?? 'ไม่ทราบชื่อ'}
+              <span onClick={(e) => { e.stopPropagation(); toggle(id) }} style={{ cursor: 'pointer', display: 'inline-flex' }} aria-label="ลบ">
+                <Icon name="x" size={12} />
+              </span>
+            </span>
+          )
+        })}
+        <input
+          value={search}
+          onChange={e => { setSearch(e.target.value); setOpen(true) }}
+          placeholder={selected.length === 0 ? 'ค้นหาผู้รับผิดชอบ...' : ''}
+          style={{ flex: 1, minWidth: 120, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)' }}
+        />
+      </div>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, maxHeight: 200, overflowY: 'auto', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', zIndex: 50 }}>
+          {matches.length === 0 ? (
+            <div style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--muted)' }}>ไม่พบผู้ใช้</div>
+          ) : matches.map(u => {
+            const isSel = selected.includes(u.id)
+            return (
+              <div
+                key={u.id}
+                onClick={() => toggle(u.id)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--ink)', background: isSel ? 'var(--primary-soft)' : 'transparent' }}
+                onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'var(--surface-2)' }}
+                onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+              >
+                <span>{u.name ?? 'ไม่ทราบชื่อ'} <span style={{ color: 'var(--muted)', fontSize: 11 }}>{u.role ?? ''}</span></span>
+                {isSel && <Icon name="check" size={14} />}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── main component ────────────────────────────────────────────────────────────
 
-export function ContractsClient({ contracts: initial, canEdit, lastUpdated, departments }: Props) {
+export function ContractsClient({ contracts: initial, canEdit, lastUpdated, departments, currentUserId, users }: Props) {
   const [contracts, setContracts] = useState<ContractWithUsage[]>(initial)
   const [editModal, setEditModal] = useState<ContractWithUsage | null | 'new'>(null)
   const [usageModal, setUsageModal] = useState<ContractWithUsage | null>(null)
@@ -371,6 +452,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
       end_date: c.end_date ?? '',
       department: c.department ?? '',
       status: c.status,
+      responsible_user_ids: c.responsible_user_ids ?? [],
     })
     setFormErr('')
     setSelectedFile(null)
@@ -769,6 +851,8 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
             const alreadyExpired = ml < 0
             const expiring = isExpiring(c)
             const lowBudget = isLowBudget(c)
+            const isResponsible = (c.responsible_user_ids ?? []).includes(currentUserId)
+            const canLogUsage = canEdit || isResponsible
 
             // left accent color
             const accentColor = expiring ? 'var(--danger)' : lowBudget ? '#F59E0B' : 'var(--success)'
@@ -803,6 +887,17 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                         <Icon name="building" size={11} style={{ flexShrink: 0 }} />
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.department || 'ไม่ระบุหน่วยงาน'}</span>
                       </span>
+                      {(c.responsible_user_ids ?? []).length > 0 && (
+                        <span
+                          title={(c.responsible_user_ids ?? []).map(id => users.find(u => u.id === id)?.name ?? '').filter(Boolean).join(', ')}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 18, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 11.5, fontWeight: 700, maxWidth: 220 }}
+                        >
+                          <Icon name="users" size={11} style={{ flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {(c.responsible_user_ids ?? []).map(id => users.find(u => u.id === id)?.name ?? 'ไม่ทราบชื่อ').join(', ')}
+                          </span>
+                        </span>
+                      )}
                       {/* status badge */}
                       {alreadyExpired ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', padding: '3px 9px', borderRadius: 20 }}>
@@ -909,7 +1004,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                       <Icon name="trending" size={12} />
                       ประวัติการใช้สัญญา
                     </button>
-                    {canEdit && (
+                    {canLogUsage && (
                       <button
                         onClick={() => openUsage(c)}
                         style={{
@@ -1012,6 +1107,17 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
                   <option value="cancelled">ยกเลิก (Cancelled)</option>
                   <option value="pending">รอดำเนินการ (Pending)</option>
                 </select>
+              </div>
+              <div>
+                <label style={labelStyle}>ผู้รับผิดชอบบันทึกการใช้จ่าย</label>
+                <ResponsibleUserPicker
+                  users={users}
+                  selected={form.responsible_user_ids}
+                  onChange={ids => setForm(f => ({ ...f, responsible_user_ids: ids }))}
+                />
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                  ผู้ที่เลือก (ซึ่งมีสิทธิ์เข้าหน้านี้อยู่แล้ว) จะบันทึกการใช้จ่ายของสัญญานี้ได้ แม้ไม่มีสิทธิ์แก้ไขสัญญาโดยรวม
+                </div>
               </div>
 
               {/* File upload */}

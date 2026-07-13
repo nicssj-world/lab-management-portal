@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { useUniformBoxHeight } from '@/lib/hooks/useUniformBoxHeight'
 
 export interface StaffOption { id: string; name: string }
 
@@ -14,6 +15,7 @@ interface OrgNodeView {
   person_name: string | null
   profile_id: string | null
   photo_url: string | null
+  photo_position: string | null
   phone: string | null
   node_type: 'leadership' | 'position' | 'unit'
   is_linkable: boolean
@@ -49,6 +51,8 @@ export function OrgChartClient({ canEdit, staff }: { canEdit: boolean; staff: St
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<OrgNodeView | null>(null)
   const [addParent, setAddParent] = useState<OrgNodeView | null>(null)
+  const treeRef = useRef<HTMLDivElement>(null)
+  const boxInnerHeight = useUniformBoxHeight(treeRef, '[data-org-inner]', [nodes])
 
   async function load() {
     setLoading(true)
@@ -76,7 +80,7 @@ export function OrgChartClient({ canEdit, staff }: { canEdit: boolean; staff: St
     const kids = childrenOf.get(n.id) ?? []
     return (
       <li key={n.id}>
-        <NodeBox node={n} canEdit={canEdit} onEdit={() => setEditing(n)} onAdd={() => setAddParent(n)} />
+        <NodeBox node={n} canEdit={canEdit} innerHeight={boxInnerHeight} onEdit={() => setEditing(n)} onAdd={() => setAddParent(n)} />
         {kids.length > 0 && <ul>{kids.map(renderNode)}</ul>}
       </li>
     )
@@ -100,7 +104,7 @@ export function OrgChartClient({ canEdit, staff }: { canEdit: boolean; staff: St
         ) : roots.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>ยังไม่มีผังองค์กร</div>
         ) : (
-          <div className="octree"><ul>{roots.map(renderNode)}</ul></div>
+          <div className="octree" ref={treeRef}><ul>{roots.map(renderNode)}</ul></div>
         )}
       </div>
 
@@ -117,24 +121,28 @@ export function OrgChartClient({ canEdit, staff }: { canEdit: boolean; staff: St
   )
 }
 
-function NodeBox({ node, canEdit, onEdit, onAdd }: { node: OrgNodeView; canEdit: boolean; onEdit: () => void; onAdd: () => void }) {
+const NODE_BOX_V_PADDING = 28 // '14px 12px' top+bottom
+
+function NodeBox({ node, canEdit, innerHeight, onEdit, onAdd }: { node: OrgNodeView; canEdit: boolean; innerHeight?: number; onEdit: () => void; onAdd: () => void }) {
   const accent = node.node_type === 'leadership' ? '#64748B' : node.node_type === 'position' ? 'var(--primary)' : '#0D9488'
   return (
-    <div style={{ position: 'relative', width: 188, background: 'var(--card)', border: `1px solid var(--border)`, borderTop: `3px solid ${accent}`, borderRadius: 12, padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-      <div style={{ width: 54, height: 54, borderRadius: '50%', overflow: 'hidden', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--border)' }}>
-        {node.photo
-          // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={node.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : <Icon name="users" size={22} />}
+    <div style={{ position: 'relative', width: 188, minHeight: innerHeight !== undefined ? innerHeight + NODE_BOX_V_PADDING : undefined, boxSizing: 'border-box', background: 'var(--card)', border: `1px solid var(--border)`, borderTop: `3px solid ${accent}`, borderRadius: 12, padding: '14px 12px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+      <div data-org-inner style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7 }}>
+        <div style={{ width: 110, height: 110, borderRadius: 9, overflow: 'hidden', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--border)' }}>
+          {node.photo
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={node.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: node.photo_position ?? '50% 50%' }} />
+            : <Icon name="users" size={30} />}
+        </div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.3 }}>{node.title}</div>
+        {node.display_name
+          ? (node.profile_id
+              ? <Link href={`/staff/personnel/${node.profile_id}`} style={{ fontSize: 11.5, color: 'var(--primary)', textDecoration: 'none', textAlign: 'center' }}>{node.display_name}</Link>
+              : <div style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'center' }}>{node.display_name}</div>)
+          : <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>— ว่าง —</div>}
+        {node.position && <div style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.3 }}>{node.position}</div>}
+        {node.phone && <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: '"IBM Plex Mono",monospace', textAlign: 'center' }}>☎ {node.phone}</div>}
       </div>
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.3 }}>{node.title}</div>
-      {node.display_name
-        ? (node.profile_id
-            ? <Link href={`/staff/personnel/${node.profile_id}`} style={{ fontSize: 11.5, color: 'var(--primary)', textDecoration: 'none', textAlign: 'center' }}>{node.display_name}</Link>
-            : <div style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'center' }}>{node.display_name}</div>)
-        : <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>— ว่าง —</div>}
-      {node.position && <div style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.3 }}>{node.position}</div>}
-      {node.phone && <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: '"IBM Plex Mono",monospace', textAlign: 'center' }}>☎ {node.phone}</div>}
       {canEdit && (
         <div style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 3 }}>
           <button onClick={onEdit} title="แก้ไข" style={miniBtn}><Icon name="edit" size={12} /></button>
@@ -151,8 +159,17 @@ function EditNodeModal({ node, staff, onClose, onSaved, onDeleted }: { node: Org
   const [profileId, setProfileId] = useState(node.profile_id ?? '')
   const [phone, setPhone] = useState(node.phone ?? '')
   const [file, setFile] = useState<File | null>(null)
+  const [photoPosition, setPhotoPosition] = useState(node.photo_position ?? '50% 50%')
+  const [previewUrl, setPreviewUrl] = useState<string | null>(node.photo)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!file) { setPreviewUrl(node.photo); return }
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file, node.photo])
 
   async function save() {
     setSaving(true); setErr('')
@@ -163,8 +180,8 @@ function EditNodeModal({ node, staff, onClose, onSaved, onDeleted }: { node: Org
         if (!up.ok) throw new Error((await up.json()).error ?? 'อัปโหลดรูปไม่สำเร็จ')
       }
       const body = node.is_linkable
-        ? { title, phone, profile_id: profileId || null, person_name: profileId ? undefined : personName }
-        : { title, phone, person_name: personName }
+        ? { title, phone, profile_id: profileId || null, person_name: profileId ? undefined : personName, photo_position: photoPosition }
+        : { title, phone, person_name: personName, photo_position: photoPosition }
       const res = await fetch(`/api/admin/personnel/org/${node.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error((await res.json()).error ?? 'บันทึกไม่สำเร็จ')
       onSaved()
@@ -205,6 +222,11 @@ function EditNodeModal({ node, staff, onClose, onSaved, onDeleted }: { node: Org
         <ImageDropZone file={file} onFile={setFile} />
         {node.photo && <button onClick={removePhoto} style={{ ...ghostBtn, marginTop: 8, fontSize: 12 }}><Icon name="trash" size={13} /> ลบรูปปัจจุบัน</button>}
       </Field>
+      {previewUrl && (
+        <Field label="ปรับตำแหน่งรูปในกรอบ">
+          <PhotoPositionPicker src={previewUrl} position={photoPosition} onChange={setPhotoPosition} />
+        </Field>
+      )}
       {err && <div style={{ color: 'var(--danger)', fontSize: 12.5 }}>{err}</div>}
     </ModalShell>
   )
@@ -329,6 +351,33 @@ function ImageDropZone({ file, onFile }: { file: File | null; onFile: (file: Fil
           <Icon name="x" size={13} />
         </button>
       )}
+    </div>
+  )
+}
+
+function parsePhotoPosition(pos: string): [number, number] {
+  const m = pos.match(/^(\d{1,3})%\s+(\d{1,3})%$/)
+  return m ? [Number(m[1]), Number(m[2])] : [50, 50]
+}
+
+function PhotoPositionPicker({ src, position, onChange }: { src: string; position: string; onChange: (pos: string) => void }) {
+  const [x, y] = parsePhotoPosition(position)
+  return (
+    <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+      <div style={{ width: 96, height: 96, borderRadius: 9, overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', flexShrink: 0 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${x}% ${y}%` }} />
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+        <label style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>
+          แนวนอน
+          <input type="range" min={0} max={100} value={x} onChange={(e) => onChange(`${e.target.value}% ${y}%`)} style={{ width: '100%', display: 'block' }} />
+        </label>
+        <label style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>
+          แนวตั้ง
+          <input type="range" min={0} max={100} value={y} onChange={(e) => onChange(`${x}% ${e.target.value}%`)} style={{ width: '100%', display: 'block' }} />
+        </label>
+      </div>
     </div>
   )
 }

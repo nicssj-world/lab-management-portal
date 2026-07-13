@@ -161,6 +161,7 @@ export interface OrgChartNode {
   person_name: string | null
   profile_id: string | null
   photo_url: string | null
+  photo_position: string | null
   phone: string | null
   node_type: 'leadership' | 'position' | 'unit'
   is_linkable: boolean
@@ -515,6 +516,7 @@ export interface Contract {
   department: string | null
   status: 'active' | 'expired' | 'cancelled' | 'pending'
   file_url: string | null
+  responsible_user_ids: string[] | null
   created_at: string
   used?: number
 }

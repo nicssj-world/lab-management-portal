@@ -109,6 +109,7 @@ export const OrgNodeUpdateSchema = z.object({
   phone:       optStr,
   profile_id:  z.string().uuid().optional().nullable(),
   photo_url:   optStr,
+  photo_position: optStr,
   parent_id:   z.string().uuid().optional().nullable(),
   sort_order:  z.number().int().optional(),
 })

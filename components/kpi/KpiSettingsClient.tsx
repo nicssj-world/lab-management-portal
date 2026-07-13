@@ -434,7 +434,6 @@ function AssigneeRow({ dept, users, selected, userMap, onToggle }: {
     const q = search.trim().toLowerCase()
     return users
       .filter((u) => !q || (u.name ?? '').toLowerCase().includes(q) || (u.role ?? '').toLowerCase().includes(q))
-      .slice(0, 30)
   }, [users, search])
 
   return (

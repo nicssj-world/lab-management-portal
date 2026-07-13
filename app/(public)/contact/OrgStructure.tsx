@@ -10,6 +10,7 @@ export interface OrgNode {
   display_name: string | null
   position: string | null
   photo: string | null
+  photo_position: string | null
   phone: string | null
   sort_order: number
 }
@@ -104,33 +105,38 @@ const TREE_CSS = `
 .org-clickable:hover .org-expand-hint { color: var(--primary); border-color: var(--primary); }
 `
 
+// Vertical padding is '11px 11px 16px' (top+bottom = 27). The box's min-height is driven
+// by --org-box-h, a CSS variable OrgViewer sets client-side after measuring the tallest
+// box's natural content — this string is identical on server and client (no hydration risk).
 function NodeBox({ node }: { node: OrgNode }) {
   const accent = node.node_type === 'leadership' ? '#64748B' : node.node_type === 'position' ? 'var(--primary)' : '#0D9488'
   const phones = resolvePhones(node)
   return (
-    <div style={{ width: 220, background: 'var(--card)', border: '1px solid var(--border)', borderTop: `3px solid ${accent}`, borderRadius: 12, padding: '11px 11px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-      <div style={{ width: 176, height: 176, borderRadius: 9, overflow: 'hidden', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--border)' }}>
-        {node.photo
-          // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={node.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : <Icon name="users" size={36} style={{ color: 'var(--muted)' }} />}
-      </div>
-      {/* ตำแหน่ง / หน่วยงาน */}
-      <ThaiLabel text={node.title} style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.3 }} />
-      {/* ชื่อบุคคล */}
-      {node.display_name
-        ? <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.35 }}>{node.display_name}</div>
-        : null}
-      {/* ตำแหน่ง (จากโปรไฟล์ที่ link) */}
-      {node.position
-        ? <ThaiLabel text={node.position} style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.3 }} />
-        : null}
-      {/* เบอร์โทรภายใน */}
-      {phones.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center', marginTop: 1 }}>
-          {phones.map((p) => <span key={p} className="org-phone">{p}</span>)}
+    <div style={{ width: 220, minHeight: 'calc(var(--org-box-h, 0px) + 27px)', boxSizing: 'border-box', background: 'var(--card)', border: '1px solid var(--border)', borderTop: `3px solid ${accent}`, borderRadius: 12, padding: '11px 11px 16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+      <div data-org-inner style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7 }}>
+        <div style={{ width: 176, height: 176, borderRadius: 9, overflow: 'hidden', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--border)' }}>
+          {node.photo
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={node.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: node.photo_position ?? '50% 50%' }} />
+            : <Icon name="users" size={36} style={{ color: 'var(--muted)' }} />}
         </div>
-      )}
+        {/* ตำแหน่ง / หน่วยงาน */}
+        <ThaiLabel text={node.title} style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.3 }} />
+        {/* ชื่อบุคคล */}
+        {node.display_name
+          ? <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.35 }}>{node.display_name}</div>
+          : null}
+        {/* ตำแหน่ง (จากโปรไฟล์ที่ link) */}
+        {node.position
+          ? <ThaiLabel text={node.position} style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.3 }} />
+          : null}
+        {/* เบอร์โทรภายใน */}
+        {phones.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center', marginTop: 1 }}>
+            {phones.map((p) => <span key={p} className="org-phone">{p}</span>)}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
