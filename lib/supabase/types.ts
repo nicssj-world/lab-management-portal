@@ -295,6 +295,10 @@ export interface Document {
   file_name: string | null
   file_size: number | null
   mime_type: string | null
+  pending_file_url?: string | null
+  pending_file_name?: string | null
+  pending_file_size?: number | null
+  pending_file_mime?: string | null
   source_pdf_url: string | null
   source_pdf_name: string | null
   source_pdf_size: number | null

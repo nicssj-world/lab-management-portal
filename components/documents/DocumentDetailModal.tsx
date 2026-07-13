@@ -21,6 +21,7 @@ export interface Attachment {
   mime_type: string | null
   uploaded_by: string | null
   created_at: string
+  ephemeral?: boolean
   profiles: { name: string } | null
 }
 
