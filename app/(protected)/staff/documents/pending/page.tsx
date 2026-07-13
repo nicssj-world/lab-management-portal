@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getActiveRevisionDrafts, getNewDraftDocuments } from '@/lib/documents/pending'
+import { getActiveRevisionDrafts, getNewDraftDocuments, getRegistrationSets } from '@/lib/documents/pending'
 import { PendingClient, type PendingDoc, type AnnualReviewDoc } from './PendingClient'
 
 export const dynamic = 'force-dynamic'
@@ -25,13 +25,19 @@ export default async function PendingApprovalPage() {
   // their parent document's status (the parent stays "Published" while a draft is worked
   // on) — bucket them by draft status so a draft moved to Review/Approved shows up in the
   // matching section instead of staying stuck under "รอ DCC".
-  const activeDrafts = await getActiveRevisionDrafts().catch(() => [])
+  const [activeDrafts, newDraftRows, sets] = await Promise.all([
+    getActiveRevisionDrafts().catch(() => []),
+    getNewDraftDocuments().catch(() => []),
+    // Unlike the legacy queues, a broken registration-set query must reach the route
+    // error boundary so DCC can diagnose an incomplete or inconsistent set.
+    getRegistrationSets(),
+  ])
   const draftsAwaitingDcc = activeDrafts.filter((d) => d.status === 'Draft' && d.hasWordUrl)
   // Brand-new Rev.00 documents (not working-revision drafts) still in Draft with a Word/Excel
   // source uploaded — the "เอกสารใหม่ รอจัดทำ PDF" queue.
-  const newDraftRows = await getNewDraftDocuments().catch(() => [])
   const draftsInReview = activeDrafts.filter((d) => d.status === 'Review')
   const draftsApproved = activeDrafts.filter((d) => d.status === 'Approved')
+  const setMemberIds = new Set(sets.flatMap((set) => set.memberIds))
 
   const draftDocIds = Array.from(new Set(activeDrafts.map((d) => d.documentId)))
 
@@ -77,28 +83,33 @@ export default async function PendingApprovalPage() {
   }
 
   const sourceDocs = toDraftPendingDocs(draftsAwaitingDcc)
+    .filter((doc) => !setMemberIds.has(doc.id))
 
   const reviewDocs: PendingDoc[] = [
     ...((reviewRes.data ?? []) as DocRow[]).map((d) => ({ ...d, kind: 'document' as const })),
     ...toDraftPendingDocs(draftsInReview),
-  ].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  ].filter((doc) => !setMemberIds.has(doc.id))
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
 
   const approvedDocs: PendingDoc[] = [
     ...((approvedRes.data ?? []) as DocRow[]).map((d) => ({ ...d, kind: 'document' as const })),
     ...toDraftPendingDocs(draftsApproved),
-  ].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  ].filter((doc) => !setMemberIds.has(doc.id))
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
 
-  const newDocs: PendingDoc[] = newDraftRows.map((d) => ({
-    id: d.id,
-    document_code: d.document_code,
-    title: d.title,
-    type: d.type,
-    department: d.department,
-    revision: d.revision,
-    updated_at: d.updated_at,
-    hasOfficialPdf: d.hasOfficialPdf,
-    kind: 'document' as const,
-  }))
+  const newDocs: PendingDoc[] = newDraftRows
+    .filter((d) => !setMemberIds.has(d.id))
+    .map((d) => ({
+      id: d.id,
+      document_code: d.document_code,
+      title: d.title,
+      type: d.type,
+      department: d.department,
+      revision: d.revision,
+      updated_at: d.updated_at,
+      hasOfficialPdf: d.hasOfficialPdf,
+      kind: 'document' as const,
+    }))
 
   const annualReviewDocs: AnnualReviewDoc[] = (annualReviewRes.data ?? []).map((d) => ({
     id: d.id,
@@ -118,6 +129,7 @@ export default async function PendingApprovalPage() {
       reviewDocs={reviewDocs}
       approvedDocs={approvedDocs}
       annualReviewDocs={annualReviewDocs}
+      sets={sets}
       userRole={actor?.role ?? undefined}
       docRole={actor?.doc_role ?? undefined}
       userId={user.id}

@@ -9,6 +9,12 @@ import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/Docu
 import { DocumentActionPanel } from '@/components/documents/DocumentActionPanel'
 import { TYPE_ICON_BG, TYPE_ICON_FG, fmtDate } from '@/lib/documents/ui-constants'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
+import type {
+  RegistrationSet,
+  RegistrationSetActiveDraft,
+  RegistrationSetDocument,
+  RegistrationSetMember,
+} from '@/lib/documents/pending'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
 
 export interface PendingDoc {
@@ -44,9 +50,211 @@ interface Props {
   reviewDocs: PendingDoc[]
   approvedDocs: PendingDoc[]
   annualReviewDocs: AnnualReviewDoc[]
+  sets: RegistrationSet[]
   userRole?: string
   docRole?: string
   userId?: string
+}
+
+type SetNextStatus = 'Review' | 'Approved' | 'Published'
+
+interface SetProgress {
+  mainId: string
+  kind: 'download' | 'status'
+  currentLabel: string
+  completed: number
+  total: number
+  percent: number | null
+}
+
+const SET_ACTIONS: Partial<Record<string, { next: SetNextStatus; label: string }>> = {
+  Draft: { next: 'Review', label: 'ส่งทั้งชุดเข้า Review' },
+  Review: { next: 'Approved', label: 'อนุมัติทั้งชุด' },
+  Approved: { next: 'Published', label: 'เผยแพร่ทั้งชุด' },
+}
+
+const STATUS_ACCENTS: Record<string, { color: string; background: string }> = {
+  Draft: { color: '#7E22CE', background: 'rgba(147,51,234,.11)' },
+  Review: { color: '#B45309', background: 'rgba(217,119,6,.11)' },
+  Approved: { color: '#15803D', background: 'rgba(22,163,74,.11)' },
+  Published: { color: '#0369A1', background: 'rgba(14,165,233,.11)' },
+}
+
+function routedSetStatus(document: RegistrationSetDocument, activeDraft?: RegistrationSetActiveDraft | null) {
+  return activeDraft?.status ?? document.status
+}
+
+function setFileState(document: RegistrationSetDocument, activeDraft?: RegistrationSetActiveDraft | null) {
+  if (activeDraft) return `Rev+ ${activeDraft.revision} · ${activeDraft.status}`
+  if (document.status === 'Published') return 'Published (ลิงก์)'
+  if (document.hasPendingFile) return 'PDF รอยืนยัน'
+  if (document.hasOfficialFile) return 'มีไฟล์ทางการ'
+  return 'รอ DCC ทำ PDF'
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const accent = STATUS_ACCENTS[status] ?? { color: 'var(--muted)', background: 'var(--surface-2)' }
+  return (
+    <span style={{ fontSize: 10.5, lineHeight: 1.2, fontWeight: 800, color: accent.color, background: accent.background, borderRadius: 99, padding: '3px 8px', whiteSpace: 'nowrap' }}>
+      {status}
+    </span>
+  )
+}
+
+function SetDocumentRow({
+  document,
+  activeDraft,
+  label,
+  disabled,
+  onClick,
+}: {
+  document: RegistrationSetDocument
+  activeDraft?: RegistrationSetActiveDraft | null
+  label: string
+  disabled: boolean
+  onClick: () => void
+}) {
+  const status = routedSetStatus(document, activeDraft)
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 11px',
+        border: '1px solid var(--border)', borderRadius: 9, background: 'var(--surface-2)',
+        color: 'var(--ink)', fontFamily: 'inherit', textAlign: 'left', cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? .62 : 1,
+      }}
+    >
+      <span style={{ width: 30, height: 30, borderRadius: 8, background: TYPE_ICON_BG[document.type] ?? 'rgba(100,116,139,.1)', color: TYPE_ICON_FG[document.type] ?? '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon name="doc" size={14} />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+          <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 800, whiteSpace: 'nowrap' }}>{label}</span>
+          <span style={{ fontSize: 12.5, color: 'var(--ink)', fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{document.title}</span>
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, color: 'var(--muted)', fontSize: 11, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'monospace' }}>{document.documentCode}</span>
+          <span>· {document.type}</span>
+          {document.revision ? <span>· Rev.{document.revision}</span> : null}
+          {document.department ? <span>· {document.department}</span> : null}
+        </span>
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
+        <StatusBadge status={status} />
+        <span style={{ fontSize: 10.5, fontWeight: 750, color: activeDraft ? '#7E22CE' : 'var(--muted)', background: activeDraft ? 'rgba(147,51,234,.08)' : 'var(--card)', border: '1px solid var(--border)', borderRadius: 99, padding: '3px 8px', whiteSpace: 'nowrap' }}>
+          {setFileState(document, activeDraft)}
+        </span>
+        <Icon name="chevRight" size={13} style={{ color: 'var(--muted)' }} />
+      </span>
+    </button>
+  )
+}
+
+function RegistrationSetCard({
+  set,
+  canManage,
+  controlsBusy,
+  progress,
+  result,
+  onOpenMain,
+  onOpenMember,
+  onDownload,
+  onAdvance,
+}: {
+  set: RegistrationSet
+  canManage: boolean
+  controlsBusy: boolean
+  progress: SetProgress | null
+  result?: string
+  onOpenMain: () => void
+  onOpenMember: (member: RegistrationSetMember) => void
+  onDownload: () => void
+  onAdvance: (next: SetNextStatus) => void
+}) {
+  const action = SET_ACTIONS[set.mainDocument.status]
+  const incompatibleMember = action
+    ? set.members.find((member) => {
+        if (!member.activeDraft && member.document.status === 'Published') return false
+        const status = routedSetStatus(member.document, member.activeDraft)
+        return status !== set.mainDocument.status && status !== action.next
+      })
+    : undefined
+  const isThisSetBusy = progress?.mainId === set.mainDocument.id
+  return (
+    <article style={{ border: '1px solid var(--border)', borderRadius: 11, background: 'var(--card)', padding: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, color: 'var(--ink)', fontWeight: 800 }}>{set.mainDocument.documentCode} · {set.members.length} สมาชิก</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+            ไฟล์แนบชั่วคราว {set.ephemeralAttachmentCount} ไฟล์
+          </div>
+        </div>
+        {canManage ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={onDownload}
+              disabled={controlsBusy}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 750, cursor: controlsBusy ? 'default' : 'pointer', opacity: controlsBusy ? .6 : 1 }}
+            >
+              <Icon name="download" size={12} />
+              ดาวน์โหลดทั้งชุด (ZIP)
+            </button>
+            {action && !incompatibleMember ? (
+              <button
+                type="button"
+                onClick={() => onAdvance(action.next)}
+                disabled={controlsBusy}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid #0F766E', background: controlsBusy ? 'var(--surface-2)' : '#0F766E', color: controlsBusy ? 'var(--muted)' : '#fff', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, cursor: controlsBusy ? 'default' : 'pointer', opacity: controlsBusy ? .7 : 1 }}
+              >
+                <Icon name="arrowRight" size={12} />
+                {action.label}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {canManage && action && incompatibleMember ? (
+        <div role="status" style={{ marginBottom: 9, padding: '7px 9px', borderRadius: 8, background: 'rgba(217,119,6,.08)', border: '1px solid rgba(217,119,6,.22)', color: '#B45309', fontSize: 11.5 }}>
+          ยังดำเนินการทั้งชุดไม่ได้: {incompatibleMember.document.documentCode} อยู่สถานะ {routedSetStatus(incompatibleMember.document, incompatibleMember.activeDraft)}
+        </div>
+      ) : null}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <SetDocumentRow document={set.mainDocument} label="เอกสารหลัก" disabled={controlsBusy} onClick={onOpenMain} />
+        {set.members.map((member, index) => (
+          <SetDocumentRow
+            key={member.linkId}
+            document={member.document}
+            activeDraft={member.activeDraft}
+            label={`สมาชิก ${index + 1}`}
+            disabled={controlsBusy}
+            onClick={() => onOpenMember(member)}
+          />
+        ))}
+      </div>
+
+      {isThisSetBusy && progress ? (
+        <div style={{ marginTop: 9, padding: '8px 10px', borderRadius: 8, background: 'rgba(13,148,136,.07)', border: '1px solid rgba(13,148,136,.22)' }} aria-live="polite">
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11.5, color: '#0F766E', fontWeight: 700 }}>
+            <span>{progress.currentLabel}</span>
+            <span>{progress.percent === null ? `${progress.completed}/${progress.total}` : `${progress.percent}%`}</span>
+          </div>
+          <div style={{ height: 5, borderRadius: 99, background: 'rgba(13,148,136,.14)', overflow: 'hidden', marginTop: 6 }}>
+            <div style={{ width: `${progress.percent ?? Math.round((progress.completed / Math.max(progress.total, 1)) * 100)}%`, height: '100%', background: '#0D9488', borderRadius: 99, transition: 'width .18s ease' }} />
+          </div>
+        </div>
+      ) : null}
+      {result ? (
+        <div role="status" style={{ marginTop: 9, padding: '8px 10px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--ink)', fontSize: 11.5, lineHeight: 1.45 }}>
+          {result}
+        </div>
+      ) : null}
+    </article>
+  )
 }
 
 function bucketForStatus(status: DocumentRevisionDraft['status'], hasWordUrl: boolean): 'source' | 'review' | 'approved' | null {
@@ -155,7 +363,7 @@ function ActionCard({ label, count, sub, icon, accent, onClick }: {
   )
 }
 
-export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSourceDocs, reviewDocs: initialReviewDocs, approvedDocs: initialApprovedDocs, annualReviewDocs: initialAnnualReviewDocs, userRole, docRole, userId = '' }: Props) {
+export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSourceDocs, reviewDocs: initialReviewDocs, approvedDocs: initialApprovedDocs, annualReviewDocs: initialAnnualReviewDocs, sets, userRole, docRole, userId = '' }: Props) {
   const router = useRouter()
   const isAdmin = userRole === 'Admin'
   const workflowRole = docRole ?? userRole
@@ -164,7 +372,9 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     : ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(workflowRole ?? '')
   const canBulkReview = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller'
   const canDccSourceDownload = canBulkReview
+  const setMemberDocumentIds = new Set(sets.flatMap((set) => set.memberIds))
 
+  const setSectionRef = useRef<HTMLDivElement | null>(null)
   const newSectionRef = useRef<HTMLDivElement | null>(null)
   const sourceSectionRef = useRef<HTMLDivElement | null>(null)
   const reviewSectionRef = useRef<HTMLDivElement | null>(null)
@@ -183,6 +393,8 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   const [sourceBulkStep, setSourceBulkStep] = useState('')
   const [sourceBulkPercent, setSourceBulkPercent] = useState<number | null>(null)
   const [sourceBulkResult, setSourceBulkResult] = useState<string | null>(null)
+  const [setProgress, setSetProgress] = useState<SetProgress | null>(null)
+  const [setResults, setSetResults] = useState<Record<string, string>>({})
   const [revDoc, setRevDoc] = useState<Document | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [publishingId, setPublishingId] = useState<string | null>(null)
@@ -192,7 +404,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
   const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string; forcePdfJs?: boolean } | null>(null)
 
-  const total = newDocs.length + sourceDocs.length + reviewDocs.length + approvedDocs.length + annualDocs.length
+  const total = sets.length + newDocs.length + sourceDocs.length + reviewDocs.length + approvedDocs.length + annualDocs.length
   const sourceWaitingPdfCount = sourceDocs.filter((doc) => !doc.hasOfficialPdf).length
   const sourceReadyReviewCount = sourceDocs.filter((doc) => doc.hasOfficialPdf).length
 
@@ -200,12 +412,12 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  function filenameFromDisposition(header: string | null) {
-    if (!header) return 'dcc-source-files.zip'
+  function filenameFromDisposition(header: string | null, fallback = 'dcc-source-files.zip') {
+    if (!header) return fallback
     const encoded = header.match(/filename\*=UTF-8''([^;]+)/)
     if (encoded?.[1]) return decodeURIComponent(encoded[1])
     const plain = header.match(/filename="([^"]+)"/)
-    return plain?.[1] ?? 'dcc-source-files.zip'
+    return plain?.[1] ?? fallback
   }
 
   async function openRevisionPanel(id: string) {
@@ -246,6 +458,10 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   // Re-bucket a document after the action panel uploads a file or changes its status.
   function handleDocumentUpdated(updated: Document) {
     setActionDoc(updated)
+    if (setMemberDocumentIds.has(updated.id)) {
+      router.refresh()
+      return
+    }
     const entry: PendingDoc = {
       id: updated.id,
       document_code: updated.document_code,
@@ -363,9 +579,189 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     }
   }
 
+  async function handleSetZip(set: RegistrationSet) {
+    if (setProgress) return
+    const mainId = set.mainDocument.id
+    setSetResults((prev) => {
+      const next = { ...prev }
+      delete next[mainId]
+      return next
+    })
+    setSetProgress({ mainId, kind: 'download', currentLabel: 'กำลังเตรียม ZIP ทั้งชุด...', completed: 0, total: 1, percent: null })
+
+    try {
+      const res = await fetch(`/api/admin/documents/${mainId}/set-zip`)
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({} as { error?: string })) as { error?: string }
+        throw new Error(json.error ?? `ดาวน์โหลดไม่สำเร็จ (${res.status})`)
+      }
+
+      const totalBytes = Number(res.headers.get('Content-Length') ?? 0)
+      const reader = res.body?.getReader()
+      const chunks: ArrayBuffer[] = []
+      let received = 0
+      setSetProgress({ mainId, kind: 'download', currentLabel: 'กำลังดาวน์โหลด ZIP...', completed: 0, total: 1, percent: totalBytes > 0 ? 0 : null })
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (!value) continue
+          chunks.push(value.slice().buffer as ArrayBuffer)
+          received += value.byteLength
+          if (totalBytes > 0) {
+            setSetProgress({
+              mainId,
+              kind: 'download',
+              currentLabel: 'กำลังดาวน์โหลด ZIP...',
+              completed: 0,
+              total: 1,
+              percent: Math.min(100, Math.round((received / totalBytes) * 100)),
+            })
+          }
+        }
+      } else {
+        const blob = await res.blob()
+        chunks.push(await blob.arrayBuffer())
+      }
+
+      const blob = new Blob(chunks, { type: 'application/zip' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filenameFromDisposition(res.headers.get('Content-Disposition'), `${set.mainDocument.documentCode}-set.zip`)
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      setSetResults((prev) => ({ ...prev, [mainId]: 'ดาวน์โหลดทั้งชุดสำเร็จ' }))
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'ดาวน์โหลด ZIP ไม่สำเร็จ'
+      setSetResults((prev) => ({ ...prev, [mainId]: `ดาวน์โหลดไม่สำเร็จ: ${reason}` }))
+    } finally {
+      setSetProgress(null)
+    }
+  }
+
+  async function handleSetStatusChange(set: RegistrationSet, nextStatus: SetNextStatus) {
+    if (setProgress) return
+    const mainId = set.mainDocument.id
+    const action = SET_ACTIONS[set.mainDocument.status]
+    if (!action || action.next !== nextStatus) return
+    const memberTargets: { code: string; url: string }[] = []
+    for (const member of set.members) {
+      // A no-draft Published member is an existing linked reference, not a pending
+      // workflow item. Members already at the target are also skipped so a partial
+      // run can be retried without requesting a backwards/duplicate transition.
+      if (!member.activeDraft && member.document.status === 'Published') continue
+      const status = routedSetStatus(member.document, member.activeDraft)
+      if (status === nextStatus) continue
+      if (status !== set.mainDocument.status) {
+        setSetResults((prev) => ({
+          ...prev,
+          [mainId]: `ยังดำเนินการทั้งชุดไม่ได้: ${member.document.documentCode} อยู่สถานะ ${status}`,
+        }))
+        return
+      }
+      memberTargets.push({
+        code: member.document.documentCode,
+        url: member.activeDraft
+          ? `/api/admin/documents/${member.document.id}/revision-drafts/${member.activeDraft.id}`
+          : `/api/admin/documents/${member.document.id}`,
+      })
+    }
+    if (!confirm(`ยืนยัน ${action.label} สำหรับ ${set.mainDocument.documentCode} และสมาชิก ${set.members.length} ฉบับ?`)) return
+
+    const totalItems = memberTargets.length + 1
+    let succeeded = 0
+    let failed: { code: string; reason: string } | null = null
+    setSetResults((prev) => {
+      const next = { ...prev }
+      delete next[mainId]
+      return next
+    })
+
+    try {
+      // The main document is deliberately last. A member failure breaks this loop before
+      // the main target can be reached, preserving the set's workflow anchor.
+      const targets = [
+        ...memberTargets,
+        {
+          code: set.mainDocument.documentCode,
+          url: `/api/admin/documents/${mainId}`,
+        },
+      ]
+
+      for (const [index, target] of targets.entries()) {
+        setSetProgress({
+          mainId,
+          kind: 'status',
+          currentLabel: `กำลังดำเนินการ ${target.code}`,
+          completed: index,
+          total: totalItems,
+          percent: Math.round((index / totalItems) * 100),
+        })
+        try {
+          const res = await fetch(target.url, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: nextStatus }),
+          })
+          const json = await res.json().catch(() => ({} as { error?: string })) as { error?: string }
+          if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
+          succeeded += 1
+          setSetProgress({
+            mainId,
+            kind: 'status',
+            currentLabel: `สำเร็จ ${target.code}`,
+            completed: index + 1,
+            total: totalItems,
+            percent: Math.round(((index + 1) / totalItems) * 100),
+          })
+        } catch (error) {
+          failed = {
+            code: target.code,
+            reason: error instanceof Error ? error.message : 'ดำเนินการไม่สำเร็จ',
+          }
+          break
+        }
+      }
+
+      const summary = failed
+        ? `สำเร็จ ${succeeded} · ไม่สำเร็จ 1: ${failed.code} (${failed.reason})`
+        : `สำเร็จ ${succeeded} · ไม่สำเร็จ 0`
+      if (!failed) {
+        const mainEntry: PendingDoc = {
+          id: set.mainDocument.id,
+          document_code: set.mainDocument.documentCode,
+          title: set.mainDocument.title,
+          type: set.mainDocument.type,
+          department: set.mainDocument.department,
+          revision: set.mainDocument.revision,
+          updated_at: new Date().toISOString(),
+          hasOfficialPdf: set.mainDocument.hasOfficialFile,
+          kind: 'document',
+        }
+        const dropMain = (prev: PendingDoc[]) => prev.filter((doc) => doc.id !== mainId)
+        setNewDocs(dropMain)
+        setReviewDocs((prev) => nextStatus === 'Review' ? [mainEntry, ...dropMain(prev)] : dropMain(prev))
+        setApprovedDocs((prev) => nextStatus === 'Approved' ? [mainEntry, ...dropMain(prev)] : dropMain(prev))
+      }
+      setSetResults((prev) => ({ ...prev, [mainId]: summary }))
+    } finally {
+      setSetProgress(null)
+      router.refresh()
+    }
+  }
+
   function handlePromoted() {
     // Draft reached Published — it drops out of every pending bucket entirely.
     const parentId = revDoc?.id
+    if (parentId && setMemberDocumentIds.has(parentId)) {
+      setRevDoc(null)
+      router.refresh()
+      return
+    }
     if (parentId) {
       setSourceDocs((prev) => prev.filter((d) => !(d.kind === 'draft' && d.id === parentId)))
       setReviewDocs((prev) => prev.filter((d) => !(d.kind === 'draft' && d.id === parentId)))
@@ -377,6 +773,10 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
 
   function handleDraftStatusChange(draft: DocumentRevisionDraft) {
     const parentId = draft.document_id
+    if (setMemberDocumentIds.has(parentId)) {
+      router.refresh()
+      return
+    }
     const bucket = bucketForStatus(draft.status, Boolean(draft.word_url))
     setSourceDocs((prev) => prev.filter((d) => !(d.kind === 'draft' && d.id === parentId)))
     setReviewDocs((prev) => prev.filter((d) => !(d.kind === 'draft' && d.id === parentId)))
@@ -443,6 +843,16 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   function openPending(d: PendingDoc) {
     if (d.kind === 'draft') openRevisionPanel(d.id)
     else openActionPanel(d.id)
+  }
+
+  function openSetMember(member: RegistrationSetMember) {
+    if (member.activeDraft) {
+      openRevisionPanel(member.document.id)
+    } else if (member.document.status === 'Published') {
+      openDetail(member.document.id)
+    } else {
+      openActionPanel(member.document.id)
+    }
   }
 
   // One-click publish shortcut for DCC/Admin on an Approved working revision draft — promotes
@@ -556,6 +966,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           <div style={{ fontSize: 12, color: 'var(--muted)' }}>รวม {total} รายการ</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: 10 }}>
+          <ActionCard label="ชุดเอกสารลงทะเบียนใหม่" count={sets.length} sub="เอกสารหลักและสมาชิกที่ต้องเดิน Workflow ร่วมกัน" icon="doc" accent="#0F766E" onClick={() => scrollToSection(setSectionRef)} />
           <ActionCard label="เอกสารใหม่ รอจัดทำ PDF" count={newDocs.length} sub="เอกสาร Rev.00 มีไฟล์ต้นฉบับแล้ว รอ DCC" icon="plus" accent="#0EA5E9" onClick={() => scrollToSection(newSectionRef)} />
           <ActionCard label="รอทำ PDF (Rev+)" count={sourceWaitingPdfCount} sub="มี Word/Excel แล้ว รอ DCC จัดทำ PDF" icon="upload" accent="#9333EA" onClick={() => scrollToSection(sourceSectionRef)} />
           <ActionCard label="พร้อมส่ง Review" count={sourceReadyReviewCount} sub="มีไฟล์ทางการแล้ว ตรวจและส่งต่อได้" icon="arrowRight" accent="#2563EB" onClick={() => scrollToSection(sourceSectionRef)} />
@@ -563,6 +974,29 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           <ActionCard label="รอเผยแพร่" count={approvedDocs.length} sub="อนุมัติแล้ว รอเผยแพร่เป็น Published" icon="check" accent="#16A34A" onClick={() => scrollToSection(approvedSectionRef)} />
           <ActionCard label="รอทบทวนประจำปี" count={annualDocs.length} sub="QP/WI ที่ยืนยัน review แล้ว" icon="clock" accent="#0D9488" onClick={() => scrollToSection(annualSectionRef)} />
         </div>
+      </div>
+
+      <div ref={setSectionRef}>
+        <Section
+          title="ชุดเอกสารลงทะเบียนใหม่"
+          sub="ติดตามเอกสารหลักและสมาชิกในชุดเดียวกัน โดยดำเนินการสมาชิกก่อนเอกสารหลัก"
+          icon="doc" accent="#0F766E" count={sets.length}
+        >
+          {sets.map((set) => (
+            <RegistrationSetCard
+              key={set.mainDocument.id}
+              set={set}
+              canManage={canBulkReview}
+              controlsBusy={setProgress !== null}
+              progress={setProgress?.mainId === set.mainDocument.id ? setProgress : null}
+              result={setResults[set.mainDocument.id]}
+              onOpenMain={() => openActionPanel(set.mainDocument.id)}
+              onOpenMember={(member) => openSetMember(member)}
+              onDownload={() => handleSetZip(set)}
+              onAdvance={(next) => handleSetStatusChange(set, next)}
+            />
+          ))}
+        </Section>
       </div>
 
       <div ref={newSectionRef}>
