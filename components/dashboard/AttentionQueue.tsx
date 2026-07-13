@@ -14,6 +14,8 @@ interface AttentionQueueProps {
   totalContracts: number
   staffLicenseExpired: number
   staffLicenseExpiring: number
+  staffCompetencyOverdue: number
+  staffCompetencyDueSoon: number
   permissions: Permissions
   qualityTasks: QualityTaskOccurrence[]
 }
@@ -126,25 +128,29 @@ function StaffLicenseStatRow({ icon, count, label, color }: { icon: string; coun
   )
 }
 
-function StaffLicenseStat({ expired, expiring }: { expired: number; expiring: number }) {
+function StaffLicenseStat({ expired, expiring, competencyOverdue, competencyDueSoon }: {
+  expired: number; expiring: number; competencyOverdue: number; competencyDueSoon: number
+}) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <StaffLicenseStatRow icon="alert" count={expired} label="ใบประกอบวิชาชีพหมดอายุแล้ว" color="#DC2626" />
       <StaffLicenseStatRow icon="clock" count={expiring} label="ใบประกอบวิชาชีพใกล้หมดอายุ" color="#D97706" />
+      <StaffLicenseStatRow icon="alert" count={competencyOverdue} label="สมรรถนะค้างประเมิน" color="#DC2626" />
+      <StaffLicenseStatRow icon="clock" count={competencyDueSoon} label="สมรรถนะใกล้ครบกำหนดประเมิน" color="#D97706" />
     </div>
   )
 }
 
 export function AttentionQueue({
   pendingDocs, totalPendingDocs, contracts, totalContracts,
-  staffLicenseExpired, staffLicenseExpiring, permissions,
-  qualityTasks,
+  staffLicenseExpired, staffLicenseExpiring, staffCompetencyOverdue, staffCompetencyDueSoon,
+  permissions, qualityTasks,
 }: AttentionQueueProps) {
   const canSeeDocs = (permissions['เอกสารคุณภาพ'] ?? 'none') !== 'none'
   const canSeeContracts = (permissions['สัญญา'] ?? 'none') !== 'none'
   const canSeeStaff = (permissions['บุคลากร'] ?? 'none') !== 'none'
   const canSeeQualityTasks = (permissions['งานคุณภาพ'] ?? 'none') !== 'none'
-  const staffLicenseTotal = staffLicenseExpired + staffLicenseExpiring
+  const staffLicenseTotal = staffLicenseExpired + staffLicenseExpiring + staffCompetencyOverdue + staffCompetencyDueSoon
 
   if (!canSeeDocs && !canSeeContracts && !canSeeStaff && !canSeeQualityTasks) return null
 
@@ -156,6 +162,11 @@ export function AttentionQueue({
         <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)' }}>รอการดำเนินการ</div>
       </div>
       <div className="dash-attention-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleCount}, 1fr)`, gap: 12 }}>
+        {canSeeQualityTasks && (
+          <GroupShell title="งานคุณภาพ" icon="calendar" iconColor="#0891B2" href="/staff/quality-tasks" count={qualityTasks.length}>
+            {qualityTasks.length > 0 ? qualityTasks.slice(0,3).map(task=><QualityTaskRow key={task.key} task={task}/>) : <Empty text="ไม่มีงานคุณภาพเร่งด่วน" icon="shieldCheck" />}
+          </GroupShell>
+        )}
         {canSeeContracts && (
           <GroupShell title="สัญญาใกล้หมด/งบคงเหลือต่ำ" icon="building" iconColor="#7C3AED" href="/staff/contracts" count={totalContracts}>
             {contracts.length > 0
@@ -164,10 +175,10 @@ export function AttentionQueue({
           </GroupShell>
         )}
         {canSeeStaff && (
-          <GroupShell title="บุคลากร" icon="users" iconColor="#8B5CF6" href="/staff/personnel" count={staffLicenseTotal}>
+          <GroupShell title="บุคลากร" icon="users" iconColor="#8B5CF6" href="/staff/personnel/compliance" count={staffLicenseTotal}>
             {staffLicenseTotal > 0
-              ? <StaffLicenseStat expired={staffLicenseExpired} expiring={staffLicenseExpiring} />
-              : <Empty text="ไม่มีใบประกอบวิชาชีพที่ต้องติดตาม" icon="shieldCheck" />}
+              ? <StaffLicenseStat expired={staffLicenseExpired} expiring={staffLicenseExpiring} competencyOverdue={staffCompetencyOverdue} competencyDueSoon={staffCompetencyDueSoon} />
+              : <Empty text="ไม่มีรายการบุคลากรที่ต้องติดตาม" icon="shieldCheck" />}
           </GroupShell>
         )}
         {canSeeDocs && (
@@ -175,11 +186,6 @@ export function AttentionQueue({
             {pendingDocs.length > 0
               ? pendingDocs.slice(0, 3).map(doc => <DocumentRow key={doc.id} doc={doc} />)
               : <Empty text="ไม่มีเอกสารรอเผยแพร่" icon="shieldCheck" />}
-          </GroupShell>
-        )}
-        {canSeeQualityTasks && (
-          <GroupShell title="งานคุณภาพ" icon="calendar" iconColor="#0891B2" href="/staff/quality-tasks" count={qualityTasks.length}>
-            {qualityTasks.length > 0 ? qualityTasks.slice(0,3).map(task=><QualityTaskRow key={task.key} task={task}/>) : <Empty text="ไม่มีงานคุณภาพเร่งด่วน" icon="shieldCheck" />}
           </GroupShell>
         )}
       </div>

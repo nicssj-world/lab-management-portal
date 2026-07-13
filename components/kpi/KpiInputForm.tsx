@@ -216,6 +216,7 @@ export function KpiInputForm() {
         selectedDeptId={deptId}
         selectedMonth={month}
         canPick={(dId) => config?.canEditAll || (config?.assignedDeptIds.includes(dId) ?? false)}
+        isMine={(dId) => config?.assignedDeptIds.includes(dId) ?? false}
         onPick={(dId, m) => guardSwitch(() => { setDeptId(dId); setMonth(m) })}
       />
 
@@ -393,12 +394,13 @@ function KpiRow({ def, val, excluded, last, onChange }: {
   )
 }
 
-function EntryStatusMatrix({ status, currentMonth, selectedDeptId, selectedMonth, canPick, onPick }: {
+function EntryStatusMatrix({ status, currentMonth, selectedDeptId, selectedMonth, canPick, isMine, onPick }: {
   status: EntryStatusRow[]
   currentMonth: number
   selectedDeptId: number | null
   selectedMonth: number
   canPick: (deptId: number) => boolean
+  isMine: (deptId: number) => boolean
   onPick: (deptId: number, month: number) => void
 }) {
   if (status.length === 0) return null
@@ -427,10 +429,24 @@ function EntryStatusMatrix({ status, currentMonth, selectedDeptId, selectedMonth
           <tbody>
             {status.map((row) => {
               const pickable = canPick(row.dept_id)
+              const mine = isMine(row.dept_id)
               return (
                 <tr key={row.dept_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '6px 12px', fontWeight: 600, color: 'var(--ink)', position: 'sticky', left: 0, background: 'var(--card)', zIndex: 1, whiteSpace: 'nowrap', borderRight: '1px solid var(--border)' }}>
+                  <td style={{
+                    padding: '6px 12px 6px 9px', fontWeight: mine ? 800 : 600, color: 'var(--ink)',
+                    position: 'sticky', left: 0, zIndex: 1, whiteSpace: 'nowrap',
+                    background: mine ? 'var(--primary-soft)' : 'var(--card)',
+                    borderRight: '1px solid var(--border)',
+                    borderLeft: mine ? '3px solid var(--primary)' : '3px solid transparent',
+                  }}>
                     {row.dept_name}
+                    {mine && (
+                      <span style={{
+                        marginLeft: 7, fontSize: 9.5, fontWeight: 700, color: 'var(--primary)',
+                        background: 'var(--card)', border: '1px solid var(--primary)',
+                        borderRadius: 20, padding: '1px 6px', verticalAlign: 'middle', whiteSpace: 'nowrap',
+                      }}>ของคุณ</span>
+                    )}
                   </td>
                   {MONTHS.map((m) => {
                     const cell = row.months[m] ?? { filled: 0, required: 0 }

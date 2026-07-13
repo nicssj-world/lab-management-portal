@@ -91,6 +91,7 @@ export default async function StaffDashboardPage() {
     staffTotalResult,
     staffMtResult,
     staffMtLicenseResult,
+    staffCompetencyResult,
     docTotalResult,
     docPublishedResult,
     docNewResult,
@@ -109,6 +110,7 @@ export default async function StaffDashboardPage() {
     supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).is('deleted_at', null),
     supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('role', 'Medical Technologist'),
     supabaseAdmin.from('profiles').select('mt_license_expiry').is('deleted_at', null).eq('role', 'Medical Technologist'),
+    supabaseAdmin.from('staff_competencies').select('next_due_date').is('deleted_at', null),
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null),
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Published'),
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).gte('created_at', prevMonthStart).lt('created_at', nextMonthStart),
@@ -139,6 +141,14 @@ export default async function StaffDashboardPage() {
     const status = expiryStatus(row.mt_license_expiry)
     if (status === 'expired') staffLicenseExpired++
     else if (status === 'expiring') staffLicenseExpiring++
+  }
+
+  let staffCompetencyOverdue = 0
+  let staffCompetencyDueSoon = 0
+  for (const row of (staffCompetencyResult.data ?? []) as { next_due_date: string | null }[]) {
+    const status = expiryStatus(row.next_due_date)
+    if (status === 'expired') staffCompetencyOverdue++
+    else if (status === 'expiring') staffCompetencyDueSoon++
   }
 
   const SEVERITY_LEVELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'] as const
@@ -317,6 +327,8 @@ export default async function StaffDashboardPage() {
             totalContracts={criticalContractsAll.length}
             staffLicenseExpired={staffLicenseExpired}
             staffLicenseExpiring={staffLicenseExpiring}
+            staffCompetencyOverdue={staffCompetencyOverdue}
+            staffCompetencyDueSoon={staffCompetencyDueSoon}
             permissions={permissions}
             qualityTasks={qualityTasks}
           />
