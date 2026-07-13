@@ -6,6 +6,8 @@ import { PermissionProvider } from '@/context/PermissionContext'
 import { SidebarProvider } from '@/context/SidebarContext'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { ensureOwnProfile } from '@/lib/auth/profile'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getAssignedDeptIds } from '@/lib/queries/kpi'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -27,6 +29,16 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   }
   if (profile.doc_role === 'Reviewer') {
     permissions['รายการตรวจ'] = 'edit'
+  }
+  // Users assigned as a per-dept KPI filler (kpi_dept_assignees) need at least
+  // 'view' so the KPI module is reachable, even if their role has no KPI permission.
+  if ((permissions['KPI'] ?? 'none') === 'none') {
+    try {
+      const kpiDeptIds = await getAssignedDeptIds(supabaseAdmin, user.id)
+      if (kpiDeptIds.length > 0) permissions['KPI'] = 'view'
+    } catch {
+      // Keep existing role-based behaviour if kpi_dept_assignees is unavailable.
+    }
   }
 
   return (

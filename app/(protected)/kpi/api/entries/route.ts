@@ -7,13 +7,6 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 export async function GET(request: NextRequest) {
   const actor = await getActor()
   if (!actor) return jsonUnauthorized()
-  if (!(await canAccessResource(actor, 'KPI', 'view'))) {
-    // Assigned fillers (no KPI:view perm) can still read to prefill the form
-    const assigned = await getAssignedDeptIds(supabaseAdmin, actor.id)
-    if (assigned.length === 0) return jsonForbidden()
-  }
-
-  const supabase = await createClient()
 
   const { searchParams } = new URL(request.url)
   const year = parseInt(searchParams.get('year') ?? '0', 10)
@@ -22,6 +15,17 @@ export async function GET(request: NextRequest) {
 
   if (!year || !month) return NextResponse.json({ error: 'year and month are required' }, { status: 400 })
 
+  if (!(await canAccessResource(actor, 'KPI', 'view'))) {
+    // Assigned fillers (no KPI:view perm) may only read their own assigned dept(s) —
+    // used to prefill the form, not to browse other departments' data.
+    const assigned = await getAssignedDeptIds(supabaseAdmin, actor.id)
+    if (assigned.length === 0) return jsonForbidden()
+    if (!dept) return jsonForbidden()
+    const { data: deptRow } = await supabaseAdmin.from('departments').select('id').eq('code', dept).maybeSingle()
+    if (!deptRow || !assigned.includes(deptRow.id)) return jsonForbidden()
+  }
+
+  const supabase = await createClient()
   const data = await getDashboard(supabase, year, month, dept)
   return NextResponse.json(data)
 }

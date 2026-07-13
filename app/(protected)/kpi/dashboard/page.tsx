@@ -38,12 +38,20 @@ export default function KpiDashboardPage() {
   const [tab, setTab]       = useState<Tab>('dashboard')
   const [depts, setDepts]   = useState<Department[]>([])
   const [satAddOpen, setSatAddOpen] = useState(false)
+  const [assignedDeptIds, setAssignedDeptIds] = useState<number[]>([])
   const { canEdit }         = usePermission('KPI')
+  // Users assigned as a filler for at least one dept (kpi_dept_assignees) can also
+  // reach the input form, even without the global KPI edit permission.
+  const canFillAny = canEdit || assignedDeptIds.length > 0
 
   useEffect(() => {
     fetch('/kpi/api/departments')
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setDepts(d) })
+      .catch(() => {})
+    fetch('/kpi/api/config')
+      .then(r => r.json())
+      .then(c => { if (Array.isArray(c?.assignedDeptIds)) setAssignedDeptIds(c.assignedDeptIds) })
       .catch(() => {})
   }, [])
 
@@ -54,7 +62,7 @@ export default function KpiDashboardPage() {
         title="KPI Dashboard"
         subtitle="ภาพรวม KPI ประจำปีงบประมาณ"
         marginBottom={0}
-        actions={canEdit && tab !== 'satisfaction' ? (
+        actions={canFillAny && tab !== 'satisfaction' ? (
           <Link href="/kpi/input">
             <Button variant="primary" icon="plus">บันทึกข้อมูล</Button>
           </Link>

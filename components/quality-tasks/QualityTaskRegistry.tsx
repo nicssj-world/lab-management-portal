@@ -9,9 +9,9 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import { buildReadAudiencePayload, buildReadAudiencePickerState } from '@/lib/documents/read-audience'
+import { QUALITY_TASK_CATEGORIES as CATS } from '@/lib/quality-tasks/categories'
 
 type Person={id:string;name:string;dept:string|null;role:string;document_position:string|null}
-const CATS:Record<string,string>={A:'การบริหารจัดการระบบคุณภาพ',B:'การบริหารบุคลากร',C:'การบริหารเครื่องมือและวัสดุ',D:'กระบวนการทดสอบ',E:'การบริการและความสัมพันธ์กับผู้รับบริการ',F:'ความปลอดภัยและสิ่งแวดล้อม',G:'ระบบสารสนเทศ (LIS/IT)',H:'POCT (Point-of-Care Testing)',I:'การประชุมและการสื่อสารภายใน'}
 function blank(no:number):QualityTaskTemplate{return{id:'',sourceKey:null,categoryCode:'A',categoryName:CATS.A,activityNo:no,title:'',description:null,referenceCode:null,frequencyText:'ตามที่กำหนด',ownerText:'',taskKind:'activity',reminderDays:7,evidenceRequired:false,active:true,defaultAssignees:[],defaultParticipantDepts:[],defaultParticipantUserIds:[],schedules:[]}}
 
 export function QualityTaskRegistry({level,initialTemplates,people}:{level:PermLevel;initialTemplates:QualityTaskTemplate[];people:Person[]}){

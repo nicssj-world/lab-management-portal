@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { buildPdfPageMetasFromFirstViewport, documentPdfProxyUrl, isPdfLike, shouldUsePdfJsViewer, viewerFileNameFromPath } from '../lib/pdf-viewer-utils'
+import { buildPdfPageMetasFromViewports, documentPdfProxyUrl, isPdfLike, shouldUsePdfJsViewer, viewerFileNameFromPath } from '../lib/pdf-viewer-utils'
 
 assert.equal(isPdfLike({ fileName: 'manual.pdf' }), true)
 assert.equal(isPdfLike({ fileName: 'MANUAL.PDF?token=abc' }), true)
@@ -15,12 +15,29 @@ assert.equal(isPdfLike({ fileName: null, mimeType: null }), true)
 assert.equal(viewerFileNameFromPath('staff/user/training/12345.pdf'), '12345.pdf')
 assert.equal(viewerFileNameFromPath(''), 'document.pdf')
 
-assert.deepEqual(buildPdfPageMetasFromFirstViewport(3, { width: 595, height: 842 }), [
+assert.deepEqual(buildPdfPageMetasFromViewports([
+  { width: 595, height: 842 },
+  { width: 595, height: 842 },
+  { width: 595, height: 842 },
+]), [
   { pageNumber: 1, width: 595, height: 842 },
   { pageNumber: 2, width: 595, height: 842 },
   { pageNumber: 3, width: 595, height: 842 },
 ])
-assert.deepEqual(buildPdfPageMetasFromFirstViewport(0, { width: 595, height: 842 }), [])
+assert.deepEqual(buildPdfPageMetasFromViewports([]), [])
+
+// A landscape page mixed into an otherwise-portrait document must keep its own
+// dimensions, not inherit page 1's — this was the root cause of the mis-rendered
+// landscape page in the in-app pdf.js viewer.
+assert.deepEqual(buildPdfPageMetasFromViewports([
+  { width: 595, height: 842 },
+  { width: 842, height: 595 },
+  { width: 792, height: 612 },
+]), [
+  { pageNumber: 1, width: 595, height: 842 },
+  { pageNumber: 2, width: 842, height: 595 },
+  { pageNumber: 3, width: 792, height: 612 },
+])
 
 assert.equal(shouldUsePdfJsViewer({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', platform: 'Win32', maxTouchPoints: 0 }), false)
 assert.equal(shouldUsePdfJsViewer({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', platform: 'MacIntel', maxTouchPoints: 0 }), false)

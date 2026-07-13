@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
-import { buildPdfPageMetasFromFirstViewport, isPdfLike, shouldUsePdfJsViewer, type PdfPageMeta } from '@/lib/pdf-viewer-utils'
+import { buildPdfPageMetasFromViewports, isPdfLike, shouldUsePdfJsViewer, type PdfPageMeta } from '@/lib/pdf-viewer-utils'
 
 interface PdfViewport {
   width: number
@@ -237,11 +237,15 @@ export function PdfViewer({ url, pdfJsUrl, fileName, mimeType, forcePdfJs = fals
         const document = await loadingTask.promise
         if (disposed) return
 
-        const firstPage = await document.getPage(1)
-        const firstViewport = firstPage.getViewport({ scale: 1 })
+        // Fetch every page's own viewport — pages can differ in size/orientation
+        // (e.g. a landscape page mixed into an otherwise-portrait document).
+        const viewports = await Promise.all(
+          Array.from({ length: document.numPages }, (_, index) =>
+            document.getPage(index + 1).then((page) => page.getViewport({ scale: 1 }))),
+        )
         if (disposed) return
         setPdf(document)
-        setPages(buildPdfPageMetasFromFirstViewport(document.numPages, firstViewport))
+        setPages(buildPdfPageMetasFromViewports(viewports))
         setStatus('ready')
       } catch (err) {
         if (disposed) return

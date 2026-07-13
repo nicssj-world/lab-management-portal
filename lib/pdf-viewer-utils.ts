@@ -24,9 +24,11 @@ export interface PdfPageMeta {
   height: number
 }
 
-export function buildPdfPageMetasFromFirstViewport(pageCount: number, viewport: { width: number; height: number }): PdfPageMeta[] {
-  if (pageCount <= 0) return []
-  return Array.from({ length: pageCount }, (_, index) => ({
+// Each page can have its own size/orientation (e.g. a landscape page mixed into an
+// otherwise-portrait document) — build metadata from every page's own viewport rather
+// than assuming all pages share the first page's dimensions.
+export function buildPdfPageMetasFromViewports(viewports: { width: number; height: number }[]): PdfPageMeta[] {
+  return viewports.map((viewport, index) => ({
     pageNumber: index + 1,
     width: viewport.width,
     height: viewport.height,
