@@ -30,7 +30,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'ไม่พบไฟล์ที่รอยืนยันเป็นไฟล์ทางการ' }, { status: 422 })
   }
 
-  const updatedResult = await supabaseAdmin
+  let updateQuery = supabaseAdmin
     .from('documents')
     .update({
       file_url: current.pending_file_url,
@@ -46,6 +46,18 @@ export async function POST(_req: NextRequest, { params }: Params) {
     .is('deleted_at', null)
     .in('status', ['Draft', 'Review'])
     .eq('pending_file_url', current.pending_file_url)
+
+  updateQuery = current.pending_file_name === null
+    ? updateQuery.is('pending_file_name', null)
+    : updateQuery.eq('pending_file_name', current.pending_file_name)
+  updateQuery = current.pending_file_size === null
+    ? updateQuery.is('pending_file_size', null)
+    : updateQuery.eq('pending_file_size', current.pending_file_size)
+  updateQuery = current.pending_file_mime === null
+    ? updateQuery.is('pending_file_mime', null)
+    : updateQuery.eq('pending_file_mime', current.pending_file_mime)
+
+  const updatedResult = await updateQuery
     .select()
     .maybeSingle()
 
