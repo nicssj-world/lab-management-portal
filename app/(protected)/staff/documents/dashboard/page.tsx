@@ -8,7 +8,9 @@ import { isReviewTrackedType, reviewDueDate } from '@/lib/documents/review'
 import { Stat } from '@/components/ui/Stat'
 import { Icon } from '@/components/ui/Icon'
 import { DOC_TYPES as TYPE_ORDER, TYPE_LABEL } from '@/lib/documents/type-labels'
+import { TYPE_ICON_FG } from '@/lib/documents/ui-constants'
 import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
+import { RecentDocumentsList } from '@/components/documents/RecentDocumentsList'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,14 +38,6 @@ const STATUS_META: { key: string; th: string; color: string }[] = [
   { key: 'Published', th: 'บังคับใช้',         color: '#16A34A' },
   { key: 'Obsolete',  th: 'ยกเลิกใช้งาน',     color: '#DC2626' },
 ]
-const STATUS_TONE: Record<string, { bg: string; color: string }> = {
-  Draft:     { bg: 'rgba(100,116,139,.12)', color: '#475569' },
-  Review:    { bg: 'rgba(217,119,6,.12)',   color: '#B45309' },
-  Approved:  { bg: 'rgba(30,95,173,.12)',   color: '#1E5FAD' },
-  Published: { bg: 'rgba(22,163,74,.12)',   color: '#15803D' },
-  Obsolete:  { bg: 'rgba(220,38,38,.12)',   color: '#DC2626' },
-}
-
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -84,11 +78,22 @@ function Donut({ counts, total }: { counts: { color: string; value: number }[]; 
   )
 }
 
-function SectionCard({ title, extra, children }: { title: string; extra?: React.ReactNode; children: React.ReactNode }) {
+function SectionCard({ title, icon, iconColor, extra, children }: { title: string; icon?: string; iconColor?: string; extra?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 18, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+    <div className="qd-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 18, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 14 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          {icon && (
+            <span style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 26, height: 26, borderRadius: 8, flexShrink: 0,
+              background: `${iconColor ?? '#1E5FAD'}1A`, color: iconColor ?? '#1E5FAD',
+            }}>
+              <Icon name={icon} size={14} />
+            </span>
+          )}
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{title}</div>
+        </div>
         {extra}
       </div>
       {children}
@@ -175,7 +180,6 @@ export default async function DocumentsDashboardPage() {
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>ภาพรวมระบบควบคุมเอกสาร</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <UserIdentityBadge userName={actor?.name ?? undefined} docRole={actor?.doc_role ?? undefined} userRole={actor?.role ?? undefined} />
           {canCreateDraft && (
             <Link href="/staff/documents?create=1" className="dash-btn-primary" style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
@@ -192,6 +196,7 @@ export default async function DocumentsDashboardPage() {
           }}>
             <Icon name="doc" size={15} /> เปิดคลังเอกสาร
           </Link>
+          <UserIdentityBadge userName={actor?.name ?? undefined} docRole={actor?.doc_role ?? undefined} userRole={actor?.role ?? undefined} />
         </div>
       </div>
 
@@ -221,22 +226,26 @@ export default async function DocumentsDashboardPage() {
 
       {/* Type bars + status donut */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
-        <SectionCard title="เอกสารแยกตามประเภท" extra={<span style={{ fontSize: 11.5, color: 'var(--muted)' }}>รวม {total} ฉบับ · {typeCounts.length} ประเภท</span>}>
+        <SectionCard title="เอกสารแยกตามประเภท" icon="chart" iconColor="#1E5FAD" extra={<span style={{ fontSize: 11.5, color: 'var(--muted)' }}>รวม {total} ฉบับ · {typeCounts.length} ประเภท</span>}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {typeCounts.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic' }}>ยังไม่มีเอกสาร</div>}
-            {typeCounts.map((t) => (
-              <div key={t.type} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 150, fontSize: 12.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>{TYPE_LABEL[t.type]}</div>
-                <div style={{ flex: 1, height: 8, borderRadius: 99, background: 'var(--surface-2)', overflow: 'hidden' }}>
-                  <div style={{ width: `${(t.count / maxTypeCount) * 100}%`, height: '100%', borderRadius: 99, background: 'var(--primary)' }} />
+            {typeCounts.map((t, i) => {
+              const fg = TYPE_ICON_FG[t.type] ?? 'var(--primary)'
+              return (
+                <div key={t.type} className="fade-in-up" style={{ display: 'flex', alignItems: 'center', gap: 12, animationDelay: `${i * 30}ms` }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 3, background: fg, flexShrink: 0 }} />
+                  <div style={{ width: 138, fontSize: 12.5, color: 'var(--ink)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>{TYPE_LABEL[t.type]}</div>
+                  <div style={{ flex: 1, height: 8, borderRadius: 99, background: 'var(--surface-2)', overflow: 'hidden' }}>
+                    <div style={{ width: `${(t.count / maxTypeCount) * 100}%`, height: '100%', borderRadius: 99, background: fg, transition: 'width .4s ease-out' }} />
+                  </div>
+                  <div style={{ width: 32, textAlign: 'right', fontSize: 13, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{t.count}</div>
                 </div>
-                <div style={{ width: 32, textAlign: 'right', fontSize: 13, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{t.count}</div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </SectionCard>
 
-        <SectionCard title="สถานะเอกสาร">
+        <SectionCard title="สถานะเอกสาร" icon="shieldCheck" iconColor="#16A34A">
           <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
             <Donut counts={statusCounts.map((s) => ({ color: s.color, value: s.value }))} total={total} />
             <div style={{ flex: 1, minWidth: 170, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -256,29 +265,23 @@ export default async function DocumentsDashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
         <SectionCard
           title="เอกสารล่าสุด"
-          extra={<Link href="/staff/documents" style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', textDecoration: 'none' }}>ดูทั้งหมด →</Link>}
+          icon="sparkle"
+          iconColor="#9333EA"
+          extra={<Link href="/staff/documents" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, color: 'var(--primary)', textDecoration: 'none' }}>ดูทั้งหมด <Icon name="arrowRight" size={12} /></Link>}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {recent.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic' }}>ยังไม่มีเอกสาร</div>}
-            {recent.map((d, i) => {
-              const tone = STATUS_TONE[d.status] ?? STATUS_TONE.Draft
-              return (
-                <Link key={d.id} href={`/staff/documents?search=${encodeURIComponent(d.document_code)}`}
-                  className="fade-in-up dash-row"
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, textDecoration: 'none', animationDelay: `${i * 35}ms` }}
-                >
-                  <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)', flexShrink: 0 }}>{d.document_code}</span>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: tone.color, background: tone.bg, padding: '2px 9px', borderRadius: 99, flexShrink: 0 }}>{d.status}</span>
-                  <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtDate(d.published_at)}</span>
-                </Link>
-              )
-            })}
-          </div>
+          <RecentDocumentsList
+            docs={recent.map((d) => ({ id: d.id, document_code: d.document_code, title: d.title, type: d.type, status: d.status, published_at: d.published_at }))}
+            userRole={actor?.role ?? ''}
+            docRole={actor?.doc_role ?? null}
+            userId={user.id}
+            canUpload={canCreateDraft}
+          />
         </SectionCard>
 
         <SectionCard
           title="ใกล้ครบกำหนดทบทวน (น้อยกว่า 90 วัน)"
+          icon="clock"
+          iconColor="#D97706"
           extra={reviewOverdueTracked.length > 0
             ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: '#DC2626', background: 'rgba(220,38,38,.12)', padding: '2px 10px', borderRadius: 99 }}><Icon name="alert" size={12} /> เลยกำหนด {reviewOverdueTracked.length} ฉบับ</span>
             : reviewDueSoon90.length > 0

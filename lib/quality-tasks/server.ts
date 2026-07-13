@@ -220,6 +220,16 @@ export async function saveTemplate(input: Omit<QualityTaskTemplate, 'id' | 'sour
   return templateId
 }
 
+export async function deleteTemplate(id: string, actor: Actor) {
+  const { count, error: countError } = await supabaseAdmin.from('quality_task_instances').select('*', { count: 'exact', head: true }).eq('template_id', id)
+  fail(countError)
+  if ((count ?? 0) > 0) throw new Error('ไม่สามารถลบได้ เนื่องจากกิจกรรมนี้มีการสร้างงานไปแล้ว กรุณาปิดใช้งานแทน')
+  await supabaseAdmin.from('quality_task_default_assignees').delete().eq('template_id', id)
+  await supabaseAdmin.from('quality_task_schedules').delete().eq('template_id', id)
+  fail((await supabaseAdmin.from('quality_task_templates').delete().eq('id', id)).error)
+  audit(actor, 'quality_task.template.delete', id, {})
+}
+
 export async function listTaskPeople() {
   const { data, error } = await supabaseAdmin.from('profiles').select('id,name,dept,role,document_position').is('deleted_at', null).order('name')
   fail(error); return data ?? []
