@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getActiveRevisionDrafts } from '@/lib/documents/pending'
+import { getActiveRevisionDrafts, getNewDraftDocuments } from '@/lib/documents/pending'
 import { PendingClient, type PendingDoc, type AnnualReviewDoc } from './PendingClient'
 
 export const dynamic = 'force-dynamic'
@@ -27,6 +27,9 @@ export default async function PendingApprovalPage() {
   // matching section instead of staying stuck under "รอ DCC".
   const activeDrafts = await getActiveRevisionDrafts().catch(() => [])
   const draftsAwaitingDcc = activeDrafts.filter((d) => d.status === 'Draft' && d.hasWordUrl)
+  // Brand-new Rev.00 documents (not working-revision drafts) still in Draft with a Word/Excel
+  // source uploaded — the "เอกสารใหม่ รอจัดทำ PDF" queue.
+  const newDraftRows = await getNewDraftDocuments().catch(() => [])
   const draftsInReview = activeDrafts.filter((d) => d.status === 'Review')
   const draftsApproved = activeDrafts.filter((d) => d.status === 'Approved')
 
@@ -85,6 +88,18 @@ export default async function PendingApprovalPage() {
     ...toDraftPendingDocs(draftsApproved),
   ].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
 
+  const newDocs: PendingDoc[] = newDraftRows.map((d) => ({
+    id: d.id,
+    document_code: d.document_code,
+    title: d.title,
+    type: d.type,
+    department: d.department,
+    revision: d.revision,
+    updated_at: d.updated_at,
+    hasOfficialPdf: d.hasOfficialPdf,
+    kind: 'document' as const,
+  }))
+
   const annualReviewDocs: AnnualReviewDoc[] = (annualReviewRes.data ?? []).map((d) => ({
     id: d.id,
     document_code: d.document_code,
@@ -98,6 +113,7 @@ export default async function PendingApprovalPage() {
 
   return (
     <PendingClient
+      newDocs={newDocs}
       sourceDocs={sourceDocs}
       reviewDocs={reviewDocs}
       approvedDocs={approvedDocs}

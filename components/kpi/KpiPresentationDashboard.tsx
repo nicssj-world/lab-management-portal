@@ -10,6 +10,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Stat } from '@/components/ui/Stat'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { getFiscalMonths, getThaiMonthLabel, calcResult } from '@/lib/kpi-utils'
+import { getMonthlyChartTableLayout, getMonthlyXAxisCenterPadding } from '@/lib/kpi/monthly-grid'
 import type { AnnualKpiRow, KpiDefinition } from '@/lib/supabase/types'
 
 interface Props {
@@ -224,6 +225,9 @@ function LineKpiCard({ title, target, targetType, series, yMin = 80, lineColor =
   const trend = linearTrend(series.map(s => s.pct))
   const chartData = series.map((s, i) => ({ month: s.month, pct: s.pct, trend: trend[i] }))
   const targetLabel = `${targetType === 'gte' ? '≥' : '≤'} ${target}%`
+  const monthlyLayout = getMonthlyChartTableLayout(series.length)
+  const [chartWidth, setChartWidth] = useState(0)
+  const xAxisPadding = getMonthlyXAxisCenterPadding(chartWidth, monthlyLayout)
 
   return (
     <Card padding={20}>
@@ -231,12 +235,13 @@ function LineKpiCard({ title, target, targetType, series, yMin = 80, lineColor =
       {!hasData ? (
         <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>ไม่มีข้อมูลสำหรับแผนกนี้</div>
       ) : (
-        <>
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: monthlyLayout.minimumContentWidth }}>
+            <ResponsiveContainer width="100%" height={220} onResize={(width) => setChartWidth(previous => previous === width ? previous : width)}>
+              <ComposedChart data={chartData} margin={{ top: 10, right: monthlyLayout.chartRightGutter, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
-              <YAxis domain={[yMin, 100]} tick={{ fontSize: 11, fill: 'var(--muted)' }} unit="%" width={42} />
+              <XAxis dataKey="month" padding={{ left: xAxisPadding, right: xAxisPadding }} tick={false} tickLine={false} axisLine={false} height={4} />
+              <YAxis domain={[yMin, 100]} tick={{ fontSize: 11, fill: 'var(--muted)' }} unit="%" width={monthlyLayout.labelColumnWidth} />
               <Tooltip
                 contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
                 formatter={(v, name) => [`${v}%`, name === 'pct' ? 'ผลงาน' : 'แนวโน้ม']}
@@ -244,17 +249,19 @@ function LineKpiCard({ title, target, targetType, series, yMin = 80, lineColor =
               <ReferenceLine y={target} stroke={ORANGE} strokeWidth={2} label={{ value: `Target ${target}`, fill: ORANGE, fontSize: 10, position: 'right' }} />
               <Line type="monotone" dataKey="pct" name="pct" stroke={lineColor} strokeWidth={2.5} dot={{ r: 3, fill: lineColor }} connectNulls />
               <Line type="linear" dataKey="trend" name="trend" stroke={RED} strokeWidth={1.5} strokeDasharray="6 4" dot={false} connectNulls />
-            </ComposedChart>
-          </ResponsiveContainer>
-          <MiniTable
-            series={series}
-            rows={[
-              { label: 'ทันเวลา', key: 'num' },
-              { label: 'ทั้งหมด', key: 'den' },
-              { label: 'ร้อยละ', key: 'pct', isPct: true, target, targetType },
-            ]}
-          />
-        </>
+              </ComposedChart>
+            </ResponsiveContainer>
+            <MiniTable
+              series={series}
+              alignWithChart
+              rows={[
+                { label: 'ทันเวลา', key: 'num' },
+                { label: 'ทั้งหมด', key: 'den' },
+                { label: 'ร้อยละ', key: 'pct', isPct: true, target, targetType },
+              ]}
+            />
+          </div>
+        </div>
       )}
     </Card>
   )
@@ -264,6 +271,9 @@ function LineKpiCard({ title, target, targetType, series, yMin = 80, lineColor =
 function UncrossCard({ series }: { series: { month: string; num: number | null; den: number | null; pct: number | null }[] }) {
   const hasData = series.some(s => s.num != null && s.num > 0)
   const chartData = series.map(s => ({ month: s.month, count: s.num ?? 0 }))
+  const monthlyLayout = getMonthlyChartTableLayout(series.length)
+  const [chartWidth, setChartWidth] = useState(0)
+  const xAxisPadding = getMonthlyXAxisCenterPadding(chartWidth, monthlyLayout)
 
   return (
     <Card padding={20}>
@@ -272,27 +282,32 @@ function UncrossCard({ series }: { series: { month: string; num: number | null; 
         <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>ไม่มีข้อมูลสำหรับแผนกนี้</div>
       ) : (
         <>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chartData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
-              <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} width={36} />
-              <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v) => [`${v} ครั้ง`, 'จำนวน']} />
-              <Bar dataKey="count" fill={GREEN} radius={[4, 4, 0, 0]} maxBarSize={36} />
-            </BarChart>
-          </ResponsiveContainer>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6, fontSize: 13, fontWeight: 700, color: 'var(--success)' }}>
-            <Icon name="check" size={14} stroke={3} />
-            ทันเวลา 100.00% ทุกเดือน
+          <div style={{ overflowX: 'auto' }}>
+            <div style={{ minWidth: monthlyLayout.minimumContentWidth }}>
+              <ResponsiveContainer width="100%" height={220} onResize={(width) => setChartWidth(previous => previous === width ? previous : width)}>
+                <BarChart data={chartData} margin={{ top: 16, right: monthlyLayout.chartRightGutter, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="month" padding={{ left: xAxisPadding, right: xAxisPadding }} tick={false} tickLine={false} axisLine={false} height={4} />
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} width={monthlyLayout.labelColumnWidth} />
+                  <Tooltip cursor={false} contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v) => [`${v} ครั้ง`, 'จำนวน']} />
+                  <Bar dataKey="count" fill={GREEN} radius={[4, 4, 0, 0]} maxBarSize={36} />
+                </BarChart>
+              </ResponsiveContainer>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6, fontSize: 13, fontWeight: 700, color: 'var(--success)' }}>
+                <Icon name="check" size={14} stroke={3} />
+                ทันเวลา 100.00% ทุกเดือน
+              </div>
+              <MiniTable
+                series={series}
+                alignWithChart
+                rows={[
+                  { label: 'ทันเวลา', key: 'num' },
+                  { label: 'ทั้งหมด', key: 'den' },
+                  { label: 'ร้อยละ', key: 'pct', isPct: true, target: 100, targetType: 'gte' },
+                ]}
+              />
+            </div>
           </div>
-          <MiniTable
-            series={series}
-            rows={[
-              { label: 'ทันเวลา', key: 'num' },
-              { label: 'ทั้งหมด', key: 'den' },
-              { label: 'ร้อยละ', key: 'pct', isPct: true, target: 100, targetType: 'gte' },
-            ]}
-          />
         </>
       )}
     </Card>
@@ -473,13 +488,21 @@ const ipsgTh: React.CSSProperties = {
 }
 
 // ── Mini monthly table (numerator/denominator/pct) ───────────────
-function MiniTable({ series, rows }: {
+function MiniTable({ series, rows, alignWithChart = false }: {
   series: { month: string; num: number | null; den: number | null; pct: number | null }[]
   rows: { label: string; key: 'num' | 'den' | 'pct'; isPct?: boolean; target?: number; targetType?: 'gte' | 'lte'; pctDecimals?: number }[]
+  alignWithChart?: boolean
 }) {
+  const monthlyLayout = alignWithChart ? getMonthlyChartTableLayout(series.length) : null
+
   return (
-    <div style={{ overflowX: 'auto', marginTop: 12 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+    <div style={{ overflowX: alignWithChart ? 'visible' : 'auto', marginTop: 12 }}>
+      <table style={{ width: monthlyLayout?.tableWidth ?? '100%', tableLayout: monthlyLayout ? 'fixed' : 'auto', borderCollapse: 'collapse', fontSize: 11.5 }}>
+        {monthlyLayout && (
+          <colgroup>
+            {monthlyLayout.columns.map((width, index) => <col key={index} style={{ width }} />)}
+          </colgroup>
+        )}
         <thead>
           <tr style={{ background: 'var(--surface-2)' }}>
             <th style={ipsgTh}>รายการ</th>

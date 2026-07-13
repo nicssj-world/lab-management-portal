@@ -302,8 +302,8 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
                   </span>
                   {!collapsed && (
                     <>
-                      <span style={{ flex: 1, color: 'var(--ink)' }}>{lang === 'th' ? item.th : item.en}</span>
-                      {docCount !== null && (
+                      <span style={{ flex: 1, minWidth: 0, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{lang === 'th' ? item.th : item.en}</span>
+                      {item.href === '/staff/documents/dashboard' && docCount !== null && (
                         <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 20 }}>{docCount}</span>
                       )}
                       <Icon name={expanded ? 'chevDown' : 'chevRight'} size={12} style={{ color: 'var(--muted)', flexShrink: 0 }} />
@@ -373,10 +373,16 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
               </span>
               {!collapsed && (
                 <>
-                  <span style={{ flex: 1, fontSize: 13, fontWeight: active ? 700 : 500, color: 'var(--ink)' }}>{lang === 'th' ? item.th : item.en}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: active ? 700 : 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{lang === 'th' ? item.th : item.en}</span>
                   {item.href === '/staff/tests' && testCount !== null
-                    ? <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 20 }}>{testCount}</span>
-                    : item.badge && <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 20 }}>{item.badge}</span>
+                    ? <>
+                        <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 20 }}>{testCount}</span>
+                        <span className="staff-nav-badge-trailing" aria-hidden="true" style={{ width: 12, flexShrink: 0 }} />
+                      </>
+                    : item.badge && <>
+                        <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 20 }}>{item.badge}</span>
+                        <span className="staff-nav-badge-trailing" aria-hidden="true" style={{ width: 12, flexShrink: 0 }} />
+                      </>
                   }
                 </>
               )}
