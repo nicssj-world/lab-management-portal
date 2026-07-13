@@ -13,22 +13,12 @@ import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { documentPdfProxyUrl, isPdfLike } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
 import { TYPE_LABEL } from '@/lib/documents/type-labels'
+import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
 
 // ── Constants ─────────────────────────────────────────────────
 const TYPE_TABS = ['All', 'QM', 'QP', 'WI', 'Reference', 'Form', 'Card file', 'Lb', 'Manual', 'Policy', 'Others'] as const
 
-const DEPARTMENTS = [
-  'กลุ่มงานเทคนิคการแพทย์',
-  'งานคลังเลือด',
-  'งานจุลชีววิทยาคลินิก',
-  'งานโลหิตวิทยาคลินิก',
-  'งานภูมิคุ้มกันวิทยาคลินิก',
-  'งานจุลทรรศน์ศาสตร์คลินิก',
-  'งานเคมีคลินิก',
-  'ห้องปฏิบัติการศูนย์สุขภาพชุมชนเมืองชลบุรี',
-  'งานอณูชีววิทยา',
-  'งานตรวจพิเศษและปฏิบัติการตรวจต่อ',
-] as const
+const DEPARTMENTS = DOCUMENT_DEPARTMENTS
 
 const TYPE_COLORS: Record<string, 'blue' | 'teal' | 'purple' | 'amber' | 'green' | 'gray' | 'red'> = {
   QP: 'blue', WI: 'teal', Form: 'purple', Policy: 'amber', Manual: 'green', QM: 'green',

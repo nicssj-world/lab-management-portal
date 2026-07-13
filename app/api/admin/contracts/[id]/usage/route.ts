@@ -41,7 +41,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const perms = await getRolePermissions(actor.role)
-  if ((perms['สัญญา'] ?? 'none') !== 'edit') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const permLevel = perms['สัญญา'] ?? 'none'
+  if (permLevel === 'none') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const body = await req.json()
@@ -54,11 +55,14 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: contract, error: contractErr } = await supabaseAdmin
     .from('contracts')
-    .select('total, vendor, product, contract_usage(amount)')
+    .select('total, vendor, product, responsible_user_ids, contract_usage(amount)')
     .eq('id', Number(id))
     .single()
 
   if (contractErr) return NextResponse.json({ error: contractErr.message }, { status: 500 })
+
+  const isResponsible = (contract.responsible_user_ids ?? []).includes(actor.id)
+  if (permLevel !== 'edit' && !isResponsible) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const used = ((contract.contract_usage as { amount: number | null }[] | null) ?? [])
     .reduce((sum, row) => sum + (row.amount ?? 0), 0)

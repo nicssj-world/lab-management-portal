@@ -21,11 +21,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id } = await params
   const body = await req.json()
-  const { vendor, product, total, start_date, end_date, contract_number, department, status } = body
+  const { vendor, product, total, start_date, end_date, contract_number, department, status, responsible_user_ids } = body
+  const cleanResponsibleIds = Array.isArray(responsible_user_ids) ? responsible_user_ids.filter((rid: unknown) => typeof rid === 'string' && rid) : undefined
 
   const { data, error } = await supabaseAdmin
     .from('contracts')
-    .update({ vendor, product, total: total != null ? Number(total) : undefined, start_date: start_date || null, end_date: end_date || null, contract_number: contract_number || null, department: department || null, status })
+    .update({ vendor, product, total: total != null ? Number(total) : undefined, start_date: start_date || null, end_date: end_date || null, contract_number: contract_number || null, department: department || null, status, responsible_user_ids: cleanResponsibleIds })
     .eq('id', Number(id))
     .select()
     .single()

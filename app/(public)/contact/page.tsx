@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createStaffSignedUrl } from '@/lib/personnel/storage'
 import type { OrgChartNode } from '@/lib/supabase/types'
 import { OrgStructure, type OrgNode } from './OrgStructure'
+import { QualityChartViewer } from './QualityChartViewer'
 
 // Photos use 10-minute signed URLs → render fresh on every request.
 export const dynamic = 'force-dynamic'
@@ -39,6 +40,7 @@ async function loadOrgNodes(): Promise<OrgNode[]> {
       display_name: n.person_name || linked?.name || null,
       position: linked?.position_title ?? null,
       photo,
+      photo_position: n.photo_position,
       phone: n.phone,
       sort_order: n.sort_order,
     }
@@ -81,6 +83,7 @@ export default async function ContactPage() {
               <Icon name="phone" size={14} style={{ color: '#fff' }} /> (038) 931-455
             </span>
             <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>โทรศัพท์กลาง — ต่อเบอร์ภายในของแต่ละหน่วยงาน</span>
+            <QualityChartViewer src="/images/quality-org-chart.png" />
             <span style={{ flex: 1 }} />
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               {LEGEND.map((l) => (

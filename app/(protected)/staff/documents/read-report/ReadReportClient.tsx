@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
 import { DEPARTMENTS, DEPT_ABBR } from '@/lib/validations/user-schema'
-import { TYPE_ICON_BG, TYPE_ICON_FG } from '@/lib/documents/ui-constants'
+import { TYPE_ICON_BG, TYPE_ICON_FG, DEPT_BADGE_FG, DEPT_BADGE_MIXED_FG } from '@/lib/documents/ui-constants'
 import { DOC_TYPES as TYPE_ORDER } from '@/lib/documents/type-labels'
 import { buildReadAudiencePayload, buildReadAudiencePickerState, resolveReadAudience } from '@/lib/documents/read-audience'
 import { buildReadLogSummaryHtml } from '@/lib/documents/read-log-summary'
@@ -414,11 +414,14 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
                       <span style={{ fontSize: 10.5, fontWeight: 700, color: TYPE_ICON_FG[r.type] ?? 'var(--muted)', background: TYPE_ICON_BG[r.type] ?? 'var(--surface-2)', padding: '2px 9px', borderRadius: 99 }}>{r.type}</span>
                     </td>
                     <td style={{ padding: '10px 14px', textAlign: 'center', maxWidth: 180 }}>
-                      {hasAudienceLimit ? (
-                        <span title={[depts.join(', '), userIds.length > 0 ? `รายบุคคล ${userIds.length} คน` : ''].filter(Boolean).join(' + ')} style={{ fontSize: 10.5, fontWeight: 600, color: '#7C3AED', background: 'rgba(124,58,237,.1)', padding: '2px 9px', borderRadius: 99 }}>
-                          {audienceLabel}
-                        </span>
-                      ) : (
+                      {hasAudienceLimit ? (() => {
+                        const deptColor = depts.length === 1 ? (DEPT_BADGE_FG[depts[0]] ?? DEPT_BADGE_MIXED_FG) : DEPT_BADGE_MIXED_FG
+                        return (
+                          <span title={[depts.join(', '), userIds.length > 0 ? `รายบุคคล ${userIds.length} คน` : ''].filter(Boolean).join(' + ')} style={{ fontSize: 10.5, fontWeight: 600, color: deptColor, background: `${deptColor}1A`, padding: '2px 9px', borderRadius: 99 }}>
+                            {audienceLabel}
+                          </span>
+                        )
+                      })() : (
                         <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--muted)', background: 'var(--surface-2)', padding: '2px 9px', borderRadius: 99 }}>ทั้งกลุ่มงาน</span>
                       )}
                     </td>

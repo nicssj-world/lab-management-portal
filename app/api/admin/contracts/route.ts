@@ -35,10 +35,11 @@ export async function POST(req: NextRequest) {
   if ((perms['สัญญา'] ?? 'none') !== 'edit') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const { vendor, product, total, start_date, end_date, contract_number, department, status } = body
+  const { vendor, product, total, start_date, end_date, contract_number, department, status, responsible_user_ids } = body
   if (!contract_number?.trim() || !product?.trim() || total == null || !start_date || !end_date) {
     return NextResponse.json({ error: 'เลขที่สัญญา ชื่อสัญญา มูลค่าสัญญา วันที่เริ่ม และวันที่สิ้นสุด จำเป็น' }, { status: 422 })
   }
+  const cleanResponsibleIds = Array.isArray(responsible_user_ids) ? responsible_user_ids.filter((id: unknown) => typeof id === 'string' && id) : []
   const cleanContractNumber = contract_number.trim()
 
   const { data: existing, error: dupErr } = await supabaseAdmin
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabaseAdmin
     .from('contracts')
-    .insert({ vendor, product, total: Number(total), start_date: start_date || null, end_date: end_date || null, contract_number: cleanContractNumber, department: department || null, status: status || 'active' })
+    .insert({ vendor, product, total: Number(total), start_date: start_date || null, end_date: end_date || null, contract_number: cleanContractNumber, department: department || null, status: status || 'active', responsible_user_ids: cleanResponsibleIds })
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

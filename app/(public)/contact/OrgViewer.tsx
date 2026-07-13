@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { FitToWidth } from './FitToWidth'
+import { useUniformBoxHeight } from '@/lib/hooks/useUniformBoxHeight'
 
 const zoomBtn: React.CSSProperties = {
   width: 30, height: 28, borderRadius: 6, border: 'none', background: 'transparent',
@@ -17,6 +18,18 @@ const zoomBtn: React.CSSProperties = {
 export function OrgViewer({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
   const [zoom, setZoom] = useState(1)
+  const measureRef = useRef<HTMLDivElement>(null)
+  const boxInnerHeight = useUniformBoxHeight(measureRef, '[data-org-inner]', [children])
+
+  // NodeBox reads --org-box-h via calc() in its min-height (a static string, safe for SSR),
+  // so uniform sizing is applied by mutating the CSS variable directly — no React state
+  // flows into the (server-rendered, Thai-segmented) NodeBox tree, avoiding a hydration
+  // mismatch from Node's vs the browser's Intl.Segmenter disagreeing on word boundaries.
+  useEffect(() => {
+    if (boxInnerHeight !== undefined) {
+      document.documentElement.style.setProperty('--org-box-h', `${boxInnerHeight}px`)
+    }
+  }, [boxInnerHeight])
 
   useEffect(() => {
     if (!open) return
@@ -34,6 +47,7 @@ export function OrgViewer({ children }: { children: React.ReactNode }) {
     <>
       {/* Inline (fitted) — click to expand */}
       <div
+        ref={measureRef}
         className="org-clickable"
         role="button"
         tabIndex={0}
