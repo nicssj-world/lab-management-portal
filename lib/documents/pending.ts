@@ -118,6 +118,9 @@ export interface RegistrationSetDocument {
   revision: string | null
   status: string
   updatedAt: string
+  fileUrl: string | null
+  sourcePdfUrl: string | null
+  wordUrl: string | null
   hasPendingFile: boolean
   hasOfficialFile: boolean
   hasWordUrl: boolean
@@ -127,6 +130,7 @@ export interface RegistrationSetActiveDraft {
   id: string
   documentId: string
   revision: string
+  type: string
   status: string
   updatedAt: string
   fileUrl: string | null
@@ -162,6 +166,7 @@ type RegistrationSetDocumentRow = {
   status: string
   updated_at: string
   file_url: string | null
+  source_pdf_url: string | null
   pending_file_url: string | null
   word_url: string | null
 }
@@ -176,8 +181,13 @@ function toRegistrationSetDocument(row: RegistrationSetDocumentRow): Registratio
     revision: row.revision,
     status: row.status,
     updatedAt: row.updated_at,
+    fileUrl: row.file_url,
+    sourcePdfUrl: row.source_pdf_url,
+    wordUrl: row.word_url,
     hasPendingFile: Boolean(row.pending_file_url),
-    hasOfficialFile: Boolean(row.file_url),
+    hasOfficialFile: row.type === 'QP' || row.type === 'WI'
+      ? Boolean(row.source_pdf_url || row.file_url)
+      : Boolean(row.file_url),
     hasWordUrl: Boolean(row.word_url),
   }
 }
@@ -202,11 +212,11 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
   const [documentsResult, draftsResult, attachmentsResult] = await Promise.all([
     supabaseAdmin
       .from('documents')
-      .select('id, document_code, title, type, department, revision, status, updated_at, file_url, pending_file_url, word_url, deleted_at')
+      .select('id, document_code, title, type, department, revision, status, updated_at, file_url, source_pdf_url, pending_file_url, word_url, deleted_at')
       .in('id', allDocumentIds),
     supabaseAdmin
       .from('document_revision_drafts')
-      .select('id, document_id, revision, status, updated_at, file_url, file_name, source_pdf_url, source_pdf_name, word_url, word_name')
+      .select('id, document_id, revision, type, status, updated_at, file_url, file_name, source_pdf_url, source_pdf_name, word_url, word_name')
       .in('document_id', memberIds)
       .is('cancelled_at', null)
       .neq('status', 'Published'),
@@ -265,6 +275,7 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
               id: draft.id,
               documentId: draft.document_id,
               revision: draft.revision,
+              type: draft.type,
               status: draft.status,
               updatedAt: draft.updated_at,
               fileUrl: draft.file_url,
