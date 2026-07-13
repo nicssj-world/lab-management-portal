@@ -4,11 +4,11 @@
 
 alter table public.quality_task_default_assignees
   add column if not exists id uuid default gen_random_uuid(),
-  add column if not exists manual_name text,
-  alter column user_id drop not null;
+  add column if not exists manual_name text;
 update public.quality_task_default_assignees set id = gen_random_uuid() where id is null;
 alter table public.quality_task_default_assignees alter column id set not null;
 alter table public.quality_task_default_assignees drop constraint if exists quality_task_default_assignees_pkey;
+alter table public.quality_task_default_assignees alter column user_id drop not null;
 alter table public.quality_task_default_assignees add primary key (id);
 alter table public.quality_task_default_assignees drop constraint if exists quality_task_default_assignees_entry_check;
 alter table public.quality_task_default_assignees add constraint quality_task_default_assignees_entry_check
@@ -18,11 +18,11 @@ create unique index if not exists quality_task_default_assignees_template_user
 
 alter table public.quality_task_instance_assignees
   add column if not exists id uuid default gen_random_uuid(),
-  add column if not exists manual_name text,
-  alter column user_id drop not null;
+  add column if not exists manual_name text;
 update public.quality_task_instance_assignees set id = gen_random_uuid() where id is null;
 alter table public.quality_task_instance_assignees alter column id set not null;
 alter table public.quality_task_instance_assignees drop constraint if exists quality_task_instance_assignees_pkey;
+alter table public.quality_task_instance_assignees alter column user_id drop not null;
 alter table public.quality_task_instance_assignees add primary key (id);
 alter table public.quality_task_instance_assignees drop constraint if exists quality_task_instance_assignees_entry_check;
 alter table public.quality_task_instance_assignees add constraint quality_task_instance_assignees_entry_check
