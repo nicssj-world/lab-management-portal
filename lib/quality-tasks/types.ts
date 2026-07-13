@@ -4,6 +4,14 @@ export type TaskUrgency = 'normal' | 'due-soon' | 'overdue' | 'completed'
 export type TaskSchedulingState = 'unscheduled' | 'scheduled'
 export type TaskKind = 'activity' | 'meeting'
 
+// A responsible person can be a linked system user OR a manually-typed name (matching the
+// equipment registry's "dropdown or type a name yourself" pattern) — never both meaningfully
+// set at once (picking a user auto-fills manualName with that user's name for display).
+export interface AssigneeEntry {
+  userId: string | null
+  manualName: string | null
+}
+
 export interface QualityTaskSchedule {
   id: string
   templateId: string
@@ -29,7 +37,7 @@ export interface QualityTaskTemplate {
   reminderDays: number
   evidenceRequired: boolean
   active: boolean
-  defaultAssigneeIds: string[]
+  defaultAssignees: AssigneeEntry[]
   defaultParticipantDepts: string[]
   defaultParticipantUserIds: string[]
   schedules: QualityTaskSchedule[]
@@ -59,7 +67,7 @@ export interface QualityTaskOccurrence {
   completionNote: string | null
   completedBy: string | null
   completedAt: string | null
-  assigneeIds: string[]
+  assignees: AssigneeEntry[]
   participantDepts: string[]
   participantUserIds: string[]
   participants: { id: string; name: string; documentPosition: string | null }[]
@@ -71,10 +79,10 @@ export interface QualityTaskOccurrence {
 
 export type OccurrenceCreatePayload =
   | { mode: 'scheduled'; scheduleId: string; periodStart: string }
-  | { mode: 'adHoc'; templateId: string; label: string; dueDate: string; assigneeIds: string[] }
+  | { mode: 'adHoc'; templateId: string; label: string; dueDate: string; assignees: AssigneeEntry[] }
 
 export type OccurrenceActionPayload =
-  | { action: 'schedule'; plannedDate: string | null; note?: string | null; assigneeIds?: string[]; participantDepts?: string[]; participantUserIds?: string[] }
+  | { action: 'schedule'; plannedDate: string | null; note?: string | null; assignees?: AssigneeEntry[]; participantDepts?: string[]; participantUserIds?: string[] }
   | { action: 'complete'; completionNote?: string | null }
   | { action: 'reopen'; reason: string }
 
