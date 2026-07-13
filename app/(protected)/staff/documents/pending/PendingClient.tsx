@@ -9,6 +9,13 @@ import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/Docu
 import { DocumentActionPanel } from '@/components/documents/DocumentActionPanel'
 import { TYPE_ICON_BG, TYPE_ICON_FG, fmtDate } from '@/lib/documents/ui-constants'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
+import {
+  canInteractWithRegistrationSetRows,
+  classifyRegistrationSetDocument,
+  executeRegistrationSetPlan,
+  planRegistrationSetTransition,
+  type RegistrationSetNextStatus,
+} from '@/lib/documents/registration-set-workflow'
 import type {
   RegistrationSet,
   RegistrationSetActiveDraft,
@@ -56,8 +63,6 @@ interface Props {
   userId?: string
 }
 
-type SetNextStatus = 'Review' | 'Approved' | 'Published'
-
 interface SetProgress {
   mainId: string
   kind: 'download' | 'status'
@@ -65,12 +70,6 @@ interface SetProgress {
   completed: number
   total: number
   percent: number | null
-}
-
-const SET_ACTIONS: Partial<Record<string, { next: SetNextStatus; label: string }>> = {
-  Draft: { next: 'Review', label: 'ส่งทั้งชุดเข้า Review' },
-  Review: { next: 'Approved', label: 'อนุมัติทั้งชุด' },
-  Approved: { next: 'Published', label: 'เผยแพร่ทั้งชุด' },
 }
 
 const STATUS_ACCENTS: Record<string, { color: string; background: string }> = {
@@ -106,27 +105,25 @@ function SetDocumentRow({
   activeDraft,
   label,
   disabled,
+  interactive,
   onClick,
 }: {
   document: RegistrationSetDocument
   activeDraft?: RegistrationSetActiveDraft | null
   label: string
   disabled: boolean
-  onClick: () => void
+  interactive: boolean
+  onClick?: () => void
 }) {
   const status = routedSetStatus(document, activeDraft)
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 11px',
-        border: '1px solid var(--border)', borderRadius: 9, background: 'var(--surface-2)',
-        color: 'var(--ink)', fontFamily: 'inherit', textAlign: 'left', cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? .62 : 1,
-      }}
-    >
+  const rowStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 11px',
+    border: '1px solid var(--border)', borderRadius: 9, background: 'var(--surface-2)',
+    color: 'var(--ink)', fontFamily: 'inherit', textAlign: 'left',
+    cursor: interactive && !disabled ? 'pointer' : 'default', opacity: disabled ? .62 : 1,
+  }
+  const content = (
+    <>
       <span style={{ width: 30, height: 30, borderRadius: 8, background: TYPE_ICON_BG[document.type] ?? 'rgba(100,116,139,.1)', color: TYPE_ICON_FG[document.type] ?? '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <Icon name="doc" size={14} />
       </span>
@@ -147,10 +144,12 @@ function SetDocumentRow({
         <span style={{ fontSize: 10.5, fontWeight: 750, color: activeDraft ? '#7E22CE' : 'var(--muted)', background: activeDraft ? 'rgba(147,51,234,.08)' : 'var(--card)', border: '1px solid var(--border)', borderRadius: 99, padding: '3px 8px', whiteSpace: 'nowrap' }}>
           {setFileState(document, activeDraft)}
         </span>
-        <Icon name="chevRight" size={13} style={{ color: 'var(--muted)' }} />
+        {interactive ? <Icon name="chevRight" size={13} style={{ color: 'var(--muted)' }} /> : null}
       </span>
-    </button>
+    </>
   )
+  if (!interactive) return <div style={rowStyle}>{content}</div>
+  return <button type="button" onClick={onClick} disabled={disabled} style={rowStyle}>{content}</button>
 }
 
 function RegistrationSetCard({
@@ -172,16 +171,12 @@ function RegistrationSetCard({
   onOpenMain: () => void
   onOpenMember: (member: RegistrationSetMember) => void
   onDownload: () => void
-  onAdvance: (next: SetNextStatus) => void
+  onAdvance: (next: RegistrationSetNextStatus) => void
 }) {
-  const action = SET_ACTIONS[set.mainDocument.status]
-  const incompatibleMember = action
-    ? set.members.find((member) => {
-        if (!member.activeDraft && member.document.status === 'Published') return false
-        const status = routedSetStatus(member.document, member.activeDraft)
-        return status !== set.mainDocument.status && status !== action.next
-      })
-    : undefined
+  const plan = planRegistrationSetTransition(set)
+  const availableAction = plan.nextStatus && plan.actionLabel && !plan.blocker
+    ? { nextStatus: plan.nextStatus, label: plan.actionLabel }
+    : null
   const isThisSetBusy = progress?.mainId === set.mainDocument.id
   return (
     <article style={{ border: '1px solid var(--border)', borderRadius: 11, background: 'var(--card)', padding: 12 }}>
@@ -203,28 +198,28 @@ function RegistrationSetCard({
               <Icon name="download" size={12} />
               ดาวน์โหลดทั้งชุด (ZIP)
             </button>
-            {action && !incompatibleMember ? (
+            {availableAction ? (
               <button
                 type="button"
-                onClick={() => onAdvance(action.next)}
+                onClick={() => onAdvance(availableAction.nextStatus)}
                 disabled={controlsBusy}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid #0F766E', background: controlsBusy ? 'var(--surface-2)' : '#0F766E', color: controlsBusy ? 'var(--muted)' : '#fff', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, cursor: controlsBusy ? 'default' : 'pointer', opacity: controlsBusy ? .7 : 1 }}
               >
                 <Icon name="arrowRight" size={12} />
-                {action.label}
+                {availableAction.label}
               </button>
             ) : null}
           </div>
         ) : null}
       </div>
-      {canManage && action && incompatibleMember ? (
+      {canManage && plan.blocker ? (
         <div role="status" style={{ marginBottom: 9, padding: '7px 9px', borderRadius: 8, background: 'rgba(217,119,6,.08)', border: '1px solid rgba(217,119,6,.22)', color: '#B45309', fontSize: 11.5 }}>
-          ยังดำเนินการทั้งชุดไม่ได้: {incompatibleMember.document.documentCode} อยู่สถานะ {routedSetStatus(incompatibleMember.document, incompatibleMember.activeDraft)}
+          ยังดำเนินการทั้งชุดไม่ได้: {plan.blocker.documentCode} ({plan.blocker.reason})
         </div>
       ) : null}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <SetDocumentRow document={set.mainDocument} label="เอกสารหลัก" disabled={controlsBusy} onClick={onOpenMain} />
+        <SetDocumentRow document={set.mainDocument} label="เอกสารหลัก" disabled={controlsBusy} interactive={canManage} onClick={canManage ? onOpenMain : undefined} />
         {set.members.map((member, index) => (
           <SetDocumentRow
             key={member.linkId}
@@ -232,7 +227,8 @@ function RegistrationSetCard({
             activeDraft={member.activeDraft}
             label={`สมาชิก ${index + 1}`}
             disabled={controlsBusy}
-            onClick={() => onOpenMember(member)}
+            interactive={canManage}
+            onClick={canManage ? () => onOpenMember(member) : undefined}
           />
         ))}
       </div>
@@ -372,6 +368,8 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     : ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(workflowRole ?? '')
   const canBulkReview = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller'
   const canDccSourceDownload = canBulkReview
+  const canManageSets = canInteractWithRegistrationSetRows(userRole, docRole)
+  const setMainDocumentIds = new Set(sets.map((set) => set.mainDocument.id))
   const setMemberDocumentIds = new Set(sets.flatMap((set) => set.memberIds))
 
   const setSectionRef = useRef<HTMLDivElement | null>(null)
@@ -458,7 +456,8 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   // Re-bucket a document after the action panel uploads a file or changes its status.
   function handleDocumentUpdated(updated: Document) {
     setActionDoc(updated)
-    if (setMemberDocumentIds.has(updated.id)) {
+    const setKind = classifyRegistrationSetDocument(updated.id, setMainDocumentIds, setMemberDocumentIds)
+    if (setKind === 'member') {
       router.refresh()
       return
     }
@@ -483,6 +482,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     else if (updated.status === 'Review') setReviewDocs((prev) => [entry, ...prev])
     else if (updated.status === 'Approved') setApprovedDocs((prev) => [entry, ...prev])
     // Published / Obsolete → drops out of every pending bucket.
+    if (setKind === 'main') router.refresh()
   }
 
   async function quickReadDetail(doc: Document) {
@@ -643,38 +643,22 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     }
   }
 
-  async function handleSetStatusChange(set: RegistrationSet, nextStatus: SetNextStatus) {
+  async function handleSetStatusChange(set: RegistrationSet, nextStatus: RegistrationSetNextStatus) {
     if (setProgress) return
     const mainId = set.mainDocument.id
-    const action = SET_ACTIONS[set.mainDocument.status]
-    if (!action || action.next !== nextStatus) return
-    const memberTargets: { code: string; url: string }[] = []
-    for (const member of set.members) {
-      // A no-draft Published member is an existing linked reference, not a pending
-      // workflow item. Members already at the target are also skipped so a partial
-      // run can be retried without requesting a backwards/duplicate transition.
-      if (!member.activeDraft && member.document.status === 'Published') continue
-      const status = routedSetStatus(member.document, member.activeDraft)
-      if (status === nextStatus) continue
-      if (status !== set.mainDocument.status) {
-        setSetResults((prev) => ({
-          ...prev,
-          [mainId]: `ยังดำเนินการทั้งชุดไม่ได้: ${member.document.documentCode} อยู่สถานะ ${status}`,
-        }))
-        return
-      }
-      memberTargets.push({
-        code: member.document.documentCode,
-        url: member.activeDraft
-          ? `/api/admin/documents/${member.document.id}/revision-drafts/${member.activeDraft.id}`
-          : `/api/admin/documents/${member.document.id}`,
-      })
+    const plan = planRegistrationSetTransition(set)
+    if (plan.nextStatus !== nextStatus || !plan.actionLabel) return
+    const blocker = plan.blocker
+    if (blocker) {
+      setSetResults((prev) => ({
+        ...prev,
+        [mainId]: `ยังดำเนินการทั้งชุดไม่ได้: ${blocker.documentCode} (${blocker.reason})`,
+      }))
+      return
     }
-    if (!confirm(`ยืนยัน ${action.label} สำหรับ ${set.mainDocument.documentCode} และสมาชิก ${set.members.length} ฉบับ?`)) return
+    if (!confirm(`ยืนยัน ${plan.actionLabel} สำหรับ ${set.mainDocument.documentCode} และสมาชิก ${set.members.length} ฉบับ?`)) return
 
-    const totalItems = memberTargets.length + 1
-    let succeeded = 0
-    let failed: { code: string; reason: string } | null = null
+    const totalItems = plan.targets.length
     setSetResults((prev) => {
       const next = { ...prev }
       delete next[mainId]
@@ -682,55 +666,38 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     })
 
     try {
-      // The main document is deliberately last. A member failure breaks this loop before
-      // the main target can be reached, preserving the set's workflow anchor.
-      const targets = [
-        ...memberTargets,
-        {
-          code: set.mainDocument.documentCode,
-          url: `/api/admin/documents/${mainId}`,
-        },
-      ]
-
-      for (const [index, target] of targets.entries()) {
+      let completed = 0
+      const result = await executeRegistrationSetPlan(plan, async (target) => {
         setSetProgress({
           mainId,
           kind: 'status',
-          currentLabel: `กำลังดำเนินการ ${target.code}`,
-          completed: index,
+          currentLabel: `กำลังดำเนินการ ${target.documentCode}`,
+          completed,
           total: totalItems,
-          percent: Math.round((index / totalItems) * 100),
+          percent: Math.round((completed / totalItems) * 100),
         })
-        try {
-          const res = await fetch(target.url, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: nextStatus }),
-          })
-          const json = await res.json().catch(() => ({} as { error?: string })) as { error?: string }
-          if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
-          succeeded += 1
-          setSetProgress({
-            mainId,
-            kind: 'status',
-            currentLabel: `สำเร็จ ${target.code}`,
-            completed: index + 1,
-            total: totalItems,
-            percent: Math.round(((index + 1) / totalItems) * 100),
-          })
-        } catch (error) {
-          failed = {
-            code: target.code,
-            reason: error instanceof Error ? error.message : 'ดำเนินการไม่สำเร็จ',
-          }
-          break
-        }
-      }
+        const res = await fetch(target.endpoint, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: target.nextStatus }),
+        })
+        const json = await res.json().catch(() => ({} as { error?: string })) as { error?: string }
+        if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
+        completed += 1
+        setSetProgress({
+          mainId,
+          kind: 'status',
+          currentLabel: `สำเร็จ ${target.documentCode}`,
+          completed,
+          total: totalItems,
+          percent: Math.round((completed / totalItems) * 100),
+        })
+      })
 
-      const summary = failed
-        ? `สำเร็จ ${succeeded} · ไม่สำเร็จ 1: ${failed.code} (${failed.reason})`
-        : `สำเร็จ ${succeeded} · ไม่สำเร็จ 0`
-      if (!failed) {
+      const summary = result.failed
+        ? `สำเร็จ ${result.succeeded.length} · ไม่สำเร็จ 1: ${result.failed.documentCode} (${result.failed.reason})`
+        : `สำเร็จ ${result.succeeded.length} · ไม่สำเร็จ 0`
+      if (!result.failed) {
         const mainEntry: PendingDoc = {
           id: set.mainDocument.id,
           document_code: set.mainDocument.documentCode,
@@ -986,7 +953,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
             <RegistrationSetCard
               key={set.mainDocument.id}
               set={set}
-              canManage={canBulkReview}
+              canManage={canManageSets}
               controlsBusy={setProgress !== null}
               progress={setProgress?.mainId === set.mainDocument.id ? setProgress : null}
               result={setResults[set.mainDocument.id]}
