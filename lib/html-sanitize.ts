@@ -171,6 +171,30 @@ export function sanitizeRichHtml(html: string | null | undefined): string {
   })
 }
 
+/**
+ * Renders rich text (from the WYSIWYG editor) as plain text for surfaces that can't render
+ * HTML at all (e.g. LINE bot text replies) — strips tags instead of allow-listing them.
+ */
+export function htmlToPlainText(html: string | null | undefined): string {
+  if (!html) return ''
+  return String(html)
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\s*(script|style)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6]|tr|blockquote|pre)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, '\'')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/[ \t]*\n[ \t]*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 const INLINE_ALLOWED = new Set(['strong', 'em', 'br'])
 const INLINE_VOID = new Set(['br'])
 
