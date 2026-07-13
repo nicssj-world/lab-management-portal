@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { DocumentSchema } from '@/lib/validations/document'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 import { canAccessDocuments } from '@/lib/auth/guards'
 import { allowedTransitions, type DocStatus } from '@/lib/documents/transitions'
@@ -21,6 +21,7 @@ import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/
 import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
 import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
 import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
+import { purgeEphemeralAttachments } from '@/lib/documents/ephemeral-attachments'
 
 async function getActor() {
   const supabase = await createClient()
@@ -180,6 +181,7 @@ export async function PATCH(
     let fileKeyName: string | null = null
     let fileKeyType: string | null = null
     let fileKeySizePre: number | null = null
+    let pendingFileKeyToDelete: string | null = null
 
     if (contentType.includes('multipart/form-data')) {
       const form = await req.formData()
@@ -215,7 +217,7 @@ export async function PATCH(
     // Always fetch current doc (needed for revision history + R2 key)
     const { data: current, error: currentErr } = await supabaseAdmin
       .from('documents')
-      .select('file_url, file_name, file_size, mime_type, source_pdf_url, source_pdf_name, source_pdf_size, source_pdf_mime_type, word_url, word_name, word_size, revision, type, description, owner_name, reviewer_name, approver_name, status, document_code, title, edit_date, effective_date, expiry_date, approved_at, published_at, approved_by_id, published_by_id, reviewer_id, approver_id, audience_text, cover_template_version, cover_generated_at, cover_metadata, imported_current_at, imported_current_by, imported_current_note, legacy_cover_included, obsolete_date')
+      .select('file_url, file_name, file_size, mime_type, source_pdf_url, source_pdf_name, source_pdf_size, source_pdf_mime_type, word_url, word_name, word_size, pending_file_url, pending_file_name, pending_file_size, pending_file_mime, revision, type, description, owner_name, reviewer_name, approver_name, status, document_code, title, edit_date, effective_date, expiry_date, approved_at, published_at, approved_by_id, published_by_id, reviewer_id, approver_id, audience_text, cover_template_version, cover_generated_at, cover_metadata, imported_current_at, imported_current_by, imported_current_note, legacy_cover_included, obsolete_date')
       .eq('id', id)
       .single()
 
@@ -257,6 +259,10 @@ export async function PATCH(
         'word_url',
         'word_name',
         'word_size',
+        'pending_file_url',
+        'pending_file_name',
+        'pending_file_size',
+        'pending_file_mime',
         'edit_date',
         'expiry_date',
         'effective_date',
@@ -348,6 +354,13 @@ export async function PATCH(
       updates.file_name = finalName
       updates.file_size = uploadedSize
       updates.mime_type = finalType || 'application/octet-stream'
+      updates.pending_file_url = null
+      updates.pending_file_name = null
+      updates.pending_file_size = null
+      updates.pending_file_mime = null
+      if (current.pending_file_url && current.pending_file_url !== r2Key) {
+        pendingFileKeyToDelete = current.pending_file_url
+      }
       if (isCoverRequiredType(type)) {
         updates.source_pdf_url = r2Key
         updates.source_pdf_name = finalName
@@ -647,6 +660,24 @@ export async function PATCH(
       .single()
 
     if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
+
+    if (pendingFileKeyToDelete) {
+      await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: pendingFileKeyToDelete }))
+        .catch(() => {})
+    }
+
+    if (newStatus === 'Published' && current.status !== 'Published') {
+      try {
+        await purgeEphemeralAttachments(id)
+      } catch (err) {
+        console.error('Published document ephemeral attachment purge failed', {
+          documentId: id,
+          code: current.document_code,
+          error: toMsg(err),
+        })
+        warnings.push('เผยแพร่แล้ว แต่ลบไฟล์แนบชั่วคราวไม่สำเร็จ')
+      }
+    }
 
     if (typeof newStatus === 'string' && newStatus !== current?.status) {
       supabaseAdmin.from('document_status_history')

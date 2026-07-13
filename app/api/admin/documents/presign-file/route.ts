@@ -52,15 +52,16 @@ export async function GET(req: NextRequest) {
     const fileType = inferredContentType(fileName, sp.get('fileType'))
     const fileSize = Number(sp.get('fileSize') ?? '')
     const docType = (sp.get('type') ?? 'others').trim()
+    const isAttachment = sp.get('kind') === 'attachment'
 
     if (!fileName) return NextResponse.json({ error: 'ต้องระบุชื่อไฟล์' }, { status: 422 })
 
     const fileRef = { name: fileName, type: fileType }
     const coverRequired = isCoverRequiredType(docType.toUpperCase())
-    if (coverRequired && !isPdfFile(fileRef)) {
+    if (!isAttachment && coverRequired && !isPdfFile(fileRef)) {
       return NextResponse.json({ error: 'QP/WI ต้องใช้ PDF เนื้อหาในช่องไฟล์ทางการ' }, { status: 422 })
     }
-    if (!coverRequired && !isPdfFile(fileRef) && !isSourceFile(fileRef)) {
+    if (!isAttachment && !coverRequired && !isPdfFile(fileRef) && !isSourceFile(fileRef)) {
       return NextResponse.json({ error: 'ไฟล์ทางการรองรับ PDF, DOC, DOCX, XLS, XLSX' }, { status: 422 })
     }
     if (Number.isFinite(fileSize) && fileSize > MAX_OFFICIAL_FILE_SIZE) {
@@ -69,7 +70,10 @@ export async function GET(req: NextRequest) {
 
     const year = new Date().getFullYear()
     const safeName = safeStorageName(fileName)
-    const key = `documents/${docType.toLowerCase().replace(/[^a-z]/g, '') || 'others'}/${year}/${Date.now()}-${safeName}`
+    const keyPrefix = isAttachment
+      ? 'documents/attachments/set'
+      : `documents/${docType.toLowerCase().replace(/[^a-z]/g, '') || 'others'}`
+    const key = `${keyPrefix}/${year}/${Date.now()}-${safeName}`
     const uploadUrl = await getSignedUrl(
       getR2Client(),
       new PutObjectCommand({
