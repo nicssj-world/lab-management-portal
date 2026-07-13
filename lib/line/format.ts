@@ -1,4 +1,5 @@
 import type { Test, TestDocument } from '@/lib/supabase/types'
+import { htmlToPlainText } from '@/lib/html-sanitize'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
@@ -32,7 +33,7 @@ export function formatTestReply(
   const primaryContact = [test.contact_name, test.contact_phone].filter(Boolean).join(' ')
   const allContacts = [...new Set([primaryContact, ...extraContacts].filter(Boolean))]
   if (test.specimen_note || test.contact_staff || allContacts.length > 0) lines.push('')
-  if (test.specimen_note)       lines.push(`📝 หมายเหตุ: ${test.specimen_note}`)
+  if (test.specimen_note)       lines.push(`📝 หมายเหตุ: ${htmlToPlainText(test.specimen_note)}`)
   if (test.contact_staff)       lines.push('☎️ ติดต่อเจ้าหน้าที่ก่อนเก็บตัวอย่าง')
   allContacts.forEach(c => lines.push(`☎️ ติดต่อ: ${c}`))
   if (docs.length > 0) {

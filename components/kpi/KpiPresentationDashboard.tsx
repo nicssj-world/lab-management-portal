@@ -272,8 +272,6 @@ function UncrossCard({ series }: { series: { month: string; num: number | null; 
   const hasData = series.some(s => s.num != null && s.num > 0)
   const chartData = series.map(s => ({ month: s.month, count: s.num ?? 0 }))
   const monthlyLayout = getMonthlyChartTableLayout(series.length)
-  const [chartWidth, setChartWidth] = useState(0)
-  const xAxisPadding = getMonthlyXAxisCenterPadding(chartWidth, monthlyLayout)
 
   return (
     <Card padding={20}>
@@ -284,10 +282,10 @@ function UncrossCard({ series }: { series: { month: string; num: number | null; 
         <>
           <div style={{ overflowX: 'auto' }}>
             <div style={{ minWidth: monthlyLayout.minimumContentWidth }}>
-              <ResponsiveContainer width="100%" height={220} onResize={(width) => setChartWidth(previous => previous === width ? previous : width)}>
+              <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={chartData} margin={{ top: 16, right: monthlyLayout.chartRightGutter, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="month" padding={{ left: xAxisPadding, right: xAxisPadding }} tick={false} tickLine={false} axisLine={false} height={4} />
+                  <XAxis dataKey="month" tick={false} tickLine={false} axisLine={false} height={4} />
                   <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} width={monthlyLayout.labelColumnWidth} />
                   <Tooltip cursor={false} contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v) => [`${v} ครั้ง`, 'จำนวน']} />
                   <Bar dataKey="count" fill={GREEN} radius={[4, 4, 0, 0]} maxBarSize={36} />
