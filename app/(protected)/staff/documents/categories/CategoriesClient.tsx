@@ -169,7 +169,6 @@ export function CategoriesClient({ docs, userRole, docRole, userName, userId = '
           marginBottom={0}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />
           <Input
             icon="search"
             placeholder="กรองตามแผนก ประเภท รหัส หรือชื่อเอกสาร..."
@@ -184,6 +183,7 @@ export function CategoriesClient({ docs, userRole, docRole, userName, userId = '
           }}>
             <Icon name="doc" size={15} /> เปิดคลังเอกสาร
           </Link>
+          <UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />
         </div>
       </div>
 

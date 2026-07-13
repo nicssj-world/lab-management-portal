@@ -1044,7 +1044,6 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>รายการที่รอการดำเนินการ · {total} รายการ</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />
           <Link href="/staff/documents" style={{
             display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
             border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
@@ -1052,6 +1051,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           }}>
             <Icon name="doc" size={15} /> เปิดคลังเอกสาร
           </Link>
+          <UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />
         </div>
       </div>
 

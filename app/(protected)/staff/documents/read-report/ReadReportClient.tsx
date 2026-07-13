@@ -298,7 +298,6 @@ export function ReadReportClient({ rows: initialRows, people, canAssign, userRol
           marginBottom={0}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />
           <Link href="/staff/documents" className="dash-btn-secondary" style={{
             display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
             border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
@@ -306,6 +305,7 @@ export function ReadReportClient({ rows: initialRows, people, canAssign, userRol
           }}>
             <Icon name="doc" size={15} /> เปิดคลังเอกสาร
           </Link>
+          <UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />
         </div>
       </div>
 
