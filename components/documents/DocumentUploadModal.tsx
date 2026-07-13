@@ -17,6 +17,11 @@ import { TYPE_LABEL } from '@/lib/documents/type-labels'
 import { REVIEW_TRACKED_TYPES } from '@/lib/documents/review'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import type { Document } from '@/lib/supabase/types'
+import {
+  completeSuccessfulDocumentSave,
+  normalizeRegisterSetSelection,
+  requiresControlledCover as requiresCover,
+} from './document-upload-set-flow'
 
 interface Props {
   doc?: Document | null
@@ -50,10 +55,6 @@ function fmtSize(bytes: number): string {
 
 function todayIsoDate(): string {
   return new Date().toISOString().split('T')[0]
-}
-
-function requiresCover(type: string): boolean {
-  return type === 'QP' || type === 'WI'
 }
 
 function isOfficialFileAllowed(type: string, file: File): boolean {
@@ -292,6 +293,11 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
   const [obsoleteReason, setObsoleteReason] = useState(doc?.obsolete_reason ?? '')
   const [description, setDescription]   = useState(doc?.description ?? '')
 
+  function updateDocumentType(nextType: string) {
+    setType(nextType)
+    setRegisterSetAfterSave((checked) => normalizeRegisterSetSelection(nextType, checked))
+  }
+
   const isObsolete = status === 'Obsolete'
   const originalRevision = doc?.revision ?? '1'
   const originalRevisionNumber = revisionNumber(originalRevision)
@@ -467,7 +473,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         if (formCode) {
           setDocumentCode(formCode)
           const docType = typeFromCode(formCode)
-          if (docType) setType(docType)
+          if (docType) updateDocumentType(docType)
           checkDuplicateCode(formCode)
         }
         if (formTitle) setTitle(formTitle)
@@ -506,7 +512,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           const dept = deptFromCode(code)
           if (dept) setDepartment(dept)
           const docType = typeFromCode(code)
-          if (docType) setType(docType)
+          if (docType) updateDocumentType(docType)
           checkDuplicateCode(code)
         }
         if (fields.revision)      setRevision(fields.revision)
@@ -548,7 +554,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         const dept = deptFromCode(code)
         if (dept) setDepartment(dept)
         const docType = typeFromCode(code)
-        if (docType) setType(docType)
+        if (docType) updateDocumentType(docType)
         checkDuplicateCode(code)
       }
       if (fields.revision)     setRevision(fields.revision)
@@ -733,8 +739,11 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         }
       }
 
-      onSaved(finalDoc)
-      if (!isEdit && !isImportCurrent && registerSetAfterSave) onRegisterSet?.(finalDoc)
+      completeSuccessfulDocumentSave(
+        finalDoc,
+        { isEdit, isImportCurrent, type, registerSetAfterSave },
+        { onSaved, onRegisterSet },
+      )
     } catch {
       setDuplicateDocumentId(null)
       setDuplicateCode('')
@@ -852,7 +861,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                   const dept = deptFromCode(val)
                   if (dept) setDepartment(dept)
                   const docType = typeFromCode(val)
-                  if (docType) setType(docType)
+                  if (docType) updateDocumentType(docType)
                 }}
                 onBlur={(e) => checkDuplicateCode(e.target.value)}
                 style={isPublishedCorrection ? lockedInputStyle : inputStyle}
@@ -864,7 +873,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
               <select
                 value={type}
                 disabled={isPublishedCorrection}
-                onChange={(e) => setType(e.target.value)}
+                onChange={(e) => updateDocumentType(e.target.value)}
                 style={isPublishedCorrection ? lockedInputStyle : { ...inputStyle }}
               >
                 {DOC_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>)}
