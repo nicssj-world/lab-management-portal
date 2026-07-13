@@ -37,6 +37,8 @@ export function isSameRegistrationMetadata(
   item: RegisterItem,
   actorId: string,
 ) {
+  // Registration creation stores the authenticated actor in owner_id; unlike owner_name,
+  // this is the stable creator identity used to authenticate an ambiguous retry.
   return document.status === 'Draft'
     && document.deleted_at === null
     && document.owner_id === actorId
@@ -62,10 +64,11 @@ export function classifyRegisterRetry(args: {
   fileKind: 'pdf' | 'source'
 }): RegisterRetryClassification {
   const { document, item, actorId, mainDocumentId, setLinkMainIds, fileKind } = args
-  if (document.deleted_at !== null || registeredFileKey(document, fileKind) !== item.file.key) return 'conflict'
+  if (registeredFileKey(document, fileKind) !== item.file.key) return 'conflict'
+  if (!isSameRegistrationMetadata(document, item, actorId)) return 'conflict'
   if (setLinkMainIds.includes(mainDocumentId)) return 'linked-retry'
   if (setLinkMainIds.length > 0) return 'conflict'
-  return isSameRegistrationMetadata(document, item, actorId) ? 'stranded-retry' : 'conflict'
+  return 'stranded-retry'
 }
 
 export function hasMatchingFileKey(row: { file_url: string } | null | undefined, key: string) {

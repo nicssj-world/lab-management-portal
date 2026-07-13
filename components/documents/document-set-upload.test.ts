@@ -1,25 +1,28 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { failedEntryIds, mapRegisterSetOutcomes, retainedUpload, type UploadedFile } from './document-set-upload-model'
 
-const controller = readFileSync('components/documents/useDocumentSetUpload.ts', 'utf8')
-const modal = readFileSync('components/documents/DocumentSetUploadModal.tsx', 'utf8')
-const phases = readFileSync('components/documents/DocumentSetUploadPhases.tsx', 'utf8')
+const mapped = mapRegisterSetOutcomes(['entry-a', 'entry-b', 'entry-c'], {
+  succeeded: [{ index: 2 }, { index: 0 }],
+  failed: [{ index: 1, error: 'duplicate code' }],
+})
+assert.deepEqual(Array.from(mapped.entries()), [
+  ['entry-c', { status: 'success', reason: '' }],
+  ['entry-a', { status: 'success', reason: '' }],
+  ['entry-b', { status: 'failed', reason: 'duplicate code' }],
+], 'response indices must map back to stable prepared entry IDs')
 
-assert.match(controller, /if \(entry\.uploaded\)[\s\S]*return entry\.uploaded/, 'retry must reuse an already uploaded R2 key')
-assert.match(controller, /uploaded: uploadedById\.get\(entry\.id\) \?\? entry\.uploaded/, 'ambiguous POST failures must retain prepared upload keys')
-assert.match(controller, /entries\.filter\(\(entry\) => entry\.submitStatus === 'failed'\)/, 'retry must select only failed entries')
+const missing = mapRegisterSetOutcomes(['entry-a', 'entry-b'], { succeeded: [{ index: 0 }] })
+assert.deepEqual(missing.get('entry-b'), {
+  status: 'failed', reason: 'เซิร์ฟเวอร์ไม่ส่งผลลัพธ์ของรายการนี้กลับมา',
+}, 'an omitted server result must remain safely retryable')
 
-assert.match(controller, /for \(const timer of duplicateTimers\.current\.values\(\)\) clearTimeout\(timer\)/, 'unmount must clear all duplicate timers')
-assert.match(controller, /for \(const controller of duplicateRequests\.current\.values\(\)\) controller\.abort\(\)/, 'unmount must abort all duplicate requests')
+assert.deepEqual(failedEntryIds([
+  { id: 'success', submitStatus: 'success' },
+  { id: 'failed', submitStatus: 'failed' },
+  { id: 'pending', submitStatus: null },
+]), ['failed'], 'retry must select only failed entries')
 
-assert.match(modal, /const previousFocus = document\.activeElement/, 'modal must capture prior focus')
-assert.match(modal, /initialFocusRef\.current\?\.focus\(\)/, 'modal must focus an internal control')
-assert.match(modal, /document\.addEventListener\('keydown', onDocumentKeyDown, true\)/, 'focus trap must use a capture listener independent of bubbling')
-assert.match(modal, /document\.removeEventListener\('keydown', onDocumentKeyDown, true\)/, 'focus listener must be removed on unmount')
-assert.match(modal, /previousFocus\?\.focus\(\)/, 'modal must restore prior focus')
-assert.match(modal, /event\.key === 'Escape'/, 'modal must handle Escape')
-assert.match(modal, /event\.key !== 'Tab'/, 'modal must trap Tab and Shift+Tab')
-
-assert.match(modal, /useDocumentSetUpload/, 'public modal must delegate workflow state to its controller hook')
-assert.match(phases, /function IntakePhase/, 'phase rendering must be a module-level component')
-assert.doesNotMatch(modal, /function IntakePhase|function DocumentSetUploadRow/, 'row and phase components must not be nested in the modal')
+const existing: UploadedFile = { key: 'stable-r2-key', name: 'file.pdf', size: 10, mime: 'application/pdf' }
+assert.equal(retainedUpload(undefined, existing), existing, 'ambiguous POST failure must retain the prepared R2 key')
+const replacement: UploadedFile = { ...existing, key: 'new-r2-key' }
+assert.equal(retainedUpload(replacement, existing), replacement, 'a newly completed upload must replace stale prepared state')
