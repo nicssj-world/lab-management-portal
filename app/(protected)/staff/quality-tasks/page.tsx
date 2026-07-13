@@ -16,5 +16,5 @@ export default async function QualityTasksPage() {
     listTaskPeople(),
     getQualityTaskTemplates(true),
   ])
-  return <QualityTaskDashboard actorId={actor.id} level={level} initialMonth={`${year}-${String(month + 1).padStart(2, '0')}`} initialOccurrences={occurrences} templates={templates} people={people as { id: string; name: string; dept: string | null; role: string }[]} />
+  return <QualityTaskDashboard actorId={actor.id} level={level} initialMonth={`${year}-${String(month + 1).padStart(2, '0')}`} initialOccurrences={occurrences} templates={templates} people={people as { id: string; name: string; dept: string | null; role: string; document_position: string | null }[]} />
 }
