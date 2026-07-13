@@ -8,35 +8,9 @@ import { allowedTransitions } from '@/lib/documents/transitions'
 import { canMoveToStatus, COVER_GENERATION_ENABLED } from '@/lib/documents/workflow'
 import { STATUS_COLOR, STATUS_LABEL, fmtDate } from '@/lib/documents/ui-constants'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
+import { uploadFileWithProgress } from '@/lib/documents/upload-with-progress'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
-
-function uploadFileWithProgress(
-  url: string,
-  file: File,
-  contentType: string,
-  onProgress: (percent: number) => void,
-) {
-  return new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('PUT', url)
-    xhr.setRequestHeader('Content-Type', contentType)
-    xhr.upload.onprogress = (event) => {
-      if (!event.lengthComputable) return
-      onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)))
-    }
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        onProgress(100)
-        resolve()
-        return
-      }
-      reject(new Error(`(${xhr.status}) ${xhr.responseText.slice(0, 160)}`))
-    }
-    xhr.onerror = () => reject(new Error('network error'))
-    xhr.send(file)
-  })
-}
 
 // ── Revision type ─────────────────────────────────────────────
 interface RevisionRow {

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Icon } from '@/components/ui/Icon'
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
 import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/DocumentDetailModal'
+import { DocumentActionPanel } from '@/components/documents/DocumentActionPanel'
 import { TYPE_ICON_BG, TYPE_ICON_FG, fmtDate } from '@/lib/documents/ui-constants'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
@@ -38,6 +39,7 @@ export interface AnnualReviewDoc {
 }
 
 interface Props {
+  newDocs: PendingDoc[]
   sourceDocs: PendingDoc[]
   reviewDocs: PendingDoc[]
   approvedDocs: PendingDoc[]
@@ -153,7 +155,7 @@ function ActionCard({ label, count, sub, icon, accent, onClick }: {
   )
 }
 
-export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initialReviewDocs, approvedDocs: initialApprovedDocs, annualReviewDocs: initialAnnualReviewDocs, userRole, docRole, userId = '' }: Props) {
+export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSourceDocs, reviewDocs: initialReviewDocs, approvedDocs: initialApprovedDocs, annualReviewDocs: initialAnnualReviewDocs, userRole, docRole, userId = '' }: Props) {
   const router = useRouter()
   const isAdmin = userRole === 'Admin'
   const workflowRole = docRole ?? userRole
@@ -163,11 +165,13 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
   const canBulkReview = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller'
   const canDccSourceDownload = canBulkReview
 
+  const newSectionRef = useRef<HTMLDivElement | null>(null)
   const sourceSectionRef = useRef<HTMLDivElement | null>(null)
   const reviewSectionRef = useRef<HTMLDivElement | null>(null)
   const approvedSectionRef = useRef<HTMLDivElement | null>(null)
   const annualSectionRef = useRef<HTMLDivElement | null>(null)
 
+  const [newDocs, setNewDocs] = useState<PendingDoc[]>(initialNewDocs)
   const [sourceDocs, setSourceDocs] = useState<PendingDoc[]>(initialSourceDocs)
   const [reviewDocs, setReviewDocs] = useState<PendingDoc[]>(initialReviewDocs)
   const [approvedDocs, setApprovedDocs] = useState<PendingDoc[]>(initialApprovedDocs)
@@ -183,11 +187,12 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [publishingId, setPublishingId] = useState<string | null>(null)
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
+  const [actionDoc, setActionDoc] = useState<Document | null>(null)
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null)
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
   const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string; forcePdfJs?: boolean } | null>(null)
 
-  const total = sourceDocs.length + reviewDocs.length + approvedDocs.length + annualDocs.length
+  const total = newDocs.length + sourceDocs.length + reviewDocs.length + approvedDocs.length + annualDocs.length
   const sourceWaitingPdfCount = sourceDocs.filter((doc) => !doc.hasOfficialPdf).length
   const sourceReadyReviewCount = sourceDocs.filter((doc) => doc.hasOfficialPdf).length
 
@@ -223,6 +228,45 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
     } catch { /* ignore */ } finally {
       setDetailLoadingId(null)
     }
+  }
+
+  // DCC action panel for a `kind:'document'` item (fresh Draft / Review / Approved document,
+  // not a Rev+ working draft) — upload the content PDF + advance status in-page.
+  async function openActionPanel(id: string) {
+    setDetailLoadingId(id)
+    try {
+      const res = await fetch(`/api/admin/documents/${id}`)
+      const json = await res.json()
+      if (res.ok) setActionDoc(json as Document)
+    } catch { /* ignore */ } finally {
+      setDetailLoadingId(null)
+    }
+  }
+
+  // Re-bucket a document after the action panel uploads a file or changes its status.
+  function handleDocumentUpdated(updated: Document) {
+    setActionDoc(updated)
+    const entry: PendingDoc = {
+      id: updated.id,
+      document_code: updated.document_code,
+      title: updated.title,
+      type: updated.type,
+      department: updated.department,
+      revision: updated.revision,
+      updated_at: updated.updated_at,
+      hasOfficialPdf: updated.type === 'QP' || updated.type === 'WI'
+        ? Boolean(updated.source_pdf_url || updated.file_url)
+        : Boolean(updated.file_url),
+      kind: 'document',
+    }
+    const dropDoc = (prev: PendingDoc[]) => prev.filter((d) => !(d.kind === 'document' && d.id === updated.id))
+    setNewDocs(dropDoc)
+    setReviewDocs(dropDoc)
+    setApprovedDocs(dropDoc)
+    if (updated.status === 'Draft' && updated.word_url) setNewDocs((prev) => [entry, ...prev])
+    else if (updated.status === 'Review') setReviewDocs((prev) => [entry, ...prev])
+    else if (updated.status === 'Approved') setApprovedDocs((prev) => [entry, ...prev])
+    // Published / Obsolete → drops out of every pending bucket.
   }
 
   async function quickReadDetail(doc: Document) {
@@ -398,7 +442,7 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
 
   function openPending(d: PendingDoc) {
     if (d.kind === 'draft') openRevisionPanel(d.id)
-    else openDetail(d.id)
+    else openActionPanel(d.id)
   }
 
   // One-click publish shortcut for DCC/Admin on an Approved working revision draft — promotes
@@ -512,12 +556,25 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
           <div style={{ fontSize: 12, color: 'var(--muted)' }}>รวม {total} รายการ</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: 10 }}>
-          <ActionCard label="รอทำ PDF" count={sourceWaitingPdfCount} sub="มี Word/Excel แล้ว รอ DCC จัดทำ PDF" icon="upload" accent="#9333EA" onClick={() => scrollToSection(sourceSectionRef)} />
+          <ActionCard label="เอกสารใหม่ รอจัดทำ PDF" count={newDocs.length} sub="เอกสาร Rev.00 มีไฟล์ต้นฉบับแล้ว รอ DCC" icon="plus" accent="#0EA5E9" onClick={() => scrollToSection(newSectionRef)} />
+          <ActionCard label="รอทำ PDF (Rev+)" count={sourceWaitingPdfCount} sub="มี Word/Excel แล้ว รอ DCC จัดทำ PDF" icon="upload" accent="#9333EA" onClick={() => scrollToSection(sourceSectionRef)} />
           <ActionCard label="พร้อมส่ง Review" count={sourceReadyReviewCount} sub="มีไฟล์ทางการแล้ว ตรวจและส่งต่อได้" icon="arrowRight" accent="#2563EB" onClick={() => scrollToSection(sourceSectionRef)} />
           <ActionCard label="รอผู้รับรองตรวจสอบ" count={reviewDocs.length} sub="เอกสารอยู่ในสถานะ Review" icon="eye" accent="#D97706" onClick={() => scrollToSection(reviewSectionRef)} />
           <ActionCard label="รอเผยแพร่" count={approvedDocs.length} sub="อนุมัติแล้ว รอเผยแพร่เป็น Published" icon="check" accent="#16A34A" onClick={() => scrollToSection(approvedSectionRef)} />
           <ActionCard label="รอทบทวนประจำปี" count={annualDocs.length} sub="QP/WI ที่ยืนยัน review แล้ว" icon="clock" accent="#0D9488" onClick={() => scrollToSection(annualSectionRef)} />
         </div>
+      </div>
+
+      <div ref={newSectionRef}>
+        <Section
+          title="เอกสารใหม่ รอจัดทำ PDF"
+          sub="เอกสารสร้างใหม่ (Rev.00) ที่อัปโหลดไฟล์ต้นฉบับแล้ว รอ DCC จัดทำ PDF เนื้อหาและส่งเข้า Review"
+          icon="plus" accent="#0EA5E9" count={newDocs.length}
+        >
+          {newDocs.map((d) => (
+            <DocButton key={d.id} doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
+          ))}
+        </Section>
       </div>
 
       <div ref={sourceSectionRef}>
@@ -670,6 +727,16 @@ export function PendingClient({ sourceDocs: initialSourceDocs, reviewDocs: initi
           docRole={docRole}
           canAdd={canAdd}
           variant="modal"
+        />
+      )}
+
+      {actionDoc && (
+        <DocumentActionPanel
+          doc={actionDoc}
+          userRole={userRole ?? ''}
+          docRole={docRole}
+          onClose={() => setActionDoc(null)}
+          onUpdated={handleDocumentUpdated}
         />
       )}
 
