@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
@@ -21,6 +22,24 @@ const DOC_TYPE_COLOR: Record<string, string> = {
 
 interface Props {
   params: Promise<{ code: string }>
+}
+
+// Without this, links shared from the catalog (e.g. the LINE bot's "ดูรายละเอียดเต็ม" link)
+// unfurl with the site-wide default title/description instead of the specific test.
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { code } = await params
+  const supabase = await createClient()
+  const test = await getTestByCatalogParam(supabase, code)
+  if (!test) return {}
+
+  const title = test.th || test.en || 'รายการตรวจ'
+  const description = [
+    test.method,
+    test.tube ? `สิ่งส่งตรวจ: ${test.tube}` : null,
+    `รหัส E-Phis: ${test.code}`,
+  ].filter(Boolean).join(' · ')
+
+  return { title, description }
 }
 
 export default async function CatalogDetailPage({ params }: Props) {

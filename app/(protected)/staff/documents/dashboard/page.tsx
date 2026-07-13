@@ -8,6 +8,7 @@ import { isReviewTrackedType, reviewDueDate } from '@/lib/documents/review'
 import { Stat } from '@/components/ui/Stat'
 import { Icon } from '@/components/ui/Icon'
 import { DOC_TYPES as TYPE_ORDER, TYPE_LABEL } from '@/lib/documents/type-labels'
+import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
 
 export const dynamic = 'force-dynamic'
 
@@ -100,7 +101,7 @@ export default async function DocumentsDashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data: actor } = await supabase
-    .from('profiles').select('role, doc_role').eq('id', user.id).single()
+    .from('profiles').select('role, doc_role, name').eq('id', user.id).single()
   const perms = actor?.role ? await getRolePermissions(actor.role) : {}
   const hasWorkflowAccess = DOCUMENT_WORKFLOW_ACCESS_ROLES.includes(actor?.doc_role ?? '')
   if (!hasWorkflowAccess && (perms['เอกสารคุณภาพ'] ?? 'none') === 'none') redirect('/staff/dashboard')
@@ -174,6 +175,7 @@ export default async function DocumentsDashboardPage() {
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>ภาพรวมระบบควบคุมเอกสาร</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <UserIdentityBadge userName={actor?.name ?? undefined} docRole={actor?.doc_role ?? undefined} userRole={actor?.role ?? undefined} />
           {canCreateDraft && (
             <Link href="/staff/documents?create=1" className="dash-btn-primary" style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,

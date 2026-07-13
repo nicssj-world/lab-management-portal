@@ -11,7 +11,7 @@ export default async function ReadReportPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data: actor } = await supabase
-    .from('profiles').select('role, doc_role').eq('id', user.id).single()
+    .from('profiles').select('role, doc_role, name').eq('id', user.id).single()
 
   const role = actor?.role ?? ''
   const docRole = actor?.doc_role ?? ''
@@ -72,5 +72,14 @@ export default async function ReadReportPage() {
 
   const canAssign = role === 'Admin' || role === 'Document Controller' || docRole === 'Document Controller'
 
-  return <ReadReportClient rows={rows} people={people} canAssign={canAssign} />
+  return (
+    <ReadReportClient
+      rows={rows}
+      people={people}
+      canAssign={canAssign}
+      userRole={actor?.role ?? undefined}
+      docRole={actor?.doc_role ?? undefined}
+      userName={actor?.name ?? undefined}
+    />
+  )
 }

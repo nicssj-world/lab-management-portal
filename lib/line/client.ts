@@ -15,12 +15,20 @@ export function verifyLineSignature(rawBody: string, signature: string): boolean
   }
 }
 
-export interface LineTextMessage { type: 'text'; text: string }
+export interface LineQuickReply {
+  items: {
+    type: 'action'
+    action: { type: 'message'; label: string; text: string }
+  }[]
+}
+
+export interface LineTextMessage { type: 'text'; text: string; quickReply?: LineQuickReply }
 
 export interface LineFlexMessage {
   type: 'flex'
   altText: string
   contents: Record<string, unknown>
+  quickReply?: LineQuickReply
 }
 
 export type LineMessage = LineTextMessage | LineFlexMessage

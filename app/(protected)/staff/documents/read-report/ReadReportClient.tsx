@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
+import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
 import { DEPARTMENTS, DEPT_ABBR } from '@/lib/validations/user-schema'
 import { TYPE_ICON_BG, TYPE_ICON_FG, DEPT_BADGE_FG, DEPT_BADGE_MIXED_FG } from '@/lib/documents/ui-constants'
 import { DOC_TYPES as TYPE_ORDER } from '@/lib/documents/type-labels'
@@ -36,6 +37,9 @@ interface Props {
   rows: ReportRow[]
   people: ReportPerson[]
   canAssign: boolean
+  userRole?: string
+  docRole?: string
+  userName?: string
 }
 
 
@@ -80,7 +84,7 @@ function DeptAudienceCheckbox({
   )
 }
 
-export function ReadReportClient({ rows: initialRows, people, canAssign }: Props) {
+export function ReadReportClient({ rows: initialRows, people, canAssign, userRole, docRole, userName }: Props) {
   const [rows, setRows] = useState<ReportRow[]>(initialRows)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
@@ -293,13 +297,16 @@ export function ReadReportClient({ rows: initialRows, people, canAssign }: Props
           subtitle={`ติดตามการอ่านฉบับปัจจุบันของเอกสาร Published · ${rows.length} ฉบับ · ผู้ใช้ active ${people.length} คน`}
           marginBottom={0}
         />
-        <Link href="/staff/documents" className="dash-btn-secondary" style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
-          border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
-          fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0,
-        }}>
-          <Icon name="doc" size={15} /> เปิดคลังเอกสาร
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <UserIdentityBadge userName={userName} docRole={docRole} userRole={userRole} />
+          <Link href="/staff/documents" className="dash-btn-secondary" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
+            border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)',
+            fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0,
+          }}>
+            <Icon name="doc" size={15} /> เปิดคลังเอกสาร
+          </Link>
+        </div>
       </div>
 
       {/* Summary */}

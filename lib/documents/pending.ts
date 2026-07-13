@@ -125,6 +125,8 @@ export interface RegistrationSetDocument {
   hasPendingFile: boolean
   hasOfficialFile: boolean
   hasWordUrl: boolean
+  setLastDownloadedAt: string | null
+  setLastDownloadedByName: string | null
 }
 
 export interface RegistrationSetActiveDraft {
@@ -172,6 +174,8 @@ type RegistrationSetDocumentRow = {
   source_pdf_url: string | null
   pending_file_url: string | null
   word_url: string | null
+  set_last_downloaded_at: string | null
+  set_last_downloaded_by_name: string | null
 }
 
 function toRegistrationSetDocument(row: RegistrationSetDocumentRow): RegistrationSetDocument {
@@ -192,6 +196,8 @@ function toRegistrationSetDocument(row: RegistrationSetDocumentRow): Registratio
       ? Boolean(row.source_pdf_url || row.file_url)
       : Boolean(row.file_url),
     hasWordUrl: Boolean(row.word_url),
+    setLastDownloadedAt: row.set_last_downloaded_at,
+    setLastDownloadedByName: row.set_last_downloaded_by_name,
   }
 }
 
@@ -218,7 +224,7 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
   const [documentsResult, draftsResult, attachmentsResult] = await Promise.all([
     supabaseAdmin
       .from('documents')
-      .select('id, document_code, title, type, department, revision, status, updated_at, file_url, source_pdf_url, pending_file_url, word_url, deleted_at')
+      .select('id, document_code, title, type, department, revision, status, updated_at, file_url, source_pdf_url, pending_file_url, word_url, deleted_at, set_last_downloaded_at, set_last_downloaded_by_name')
       .in('id', allDocumentIds),
     ownedDraftIds.length > 0
       ? supabaseAdmin

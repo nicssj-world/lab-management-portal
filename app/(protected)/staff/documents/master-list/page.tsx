@@ -7,9 +7,15 @@ export default async function MasterListPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: actor } = await supabase
-    .from('profiles').select('role').eq('id', user!.id).single()
+    .from('profiles').select('role, doc_role, name').eq('id', user!.id).single()
   const perms = actor?.role ? await getRolePermissions(actor.role) : {}
   if ((perms['Master List'] ?? 'none') === 'none') redirect('/staff/dashboard')
 
-  return <MasterListClient userRole={actor?.role ?? undefined} />
+  return (
+    <MasterListClient
+      userRole={actor?.role ?? undefined}
+      docRole={actor?.doc_role ?? undefined}
+      userName={actor?.name ?? undefined}
+    />
+  )
 }

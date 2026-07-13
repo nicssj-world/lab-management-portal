@@ -461,7 +461,7 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</div>
                                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{d.document_code} · {d.type} · {fmtSize(d.file_size)}</div>
-                                  {l.link_kind === 'set' && <div style={{ fontSize: 10.5, color: '#B45309', marginTop: 2 }}>สมาชิกชุดเอกสาร · อ่านอย่างเดียว</div>}
+                                  {l.link_kind === 'set' && <div style={{ fontSize: 10.5, color: '#B45309', marginTop: 2 }}>เอกสารสนับสนุนในชุด · อ่านอย่างเดียว</div>}
                                 </div>
                               </div>
                               {d.file_url && d.file_name?.toLowerCase().endsWith('.pdf') && (
