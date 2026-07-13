@@ -1,48 +1,11 @@
+-- Upgrade only: use this when the earlier document-set schema already has
+-- link_kind, pending document-file columns, ephemeral attachments, and both
+-- attachment natural-key unique indexes. Do not run after add-document-sets.sql.
+
 BEGIN;
 
-ALTER TABLE document_links ADD COLUMN link_kind text NOT NULL DEFAULT 'related';
-ALTER TABLE document_links ADD CONSTRAINT document_links_link_kind_check CHECK (link_kind IN ('related','set'));
-CREATE INDEX idx_document_links_set ON document_links(document_id) WHERE link_kind = 'set';
-ALTER TABLE documents ADD COLUMN pending_file_url text;
-ALTER TABLE documents ADD COLUMN pending_file_name text;
-ALTER TABLE documents ADD COLUMN pending_file_size bigint;
-ALTER TABLE documents ADD COLUMN pending_file_mime text;
-ALTER TABLE document_attachments ADD COLUMN ephemeral boolean NOT NULL DEFAULT false;
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM document_attachments
-    GROUP BY document_id, file_url
-    HAVING COUNT(*) > 1
-  ) THEN
-    RAISE EXCEPTION 'Cannot create uq_document_attachments_document_file_url: duplicate (document_id, file_url) rows exist in document_attachments. Resolve duplicates manually, then rerun this migration.';
-  END IF;
-END;
-$$;
-
-CREATE UNIQUE INDEX uq_document_attachments_document_file_url
-  ON document_attachments(document_id, file_url);
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM document_revision_draft_attachments
-    GROUP BY draft_id, file_url
-    HAVING COUNT(*) > 1
-  ) THEN
-    RAISE EXCEPTION 'Cannot create uq_document_revision_draft_attachments_draft_file_url: duplicate (draft_id, file_url) rows exist in document_revision_draft_attachments. Resolve duplicates manually, then rerun this migration.';
-  END IF;
-END;
-$$;
-
-CREATE UNIQUE INDEX uq_document_revision_draft_attachments_draft_file_url
-  ON document_revision_draft_attachments(draft_id, file_url);
-
--- A Published member with an active draft is ambiguous in legacy set data: the old
--- schema did not record whether that draft belonged to this set. Refuse to guess.
+-- Legacy Published members with an active draft are ambiguous because the
+-- earlier schema did not record set ownership. Stop before changing the schema.
 DO $$
 BEGIN
   IF EXISTS (
@@ -63,9 +26,6 @@ $$;
 ALTER TABLE document_links ADD COLUMN set_mode text;
 ALTER TABLE document_links ADD COLUMN set_draft_id uuid REFERENCES document_revision_drafts(id);
 
--- Existing non-Published members were created by register-set; Published members
--- without an active draft were display-only links. Ambiguous active drafts were
--- rejected by the preflight above.
 UPDATE document_links links
 SET set_mode = CASE WHEN member.status = 'Published' THEN 'linked' ELSE 'registered' END
 FROM documents member
@@ -108,21 +68,21 @@ CREATE UNIQUE INDEX uq_document_links_set_draft_id
   WHERE set_draft_id IS NOT NULL AND link_kind = 'set';
 
 CREATE TABLE document_set_uploads (
-  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  document_id   uuid        NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-  actor_id      uuid        NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  upload_kind   text        NOT NULL CHECK (upload_kind IN ('register', 'attach', 'revise-existing')),
-  storage_key   text        NOT NULL UNIQUE,
-  file_name     text        NOT NULL,
-  file_size     bigint      NOT NULL CHECK (file_size >= 0 AND file_size <= 52428800),
-  mime_type     text        NOT NULL,
-  expires_at    timestamptz NOT NULL,
-  claimed_at    timestamptz,
-  lease_token   uuid,
-  lease_kind    text CHECK (lease_kind IN ('register', 'cleanup')),
+  id               uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id      uuid        NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  actor_id         uuid        NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  upload_kind      text        NOT NULL CHECK (upload_kind IN ('register', 'attach', 'revise-existing')),
+  storage_key      text        NOT NULL UNIQUE,
+  file_name        text        NOT NULL,
+  file_size        bigint      NOT NULL CHECK (file_size >= 0 AND file_size <= 52428800),
+  mime_type        text        NOT NULL,
+  expires_at       timestamptz NOT NULL,
+  claimed_at       timestamptz,
+  lease_token      uuid,
+  lease_kind       text CHECK (lease_kind IN ('register', 'cleanup')),
   lease_expires_at timestamptz,
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  updated_at    timestamptz NOT NULL DEFAULT now(),
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT document_set_uploads_lease_consistency_check CHECK (
     (lease_token IS NULL AND lease_kind IS NULL AND lease_expires_at IS NULL)
     OR

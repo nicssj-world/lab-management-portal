@@ -362,6 +362,9 @@ export interface DocumentSetUpload {
   mime_type: string
   expires_at: string
   claimed_at: string | null
+  lease_token: string | null
+  lease_kind: 'register' | 'cleanup' | null
+  lease_expires_at: string | null
   created_at: string
   updated_at: string
 }

@@ -1,0 +1,59 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
+import { purgeEphemeralAttachments } from '@/lib/documents/ephemeral-attachments'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+
+const PurgeRequestSchema = z.object({ documentId: z.string().uuid() }).strict()
+
+export async function POST(req: NextRequest) {
+  const actor = await getActor()
+  if (!actor) return jsonUnauthorized()
+  if (!(
+    actor.role === 'Admin'
+    || actor.role === 'Document Controller'
+    || actor.doc_role === 'Document Controller'
+  )) return jsonForbidden()
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'JSON ไม่ถูกต้อง' }, { status: 422 })
+  }
+  const parsed = PurgeRequestSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
+  }
+
+  const documentResult = await supabaseAdmin
+    .from('documents')
+    .select('id, document_code, status')
+    .eq('id', parsed.data.documentId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (documentResult.error) {
+    return NextResponse.json({ error: documentResult.error.message }, { status: 500 })
+  }
+  if (!documentResult.data) return NextResponse.json({ error: 'ไม่พบเอกสาร' }, { status: 404 })
+  if (documentResult.data.status !== 'Published') {
+    return NextResponse.json({ error: 'ล้างไฟล์แนบชั่วคราวได้เฉพาะเอกสาร Published' }, { status: 409 })
+  }
+
+  try {
+    await purgeEphemeralAttachments(documentResult.data.id)
+    return NextResponse.json({
+      succeeded: [{ id: documentResult.data.id, documentCode: documentResult.data.document_code }],
+      failed: [],
+    })
+  } catch (error) {
+    return NextResponse.json({
+      succeeded: [],
+      failed: [{
+        id: documentResult.data.id,
+        documentCode: documentResult.data.document_code,
+        error: error instanceof Error ? error.message : String(error),
+      }],
+    })
+  }
+}
