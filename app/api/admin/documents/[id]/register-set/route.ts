@@ -67,6 +67,40 @@ async function setLink(documentId: string, linkedDocumentId: string, actor: Acto
   return updated.data
 }
 
+async function requireDraftMainDocument(documentId: string) {
+  const result = await supabaseAdmin
+    .from('documents')
+    .select('id, status')
+    .eq('id', documentId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  throwIfError(result.error)
+  if (!result.data) throw new Error('ไม่พบเอกสารหลัก')
+  if (result.data.status !== 'Draft') {
+    throw new Error('ลงทะเบียนชุดเอกสารได้เฉพาะเอกสารหลักสถานะ Draft')
+  }
+  return result.data
+}
+
+async function linkExistingDocument(mainDocumentId: string, existingDocumentId: string, actor: Actor) {
+  const targetResult = await supabaseAdmin
+    .from('documents')
+    .select('id, document_code, title, status')
+    .eq('id', existingDocumentId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  throwIfError(targetResult.error)
+  if (!targetResult.data) throw new Error('ไม่พบเอกสารที่ต้องการเชื่อมโยง')
+  if (targetResult.data.status !== 'Published') {
+    throw new Error('เชื่อมโยงได้เฉพาะเอกสาร Published เท่านั้น')
+  }
+
+  return {
+    document: targetResult.data,
+    link: await setLink(mainDocumentId, existingDocumentId, actor),
+  }
+}
+
 async function registerDocument(mainDocumentId: string, item: Extract<RegisterSetItem, { kind: 'register' }>, actor: Actor) {
   const documentCode = item.document_code.trim().toUpperCase()
   const duplicate = await supabaseAdmin
@@ -108,6 +142,7 @@ async function registerDocument(mainDocumentId: string, item: Extract<RegisterSe
       reviewer_name: item.reviewer_name,
       approver_name: item.approver_name,
       edit_date: item.edit_date,
+      expiry_date: item.edit_date,
       effective_date: item.effective_date,
       visibility: item.visibility,
       ...fileFields,
@@ -216,6 +251,13 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
     throwIfError(inserted.error)
     draft = inserted.data
     created = true
+
+    supabaseAdmin.from('audit_log').insert({
+      action: 'document.revision_draft_create',
+      user_id: actor.id,
+      target: current.document_code ?? current.id,
+      detail: `Rev. ${draft.revision}`,
+    }).then(undefined, () => {})
   }
 
   // Establish the idempotent link before applying the uploaded file, so a retry cannot duplicate an attachment.
@@ -255,15 +297,6 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
     fileResult = inserted.data
   }
 
-  if (created) {
-    supabaseAdmin.from('audit_log').insert({
-      action: 'document.revision_draft_create',
-      user_id: actor.id,
-      target: current.document_code ?? current.id,
-      detail: `Rev. ${draft.revision}`,
-    }).then(undefined, () => {})
-  }
-
   return { document: current, draft, file: fileResult, reused: !created }
 }
 
@@ -274,7 +307,7 @@ async function processItem(mainDocumentId: string, item: RegisterSetItem, actor:
     case 'attach':
       return attachFile(mainDocumentId, item, actor)
     case 'link-existing':
-      return { link: await setLink(mainDocumentId, item.existing_document_id, actor) }
+      return linkExistingDocument(mainDocumentId, item.existing_document_id, actor)
     case 'revise-existing':
       return reviseExisting(mainDocumentId, item, actor)
   }
@@ -314,6 +347,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const failed: ItemFailure[] = []
   for (const [index, item] of parsed.data.items.entries()) {
     try {
+      await requireDraftMainDocument(id)
       const data = await processItem(id, item, actor)
       succeeded.push({ index, kind: item.kind, item, data })
     } catch (error) {
