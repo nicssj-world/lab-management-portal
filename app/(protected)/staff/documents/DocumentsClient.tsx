@@ -836,7 +836,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
         }
         setTypeCounts(counts)
       })
-      .catch(() => {})
+      .catch(() => toast('อัปเดตจำนวนเอกสารหลังลงทะเบียนชุดไม่สำเร็จ กรุณารีเฟรชหน้า', false))
   }
 
   async function handleDuplicateOpen(documentId: string) {
