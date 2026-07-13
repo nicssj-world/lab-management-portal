@@ -27,9 +27,12 @@ export async function DELETE(
   const { linkId } = await params
 
   const { data: link } = await supabaseAdmin
-    .from('document_links').select('id, created_by').eq('id', linkId).single()
+    .from('document_links').select('id, created_by, link_kind').eq('id', linkId).single()
 
   if (!link) return NextResponse.json({ error: 'ไม่พบรายการ' }, { status: 404 })
+  if (link.link_kind === 'set') {
+    return NextResponse.json({ error: 'ลิงก์สมาชิกชุดเอกสารไม่สามารถลบผ่านรายการเอกสารที่เกี่ยวข้องได้' }, { status: 409 })
+  }
   if (!canDelete(actor, link.created_by)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { error } = await supabaseAdmin.from('document_links').delete().eq('id', linkId)

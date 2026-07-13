@@ -108,6 +108,39 @@ test('active draft target uses the server-returned revision-draft route', () => 
   assert.equal(plan.targets[0]?.endpoint, '/api/admin/documents/draft-parent-9/revision-drafts/draft-9')
 })
 
+test('linked mode skips a target even when an unrelated active draft exists', () => {
+  const plan = planRegistrationSetTransition(registrationSet({
+    members: [{
+      setMode: 'linked',
+      document: document({ id: 'linked-1', documentCode: 'RF-LINK', status: 'Obsolete' }),
+      activeDraft: {
+        id: 'unrelated-draft', documentId: 'linked-1', type: 'Reference', status: 'Draft',
+        fileUrl: 'unrelated.pdf', sourcePdfUrl: null, wordUrl: null,
+      },
+    }],
+  }))
+
+  assert.equal(plan.blocker, null)
+  assert.deepEqual(plan.targets.map((target) => target.documentCode), ['QP-01'])
+})
+
+test('registered mode follows the document row and ignores unrelated drafts', () => {
+  const plan = planRegistrationSetTransition(registrationSet({
+    members: [{
+      setMode: 'registered',
+      document: document({ id: 'registered-1', documentCode: 'FM-REGISTERED', status: 'Draft' }),
+      activeDraft: {
+        id: 'unrelated-draft', documentId: 'registered-1', type: 'Form', status: 'Approved',
+        fileUrl: 'unrelated.pdf', sourcePdfUrl: null, wordUrl: null,
+      },
+    }],
+  }))
+
+  assert.equal(plan.blocker, null)
+  assert.equal(plan.targets[0]?.kind, 'document')
+  assert.equal(plan.targets[0]?.documentCode, 'FM-REGISTERED')
+})
+
 test('actual member mutations are ordered before the main document', () => {
   const plan = planRegistrationSetTransition(registrationSet({
     members: [

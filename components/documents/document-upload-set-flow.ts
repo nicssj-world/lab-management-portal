@@ -13,6 +13,18 @@ export function normalizeRegisterSetSelection(type: string, checked: boolean) {
   return requiresControlledCover(type) ? checked : false
 }
 
+export function canOfferRegistrationSet(input: {
+  isEdit: boolean
+  isImportCurrent: boolean
+  type: string
+  hasCallback: boolean
+}) {
+  return input.hasCallback
+    && !input.isEdit
+    && !input.isImportCurrent
+    && requiresControlledCover(input.type)
+}
+
 export function shouldRegisterSetAfterSave(input: DocumentSetSaveEligibility) {
   return !input.isEdit
     && !input.isImportCurrent

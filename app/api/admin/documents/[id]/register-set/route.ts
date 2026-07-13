@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { HeadObjectCommand } from '@aws-sdk/client-s3'
 import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized, type Actor } from '@/lib/auth/guards'
 import { isPdfFile, isSourceFile, nextRevisionValue } from '@/lib/documents/workflow'
 import {
@@ -9,6 +10,15 @@ import {
 } from '@/lib/documents/register-set-idempotency'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { RegisterSetSchema, type RegisterSetItem } from '@/lib/validations/document-set'
+import {
+  validateSetUploadClaim,
+  validateSetUploadFile,
+  validateSetUploadObject,
+  type RegistrationSetMode,
+  type SetUploadClaimContract,
+  type SetUploadKind,
+} from '@/lib/documents/registration-set-contracts'
+import { r2, R2_BUCKET } from '@/lib/r2/client'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -45,8 +55,53 @@ function fileKind(file: { name: string; mime: string }) {
   throw new Error(`ไม่รองรับชนิดไฟล์ ${file.name}`)
 }
 
-async function setLink(documentId: string, linkedDocumentId: string, actor: Actor) {
+async function findLink(documentId: string, linkedDocumentId: string) {
+  const result = await supabaseAdmin
+    .from('document_links')
+    .select('id, document_id, linked_doc_id, link_kind, set_mode, set_draft_id')
+    .eq('document_id', documentId)
+    .eq('linked_doc_id', linkedDocumentId)
+    .maybeSingle()
+  throwIfError(result.error)
+  return result.data
+}
+
+function assertMatchingSetLink(
+  link: { link_kind: string; set_mode: string | null; set_draft_id: string | null },
+  mode: RegistrationSetMode,
+  draftId: string | null,
+) {
+  if (link.link_kind === 'set' && link.set_mode === mode && link.set_draft_id === draftId) return
+  if (link.link_kind === 'set') {
+    throw new Error(`เอกสารนี้เป็นสมาชิกชุดด้วยโหมด ${link.set_mode ?? 'ไม่ทราบ'} อยู่แล้ว`)
+  }
+}
+
+async function setLink(
+  documentId: string,
+  linkedDocumentId: string,
+  actor: Actor,
+  mode: RegistrationSetMode,
+  draftId: string | null = null,
+) {
   if (documentId === linkedDocumentId) throw new Error('ไม่สามารถลิงก์เอกสารตัวเองได้')
+
+  const existing = await findLink(documentId, linkedDocumentId)
+  if (existing) {
+    assertMatchingSetLink(existing, mode, draftId)
+    if (existing.link_kind === 'set') return existing
+    const converted = await supabaseAdmin
+      .from('document_links')
+      .update({ link_kind: 'set', set_mode: mode, set_draft_id: draftId })
+      .eq('id', existing.id)
+      .select()
+      .single()
+    if (converted.error?.code === '23505' && draftId) {
+      throw new Error(`working revision ${draftId} เป็นสมาชิกของชุดเอกสารอื่นอยู่แล้ว`)
+    }
+    throwIfError(converted.error)
+    return converted.data
+  }
 
   const inserted = await supabaseAdmin
     .from('document_links')
@@ -54,6 +109,8 @@ async function setLink(documentId: string, linkedDocumentId: string, actor: Acto
       document_id: documentId,
       linked_doc_id: linkedDocumentId,
       link_kind: 'set',
+      set_mode: mode,
+      set_draft_id: draftId,
       created_by: actor.id,
     })
     .select()
@@ -61,16 +118,14 @@ async function setLink(documentId: string, linkedDocumentId: string, actor: Acto
 
   if (!inserted.error) return inserted.data
   if (inserted.error.code !== '23505') throw inserted.error
-
-  const updated = await supabaseAdmin
-    .from('document_links')
-    .update({ link_kind: 'set' })
-    .eq('document_id', documentId)
-    .eq('linked_doc_id', linkedDocumentId)
-    .select()
-    .single()
-  throwIfError(updated.error)
-  return updated.data
+  const raced = await findLink(documentId, linkedDocumentId)
+  if (!raced) {
+    if (draftId) throw new Error(`working revision ${draftId} เป็นสมาชิกของชุดเอกสารอื่นอยู่แล้ว`)
+    throw inserted.error
+  }
+  if (raced.link_kind !== 'set') return setLink(documentId, linkedDocumentId, actor, mode, draftId)
+  assertMatchingSetLink(raced, mode, draftId)
+  return raced
 }
 
 async function requireDraftMainDocument(documentId: string) {
@@ -101,9 +156,21 @@ async function linkExistingDocument(mainDocumentId: string, existingDocumentId: 
     throw new Error('เชื่อมโยงได้เฉพาะเอกสาร Published เท่านั้น')
   }
 
+  const activeDraft = await supabaseAdmin
+    .from('document_revision_drafts')
+    .select('id')
+    .eq('document_id', existingDocumentId)
+    .is('cancelled_at', null)
+    .neq('status', 'Published')
+    .maybeSingle()
+  throwIfError(activeDraft.error)
+  if (activeDraft.data) {
+    throw new Error(`เอกสาร ${targetResult.data.document_code} มี working revision ที่กำลังใช้งานอยู่ จึงลิงก์แบบ Published ไม่ได้`)
+  }
+
   return {
     document: targetResult.data,
-    link: await setLink(mainDocumentId, existingDocumentId, actor),
+    link: await setLink(mainDocumentId, existingDocumentId, actor, 'linked'),
   }
 }
 
@@ -128,7 +195,7 @@ async function reuseRegisteredDocument(
 ) {
   const links = await supabaseAdmin
     .from('document_links')
-    .select('id, document_id')
+    .select('id, document_id, set_mode, set_draft_id')
     .eq('linked_doc_id', document.id)
     .eq('link_kind', 'set')
   throwIfError(links.error)
@@ -141,12 +208,16 @@ async function reuseRegisteredDocument(
     fileKind: kind,
   })
   if (classification === 'linked-retry') {
-    return { document, link: links.data?.find((link) => link.document_id === mainDocumentId) ?? null, reused: true }
+    const link = links.data?.find((candidate) => candidate.document_id === mainDocumentId) ?? null
+    if (link?.set_mode !== 'registered' || link.set_draft_id !== null) {
+      throw new Error(`รหัสเอกสาร ${document.document_code} ถูกผูกกับชุดนี้ด้วยโหมดอื่นอยู่แล้ว`)
+    }
+    return { document, link, reused: true }
   }
   if (classification === 'stranded-retry') {
     return {
       document,
-      link: await setLink(mainDocumentId, document.id, actor),
+      link: await setLink(mainDocumentId, document.id, actor, 'registered'),
       reused: true,
       completedStranded: true,
     }
@@ -225,7 +296,7 @@ async function registerDocument(mainDocumentId: string, item: Extract<RegisterSe
   const document = inserted.data
 
   try {
-    await setLink(mainDocumentId, document.id, actor)
+    await setLink(mainDocumentId, document.id, actor, 'registered')
   } catch (error) {
     // Keep this item retryable if its follow-up link fails. R2 objects are intentionally untouched.
     const cleanup = await supabaseAdmin.from('documents').delete().eq('id', document.id)
@@ -298,16 +369,39 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
   if (!current) throw new Error('ไม่พบเอกสารที่ต้องการสร้าง revision')
   if (current.status !== 'Published') throw new Error('สร้าง working revision ได้เฉพาะเอกสาร Published เท่านั้น')
 
-  const existingResult = await supabaseAdmin
-    .from('document_revision_drafts')
-    .select('*')
-    .eq('document_id', current.id)
-    .is('cancelled_at', null)
-    .neq('status', 'Published')
-    .maybeSingle()
-  throwIfError(existingResult.error)
+  const existingLink = await findLink(mainDocumentId, current.id)
+  if (existingLink?.link_kind === 'set' && existingLink.set_mode !== 'revision') {
+    throw new Error(`เอกสาร ${current.document_code} เป็นสมาชิกชุดนี้ด้วยโหมด ${existingLink.set_mode ?? 'ไม่ทราบ'} อยู่แล้ว`)
+  }
 
-  let draft = existingResult.data
+  let draft = null
+  if (existingLink?.link_kind === 'set' && existingLink.set_mode === 'revision') {
+    if (!existingLink.set_draft_id) throw new Error('ลิงก์ revision ของชุดไม่มี draft ownership')
+    const ownedDraft = await supabaseAdmin
+      .from('document_revision_drafts')
+      .select('*')
+      .eq('id', existingLink.set_draft_id)
+      .eq('document_id', current.id)
+      .is('cancelled_at', null)
+      .neq('status', 'Published')
+      .maybeSingle()
+    throwIfError(ownedDraft.error)
+    if (!ownedDraft.data) throw new Error(`ไม่พบ working revision ${existingLink.set_draft_id} ที่ชุดนี้เป็นเจ้าของ`)
+    draft = ownedDraft.data
+  } else {
+    const unrelatedDraft = await supabaseAdmin
+      .from('document_revision_drafts')
+      .select('id')
+      .eq('document_id', current.id)
+      .is('cancelled_at', null)
+      .neq('status', 'Published')
+      .maybeSingle()
+    throwIfError(unrelatedDraft.error)
+    if (unrelatedDraft.data) {
+      throw new Error(`เอกสาร ${current.document_code} มี working revision ${unrelatedDraft.data.id} ที่ไม่ได้เป็นของชุดนี้`)
+    }
+  }
+
   let created = false
   if (!draft) {
     const inserted = await supabaseAdmin
@@ -331,10 +425,29 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
       })
       .select()
       .single()
+    if (inserted.error?.code === '23505') {
+      throw new Error(`เอกสาร ${current.document_code} มี working revision อื่นถูกสร้างพร้อมกัน จึงไม่สามารถนำมาใช้กับชุดนี้ได้`)
+    }
     throwIfError(inserted.error)
     draft = inserted.data
     created = true
+  }
 
+  // Bind ownership before applying the uploaded file. A newly-created draft is removed
+  // if ownership cannot be established, so no unrelated active draft is left behind.
+  try {
+    await setLink(mainDocumentId, current.id, actor, 'revision', draft.id)
+  } catch (error) {
+    if (created) {
+      const cleanup = await supabaseAdmin.from('document_revision_drafts').delete().eq('id', draft.id)
+      if (cleanup.error) {
+        throw new Error(`${errorMessage(error)}; ล้าง working revision ที่สร้างค้างไม่สำเร็จ (${draft.id}): ${cleanup.error.message}`)
+      }
+    }
+    throw error
+  }
+
+  if (created) {
     supabaseAdmin.from('audit_log').insert({
       action: 'document.revision_draft_create',
       user_id: actor.id,
@@ -342,9 +455,6 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
       detail: `Rev. ${draft.revision}`,
     }).then(undefined, () => {})
   }
-
-  // Establish the idempotent link before applying the uploaded file, so a retry cannot duplicate an attachment.
-  await setLink(mainDocumentId, current.id, actor)
 
   const kind = fileKind(item.file)
   let fileResult: unknown
@@ -401,6 +511,152 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
   return { document: current, draft, file: fileResult, reused: !created }
 }
 
+function setUploadKind(item: RegisterSetItem): SetUploadKind | null {
+  if (item.kind === 'register' || item.kind === 'attach' || item.kind === 'revise-existing') return item.kind
+  return null
+}
+
+async function isExactIdempotentRetry(mainDocumentId: string, item: RegisterSetItem, actor: Actor) {
+  if (item.kind === 'register') {
+    const kind = fileKind(item.file)
+    const document = await findDocumentByCode(item.document_code.trim().toUpperCase())
+    if (!document) return false
+    const links = await supabaseAdmin
+      .from('document_links')
+      .select('document_id, set_mode, set_draft_id')
+      .eq('linked_doc_id', document.id)
+      .eq('link_kind', 'set')
+    throwIfError(links.error)
+    const classification = classifyRegisterRetry({
+      document,
+      item,
+      actorId: actor.id,
+      mainDocumentId,
+      setLinkMainIds: (links.data ?? []).map((link) => link.document_id),
+      fileKind: kind,
+    })
+    const currentLink = links.data?.find((link) => link.document_id === mainDocumentId)
+    return classification === 'linked-retry'
+      && currentLink?.set_mode === 'registered'
+      && currentLink.set_draft_id === null
+  }
+
+  if (item.kind === 'attach') {
+    const existing = await findDocumentAttachment(mainDocumentId, item.file.key)
+    return Boolean(existing
+      && existing.file_name === item.file.name
+      && existing.file_size === item.file.size
+      && existing.mime_type === item.file.mime
+      && existing.uploaded_by === actor.id
+      && existing.ephemeral === true)
+  }
+
+  if (item.kind === 'revise-existing') {
+    const link = await findLink(mainDocumentId, item.existing_document_id)
+    if (link?.link_kind !== 'set' || link.set_mode !== 'revision' || !link.set_draft_id) return false
+    const draftResult = await supabaseAdmin
+      .from('document_revision_drafts')
+      .select('id, document_id, word_url, word_name, word_size, status, cancelled_at')
+      .eq('id', link.set_draft_id)
+      .eq('document_id', item.existing_document_id)
+      .maybeSingle()
+    throwIfError(draftResult.error)
+    const draft = draftResult.data
+    if (!draft || draft.cancelled_at || draft.status === 'Published') return false
+    if (fileKind(item.file) === 'source') {
+      return draft.word_url === item.file.key
+        && draft.word_name === item.file.name
+        && draft.word_size === item.file.size
+    }
+    const attachment = await findDraftAttachment(draft.id, item.file.key)
+    return Boolean(attachment
+      && attachment.file_name === item.file.name
+      && attachment.file_size === item.file.size
+      && attachment.mime_type === item.file.mime
+      && attachment.uploaded_by === actor.id)
+  }
+
+  return false
+}
+
+async function requestedDocumentType(item: RegisterSetItem) {
+  if (item.kind === 'register') return item.type
+  if (item.kind !== 'revise-existing') return null
+  const result = await supabaseAdmin
+    .from('documents')
+    .select('type')
+    .eq('id', item.existing_document_id)
+    .is('deleted_at', null)
+    .maybeSingle()
+  throwIfError(result.error)
+  if (!result.data) throw new Error('ไม่พบเอกสารที่ต้องการสร้าง revision')
+  return result.data.type
+}
+
+async function verifySetUpload(mainDocumentId: string, item: RegisterSetItem, actor: Actor) {
+  const uploadKind = setUploadKind(item)
+  if (!uploadKind || !('file' in item)) return null
+
+  const ticketResult = await supabaseAdmin
+    .from('document_set_uploads')
+    .select('id, document_id, actor_id, upload_kind, storage_key, file_name, file_size, mime_type, expires_at, claimed_at')
+    .eq('id', item.file.upload_id)
+    .maybeSingle()
+  throwIfError(ticketResult.error)
+  if (!ticketResult.data) throw new Error('ไม่พบ upload ticket ของไฟล์ชุดนี้')
+
+  const exactRetry = await isExactIdempotentRetry(mainDocumentId, item, actor)
+  const claimValidation = validateSetUploadClaim(
+    ticketResult.data as SetUploadClaimContract,
+    {
+      uploadId: item.file.upload_id,
+      mainDocumentId,
+      actorId: actor.id,
+      uploadKind,
+      key: item.file.key,
+      name: item.file.name,
+      size: item.file.size,
+      mime: item.file.mime,
+    },
+    new Date(),
+    exactRetry,
+  )
+  if (!claimValidation.ok) throw new Error(`upload ticket ไม่ถูกต้อง: ${claimValidation.error}`)
+
+  const type = await requestedDocumentType(item)
+  const fileValidation = validateSetUploadFile({
+    uploadKind,
+    documentType: type,
+    name: item.file.name,
+    key: item.file.key,
+    mime: item.file.mime,
+  })
+  if (!fileValidation.ok) throw new Error(`ข้อมูลไฟล์ไม่ถูกต้อง: ${fileValidation.error}`)
+
+  let object
+  try {
+    object = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: item.file.key }))
+  } catch {
+    throw new Error('ไม่พบไฟล์ที่อัปโหลดใน R2')
+  }
+  const objectValidation = validateSetUploadObject(item.file.size, item.file.mime, {
+    contentLength: object.ContentLength,
+    contentType: object.ContentType,
+  })
+  if (!objectValidation.ok) throw new Error(`ไฟล์ใน R2 ไม่ตรงกับ upload ticket: ${objectValidation.error}`)
+  return ticketResult.data.id as string
+}
+
+async function markSetUploadClaimed(uploadId: string) {
+  const now = new Date().toISOString()
+  const result = await supabaseAdmin
+    .from('document_set_uploads')
+    .update({ claimed_at: now, updated_at: now })
+    .eq('id', uploadId)
+    .is('claimed_at', null)
+  throwIfError(result.error)
+}
+
 async function processItem(mainDocumentId: string, item: RegisterSetItem, actor: Actor) {
   switch (item.kind) {
     case 'register':
@@ -449,7 +705,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   for (const [index, item] of parsed.data.items.entries()) {
     try {
       await requireDraftMainDocument(id)
+      const uploadId = await verifySetUpload(id, item, actor)
       const data = await processItem(id, item, actor)
+      if (uploadId) await markSetUploadClaimed(uploadId)
       succeeded.push({ index, kind: item.kind, item, data })
     } catch (error) {
       failed.push({ index, kind: item.kind, item, error: errorMessage(error) })

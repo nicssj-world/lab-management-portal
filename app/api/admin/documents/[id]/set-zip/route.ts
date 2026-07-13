@@ -5,6 +5,7 @@ import { getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 import { contentDispositionForDownload } from '@/lib/documents/download-filename'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { selectRegistrationSetDraft, type RegistrationSetMode } from '@/lib/documents/registration-set-contracts'
 
 export const runtime = 'nodejs'
 
@@ -115,13 +116,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const linksResult = await supabaseAdmin
     .from('document_links')
-    .select('id, linked_doc_id')
+    .select('id, linked_doc_id, set_mode, set_draft_id')
     .eq('document_id', id)
     .eq('link_kind', 'set')
     .order('created_at', { ascending: true })
 
   if (linksResult.error) return NextResponse.json({ error: linksResult.error.message }, { status: 500 })
   const memberIds = (linksResult.data ?? []).map((link) => link.linked_doc_id)
+  const ownedDraftIds = (linksResult.data ?? [])
+    .filter((link) => link.set_mode === 'revision' && link.set_draft_id)
+    .map((link) => link.set_draft_id as string)
   if (memberIds.length === 0) {
     return NextResponse.json({ error: 'ไม่พบเอกสารสมาชิกในชุด' }, { status: 404 })
   }
@@ -131,12 +135,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .from('documents')
       .select('id, document_code, file_url, file_name, pending_file_url, pending_file_name, word_url, word_name')
       .in('id', memberIds),
-    supabaseAdmin
-      .from('document_revision_drafts')
-      .select('id, document_id, file_url, file_name, source_pdf_url, source_pdf_name, word_url, word_name')
-      .in('document_id', memberIds)
-      .is('cancelled_at', null)
-      .neq('status', 'Published'),
+    ownedDraftIds.length > 0
+      ? supabaseAdmin
+          .from('document_revision_drafts')
+          .select('id, document_id, status, file_url, file_name, source_pdf_url, source_pdf_name, word_url, word_name')
+          .in('id', ownedDraftIds)
+      : Promise.resolve({ data: [], error: null }),
     supabaseAdmin
       .from('document_attachments')
       .select('id, file_url, file_name')
@@ -171,8 +175,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: `ข้อมูลชุดเอกสารไม่ครบ: ไม่พบเอกสารสมาชิก ${missingMemberId}` }, { status: 500 })
   }
 
-  const draftByDocumentId = new Map(
-    (draftsResult.data ?? []).map((draft) => [draft.document_id, draft] as const),
+  const draftById = new Map(
+    (draftsResult.data ?? []).map((draft) => [draft.id, draft] as const),
   )
   const draftAttachmentsByDraftId = new Map<string, DraftAttachment[]>()
   for (const attachment of draftAttachments) {
@@ -198,14 +202,26 @@ export async function GET(_req: NextRequest, { params }: Params) {
   addTarget(main.file_url, mainFolder, main.file_name, 'official', `ไฟล์ทางการของ ${main.document_code}`)
   addTarget(main.word_url, mainFolder, main.word_name, 'source', `ไฟล์ต้นฉบับของ ${main.document_code}`)
 
-  for (const memberId of memberIds) {
+  for (const link of linksResult.data ?? []) {
+    const memberId = link.linked_doc_id
     const member = memberById.get(memberId)!
     const memberFolder = uniqueFolder(member.document_code, `member-${memberId}`, usedFolders)
     addTarget(member.file_url, memberFolder, member.file_name, 'official', `ไฟล์ทางการของ ${member.document_code}`)
     addTarget(member.pending_file_url, memberFolder, member.pending_file_name, 'pending', `ไฟล์รอยืนยันของ ${member.document_code}`)
     addTarget(member.word_url, memberFolder, member.word_name, 'source', `ไฟล์ต้นฉบับของ ${member.document_code}`)
 
-    const draft = draftByDocumentId.get(memberId)
+    const setMode = link.set_mode as RegistrationSetMode
+    if (!setMode) return NextResponse.json({ error: `ข้อมูลชุดเอกสารไม่ครบ: link ${link.id} ไม่มี set_mode` }, { status: 500 })
+    let draft
+    try {
+      draft = selectRegistrationSetDraft({
+        linked_doc_id: memberId,
+        set_mode: setMode,
+        set_draft_id: link.set_draft_id,
+      }, draftById)
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'ข้อมูล working revision ในชุดไม่ถูกต้อง' }, { status: 500 })
+    }
     if (!draft) continue
     addTarget(draft.file_url, memberFolder, draft.file_name, 'revision-official', `ไฟล์ working revision ของ ${member.document_code}`)
     if (draft.source_pdf_url && draft.source_pdf_url !== draft.file_url) {

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { selectRegistrationSetDraft, type RegistrationSetMode } from '@/lib/documents/registration-set-contracts'
 
 // Distinct document ids that have an active (non-cancelled, non-published) working
 // revision draft with a Word/Excel source uploaded — i.e. the "รอ DCC ทำ PDF" queue.
@@ -145,6 +146,8 @@ export interface RegistrationSetMember {
   linkId: string
   linkKind: 'set'
   linkedAt: string | null
+  setMode: RegistrationSetMode
+  setDraftId: string | null
   document: RegistrationSetDocument
   activeDraft: RegistrationSetActiveDraft | null
 }
@@ -197,7 +200,7 @@ function toRegistrationSetDocument(row: RegistrationSetDocumentRow): Registratio
 export async function getRegistrationSets(): Promise<RegistrationSet[]> {
   const linksResult = await supabaseAdmin
     .from('document_links')
-    .select('id, document_id, linked_doc_id, link_kind, created_at')
+    .select('id, document_id, linked_doc_id, link_kind, set_mode, set_draft_id, created_at')
     .eq('link_kind', 'set')
     .order('created_at', { ascending: true })
 
@@ -208,18 +211,21 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
   const mainIds = Array.from(new Set(links.map((link) => link.document_id)))
   const memberIds = Array.from(new Set(links.map((link) => link.linked_doc_id)))
   const allDocumentIds = Array.from(new Set([...mainIds, ...memberIds]))
+  const ownedDraftIds = Array.from(new Set(
+    links.filter((link) => link.set_mode === 'revision' && link.set_draft_id).map((link) => link.set_draft_id as string),
+  ))
 
   const [documentsResult, draftsResult, attachmentsResult] = await Promise.all([
     supabaseAdmin
       .from('documents')
       .select('id, document_code, title, type, department, revision, status, updated_at, file_url, source_pdf_url, pending_file_url, word_url, deleted_at')
       .in('id', allDocumentIds),
-    supabaseAdmin
-      .from('document_revision_drafts')
-      .select('id, document_id, revision, type, status, updated_at, file_url, file_name, source_pdf_url, source_pdf_name, word_url, word_name')
-      .in('document_id', memberIds)
-      .is('cancelled_at', null)
-      .neq('status', 'Published'),
+    ownedDraftIds.length > 0
+      ? supabaseAdmin
+          .from('document_revision_drafts')
+          .select('id, document_id, revision, type, status, updated_at, file_url, file_name, source_pdf_url, source_pdf_name, word_url, word_name')
+          .in('id', ownedDraftIds)
+      : Promise.resolve({ data: [], error: null }),
     supabaseAdmin
       .from('document_attachments')
       .select('document_id')
@@ -234,8 +240,8 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
   const documentById = new Map(
     (documentsResult.data ?? []).map((document) => [document.id, document] as const),
   )
-  const activeDraftByDocumentId = new Map(
-    (draftsResult.data ?? []).map((draft) => [draft.document_id, draft] as const),
+  const ownedDraftById = new Map(
+    (draftsResult.data ?? []).map((draft) => [draft.id, draft] as const),
   )
   const attachmentCountByDocumentId = new Map<string, number>()
   for (const attachment of attachmentsResult.data ?? []) {
@@ -264,11 +270,19 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
       if (!member) {
         throw new Error(`ข้อมูลชุดเอกสารไม่ครบ: ไม่พบเอกสารสมาชิก ${link.linked_doc_id}`)
       }
-      const draft = activeDraftByDocumentId.get(member.id)
+      const setMode = link.set_mode as RegistrationSetMode
+      if (!setMode) throw new Error(`ข้อมูลชุดเอกสารไม่ครบ: link ${link.id} ไม่มี set_mode`)
+      const draft = selectRegistrationSetDraft({
+        linked_doc_id: link.linked_doc_id,
+        set_mode: setMode,
+        set_draft_id: link.set_draft_id,
+      }, ownedDraftById)
       members.push({
         linkId: link.id,
         linkKind: 'set',
         linkedAt: link.created_at,
+        setMode,
+        setDraftId: link.set_draft_id,
         document: toRegistrationSetDocument(member),
         activeDraft: draft
           ? {

@@ -30,7 +30,7 @@ export async function GET(
 
   const { data, error } = await supabaseAdmin
     .from('document_links')
-    .select('id, linked_doc_id, created_by, created_at, documents!document_links_linked_doc_id_fkey(id, document_code, title, type, status, file_url, file_name, file_size)')
+    .select('id, linked_doc_id, link_kind, set_mode, set_draft_id, created_by, created_at, documents!document_links_linked_doc_id_fkey(id, document_code, title, type, status, file_url, file_name, file_size)')
     .eq('document_id', id)
     .order('created_at', { ascending: true })
 
@@ -56,7 +56,7 @@ export async function POST(
   const { data, error } = await supabaseAdmin
     .from('document_links')
     .insert({ document_id: id, linked_doc_id, created_by: actor.id })
-    .select('id, linked_doc_id, created_by, created_at, documents!document_links_linked_doc_id_fkey(id, document_code, title, type, status, file_url, file_name, file_size)')
+    .select('id, linked_doc_id, link_kind, set_mode, set_draft_id, created_by, created_at, documents!document_links_linked_doc_id_fkey(id, document_code, title, type, status, file_url, file_name, file_size)')
     .single()
 
   if (error) {

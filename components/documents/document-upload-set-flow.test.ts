@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
 import {
+  canOfferRegistrationSet,
   completeSuccessfulDocumentSave,
   normalizeRegisterSetSelection,
   shouldRegisterSetAfterSave,
 } from './document-upload-set-flow'
+
+assert.equal(canOfferRegistrationSet({ isEdit: false, isImportCurrent: false, type: 'QP', hasCallback: true }), true)
+assert.equal(canOfferRegistrationSet({ isEdit: false, isImportCurrent: false, type: 'QP', hasCallback: false }), false)
 
 const checkedQp = {
   isEdit: false,
