@@ -65,6 +65,8 @@ export type RegisterSetResponse = {
   failed?: Array<{ index: number; error?: string }>
 }
 
+export type SubmissionOutcome = { status: 'success' | 'failed'; reason: string }
+
 export const MAX_FILES = 30
 export const MAX_FILE_SIZE = 50 * 1024 * 1024
 
@@ -124,4 +126,28 @@ export function registrationError(entry: UploadEntry) {
 
 export function parseRegisterSetResponse(response: Response) {
   return response.json().catch(() => ({ error: response.statusText || 'เกิดข้อผิดพลาด' })) as Promise<RegisterSetResponse>
+}
+
+export function mapRegisterSetOutcomes(preparedIds: string[], result: RegisterSetResponse) {
+  const outcomes = new Map<string, SubmissionOutcome>()
+  for (const success of result.succeeded ?? []) {
+    const id = preparedIds[success.index]
+    if (id) outcomes.set(id, { status: 'success', reason: '' })
+  }
+  for (const failure of result.failed ?? []) {
+    const id = preparedIds[failure.index]
+    if (id) outcomes.set(id, { status: 'failed', reason: failure.error ?? 'บันทึกรายการไม่สำเร็จ' })
+  }
+  for (const id of preparedIds) {
+    if (!outcomes.has(id)) outcomes.set(id, { status: 'failed', reason: 'เซิร์ฟเวอร์ไม่ส่งผลลัพธ์ของรายการนี้กลับมา' })
+  }
+  return outcomes
+}
+
+export function retainedUpload(uploadedNow: UploadedFile | undefined, existing: UploadedFile | null) {
+  return uploadedNow ?? existing
+}
+
+export function failedEntryIds(entries: Array<Pick<UploadEntry, 'id' | 'submitStatus'>>) {
+  return entries.filter((entry) => entry.submitStatus === 'failed').map((entry) => entry.id)
 }

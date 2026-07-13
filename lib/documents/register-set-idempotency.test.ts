@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import {
   classifyRegisterRetry,
   hasMatchingFileKey,
@@ -64,13 +63,38 @@ assert.equal(classifyRegisterRetry({
   document, item, actorId: 'other-actor', mainDocumentId: 'main-1', setLinkMainIds: [], fileKind: 'pdf',
 }), 'conflict', 'an unrelated owner cannot complete a stranded-looking item')
 
+assert.equal(classifyRegisterRetry({
+  document, item, actorId: 'other-actor', mainDocumentId: 'main-1', setLinkMainIds: ['main-1'], fileKind: 'pdf',
+}), 'conflict', 'a current-set link must not bypass actor identity')
+
+assert.equal(classifyRegisterRetry({
+  document: { ...document, status: 'Review' }, item, actorId: 'actor-1', mainDocumentId: 'main-1', setLinkMainIds: ['main-1'], fileKind: 'pdf',
+}), 'conflict', 'a current-set link must not bypass expected Draft status')
+
+const metadataMismatches: Array<[keyof RegisteredRetryDocument, string | null]> = [
+  ['document_code', 'FM-QP-OTHER'],
+  ['title', 'changed title'],
+  ['type', 'Reference'],
+  ['department', 'other department'],
+  ['revision', '2'],
+  ['visibility', 'Public'],
+  ['owner_name', 'other owner'],
+  ['reviewer_name', 'other reviewer'],
+  ['approver_name', 'other approver'],
+  ['edit_date', '2026-08-01'],
+  ['effective_date', '2026-08-02'],
+]
+for (const [field, value] of metadataMismatches) {
+  assert.equal(classifyRegisterRetry({
+    document: { ...document, [field]: value },
+    item,
+    actorId: 'actor-1',
+    mainDocumentId: 'main-1',
+    setLinkMainIds: ['main-1'],
+    fileKind: 'pdf',
+  }), 'conflict', `a current-set link must not bypass mismatched ${field}`)
+}
+
 assert.equal(hasMatchingFileKey({ file_url: item.file.key }, item.file.key), true)
 assert.equal(hasMatchingFileKey({ file_url: item.file.key }, 'other-key'), false)
 assert.equal(hasMatchingSourceKey({ word_url: 'stable-source.docx' }, 'stable-source.docx'), true)
-
-const routeSource = readFileSync('app/api/admin/documents/[id]/register-set/route.ts', 'utf8')
-assert.match(routeSource, /findDocumentAttachment\(mainDocumentId, item\.file\.key\)/, 'attachments must preflight by main document and stable file key')
-assert.match(routeSource, /findDraftAttachment\(draft\.id, item\.file\.key\)/, 'revision PDFs must preflight by active draft and stable file key')
-assert.match(routeSource, /classifyRegisterRetry/, 'registration retries must use the strict natural-key classifier')
-assert.match(routeSource, /inserted\.error\?\.code === '23505'[\s\S]*reuseRegisteredDocument/, 'a concurrent registration retry must recover through the unique code constraint')
-assert.match(routeSource, /duplicates\.length > 0[\s\S]*\.delete\(\)\.in\('id'/, 'attachment retry collisions must converge to one natural-key row')

@@ -10,9 +10,12 @@ import {
   MAX_FILE_SIZE,
   createUploadEntry,
   entryLabel,
+  failedEntryIds,
   inferredType,
+  mapRegisterSetOutcomes,
   parseRegisterSetResponse,
   registrationError,
+  retainedUpload,
   type DocType,
   type DuplicateChoice,
   type Group,
@@ -293,17 +296,7 @@ export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
         })
         const result = await parseRegisterSetResponse(response)
         if (!response.ok) throw new Error(result.error ?? 'บันทึกชุดเอกสารไม่สำเร็จ')
-        for (const success of result.succeeded ?? []) {
-          const item = prepared[success.index]
-          if (item) outcomes.set(item.id, { status: 'success', reason: '' })
-        }
-        for (const failure of result.failed ?? []) {
-          const item = prepared[failure.index]
-          if (item) outcomes.set(item.id, { status: 'failed', reason: failure.error ?? 'บันทึกรายการไม่สำเร็จ' })
-        }
-        for (const item of prepared) {
-          if (!outcomes.has(item.id)) outcomes.set(item.id, { status: 'failed', reason: 'เซิร์ฟเวอร์ไม่ส่งผลลัพธ์ของรายการนี้กลับมา' })
-        }
+        for (const [id, outcome] of mapRegisterSetOutcomes(prepared.map((item) => item.id), result)) outcomes.set(id, outcome)
       } catch (error) {
         const reason = error instanceof Error ? error.message : 'บันทึกชุดเอกสารไม่สำเร็จ'
         for (const item of prepared) outcomes.set(item.id, { status: 'failed', reason })
@@ -312,7 +305,7 @@ export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
     if (!mounted.current) return
     const nextEntries = entries.map((entry) => {
       const outcome = outcomes.get(entry.id)
-      return outcome ? { ...entry, uploaded: uploadedById.get(entry.id) ?? entry.uploaded, submitStatus: outcome.status, resultReason: outcome.reason } : entry
+      return outcome ? { ...entry, uploaded: retainedUpload(uploadedById.get(entry.id), entry.uploaded), submitStatus: outcome.status, resultReason: outcome.reason } : entry
     })
     setEntries(nextEntries)
     setPhase('results')
@@ -330,7 +323,7 @@ export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
     showConfirm: () => setPhase('confirm'),
     showIntake: () => setPhase('intake'),
     submitAll: () => void submitEntries(entries.map((entry) => entry.id)),
-    retryFailed: () => void submitEntries(entries.filter((entry) => entry.submitStatus === 'failed').map((entry) => entry.id)),
+    retryFailed: () => void submitEntries(failedEntryIds(entries)),
   }
 }
 

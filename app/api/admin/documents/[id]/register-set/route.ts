@@ -156,37 +156,25 @@ async function reuseRegisteredDocument(
 }
 
 async function findDocumentAttachment(mainDocumentId: string, fileKey: string) {
-  const matches = await supabaseAdmin
+  const result = await supabaseAdmin
     .from('document_attachments')
     .select('*')
     .eq('document_id', mainDocumentId)
     .eq('file_url', fileKey)
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true })
-  throwIfError(matches.error)
-  const [canonical, ...duplicates] = matches.data ?? []
-  if (duplicates.length > 0) {
-    const cleaned = await supabaseAdmin.from('document_attachments').delete().in('id', duplicates.map((row) => row.id))
-    throwIfError(cleaned.error)
-  }
-  return canonical ?? null
+    .maybeSingle()
+  throwIfError(result.error)
+  return result.data
 }
 
 async function findDraftAttachment(draftId: string, fileKey: string) {
-  const matches = await supabaseAdmin
+  const result = await supabaseAdmin
     .from('document_revision_draft_attachments')
     .select('*')
     .eq('draft_id', draftId)
     .eq('file_url', fileKey)
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true })
-  throwIfError(matches.error)
-  const [canonical, ...duplicates] = matches.data ?? []
-  if (duplicates.length > 0) {
-    const cleaned = await supabaseAdmin.from('document_revision_draft_attachments').delete().in('id', duplicates.map((row) => row.id))
-    throwIfError(cleaned.error)
-  }
-  return canonical ?? null
+    .maybeSingle()
+  throwIfError(result.error)
+  return result.data
 }
 
 async function registerDocument(mainDocumentId: string, item: Extract<RegisterSetItem, { kind: 'register' }>, actor: Actor) {
@@ -288,8 +276,14 @@ async function attachFile(mainDocumentId: string, item: Extract<RegisterSetItem,
     })
     .select()
     .single()
+  if (inserted.error?.code === '23505') {
+    const racedAttachment = await findDocumentAttachment(mainDocumentId, item.file.key)
+    if (hasMatchingFileKey(racedAttachment, item.file.key)) {
+      return { attachment: racedAttachment, reused: true }
+    }
+  }
   throwIfError(inserted.error)
-  return { attachment: await findDocumentAttachment(mainDocumentId, item.file.key) ?? inserted.data }
+  return { attachment: inserted.data }
 }
 
 async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetItem, { kind: 'revise-existing' }>, actor: Actor) {
@@ -390,8 +384,17 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
         })
         .select()
         .single()
-      throwIfError(inserted.error)
-      fileResult = await findDraftAttachment(draft.id, item.file.key) ?? inserted.data
+      if (inserted.error?.code === '23505') {
+        const racedFile = await findDraftAttachment(draft.id, item.file.key)
+        if (hasMatchingFileKey(racedFile, item.file.key)) {
+          fileResult = racedFile
+        } else {
+          throw inserted.error
+        }
+      } else {
+        throwIfError(inserted.error)
+        fileResult = inserted.data
+      }
     }
   }
 
