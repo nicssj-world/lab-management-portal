@@ -24,6 +24,7 @@ interface Props {
   docRole?: string
   onClose: () => void
   onSaved: (doc: Document) => void
+  onRegisterSet?: (doc: Document) => void
   onDuplicateOpen?: (documentId: string) => void
 }
 
@@ -240,13 +241,14 @@ function parseExtractedText(text: string) {
   }
 }
 
-export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, onDuplicateOpen }: Props) {
+export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, onRegisterSet, onDuplicateOpen }: Props) {
   const isEdit = !!doc
   const isPublishedCorrection = isEdit && doc?.status === 'Published'
   const canImportCurrent = !isEdit && (userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller')
   const [createMode, setCreateMode] = useState<'draft' | 'import-current'>('draft')
   const isImportCurrent = canImportCurrent && createMode === 'import-current'
   const [publishImmediately, setPublishImmediately] = useState(false)
+  const [registerSetAfterSave, setRegisterSetAfterSave] = useState(false)
   const availableStatuses = isEdit ? [doc?.status ?? 'Draft'] : (isImportCurrent ? ['Published'] : ['Draft'])
   const fileRef = useRef<HTMLInputElement>(null)
   const wordFileRef = useRef<HTMLInputElement>(null)
@@ -732,6 +734,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
       }
 
       onSaved(finalDoc)
+      if (!isEdit && !isImportCurrent && registerSetAfterSave) onRegisterSet?.(finalDoc)
     } catch {
       setDuplicateDocumentId(null)
       setDuplicateCode('')
@@ -751,7 +754,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>
             {isEdit ? 'แก้ไขเอกสาร' : (isImportCurrent ? 'นำเข้าเอกสารเดิม Rev.>0' : 'สร้าง Draft เอกสาร')}
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, display: 'flex' }}>
+          <button type="button" aria-label="ปิดหน้าต่างสร้างเอกสาร" onClick={onClose} disabled={saving} style={{ background: 'none', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', color: 'var(--muted)', padding: 4, display: 'flex', opacity: saving ? .5 : 1 }}>
             <Icon name="x" size={16} />
           </button>
         </div>
@@ -815,7 +818,10 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                   <input
                     type="checkbox"
                     checked={publishImmediately}
-                    onChange={(e) => setPublishImmediately(e.target.checked)}
+                    onChange={(e) => {
+                      setPublishImmediately(e.target.checked)
+                      if (e.target.checked) setRegisterSetAfterSave(false)
+                    }}
                     style={{ marginTop: 2 }}
                   />
                   <span style={{ fontSize: 12, lineHeight: 1.4 }}>
@@ -865,6 +871,24 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
               </select>
             </div>
           </div>
+
+          {!isEdit && !isImportCurrent && requiresCover(type) && (
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '11px 13px', borderRadius: 10, border: '1px solid rgba(30,95,173,.2)', background: 'rgba(30,95,173,.05)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={registerSetAfterSave}
+                onChange={(e) => {
+                  setRegisterSetAfterSave(e.target.checked)
+                  if (e.target.checked) setPublishImmediately(false)
+                }}
+                style={{ marginTop: 2, accentColor: 'var(--primary)' }}
+              />
+              <span style={{ minWidth: 0, fontSize: 12.5, lineHeight: 1.4, color: 'var(--ink)' }}>
+                <span style={{ fontWeight: 700 }}>แนบเอกสารประกอบ (Fm/Cf/Rf) ต่อจากนี้</span>
+                <span style={{ display: 'block', marginTop: 2, color: 'var(--muted)', fontSize: 11.5 }}>หลังสร้าง Draft แล้ว ระบบจะเปิดขั้นตอนลงทะเบียนไฟล์ในชุดเอกสารนี้</span>
+              </span>
+            </label>
+          )}
 
           {/* การเผยแพร่ + สถานะ */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1205,8 +1229,10 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
             </label>
           )}
           <button
+            type="button"
             onClick={onClose}
-            style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--ink)' }}
+            disabled={saving}
+            style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--ink)', opacity: saving ? .55 : 1 }}
           >
             ยกเลิก
           </button>
