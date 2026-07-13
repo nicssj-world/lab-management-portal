@@ -6,6 +6,20 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 
 const PurgeRequestSchema = z.object({ documentId: z.string().uuid() }).strict()
 
+function auditPurgeRetry(
+  actorId: string,
+  document: { id: string; document_code: string | null },
+  result: 'attempt' | 'succeeded' | 'failed',
+  error?: string,
+) {
+  supabaseAdmin.from('audit_log').insert({
+    action: 'document.ephemeral_purge_retry',
+    user_id: actorId,
+    target: document.document_code ?? document.id,
+    detail: error ? `${result}: ${error}` : result,
+  }).then(undefined, () => {})
+}
+
 export async function POST(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return jsonUnauthorized()
@@ -40,20 +54,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'ล้างไฟล์แนบชั่วคราวได้เฉพาะเอกสาร Published' }, { status: 409 })
   }
 
+  auditPurgeRetry(actor.id, documentResult.data, 'attempt')
   try {
     await purgeEphemeralAttachments(documentResult.data.id)
+    auditPurgeRetry(actor.id, documentResult.data, 'succeeded')
     return NextResponse.json({
       succeeded: [{ id: documentResult.data.id, documentCode: documentResult.data.document_code }],
       failed: [],
     })
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    auditPurgeRetry(actor.id, documentResult.data, 'failed', message)
     return NextResponse.json({
       succeeded: [],
       failed: [{
         id: documentResult.data.id,
         documentCode: documentResult.data.document_code,
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       }],
-    })
+    }, { status: 500 })
   }
 }

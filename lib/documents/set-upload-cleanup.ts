@@ -5,6 +5,43 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 const CLEANUP_LEASE_MS = 5 * 60 * 1000
 const CLAIMED_RETENTION_DAYS = 30
 
+export type SetUploadCleanupSummary = {
+  attempted: number
+  succeeded: number
+  failures: { id: string; error: string }[]
+}
+
+export async function runSetUploadCleanupCandidates<T extends { id: string }>(
+  candidates: readonly T[],
+  processCandidate: (candidate: T, now: Date) => Promise<void>,
+  now: () => Date = () => new Date(),
+): Promise<SetUploadCleanupSummary> {
+  const summary: SetUploadCleanupSummary = { attempted: 0, succeeded: 0, failures: [] }
+  for (const candidate of candidates) {
+    summary.attempted += 1
+    try {
+      await processCandidate(candidate, now())
+      summary.succeeded += 1
+    } catch (error) {
+      summary.failures.push({
+        id: candidate.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+  return summary
+}
+
+export function runSetUploadMaintenance(
+  cleanup: () => Promise<SetUploadCleanupSummary>,
+  prune: () => Promise<void>,
+) {
+  return Promise.allSettled([
+    Promise.resolve().then(cleanup),
+    Promise.resolve().then(prune),
+  ] as const)
+}
+
 async function hasRows(query: PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>) {
   const result = await query
   if (result.error) throw new Error(result.error.message)
@@ -34,20 +71,20 @@ async function releaseCleanupLease(uploadId: string, leaseToken: string) {
 }
 
 export async function cleanupExpiredSetUploads(limit = 10) {
-  const now = new Date()
-  const nowIso = now.toISOString()
+  const selectionNowIso = new Date().toISOString()
   const boundedLimit = Math.max(1, Math.min(limit, 25))
   const { data: candidates, error } = await supabaseAdmin
     .from('document_set_uploads')
     .select('id')
     .is('claimed_at', null)
-    .lt('expires_at', nowIso)
-    .or(`lease_token.is.null,lease_expires_at.lt.${nowIso}`)
+    .lt('expires_at', selectionNowIso)
+    .or(`lease_token.is.null,lease_expires_at.lt.${selectionNowIso}`)
     .order('expires_at', { ascending: true })
     .limit(boundedLimit)
   if (error) throw new Error(error.message)
 
-  for (const candidate of candidates ?? []) {
+  return runSetUploadCleanupCandidates(candidates ?? [], async (candidate, now) => {
+    const nowIso = now.toISOString()
     const leaseToken = crypto.randomUUID()
     const leased = await supabaseAdmin
       .from('document_set_uploads')
@@ -64,7 +101,7 @@ export async function cleanupExpiredSetUploads(limit = 10) {
       .select('id, storage_key')
       .maybeSingle()
     if (leased.error) throw new Error(leased.error.message)
-    if (!leased.data) continue
+    if (!leased.data) return
 
     try {
       if (await isSetUploadKeyReferenced(leased.data.storage_key)) {
@@ -85,7 +122,7 @@ export async function cleanupExpiredSetUploads(limit = 10) {
           .maybeSingle()
         if (claimed.error) throw new Error(claimed.error.message)
         if (!claimed.data) throw new Error('Set upload cleanup lease changed before reference claim')
-        continue
+        return
       }
 
       await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: leased.data.storage_key }))
@@ -111,7 +148,7 @@ export async function cleanupExpiredSetUploads(limit = 10) {
       }
       throw cleanupError
     }
-  }
+  })
 }
 
 export async function pruneClaimedSetUploads(limit = 25, retentionDays = CLAIMED_RETENTION_DAYS) {

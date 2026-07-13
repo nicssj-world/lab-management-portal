@@ -10,7 +10,11 @@ import {
   validateSetUploadFile,
   type SetUploadKind,
 } from '@/lib/documents/registration-set-contracts'
-import { cleanupExpiredSetUploads, pruneClaimedSetUploads } from '@/lib/documents/set-upload-cleanup'
+import {
+  cleanupExpiredSetUploads,
+  pruneClaimedSetUploads,
+  runSetUploadMaintenance,
+} from '@/lib/documents/set-upload-cleanup'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 const MAX_OFFICIAL_FILE_SIZE = 50 * 1024 * 1024
@@ -87,11 +91,21 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'อัปโหลดไฟล์ชุดได้เฉพาะเอกสารหลักสถานะ Draft' }, { status: 409 })
       }
       after(async () => {
-        try {
-          await cleanupExpiredSetUploads(10)
-          await pruneClaimedSetUploads(25, 30)
-        } catch (error) {
-          console.error('Set upload maintenance failed', { error: error instanceof Error ? error.message : String(error) })
+        const [cleanupResult, pruneResult] = await runSetUploadMaintenance(
+          () => cleanupExpiredSetUploads(10),
+          () => pruneClaimedSetUploads(25, 30),
+        )
+        if (cleanupResult.status === 'rejected') {
+          console.error('Expired set upload cleanup failed', {
+            error: cleanupResult.reason instanceof Error ? cleanupResult.reason.message : String(cleanupResult.reason),
+          })
+        } else if (cleanupResult.value.failures.length > 0) {
+          console.error('Expired set upload cleanup completed with candidate failures', cleanupResult.value)
+        }
+        if (pruneResult.status === 'rejected') {
+          console.error('Claimed set upload pruning failed', {
+            error: pruneResult.reason instanceof Error ? pruneResult.reason.message : String(pruneResult.reason),
+          })
         }
       })
     }

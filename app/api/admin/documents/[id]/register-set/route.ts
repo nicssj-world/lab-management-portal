@@ -23,6 +23,10 @@ import { r2, R2_BUCKET } from '@/lib/r2/client'
 
 type Params = { params: Promise<{ id: string }> }
 
+// Keep the platform execution bound well below the 15-minute register lease so
+// an interrupted invocation cannot hold a live lease for another full runtime.
+export const maxDuration = 300
+
 type ItemSuccess = {
   index: number
   kind: RegisterSetItem['kind']
