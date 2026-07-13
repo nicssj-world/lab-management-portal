@@ -2,10 +2,10 @@ import { z } from 'zod'
 import { DOC_TYPES, DOC_VISIBILITIES } from '@/lib/validations/document'
 
 const FileSchema = z.object({
-  key: z.string().min(1),
-  name: z.string().min(1),
+  key: z.string().trim().min(1),
+  name: z.string().trim().min(1),
   size: z.number().nonnegative(),
-  mime: z.string().min(1),
+  mime: z.string().trim().min(1),
 })
 
 const RegisterSetItemSchema = z.discriminatedUnion('kind', [
