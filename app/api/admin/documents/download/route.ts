@@ -43,6 +43,25 @@ async function getDocumentForDownload(path: string) {
 
   if (doc) return doc as DownloadDocument
 
+  // Files supplied by document owners are intentionally separate from the official file.
+  // Resolve them by the exact stored key so pending previews never fall back to the
+  // document-id based official read route (which may serve a generated cover instead).
+  const { data: pendingDoc } = await supabaseAdmin
+    .from('documents')
+    .select('id, document_code, title, pending_file_name, pending_file_size, pending_file_mime, type, status, revision, effective_date, visibility, deleted_at')
+    .eq('pending_file_url', path)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (pendingDoc) {
+    return {
+      ...pendingDoc,
+      file_name: pendingDoc.pending_file_name,
+      file_size: pendingDoc.pending_file_size,
+      mime_type: pendingDoc.pending_file_mime,
+    } as DownloadDocument
+  }
+
   // Word/Excel secondary file
   const { data: wordDoc } = await supabaseAdmin
     .from('documents')

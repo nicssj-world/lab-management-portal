@@ -9,6 +9,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Input } from '@/components/ui/Input'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
+import { DocumentSetUploadModal } from '@/components/documents/DocumentSetUploadModal'
 import { DocumentDetailModal, PdfViewerModal, type Attachment } from '@/components/documents/DocumentDetailModal'
 import { PdfViewer } from '@/components/documents/PdfViewer'
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
@@ -519,6 +520,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editDoc, setEditDoc]     = useState<Document | null>(null)
+  const [setUploadDoc, setSetUploadDoc] = useState<Document | null>(null)
 
   const [confirmDoc, setConfirmDoc] = useState<Document | null>(null)
   const [deleting, setDeleting]     = useState(false)
@@ -817,6 +819,24 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
     if (firstWarning) toast(firstWarning, false)
     setModalOpen(false)
     setEditDoc(null)
+  }
+
+  function handleSetUploadDone() {
+    setSetUploadDoc(null)
+    void fetchDocs()
+    fetch('/api/admin/documents?pageSize=1000')
+      .then((response) => {
+        if (!response.ok) throw new Error('refresh failed')
+        return response.json()
+      })
+      .then((json) => {
+        const counts: Record<string, number> = { All: json.count ?? 0 }
+        for (const document of (json.data ?? []) as Document[]) {
+          counts[document.type] = (counts[document.type] ?? 0) + 1
+        }
+        setTypeCounts(counts)
+      })
+      .catch(() => {})
   }
 
   async function handleDuplicateOpen(documentId: string) {
@@ -1413,7 +1433,16 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
           docRole={docRole}
           onClose={() => { setModalOpen(false); setEditDoc(null) }}
           onSaved={handleSaved}
+          onRegisterSet={setSetUploadDoc}
           onDuplicateOpen={handleDuplicateOpen}
+        />
+      )}
+
+      {setUploadDoc && (
+        <DocumentSetUploadModal
+          mainDoc={setUploadDoc}
+          onClose={() => setSetUploadDoc(null)}
+          onDone={handleSetUploadDone}
         />
       )}
 
