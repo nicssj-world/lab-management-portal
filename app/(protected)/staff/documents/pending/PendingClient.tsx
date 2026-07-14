@@ -1000,6 +1000,16 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     else if (bucket === 'approved') setApprovedDocs((prev) => [entry, ...prev])
   }
 
+  function handleDraftCancelled(_draftId: string, documentId: string) {
+    if (setMemberDocumentIds.has(documentId)) {
+      router.refresh()
+      return
+    }
+    setSourceDocs((prev) => prev.filter((d) => !(d.kind === 'draft' && d.id === documentId)))
+    setReviewDocs((prev) => prev.filter((d) => !(d.kind === 'draft' && d.id === documentId)))
+    setApprovedDocs((prev) => prev.filter((d) => !(d.kind === 'draft' && d.id === documentId)))
+  }
+
   function toggleReviewSelection(id: string) {
     setSelectedReviewIds((prev) => {
       const next = new Set(prev)
@@ -1440,6 +1450,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           onDownload={handleDownload}
           onPromoted={handlePromoted}
           onDraftStatusChange={handleDraftStatusChange}
+          onDraftCancelled={handleDraftCancelled}
           userRole={userRole ?? ''}
           docRole={docRole}
           canAdd={canAdd}

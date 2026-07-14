@@ -172,25 +172,40 @@ async function getRegistrationSetTransitionBlocker(documentId: string, targetSta
   )
 }
 
+// A document that is a MEMBER of some other document's active set cannot be deleted on its
+// own — deletion must go through that set's main document instead (findActiveSetAsMain below
+// cascades to members). Delegates to the same membership lookup used by the status-transition
+// guard so both places agree on what "active" means.
 async function findActiveRegistrationSet(documentId: string) {
+  const memberships = await getActiveIncomingDocumentSetMemberships(documentId)
+  const membership = memberships[0]
+  if (!membership) return null
+  return { document_code: membership.mainDocumentCode, status: membership.mainStatus }
+}
+
+// documentId is the MAIN document of a still-active set (status Draft/Review/Approved) —
+// returns its set links so DELETE can cascade: drop 'registered' members, cancel 'revision'
+// members' owned draft, and merely unlink 'linked' members (they're independent Published
+// documents referenced by the set, not owned by it).
+async function findActiveSetAsMain(documentId: string) {
   const linksResult = await supabaseAdmin
     .from('document_links')
-    .select('document_id, linked_doc_id')
+    .select('id, linked_doc_id, set_mode, set_draft_id')
+    .eq('document_id', documentId)
     .eq('link_kind', 'set')
-    .or(`document_id.eq.${documentId},linked_doc_id.eq.${documentId}`)
   if (linksResult.error) throw linksResult.error
-  const mainIds = Array.from(new Set((linksResult.data ?? []).map((link) => link.document_id)))
-  if (mainIds.length === 0) return null
+  const links = linksResult.data ?? []
+  if (links.length === 0) return null
   const mainResult = await supabaseAdmin
     .from('documents')
     .select('id, document_code, status')
-    .in('id', mainIds)
+    .eq('id', documentId)
     .in('status', ['Draft', 'Review', 'Approved'])
     .is('deleted_at', null)
-    .limit(1)
     .maybeSingle()
   if (mainResult.error) throw mainResult.error
-  return mainResult.data
+  if (!mainResult.data) return null
+  return { main: mainResult.data, links }
 }
 
 export async function GET(
@@ -845,13 +860,50 @@ export async function DELETE(
     const activeSet = await findActiveRegistrationSet(id)
     if (activeSet) {
       return NextResponse.json({
-        error: `ไม่สามารถลบเอกสารที่อยู่ในชุด ${activeSet.document_code} ขณะที่ชุดยังอยู่ในสถานะ ${activeSet.status}`,
+        error: `เอกสารนี้เป็นสมาชิกของชุด ${activeSet.document_code} (สถานะ ${activeSet.status}) กรุณาลบผ่านเอกสารหลักของชุดแทน`,
       }, { status: 409 })
+    }
+
+    const now = new Date().toISOString()
+    const activeSetAsMain = await findActiveSetAsMain(id)
+    const deletedMemberCodes: string[] = []
+
+    if (activeSetAsMain) {
+      for (const link of activeSetAsMain.links) {
+        if (link.set_mode === 'registered') {
+          // Created only for this set — has no life outside it, so it's deleted with the main.
+          const { data: memberDoc } = await supabaseAdmin
+            .from('documents')
+            .update({ deleted_at: now })
+            .eq('id', link.linked_doc_id)
+            .is('deleted_at', null)
+            .select('document_code')
+            .maybeSingle()
+          if (memberDoc) deletedMemberCodes.push(memberDoc.document_code)
+        } else if (link.set_mode === 'revision' && link.set_draft_id) {
+          // Member is an existing Published document — only its owned working-revision draft
+          // is cancelled; the Published document itself is untouched.
+          await supabaseAdmin
+            .from('document_revision_drafts')
+            .update({ cancelled_at: now, cancelled_by: actor.id, cancel_reason: 'main document of set deleted' })
+            .eq('id', link.set_draft_id)
+            .is('cancelled_at', null)
+        }
+        // 'linked' mode members are independent Published documents merely referenced by the
+        // set — nothing to touch on the document itself, just drop the link below.
+      }
+
+      const linksDeleteErr = (await supabaseAdmin
+        .from('document_links')
+        .delete()
+        .eq('document_id', id)
+        .eq('link_kind', 'set')).error
+      if (linksDeleteErr) return NextResponse.json({ error: linksDeleteErr.message }, { status: 500 })
     }
 
     const { data: deletedDoc, error: dbErr } = await supabaseAdmin
       .from('documents')
-      .update({ deleted_at: new Date().toISOString() })
+      .update({ deleted_at: now })
       .eq('id', id)
       .select('document_code, title')
       .single()
@@ -863,13 +915,15 @@ export async function DELETE(
       .then(undefined, () => {})
 
     supabaseAdmin.from('audit_log').insert({
-      action: 'document.delete',
+      action: activeSetAsMain ? 'document.delete_set' : 'document.delete',
       user_id: actor.id,
       target: deletedDoc?.document_code ?? id,
-      detail: deletedDoc ? `${deletedDoc.document_code} · ${deletedDoc.title}` : id,
+      detail: activeSetAsMain
+        ? `${deletedDoc?.document_code} · ${deletedDoc?.title} · ลบทั้งชุด (เอกสารสนับสนุน ${deletedMemberCodes.length} ฉบับ: ${deletedMemberCodes.join(', ') || '-'})`
+        : (deletedDoc ? `${deletedDoc.document_code} · ${deletedDoc.title}` : id),
     }).then(undefined, () => {})
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, deletedSet: Boolean(activeSetAsMain), deletedMemberCodes })
   } catch (err) {
     return NextResponse.json({ error: toMsg(err) }, { status: 500 })
   }

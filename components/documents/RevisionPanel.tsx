@@ -30,7 +30,7 @@ interface RevisionRow {
 }
 
 // ── Revision History Panel ─────────────────────────────────────
-export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftStatusChange, userRole, docRole, canAdd, variant = 'drawer' }: {
+export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftStatusChange, onDraftCancelled, userRole, docRole, canAdd, variant = 'drawer' }: {
   doc: Document
   onClose: () => void
   onDownload: (path: string) => void
@@ -39,6 +39,9 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
    *  (Draft↔Review↔Approved) — lets a caller re-bucket the draft in a pending-work list
    *  without a full page refresh. `onPromoted` still covers the Published transition. */
   onDraftStatusChange?: (draft: DocumentRevisionDraft) => void
+  /** Fires when the active working-revision draft is cancelled (deleted, never published) —
+   *  lets a caller drop it from a pending-work list without a full page refresh. */
+  onDraftCancelled?: (draftId: string, documentId: string) => void
   userRole: string
   docRole?: string
   canAdd: boolean
@@ -528,6 +531,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
         alert(msg)
         return
       }
+      onDraftCancelled?.(activeDraft.id, doc.id)
       setActiveDraft(null)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'ยกเลิก working revision ไม่สำเร็จ')

@@ -37,7 +37,14 @@ export default async function ReadReportPage() {
       .order('created_at', { ascending: false }),
   ])
 
-  const docs = docsRes.data ?? []
+  // QM (Quality Manual) sits above QP/WI/Manual in the ISO hierarchy, so it
+  // must lead the table regardless of document_code — document_code only
+  // breaks ties within the same type.
+  const TYPE_PRIORITY = ['QM', 'QP', 'WI', 'Manual']
+  const docs = (docsRes.data ?? []).slice().sort((a, b) => {
+    const rank = TYPE_PRIORITY.indexOf(a.type) - TYPE_PRIORITY.indexOf(b.type)
+    return rank !== 0 ? rank : a.document_code.localeCompare(b.document_code)
+  })
   const people: ReportPerson[] = (peopleRes.data ?? []).map((p) => ({
     id: p.id, name: p.name, role: p.role, position: p.document_position, dept: p.dept,
   }))

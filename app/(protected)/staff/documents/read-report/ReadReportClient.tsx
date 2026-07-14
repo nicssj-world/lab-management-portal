@@ -11,6 +11,8 @@ import { DOC_TYPES as TYPE_ORDER } from '@/lib/documents/type-labels'
 import { buildReadAudiencePayload, buildReadAudiencePickerState, resolveReadAudience } from '@/lib/documents/read-audience'
 import { buildReadLogSummaryHtml } from '@/lib/documents/read-log-summary'
 
+const PAGE_SIZE = 30
+
 export interface ReportPerson {
   id: string
   name: string
@@ -89,6 +91,7 @@ export function ReadReportClient({ rows: initialRows, people, canAssign, userRol
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
+  const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [detailRow, setDetailRow] = useState<ReportRow | null>(null)
   const [detailTab, setDetailTab] = useState<'read' | 'unread'>('read')
@@ -136,6 +139,14 @@ export function ReadReportClient({ rows: initialRows, people, canAssign, userRol
       return true
     })
   }, [rows, search, typeFilter, deptFilter])
+
+  useEffect(() => { setPage(0) }, [search, typeFilter, deptFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const pageRows = useMemo(
+    () => filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE),
+    [filtered, page],
+  )
 
   const summary = useMemo(() => {
     let complete = 0
@@ -377,8 +388,8 @@ export function ReadReportClient({ rows: initialRows, people, canAssign, userRol
                   <th style={{ padding: '10px 12px', width: 34, borderBottom: '1px solid var(--border)' }}>
                     <input
                       type="checkbox"
-                      checked={filtered.length > 0 && filtered.every((r) => selected.has(r.id))}
-                      onChange={(e) => setSelected(e.target.checked ? new Set(filtered.map((r) => r.id)) : new Set())}
+                      checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))}
+                      onChange={(e) => setSelected(e.target.checked ? new Set(pageRows.map((r) => r.id)) : new Set())}
                       style={{ accentColor: 'var(--primary)' }}
                     />
                   </th>
@@ -392,7 +403,7 @@ export function ReadReportClient({ rows: initialRows, people, canAssign, userRol
               {filtered.length === 0 && (
                 <tr><td colSpan={canAssign ? 6 : 5} style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 12.5, fontStyle: 'italic' }}>ไม่พบเอกสาร</td></tr>
               )}
-              {filtered.map((r) => {
+              {pageRows.map((r) => {
                 const s = stats.get(r.id)
                 if (!s) return null
                 const depts = r.read_audience_depts ?? []
@@ -449,6 +460,32 @@ export function ReadReportClient({ rows: initialRows, people, canAssign, userRol
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} จาก {filtered.length} รายการ
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}
+                style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: page === 0 ? 'not-allowed' : 'pointer', fontSize: 12.5, fontFamily: 'inherit', color: 'var(--muted)', opacity: page === 0 ? 0.4 : 1 }}>
+                ก่อนหน้า
+              </button>
+              {Array.from({ length: Math.min(totalPages, 7) }).map((_, idx) => {
+                const p = totalPages <= 7 ? idx : page < 4 ? idx : page > totalPages - 4 ? totalPages - 7 + idx : page - 3 + idx
+                return (
+                  <button key={p} onClick={() => setPage(p)}
+                    style={{ width: 32, height: 32, borderRadius: 7, border: '1px solid var(--border)', background: p === page ? 'var(--primary)' : 'transparent', cursor: 'pointer', fontSize: 12.5, fontFamily: 'inherit', color: p === page ? '#fff' : 'var(--muted)', fontWeight: p === page ? 700 : 400 }}>
+                    {p + 1}
+                  </button>
+                )
+              })}
+              <button disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}
+                style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer', fontSize: 12.5, fontFamily: 'inherit', color: 'var(--muted)', opacity: page >= totalPages - 1 ? 0.4 : 1 }}>
+                ถัดไป
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Reader detail modal */}
