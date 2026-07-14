@@ -40,17 +40,22 @@ export interface NewDraftDocRow {
   revision: string | null
   updated_at: string
   hasOfficialPdf: boolean
+  hasPendingFile: boolean
 }
 
-// Brand-new documents (Rev.00) sitting in Draft on the documents table itself with a
-// Word/Excel source already uploaded — the "เอกสารใหม่ รอจัดทำ PDF" DCC queue. Distinct
-// from getActiveRevisionDrafts (working revisions on already-Published documents).
+// Brand-new documents (Rev.00) sitting in Draft on the documents table itself with any file
+// material committed — a Word/Excel source (DCC still needs to produce the PDF), a ready PDF
+// uploaded straight to pending_file_url (e.g. a registration-set supporting document — DCC
+// just needs to confirm it), or an already-confirmed official file (file_url / source_pdf_url
+// for QP/WI) still waiting for someone to advance the status past Draft — the "เอกสารใหม่
+// รอจัดทำ PDF" DCC queue. Distinct from getActiveRevisionDrafts (working revisions on
+// already-Published documents).
 export async function getNewDraftDocuments(): Promise<NewDraftDocRow[]> {
   const { data, error } = await supabaseAdmin
     .from('documents')
-    .select('id, document_code, title, type, department, revision, updated_at, file_url, source_pdf_url')
+    .select('id, document_code, title, type, department, revision, updated_at, file_url, source_pdf_url, pending_file_url')
     .eq('status', 'Draft')
-    .not('word_url', 'is', null)
+    .or('word_url.not.is.null,pending_file_url.not.is.null,file_url.not.is.null,source_pdf_url.not.is.null')
     .is('deleted_at', null)
     .order('updated_at', { ascending: false })
   if (error) throw new Error(error.message)
@@ -65,6 +70,7 @@ export async function getNewDraftDocuments(): Promise<NewDraftDocRow[]> {
     hasOfficialPdf: d.type === 'QP' || d.type === 'WI'
       ? Boolean(d.source_pdf_url || d.file_url)
       : Boolean(d.file_url),
+    hasPendingFile: Boolean(d.pending_file_url),
   }))
 }
 
@@ -333,9 +339,10 @@ export async function getPendingApprovalDocuments(): Promise<PendingApprovalDoc[
       .eq('status', 'Review').is('deleted_at', null),
     supabaseAdmin.from('documents').select('id, document_code, title, updated_at')
       .eq('status', 'Approved').is('deleted_at', null),
-    // Brand-new Rev.00 documents in Draft with a source file uploaded, waiting for DCC.
+    // Brand-new Rev.00 documents in Draft with any file material committed, waiting for
+    // DCC to either produce/confirm the PDF or advance the status (see getNewDraftDocuments).
     supabaseAdmin.from('documents').select('id, document_code, title, updated_at')
-      .eq('status', 'Draft').not('word_url', 'is', null).is('deleted_at', null),
+      .eq('status', 'Draft').or('word_url.not.is.null,pending_file_url.not.is.null,file_url.not.is.null,source_pdf_url.not.is.null').is('deleted_at', null),
     getActiveRevisionDrafts(),
     getRegistrationSets(),
   ])

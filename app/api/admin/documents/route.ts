@@ -5,6 +5,7 @@ import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectComm
 import { NextRequest, NextResponse } from 'next/server'
 import { canAccessDocuments, getActor, jsonForbidden, jsonUnauthorized } from '@/lib/auth/guards'
 import { canMoveToStatus, isCoverRequiredType, isPdfFile, isSourceFile } from '@/lib/documents/workflow'
+import { isReviewTrackedType } from '@/lib/documents/review'
 import { isDocxFile, patchDocxHeaderMetadata, type DocxHeaderMetadata } from '@/lib/documents/docx-header'
 import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
 import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
@@ -271,6 +272,10 @@ export async function POST(req: NextRequest) {
       source_pdf_name?: string | null
       source_pdf_size?: number | null
       source_pdf_mime_type?: string | null
+      pending_file_url?: string | null
+      pending_file_name?: string | null
+      pending_file_size?: number | null
+      pending_file_mime?: string | null
     } = {
       file_url: null,
       file_name: null,
@@ -363,23 +368,39 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      officialFields = {
-        file_url: r2Key,
-        file_name: finalName,
-        file_size: uploadedSize,
-        // Two different fallbacks on purpose, copied from the original raw-upload code:
-        // mime_type defaults to octet-stream, but source_pdf_mime_type (only ever set here
-        // for an already-validated PDF) defaults to application/pdf.
-        mime_type: finalType || 'application/octet-stream',
-        ...(isCoverRequiredType(meta.type) && !resolvedMeta.legacy_cover_included
-          ? {
-              source_pdf_url: r2Key,
-              source_pdf_name: finalName,
-              source_pdf_size: uploadedSize,
-              source_pdf_mime_type: finalType || 'application/pdf',
-            }
-          : {}),
-      }
+      // Non-controlled types (not QM/QP/WI/Manual) uploaded directly by a non-DCC/Admin
+      // creator don't get to become the official file immediately — same as the
+      // registration-set "register" flow, the file sits in pending_file_url until DCC/Admin
+      // confirms it via confirm-official (no re-upload needed). DCC/Admin's own upload, and
+      // controlled-type / legacy-import uploads, are trusted immediately as before.
+      const requiresDccConfirmation = !isImportCurrent
+        && !isReviewTrackedType(meta.type)
+        && !canImportCurrentDocument(actor)
+
+      officialFields = requiresDccConfirmation
+        ? {
+            pending_file_url: r2Key,
+            pending_file_name: finalName,
+            pending_file_size: uploadedSize,
+            pending_file_mime: finalType || 'application/octet-stream',
+          }
+        : {
+            file_url: r2Key,
+            file_name: finalName,
+            file_size: uploadedSize,
+            // Two different fallbacks on purpose, copied from the original raw-upload code:
+            // mime_type defaults to octet-stream, but source_pdf_mime_type (only ever set here
+            // for an already-validated PDF) defaults to application/pdf.
+            mime_type: finalType || 'application/octet-stream',
+            ...(isCoverRequiredType(meta.type) && !resolvedMeta.legacy_cover_included
+              ? {
+                  source_pdf_url: r2Key,
+                  source_pdf_name: finalName,
+                  source_pdf_size: uploadedSize,
+                  source_pdf_mime_type: finalType || 'application/pdf',
+                }
+              : {}),
+          }
     }
 
     let wordFields: { word_url?: string; word_name?: string; word_size?: number } = {}
