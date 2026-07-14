@@ -15,12 +15,13 @@ import type { Document } from '@/lib/supabase/types'
 // preview/download the current files, upload/replace the official content PDF, and advance
 // the status — so DCC can finish the job without leaving for the document library. Working
 // revision drafts (on already-Published docs) still use RevisionPanel instead.
-export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClose, onUpdated }: {
+export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClose, onUpdated, onDeleted }: {
   doc: Document
   userRole: string
   docRole?: string | null
   onClose: () => void
   onUpdated: (updated: Document) => void
+  onDeleted?: (id: string) => void
 }) {
   const [doc, setDoc] = useState<Document>(initialDoc)
   const [busy, setBusy] = useState(false)
@@ -37,6 +38,9 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
 
   // Same gate as RevisionPanel's canManageDraftOfficial — only DCC/Admin set the content PDF.
   const canManageOfficial = userRole === 'Admin' || userRole === 'Document Controller' || docRole === 'Document Controller'
+  // Same gate as DELETE /api/admin/documents/[id] (canDeleteDocument).
+  const canDelete = userRole === 'Admin'
+    || ['Laboratory Director', 'Document Controller'].includes(docRole ?? userRole)
   const isQpWi = isCoverRequiredType(doc.type)
   // The pending page's workflow stops at Published — obsoleting a document is done from the
   // document library instead, so never offer the Obsolete transition here.
@@ -142,6 +146,24 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
       onUpdated(json as Document)
     } catch {
       setActionError('ยืนยันไฟล์ทางการไม่สำเร็จ กรุณาลองใหม่')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (busy || !canDelete) return
+    if (!confirm(`ยืนยันการลบ "${doc.title}" (${doc.document_code})?\nการดำเนินการนี้ไม่สามารถย้อนกลับได้`)) return
+    setBusy(true)
+    setActionError('')
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}`, { method: 'DELETE' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setActionError(json.error ?? 'ลบไม่สำเร็จ'); return }
+      onDeleted?.(doc.id)
+      onClose()
+    } catch {
+      setActionError('ลบไม่สำเร็จ กรุณาลองใหม่')
     } finally {
       setBusy(false)
     }
@@ -434,6 +456,21 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
               </>
             )}
           </div>
+
+          {/* Delete */}
+          {canDelete && doc.status !== 'Published' && doc.status !== 'Obsolete' && (
+            <div style={{ padding: '4px 22px 18px', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={busy}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', padding: '10px 16px', borderRadius: 10, border: '1px solid rgba(220,38,38,.3)', background: 'rgba(220,38,38,.06)', color: '#DC2626', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, opacity: busy ? 0.55 : 1 }}
+              >
+                <Icon name="trash" size={14} />
+                ลบเอกสาร
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

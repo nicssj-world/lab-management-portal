@@ -35,6 +35,9 @@ export interface PendingDoc {
   revision: string | null
   updated_at: string
   hasOfficialPdf?: boolean
+  /** A ready PDF was uploaded straight to pending_file_url (e.g. a registration-set
+   *  supporting document) — DCC just needs to confirm it, not author it from source. */
+  hasPendingFile?: boolean
   /** 'draft' = a working revision draft on an already-Published document (opens the
    *  RevisionPanel to act on); 'document' = the document's own status (opens the detail
    *  modal). */
@@ -324,6 +327,9 @@ function DocButton({ doc, loading, onClick }: { doc: PendingDoc; loading: boolea
           {doc.kind === 'draft' && (
             <span style={{ fontSize: 9.5, fontWeight: 800, color: '#9333EA', background: 'rgba(147,51,234,.12)', padding: '1px 7px', borderRadius: 99, flexShrink: 0 }}>Working Rev.</span>
           )}
+          {doc.hasPendingFile && (
+            <span style={{ fontSize: 9.5, fontWeight: 800, color: '#B45309', background: 'rgba(217,119,6,.12)', padding: '1px 7px', borderRadius: 99, flexShrink: 0 }}>PDF รอยืนยัน</span>
+          )}
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: 'monospace' }}>{doc.document_code}</span>
@@ -526,17 +532,26 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
       hasOfficialPdf: updated.type === 'QP' || updated.type === 'WI'
         ? Boolean(updated.source_pdf_url || updated.file_url)
         : Boolean(updated.file_url),
+      hasPendingFile: Boolean(updated.pending_file_url),
       kind: 'document',
     }
     const dropDoc = (prev: PendingDoc[]) => prev.filter((d) => !(d.kind === 'document' && d.id === updated.id))
     setNewDocs(dropDoc)
     setReviewDocs(dropDoc)
     setApprovedDocs(dropDoc)
-    if (updated.status === 'Draft' && updated.word_url) setNewDocs((prev) => [entry, ...prev])
+    if (updated.status === 'Draft' && (updated.word_url || updated.pending_file_url || updated.file_url || updated.source_pdf_url)) setNewDocs((prev) => [entry, ...prev])
     else if (updated.status === 'Review') setReviewDocs((prev) => [entry, ...prev])
     else if (updated.status === 'Approved') setApprovedDocs((prev) => [entry, ...prev])
     // Published / Obsolete → drops out of every pending bucket.
     if (setKind === 'main') router.refresh()
+  }
+
+  function handleDocumentDeleted(id: string) {
+    setActionDoc(null)
+    const dropDoc = (prev: PendingDoc[]) => prev.filter((d) => !(d.kind === 'document' && d.id === id))
+    setNewDocs(dropDoc)
+    setReviewDocs(dropDoc)
+    setApprovedDocs(dropDoc)
   }
 
   async function quickReadDetail(doc: Document) {
@@ -1439,6 +1454,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           docRole={docRole}
           onClose={() => setActionDoc(null)}
           onUpdated={handleDocumentUpdated}
+          onDeleted={handleDocumentDeleted}
         />
       )}
 

@@ -112,6 +112,7 @@ export default async function PendingApprovalPage() {
       revision: d.revision,
       updated_at: d.updated_at,
       hasOfficialPdf: d.hasOfficialPdf,
+      hasPendingFile: d.hasPendingFile,
       kind: 'document' as const,
     }))
 
