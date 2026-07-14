@@ -231,7 +231,7 @@ function RegistrationSetCard({
               type="button"
               onClick={onDownload}
               disabled={controlsBusy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 750, cursor: controlsBusy ? 'default' : 'pointer', opacity: controlsBusy ? .6 : 1 }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid #0F766E', background: controlsBusy ? 'var(--surface-2)' : '#0F766E', color: controlsBusy ? 'var(--muted)' : '#fff', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, cursor: controlsBusy ? 'default' : 'pointer', opacity: controlsBusy ? .7 : 1 }}
             >
               <Icon name="download" size={12} />
               ดาวน์โหลดทั้งชุด (ZIP)
@@ -435,6 +435,11 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   const [sourceBulkStep, setSourceBulkStep] = useState('')
   const [sourceBulkPercent, setSourceBulkPercent] = useState<number | null>(null)
   const [sourceBulkResult, setSourceBulkResult] = useState<string | null>(null)
+  const [selectedNewDocIds, setSelectedNewDocIds] = useState<Set<string>>(new Set())
+  const [newDocsBulkBusy, setNewDocsBulkBusy] = useState(false)
+  const [newDocsBulkStep, setNewDocsBulkStep] = useState('')
+  const [newDocsBulkPercent, setNewDocsBulkPercent] = useState<number | null>(null)
+  const [newDocsBulkResult, setNewDocsBulkResult] = useState<string | null>(null)
   const [setProgress, setSetProgress] = useState<SetProgress | null>(null)
   const [setResults, setSetResults] = useState<Record<string, string>>({})
   const [selectedSetIds, setSelectedSetIds] = useState<Set<string>>(new Set())
@@ -624,6 +629,90 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
         setSourceBulkBusy(false)
         setSourceBulkStep('')
         setSourceBulkPercent(null)
+      }, 900)
+    }
+  }
+
+  function toggleNewDocSelection(id: string) {
+    setSelectedNewDocIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleBulkNewDocsZip() {
+    if (newDocsBulkBusy) return
+    const documentIds = Array.from(selectedNewDocIds)
+    if (documentIds.length === 0) return
+
+    setNewDocsBulkBusy(true)
+    setNewDocsBulkResult(null)
+    setNewDocsBulkPercent(null)
+    setNewDocsBulkStep('กำลังเตรียมรายการไฟล์ต้นฉบับ...')
+
+    try {
+      setNewDocsBulkStep('กำลังดึงไฟล์ Word/Excel จากคลัง...')
+      const res = await fetch('/api/admin/documents/pending/new-source-download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentIds }),
+      })
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({} as { error?: string }))
+        throw new Error(json.error ?? 'สร้าง ZIP ไม่สำเร็จ')
+      }
+
+      setNewDocsBulkStep('กำลังสร้าง ZIP...')
+      const totalBytes = Number(res.headers.get('Content-Length') ?? 0)
+      const reader = res.body?.getReader()
+      const chunks: ArrayBuffer[] = []
+      let received = 0
+
+      setNewDocsBulkStep('กำลังดาวน์โหลด...')
+      setNewDocsBulkPercent(totalBytes > 0 ? 0 : null)
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (!value) continue
+          chunks.push(value.slice().buffer as ArrayBuffer)
+          received += value.byteLength
+          if (totalBytes > 0) setNewDocsBulkPercent(Math.min(100, Math.round((received / totalBytes) * 100)))
+        }
+      } else {
+        const blob = await res.blob()
+        chunks.push(await blob.arrayBuffer())
+        received = blob.size
+        if (totalBytes > 0) setNewDocsBulkPercent(100)
+      }
+
+      const blob = new Blob(chunks, { type: 'application/zip' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filenameFromDisposition(res.headers.get('Content-Disposition'))
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+
+      const exported = res.headers.get('X-Exported-Files') ?? '0'
+      const skipped = res.headers.get('X-Skipped-Files') ?? '0'
+      const summary = `ดาวน์โหลดสำเร็จ ${exported} ไฟล์ · ข้าม ${skipped} ไฟล์`
+      setNewDocsBulkResult(summary)
+      setNewDocsBulkPercent(100)
+      setNewDocsBulkStep('เสร็จสิ้น')
+    } catch (error) {
+      setNewDocsBulkResult(error instanceof Error ? error.message : 'ดาวน์โหลด ZIP ไม่สำเร็จ')
+      setNewDocsBulkStep('เกิดข้อผิดพลาด')
+    } finally {
+      setTimeout(() => {
+        setNewDocsBulkBusy(false)
+        setNewDocsBulkStep('')
+        setNewDocsBulkPercent(null)
       }, 900)
     }
   }
@@ -1102,10 +1191,10 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
                 disabled={setsBulkBusy || selectedSetIds.size === 0}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8,
-                  border: 'none', background: selectedSetIds.size > 0 ? '#0F766E' : 'var(--border)',
-                  color: selectedSetIds.size > 0 ? '#fff' : 'var(--muted)', fontSize: 12.5, fontWeight: 700,
+                  border: selectedSetIds.size > 0 ? '1px solid #0F766E' : '1px solid var(--border)', background: selectedSetIds.size > 0 ? '#0F766E' : 'var(--border)',
+                  color: selectedSetIds.size > 0 ? '#fff' : 'var(--muted)', fontSize: 12.5, fontWeight: 800,
                   fontFamily: 'inherit', cursor: setsBulkBusy || selectedSetIds.size === 0 ? 'default' : 'pointer',
-                  opacity: setsBulkBusy ? .6 : 1,
+                  opacity: setsBulkBusy ? .7 : 1,
                 }}
               >
                 <Icon name="download" size={13} />
@@ -1138,8 +1227,54 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           sub="เอกสารสร้างใหม่ (Rev.00) ที่อัปโหลดไฟล์ต้นฉบับแล้ว รอ DCC จัดทำ PDF เนื้อหาและส่งเข้า Review"
           icon="plus" accent="#0EA5E9" count={newDocs.length}
         >
+          {newDocsBulkResult && (
+            <div style={{ padding: '9px 12px', borderRadius: 8, background: 'rgba(14,165,233,.08)', border: '1px solid rgba(14,165,233,.25)', color: '#0369A1', fontSize: 12, lineHeight: 1.45 }}>
+              {newDocsBulkResult}
+            </div>
+          )}
+          {canDccSourceDownload && newDocs.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink)', cursor: 'pointer', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={newDocs.length > 0 && newDocs.every((d) => selectedNewDocIds.has(d.id))}
+                  onChange={(e) => setSelectedNewDocIds(e.target.checked ? new Set(newDocs.map((d) => d.id)) : new Set())}
+                  style={{ accentColor: '#0EA5E9' }}
+                />
+                เลือกทั้งหมด
+              </label>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={handleBulkNewDocsZip}
+                disabled={newDocsBulkBusy || selectedNewDocIds.size === 0}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8,
+                  border: selectedNewDocIds.size > 0 ? '1px solid #0EA5E9' : '1px solid var(--border)', background: selectedNewDocIds.size > 0 ? '#0EA5E9' : 'var(--border)',
+                  color: selectedNewDocIds.size > 0 ? '#fff' : 'var(--muted)', fontSize: 12.5, fontWeight: 800,
+                  fontFamily: 'inherit', cursor: newDocsBulkBusy || selectedNewDocIds.size === 0 ? 'default' : 'pointer',
+                  opacity: newDocsBulkBusy ? .7 : 1,
+                }}
+              >
+                <Icon name="download" size={13} />
+                {newDocsBulkBusy ? (newDocsBulkStep || 'กำลังเตรียม ZIP...') + (newDocsBulkPercent !== null ? ` ${newDocsBulkPercent}%` : '') : `ดาวน์โหลดที่เลือก (${selectedNewDocIds.size} ฉบับ)`}
+              </button>
+            </div>
+          )}
           {newDocs.map((d) => (
-            <DocButton key={d.id} doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {canDccSourceDownload && (
+                <input
+                  type="checkbox"
+                  checked={selectedNewDocIds.has(d.id)}
+                  onChange={() => toggleNewDocSelection(d.id)}
+                  disabled={newDocsBulkBusy}
+                  style={{ accentColor: '#0EA5E9', width: 15, height: 15, flexShrink: 0, cursor: 'pointer' }}
+                />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <DocButton doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
+              </div>
+            </div>
           ))}
         </Section>
       </div>

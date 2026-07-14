@@ -320,12 +320,15 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
   return sets.sort((a, b) => b.mainDocument.updatedAt.localeCompare(a.mainDocument.updatedAt))
 }
 
-// Documents (or their active working-revision draft) currently sitting in Review or
-// Approved status — the same definition of "pending" used by /staff/documents/pending,
-// reused here for the dashboard's Attention Queue. Deduplicated by document id in case a
-// document's own status and its draft's status would otherwise double-count it.
+// Every document the /staff/documents/pending page treats as needing DCC/reviewer
+// action — reused here for the dashboard's Attention Queue so the two counts match.
+// Covers: docs (or their active working-revision draft) in Review/Approved status,
+// brand-new Rev.00 docs in Draft with a source file uploaded, "Rev+" working-revision
+// drafts still in Draft with a source file uploaded (the "รอทำ PDF (Rev+)" queue), and
+// registration-set main + supporting documents (tracked outside the status queries
+// above). Deduplicated by document id in case a document shows up via more than one path.
 export async function getPendingApprovalDocuments(): Promise<PendingApprovalDoc[]> {
-  const [reviewRes, approvedRes, newDraftRes, drafts] = await Promise.all([
+  const [reviewRes, approvedRes, newDraftRes, drafts, sets] = await Promise.all([
     supabaseAdmin.from('documents').select('id, document_code, title, updated_at')
       .eq('status', 'Review').is('deleted_at', null),
     supabaseAdmin.from('documents').select('id, document_code, title, updated_at')
@@ -334,9 +337,10 @@ export async function getPendingApprovalDocuments(): Promise<PendingApprovalDoc[
     supabaseAdmin.from('documents').select('id, document_code, title, updated_at')
       .eq('status', 'Draft').not('word_url', 'is', null).is('deleted_at', null),
     getActiveRevisionDrafts(),
+    getRegistrationSets(),
   ])
 
-  const draftDocs = drafts.filter(d => d.status === 'Review' || d.status === 'Approved')
+  const draftDocs = drafts.filter(d => d.status === 'Review' || d.status === 'Approved' || (d.status === 'Draft' && d.hasWordUrl))
   const draftDocIds = Array.from(new Set(draftDocs.map(d => d.documentId)))
   const draftParents = draftDocIds.length > 0
     ? await supabaseAdmin.from('documents').select('id, document_code, title').in('id', draftDocIds).is('deleted_at', null)
@@ -359,9 +363,19 @@ export async function getPendingApprovalDocuments(): Promise<PendingApprovalDoc[
     ...((newDraftRes.data ?? []) as PendingApprovalDoc[]),
   ]
 
+  const fromSets: PendingApprovalDoc[] = sets.flatMap((set) => [
+    { id: set.mainDocument.id, document_code: set.mainDocument.documentCode, title: set.mainDocument.title, updated_at: set.mainDocument.updatedAt },
+    ...set.members.map((member) => ({
+      id: member.document.id,
+      document_code: member.document.documentCode,
+      title: member.document.title,
+      updated_at: member.document.updatedAt,
+    })),
+  ])
+
   const seen = new Set<string>()
   const merged: PendingApprovalDoc[] = []
-  for (const doc of [...fromStatus, ...fromDrafts]) {
+  for (const doc of [...fromStatus, ...fromDrafts, ...fromSets]) {
     if (seen.has(doc.id)) continue
     seen.add(doc.id)
     merged.push(doc)

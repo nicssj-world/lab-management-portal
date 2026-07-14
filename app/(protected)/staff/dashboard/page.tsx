@@ -248,7 +248,7 @@ export default async function StaffDashboardPage() {
         @keyframes dashFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         .dash-fade{animation:dashFadeUp .5s cubic-bezier(.22,1,.36,1) backwards}
         @media (prefers-reduced-motion: reduce){.dash-fade{animation:none}}
-        @media(max-width:640px){
+        @media(max-width:767px){
           .dash-kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important}
           .dash-attention-grid{grid-template-columns:repeat(2,1fr)!important}
           .dash-main-grid{grid-template-columns:1fr!important;align-items:start!important}
@@ -275,7 +275,7 @@ export default async function StaffDashboardPage() {
           <div style={{ position:'relative' }}>
             <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:7 }}>
               <span className="live-dot" style={{ width:8,height:8,borderRadius:'50%',background:'#22D3EE',display:'inline-block',flexShrink:0 }} />
-              <span style={{ color:'rgba(255,255,255,.45)',fontSize:10.5,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase' }}>
+              <span className="live-label" style={{ color:'rgba(255,255,255,.45)',fontSize:10.5,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase' }}>
                 LIVE · {timeStr} · {todayStr}
               </span>
             </div>
@@ -334,13 +334,8 @@ export default async function StaffDashboardPage() {
           />
         </div>
 
-        {/* ══ ANALYTICS ══ */}
-        <div className="dash-fade" style={{ animationDelay: '.26s' }}>
-          <AnalyticsTabs />
-        </div>
-
         {/* ══ ACTIVITY + DOCUMENT STATUS ══ */}
-        <div className="dash-main-grid dash-fade" style={{ display:'grid', gridTemplateColumns:'7fr 3fr', gap:16, alignItems:'stretch', animationDelay:'.44s' }}>
+        <div className="dash-main-grid dash-fade" style={{ display:'grid', gridTemplateColumns:'7fr 3fr', gap:16, alignItems:'stretch', animationDelay:'.26s' }}>
 
           {/* Recent Activity — custom card with timeline */}
           <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', display:'flex', flexDirection:'column' }}>
@@ -448,6 +443,11 @@ export default async function StaffDashboardPage() {
 
           </div>
 
+        </div>
+
+        {/* ══ ANALYTICS ══ */}
+        <div className="dash-fade" style={{ animationDelay: '.44s' }}>
+          <AnalyticsTabs />
         </div>
 
       </div>
