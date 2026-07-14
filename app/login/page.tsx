@@ -201,11 +201,11 @@ export default function LoginPage() {
           <Image
             src="/images/cbh-lab-logo-v3.png"
             alt="CBH Lab"
-            width={88}
-            height={88}
+            width={140}
+            height={140}
             preload
             quality={100}
-            style={{ width: 88, height: 88, objectFit: 'contain', margin: '0 auto 20px', display: 'block', filter: 'drop-shadow(0 8px 20px rgba(0,0,0,.25))' }}
+            style={{ width: 140, height: 140, objectFit: 'contain', margin: '0 auto 20px', display: 'block', filter: 'drop-shadow(0 8px 20px rgba(0,0,0,.25))' }}
           />
           <h2 style={{ fontSize: 24, fontWeight: 700, margin: '0 0 12px', letterSpacing: '-0.02em' }}>
             Lab Management CBH
