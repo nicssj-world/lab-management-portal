@@ -21,5 +21,6 @@ assert.equal(getKpiProgressColor(50), '#D97706', '50–79% should be amber')
 assert.equal(getKpiProgressColor(79), '#D97706', '50–79% should stay amber')
 assert.equal(getKpiProgressColor(80), '#1E5FAD', '80–99% should be blue')
 assert.equal(getKpiProgressColor(99), '#1E5FAD', 'incomplete rows should not use green')
+assert.equal(getKpiProgressColor(100), '#15803D', 'complete overall progress should be green')
 
 console.log('Dashboard KPI completion success-state tests passed')

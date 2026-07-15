@@ -440,6 +440,7 @@ function OperationalFocus({
 
   const completionState = getKpiCompletionState(kpiFilled, kpiRequired, kpiDaysRemaining)
   const { isComplete: kpiDone, accent: deadlineColor, badgeBackground: deadlineBg, badgeText: deadlineText } = completionState
+  const overallProgressColor = getKpiProgressColor(kpiRequired > 0 ? (kpiFilled / kpiRequired) * 100 : 100)
 
   return (
     <section className="dash-fade" style={{ animationDelay:'.21s' }} aria-labelledby="priority-heading">
@@ -474,7 +475,7 @@ function OperationalFocus({
                 </div>
               </div>
               <div role="progressbar" aria-label="ความครบถ้วนการบันทึก KPI" aria-valuemin={0} aria-valuemax={100} aria-valuenow={kpiCompletion} style={{ height:9,marginTop:13,borderRadius:999,overflow:'hidden',background:'var(--surface-2)' }}>
-                <div style={{ width:`${Math.min(100,kpiCompletion)}%`,height:'100%',borderRadius:999,background:deadlineColor,transition:'width .3s ease' }}/>
+                <div style={{ width:`${Math.min(100,kpiCompletion)}%`,height:'100%',borderRadius:999,background:overallProgressColor,transition:'width .3s ease' }}/>
               </div>
               {kpiDone ? (
                 <div role="status" aria-live="polite" style={{ flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'18px 0 6px' }}>
