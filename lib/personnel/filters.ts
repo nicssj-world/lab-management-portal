@@ -1,7 +1,7 @@
 import { mainPersonnelRole } from './roles'
 import type { ExpiryStatus } from './expiry'
 
-export type PersonnelSummaryFilter = 'all' | 'license-expiring' | 'license-expired' | 'license-missing' | 'comp-overdue'
+export type PersonnelSummaryFilter = 'all' | 'license-expiring' | 'license-expired' | 'license-missing' | 'comp-overdue' | 'comp-due-soon'
 
 export type PersonnelFilterRow = {
   name: string
@@ -16,6 +16,7 @@ export type PersonnelFilterRow = {
   certExpiring: number
   certExpired: number
   compOverdue: number
+  compDueSoon: number
 }
 
 export type PersonnelFilterOptions = {
@@ -38,6 +39,7 @@ export function matchesPersonnelSummaryFilter(row: PersonnelFilterRow, summaryFi
   if (summaryFilter === 'license-expired') return isMedicalTechnologist(row) && row.licenseStatus === 'expired'
   if (summaryFilter === 'license-missing') return isMissingMedicalTechnologistLicense(row)
   if (summaryFilter === 'comp-overdue') return row.compOverdue > 0
+  if (summaryFilter === 'comp-due-soon') return row.compDueSoon > 0
   return true
 }
 

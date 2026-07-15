@@ -13,7 +13,7 @@ import EquipmentClient from './EquipmentClient'
 
 const INITIAL_PAGE_SIZE = 50
 
-export default async function EquipmentPage() {
+export default async function EquipmentPage({ searchParams }: { searchParams: Promise<{ create?: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: actor } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
@@ -30,6 +30,7 @@ export default async function EquipmentPage() {
     getEquipmentLastUpdated(supabase),
   ])
 
+  const { create } = await searchParams
   return (
     <EquipmentClient
       initialData={initialPage.items}
@@ -41,6 +42,7 @@ export default async function EquipmentPage() {
       initialSummaryCounts={summaryCounts}
       canEdit={canEdit}
       lastUpdated={lastUpdated}
+      initialCreate={create === '1'}
     />
   )
 }

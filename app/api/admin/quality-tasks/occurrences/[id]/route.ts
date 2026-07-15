@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { qualityTaskContext, qualityTaskError } from '@/lib/quality-tasks/api'
-import { updateOccurrence } from '@/lib/quality-tasks/server'
+import { removeOccurrence, updateOccurrence } from '@/lib/quality-tasks/server'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import { assigneeEntrySchema } from '../../templates/route'
 
@@ -14,5 +14,14 @@ const actionSchema = z.discriminatedUnion('action', [
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await qualityTaskContext('view'); if (ctx.response) return ctx.response
   try { const instance = await updateOccurrence((await params).id, actionSchema.parse(await req.json()), ctx.actor, ctx.level); return NextResponse.json({ instance }) } catch (error) { return qualityTaskError(error) }
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await qualityTaskContext('edit'); if (ctx.response) return ctx.response
+  try {
+    const body = await req.json().catch(() => ({})) as { reason?: unknown }
+    const result = await removeOccurrence((await params).id, typeof body.reason === 'string' ? body.reason : null, ctx.actor, ctx.level)
+    return NextResponse.json({ ok: true, ...result })
+  } catch (error) { return qualityTaskError(error) }
 }
 

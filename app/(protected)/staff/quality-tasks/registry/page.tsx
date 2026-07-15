@@ -9,6 +9,6 @@ export default async function QualityTaskRegistryPage() {
   const actor=await getActor(); if(!actor)redirect('/login')
   const level=await getPermissionLevel(actor,'งานคุณภาพ'); if(level==='none')redirect('/staff/dashboard')
   const [templates,people]=await Promise.all([getQualityTaskTemplates(),listTaskPeople()])
-  return <QualityTaskRegistry level={level} initialTemplates={templates} people={people as {id:string;name:string;dept:string|null;role:string;document_position:string|null}[]}/>
+  return <QualityTaskRegistry level={level} initialTemplates={templates} people={people as {id:string;name:string;dept:string|null;role:string;position_title:string|null}[]}/>
 }
 

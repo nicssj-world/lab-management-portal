@@ -6,7 +6,7 @@ import { assigneeEntrySchema } from '../templates/route'
 
 const createSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('scheduled'), scheduleId: z.string().uuid(), periodStart: z.string().date() }),
-  z.object({ mode: z.literal('adHoc'), templateId: z.string().uuid(), label: z.string().trim().min(1), dueDate: z.string().date(), assignees: z.array(assigneeEntrySchema) }),
+  z.object({ mode: z.literal('adHoc'), templateId: z.string().uuid(), label: z.string().trim().min(1), startDate: z.string().date(), endDate: z.string().date(), assignees: z.array(assigneeEntrySchema) }),
 ])
 
 export async function GET(req: NextRequest) {
@@ -18,6 +18,6 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const ctx = await qualityTaskContext('view'); if (ctx.response) return ctx.response
-  try { const instance = await materializeOccurrence(createSchema.parse(await req.json()), ctx.actor, ctx.level); return NextResponse.json({ instance }, { status: 201 }) } catch (error) { return qualityTaskError(error) }
+  try { const payload = createSchema.parse(await req.json()); if (payload.mode === 'adHoc' && payload.endDate < payload.startDate) return NextResponse.json({ error: 'วันสิ้นสุดต้องไม่ก่อนวันเริ่มต้น' }, { status: 422 }); const instance = await materializeOccurrence(payload, ctx.actor, ctx.level); return NextResponse.json({ instance }, { status: 201 }) } catch (error) { return qualityTaskError(error) }
 }
 

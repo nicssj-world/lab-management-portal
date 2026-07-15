@@ -1,6 +1,8 @@
 import 'server-only'
 
+import { DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { r2, R2_BUCKET } from '@/lib/r2/client'
 import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
 import { bangkokToday, canMutateOccurrence, completionBlockReason, deriveTaskState, generatePeriods, occurrenceKey, resolveAssigneeEntries } from './logic'
@@ -11,6 +13,8 @@ import type {
 } from './types'
 
 type Row = Record<string, any>
+type TaskPerson = { id: string; name: string; dept: string | null; role: string; position_title: string | null }
+const CANCELLED_NOTE = '__quality_task_cancelled__'
 
 function fail(error: { message: string } | null, fallback = 'Quality task operation failed') {
   if (error) throw new Error(error.message || fallback)
@@ -63,9 +67,12 @@ function periodLabel(start: string, end: string) {
   return `${a.toLocaleDateString('th-TH', { month: 'short', year: 'numeric' })} – ${b.toLocaleDateString('th-TH', { month: 'short', year: 'numeric' })}`
 }
 
-export async function getQualityTaskOccurrences(input: { from: string; to: string; actorId: string; level: PermLevel; scope?: 'mine' | 'all' }) {
-  const templates = await getQualityTaskTemplates(true)
-  const people = await listTaskPeople()
+export async function getQualityTaskOccurrences(
+  input: { from: string; to: string; actorId: string; level: PermLevel; scope?: 'mine' | 'all' },
+  prefetched?: { templates: QualityTaskTemplate[]; people: TaskPerson[] },
+) {
+  const templates = prefetched?.templates ?? await getQualityTaskTemplates(true)
+  const people = prefetched?.people ?? await listTaskPeople()
   const { data: instanceRows, error } = await supabaseAdmin.from('quality_task_instances').select('*').lte('period_start', input.to).gte('period_end', input.from)
   fail(error)
   const instanceIds = ((instanceRows ?? []) as Row[]).map(r => str(r.id))
@@ -95,6 +102,7 @@ export async function getQualityTaskOccurrences(input: { from: string; to: strin
       for (const period of generatePeriods(schedule, input.from, input.to)) {
         const key = occurrenceKey(schedule.id, template.id, period.start)
         const row = instanceByKey.get(key)
+        if (nullable(row?.note) === CANCELLED_NOTE) continue
         const instanceId = row ? str(row.id) : null
         const assigned = resolveAssigneeEntries(template.defaultAssignees, instanceId ? assignees.get(instanceId) ?? [] : [])
         const rowDepts = row ? ((row.participant_depts ?? []) as string[]) : []
@@ -107,13 +115,14 @@ export async function getQualityTaskOccurrences(input: { from: string; to: strin
           status: row?.status === 'completed' ? 'completed' : 'open', note: nullable(row?.note), completionNote: nullable(row?.completion_note),
           completedBy: nullable(row?.completed_by), completedAt: nullable(row?.completed_at), assignees: assigned,
           participantDepts: rowDepts, participantUserIds: rowUserIds,
-          participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), documentPosition: nullable((p as Row).document_position) })),
+          participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), positionTitle: nullable((p as Row).position_title) })),
           attachments: instanceId ? attachments.get(instanceId) ?? [] : [], ...state })
       }
     }
   }
   for (const row of (instanceRows ?? []) as Row[]) {
     if (row.schedule_id) continue
+    if (nullable(row.note) === CANCELLED_NOTE) continue
     const template = templates.find(t => t.id === row.template_id)
     if (!template) continue
     const instanceId = str(row.id)
@@ -128,7 +137,7 @@ export async function getQualityTaskOccurrences(input: { from: string; to: strin
       status: row.status === 'completed' ? 'completed' : 'open', note: nullable(row.note), completionNote: nullable(row.completion_note),
       completedBy: nullable(row.completed_by), completedAt: nullable(row.completed_at), assignees: assigned,
       participantDepts: rowDepts, participantUserIds: rowUserIds,
-      participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), documentPosition: nullable((p as Row).document_position) })),
+      participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), positionTitle: nullable((p as Row).position_title) })),
       attachments: attachments.get(instanceId) ?? [], ...state })
   }
   const scoped = input.scope === 'mine' && input.level !== 'edit' ? result.filter(o => o.assignees.some(e => e.userId === input.actorId)) : result
@@ -144,7 +153,7 @@ async function replaceAssignees(instanceId: string, entries: AssigneeEntry[]) {
 export async function materializeOccurrence(payload: OccurrenceCreatePayload, actor: Actor, level: PermLevel) {
   if (payload.mode === 'adHoc') {
     if (level !== 'edit') throw new Error('Forbidden')
-    const { data, error } = await supabaseAdmin.from('quality_task_instances').insert({ template_id: payload.templateId, period_start: payload.dueDate, period_end: payload.dueDate, period_label: payload.label.trim(), planned_date: payload.dueDate, created_by: actor.id, updated_by: actor.id }).select('*').single()
+    const { data, error } = await supabaseAdmin.from('quality_task_instances').insert({ template_id: payload.templateId, period_start: payload.startDate, period_end: payload.endDate, period_label: payload.label.trim(), planned_date: payload.startDate, created_by: actor.id, updated_by: actor.id }).select('*').single()
     fail(error); await replaceAssignees(str(data.id), payload.assignees); audit(actor, 'quality_task.instance.create', str(data.id), payload); return data
   }
   const { data: scheduleRow, error } = await supabaseAdmin.from('quality_task_schedules').select('*').eq('id', payload.scheduleId).single()
@@ -178,6 +187,14 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
   const access = await getOccurrenceAccess(instanceId, actor, level)
   if (payload.action === 'schedule') {
     if ((payload.assignees || payload.participantDepts || payload.participantUserIds) && level !== 'edit') throw new Error('Forbidden')
+    if (payload.plannedDate && access.instance.schedule_id) {
+      const { data: schedule, error: scheduleError } = await supabaseAdmin.from('quality_task_schedules').select('interval_unit').eq('id', access.instance.schedule_id).single()
+      fail(scheduleError)
+      if (!schedule) throw new Error('Schedule not found')
+      if (schedule.interval_unit === 'month' && payload.plannedDate.slice(0, 7) !== str(access.instance.period_start).slice(0, 7)) {
+        throw new Error('กรุณาเลือกวันที่ภายในเดือนของรอบกิจกรรม')
+      }
+    }
     const { error } = await supabaseAdmin.from('quality_task_instances').update({
       planned_date: payload.plannedDate || null, note: payload.note?.trim() || null,
       updated_by: actor.id, updated_at: new Date().toISOString(),
@@ -198,6 +215,28 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
   }
   audit(actor, `quality_task.instance.${payload.action}`, instanceId, payload)
   return (await supabaseAdmin.from('quality_task_instances').select('*').eq('id', instanceId).single()).data
+}
+
+export async function removeOccurrence(instanceId: string, reason: string | null, actor: Actor, level: PermLevel) {
+  if (level !== 'edit') throw new Error('Forbidden')
+  const { data: instance, error } = await supabaseAdmin.from('quality_task_instances').select('*').eq('id', instanceId).single()
+  fail(error)
+  if (instance.schedule_id) {
+    if (!reason?.trim()) throw new Error('กรุณาระบุเหตุผลที่ยกเลิกรอบนี้')
+    const { error: updateError } = await supabaseAdmin.from('quality_task_instances').update({ note: CANCELLED_NOTE, updated_by: actor.id, updated_at: new Date().toISOString() }).eq('id', instanceId)
+    fail(updateError)
+    const { error: auditError } = await supabaseAdmin.from('audit_log').insert({ action: 'quality_task.instance.cancel', user_id: actor.id, target: instanceId, detail: reason.trim() })
+    fail(auditError)
+    return { mode: 'cancelled' as const }
+  }
+  const { data: attachments, error: attachmentError } = await supabaseAdmin.from('quality_task_attachments').select('r2_key').eq('instance_id', instanceId)
+  fail(attachmentError)
+  await Promise.all((attachments ?? []).map(row => r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: row.r2_key }))))
+  const { error: auditError } = await supabaseAdmin.from('audit_log').insert({ action: 'quality_task.instance.delete', user_id: actor.id, target: instanceId, detail: instance.period_label })
+  fail(auditError)
+  const { error: deleteError } = await supabaseAdmin.from('quality_task_instances').delete().eq('id', instanceId)
+  fail(deleteError)
+  return { mode: 'deleted' as const }
 }
 
 export async function saveTemplate(input: Omit<QualityTaskTemplate, 'id' | 'sourceKey'>, actor: Actor, id?: string) {
@@ -231,6 +270,6 @@ export async function deleteTemplate(id: string, actor: Actor) {
 }
 
 export async function listTaskPeople() {
-  const { data, error } = await supabaseAdmin.from('profiles').select('id,name,dept,role,document_position').is('deleted_at', null).order('name')
+  const { data, error } = await supabaseAdmin.from('profiles').select('id,name,dept,role,position_title').is('deleted_at', null).order('name')
   fail(error); return data ?? []
 }

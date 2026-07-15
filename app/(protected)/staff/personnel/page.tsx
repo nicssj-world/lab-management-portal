@@ -7,7 +7,11 @@ import { createStaffSignedUrl } from '@/lib/personnel/storage'
 import { PersonnelClient, type RosterRow } from './PersonnelClient'
 import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
 
-export default async function PersonnelPage() {
+export default async function PersonnelPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
+  const { filter } = await searchParams
+  const initialSummaryFilter = ['all', 'license-expiring', 'license-expired', 'license-missing', 'comp-overdue', 'comp-due-soon'].includes(filter ?? '')
+    ? filter as import('@/lib/personnel/filters').PersonnelSummaryFilter
+    : 'all'
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -68,5 +72,5 @@ export default async function PersonnelPage() {
     }
   })
 
-  return <PersonnelClient rows={rows} currentUserId={user.id} />
+  return <PersonnelClient rows={rows} currentUserId={user.id} initialSummaryFilter={initialSummaryFilter} />
 }

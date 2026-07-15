@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { NewsManageClient } from './NewsManageClient'
 
-export default async function NewsManagePage() {
+export default async function NewsManagePage({ searchParams }: { searchParams: Promise<{ create?: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -16,5 +16,6 @@ export default async function NewsManagePage() {
   if ((perms['ข่าวสาร'] ?? 'none') === 'none') redirect('/staff/dashboard')
   const canEdit = perms['ข่าวสาร'] === 'edit'
 
-  return <NewsManageClient canEdit={canEdit} />
+  const { create } = await searchParams
+  return <NewsManageClient canEdit={canEdit} initialCreate={create === '1'} />
 }

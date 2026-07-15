@@ -136,13 +136,13 @@ function Pill({ color, children }: { color: string; children: React.ReactNode })
   )
 }
 
-export function PersonnelClient({ rows, currentUserId }: { rows: RosterRow[]; currentUserId?: string }) {
+export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'all' }: { rows: RosterRow[]; currentUserId?: string; initialSummaryFilter?: PersonnelSummaryFilter }) {
   const router = useRouter()
   const { canEdit } = usePermission('บุคลากร')
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('All')
   const [deptFilter, setDeptFilter] = useState<string>('All')
-  const [summaryFilter, setSummaryFilter] = useState<PersonnelSummaryFilter>('all')
+  const [summaryFilter, setSummaryFilter] = useState<PersonnelSummaryFilter>(initialSummaryFilter)
   const hasOwnRecord = Boolean(currentUserId && rows.some((r) => r.id === currentUserId))
 
   const roleCounts = useMemo(() => {
