@@ -2,14 +2,29 @@ import dotenv from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
 import * as XLSX from 'xlsx'
 import { calcResult } from '../lib/kpi-utils'
-import { extractKpi2569Sheet, type Kpi2569SourceEntry } from '../lib/kpi-import/google-sheet-2569'
+import {
+  extractKpi2568Sheet,
+  extractKpi2569Sheet,
+  type Kpi2569SourceEntry,
+} from '../lib/kpi-import/google-sheet-2569'
 
 dotenv.config({ path: '.env.local' })
 
-const FISCAL_YEAR = 2569
-const SPREADSHEET_ID = '1mD3DYhjhwoacFrthVh-LGwGCAa5PZ_zb-SskuKdqeOs'
+const fiscalYearIndex = process.argv.indexOf('--fiscal-year')
+const FISCAL_YEAR = fiscalYearIndex === -1 ? 2569 : Number(process.argv[fiscalYearIndex + 1])
 const SHEET_TABS = ['CHE', 'IMM', 'HEM', 'MIS', 'MIC', 'MOL', 'BLB', 'OUT', 'MCL', 'OPD']
 const shouldApply = process.argv.includes('--apply')
+
+const SOURCES = {
+  2568: {
+    spreadsheetId: '130QVP-sBJc1h9c516g5MjHzX5ZF6lJfW0BDO0l3BpjM',
+    extract: extractKpi2568Sheet,
+  },
+  2569: {
+    spreadsheetId: '1mD3DYhjhwoacFrthVh-LGwGCAa5PZ_zb-SskuKdqeOs',
+    extract: extractKpi2569Sheet,
+  },
+} as const
 
 type Department = { id: number; code: string }
 type Definition = { id: number; code: string }
@@ -36,8 +51,11 @@ function entryKey(deptId: number, kpiId: number, month: number): string {
 }
 
 async function loadSourceEntries(): Promise<Kpi2569SourceEntry[]> {
+  const source = SOURCES[FISCAL_YEAR as keyof typeof SOURCES]
+  if (!source) throw new Error(`Unsupported fiscal year: ${FISCAL_YEAR}`)
+
   const response = await fetch(
-    `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=xlsx`,
+    `https://docs.google.com/spreadsheets/d/${source.spreadsheetId}/export?format=xlsx`,
   )
   if (!response.ok) throw new Error(`Unable to download source spreadsheet: ${response.status}`)
 
@@ -53,7 +71,7 @@ async function loadSourceEntries(): Promise<Kpi2569SourceEntry[]> {
       defval: null,
       raw: true,
     })
-    entries.push(...extractKpi2569Sheet(tab, rows))
+    entries.push(...source.extract(tab, rows))
   }
 
   return entries

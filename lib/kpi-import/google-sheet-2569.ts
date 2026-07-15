@@ -32,6 +32,20 @@ const SOURCE_ROWS: SourceRow[] = [
   { kpiCode: 'RISK_SENTINEL', numeratorRow: 28 },
 ]
 
+const SOURCE_ROWS_2568: SourceRow[] = [
+  { kpiCode: 'TAT_ROUTINE', numeratorRow: 3, denominatorRow: 4 },
+  { kpiCode: 'TAT_STROKE', numeratorRow: 6, denominatorRow: 7 },
+  { kpiCode: 'TAT_CRITICAL', numeratorRow: 9, denominatorRow: 10 },
+  { kpiCode: 'TAT_UNCROSS', numeratorRow: 12, denominatorRow: 13 },
+  { kpiCode: 'ERR_REPORT', numeratorRow: 15, denominatorRow: 4 },
+  { kpiCode: 'RISK_BLOOD', numeratorRow: 17 },
+  { kpiCode: 'RISK_ID_OPD', numeratorRow: 18 },
+  { kpiCode: 'RISK_ID_WARD', numeratorRow: 19 },
+  { kpiCode: 'RISK_STICKER', numeratorRow: 20 },
+  { kpiCode: 'RISK_NEARMISS', numeratorRow: 21, denominatorRow: 22 },
+  { kpiCode: 'RISK_SENTINEL', numeratorRow: 24 },
+]
+
 function getNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
   if (typeof value !== 'string' || value.trim() === '') return null
@@ -44,16 +58,17 @@ function getCell(rows: Array<Array<unknown>>, row: number, column: number): numb
   return getNumber(rows[row - 1]?.[column])
 }
 
-export function extractKpi2569Sheet(
+function extractKpiSheet(
   deptCode: string,
   rows: Array<Array<unknown>>,
+  sourceRows: SourceRow[],
 ): Kpi2569SourceEntry[] {
   const entries: Kpi2569SourceEntry[] = []
 
   for (let monthIndex = 0; monthIndex < MONTHS.length; monthIndex += 1) {
     const column = monthIndex + 4 // E:P
 
-    for (const source of SOURCE_ROWS) {
+    for (const source of sourceRows) {
       const numerator = getCell(rows, source.numeratorRow, column)
       if (numerator === null) continue
 
@@ -70,4 +85,18 @@ export function extractKpi2569Sheet(
   }
 
   return entries
+}
+
+export function extractKpi2569Sheet(
+  deptCode: string,
+  rows: Array<Array<unknown>>,
+): Kpi2569SourceEntry[] {
+  return extractKpiSheet(deptCode, rows, SOURCE_ROWS)
+}
+
+export function extractKpi2568Sheet(
+  deptCode: string,
+  rows: Array<Array<unknown>>,
+): Kpi2569SourceEntry[] {
+  return extractKpiSheet(deptCode, rows, SOURCE_ROWS_2568)
 }
