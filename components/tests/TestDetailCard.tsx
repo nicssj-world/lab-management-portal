@@ -163,7 +163,7 @@ export function TestDetailCard({ test, category }: Props) {
           </span>
         )}
         <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 20, background: '#2563EB', fontSize: 12, fontWeight: 600, color: '#fff' }}>
-          รหัส E-Phis: <strong>{test.code}</strong>
+          <strong>รหัส E-Phis:</strong>{' '}<strong>{test.code}</strong>
         </span>
        
         {test.loinc && (
