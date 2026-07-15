@@ -7,12 +7,14 @@ import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
 import { TestDetailCard } from '@/components/tests/TestDetailCard'
 import { SpecimenSection } from '@/components/tests/SpecimenSection'
+import { RefRangeModal } from '@/components/tests/RefRangeModal'
 import { PublicTestDocumentActions } from '@/components/tests/PublicTestDocumentActions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { orderRelatedTestDocuments } from '@/lib/documents/related-test-documents'
 import { normalizeDocumentAccess } from '@/lib/tests/document-access'
 import { sanitizeRichHtml } from '@/lib/html-sanitize'
-import type { Category, TestDocument } from '@/lib/supabase/types'
+import { isJsonTable } from '@/lib/utils/refTable'
+import type { Category, TestDocument, TestReferenceRange } from '@/lib/supabase/types'
 
 const DOC_TYPE_COLOR: Record<string, string> = {
   QP: '#2563EB', WI: '#059669', RF: '#DC2626', Form: '#D97706',
@@ -50,13 +52,15 @@ export default async function CatalogDetailPage({ params }: Props) {
   if (!test) notFound()
 
   const relatedDocIds = test.related_doc_ids ?? []
-  const [docsRes, relatedRes] = await Promise.all([
+  const [rangesRes, docsRes, relatedRes] = await Promise.all([
+    supabaseAdmin.from('test_reference_ranges').select('*').eq('test_id', test.id).order('sort_order'),
     supabaseAdmin.from('test_documents').select('*').eq('test_id', test.id).eq('visibility', 'Public').order('created_at'),
     relatedDocIds.length
       ? supabaseAdmin.from('documents').select('id,document_code,title,type,visibility,status').in('id', relatedDocIds).is('deleted_at', null).eq('visibility', 'Public').eq('status', 'Published')
       : Promise.resolve({ data: [] }),
   ])
 
+  const referenceRanges = (rangesRes.data ?? []) as TestReferenceRange[]
   const documents = (docsRes.data ?? []) as TestDocument[]
   const relatedDocuments = orderRelatedTestDocuments(relatedDocIds, relatedRes.data ?? []).map((doc) => ({
     ...doc,
@@ -174,6 +178,27 @@ export default async function CatalogDetailPage({ params }: Props) {
                 ))}
               </Card>
             )}
+
+            <Card className="catalog-detail-section-card" padding={20}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <Icon name="chart" size={16} style={{ color: 'var(--primary)' }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>ค่าอ้างอิง (Reference Range)</span>
+              </div>
+              {referenceRanges.length > 0 || isJsonTable(test.ref)
+                ? <RefRangeModal ranges={referenceRanges} tableJson={test.ref} refNote={test.ref_note} />
+                : test.ref
+                  ? <>
+                      <div style={{ fontSize: 15, color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>{test.ref}</div>
+                      {test.ref_note && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'var(--surface-2)', fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+                          <Icon name="alert" size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                          <span style={{ whiteSpace: 'pre-wrap' }}>{test.ref_note}</span>
+                        </div>
+                      )}
+                    </>
+                  : <div style={{ fontSize: 13, color: 'var(--muted)' }}>ไม่มีข้อมูลค่าอ้างอิง</div>
+              }
+            </Card>
 
             <Card className="catalog-detail-section-card" padding={20}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
