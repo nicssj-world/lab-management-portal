@@ -53,7 +53,7 @@ export default function LoginPage() {
         }}
       >
         <div style={{ width: '100%', maxWidth: 400 }}>
-          {/* Logo row with home button on the right */}
+          {/* Brand */}
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, rowGap: 10, marginBottom: 36 }}>
             <HospitalLogo height={64} preload />
             <Image
@@ -70,26 +70,29 @@ export default function LoginPage() {
               <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.4, color: 'var(--ink)' }}>กลุ่มงานเทคนิคการแพทย์</div>
               <div style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>โรงพยาบาลชลบุรี · CBH Staff</div>
             </div>
-            <a
-              href="/"
-              title="กลับหน้าแรก"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '7px 12px', borderRadius: 8, flexShrink: 0, marginLeft: 'auto',
-                border: '1px solid var(--border)', background: 'var(--card)',
-                color: 'var(--primary)', textDecoration: 'none',
-                fontSize: 12, fontWeight: 600,
-                boxShadow: '0 1px 4px rgba(0,0,0,.06)',
-              }}
-            >
-              <Icon name="home" size={14} />
-              หน้าแรก
-            </a>
           </div>
 
-          <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink)', margin: '0 0 6px' }}>
-            เข้าสู่ระบบ
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+            <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink)', margin: 0 }}>
+              เข้าสู่ระบบ
+            </h1>
+            <a
+              href="/"
+              aria-label="กลับสู่หน้าแรก"
+              title="กลับสู่หน้าแรก"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7, flexShrink: 0,
+                padding: '9px 13px', borderRadius: 9,
+                border: '1px solid #93C5FD', background: '#EFF6FF',
+                color: '#1D4ED8', textDecoration: 'none',
+                fontSize: 12.5, fontWeight: 750,
+                boxShadow: '0 2px 8px rgba(30,95,173,.12)',
+              }}
+            >
+              <Icon name="home" size={15} stroke={2} />
+              กลับหน้าแรก
+            </a>
+          </div>
           <p style={{ fontSize: 14, color: 'var(--muted)', margin: '0 0 28px' }}>
             สำหรับบุคลากรกลุ่มงานเทคนิคการแพทย์เท่านั้น
           </p>
