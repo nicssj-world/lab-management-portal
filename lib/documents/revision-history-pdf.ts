@@ -163,8 +163,12 @@ function wrapText(text: string | null | undefined, font: PDFFont, size: number, 
   return lines
 }
 
-function rowDate(row: RevisionHistoryRow) {
-  return fmtThaiDate(row.edit_date ?? row.effective_date ?? row.approved_at ?? row.published_at ?? row.created_at)
+function editDate(row: RevisionHistoryRow) {
+  return row.history_source === 'review' ? '-' : fmtThaiDate(row.edit_date)
+}
+
+function effectiveDate(row: RevisionHistoryRow) {
+  return row.history_source === 'review' ? '-' : fmtThaiDate(row.effective_date)
 }
 
 function rawRowDate(row: RevisionHistoryRow): string {
@@ -194,6 +198,9 @@ function buildRows(input: RevisionHistoryInput) {
     approved_by: doc.approver_name ?? null,
     file_url: doc.file_url ?? null,
     file_name: doc.file_name ?? null,
+    edit_date: doc.edit_date ?? null,
+    effective_date: doc.effective_date ?? null,
+    published_at: doc.published_at ?? null,
     created_at: doc.edit_date ?? doc.effective_date ?? doc.published_at ?? doc.updated_at ?? doc.created_at,
     history_source: 'current',
   }
@@ -248,7 +255,7 @@ function drawWatermark(page: PDFPage, fonts: Fonts) {
 }
 
 function drawTableHeader(page: PDFPage, y: number, fonts: Fonts, x: number, colWidths: number[]) {
-  const headers = ['ลำดับที่', 'Rev.', 'วันที่แก้ไข', 'รายการแก้ไข', 'ผู้ทำการแก้ไข', 'ผู้อนุมัติ']
+  const headers = ['ลำดับที่', 'แก้ไขครั้งที่', 'วันที่แก้ไข', 'วันที่บังคับใช้', 'รายการแก้ไข', 'ผู้ทำการแก้ไข', 'ผู้อนุมัติ']
   const h = mm(8)
   let cx = x
   for (let i = 0; i < headers.length; i += 1) {
@@ -276,7 +283,8 @@ function drawDataRow(page: PDFPage, row: RevisionHistoryRow, rowNo: number, y: n
   const values = [
     String(rowNo),
     row.revision_number,
-    rowDate(row),
+    editDate(row),
+    effectiveDate(row),
     row.revision_note ?? '',
     row.revised_by ?? '',
     row.approved_by ?? '',
@@ -284,9 +292,9 @@ function drawDataRow(page: PDFPage, row: RevisionHistoryRow, rowNo: number, y: n
   let cx = x
   for (let i = 0; i < values.length; i += 1) {
     rect(page, cx, y - height, colWidths[i], height, 0.7)
-    const maxLines = i === 3 ? 4 : 3
+    const maxLines = i === 4 ? 4 : 3
     const lines = wrapText(values[i], fonts.regular, 11, colWidths[i] - mm(4), maxLines)
-    drawCellText(page, lines.length ? lines : [''], cx, y, colWidths[i], height, fonts.regular, 11, i !== 3)
+    drawCellText(page, lines.length ? lines : [''], cx, y, colWidths[i], height, fonts.regular, 11, i !== 4)
     cx += colWidths[i]
   }
 }
@@ -305,7 +313,7 @@ export async function generateRevisionHistoryPdf(input: RevisionHistoryInput) {
   const fonts = await loadFonts(pdf)
   const rows = buildRows(input)
   const x = mm(10)
-  const colWidths = [mm(15), mm(18), mm(30), mm(118), mm(48), mm(48)]
+  const colWidths = [mm(13), mm(17), mm(30), mm(30), mm(103), mm(40), mm(44)]
   const bottomLimit = mm(30)
   let page = pdf.addPage([A4.width, A4.height])
   let y = A4.height - mm(58)
@@ -324,7 +332,7 @@ export async function generateRevisionHistoryPdf(input: RevisionHistoryInput) {
   startPage()
 
   for (const row of rows) {
-    const h = rowHeight(row, fonts, colWidths[3], colWidths[4])
+    const h = rowHeight(row, fonts, colWidths[4], Math.min(colWidths[5], colWidths[6]))
     if (y - h < bottomLimit) startPage()
     drawDataRow(page, row, rowNo, y, h, fonts, x, colWidths)
     y -= h
