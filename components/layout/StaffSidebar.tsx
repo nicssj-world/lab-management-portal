@@ -218,8 +218,8 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
       <div style={{ padding: collapsed ? '18px 12px' : '18px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center' }}>
         <Link href="/staff/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', flex: 1, minWidth: 0 }}>
           <Image
-            src="/images/logo-chonburi.png"
-            alt="รพ.ชลบุรี"
+            src="/images/cbh-lab-logo-v3.png"
+            alt="CBH Lab"
             width={44}
             height={44}
             preload

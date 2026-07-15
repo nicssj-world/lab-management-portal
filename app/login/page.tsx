@@ -61,6 +61,15 @@ export default function LoginPage() {
               height={64}
               preload
               quality={100}
+              style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover' }}
+            />
+            <Image
+              src="/images/cbh-lab-logo-v3.png"
+              alt="CBH Lab"
+              width={64}
+              height={64}
+              preload
+              quality={100}
               style={{ width: 64, height: 64, objectFit: 'contain' }}
             />
             <div style={{ flex: 1 }}>
@@ -189,7 +198,15 @@ export default function LoginPage() {
         <div style={{ position: 'absolute', right: -80, top: -80, width: 360, height: 360, borderRadius: '50%', background: 'rgba(255,255,255,.07)' }} />
         <div style={{ position: 'absolute', left: -40, bottom: -60, width: 260, height: 260, borderRadius: '50%', background: 'rgba(255,255,255,.05)' }} />
         <div style={{ position: 'relative', color: '#fff', maxWidth: 400, textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 20 }}>🔬</div>
+          <Image
+            src="/images/cbh-lab-logo-v3.png"
+            alt="CBH Lab"
+            width={140}
+            height={140}
+            preload
+            quality={100}
+            style={{ width: 140, height: 140, objectFit: 'contain', margin: '0 auto 20px', display: 'block', filter: 'drop-shadow(0 8px 20px rgba(0,0,0,.25))' }}
+          />
           <h2 style={{ fontSize: 24, fontWeight: 700, margin: '0 0 12px', letterSpacing: '-0.02em' }}>
             Lab Management CBH
           </h2>
