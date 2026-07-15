@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { HospitalLogo } from '@/components/lab/HospitalLogo'
 import { useSettings } from '@/context/SettingsContext'
 
 interface LogoProps {
@@ -21,16 +22,7 @@ export function Logo({ size = 32, showText = true, lang = 'th', variant = 'publi
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 1, minWidth: 0 }}>
-      <Image
-        src="/images/logo-chonburi.png"
-        alt="โรงพยาบาลชลบุรี"
-        width={size}
-        height={size}
-        preload
-        quality={100}
-        sizes={`${size}px`}
-        style={{ width: size, height: size, borderRadius: 8, flexShrink: 0, objectFit: 'cover' }}
-      />
+      <HospitalLogo height={size} preload />
       <Image
         src="/images/cbh-lab-logo-v3.png"
         alt="CBH Lab"

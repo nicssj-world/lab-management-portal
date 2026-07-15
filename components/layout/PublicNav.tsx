@@ -173,10 +173,9 @@ export function PublicNav() {
           .pub-logo-link {
             max-width: calc(100% - 88px);
           }
-          .pub-logo-link img {
-            width: 48px !important;
-            height: 48px !important;
-          }
+          .pub-logo-link img { height: 48px !important; }
+          .pub-logo-link img:first-child { width: 72px !important; }
+          .pub-logo-link img:nth-child(2) { width: 48px !important; }
           .pub-mobile-nav-panel {
             top: 76px !important;
           }
