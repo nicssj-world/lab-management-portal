@@ -505,9 +505,8 @@ export function TestTable({
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-                    <div>
-                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>รหัส E-PHIS</div>
-                      <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{t.code}</div>
+                    <div className="test-table-mobile-ephis" style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 700 }}>
+                      <strong>รหัส E-Phis:</strong>{' '}<strong>{t.code}</strong>
                     </div>
                     <div>
                       <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>TAT</div>
