@@ -337,7 +337,7 @@ export function TestForm({ categories, initial, initialRanges, testId, existingT
             ตลอด 24 ชั่วโมง
           </label>
           {!form.available_24hr && (
-            <Field label="วัน-เวลาที่ตรวจวิเคราะห์">
+            <Field label="วัน-เวลาที่ตรวจ">
               <input style={inp} value={form.service ?? ''} onChange={(e) => set('service', e.target.value || null)} placeholder="เช่น จันทร์–ศุกร์ 08:00–16:00 น." />
             </Field>
           )}

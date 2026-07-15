@@ -210,7 +210,7 @@ export function TestDetailCard({ test, category }: Props) {
         )}
         {test.volume && <InfoBox icon="droplet" label="ปริมาตร" value={test.volume} variant="metric" />}
         <InfoBox icon="clock" label="TAT" value={tatDisplay} variant="metric" />
-        <InfoBox icon="check" label="วัน-เวลาที่ตรวจวิเคราะห์" value={test.available_24hr ? 'ตลอด 24 ชั่วโมง' : (test.service ?? '—')} variant="descriptive" className="test-detail-info-box--wide" />
+        <InfoBox icon="check" label="วัน-เวลาที่ตรวจ" value={test.available_24hr ? 'ตลอด 24 ชั่วโมง' : (test.service ?? '—')} variant="descriptive" className="test-detail-info-box--wide" />
       </div>
     </div>
   )

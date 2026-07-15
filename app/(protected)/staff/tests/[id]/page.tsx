@@ -148,7 +148,7 @@ export default function TestDetailPage() {
               </div>
               {[
                 { label: 'หลักการทดสอบ', val: test.method },
-                { label: 'วัน-เวลาที่ตรวจวิเคราะห์', val: test.available_24hr ? 'ตลอด 24 ชั่วโมง' : test.service },
+                { label: 'วัน-เวลาที่ตรวจ', val: test.available_24hr ? 'ตลอด 24 ชั่วโมง' : test.service },
                 { label: 'วัตถุประสงค์/ข้อบ่งชี้ (Indication)', val: test.methodology_note },
               ].filter(r => r.val).map(r => (
                 <div key={r.label} style={{ display: 'flex', gap: 16, paddingBlock: 10, borderBottom: '1px solid var(--border)' }}>
