@@ -20,6 +20,8 @@ assert.match(modalSource, /aria-modal="true"/, 'dialog should isolate screen rea
 assert.match(modalSource, /aria-label="ปิดรายละเอียดรายการตรวจ"/, 'icon close button needs a descriptive Thai label')
 assert.match(modalSource, /aria-label="เปิดรายละเอียดรายการตรวจแบบหน้าเต็ม"/, 'full-page action needs a descriptive Thai label')
 assert.match(modalSource, /className="catalog-detail-modal-full-link"/, 'full-page action should be visually distinct from close')
+assert.match(modalSource, /catalog-detail-modal-chip--ephis[\s\S]*?<strong>รหัส E-Phis:<\/strong><strong>\{activeTest\?\.code \?\? '-'\}<\/strong>/, 'the detail card E-Phis chip should keep its label and code as separate elements')
+assert.match(modalSource, /\.catalog-detail-modal-chip--ephis\s*\{[\s\S]*?gap:\s*4px/, 'the detail card E-Phis chip should use a visible gap between its label and code')
 assert.match(modalSource, /href=\{buildTestDetailHref\(activeTest\)\}/, 'full-page action should link to the canonical catalog detail page')
 assert.match(modalSource, />เปิดหน้าเต็ม</, 'full-page action should use a clear but secondary text label')
 assert.match(modalSource, /event\.key === 'Escape'/, 'Escape should close the modal')

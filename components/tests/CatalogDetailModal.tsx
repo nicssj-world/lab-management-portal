@@ -208,6 +208,9 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
           font-size: 12px;
           font-weight: 700;
         }
+        .catalog-detail-modal-chip--ephis {
+          gap: 4px;
+        }
         .catalog-detail-modal-title {
           margin: 0;
           color: var(--ink);
@@ -452,7 +455,9 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
       >
         <header className="catalog-detail-modal-header">
           <div className="catalog-detail-modal-kicker">
-            <span className="catalog-detail-modal-chip">รหัส E-Phis: {activeTest?.code ?? '-'}</span>
+            <span className="catalog-detail-modal-chip catalog-detail-modal-chip--ephis">
+              <strong>รหัส E-Phis:</strong><strong>{activeTest?.code ?? '-'}</strong>
+            </span>
             <span className="catalog-detail-modal-chip">กรมบัญชีกลาง: {activeTest?.cgd ?? '-'}</span>
             {activeCategory && (
               <span
