@@ -63,6 +63,7 @@ export default function LoginPage() {
               height={64}
               preload
               quality={100}
+              sizes="64px"
               style={{ width: 64, height: 64, objectFit: 'contain' }}
             />
             <div style={{ flex: 1 }}>
@@ -198,6 +199,7 @@ export default function LoginPage() {
             height={140}
             preload
             quality={100}
+            sizes="140px"
             style={{ width: 140, height: 140, objectFit: 'contain', margin: '0 auto 20px', display: 'block', filter: 'drop-shadow(0 8px 20px rgba(0,0,0,.25))' }}
           />
           <h2 style={{ fontSize: 24, fontWeight: 700, margin: '0 0 12px', letterSpacing: '-0.02em' }}>
