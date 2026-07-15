@@ -14,6 +14,7 @@ import { getQualityTaskOccurrences } from '@/lib/quality-tasks/server'
 import type { QualityTaskOccurrence } from '@/lib/quality-tasks/types'
 import { getEntryStatus } from '@/lib/queries/kpi'
 import { getPreviousThaiFiscalMonth } from '@/lib/kpi-utils'
+import { getKpiCompletionState } from '@/lib/dashboard/kpi-completion'
 import type { PermLevel } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
@@ -437,16 +438,8 @@ function OperationalFocus({
 }) {
   if (!showKpi && !showQuality) return null
 
-  const kpiDone = kpiCompletion >= 100
-  const deadlineColor = kpiDone ? '#15803D' : kpiDaysRemaining < 0 ? '#DC2626' : kpiDaysRemaining <= 3 ? '#D97706' : '#1E5FAD'
-  const deadlineBg = kpiDone ? '#DCFCE7' : kpiDaysRemaining < 0 ? '#FEE2E2' : kpiDaysRemaining <= 3 ? '#FEF3C7' : 'var(--primary-soft)'
-  const deadlineText = kpiDone
-    ? 'บันทึกครบ 100% แล้ว'
-    : kpiDaysRemaining < 0
-      ? `เกินกำหนด ${Math.abs(kpiDaysRemaining)} วัน`
-      : kpiDaysRemaining === 0
-        ? 'ครบกำหนดวันนี้'
-        : `เหลือ ${kpiDaysRemaining} วัน`
+  const completionState = getKpiCompletionState(kpiFilled, kpiRequired, kpiDaysRemaining)
+  const { isComplete: kpiDone, accent: deadlineColor, badgeBackground: deadlineBg, badgeText: deadlineText } = completionState
 
   return (
     <section className="dash-fade" style={{ animationDelay:'.21s' }} aria-labelledby="priority-heading">
@@ -483,7 +476,17 @@ function OperationalFocus({
               <div role="progressbar" aria-label="ความครบถ้วนการบันทึก KPI" aria-valuemin={0} aria-valuemax={100} aria-valuenow={kpiCompletion} style={{ height:9,marginTop:13,borderRadius:999,overflow:'hidden',background:'var(--surface-2)' }}>
                 <div style={{ width:`${Math.min(100,kpiCompletion)}%`,height:'100%',borderRadius:999,background:deadlineColor,transition:'width .3s ease' }}/>
               </div>
-              {kpiIncompleteDepartments.length > 0 && (
+              {kpiDone ? (
+                <div role="status" aria-live="polite" style={{ flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'18px 0 6px' }}>
+                  <div style={{ display:'flex',alignItems:'center',gap:12,maxWidth:350,padding:'14px 16px',border:'1px solid #BBF7D0',borderRadius:12,background:'#F0FDF4' }}>
+                    <span aria-hidden="true" style={{ width:38,height:38,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',background:'#DCFCE7',color:'#15803D',flexShrink:0 }}><Icon name="check" size={22} stroke={2.2}/></span>
+                    <div>
+                      <div style={{ fontSize:13,fontWeight:850,color:'#166534' }}>{completionState.successTitle}</div>
+                      <div style={{ marginTop:3,fontSize:11,color:'#3F6B50' }}>{completionState.successDetail}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : kpiIncompleteDepartments.length > 0 && (
                 <div style={{ marginTop:15,padding:'11px 12px',border:'1px solid var(--border)',borderRadius:10,background:'var(--surface-2)' }}>
                   <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:9 }}>
                     <div style={{ fontSize:10.5,fontWeight:850,color:'var(--muted)' }}>ความครบถ้วนรายหน่วยงาน</div>
