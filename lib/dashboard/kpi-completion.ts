@@ -43,3 +43,9 @@ export function getKpiCompletionState(filled: number, required: number, daysRema
     successDetail: '',
   }
 }
+
+export function getKpiProgressColor(percent: number): string {
+  if (percent < 50) return '#DC2626'
+  if (percent < 80) return '#D97706'
+  return '#1E5FAD'
+}
