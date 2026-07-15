@@ -164,7 +164,9 @@ function wrapText(text: string | null | undefined, font: PDFFont, size: number, 
 }
 
 function editDate(row: RevisionHistoryRow) {
-  return row.history_source === 'review' ? '-' : fmtThaiDate(row.edit_date)
+  return row.history_source === 'review'
+    ? '-'
+    : fmtThaiDate(row.edit_date ?? row.effective_date ?? row.approved_at ?? row.published_at ?? row.created_at)
 }
 
 function effectiveDate(row: RevisionHistoryRow) {
