@@ -168,7 +168,7 @@ export default async function CatalogDetailPage({ params }: Props) {
                 </div>
                 {[
                   { label: 'หลักการทดสอบ', val: test.method },
-                  { label: 'วัน-เวลาที่ตรวจวิเคราะห์', val: test.available_24hr ? 'ตลอด 24 ชั่วโมง' : test.service },
+                  { label: 'วัน-เวลาที่ตรวจ', val: test.available_24hr ? 'ตลอด 24 ชั่วโมง' : test.service },
                   { label: 'วัตถุประสงค์/ข้อบ่งชี้ (Indication)', val: test.methodology_note },
                 ].filter(r => r.val).map(r => (
                   <div className="catalog-detail-method-row" key={r.label}>

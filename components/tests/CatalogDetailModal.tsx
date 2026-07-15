@@ -513,7 +513,7 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
                 {(activeTest.method || activeTest.methodology_note || activeTest.service) && (
                   <Section icon="microscope" title="วิธีการตรวจวิเคราะห์">
                     <DetailRow label="หลักการทดสอบ" value={activeTest.method} />
-                    <DetailRow label="วัน-เวลาที่ตรวจวิเคราะห์" value={activeTest.available_24hr ? 'ตลอด 24 ชั่วโมง' : activeTest.service} />
+                    <DetailRow label="วัน-เวลาที่ตรวจ" value={activeTest.available_24hr ? 'ตลอด 24 ชั่วโมง' : activeTest.service} />
                     <DetailRow label="วัตถุประสงค์/ข้อบ่งชี้" value={activeTest.methodology_note} />
                   </Section>
                 )}

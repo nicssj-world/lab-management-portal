@@ -513,7 +513,7 @@ export function TestTable({
                       <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>{tatDisplay}</div>
                     </div>
                     <div style={{ gridColumn: '1 / -1' }}>
-                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>วัน-เวลาที่ตรวจวิเคราะห์</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>วัน-เวลาที่ตรวจ</div>
                       <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>
                         {t.available_24hr ? '24 ชั่วโมง' : (t.service ?? '—')}
                       </div>
