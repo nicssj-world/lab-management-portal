@@ -211,8 +211,40 @@ export interface EntryStatusRow {
   months: Record<number, { filled: number; required: number }>
 }
 
+export function buildEntryStatus(
+  depts: Array<Pick<Department, 'id' | 'code' | 'name_th'>>,
+  defs: Array<Pick<KpiDefinition, 'id'>>,
+  entries: Array<Pick<KpiEntry, 'dept_id' | 'kpi_id' | 'month' | 'numerator'>>,
+  exclusions: ReadonlySet<string>,
+): EntryStatusRow[] {
+  const requiredIdsByDept = new Map<number, Set<number>>()
+  for (const dept of depts) {
+    requiredIdsByDept.set(
+      dept.id,
+      new Set(defs.filter((def) => !exclusions.has(`${dept.id}|${def.id}`)).map((def) => def.id)),
+    )
+  }
+
+  // Count only entries for KPI definitions the department is required to fill.
+  const filled = new Map<string, number>() // `${dept_id}|${month}` -> count
+  for (const entry of entries) {
+    if (entry.numerator == null || !requiredIdsByDept.get(entry.dept_id)?.has(entry.kpi_id)) continue
+    const key = `${entry.dept_id}|${entry.month}`
+    filled.set(key, (filled.get(key) ?? 0) + 1)
+  }
+
+  return depts.map((d) => {
+    const required = requiredIdsByDept.get(d.id)?.size ?? 0
+    const months: EntryStatusRow['months'] = {}
+    for (const m of [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+      months[m] = { filled: filled.get(`${d.id}|${m}`) ?? 0, required }
+    }
+    return { dept_id: d.id, dept_code: d.code, dept_name: d.name_th, months }
+  })
+}
+
 // Per-dept, per-month completion status for a fiscal year.
-// required = (# active KPI definitions) − (# excluded for that dept)
+// required and filled both include only KPI definitions applicable to that department.
 export async function getEntryStatus(supabase: SupabaseClient, year: number): Promise<EntryStatusRow[]> {
   const [depts, defs, entries, exclusions] = await Promise.all([
     getDepartments(supabase),
@@ -221,28 +253,5 @@ export async function getEntryStatus(supabase: SupabaseClient, year: number): Pr
     getExclusions(supabase),
   ])
 
-  const totalKpis = defs.length
-  // count exclusions per dept
-  const exclByDept = new Map<number, number>()
-  for (const key of exclusions) {
-    const deptId = Number(key.split('|')[0])
-    exclByDept.set(deptId, (exclByDept.get(deptId) ?? 0) + 1)
-  }
-
-  // count filled (numerator not null) per dept per month
-  const filled = new Map<string, number>() // `${dept_id}|${month}` -> count
-  for (const e of entries) {
-    if (e.numerator == null) continue
-    const key = `${e.dept_id}|${e.month}`
-    filled.set(key, (filled.get(key) ?? 0) + 1)
-  }
-
-  return depts.map((d) => {
-    const required = totalKpis - (exclByDept.get(d.id) ?? 0)
-    const months: EntryStatusRow['months'] = {}
-    for (const m of [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
-      months[m] = { filled: filled.get(`${d.id}|${m}`) ?? 0, required }
-    }
-    return { dept_id: d.id, dept_code: d.code, dept_name: d.name_th, months }
-  })
+  return buildEntryStatus(depts, defs, entries, exclusions)
 }
