@@ -1,4 +1,5 @@
 import { Icon } from '@/components/ui/Icon'
+import type { ReactNode } from 'react'
 import type { Test, Category } from '@/lib/supabase/types'
 
 interface Props {
@@ -6,14 +7,26 @@ interface Props {
   category?: Category
 }
 
-function InfoBox({ icon, label, value }: { icon: string; label: string; value: string }) {
+function InfoBox({
+  icon,
+  label,
+  value,
+  variant,
+  className = '',
+}: {
+  icon: string
+  label: string
+  value: ReactNode
+  variant: 'metric' | 'descriptive'
+  className?: string
+}) {
   return (
-    <div className="test-detail-info-box" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'var(--surface-2)', borderRadius: 10, padding: '10px 14px', flex: 1, minWidth: 130 }}>
-      <Icon name={icon} size={16} style={{ color: 'var(--muted)', marginTop: 2, flexShrink: 0 }} />
-      <div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{label}</div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{value}</div>
+    <div className={`test-detail-info-box test-detail-info-box--${variant} ${className}`.trim()}>
+      <div className="test-detail-info-label">
+        <Icon name={icon} size={16} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+        <span>{label}</span>
       </div>
+      <div className="test-detail-info-value">{value}</div>
     </div>
   )
 }
@@ -47,6 +60,62 @@ export function TestDetailCard({ test, category }: Props) {
           animation: contactStaffPulse 2s ease-out infinite, contactStaffShimmer 3s ease-in-out infinite;
           cursor: default;
         }
+        .test-detail-info-grid {
+          display: grid !important;
+          grid-template-columns: minmax(0, 1.35fr) minmax(112px, .8fr) minmax(112px, .8fr) minmax(0, 1.2fr);
+          gap: 10px;
+        }
+        .test-detail-info-box {
+          min-width: 0;
+          padding: 14px;
+          border-radius: 12px;
+          background: var(--surface-2);
+        }
+        .test-detail-info-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--muted);
+          font-size: 12px;
+        }
+        .test-detail-info-value {
+          min-width: 0;
+          margin-top: 8px;
+          color: var(--ink);
+          font-size: 14px;
+          font-weight: 600;
+          line-height: 1.45;
+          overflow-wrap: anywhere;
+        }
+        .test-detail-info-box--metric {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 96px;
+          text-align: center;
+        }
+        .test-detail-info-box--descriptive {
+          text-align: left;
+        }
+        .test-detail-specimen-value {
+          display: flex;
+          align-items: flex-start;
+          gap: 6px;
+          min-width: 0;
+        }
+        .test-detail-specimen-text {
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+        @media (max-width: 1100px) {
+          .test-detail-info-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .test-detail-info-box--wide {
+            grid-column: 1 / -1;
+          }
+        }
         @media (max-width: 767px) {
           .test-detail-badge-row {
             margin-bottom: 12px !important;
@@ -79,6 +148,9 @@ export function TestDetailCard({ test, category }: Props) {
             flex: none !important;
             border-radius: 12px !important;
             padding: 12px 14px !important;
+          }
+          .test-detail-info-box--wide {
+            grid-column: auto;
           }
         }
       `}</style>
@@ -116,28 +188,29 @@ export function TestDetailCard({ test, category }: Props) {
           <div className="test-detail-price" style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>ราคา</div>
             <div className="test-detail-price-value" style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>฿{test.price}</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>TAT {tatDisplay}</div>
           </div>
         )}
       </div>
 
       {/* Info boxes */}
-      <div className="test-detail-info-grid" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div className="test-detail-info-grid">
         {test.tube && (
-          <div className="test-detail-info-box" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'var(--surface-2)', borderRadius: 10, padding: '10px 14px', flex: 1, minWidth: 130 }}>
-            <Icon name="flask" size={16} style={{ color: 'var(--muted)', marginTop: 2, flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>Specimen</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
+          <InfoBox
+            icon="flask"
+            label="Specimen"
+            variant="descriptive"
+            className="test-detail-info-box--wide"
+            value={
+              <span className="test-detail-specimen-value">
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: test.tube_color ?? '#94A3B8', flexShrink: 0, display: 'inline-block' }} />
-                {test.tube}
-              </div>
-            </div>
-          </div>
+                <span className="test-detail-specimen-text">{test.tube}</span>
+              </span>
+            }
+          />
         )}
-        {test.volume && <InfoBox icon="droplet" label="ปริมาตร" value={test.volume} />}
-        <InfoBox icon="clock" label="TAT" value={tatDisplay} />
-        <InfoBox icon="check" label="วัน-เวลาที่ตรวจวิเคราะห์" value={test.available_24hr ? 'ตลอด 24 ชั่วโมง' : (test.service ?? '—')} />
+        {test.volume && <InfoBox icon="droplet" label="ปริมาตร" value={test.volume} variant="metric" />}
+        <InfoBox icon="clock" label="TAT" value={tatDisplay} variant="metric" />
+        <InfoBox icon="check" label="วัน-เวลาที่ตรวจวิเคราะห์" value={test.available_24hr ? 'ตลอด 24 ชั่วโมง' : (test.service ?? '—')} variant="descriptive" className="test-detail-info-box--wide" />
       </div>
     </div>
   )
