@@ -17,7 +17,6 @@ interface AttentionQueueProps {
   staffCompetencyOverdue: number
   staffCompetencyDueSoon: number
   permissions: Permissions
-  qualityTasks: QualityTaskOccurrence[]
 }
 
 function QualityTaskRow({ task }: { task: QualityTaskOccurrence }) {
@@ -58,11 +57,11 @@ function GroupShell({ title, icon, iconColor, href, count, children }: {
 function DocumentRow({ doc }: { doc: PendingApprovalDoc }) {
   const days = daysWaiting(doc.updated_at)
   return (
-    <div style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+    <Link href={`/staff/documents?open=${doc.id}`} className="attention-document-row" aria-label={`เปิดเอกสาร ${doc.document_code}`} style={{ display: 'block', padding: '8px 9px', margin: '0 -9px', borderBottom: '1px solid var(--border)', textDecoration: 'none' }}>
       <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)' }}>{doc.document_code}</div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.title}</div>
       <div style={{ fontSize: 10.5, color: '#B45309', fontWeight: 700, marginTop: 3 }}>รอ {days} วัน</div>
-    </div>
+    </Link>
   )
 }
 
@@ -105,13 +104,14 @@ function ContractRow({ contract }: { contract: ContractWithUsage }) {
   )
 }
 
-function StaffLicenseStatRow({ icon, count, label, color }: { icon: string; count: number; label: string; color: string }) {
+function StaffLicenseStatRow({ icon, count, label, color, href }: { icon: string; count: number; label: string; color: string; href: string }) {
   const active = count > 0
   return (
-    <div style={{
+    <Link href={href} className="attention-personnel-action" aria-label={`ดูรายชื่อ${label}`} style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 9,
       background: active ? `${color}0F` : 'var(--surface-2)',
       border: `1px solid ${active ? `${color}40` : 'var(--border)'}`,
+      textDecoration: 'none', color: 'inherit',
     }}>
       <div style={{
         width: 30, height: 30, borderRadius: 8, flexShrink: 0,
@@ -124,7 +124,7 @@ function StaffLicenseStatRow({ icon, count, label, color }: { icon: string; coun
         <div style={{ fontSize: 18, fontWeight: 800, color: active ? color : 'var(--ink)', lineHeight: 1 }}>{count} คน</div>
         <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>{label}</div>
       </div>
-    </div>
+    </Link>
   )
 }
 
@@ -133,10 +133,16 @@ function StaffLicenseStat({ expired, expiring, competencyOverdue, competencyDueS
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <StaffLicenseStatRow icon="alert" count={expired} label="ใบประกอบวิชาชีพหมดอายุแล้ว" color="#DC2626" />
-      <StaffLicenseStatRow icon="clock" count={expiring} label="ใบประกอบวิชาชีพใกล้หมดอายุ" color="#D97706" />
-      <StaffLicenseStatRow icon="alert" count={competencyOverdue} label="สมรรถนะค้างประเมิน" color="#DC2626" />
-      <StaffLicenseStatRow icon="clock" count={competencyDueSoon} label="สมรรถนะใกล้ครบกำหนดประเมิน" color="#D97706" />
+      <style>{`
+        .attention-personnel-action { cursor: pointer; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+        .attention-personnel-action:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(15, 23, 42, .10); }
+        .attention-personnel-action:focus-visible { outline: 3px solid rgba(30, 95, 173, .42); outline-offset: 2px; }
+        @media (prefers-reduced-motion: reduce) { .attention-personnel-action { transition: none; } .attention-personnel-action:hover { transform: none; } }
+      `}</style>
+      <StaffLicenseStatRow icon="alert" count={expired} label="ใบประกอบวิชาชีพหมดอายุแล้ว" color="#DC2626" href="/staff/personnel?filter=license-expired" />
+      <StaffLicenseStatRow icon="clock" count={expiring} label="ใบประกอบวิชาชีพใกล้หมดอายุ" color="#D97706" href="/staff/personnel?filter=license-expiring" />
+      <StaffLicenseStatRow icon="alert" count={competencyOverdue} label="สมรรถนะค้างประเมิน" color="#DC2626" href="/staff/personnel?filter=comp-overdue" />
+      <StaffLicenseStatRow icon="clock" count={competencyDueSoon} label="สมรรถนะใกล้ครบกำหนดประเมิน" color="#D97706" href="/staff/personnel?filter=comp-due-soon" />
     </div>
   )
 }
@@ -144,29 +150,29 @@ function StaffLicenseStat({ expired, expiring, competencyOverdue, competencyDueS
 export function AttentionQueue({
   pendingDocs, totalPendingDocs, contracts, totalContracts,
   staffLicenseExpired, staffLicenseExpiring, staffCompetencyOverdue, staffCompetencyDueSoon,
-  permissions, qualityTasks,
+  permissions,
 }: AttentionQueueProps) {
   const canSeeDocs = (permissions['เอกสารคุณภาพ'] ?? 'none') !== 'none'
   const canSeeContracts = (permissions['สัญญา'] ?? 'none') !== 'none'
   const canSeeStaff = (permissions['บุคลากร'] ?? 'none') !== 'none'
-  const canSeeQualityTasks = (permissions['งานคุณภาพ'] ?? 'none') !== 'none'
   const staffLicenseTotal = staffLicenseExpired + staffLicenseExpiring + staffCompetencyOverdue + staffCompetencyDueSoon
 
-  if (!canSeeDocs && !canSeeContracts && !canSeeStaff && !canSeeQualityTasks) return null
+  if (!canSeeDocs && !canSeeContracts && !canSeeStaff) return null
 
-  const visibleCount = [canSeeDocs, canSeeContracts, canSeeStaff, canSeeQualityTasks].filter(Boolean).length
+  const visibleCount = [canSeeDocs, canSeeContracts, canSeeStaff].filter(Boolean).length
 
   return (
     <div>
+      <style>{`
+        .attention-document-row { border-radius: 8px; cursor: pointer; transition: background-color .18s ease, box-shadow .18s ease; }
+        .attention-document-row:hover { background: var(--primary-soft); box-shadow: inset 3px 0 0 var(--primary); }
+        .attention-document-row:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 38%, transparent); outline-offset: 2px; }
+        @media (prefers-reduced-motion: reduce) { .attention-document-row { transition: none; } }
+      `}</style>
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)' }}>รอการดำเนินการ</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)' }}>แจ้งเตือนและรายการติดตาม</div>
       </div>
       <div className="dash-attention-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleCount}, 1fr)`, gap: 12 }}>
-        {canSeeQualityTasks && (
-          <GroupShell title="งานคุณภาพ" icon="calendar" iconColor="#0891B2" href="/staff/quality-tasks" count={qualityTasks.length}>
-            {qualityTasks.length > 0 ? qualityTasks.slice(0,3).map(task=><QualityTaskRow key={task.key} task={task}/>) : <Empty text="ไม่มีงานคุณภาพเร่งด่วน" icon="shieldCheck" />}
-          </GroupShell>
-        )}
         {canSeeContracts && (
           <GroupShell title="สัญญาใกล้หมด/งบคงเหลือต่ำ" icon="building" iconColor="#7C3AED" href="/staff/contracts" count={totalContracts}>
             {contracts.length > 0

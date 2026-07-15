@@ -949,16 +949,16 @@ function SkeletonRow() {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 
-interface Props { canEdit: boolean }
+interface Props { canEdit: boolean; initialCreate?: boolean }
 
-export function NewsManageClient({ canEdit }: Props) {
+export function NewsManageClient({ canEdit, initialCreate = false }: Props) {
   const [allNews, setAllNews] = useState<News[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft' | 'new'>('all')
-  const [modalOpen, setModalOpen] = useState(false)
+  const [modalOpen, setModalOpen] = useState(initialCreate && canEdit)
   const [editTarget, setEditTarget] = useState<News | null>(null)
   const [lineTarget, setLineTarget] = useState<News | null>(null)
   const { toasts, add: toast } = useToast()

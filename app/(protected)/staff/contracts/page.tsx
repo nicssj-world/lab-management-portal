@@ -5,7 +5,7 @@ import { getRolePermissions } from '@/lib/permissions'
 import { getContracts } from '@/lib/queries/contracts'
 import { ContractsClient } from './ContractsClient'
 
-export default async function ContractsPage() {
+export default async function ContractsPage({ searchParams }: { searchParams: Promise<{ create?: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: actor } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
@@ -25,6 +25,7 @@ export default async function ContractsPage() {
 
   const lastUpdated = contracts[0]?.created_at ?? null
 
+  const { create } = await searchParams
   return (
     <ContractsClient
       contracts={contracts}
@@ -33,6 +34,7 @@ export default async function ContractsPage() {
       departments={departments}
       currentUserId={user!.id}
       users={usersRes.data ?? []}
+      initialCreate={create === '1'}
     />
   )
 }

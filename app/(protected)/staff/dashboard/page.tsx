@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getContracts } from '@/lib/queries/contracts'
-import { getRolePermissions } from '@/lib/permissions'
+import { getRolePermissions, type Permissions } from '@/lib/permissions'
 import { getPendingApprovalDocuments } from '@/lib/documents/pending'
 import { sortByOldestUpdated, sortContractsByUrgency, monthsLeftUntil, isContractExpiring } from '@/lib/dashboard/attention-queue'
 import { expiryStatus } from '@/lib/personnel/expiry'
@@ -11,6 +11,9 @@ import { AttentionQueue } from '@/components/dashboard/AttentionQueue'
 import { AnalyticsTabs } from '@/components/dashboard/AnalyticsTabs'
 import Link from 'next/link'
 import { getQualityTaskOccurrences } from '@/lib/quality-tasks/server'
+import type { QualityTaskOccurrence } from '@/lib/quality-tasks/types'
+import { getEntryStatus } from '@/lib/queries/kpi'
+import { getPreviousThaiFiscalMonth } from '@/lib/kpi-utils'
 import type { PermLevel } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
@@ -50,6 +53,11 @@ function actionDotColor(action: string | null): string {
   return '#64748B' // gray — อื่นๆ
 }
 
+function qualityScheduleTitle(task: QualityTaskOccurrence): string {
+  const occurrenceTitle = task.scheduleId === null ? task.periodLabel.trim() : ''
+  return occurrenceTitle || task.template.title.trim() || task.template.categoryName.trim()
+}
+
 export default async function StaffDashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -61,8 +69,6 @@ export default async function StaffDashboardPage() {
   const now = new Date()
   const year  = now.getFullYear()
   const month = now.getMonth() + 1
-  const curMonthLabel = now.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
-
   // เดือนที่แล้ว
   const prevMonth = month === 1 ? 12 : month - 1
   const prevYear  = month === 1 ? year - 1 : year
@@ -77,15 +83,8 @@ export default async function StaffDashboardPage() {
     ? `${prevYear + 1}-01-01T00:00:00`
     : `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-01T00:00:00`
 
-  // เดือนปัจจุบัน (สำหรับการ์ดระดับความรุนแรง RM)
-  const curMonthStart = `${year}-${String(month).padStart(2, '0')}-01`
-  const curNextMonthStart = month === 12
-    ? `${year + 1}-01-01`
-    : `${year}-${String(month + 1).padStart(2, '0')}-01`
-
   const [
     contracts,
-    riskSeverityMonthResult,
     testActiveResult,
     testTotalResult,
     staffTotalResult,
@@ -95,16 +94,9 @@ export default async function StaffDashboardPage() {
     docTotalResult,
     docPublishedResult,
     docNewResult,
-    docReviewResult,
-    docDraftResult,
-    docObsoleteResult,
     auditLogResult,
   ] = await Promise.all([
     getContracts(supabaseAdmin),
-    supabaseAdmin.from('risks')
-      .select('severity_level')
-      .gte('event_date', curMonthStart)
-      .lt('event_date', curNextMonthStart),
     supabaseAdmin.from('tests').select('*', { count: 'exact', head: true }).eq('active', true),
     supabaseAdmin.from('tests').select('*', { count: 'exact', head: true }),
     supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).is('deleted_at', null),
@@ -114,9 +106,6 @@ export default async function StaffDashboardPage() {
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null),
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Published'),
     supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).gte('created_at', prevMonthStart).lt('created_at', nextMonthStart),
-    supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Review'),
-    supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Draft'),
-    supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'Obsolete'),
     supabaseAdmin
       .from('audit_log')
       .select('id, action, target, detail, created_at, user_id')
@@ -133,7 +122,33 @@ export default async function StaffDashboardPage() {
   const qualityYear = Number(qualityToday.slice(0, 4)); const qualityMonth = Number(qualityToday.slice(5, 7))
   const qualityFiscalStart = `${qualityMonth >= 10 ? qualityYear : qualityYear - 1}-10-01`
   const qualityFiscalEnd = `${qualityMonth >= 10 ? qualityYear + 1 : qualityYear}-09-30`
-  const qualityTasks = qualityLevel === 'none' || !user ? [] : (await getQualityTaskOccurrences({ from: qualityFiscalStart, to: qualityFiscalEnd, actorId: user.id, level: qualityLevel, scope: qualityLevel === 'edit' ? 'all' : 'mine' })).filter(t => t.urgency === 'due-soon' || t.urgency === 'overdue')
+  const qualityOccurrences = qualityLevel === 'none' || !user ? [] : await getQualityTaskOccurrences({ from: qualityFiscalStart, to: qualityFiscalEnd, actorId: user.id, level: qualityLevel, scope: 'all' })
+  const qualityTasks = qualityOccurrences.filter(t => t.urgency === 'due-soon' || t.urgency === 'overdue')
+  const qualityHorizon = new Date(`${qualityToday}T00:00:00+07:00`)
+  qualityHorizon.setDate(qualityHorizon.getDate() + 7)
+  const qualityHorizonDate = qualityHorizon.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+  const qualityUpcoming = qualityOccurrences
+    .filter(t => t.effectiveDueDate >= qualityToday && t.effectiveDueDate <= qualityHorizonDate)
+    .slice(0, 5)
+
+  const canSeeKpi = (permissions['KPI'] ?? 'none') !== 'none'
+  const kpiPeriod = getPreviousThaiFiscalMonth(new Date(`${qualityToday}T12:00:00+07:00`))
+  const kpiStatusRows = canSeeKpi ? await getEntryStatus(supabaseAdmin, kpiPeriod.fiscalYear) : []
+  const kpiDepartments = kpiStatusRows.filter(row => row.months[kpiPeriod.month]?.required > 0)
+  const kpiRequired = kpiDepartments.reduce((sum, row) => sum + row.months[kpiPeriod.month].required, 0)
+  const kpiFilled = kpiDepartments.reduce((sum, row) => sum + Math.min(row.months[kpiPeriod.month].filled, row.months[kpiPeriod.month].required), 0)
+  const kpiCompletion = kpiRequired > 0 ? Math.round((kpiFilled / kpiRequired) * 100) : 100
+  const kpiCompleteDepartments = kpiDepartments.filter(row => row.months[kpiPeriod.month].filled >= row.months[kpiPeriod.month].required).length
+  const kpiIncompleteDepartments = kpiDepartments
+    .filter(row => row.months[kpiPeriod.month].filled < row.months[kpiPeriod.month].required)
+    .sort((a, b) => {
+      const aMonth = a.months[kpiPeriod.month]; const bMonth = b.months[kpiPeriod.month]
+      return (aMonth.filled / aMonth.required) - (bMonth.filled / bMonth.required)
+    })
+  const kpiDeadline = `${qualityYear}-${String(qualityMonth).padStart(2, '0')}-15`
+  const kpiDaysRemaining = Math.round((Date.parse(`${kpiDeadline}T00:00:00+07:00`) - Date.parse(`${qualityToday}T00:00:00+07:00`)) / 86_400_000)
+  const kpiPeriodLabel = new Date(kpiPeriod.year, kpiPeriod.month - 1, 1).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
+  const kpiDeadlineLabel = new Date(`${kpiDeadline}T00:00:00+07:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
 
   let staffLicenseExpired = 0
   let staffLicenseExpiring = 0
@@ -151,19 +166,6 @@ export default async function StaffDashboardPage() {
     else if (status === 'expiring') staffCompetencyDueSoon++
   }
 
-  const SEVERITY_LEVELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'] as const
-  // Same palette as the Risk Register's own "ระดับความรุนแรง (RM)" panel (components/risk/RiskClient.tsx)
-  const SEVERITY_COLORS: Record<string, string> = {
-    A: '#EF4444', B: '#F59E0B', C: '#3B82F6', D: '#10B981', E: '#8B5CF6',
-    F: '#EC4899', G: '#64748B', H: '#475569', I: '#111827',
-  }
-  const riskSeverityCounts: Record<string, number> = Object.fromEntries(SEVERITY_LEVELS.map(l => [l, 0]))
-  for (const row of (riskSeverityMonthResult.data ?? []) as { severity_level: string | null }[]) {
-    const lvl = row.severity_level?.trim().toUpperCase()
-    if (lvl && lvl in riskSeverityCounts) riskSeverityCounts[lvl]++
-  }
-  const maxSeverityCount = Math.max(1, ...Object.values(riskSeverityCounts))
-
   const testCount    = testActiveResult.count ?? 0
   const testTotal    = testTotalResult.count ?? 0
   const staffTotal   = staffTotalResult.count ?? 0
@@ -171,9 +173,6 @@ export default async function StaffDashboardPage() {
   const docTotal     = docTotalResult.count ?? 0
   const docPublished = docPublishedResult.count ?? 0
   const docNew       = docNewResult.count ?? 0
-  const docReview    = docReviewResult.count ?? 0
-  const docDraft     = docDraftResult.count ?? 0
-  const docObsolete  = docObsoleteResult.count ?? 0
 
   const auditLogs: AuditEntry[] = (auditLogResult.data ?? []) as AuditEntry[]
   const profileMap: Record<string, string> = {}
@@ -245,6 +244,14 @@ export default async function StaffDashboardPage() {
         .activity-timeline::before{content:'';position:absolute;left:3px;top:18px;bottom:18px;width:1px;background:var(--border);z-index:0}
         .more-link{display:block;text-align:center;font-size:12px;font-weight:600;color:var(--muted);padding:9px 0;border-radius:8px;background:var(--surface-2);transition:all .15s;text-decoration:none}
         .more-link:hover{background:var(--primary-soft);color:var(--primary)}
+        .priority-grid{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,6fr);gap:16px}
+        .priority-card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:0 6px 24px rgba(15,23,42,.05)}
+        .priority-link{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:0 12px;border-radius:9px;text-decoration:none;font-size:12px;font-weight:800;transition:background-color .18s,color .18s,border-color .18s}
+        .priority-link--primary:hover{background:#166534;box-shadow:0 6px 14px rgba(21,128,61,.22)}
+        .priority-link--secondary:hover{background:var(--primary-soft);border-color:color-mix(in srgb,var(--primary) 30%,var(--border))!important;color:var(--primary)!important}
+        .priority-link:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 38%,transparent);outline-offset:2px}
+        .schedule-row{transition:background-color .18s,border-color .18s}
+        .schedule-row:hover{background:var(--primary-soft)!important;border-color:color-mix(in srgb,var(--primary) 25%,var(--border))!important}
         @keyframes dashFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         .dash-fade{animation:dashFadeUp .5s cubic-bezier(.22,1,.36,1) backwards}
         @media (prefers-reduced-motion: reduce){.dash-fade{animation:none}}
@@ -252,6 +259,7 @@ export default async function StaffDashboardPage() {
           .dash-kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important}
           .dash-attention-grid{grid-template-columns:repeat(2,1fr)!important}
           .dash-main-grid{grid-template-columns:1fr!important;align-items:start!important}
+          .priority-grid{grid-template-columns:1fr!important}
           .dash-hero{padding:16px 18px!important}
           .dash-hero .ops-title{font-size:20px!important}
           .dash-hero .live-label{font-size:9px!important}
@@ -318,6 +326,26 @@ export default async function StaffDashboardPage() {
           />
         </div>
 
+        <OperationalFocus
+          showKpi={canSeeKpi}
+          kpiPeriodLabel={kpiPeriodLabel}
+          kpiDeadlineLabel={kpiDeadlineLabel}
+          kpiDaysRemaining={kpiDaysRemaining}
+          kpiCompletion={kpiCompletion}
+          kpiFilled={kpiFilled}
+          kpiRequired={kpiRequired}
+          kpiCompleteDepartments={kpiCompleteDepartments}
+          kpiDepartmentCount={kpiDepartments.length}
+          kpiIncompleteDepartments={kpiIncompleteDepartments.map(row => ({
+            name: row.dept_name,
+            filled: row.months[kpiPeriod.month].filled,
+            required: row.months[kpiPeriod.month].required,
+          }))}
+          showQuality={qualityLevel !== 'none'}
+          qualityUpcoming={qualityUpcoming}
+          qualityUrgent={qualityTasks.slice(0, 3)}
+        />
+
         {/* ══ ATTENTION QUEUE ══ */}
         <div className="dash-fade" style={{ animationDelay: '.22s' }}>
           <AttentionQueue
@@ -330,12 +358,11 @@ export default async function StaffDashboardPage() {
             staffCompetencyOverdue={staffCompetencyOverdue}
             staffCompetencyDueSoon={staffCompetencyDueSoon}
             permissions={permissions}
-            qualityTasks={qualityTasks}
           />
         </div>
 
-        {/* ══ ACTIVITY + DOCUMENT STATUS ══ */}
-        <div className="dash-main-grid dash-fade" style={{ display:'grid', gridTemplateColumns:'7fr 3fr', gap:16, alignItems:'stretch', animationDelay:'.26s' }}>
+        {/* ══ RECENT ACTIVITY ══ */}
+        <div className="dash-main-grid dash-fade" style={{ display:'grid', gridTemplateColumns:'minmax(0,2fr) minmax(260px,1fr)', gap:16, alignItems:'stretch', animationDelay:'.26s' }}>
 
           {/* Recent Activity — custom card with timeline */}
           <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', display:'flex', flexDirection:'column' }}>
@@ -373,75 +400,7 @@ export default async function StaffDashboardPage() {
             </div>
           </div>
 
-          {/* Right column — Document status + RM severity, stacked as separate cards */}
-          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-
-            {/* Document status bars */}
-            <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
-              <div style={{ padding:'13px 16px 11px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', gap:10 }}>
-                <div style={{ width:30,height:30,borderRadius:8,background:'rgba(13,148,136,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'#0D9488',flexShrink:0 }}>
-                  <Icon name="doc" size={14} />
-                </div>
-                <div style={{ fontSize:13, fontWeight:800, color:'var(--ink)' }}>เอกสารตามสถานะ</div>
-              </div>
-              <div style={{ padding:'14px 16px' }}>
-                {([
-                  { label:'Published', count:docPublished, color:'#16A34A' },
-                  { label:'Review',    count:docReview,    color:'#1E5FAD' },
-                  { label:'Draft',     count:docDraft,     color:'#D97706' },
-                  { label:'Obsolete',  count:docObsolete,  color:'#DC2626' },
-                ] as const).map(({ label, count, color }) => {
-                  const pct = docTotal > 0 ? (count / docTotal) * 100 : 0
-                  const barWidth = Math.max(pct, count > 0 ? 2 : 0)
-                  return (
-                    <div key={label} style={{ marginBottom:9 }}>
-                      <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
-                        <span style={{ fontSize:12,color:'var(--ink)',fontWeight:600 }}>{label}</span>
-                        <span style={{ fontSize:12,color,fontWeight:700 }}>{count} ฉบับ</span>
-                      </div>
-                      <div style={{ height:4,background:'var(--border)',borderRadius:99,overflow:'hidden' }}>
-                        <div style={{ height:'100%',width:`${barWidth}%`,background:color,borderRadius:99 }} />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* RM severity — separate card */}
-            {(permissions['ความเสี่ยง / Rejection'] ?? 'none') !== 'none' && (
-              <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
-                <div style={{ padding:'13px 16px 11px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', alignItems:'center', gap:10 }}>
-                  <div style={{ width:30,height:30,borderRadius:8,background:'rgba(220,38,38,.14)',display:'flex',alignItems:'center',justifyContent:'center',color:'#DC2626',flexShrink:0 }}>
-                    <Icon name="shield" size={14} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize:13,fontWeight:800,color:'var(--ink)' }}>ระดับความรุนแรง (RM)</div>
-                    <div style={{ fontSize:11,color:'var(--muted)',marginTop:1 }}>{curMonthLabel}</div>
-                  </div>
-                </div>
-                <div style={{ padding:'14px 16px' }}>
-                  <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
-                    {SEVERITY_LEVELS.map(level => {
-                      const count = riskSeverityCounts[level]
-                      const color = SEVERITY_COLORS[level] ?? '#94A3B8'
-                      const pct = Math.round(count / maxSeverityCount * 100)
-                      return (
-                        <div key={level} style={{ display:'flex', alignItems:'center', gap:8 }}>
-                          <div style={{ width:14, color, fontWeight:900, fontSize:11.5 }}>{level}</div>
-                          <div style={{ flex:1, height:8, borderRadius:999, background:'var(--surface-2)', overflow:'hidden' }}>
-                            <div style={{ height:'100%', width:`${pct}%`, background:color, borderRadius:999 }} />
-                          </div>
-                          <div style={{ width:26, textAlign:'right', color:'var(--muted)', fontSize:11 }}>{count}</div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-          </div>
+          <DashboardQuickActions permissions={permissions} />
 
         </div>
 
@@ -456,6 +415,157 @@ export default async function StaffDashboardPage() {
 }
 
 /* ──────────────── COMPONENTS ──────────────── */
+
+function OperationalFocus({
+  showKpi, kpiPeriodLabel, kpiDeadlineLabel, kpiDaysRemaining, kpiCompletion,
+  kpiFilled, kpiRequired, kpiCompleteDepartments, kpiDepartmentCount, kpiIncompleteDepartments,
+  showQuality, qualityUpcoming, qualityUrgent,
+}: {
+  showKpi: boolean
+  kpiPeriodLabel: string
+  kpiDeadlineLabel: string
+  kpiDaysRemaining: number
+  kpiCompletion: number
+  kpiFilled: number
+  kpiRequired: number
+  kpiCompleteDepartments: number
+  kpiDepartmentCount: number
+  kpiIncompleteDepartments: { name: string; filled: number; required: number }[]
+  showQuality: boolean
+  qualityUpcoming: QualityTaskOccurrence[]
+  qualityUrgent: QualityTaskOccurrence[]
+}) {
+  if (!showKpi && !showQuality) return null
+
+  const kpiDone = kpiCompletion >= 100
+  const deadlineColor = kpiDone ? '#15803D' : kpiDaysRemaining < 0 ? '#DC2626' : kpiDaysRemaining <= 3 ? '#D97706' : '#1E5FAD'
+  const deadlineBg = kpiDone ? '#DCFCE7' : kpiDaysRemaining < 0 ? '#FEE2E2' : kpiDaysRemaining <= 3 ? '#FEF3C7' : 'var(--primary-soft)'
+  const deadlineText = kpiDone
+    ? 'บันทึกครบ 100% แล้ว'
+    : kpiDaysRemaining < 0
+      ? `เกินกำหนด ${Math.abs(kpiDaysRemaining)} วัน`
+      : kpiDaysRemaining === 0
+        ? 'ครบกำหนดวันนี้'
+        : `เหลือ ${kpiDaysRemaining} วัน`
+
+  return (
+    <section className="dash-fade" style={{ animationDelay:'.21s' }} aria-labelledby="priority-heading">
+      <div style={{ display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:12,marginBottom:10 }}>
+        <div>
+          <h2 id="priority-heading" style={{ margin:0,fontSize:16,fontWeight:850,color:'var(--ink)' }}>สิ่งที่ต้องทำ</h2>
+          <p style={{ margin:'3px 0 0',fontSize:11.5,color:'var(--muted)' }}>ติดตามการบันทึก KPI และกำหนดการงานคุณภาพจากข้อมูลล่าสุด</p>
+        </div>
+      </div>
+      <div className="priority-grid" style={{ gridTemplateColumns:showKpi&&showQuality?undefined:'1fr' }}>
+        {showKpi && (
+          <article className="priority-card" style={{ borderTop:`3px solid ${deadlineColor}`,display:'flex',flexDirection:'column',height:470,minHeight:470 }}>
+            <div style={{ padding:'16px 18px 14px',borderBottom:'1px solid var(--border)',background:'var(--surface-2)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12 }}>
+              <div style={{ display:'flex',alignItems:'center',gap:10,minWidth:0 }}>
+                <span style={{ width:34,height:34,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(22,163,74,.12)',color:'#15803D',flexShrink:0 }}><Icon name="chart" size={17}/></span>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:13.5,fontWeight:850,color:'var(--ink)' }}>บันทึก KPI · {kpiPeriodLabel}</div>
+                  <div style={{ marginTop:2,fontSize:11,color:'var(--muted)' }}>กำหนดส่งไม่เกิน {kpiDeadlineLabel}</div>
+                </div>
+              </div>
+              <span style={{ flexShrink:0,padding:'5px 9px',borderRadius:999,background:deadlineBg,color:deadlineColor,fontSize:10.5,fontWeight:850 }}>{deadlineText}</span>
+            </div>
+            <div style={{ padding:'17px 18px 18px',display:'flex',flexDirection:'column',flex:1 }}>
+              <div style={{ display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:12 }}>
+                <div>
+                  <div className="dmono" style={{ fontSize:34,fontWeight:800,lineHeight:1,color:deadlineColor }}>{kpiCompletion}%</div>
+                  <div style={{ marginTop:5,fontSize:11.5,color:'var(--muted)' }}>ครบ {kpiFilled}/{kpiRequired} รายการ</div>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <div style={{ fontSize:18,fontWeight:850,color:'var(--ink)' }}>{kpiCompleteDepartments}/{kpiDepartmentCount}</div>
+                  <div style={{ fontSize:10.5,color:'var(--muted)' }}>หน่วยงานบันทึกครบ</div>
+                </div>
+              </div>
+              <div role="progressbar" aria-label="ความครบถ้วนการบันทึก KPI" aria-valuemin={0} aria-valuemax={100} aria-valuenow={kpiCompletion} style={{ height:9,marginTop:13,borderRadius:999,overflow:'hidden',background:'var(--surface-2)' }}>
+                <div style={{ width:`${Math.min(100,kpiCompletion)}%`,height:'100%',borderRadius:999,background:deadlineColor,transition:'width .3s ease' }}/>
+              </div>
+              {kpiIncompleteDepartments.length > 0 && (
+                <div style={{ marginTop:15,padding:'11px 12px',border:'1px solid var(--border)',borderRadius:10,background:'var(--surface-2)' }}>
+                  <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:9 }}>
+                    <div style={{ fontSize:10.5,fontWeight:850,color:'var(--muted)' }}>ความครบถ้วนรายหน่วยงาน</div>
+                    <div style={{ fontSize:10.5,fontWeight:800,color:deadlineColor }}>เหลือ {kpiRequired-kpiFilled} รายการ</div>
+                  </div>
+                  <div style={{ display:'grid',gap:9,maxHeight:172,overflowY:'auto',paddingRight:4 }}>
+                    {kpiIncompleteDepartments.map(dept=>{const percent=Math.round((dept.filled/dept.required)*100);return <div key={dept.name}><div style={{ display:'flex',justifyContent:'space-between',gap:10,marginBottom:4,fontSize:10.5 }}><span style={{ minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:700,color:'var(--ink)' }}>{dept.name}</span><span style={{ flexShrink:0,color:'var(--muted)' }}>{dept.filled}/{dept.required} · {percent}%</span></div><div role="progressbar" aria-label={`ความครบถ้วน ${dept.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} style={{ height:5,borderRadius:99,overflow:'hidden',background:'var(--border)' }}><div style={{ width:`${percent}%`,height:'100%',borderRadius:99,background:deadlineColor }}/></div></div>})}
+                  </div>
+                </div>
+              )}
+              <div style={{ display:'flex',gap:8,marginTop:'auto',paddingTop:16 }}>
+                <Link href="/kpi/input" className="priority-link priority-link--primary" style={{ background:'#15803D',color:'#fff' }}><Icon name="edit" size={14}/>บันทึก KPI</Link>
+                <Link href="/kpi/dashboard" className="priority-link priority-link--secondary" style={{ border:'1px solid var(--border)',color:'var(--ink)',background:'var(--card)' }}>ดูภาพรวม</Link>
+              </div>
+            </div>
+          </article>
+        )}
+
+        {showQuality && (
+          <article className="priority-card" style={{ borderTop:'3px solid #0891B2' }}>
+            <div style={{ padding:'16px 18px 14px',borderBottom:'1px solid var(--border)',background:'var(--surface-2)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12 }}>
+              <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+                <span style={{ width:34,height:34,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(8,145,178,.12)',color:'#0891B2',flexShrink:0 }}><Icon name="calendar" size={17}/></span>
+                <div>
+                  <div style={{ fontSize:13.5,fontWeight:850,color:'var(--ink)' }}>งานคุณภาพที่ต้องติดตาม</div>
+                  <div style={{ marginTop:2,fontSize:11,color:'var(--muted)' }}>งานเร่งด่วนและกำหนดการ 7 วันข้างหน้า</div>
+                </div>
+              </div>
+              {qualityUrgent.length>0&&<span style={{ flexShrink:0,padding:'5px 9px',borderRadius:999,background:qualityUrgent.some(task=>task.urgency==='overdue')?'#FEE2E2':'#FEF3C7',color:qualityUrgent.some(task=>task.urgency==='overdue')?'#DC2626':'#B45309',fontSize:10.5,fontWeight:850 }}>{qualityUrgent.length} งานต้องติดตาม</span>}
+            </div>
+            <div style={{ padding:'12px 14px 14px' }}>
+              {qualityUrgent.length>0&&<div style={{ display:'grid',gap:6,marginBottom:12 }}><div style={{ fontSize:10.5,fontWeight:850,color:'var(--muted)' }}>เร่งด่วน</div>{qualityUrgent.map(task=><Link key={task.key} href="/staff/quality-tasks" className="schedule-row" style={{ display:'grid',gridTemplateColumns:'6px minmax(0,1fr) auto',alignItems:'center',gap:8,padding:'7px 9px',border:'1px solid var(--border)',borderRadius:9,background:task.urgency==='overdue'?'#FFF7F7':'#FFFBEB',textDecoration:'none' }}><span style={{ width:6,height:28,borderRadius:99,background:task.urgency==='overdue'?'#DC2626':'#D97706' }}/><span style={{ minWidth:0 }}><span style={{ display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11.5,fontWeight:800,color:'var(--ink)' }}>{task.template.title}</span><span style={{ display:'block',marginTop:2,fontSize:10,color:task.urgency==='overdue'?'#B91C1C':'#B45309',fontWeight:700 }}>{task.urgency==='overdue'?'เกินกำหนด':'ใกล้กำหนด'} · {new Date(`${task.effectiveDueDate}T00:00:00+07:00`).toLocaleDateString('th-TH',{day:'numeric',month:'short',timeZone:'Asia/Bangkok'})}</span></span><Icon name="chevRight" size={13} style={{ color:'var(--muted)' }}/></Link>)}</div>}
+              {qualityUrgent.length > 0 && (
+                <div style={{ height:1,background:'var(--border)',margin:'2px 0 10px' }}/>
+              )}
+              <div style={{ fontSize:10.5,fontWeight:850,color:'var(--muted)',marginBottom:7 }}>กำหนดการ 7 วันข้างหน้า</div>
+              {qualityUpcoming.length > 0 ? (
+                <div style={{ display:'grid',gap:7 }}>
+                  {qualityUpcoming.map(task => {
+                    const taskDate = new Date(`${task.effectiveDueDate}T00:00:00+07:00`)
+                    const scheduleTitle = qualityScheduleTitle(task)
+                    return <Link key={task.key} href="/staff/quality-tasks" className="schedule-row" style={{ display:'grid',gridTemplateColumns:'46px minmax(0,1fr) auto',alignItems:'center',gap:10,padding:'9px 10px',border:'1px solid var(--border)',borderRadius:10,background:'var(--card)',textDecoration:'none' }}>
+                      <span style={{ height:42,borderRadius:9,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'var(--primary-soft)',color:'#0E7490' }}><b className="dmono" style={{ fontSize:15,lineHeight:1 }}>{taskDate.toLocaleDateString('th-TH',{day:'numeric',timeZone:'Asia/Bangkok'})}</b><small style={{ fontSize:9.5,marginTop:3 }}>{taskDate.toLocaleDateString('th-TH',{month:'short',timeZone:'Asia/Bangkok'})}</small></span>
+                      <span style={{ minWidth:0 }}><span style={{ display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12.5,fontWeight:800,color:'var(--ink)' }}>{scheduleTitle}</span><span style={{ display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2,fontSize:10.5,color:'var(--muted)' }}>{task.template.ownerText}</span></span>
+                      <Icon name="chevRight" size={14} style={{ color:'var(--muted)' }}/>
+                    </Link>
+                  })}
+                </div>
+              ) : <div style={{ minHeight:150,display:'flex',alignItems:'center',justifyContent:'center' }}><Empty text="ไม่มีกำหนดการใน 7 วันข้างหน้า" icon="calendar" /></div>}
+              <Link href="/staff/quality-tasks" className="priority-link" style={{ width:'100%',marginTop:10,border:'1px solid var(--border)',color:'#0E7490',background:'var(--surface-2)' }}>ดูปฏิทินทั้งหมด <Icon name="arrowRight" size={14}/></Link>
+            </div>
+          </article>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function DashboardQuickActions({ permissions }: { permissions: Permissions }) {
+  const actions = [
+    ...((permissions['เอกสารคุณภาพ'] ?? 'none') !== 'none' ? [{ href:'/staff/documents/categories', icon:'doc', title:'เอกสารคุณภาพ', detail:'จัดการหมวดหมู่เอกสารคุณภาพ', color:'#0D9488' }] : []),
+    ...((permissions['งานคุณภาพ'] ?? 'none') === 'edit' ? [{ href:'/staff/quality-tasks?create=1', icon:'calendar', title:'สร้างงานเฉพาะกิจ', detail:'เพิ่มงานคุณภาพนอกแผน', color:'#0891B2' }] : []),
+    ...((permissions['เอกสารคุณภาพ'] ?? 'none') === 'edit' ? [{ href:'/staff/documents?create=1', icon:'doc', title:'สร้าง Draft เอกสาร', detail:'เริ่มจัดทำเอกสารฉบับใหม่', color:'#0D9488' }] : []),
+    ...((permissions['ข่าวสาร'] ?? 'none') === 'edit' ? [{ href:'/staff/news?create=1', icon:'bell', title:'สร้างข่าวใหม่', detail:'ประกาศข่าวสารภายในหน่วยงาน', color:'#4338CA' }] : []),
+    ...((permissions['รายการตรวจ'] ?? 'none') === 'edit' ? [{ href:'/staff/tests/new', icon:'plus', title:'เพิ่มรายการตรวจ', detail:'สร้างรายการตรวจวิเคราะห์ใหม่', color:'#EA580C' }] : []),
+    ...((permissions['ทะเบียนเครื่องมือ'] ?? 'none') === 'edit' ? [{ href:'/staff/equipment?create=1', icon:'microscope', title:'เพิ่มเครื่องมือ', detail:'ลงทะเบียนเครื่องมือใหม่', color:'#7C3AED' }] : []),
+    ...((permissions['สัญญา'] ?? 'none') === 'edit' ? [{ href:'/staff/contracts?create=1', icon:'building', title:'เพิ่มสัญญาใหม่', detail:'บันทึกข้อมูลสัญญาและงบประมาณ', color:'#7C3AED' }] : []),
+  ]
+  return <aside style={{ background:'var(--card)',border:'1px solid var(--border)',borderRadius:14,overflow:'hidden',display:'flex',flexDirection:'column' }} aria-label="ทางลัด">
+    <div style={{ padding:'14px 16px 12px',borderBottom:'1px solid var(--border)',background:'var(--surface-2)',display:'flex',alignItems:'center',gap:10 }}>
+      <span style={{ width:30,height:30,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(124,58,237,.12)',color:'#7C3AED' }}><Icon name="dash" size={15}/></span>
+      <div><div style={{ fontSize:13,fontWeight:850,color:'var(--ink)' }}>ทางลัด</div><div style={{ marginTop:1,fontSize:10.5,color:'var(--muted)' }}>ไปยังงานที่ใช้บ่อย</div></div>
+    </div>
+    <nav style={{ display:'grid',gap:8,padding:12 }}>
+      {actions.map(action=><Link key={action.href} href={action.href} className="schedule-row" style={{ display:'flex',alignItems:'center',gap:10,padding:'10px',border:'1px solid var(--border)',borderRadius:10,background:'var(--card)',textDecoration:'none' }}>
+        <span style={{ width:32,height:32,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',background:`${action.color}18`,color:action.color,flexShrink:0 }}><Icon name={action.icon} size={15}/></span>
+        <span style={{ minWidth:0,flex:1 }}><span style={{ display:'block',fontSize:12,fontWeight:800,color:'var(--ink)' }}>{action.title}</span><span style={{ display:'block',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:10.5,color:'var(--muted)' }}>{action.detail}</span></span>
+        <Icon name="chevRight" size={14} style={{ color:'var(--muted)' }}/>
+      </Link>)}
+    </nav>
+  </aside>
+}
 
 function KpiCard({ icon, label, value, sub, accent, warn = false, change, changeDir, barPct, barLabel, barValue, delay = 0 }: {
   icon: string; label: string; value: string; sub: string; accent: string; warn?: boolean
@@ -549,9 +659,20 @@ const ACTION_LABELS: Record<string, string> = {
   'rejection.create':                             'บันทึก Rejection',
   // KPI
   'kpi.entry':                                    'บันทึก KPI',
+  'kpi.settings':                                 'ตั้งค่ารายการ KPI',
   // งานคุณภาพ
   'quality_task.attachment.upload':               'อัปโหลดไฟล์แนบงานคุณภาพ',
   'quality_task.attachment.delete':               'ลบไฟล์แนบงานคุณภาพ',
+  'quality_task.instance.create':                 'สร้างงานเฉพาะกิจ (งานคุณภาพ)',
+  'quality_task.instance.materialize':             'ระบบสร้างงานตามรอบ (งานคุณภาพ)',
+  'quality_task.instance.schedule':                'กำหนดวัน/แก้ไขรายละเอียด (งานคุณภาพ)',
+  'quality_task.instance.complete':                'ทำงานคุณภาพเสร็จ',
+  'quality_task.instance.reopen':                  'เปิดงานคุณภาพใหม่',
+  'quality_task.instance.cancel':                  'ยกเลิกรอบงานคุณภาพ',
+  'quality_task.instance.delete':                  'ลบงานคุณภาพเฉพาะกิจ',
+  'quality_task.template.create':                 'เพิ่มกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
+  'quality_task.template.update':                 'แก้ไขกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
+  'quality_task.template.delete':                  'ลบกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   // ข่าวสาร
   'create_news':                                  'เพิ่มข่าวสาร',
   'update_news':                                  'แก้ไขข่าวสาร',

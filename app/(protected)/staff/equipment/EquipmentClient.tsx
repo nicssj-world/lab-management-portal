@@ -2090,6 +2090,7 @@ export default function EquipmentClient({
   initialSummaryCounts,
   canEdit,
   lastUpdated,
+  initialCreate = false,
 }: {
   initialData: Equipment[]
   initialTotal: number
@@ -2100,6 +2101,7 @@ export default function EquipmentClient({
   initialSummaryCounts: EquipmentSummaryCounts
   canEdit: boolean
   lastUpdated: string | null
+  initialCreate?: boolean
 }) {
   const [items, setItems] = useState<Equipment[]>(initialData)
   const [total, setTotal] = useState(initialTotal)
@@ -2127,7 +2129,7 @@ export default function EquipmentClient({
   const [responsibleUsers, setResponsibleUsers] = useState<ResponsibleUser[]>([])
 
   const [view, setView] = useState<'list' | 'dashboard' | 'calplan'>('list')
-  const [addModal, setAddModal] = useState(false)
+  const [addModal, setAddModal] = useState(initialCreate && canEdit)
   const [editItem, setEditItem] = useState<Equipment | null>(null)
   const [deleteItem, setDeleteItem] = useState<Equipment | null>(null)
   const [importModal, setImportModal] = useState(false)

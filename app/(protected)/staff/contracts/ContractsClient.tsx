@@ -156,6 +156,7 @@ interface Props {
   departments: string[]
   currentUserId: string
   users: UserRow[]
+  initialCreate?: boolean
 }
 
 // ── business logic helpers ──────────────────────────────────────────────────
@@ -376,9 +377,9 @@ function ResponsibleUserPicker({ users, selected, onChange }: {
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export function ContractsClient({ contracts: initial, canEdit, lastUpdated, departments, currentUserId, users }: Props) {
+export function ContractsClient({ contracts: initial, canEdit, lastUpdated, departments, currentUserId, users, initialCreate = false }: Props) {
   const [contracts, setContracts] = useState<ContractWithUsage[]>(initial)
-  const [editModal, setEditModal] = useState<ContractWithUsage | null | 'new'>(null)
+  const [editModal, setEditModal] = useState<ContractWithUsage | null | 'new'>(initialCreate && canEdit ? 'new' : null)
   const [usageModal, setUsageModal] = useState<ContractWithUsage | null>(null)
   const [historyModal, setHistoryModal] = useState<{ contract: ContractWithUsage; history: ContractUsage[] } | null>(null)
   const [form, setForm] = useState(emptyForm())

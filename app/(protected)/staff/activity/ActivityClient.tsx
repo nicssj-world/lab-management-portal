@@ -33,6 +33,7 @@ const ACTION_LABELS: Record<string, string> = {
   'document.edit':                                'แก้ไขเอกสาร',
   'document.delete':                              'ลบเอกสาร',
   'document.status_change':                       'เปลี่ยนสถานะเอกสาร',
+  'document.download':                            'ดาวน์โหลดเอกสาร',
   'document.current_revision_rollback':           'ย้อนกลับเวอร์ชันเอกสาร',
   // เอกสาร — working revision workflow
   'document.revision_draft_create':               'สร้าง Working Revision',
@@ -68,6 +69,7 @@ const ACTION_LABELS: Record<string, string> = {
   'rejection.create':                             'บันทึก Rejection',
   // KPI
   'kpi.entry':                                    'บันทึก KPI',
+  'kpi.settings':                                 'ตั้งค่ารายการ KPI',
   // งานคุณภาพ
   'quality_task.attachment.upload':               'อัปโหลดไฟล์แนบงานคุณภาพ',
   'quality_task.attachment.delete':               'ลบไฟล์แนบงานคุณภาพ',
@@ -76,6 +78,8 @@ const ACTION_LABELS: Record<string, string> = {
   'quality_task.instance.schedule':                'กำหนดวัน/แก้ไขรายละเอียด (งานคุณภาพ)',
   'quality_task.instance.complete':                'ทำงานคุณภาพเสร็จ',
   'quality_task.instance.reopen':                  'เปิดงานคุณภาพใหม่',
+  'quality_task.instance.cancel':                  'ยกเลิกรอบงานคุณภาพ',
+  'quality_task.instance.delete':                  'ลบงานคุณภาพเฉพาะกิจ',
   'quality_task.template.create':                 'เพิ่มกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   'quality_task.template.update':                 'แก้ไขกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   'quality_task.template.delete':                  'ลบกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
@@ -115,6 +119,8 @@ const ACTION_LABELS: Record<string, string> = {
   'document_profile.signature_delete':            'ลบลายเซ็น',
   'document_profile.signature_delete_self':       'ลบลายเซ็น (ตัวเอง)',
   // ระบบ
+  'user.update':                                  'อัปเดตผู้ใช้',
+  'user.create':                                  'เพิ่มผู้ใช้',
   'manual_edit':                                  'แก้ไขคู่มือ',
   'permission.update':                            'แก้ไขสิทธิ์ผู้ใช้',
   'settings.update':                              'แก้ไขการตั้งค่าระบบ',

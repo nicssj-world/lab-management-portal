@@ -70,7 +70,7 @@ export interface QualityTaskOccurrence {
   assignees: AssigneeEntry[]
   participantDepts: string[]
   participantUserIds: string[]
-  participants: { id: string; name: string; documentPosition: string | null }[]
+  participants: { id: string; name: string; positionTitle: string | null }[]
   attachments: QualityTaskAttachment[]
   scheduling: TaskSchedulingState
   urgency: TaskUrgency
@@ -79,7 +79,7 @@ export interface QualityTaskOccurrence {
 
 export type OccurrenceCreatePayload =
   | { mode: 'scheduled'; scheduleId: string; periodStart: string }
-  | { mode: 'adHoc'; templateId: string; label: string; dueDate: string; assignees: AssigneeEntry[] }
+  | { mode: 'adHoc'; templateId: string; label: string; startDate: string; endDate: string; assignees: AssigneeEntry[] }
 
 export type OccurrenceActionPayload =
   | { action: 'schedule'; plannedDate: string | null; note?: string | null; assignees?: AssigneeEntry[]; participantDepts?: string[]; participantUserIds?: string[] }
