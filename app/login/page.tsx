@@ -54,7 +54,7 @@ export default function LoginPage() {
       >
         <div style={{ width: '100%', maxWidth: 400 }}>
           {/* Logo row with home button on the right */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 36 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, rowGap: 10, marginBottom: 36 }}>
             <HospitalLogo height={64} preload />
             <Image
               src="/images/cbh-lab-logo-v3.png"
@@ -66,16 +66,16 @@ export default function LoginPage() {
               sizes="64px"
               style={{ width: 64, height: 64, objectFit: 'contain' }}
             />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>กลุ่มงานเทคนิคการแพทย์</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>โรงพยาบาลชลบุรี · CBH Staff</div>
+            <div style={{ flex: '1 1 180px', minWidth: 180, maxWidth: 190 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.4, color: 'var(--ink)' }}>กลุ่มงานเทคนิคการแพทย์</div>
+              <div style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>โรงพยาบาลชลบุรี · CBH Staff</div>
             </div>
             <a
               href="/"
               title="กลับหน้าแรก"
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '7px 12px', borderRadius: 8, flexShrink: 0,
+                padding: '7px 12px', borderRadius: 8, flexShrink: 0, marginLeft: 'auto',
                 border: '1px solid var(--border)', background: 'var(--card)',
                 color: 'var(--primary)', textDecoration: 'none',
                 fontSize: 12, fontWeight: 600,
