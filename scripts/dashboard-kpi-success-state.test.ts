@@ -6,7 +6,7 @@ assert.deepEqual(getKpiCompletionState(20, 20, -1), {
   accent: '#15803D',
   badgeBackground: '#DCFCE7',
   badgeText: 'บันทึกครบ 100% แล้ว',
-  successTitle: 'บันทึก KPI ครบทุกหน่วยงานแล้ว',
+  successTitle: 'บันทึก KPI ครบทุกงานแล้ว',
   successDetail: 'ข้อมูลของงวดนี้พร้อมดูในภาพรวม',
 })
 
