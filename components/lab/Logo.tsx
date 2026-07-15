@@ -29,6 +29,16 @@ export function Logo({ size = 32, showText = true, lang = 'th', variant = 'publi
         preload
         quality={100}
         sizes={`${size}px`}
+        style={{ width: size, height: size, borderRadius: 8, flexShrink: 0, objectFit: 'cover' }}
+      />
+      <Image
+        src="/images/cbh-lab-logo-v3.png"
+        alt="CBH Lab"
+        width={size}
+        height={size}
+        preload
+        quality={100}
+        sizes={`${size}px`}
         style={{ width: size, height: size, borderRadius: 8, flexShrink: 0, objectFit: 'contain' }}
       />
       {showText && (
