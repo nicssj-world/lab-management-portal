@@ -14,7 +14,7 @@ import { getQualityTaskOccurrences } from '@/lib/quality-tasks/server'
 import type { QualityTaskOccurrence } from '@/lib/quality-tasks/types'
 import { getEntryStatus } from '@/lib/queries/kpi'
 import { getPreviousThaiFiscalMonth } from '@/lib/kpi-utils'
-import { getKpiCompletionState } from '@/lib/dashboard/kpi-completion'
+import { getKpiCompletionState, getKpiProgressColor } from '@/lib/dashboard/kpi-completion'
 import type { PermLevel } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
@@ -493,7 +493,7 @@ function OperationalFocus({
                     <div style={{ fontSize:10.5,fontWeight:800,color:deadlineColor }}>เหลือ {kpiRequired-kpiFilled} รายการ</div>
                   </div>
                   <div style={{ display:'grid',gap:9,maxHeight:172,overflowY:'auto',paddingRight:4 }}>
-                    {kpiIncompleteDepartments.map(dept=>{const percent=Math.round((dept.filled/dept.required)*100);return <div key={dept.name}><div style={{ display:'flex',justifyContent:'space-between',gap:10,marginBottom:4,fontSize:10.5 }}><span style={{ minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:700,color:'var(--ink)' }}>{dept.name}</span><span style={{ flexShrink:0,color:'var(--muted)' }}>{dept.filled}/{dept.required} · {percent}%</span></div><div role="progressbar" aria-label={`ความครบถ้วน ${dept.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} style={{ height:5,borderRadius:99,overflow:'hidden',background:'var(--border)' }}><div style={{ width:`${percent}%`,height:'100%',borderRadius:99,background:deadlineColor }}/></div></div>})}
+                    {kpiIncompleteDepartments.map(dept=>{const percent=Math.round((dept.filled/dept.required)*100);const progressColor=getKpiProgressColor(percent);return <div key={dept.name}><div style={{ display:'flex',justifyContent:'space-between',gap:10,marginBottom:4,fontSize:10.5 }}><span style={{ minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:700,color:'var(--ink)' }}>{dept.name}</span><span style={{ flexShrink:0,color:'var(--muted)' }}>{dept.filled}/{dept.required} · {percent}%</span></div><div role="progressbar" aria-label={`ความครบถ้วน ${dept.name}: ${percent}%`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} style={{ height:5,borderRadius:99,overflow:'hidden',background:'var(--border)' }}><div style={{ width:`${percent}%`,height:'100%',borderRadius:99,background:progressColor }}/></div></div>})}
                   </div>
                 </div>
               )}

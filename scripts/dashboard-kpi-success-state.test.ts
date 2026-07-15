@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { getKpiCompletionState } from '../lib/dashboard/kpi-completion'
+import { getKpiCompletionState, getKpiProgressColor } from '../lib/dashboard/kpi-completion'
 
 assert.deepEqual(getKpiCompletionState(20, 20, -1), {
   isComplete: true,
@@ -15,5 +15,11 @@ assert.equal(
   false,
   'rounded display percentages must not be treated as complete when an item is still missing',
 )
+
+assert.equal(getKpiProgressColor(49), '#DC2626', 'under 50% should be red')
+assert.equal(getKpiProgressColor(50), '#D97706', '50–79% should be amber')
+assert.equal(getKpiProgressColor(79), '#D97706', '50–79% should stay amber')
+assert.equal(getKpiProgressColor(80), '#1E5FAD', '80–99% should be blue')
+assert.equal(getKpiProgressColor(99), '#1E5FAD', 'incomplete rows should not use green')
 
 console.log('Dashboard KPI completion success-state tests passed')
