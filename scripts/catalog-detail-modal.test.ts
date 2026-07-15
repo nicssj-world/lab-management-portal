@@ -33,6 +33,9 @@ assert.match(modalSource, /@media \(max-width:\s*767px\)[\s\S]*?\.catalog-detail
 assert.match(modalSource, /@media \(max-width:\s*767px\)[\s\S]*?\.catalog-detail-modal-sidebar\s*\{[\s\S]*?border-top:\s*1px solid/, 'phone layout should use a horizontal divider instead')
 assert.match(modalSource, /min-height:\s*44px/, 'mobile and icon actions should keep touch targets at least 44px')
 assert.match(modalSource, /@media \(max-width:\s*767px\)/, 'modal should have a phone-friendly layout')
+assert.match(modalSource, /import \{ RefRangeModal \} from '@\/components\/tests\/RefRangeModal'/, 'table reference ranges in the card should reuse the full-page reveal control')
+assert.match(modalSource, /<RefRangeModal ranges=\{referenceRanges\} tableJson=\{activeTest\.ref\} refNote=\{activeTest\.ref_note\} \/>/, 'table reference ranges should open through the same control as the full page')
+assert.doesNotMatch(modalSource, /<ReferenceRangeTable ranges=\{referenceRanges\} \/>/, 'the card should not render a full reference table inline')
 
 const catalogPageSource = readFileSync('app/(public)/catalog/page.tsx', 'utf8')
 assert.match(catalogPageSource, /import \{ CatalogDetailModal \}/, 'catalog page should render the modal')

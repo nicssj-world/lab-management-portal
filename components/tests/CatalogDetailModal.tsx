@@ -5,8 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { TestDetailCard } from '@/components/tests/TestDetailCard'
 import { SpecimenSection } from '@/components/tests/SpecimenSection'
-import { ReferenceRangeTable } from '@/components/tests/ReferenceRangeTable'
-import { RawTableView } from '@/components/tests/ReferenceRangePaste'
+import { RefRangeModal } from '@/components/tests/RefRangeModal'
 import { PublicTestDocumentActions } from '@/components/tests/PublicTestDocumentActions'
 import { buildTestDetailHref } from '@/lib/catalog/quick-search'
 import { decodeTable } from '@/lib/utils/refTable'
@@ -134,7 +133,6 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
   const documents = detail?.documents ?? []
   const relatedDocuments = detail?.relatedDocuments ?? []
   const table = decodeTable(activeTest?.ref)
-  const showReference = referenceRanges.length > 0 || table || activeTest?.ref || activeTest?.ref_note
 
   if (!testId) return null
 
@@ -521,10 +519,8 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
                 )}
 
                 <Section icon="chart" title="ค่าอ้างอิง">
-                  {referenceRanges.length > 0 ? (
-                    <ReferenceRangeTable ranges={referenceRanges} />
-                  ) : table ? (
-                    <RawTableView table={table} />
+                  {referenceRanges.length > 0 || table ? (
+                    <RefRangeModal ranges={referenceRanges} tableJson={activeTest.ref} refNote={activeTest.ref_note} />
                   ) : activeTest.ref ? (
                     <div style={{ color: 'var(--ink)', fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
                       {activeTest.ref}
@@ -532,7 +528,7 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
                   ) : (
                     <div style={{ color: 'var(--muted)', fontSize: 13 }}>ไม่มีข้อมูลค่าอ้างอิง</div>
                   )}
-                  {showReference && activeTest.ref_note && (
+                  {referenceRanges.length === 0 && !table && activeTest.ref_note && (
                     <div className="catalog-detail-modal-note">
                       <Icon name="alert" size={15} style={{ flexShrink: 0, marginTop: 2 }} />
                       <span>{activeTest.ref_note}</span>
