@@ -16,4 +16,18 @@ assert.match(source, /objectFit: 'contain'/, 'HospitalLogo must preserve the who
 assert.match(source, /flexShrink: 0/, 'HospitalLogo must not be compressed by surrounding navigation content')
 assert.match(source, /alt="โรงพยาบาลชลบุรี"/, 'HospitalLogo must retain meaningful accessible text')
 
+const sharedLogo = readFileSync('components/lab/Logo.tsx', 'utf8')
+const loginPage = readFileSync('app/login/page.tsx', 'utf8')
+const publicNav = readFileSync('components/layout/PublicNav.tsx', 'utf8')
+
+assert.match(sharedLogo, /import \{ HospitalLogo \} from '@\/components\/lab\/HospitalLogo'/, 'the shared public logo row must use HospitalLogo')
+assert.match(sharedLogo, /<HospitalLogo height=\{size\} preload \/>/, 'the public header and footer must use the caller-provided logo height')
+assert.doesNotMatch(sharedLogo, /src="\/images\/logo-chonburi\.png"/, 'the shared public logo row must not bypass HospitalLogo')
+
+assert.match(loginPage, /import \{ HospitalLogo \} from '@\/components\/lab\/HospitalLogo'/, 'the login page must use HospitalLogo')
+assert.match(loginPage, /<HospitalLogo height=\{64\} preload \/>/, 'the login page must render the hospital logo at the existing 64px height')
+assert.doesNotMatch(loginPage, /src="\/images\/logo-chonburi\.png"/, 'the login page must not bypass HospitalLogo')
+
+assert.doesNotMatch(publicNav, /\.pub-logo-link img\s*\{[\s\S]*?width:\s*48px !important;[\s\S]*?height:\s*48px !important;/, 'the mobile header must not force both logos into a square')
+
 console.log('hospital logo component tests passed')

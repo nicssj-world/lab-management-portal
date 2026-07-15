@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
+import { HospitalLogo } from '@/components/lab/HospitalLogo'
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -54,15 +55,7 @@ export default function LoginPage() {
         <div style={{ width: '100%', maxWidth: 400 }}>
           {/* Logo row with home button on the right */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 36 }}>
-            <Image
-              src="/images/logo-chonburi.png"
-              alt="โรงพยาบาลชลบุรี"
-              width={64}
-              height={64}
-              preload
-              quality={100}
-              style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover' }}
-            />
+            <HospitalLogo height={64} preload />
             <Image
               src="/images/cbh-lab-logo-v3.png"
               alt="CBH Lab"
