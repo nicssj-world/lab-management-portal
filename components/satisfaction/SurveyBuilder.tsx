@@ -52,8 +52,11 @@ export function SurveyBuilder({ workspace, level }: { workspace: SurveyWorkspace
   const [publishIssues, setPublishIssues] = useState<DefinitionIssue[]>([])
   const [publishing, setPublishing] = useState(false)
   const [cloning, setCloning] = useState(false)
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false)
+  const [discarding, setDiscarding] = useState(false)
   const initialRender = useRef(true)
   const readOnly = level !== 'edit' || definition.status !== 'draft'
+  const hasPriorPublishedVersion = workspace.versions.some((version) => version.status === 'published' && version.versionNumber < definition.versionNumber)
 
   useEffect(() => {
     if (readOnly) return
@@ -138,6 +141,28 @@ export function SurveyBuilder({ workspace, level }: { workspace: SurveyWorkspace
     } finally { setPublishing(false) }
   }
 
+  const discardDraft = async () => {
+    setDiscarding(true); setSaveState('saving'); setSaveMessage('กำลังยกเลิกฉบับร่าง…')
+    try {
+      const response = await fetch(`/api/admin/satisfaction/surveys/${workspace.survey.id}/draft`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versionId: definition.id }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error ?? 'ยกเลิกฉบับร่างไม่สำเร็จ')
+      if (result.action === 'archived') {
+        router.push('/staff/satisfaction')
+        return
+      }
+      router.refresh()
+      window.location.reload()
+    } catch (error) {
+      setSaveState('error'); setSaveMessage(error instanceof Error ? error.message : 'ยกเลิกฉบับร่างไม่สำเร็จ')
+      setDiscardConfirmOpen(false)
+    } finally { setDiscarding(false) }
+  }
+
   return (
     <main className="survey-builder-page" style={{ padding: 24, minWidth: 0 }}>
       <style>{`
@@ -152,6 +177,7 @@ export function SurveyBuilder({ workspace, level }: { workspace: SurveyWorkspace
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Button variant="secondary" icon="eye" onClick={() => setPreviewOpen(true)}>ดูตัวอย่าง</Button>
           {level === 'edit' && definition.status !== 'draft' && <Button icon="edit" onClick={cloneDraft} disabled={cloning}>{cloning ? 'กำลังสร้าง…' : 'สร้างฉบับร่างใหม่'}</Button>}
+          {!readOnly && <Button variant="secondary" icon="x" onClick={() => setDiscardConfirmOpen(true)} disabled={publishing || saveState === 'saving'}>ยกเลิกฉบับร่าง</Button>}
           {!readOnly && <Button icon="check" onClick={publish} disabled={publishing || saveState === 'saving'}>{publishing ? 'กำลังเผยแพร่…' : 'เผยแพร่เวอร์ชันนี้'}</Button>}
         </div>
       </div>
@@ -195,6 +221,22 @@ export function SurveyBuilder({ workspace, level }: { workspace: SurveyWorkspace
         </aside>
       </div>
       {previewOpen && <SurveyPreviewModal definition={definition} onClose={() => setPreviewOpen(false)} />}
+      {discardConfirmOpen && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,23,42,.58)', display: 'grid', placeItems: 'center', padding: 16 }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="discard-draft-title" style={{ width: 'min(470px,100%)', borderRadius: 16, background: 'var(--surface)', boxShadow: '0 24px 80px rgba(0,0,0,.28)' }}>
+          <div style={{ padding: 20 }}>
+            <h2 id="discard-draft-title" style={{ margin: 0, color: 'var(--ink)', fontSize: 18 }}>ยกเลิกฉบับร่าง Version {definition.versionNumber}?</h2>
+            <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>
+              {hasPriorPublishedVersion
+                ? 'การเปลี่ยนแปลงในฉบับร่างนี้จะถูกลบ และระบบจะแสดงฉบับเผยแพร่ก่อนหน้าอีกครั้ง'
+                : 'นี่เป็นฉบับร่างแรก จึงจะเก็บแบบสำรวจเข้าคลังแทนการลบแบบสำรวจถาวร'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0 20px 20px' }}>
+            <Button variant="secondary" onClick={() => setDiscardConfirmOpen(false)} disabled={discarding}>กลับไปแก้ไข</Button>
+            <Button variant="danger" icon="x" onClick={discardDraft} disabled={discarding}>{discarding ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิกฉบับร่าง'}</Button>
+          </div>
+        </section>
+      </div>}
     </main>
   )
 }
