@@ -265,6 +265,9 @@ begin
   if old.status = 'published' then
     raise exception 'Published survey versions are immutable';
   end if;
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
   return new;
 end;
 $$;
@@ -283,18 +286,21 @@ as $$
 declare
   target_version_id uuid;
 begin
-  target_version_id := case tg_table_name
-    when 'survey_sections' then coalesce(new.survey_version_id, old.survey_version_id)
-    when 'survey_questions' then coalesce(new.survey_version_id, old.survey_version_id)
-    when 'survey_question_options' then coalesce(new.survey_version_id, old.survey_version_id)
-  end;
+  if tg_op = 'DELETE' then
+    target_version_id := old.survey_version_id;
+  else
+    target_version_id := new.survey_version_id;
+  end if;
   if exists (
     select 1 from public.survey_versions
     where id = target_version_id and status = 'published'
   ) then
     raise exception 'Published survey definitions are immutable';
   end if;
-  return coalesce(new, old);
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  return new;
 end;
 $$;
 

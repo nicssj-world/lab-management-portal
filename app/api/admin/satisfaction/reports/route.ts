@@ -28,7 +28,16 @@ export async function GET(request: Request) {
   const period = fiscalPeriod(fiscalYear)
   const dashboardResult = await getSurveyDashboardData({ campaignId, from: `${period.start}T00:00:00+07:00`, to: `${period.end}T23:59:59+07:00`, grouping: 'month' })
   const { count: commentCount } = await supabaseAdmin.from('survey_answers').select('*', { head: true, count: 'exact' }).eq('campaign_id', campaignId).eq('is_comment', true).not('text_value', 'is', null)
-  const { data: previous } = await supabaseAdmin.from('survey_kpi_publications').select('fiscal_year, normalized_pct, response_count').eq('fiscal_year', fiscalYear - 1).order('published_at', { ascending: false }).limit(1).maybeSingle()
+  const { data: sameSurveyCampaigns } = await supabaseAdmin.from('survey_campaigns')
+    .select('id').eq('survey_id', campaign.survey_id)
+  const sameSurveyCampaignIds = (sameSurveyCampaigns ?? []).map((item) => item.id)
+  const { data: previous } = sameSurveyCampaignIds.length
+    ? await supabaseAdmin.from('survey_kpi_publications')
+      .select('fiscal_year, normalized_pct, response_count')
+      .in('campaign_id', sameSurveyCampaignIds)
+      .eq('fiscal_year', fiscalYear - 1)
+      .order('published_at', { ascending: false }).limit(1).maybeSingle()
+    : { data: null }
   const survey = campaign.surveys as unknown as { code: string; title: string }
   const version = campaign.survey_versions as unknown as { version_number: number }
   const report = buildAnnualReportModel({

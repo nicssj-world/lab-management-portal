@@ -541,6 +541,21 @@ Read-compliance report (`/staff/documents/read-report`, gate: Admin / DCC / Qual
 - Per Published QM/QP/WI/Manual document (query derives the type list from `REVIEW_TRACKED_TYPES`, not a hardcoded array — keep it that way), shows read count X/Y with a per-document audience denominator. `documents.read_audience_depts` (null/[] = all active users; otherwise `profiles.dept ∈ list`, using `user-schema DEPARTMENTS`, NOT `documents.department`). Set per-document in the upload modal or in bulk via `POST /api/admin/documents/bulk-read-audience`.
 - "Read" counts distinct `document_access_logs` views with `created_at >= published_at`, so a real Rev+ (new `published_at`) resets counts while review-only does not. Old view logs are never deleted.
 
+### Satisfaction Survey Builder
+
+Schema and four-form seed: `scripts/satisfaction-survey-module.sql`. Apply it manually; application code must not mutate the remote schema during build/deploy.
+
+Core invariants:
+- Staff route is `/staff/satisfaction/*`, already covered by the `/staff` regex in `proxy.ts`. Public `/s/[token]` must remain outside protected routing.
+- Resource key is exactly `แบบสำรวจความพึงพอใจ`. Only Admin/Manager may change comment read state or export comment content; other permitted roles are view-only for comments.
+- Published definitions are immutable and campaigns are permanently bound to one published version.
+- Public clients use only `/api/satisfaction/[token]`; never expose service-role credentials or grant public raw-table access.
+- Anonymous responses contain no user ID, name, HN, permanent IP, or User-Agent. One-per-device stores a campaign-bound HMAC of an HttpOnly cookie, not a device fingerprint.
+- Submission is idempotent by `(campaign_id, submission_key)` and commits response/answers/device/event atomically through `submit_survey_response`.
+- Realtime listens only to `survey_response_events`, then refetches aggregate APIs. Do not subscribe clients to raw answers/comments.
+- Satisfaction score is `sum(score) / sum(max score for each answered scored question) * 100`; missing optional answers are excluded. Positive-response rate is secondary.
+- KPI publication requires survey `edit` + KPI `edit`, a closed campaign, and no existing metric/year row. Never overwrite historical `kpi_satisfaction` data.
+
 ## Module Reference
 
 | Module | Resource Key (lib/permission-resources.ts) | Staff Route | API Routes |
@@ -558,3 +573,4 @@ Read-compliance report (`/staff/documents/read-report`, gate: Admin / DCC / Qual
 | TAT | `TAT` | `/tat/*` | — |
 | Users & Roles | `User Management` | `/staff/admin` | `/api/admin/users/`, `/api/admin/permissions` |
 | Quality Tasks | `งานคุณภาพ` | `/staff/quality-tasks/*` | `/api/admin/quality-tasks/*` |
+| Satisfaction Surveys | `แบบสำรวจความพึงพอใจ` | `/staff/satisfaction/*`, public `/s/[token]` | `/api/admin/satisfaction/*`, public `/api/satisfaction/[token]` |

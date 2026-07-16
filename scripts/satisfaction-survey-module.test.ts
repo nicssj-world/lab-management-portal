@@ -67,6 +67,9 @@ for (const [code, expected] of expectedCounts) {
 
 assert.match(normalized, /published_at/)
 assert.match(normalized, /prevent_published_survey_version_changes/)
+assert.match(normalized, /if tg_op = 'delete' then/)
+assert.match(normalized, /return old;/)
+assert.ok(!normalized.includes('return coalesce(new, old)'))
 assert.match(normalized, /survey_response_events_staff_read/)
 
 console.log('survey SQL contract tests passed')
