@@ -55,7 +55,7 @@ export default function LoginPage() {
         <div style={{ width: '100%', maxWidth: 400 }}>
           {/* Brand */}
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, rowGap: 10, marginBottom: 36 }}>
-            <HospitalLogo height={64} preload />
+            <HospitalLogo height={64} preload compactWithNext />
             <Image
               src="/images/cbh-lab-logo-v3.png"
               alt="CBH Lab"
