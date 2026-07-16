@@ -143,6 +143,23 @@ Run `scripts/add-document-annual-review.sql` in Supabase before using these.
 
 - **Audit log archive** — `audit_log` (backs `/staff/activity`) has no automatic cleanup or cron; it just grows. Periodically (e.g. once a year) run `scripts/archive-audit-log.sql` in Supabase Dashboard > SQL Editor to move rows older than 1 year into `audit_log_archive` (cold storage, not deleted — audit_log is the QMS audit trail and should stay recoverable). Safe to re-run; no-ops on rows already archived. There's no reminder system for this — it has to be done manually when someone remembers.
 
+## Satisfaction survey module
+
+The module is available to staff at `/staff/satisfaction`; respondents use the public `/s/[token]` route from a campaign QR code. Apply `scripts/satisfaction-survey-module.sql` manually in Supabase SQL Editor before using it. The script creates the normalized survey tables, RLS/grants, transactional RPCs, Realtime event publication, permission defaults, and Published Version 1 of forms `FM-QP-LAB-09-01` through `FM-QP-LAB-09-04`. It does not create an open campaign.
+
+Operational rules:
+
+- Permission resource: `แบบสำรวจความพึงพอใจ`. `view` can view/filter dashboards and comments; `edit` can build forms and manage campaigns. Only normalized roles Admin/Manager can change comment read state or export comment content.
+- Published form versions are immutable. Clone a published version to a new draft, edit/preview it, then publish. Each campaign remains bound to its selected version.
+- Public submissions go only through `/api/satisfaction/[token]`. Public clients must never read or write raw Supabase survey tables. Submission + answers + device marker + Realtime event commit in one transaction.
+- Responses are anonymous: do not add user ID, name, HN, permanent IP, or User-Agent. Optional one-per-device control stores only a campaign-bound HMAC of a random HttpOnly cookie.
+- Realtime subscribes only to `survey_response_events`; clients refetch aggregate data after an event. Never publish `survey_answers` to Realtime.
+- General annual reports omit comment content. Comment export is a separate Admin/Manager operation. Original comment text is never edited or deleted by the module.
+- KPI publication requires both survey edit and KPI edit permissions, a closed campaign, and a free `(metric_code, fiscal_year)`. Existing `kpi_satisfaction` rows are never overwritten; `survey_kpi_publications` records the immutable source/formula/counts.
+- Cloudflare R2 is not used by this module unless file-upload questions are deliberately added in a future migration.
+
+Focused verification commands are listed in `docs/superpowers/plans/2026-07-17-satisfaction-survey-builder.md`. Database-backed acceptance remains gated on manually applying the SQL above; application builds do not apply it automatically.
+
 ## Getting Started
 
 First, run the development server:

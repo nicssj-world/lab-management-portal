@@ -15,6 +15,7 @@ const activity = read('app/(protected)/staff/activity/ActivityClient.tsx')
 const sql = read('scripts/satisfaction-survey-module.sql')
 
 assert.ok(reportRoute.includes("requireResource('แบบสำรวจความพึงพอใจ', 'view')"))
+assert.ok(reportRoute.includes(".eq('survey_id', campaign.survey_id)"), 'scopes prior-year comparison to the same survey')
 assert.ok(actions.includes("import * as XLSX from 'xlsx'"))
 assert.ok(actions.includes('XLSX.writeFile'))
 assert.ok(actions.includes("new Blob([html]"))
