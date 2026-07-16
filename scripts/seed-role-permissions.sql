@@ -17,6 +17,7 @@ INSERT INTO role_permissions (role, resource, granted) VALUES
 ('Manager', 'TAT (นำเข้า):edit',           true),
 ('Manager', 'บุคลากร:edit',                true),
 ('Manager', 'งานคุณภาพ:edit',              true),
+('Manager', 'แบบสำรวจความพึงพอใจ:edit',   true),
 
 -- Medical Technologist: view on most, none on ข่าวสาร and User Management
 ('Medical Technologist', 'รายการตรวจ:view',             true),
@@ -28,9 +29,11 @@ INSERT INTO role_permissions (role, resource, granted) VALUES
 ('Medical Technologist', 'TAT (นำเข้า):view',           true),
 ('Medical Technologist', 'บุคลากร:view',                true),
 ('Medical Technologist', 'งานคุณภาพ:view',               true),
+('Medical Technologist', 'แบบสำรวจความพึงพอใจ:view',     true),
 
 -- Medical Science Technician: view quality task assignments
 ('Medical Science Technician', 'งานคุณภาพ:view', true),
+('Medical Science Technician', 'แบบสำรวจความพึงพอใจ:view', true),
 
 -- Assistant: same as Medical Technologist
 ('Assistant', 'รายการตรวจ:view',             true),
@@ -41,6 +44,9 @@ INSERT INTO role_permissions (role, resource, granted) VALUES
 ('Assistant', 'KPI:view',                    true),
 ('Assistant', 'TAT (นำเข้า):view',           true),
 ('Assistant', 'บุคลากร:view',                true);
+insert into role_permissions (role, resource, granted) values
+('Assistant', 'แบบสำรวจความพึงพอใจ:view', true)
+on conflict (role, resource) do update set granted = excluded.granted;
 -- Keep the task list visible to assigned assistants.
 insert into role_permissions (role, resource, granted) values
 ('Assistant', 'งานคุณภาพ:view', true)

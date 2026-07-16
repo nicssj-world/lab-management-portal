@@ -719,6 +719,33 @@ export interface KpiSatisfaction {
   created_at: string
 }
 
+export interface SatisfactionSurveyListItem {
+  id: string
+  code: string
+  title: string
+  description: string | null
+  archivedAt: string | null
+  latestVersion: number | null
+  latestStatus: 'draft' | 'published' | 'archived' | null
+  publishedAt: string | null
+  updatedAt: string
+}
+
+export interface SatisfactionCampaignListItem {
+  id: string
+  name: string
+  surveyId: string
+  surveyCode: string
+  surveyTitle: string
+  versionNumber: number
+  status: 'draft' | 'open' | 'closed'
+  responseCount: number
+  responseLimit: number | null
+  opensAt: string | null
+  closesAt: string | null
+  updatedAt: string
+}
+
 export interface AnnualKpiRow {
   kpi_code: string
   kpi_name: string

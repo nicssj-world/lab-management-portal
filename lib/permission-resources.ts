@@ -18,6 +18,7 @@ export const RESOURCES = [
   'Activity Log',
   'บุคลากร',
   'งานคุณภาพ',
+  'แบบสำรวจความพึงพอใจ',
 ] as const
 
 export type ResourceKey = typeof RESOURCES[number]

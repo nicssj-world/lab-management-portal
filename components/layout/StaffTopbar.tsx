@@ -30,6 +30,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/settings':         { th: 'ตั้งค่าระบบ',                  en: 'System Settings' },
   '/staff/changelog':        { th: 'บันทึกการแก้ไขระบบ',           en: 'System Change Log' },
   '/staff/activity':         { th: 'กิจกรรมทั้งหมด',               en: 'Activity Log' },
+  '/staff/satisfaction':     { th: 'แบบสำรวจความพึงพอใจ',          en: 'Satisfaction Surveys' },
   '/kpi/dashboard':          { th: 'KPI Dashboard',                en: 'KPI Dashboard' },
   '/kpi/input':              { th: 'บันทึกข้อมูล KPI',             en: 'KPI Data Entry' },
   '/kpi/settings':           { th: 'ตั้งค่าการกรอก KPI',           en: 'KPI Entry Settings' },
