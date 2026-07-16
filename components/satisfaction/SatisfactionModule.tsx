@@ -65,10 +65,10 @@ export function SatisfactionModule({
   )
 
   return (
-    <main className="satisfaction-page" style={{ minWidth: 0 }}>
+    <main className="satisfaction-page" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <style>{`
         .satisfaction-page{width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box}
-        .satisfaction-tabs{display:flex;gap:5px;overflow-x:auto;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;margin-bottom:20px;scrollbar-width:thin}
+        .satisfaction-tabs{display:flex;gap:5px;overflow-x:auto;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;scrollbar-width:thin}
         .satisfaction-tab{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:700;padding:10px 14px;border-radius:10px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;cursor:pointer;transition:background .18s,color .18s,box-shadow .18s}
         .satisfaction-tab:hover{color:var(--ink);background:color-mix(in srgb,var(--card) 78%,var(--primary-soft))}
         .satisfaction-tab[aria-selected="true"]{color:var(--primary);background:var(--card);box-shadow:0 2px 7px rgba(15,23,42,.08)}
@@ -89,10 +89,11 @@ export function SatisfactionModule({
       `}</style>
 
       <PageHeader
+        eyebrow="SATISFACTION SURVEY"
         title="แบบสำรวจความพึงพอใจ"
         subtitle="สร้างแบบสำรวจ เปิดรอบรับคำตอบ และติดตามผล โดยไม่เก็บข้อมูลระบุตัวบุคคล"
         actions={canEdit ? <Button icon="plus" onClick={() => setCreateSurveyOpen(true)}>สร้างแบบสำรวจ</Button> : undefined}
-        marginBottom={18}
+        marginBottom={0}
       />
 
       <div role="tablist" aria-label="เมนูแบบสำรวจความพึงพอใจ" className="satisfaction-tabs">
