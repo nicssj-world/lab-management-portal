@@ -85,7 +85,6 @@ export function SatisfactionModule({
         .satisfaction-table tbody tr:hover{background:color-mix(in srgb,var(--surface-2) 76%,transparent)}
         .satisfaction-section-heading{padding:17px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
         @media(min-width:768px){.satisfaction-page{padding:24px}}
-        @media(min-width:1440px){.satisfaction-page{max-width:1440px;margin-inline:auto}}
         @media(max-width: 767px){.satisfaction-stats{grid-template-columns:1fr}.satisfaction-tabs{margin-inline:-4px}.satisfaction-tab{padding:9px 12px}.satisfaction-table{min-width:640px}}
         @media(prefers-reduced-motion:reduce){.satisfaction-tab,.satisfaction-table tbody tr{transition:none}}
       `}</style>
