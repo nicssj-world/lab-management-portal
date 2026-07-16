@@ -16,6 +16,7 @@ import type {
 import { CampaignManager } from './CampaignManager'
 import { SatisfactionDashboard } from './SatisfactionDashboard'
 import { SurveyComments } from './SurveyComments'
+import { SatisfactionExportActions } from './SatisfactionExportActions'
 
 type Tab = 'overview' | 'surveys' | 'campaigns' | 'comments'
 
@@ -105,6 +106,7 @@ export function SatisfactionModule({
       <section id={`satisfaction-panel-${activeTab}`} role="tabpanel" tabIndex={0}>
         {activeTab === 'overview' && (
           <>
+            <SatisfactionExportActions campaigns={initialCampaigns} actorRole={actorRole} />
             <div className="satisfaction-stats">
               <SummaryCard label="แบบสำรวจทั้งหมด" value={initialSurveys.length} hint="รวมฉบับร่างและเผยแพร่" icon="clipboard" color="#0F766E" />
               <SummaryCard label="รอบที่กำลังเปิด" value={openCampaigns.length} hint="รับคำตอบแบบเรียลไทม์" icon="calendar" color="#2563EB" />

@@ -70,6 +70,10 @@ const ACTION_LABELS: Record<string, string> = {
   // KPI
   'kpi.entry':                                    'บันทึก KPI',
   'kpi.settings':                                 'ตั้งค่ารายการ KPI',
+  // แบบสำรวจความพึงพอใจ
+  'satisfaction.report.export':                   'ส่งออกรายงานความพึงพอใจ',
+  'satisfaction.comments.export':                 'ส่งออกความคิดเห็นแบบสำรวจ',
+  'satisfaction.kpi.publish':                     'เผยแพร่ผลสำรวจไปยัง KPI',
   // งานคุณภาพ
   'quality_task.attachment.upload':               'อัปโหลดไฟล์แนบงานคุณภาพ',
   'quality_task.attachment.delete':               'ลบไฟล์แนบงานคุณภาพ',
@@ -138,6 +142,7 @@ const CATEGORIES = [
   { key: 'kpi', label: 'KPI' },
   { key: 'news', label: 'ข่าวสาร' },
   { key: 'quality_task', label: 'งานคุณภาพ' },
+  { key: 'satisfaction', label: 'แบบสำรวจความพึงพอใจ' },
 ]
 
 function dotColor(action: string | null) {
@@ -148,6 +153,7 @@ function dotColor(action: string | null) {
   if (a.startsWith('contract.'))                            return '#7C3AED'
   if (a.startsWith('risk.') || a.startsWith('rejection.')) return '#DC2626'
   if (a.startsWith('kpi.'))                                 return '#16A34A'
+  if (a.startsWith('satisfaction.'))                        return '#0F766E'
   if (a.includes('news'))                                   return '#D97706'
   if (a.startsWith('quality_task.'))                        return '#9333EA'
   return '#64748B'
