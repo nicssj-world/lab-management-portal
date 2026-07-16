@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Icon } from '@/components/ui/Icon'
+import { PageHeader } from '@/components/ui/PageHeader'
 import type { PermLevel } from '@/lib/permissions'
 import type {
   SatisfactionCampaignListItem,
@@ -66,9 +67,6 @@ export function SatisfactionModule({
     <main className="satisfaction-page" style={{ padding: 24, minWidth: 0 }}>
       <style>{`
         .satisfaction-page{max-width:1440px;margin:0 auto}
-        .satisfaction-hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:end;overflow:hidden;margin-bottom:18px;padding:26px;border:1px solid rgba(13,148,136,.2);border-radius:18px;background:linear-gradient(125deg,rgba(13,148,136,.14),rgba(37,99,235,.08) 54%,var(--card));box-shadow:0 12px 28px rgba(15,118,110,.07)}
-        .satisfaction-hero::after{content:"";position:absolute;width:260px;height:260px;right:-100px;top:-135px;border-radius:50%;background:rgba(13,148,136,.12);pointer-events:none}
-        .satisfaction-hero-copy,.satisfaction-hero-actions{position:relative;z-index:1}.satisfaction-hero-kicker{display:inline-flex;align-items:center;gap:7px;color:#0F766E;font-size:11px;font-weight:800;letter-spacing:.09em}.satisfaction-hero h1{margin:8px 0 0;color:var(--ink);font-size:clamp(24px,3vw,31px);line-height:1.2}.satisfaction-hero p{max-width:660px;margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.65}.satisfaction-hero-metrics{display:flex;gap:18px;margin-top:18px;flex-wrap:wrap}.satisfaction-hero-metric{min-width:104px;padding-left:12px;border-left:2px solid rgba(13,148,136,.34)}.satisfaction-hero-metric span{display:block;color:var(--muted);font-size:11px}.satisfaction-hero-metric strong{display:block;margin-top:2px;color:var(--ink);font-size:19px;line-height:1.1}
         .satisfaction-tabs{display:flex;gap:5px;overflow-x:auto;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;margin-bottom:20px;scrollbar-width:thin}
         .satisfaction-tab{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:700;padding:10px 14px;border-radius:10px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;cursor:pointer;transition:background .18s,color .18s,box-shadow .18s}
         .satisfaction-tab:hover{color:var(--ink);background:color-mix(in srgb,var(--card) 78%,var(--primary-soft))}
@@ -85,14 +83,16 @@ export function SatisfactionModule({
         .satisfaction-table tbody tr{transition:background .15s}
         .satisfaction-table tbody tr:hover{background:color-mix(in srgb,var(--surface-2) 76%,transparent)}
         .satisfaction-section-heading{padding:17px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
-        @media(max-width: 767px){.satisfaction-page{padding:16px !important}.satisfaction-hero{grid-template-columns:1fr;gap:18px;padding:21px}.satisfaction-hero-actions{display:flex}.satisfaction-hero-actions button{width:100%}.satisfaction-stats{grid-template-columns:1fr}.satisfaction-tabs{margin-inline:-4px}.satisfaction-tab{padding:9px 12px}.satisfaction-table{min-width:640px}}
+        @media(max-width: 767px){.satisfaction-page{padding:16px !important}.satisfaction-stats{grid-template-columns:1fr}.satisfaction-tabs{margin-inline:-4px}.satisfaction-tab{padding:9px 12px}.satisfaction-table{min-width:640px}}
         @media(prefers-reduced-motion:reduce){.satisfaction-tab,.satisfaction-table tbody tr{transition:none}}
       `}</style>
 
-      <section className="satisfaction-hero">
-        <div className="satisfaction-hero-copy"><div className="satisfaction-hero-kicker"><Icon name="clipboard" size={14} /> QUALITY EXPERIENCE</div><h1>แบบสำรวจความพึงพอใจ</h1><p>สร้างแบบสำรวจ เปิดรอบรับคำตอบ และติดตามผลอย่างเป็นระบบ โดยไม่เก็บข้อมูลระบุตัวบุคคล</p><div className="satisfaction-hero-metrics"><div className="satisfaction-hero-metric"><span>รอบที่กำลังเปิด</span><strong>{openCampaigns.length}</strong></div><div className="satisfaction-hero-metric"><span>คำตอบสะสม</span><strong>{totalResponses.toLocaleString('th-TH')}</strong></div><div className="satisfaction-hero-metric"><span>แบบสำรวจ</span><strong>{initialSurveys.length}</strong></div></div></div>
-        {canEdit && <div className="satisfaction-hero-actions"><Button icon="plus" onClick={() => setCreateSurveyOpen(true)}>สร้างแบบสำรวจ</Button></div>}
-      </section>
+      <PageHeader
+        title="แบบสำรวจความพึงพอใจ"
+        subtitle="สร้างแบบสำรวจ เปิดรอบรับคำตอบ และติดตามผล โดยไม่เก็บข้อมูลระบุตัวบุคคล"
+        actions={canEdit ? <Button icon="plus" onClick={() => setCreateSurveyOpen(true)}>สร้างแบบสำรวจ</Button> : undefined}
+        marginBottom={18}
+      />
 
       <div role="tablist" aria-label="เมนูแบบสำรวจความพึงพอใจ" className="satisfaction-tabs">
         {TABS.map((tab) => (
@@ -133,7 +133,6 @@ export function SatisfactionModule({
             <SectionHeading
               title="แบบสำรวจ"
               hint="แบบที่เผยแพร่แล้วจะถูกล็อกและแก้ไขผ่านเวอร์ชันใหม่"
-              action={canEdit ? <Button size="sm" icon="plus" onClick={() => setCreateSurveyOpen(true)}>สร้างใหม่</Button> : undefined}
             />
             {initialSurveys.length === 0 ? (
               <EmptyState title="ยังไม่มีแบบสำรวจ" hint="หลังติดตั้ง SQL จะพบแบบมาตรฐานทั้ง 4 ชุด" icon="clipboard" />
