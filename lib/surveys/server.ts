@@ -290,6 +290,20 @@ export async function cloneSurveyDraft(surveyId: string, sourceVersionId: string
   return draft
 }
 
+export async function discardSurveyDraft(surveyId: string, versionId: string, actorId: string) {
+  const { data, error } = await supabaseAdmin.rpc('discard_survey_draft', {
+    p_survey_id: surveyId,
+    p_version_id: versionId,
+    p_actor_id: actorId,
+  })
+  fail(error)
+  const result = (data as Array<{ action: 'archived' | 'restored'; restored_version_id: string | null }> | null)?.[0]
+  if (!result || (result.action !== 'archived' && result.action !== 'restored')) {
+    throw new Error('ไม่สามารถยกเลิกฉบับร่างได้')
+  }
+  return { action: result.action, restoredVersionId: result.restored_version_id }
+}
+
 export async function publishSurveyDraft(surveyId: string, versionId: string) {
   const definition = await loadSurveyDefinition(versionId)
   if (!definition || definition.surveyId !== surveyId || definition.status !== 'draft') {

@@ -549,6 +549,7 @@ Core invariants:
 - Staff route is `/staff/satisfaction/*`, already covered by the `/staff` regex in `proxy.ts`. Public `/s/[token]` must remain outside protected routing.
 - Resource key is exactly `แบบสำรวจความพึงพอใจ`. Only Admin/Manager may change comment read state or export comment content; other permitted roles are view-only for comments.
 - Published definitions are immutable and campaigns are permanently bound to one published version.
+- There is no permanent survey-delete action. `ยกเลิกฉบับร่าง` removes only the active draft: it returns to the preceding published version and restores its title/description. If the first draft has never been published, the survey is archived instead. Apply `scripts/satisfaction-draft-discard.sql` once to existing environments that already ran the base script.
 - Public clients use only `/api/satisfaction/[token]`; never expose service-role credentials or grant public raw-table access.
 - Anonymous responses contain no user ID, name, HN, permanent IP, or User-Agent. One-per-device stores a campaign-bound HMAC of an HttpOnly cookie, not a device fingerprint.
 - Submission is idempotent by `(campaign_id, submission_key)` and commits response/answers/device/event atomically through `submit_survey_response`.

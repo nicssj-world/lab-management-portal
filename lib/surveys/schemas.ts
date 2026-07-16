@@ -58,6 +58,7 @@ export const createSurveySchema = z.object({
 export const archiveSurveySchema = z.object({ archived: z.boolean() })
 export const draftMutationSchema = z.object({ definition: surveyDefinitionSchema })
 export const cloneDraftSchema = z.object({ sourceVersionId: z.string().uuid() })
+export const discardDraftSchema = z.object({ versionId: z.string().uuid() })
 export const publishSurveySchema = z.object({ versionId: z.string().uuid() })
 
 export const createCampaignSchema = z.object({

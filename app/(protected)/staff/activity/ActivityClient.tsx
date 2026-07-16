@@ -74,6 +74,7 @@ const ACTION_LABELS: Record<string, string> = {
   'satisfaction.report.export':                   'ส่งออกรายงานความพึงพอใจ',
   'satisfaction.comments.export':                 'ส่งออกความคิดเห็นแบบสำรวจ',
   'satisfaction.kpi.publish':                     'เผยแพร่ผลสำรวจไปยัง KPI',
+  'satisfaction.draft.discard':                    'ยกเลิกฉบับร่างแบบสำรวจ',
   // งานคุณภาพ
   'quality_task.attachment.upload':               'อัปโหลดไฟล์แนบงานคุณภาพ',
   'quality_task.attachment.delete':               'ลบไฟล์แนบงานคุณภาพ',

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { requireResource } from '@/lib/auth/guards'
-import { cloneDraftSchema, draftMutationSchema } from '@/lib/surveys/schemas'
-import { cloneSurveyDraft, saveSurveyDraft } from '@/lib/surveys/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { cloneDraftSchema, discardDraftSchema, draftMutationSchema } from '@/lib/surveys/schemas'
+import { cloneSurveyDraft, discardSurveyDraft, saveSurveyDraft } from '@/lib/surveys/server'
 import type { SurveyVersionDefinition } from '@/lib/surveys/types'
 
 type Context = { params: Promise<{ surveyId: string }> }
@@ -34,5 +35,25 @@ export async function POST(request: Request, { params }: Context) {
     return NextResponse.json({ definition }, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'สร้างฉบับร่างไม่สำเร็จ' }, { status: 409 })
+  }
+}
+
+export async function DELETE(request: Request, { params }: Context) {
+  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'edit')
+  if (access.response) return access.response
+  const parsed = discardDraftSchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json({ error: 'ข้อมูลฉบับร่างไม่ถูกต้อง' }, { status: 400 })
+  const { surveyId } = await params
+  try {
+    const result = await discardSurveyDraft(surveyId, parsed.data.versionId, access.actor.id)
+    void supabaseAdmin.from('audit_log').insert({
+      action: 'satisfaction.draft.discard',
+      user_id: access.actor.id,
+      target: surveyId,
+      detail: JSON.stringify({ discardedVersionId: parsed.data.versionId, ...result }),
+    })
+    return NextResponse.json({ ok: true, ...result })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'ยกเลิกฉบับร่างไม่สำเร็จ' }, { status: 409 })
   }
 }

@@ -151,6 +151,7 @@ Operational rules:
 
 - Permission resource: `แบบสำรวจความพึงพอใจ`. `view` can view/filter dashboards and comments; `edit` can build forms and manage campaigns. Only normalized roles Admin/Manager can change comment read state or export comment content.
 - Published form versions are immutable. Clone a published version to a new draft, edit/preview it, then publish. Each campaign remains bound to its selected version.
+- There is no permanent delete button. Discarding a draft deletes only that draft and returns to the immediately preceding published version; discarding the first, never-published draft archives the survey. On an existing deployment, apply `scripts/satisfaction-draft-discard.sql` once after the base module script.
 - Public submissions go only through `/api/satisfaction/[token]`. Public clients must never read or write raw Supabase survey tables. Submission + answers + device marker + Realtime event commit in one transaction.
 - Responses are anonymous: do not add user ID, name, HN, permanent IP, or User-Agent. Optional one-per-device control stores only a campaign-bound HMAC of a random HttpOnly cookie.
 - Realtime subscribes only to `survey_response_events`; clients refetch aggregate data after an event. Never publish `survey_answers` to Realtime.
