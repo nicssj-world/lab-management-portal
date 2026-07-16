@@ -73,6 +73,8 @@ export function SatisfactionModule({
         .satisfaction-table{width:100%;border-collapse:collapse;min-width:720px}
         .satisfaction-table th{text-align:left;color:var(--muted);font-size:11px;font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border);letter-spacing:.03em}
         .satisfaction-table td{padding:13px 12px;border-bottom:1px solid var(--border);font-size:13px;color:var(--ink);vertical-align:middle}
+        .satisfaction-campaign-table th:nth-child(n+3),.satisfaction-campaign-table td:nth-child(n+3){text-align:center}
+        .satisfaction-status-cell{display:flex;justify-content:center}
         .satisfaction-table tbody tr{transition:background .15s}
         .satisfaction-table tbody tr:hover{background:var(--surface-2)}
         @media(max-width: 767px){.satisfaction-page{padding:16px !important}.satisfaction-stats{grid-template-columns:1fr}.satisfaction-tabs{margin-inline:-4px}.satisfaction-tab{padding:9px 12px}}
@@ -182,6 +184,6 @@ function SectionHeading({ title, hint, action }: { title: string; hint: string; 
 function CampaignTable({ campaigns }: { campaigns: SatisfactionCampaignListItem[] }) {
   if (campaigns.length === 0) return <EmptyState title="ยังไม่มีรอบเก็บข้อมูล" hint="สร้างรอบและ QR หลังเผยแพร่แบบสำรวจแล้ว" icon="calendar" />
   return (
-    <div className="satisfaction-table-wrap"><table className="satisfaction-table"><thead><tr><th>ชื่อรอบ</th><th>แบบ / เวอร์ชัน</th><th>สถานะ</th><th>คำตอบ</th><th>ปิดรับ</th></tr></thead><tbody>{campaigns.map((campaign) => <tr key={campaign.id}><td><strong>{campaign.name}</strong></td><td>{campaign.surveyCode} · V{campaign.versionNumber}<div style={{ color: 'var(--muted)', marginTop: 3 }}>{campaign.surveyTitle}</div></td><td>{statusBadge(campaign.status)}</td><td>{campaign.responseCount.toLocaleString('th-TH')}{campaign.responseLimit ? ` / ${campaign.responseLimit.toLocaleString('th-TH')}` : ''}</td><td>{dateLabel(campaign.closesAt)}</td></tr>)}</tbody></table></div>
+    <div className="satisfaction-table-wrap"><table className="satisfaction-table satisfaction-campaign-table"><thead><tr><th>ชื่อรอบ</th><th>แบบ / เวอร์ชัน</th><th>สถานะ</th><th>คำตอบ</th><th>ปิดรับ</th></tr></thead><tbody>{campaigns.map((campaign) => <tr key={campaign.id}><td><strong>{campaign.name}</strong></td><td>{campaign.surveyCode} · V{campaign.versionNumber}<div style={{ color: 'var(--muted)', marginTop: 3 }}>{campaign.surveyTitle}</div></td><td><div className="satisfaction-status-cell">{statusBadge(campaign.status)}</div></td><td>{campaign.responseCount.toLocaleString('th-TH')}{campaign.responseLimit ? ` / ${campaign.responseLimit.toLocaleString('th-TH')}` : ''}</td><td>{dateLabel(campaign.closesAt)}</td></tr>)}</tbody></table></div>
   )
 }
