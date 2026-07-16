@@ -64,6 +64,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
   { href: '/staff/personnel',  th: 'บุคลากร',             en: 'MT-CBH Staff',   icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร' },
   { section: 'Analytics' },
+  { href: '/staff/satisfaction', th: 'แบบสำรวจความพึงพอใจ', en: 'Satisfaction', icon: 'clipboard', color: '#0F766E', resource: 'แบบสำรวจความพึงพอใจ' },
   { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',  color: '#16A34A', resource: 'KPI' },
   { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker', color: '#0EA5E9', resource: 'Workload' },
   { href: '/tat',              th: 'Turnaround Time',     en: 'TAT',            icon: 'clock',  color: '#8B5CF6', resource: 'TAT' },
