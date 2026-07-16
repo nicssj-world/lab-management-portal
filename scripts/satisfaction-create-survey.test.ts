@@ -19,6 +19,12 @@ assert.ok(module.includes('onCreated(result.surveyId)'), 'returns the created su
 assert.ok(module.includes('router.push(`/staff/satisfaction/${surveyId}`)'), 'opens the new draft after creation')
 assert.ok(module.includes('aria-modal="true"'), 'uses an accessible creation dialog')
 assert.ok(module.includes('role="alert"'), 'shows create errors to the user')
+assert.ok(module.includes("import { createPortal } from 'react-dom'"), 'renders the dialog through a document-level portal')
+assert.ok(module.includes('createPortal(content, document.body)'), 'escapes page stacking contexts that can obscure the dialog')
+assert.ok(module.includes('zIndex: 1000'), 'keeps the dialog above the protected application shell')
+assert.ok(module.includes("background: 'var(--card)'"), 'uses a guaranteed opaque dialog surface')
+assert.ok(module.includes('className="modal-scrim"'), 'uses the shared modal scrim treatment')
+assert.ok(module.includes('className="modal-panel-pop"'), 'uses the shared modal panel animation')
 
 assert.ok(route.includes("requireResource('แบบสำรวจความพึงพอใจ', 'edit')"), 'creation remains edit-protected')
 assert.ok(route.includes('createSurveyWithDraft'), 'creation makes a draft workspace')
