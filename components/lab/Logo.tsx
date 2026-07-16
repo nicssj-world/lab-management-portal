@@ -22,7 +22,7 @@ export function Logo({ size = 32, showText = true, lang = 'th', variant = 'publi
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 1, minWidth: 0 }}>
-      <HospitalLogo height={size} preload />
+      <HospitalLogo height={size} preload compactWithNext />
       <Image
         src="/images/cbh-lab-logo-v3.png"
         alt="CBH Lab"
