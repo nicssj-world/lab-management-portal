@@ -709,7 +709,23 @@ begin
       ) returning id into v_question_id;
 
       v_option_order := 0;
-      if v_question->>'type' = 'rating_scale' then
+      if v_question->>'type' = 'rating_scale'
+        and jsonb_typeof(coalesce(v_question->'options', p_definition->'rating_options')) = 'array' then
+        for v_option in select value from jsonb_array_elements(
+          coalesce(v_question->'options', p_definition->'rating_options')
+        )
+        loop
+          v_option_order := v_option_order + 1;
+          insert into public.survey_question_options (
+            survey_version_id, survey_question_id, option_key, label, value,
+            score, allows_other_text, sort_order
+          ) values (
+            v_version_id, v_question_id, v_option->>'key', v_option->>'label',
+            coalesce(v_option->>'value', v_option->>'key'), (v_option->>'score')::numeric,
+            coalesce((v_option->>'other')::boolean, false), v_option_order
+          );
+        end loop;
+      elsif v_question->>'type' = 'rating_scale' then
         for v_option_order in 1..5 loop
           insert into public.survey_question_options (
             survey_version_id, survey_question_id, option_key, label, value, score, sort_order
@@ -754,28 +770,33 @@ select private.seed_satisfaction_survey(
   'FM-QP-LAB-09-01',
   'แบบสำรวจความพึงพอใจต่อการให้บริการ (เฉพาะบริการด่านหน้า)',
   $json${
-    "description":"สำหรับผู้รับบริการเจาะเลือดและบริการด่านหน้า",
+    "description":"แบบสำรวจความพึงพอใจต่อการให้บริการฉบับนี้จัดทำขึ้นเพื่อให้ผู้ใช้บริการกรอกข้อมูล โดยมีวัตถุประสงค์เพื่อนำไปประกอบการประเมินผลการดำเนินงานประจำปีงบประมาณ ของกลุ่มงานเทคนิคการแพทย์",
+    "rating_options":[{"key":"most","label":"มากที่สุด","value":"5","score":5},{"key":"more","label":"มาก","value":"4","score":4},{"key":"medium","label":"ปานกลาง","value":"3","score":3},{"key":"less","label":"น้อย","value":"2","score":2},{"key":"least","label":"น้อยที่สุด","value":"1","score":1}],
     "sections":[
       {"key":"profile","title":"ข้อมูลทั่วไป","questions":[
-        {"key":"sex","prompt":"เพศ","type":"single_choice","required":false,"options":[{"key":"male","label":"ชาย"},{"key":"female","label":"หญิง"},{"key":"other","label":"อื่น ๆ","other":true}]},
-        {"key":"age_range","prompt":"ช่วงอายุ","type":"single_choice","required":false,"options":[{"key":"under20","label":"ต่ำกว่า 20 ปี"},{"key":"20_39","label":"20–39 ปี"},{"key":"40_59","label":"40–59 ปี"},{"key":"60plus","label":"60 ปีขึ้นไป"}]},
-        {"key":"payment","prompt":"สิทธิการรักษา/การชำระค่าบริการ","type":"single_choice","required":false,"options":[{"key":"uc","label":"หลักประกันสุขภาพ"},{"key":"civil","label":"ข้าราชการ"},{"key":"social","label":"ประกันสังคม"},{"key":"self","label":"ชำระเงินเอง"},{"key":"other","label":"อื่น ๆ","other":true}]}
+        {"key":"sex","prompt":"เพศ","type":"single_choice","required":false,"options":[{"key":"male","label":"ชาย"},{"key":"female","label":"หญิง"}]},
+        {"key":"age_range","prompt":"อายุ","type":"single_choice","required":false,"options":[{"key":"under20","label":"ต่ำกว่า 20 ปี"},{"key":"21_30","label":"21-30 ปี"},{"key":"31_40","label":"31-40 ปี"},{"key":"41_50","label":"41-50 ปี"},{"key":"51_60","label":"51-60 ปี"},{"key":"61plus","label":"61 ปี ขึ้นไป"}]},
+        {"key":"service_user_type","prompt":"ประเภทผู้ใช้บริการ","type":"single_choice","required":false,"options":[{"key":"gold_card","label":"บัตรทอง"},{"key":"social_security","label":"ประกันสังคม"},{"key":"direct_or_affiliation","label":"เบิกจ่ายตรง/ต้นสังกัด"},{"key":"self_pay","label":"ชำระเงินเอง"},{"key":"other","label":"อื่นๆ","other":true}]}
       ]},
-      {"key":"service","title":"ความพึงพอใจต่อบริการ","questions":[
-        {"key":"q01","prompt":"สถานที่ให้บริการสะอาดและเป็นระเบียบ","type":"rating_scale","required":true},
-        {"key":"q02","prompt":"ป้ายและขั้นตอนการรับบริการเข้าใจง่าย","type":"rating_scale","required":true},
-        {"key":"q03","prompt":"ระยะเวลารอรับบริการเหมาะสม","type":"rating_scale","required":true},
-        {"key":"q04","prompt":"เจ้าหน้าที่ให้บริการด้วยความสุภาพ","type":"rating_scale","required":true},
-        {"key":"q05","prompt":"เจ้าหน้าที่ให้ข้อมูลชัดเจน","type":"rating_scale","required":true},
-        {"key":"q06","prompt":"เจ้าหน้าที่เอาใจใส่และเต็มใจให้บริการ","type":"rating_scale","required":true},
-        {"key":"q07","prompt":"ขั้นตอนการเจาะเลือดมีความปลอดภัย","type":"rating_scale","required":true},
-        {"key":"q08","prompt":"ได้รับบริการตรงตามความต้องการ","type":"rating_scale","required":true},
-        {"key":"q09","prompt":"ความสะดวกในการเข้าถึงบริการ","type":"rating_scale","required":true},
-        {"key":"q10","prompt":"ความเชื่อมั่นต่อคุณภาพบริการ","type":"rating_scale","required":true},
-        {"key":"q11","prompt":"ความพึงพอใจด้านอื่น ๆ","type":"rating_scale","required":false,"allow_detail":true,"detail_label":"โปรดระบุ"}
+      {"key":"process","title":"ด้านกระบวนการและขั้นตอนการให้บริการ","questions":[
+        {"key":"q01","prompt":"ขั้นตอนการให้บริการชัดเจน","type":"rating_scale","required":true},
+        {"key":"q02","prompt":"การให้บริการเป็นไปตามเวลาที่กำหนด","type":"rating_scale","required":true},
+        {"key":"q03","prompt":"ให้บริการเป็นไปตามลำดับบัตรคิว","type":"rating_scale","required":true}
+      ]},
+      {"key":"staff","title":"ด้านเจ้าหน้าที่ผู้ให้บริการ","questions":[
+        {"key":"q04","prompt":"มีการให้คำแนะนำและข้อมูลเกี่ยวกับการให้บริการ","type":"rating_scale","required":true},
+        {"key":"q05","prompt":"การให้บริการของเจ้าหน้าที่บันทึกข้อมูล","type":"rating_scale","required":true},
+        {"key":"q06","prompt":"การให้บริการของเจ้าหน้าที่เจาะเลือด","type":"rating_scale","required":true}
+      ]},
+      {"key":"facilities","title":"ด้านสิ่งอำนวยความสะดวก","questions":[
+        {"key":"q07","prompt":"สถานที่มีความสะอาด และบรรยากาศสิ่งแวดล้อมดี","type":"rating_scale","required":true},
+        {"key":"q08","prompt":"มีป้ายบอกทาง/แผนผังการให้บริการชัดเจน","type":"rating_scale","required":true},
+        {"key":"q09","prompt":"มีเอกสาร/แผ่นพับ เพื่อเผยแพร่ประชาสัมพันธ์ข้อมูล","type":"rating_scale","required":true},
+        {"key":"q10","prompt":"ความพึงพอใจโดยรวมของงานบริการ","type":"rating_scale","required":true},
+        {"key":"q11","prompt":"อื่นๆ.......................................","type":"rating_scale","required":false,"allow_detail":true,"detail_label":"อื่นๆ"}
       ]},
       {"key":"comment","title":"ข้อเสนอแนะ","questions":[
-        {"key":"comment","prompt":"ความคิดเห็นหรือข้อเสนอแนะเพิ่มเติม","type":"long_text","required":false,"comment":true,"max_length":4000}
+        {"key":"comment","prompt":"ข้อคิดเห็นและข้อเสนอแนะอื่นๆที่ท่านเห็นว่าสำคัญหรือควรปรับปรุง","type":"long_text","required":false,"comment":true,"max_length":4000}
       ]}
     ]
   }$json$::jsonb
@@ -785,24 +806,24 @@ select private.seed_satisfaction_survey(
 -- SEED FM-QP-LAB-09-02
 select private.seed_satisfaction_survey(
   'FM-QP-LAB-09-02',
-  'แบบสำรวจความพึงพอใจต่อการให้บริการ (เฉพาะแพทย์ ทันตแพทย์ และพยาบาล)',
-  $json${"sections":[
-    {"key":"profile","title":"ข้อมูลผู้ตอบ","questions":[
-      {"key":"profession","prompt":"วิชาชีพ","type":"single_choice","required":true,"options":[{"key":"doctor","label":"แพทย์"},{"key":"dentist","label":"ทันตแพทย์"},{"key":"nurse","label":"พยาบาล"}]},
-      {"key":"department","prompt":"หน่วยงาน/หอผู้ป่วย","type":"short_text","required":false,"max_length":500}
+  'แบบสำรวจความพึงพอใจต่อการให้บริการ (เฉพาะแพทย์/ทันตแพทย์ และพยาบาล)',
+  $json${"description":"แบบสำรวจความพึงพอใจต่อการให้บริการฉบับนี้จัดทำขึ้นเพื่อให้ผู้ใช้บริการกรอกข้อมูล โดยมีวัตถุประสงค์เพื่อนำไปประกอบการประเมินผลการดำเนินงานประจำปีงบประมาณ ของกลุ่มงานเทคนิคการแพทย์","rating_options":[{"key":"most","label":"มากที่สุด","value":"5","score":5},{"key":"more","label":"มาก","value":"4","score":4},{"key":"medium","label":"ปานกลาง","value":"3","score":3},{"key":"less","label":"น้อย","value":"2","score":2},{"key":"least","label":"น้อยที่สุด","value":"1","score":1}],"sections":[
+    {"key":"profile","title":"ส่วนที่ 1 ข้อมูลผู้ตอบแบบสอบถาม","questions":[
+      {"key":"respondent_type","prompt":"ผู้ตอบแบบสอบถามเป็น","type":"single_choice","required":false,"options":[{"key":"doctor_or_dentist","label":"แพทย์/ทันตแพทย์"},{"key":"nurse","label":"พยาบาล"}]},
+      {"key":"department","prompt":"กลุ่ม/ฝ่าย/แผนก","type":"single_choice","required":false,"options":[{"key":"obstetrics","label":"สูติกรรม"},{"key":"surgery","label":"ศัลยกรรม"},{"key":"medicine","label":"อายุรกรรม"},{"key":"pediatrics","label":"กุมารเวชกรรม"},{"key":"ward","label":"หอผู้ป่วย","other":true},{"key":"other","label":"อื่นๆ","other":true}]}
     ]},
-    {"key":"service","title":"ความพึงพอใจต่อบริการ","questions":[
-      {"key":"q01","prompt":"ความสะดวกในการส่งตรวจทางห้องปฏิบัติการ","type":"rating_scale","required":true},
-      {"key":"q02","prompt":"ความชัดเจนของข้อมูลการให้บริการ","type":"rating_scale","required":true},
-      {"key":"q03","prompt":"ความครบถ้วนของรายการตรวจ","type":"rating_scale","required":true},
-      {"key":"q04","prompt":"ความถูกต้องและน่าเชื่อถือของผลตรวจ","type":"rating_scale","required":true},
-      {"key":"q05","prompt":"ระยะเวลาในการรายงานผลตรวจ","type":"rating_scale","required":true},
-      {"key":"q06","prompt":"การแจ้งผลค่าวิกฤตเหมาะสม","type":"rating_scale","required":true},
-      {"key":"q07","prompt":"การให้คำปรึกษาของเจ้าหน้าที่","type":"rating_scale","required":true},
-      {"key":"q08","prompt":"ความสุภาพและเต็มใจให้บริการ","type":"rating_scale","required":true},
-      {"key":"q09","prompt":"ความพึงพอใจโดยรวม","type":"rating_scale","required":true}
+    {"key":"service","title":"ส่วนที่ 2 ความพึงพอใจของท่านต่องานบริการของห้องปฏิบัติการทางเทคนิคการแพทย์","questions":[
+      {"key":"q01","prompt":"ความสุภาพของเจ้าหน้าที่ในการให้บริการ","type":"rating_scale","required":true},
+      {"key":"q02","prompt":"การให้ข้อมูล และการตอบคำถาม","type":"rating_scale","required":true},
+      {"key":"q03","prompt":"ความรวดเร็ว ตรงตามระยะเวลาที่กำหนดในการรายงานผลการตรวจ","type":"rating_scale","required":true},
+      {"key":"q04","prompt":"ผลการตรวจวิเคราะห์มีความสอดคล้องกับอาการทางคลินิก","type":"rating_scale","required":true},
+      {"key":"q05","prompt":"ความเหมาะสมในการรายงานค่าวิกฤติ","type":"rating_scale","required":true},
+      {"key":"q06","prompt":"การใช้ประโยชน์จากคู่มือการใช้บริการห้องปฏิบัติการ","type":"rating_scale","required":true},
+      {"key":"q07","prompt":"ความสำคัญของผลการตรวจวิเคราะห์ทางห้องปฏิบัติการในการรักษาผู้ป่วย","type":"rating_scale","required":true},
+      {"key":"q08","prompt":"รายการตรวจวิเคราะห์ทางห้องปฏิบัติการครอบคลุมและเพียงพอในการรักษาผู้ป่วย","type":"rating_scale","required":true},
+      {"key":"q09","prompt":"ความพึงพอใจโดยรวมของงานบริการ","type":"rating_scale","required":true}
     ]},
-    {"key":"comment","title":"ข้อเสนอแนะ","questions":[{"key":"comment","prompt":"ความคิดเห็นหรือข้อเสนอแนะเพิ่มเติม","type":"long_text","required":false,"comment":true,"max_length":4000}]}
+    {"key":"comment","title":"ข้อเสนอแนะ","questions":[{"key":"comment","prompt":"ข้อคิดเห็นและข้อเสนอแนะอื่นๆที่ท่านเห็นว่าสำคัญหรือควรปรับปรุง","type":"long_text","required":false,"comment":true,"max_length":4000}]}
   ]}$json$::jsonb
 );
 -- END SEED
@@ -810,20 +831,20 @@ select private.seed_satisfaction_survey(
 -- SEED FM-QP-LAB-09-03
 select private.seed_satisfaction_survey(
   'FM-QP-LAB-09-03',
-  'แบบสำรวจความพึงพอใจต่อการให้บริการ (เฉพาะเจ้าหน้าที่ส่งตรวจ-เสมียนหอ)',
-  $json${"sections":[
-    {"key":"profile","title":"ข้อมูลผู้ตอบ","questions":[
-      {"key":"department","prompt":"หน่วยงาน/หอผู้ป่วย","type":"short_text","required":false,"max_length":500}
+  'แบบสำรวจความพึงพอใจต่อการให้บริการ (เฉพาะเจ้าหน้าที่ส่งตรวจ/เสมียนหอ)',
+  $json${"description":"แบบสำรวจความพึงพอใจต่อการให้บริการฉบับนี้จัดทำขึ้นเพื่อให้ผู้ใช้บริการกรอกข้อมูล โดยมีวัตถุประสงค์เพื่อนำไปประกอบการประเมินผลการดำเนินงานประจำปีงบประมาณ ของกลุ่มงานเทคนิคการแพทย์","rating_options":[{"key":"most","label":"มากที่สุด","value":"5","score":5},{"key":"more","label":"มาก","value":"4","score":4},{"key":"medium","label":"ปานกลาง","value":"3","score":3},{"key":"less","label":"น้อย","value":"2","score":2},{"key":"least","label":"น้อยที่สุด","value":"1","score":1}],"sections":[
+    {"key":"profile","title":"ส่วนที่ 1 ข้อมูลผู้ตอบแบบสอบถาม","questions":[
+      {"key":"department","prompt":"กลุ่ม/ฝ่าย/แผนก","type":"single_choice","required":false,"options":[{"key":"obstetrics","label":"สูติกรรม"},{"key":"surgery","label":"ศัลยกรรม"},{"key":"medicine","label":"อายุรกรรม"},{"key":"pediatrics","label":"กุมารเวชกรรม"},{"key":"ward","label":"หอผู้ป่วย","other":true},{"key":"other","label":"อื่นๆ","other":true}]}
     ]},
-    {"key":"service","title":"ความพึงพอใจต่อบริการ","questions":[
-      {"key":"q01","prompt":"ขั้นตอนการรับสิ่งส่งตรวจสะดวกและชัดเจน","type":"rating_scale","required":true},
-      {"key":"q02","prompt":"เจ้าหน้าที่รับสิ่งส่งตรวจให้บริการสุภาพ","type":"rating_scale","required":true},
-      {"key":"q03","prompt":"การประสานงานเมื่อสิ่งส่งตรวจไม่ถูกต้อง","type":"rating_scale","required":true},
-      {"key":"q04","prompt":"ระยะเวลารอส่งสิ่งส่งตรวจเหมาะสม","type":"rating_scale","required":true},
-      {"key":"q05","prompt":"ข้อมูลและคำแนะนำมีความชัดเจน","type":"rating_scale","required":true},
-      {"key":"q06","prompt":"ความพึงพอใจโดยรวม","type":"rating_scale","required":true}
+    {"key":"service","title":"ส่วนที่ 2 ความพึงพอใจของท่านต่องานบริการของห้องปฏิบัติการทางเทคนิคการแพทย์","questions":[
+      {"key":"q01","prompt":"ความสุภาพของเจ้าหน้าที่ในการให้บริการ","type":"rating_scale","required":true},
+      {"key":"q02","prompt":"การให้ข้อมูล และการตอบคำถาม","type":"rating_scale","required":true},
+      {"key":"q03","prompt":"ความสะดวกในการส่งสิ่งตัวอย่างส่งตรวจ","type":"rating_scale","required":true},
+      {"key":"q04","prompt":"ความสะดวกในการติดต่อและใช้บริการ","type":"rating_scale","required":true},
+      {"key":"q05","prompt":"การใช้ประโยชน์จากคู่มือการใช้บริการห้องปฏิบัติการ","type":"rating_scale","required":true},
+      {"key":"q06","prompt":"ความพึงพอใจโดยรวมของงานบริการ","type":"rating_scale","required":true}
     ]},
-    {"key":"comment","title":"ข้อเสนอแนะ","questions":[{"key":"comment","prompt":"ความคิดเห็นหรือข้อเสนอแนะเพิ่มเติม","type":"long_text","required":false,"comment":true,"max_length":4000}]}
+    {"key":"comment","title":"ข้อเสนอแนะ","questions":[{"key":"comment","prompt":"ข้อคิดเห็นและข้อเสนอแนะอื่นๆที่ท่านเห็นว่าสำคัญหรือควรปรับปรุง","type":"long_text","required":false,"comment":true,"max_length":4000}]}
   ]}$json$::jsonb
 );
 -- END SEED
@@ -832,39 +853,39 @@ select private.seed_satisfaction_survey(
 select private.seed_satisfaction_survey(
   'FM-QP-LAB-09-04',
   'แบบประเมินความพึงพอใจของผู้บริจาคโลหิต',
-  $json${"sections":[
-    {"key":"profile","title":"ข้อมูลทั่วไป","questions":[
-      {"key":"sex","prompt":"เพศ","type":"single_choice","required":false,"options":[{"key":"male","label":"ชาย"},{"key":"female","label":"หญิง"},{"key":"other","label":"อื่น ๆ","other":true}]},
-      {"key":"age","prompt":"อายุ (ปี)","type":"number","required":false,"min":17,"max":100},
-      {"key":"education","prompt":"ระดับการศึกษา","type":"single_choice","required":false,"options":[{"key":"primary","label":"ประถมศึกษา"},{"key":"secondary","label":"มัธยมศึกษา"},{"key":"diploma","label":"อนุปริญญา"},{"key":"bachelor","label":"ปริญญาตรี"},{"key":"higher","label":"สูงกว่าปริญญาตรี"}]},
-      {"key":"occupation","prompt":"อาชีพ","type":"short_text","required":false,"max_length":500},
-      {"key":"purpose","prompt":"วัตถุประสงค์ในการบริจาคโลหิต","type":"single_choice","required":false,"options":[{"key":"voluntary","label":"บริจาคโดยสมัครใจ"},{"key":"replacement","label":"บริจาคทดแทน"},{"key":"other","label":"อื่น ๆ","other":true}]},
-      {"key":"history","prompt":"ประวัติการบริจาคโลหิต","type":"single_choice","required":false,"options":[{"key":"first","label":"ครั้งแรก"},{"key":"repeat","label":"เคยบริจาคแล้ว"}]}
+  $json${"rating_options":[{"key":"very_good","label":"ดีมาก","value":"5","score":5},{"key":"good","label":"ดี","value":"4","score":4},{"key":"medium","label":"ปานกลาง","value":"3","score":3},{"key":"fair","label":"พอใช้","value":"2","score":2},{"key":"needs_improvement","label":"ต้องปรับปรุง","value":"1","score":1}],"sections":[
+    {"key":"profile","title":"ข้อมูลเบื้องต้นผู้ประเมิน","questions":[
+      {"key":"sex","prompt":"เพศ","type":"single_choice","required":false,"options":[{"key":"male","label":"ชาย"},{"key":"female","label":"หญิง"}]},
+      {"key":"age","prompt":"อายุ.................ปี","type":"number","required":false,"min":0,"max":200},
+      {"key":"education","prompt":"การศึกษา","type":"single_choice","required":false,"options":[{"key":"primary","label":"ประถมศึกษา"},{"key":"secondary","label":"มัธยมศึกษา"},{"key":"certificate","label":"ประกาศนียบัตร"},{"key":"bachelor_or_higher","label":"ปริญญาตรีหรือสูงกว่า"},{"key":"other","label":"อื่นๆ","other":true}]},
+      {"key":"occupation","prompt":"อาชีพ","type":"single_choice","required":false,"options":[{"key":"farmer","label":"เกษตรกร"},{"key":"government_officer","label":"ข้าราชการ"},{"key":"student","label":"นักเรียน/นักศึกษา"},{"key":"merchant","label":"ค้าขาย"},{"key":"employee","label":"รับจ้าง"},{"key":"monk","label":"พระภิกษุ"},{"key":"other","label":"อื่น ๆ","other":true}]},
+      {"key":"purpose","prompt":"จุดประสงค์ของการบริจาคในครั้งนี้","type":"single_choice","required":false,"options":[{"key":"relative","label":"บริจาคให้ญาติ"},{"key":"general_patients","label":"บริจาคทั่วไปให้ผู้ป่วย"}]},
+      {"key":"history","prompt":"การบริจาค","type":"single_choice","required":false,"options":[{"key":"previously","label":"เคย"},{"key":"never","label":"ไม่เคย"}]}
     ]},
-    {"key":"place","title":"ด้านสถานที่และสิ่งอำนวยความสะดวก","questions":[
-      {"key":"q01","prompt":"สถานที่รับบริจาคสะอาดและเป็นระเบียบ","type":"rating_scale","required":true},
-      {"key":"q02","prompt":"สถานที่นั่งรอเพียงพอและเหมาะสม","type":"rating_scale","required":true},
-      {"key":"q03","prompt":"ป้ายแนะนำขั้นตอนชัดเจน","type":"rating_scale","required":true},
-      {"key":"q04","prompt":"อุปกรณ์และพื้นที่ให้ความรู้สึกปลอดภัย","type":"rating_scale","required":true}
+    {"key":"place","title":"สถานที่","questions":[
+      {"key":"q01","prompt":"เตียงบริจาคโลหิตเหมาะสม","type":"rating_scale","required":true},
+      {"key":"q02","prompt":"ขนาดของพื้นที่ให้บริการมีความเหมาะสม","type":"rating_scale","required":true},
+      {"key":"q03","prompt":"อากาศเย็นสบาย การระบายอากาศดี","type":"rating_scale","required":true},
+      {"key":"q04","prompt":"มีที่นั่งพักคอยพอเพียง","type":"rating_scale","required":true},
+      {"key":"q05","prompt":"ห้องน้ำสะอาด สะดวก สบาย","type":"rating_scale","required":true},
+      {"key":"q06","prompt":"การจัดพื้นที่ได้สัดส่วนสวยงาม","type":"rating_scale","required":true}
     ]},
-    {"key":"staff","title":"ด้านเจ้าหน้าที่","questions":[
-      {"key":"q05","prompt":"เจ้าหน้าที่ให้บริการสุภาพและเป็นมิตร","type":"rating_scale","required":true},
-      {"key":"q06","prompt":"เจ้าหน้าที่ให้ข้อมูลก่อนบริจาคชัดเจน","type":"rating_scale","required":true},
-      {"key":"q07","prompt":"เจ้าหน้าที่ตอบข้อสงสัยได้ชัดเจน","type":"rating_scale","required":true},
-      {"key":"q08","prompt":"เจ้าหน้าที่เอาใจใส่ระหว่างบริจาค","type":"rating_scale","required":true},
-      {"key":"q09","prompt":"เจ้าหน้าที่ดูแลหลังบริจาคเหมาะสม","type":"rating_scale","required":true}
+    {"key":"staff","title":"บุคลากร","questions":[
+      {"key":"q07","prompt":"เจ้าหน้าที่ให้บริการด้วยความสุภาพและเป็นกันเอง","type":"rating_scale","required":true},
+      {"key":"q08","prompt":"เจ้าหน้าที่ให้ข้อมูลที่จำเป็นในการบริจาคโลหิต","type":"rating_scale","required":true},
+      {"key":"q09","prompt":"เจ้าหน้าที่มีความกระตือรือร้นในการทำงาน","type":"rating_scale","required":true}
     ]},
-    {"key":"process","title":"ด้านกระบวนการให้บริการ","questions":[
-      {"key":"q10","prompt":"ขั้นตอนลงทะเบียนสะดวก","type":"rating_scale","required":true},
-      {"key":"q11","prompt":"ขั้นตอนคัดกรองมีความเหมาะสม","type":"rating_scale","required":true},
-      {"key":"q12","prompt":"ระยะเวลารอคอยเหมาะสม","type":"rating_scale","required":true},
-      {"key":"q13","prompt":"กระบวนการบริจาคโลหิตมีความปลอดภัย","type":"rating_scale","required":true},
-      {"key":"q14","prompt":"อาหารว่างและการพักฟื้นเหมาะสม","type":"rating_scale","required":true},
-      {"key":"q15","prompt":"ความพึงพอใจโดยรวม","type":"rating_scale","required":true}
+    {"key":"process","title":"กระบวนการ","questions":[
+      {"key":"q10","prompt":"ความสะดวกรวดเร็วในการรับบริการ","type":"rating_scale","required":true},
+      {"key":"q11","prompt":"เจ้าหน้าที่มีความชำนาญในการเจาะเลือด","type":"rating_scale","required":true},
+      {"key":"q12","prompt":"ความปลอดภัยระหว่างบริจาคโลหิต","type":"rating_scale","required":true},
+      {"key":"q13","prompt":"เครื่องดื่มและอาหารว่างหลังบริจาคโลหิตเหมาะสม","type":"rating_scale","required":true},
+      {"key":"q14","prompt":"การดูแลหลังบริจาคโลหิต","type":"rating_scale","required":true},
+      {"key":"q15","prompt":"การประชาสัมพันธ์เกี่ยวกับการบริจาคโลหิต","type":"rating_scale","required":true}
     ]},
-    {"key":"followup","title":"ข้อเสนอแนะและการกลับมาใช้บริการ","questions":[
-      {"key":"improvement","prompt":"เรื่องที่ควรปรับปรุงเร่งด่วน","type":"long_text","required":false,"comment":true,"max_length":4000},
-      {"key":"return","prompt":"ท่านตั้งใจจะกลับมาบริจาคโลหิตอีกหรือไม่","type":"yes_no","required":false}
+    {"key":"followup","title":"ข้อเสนอแนะ","questions":[
+      {"key":"improvement","prompt":"สิ่งแรกที่ท่านคิดว่าควรจะปรับปรุงอย่างเร่งด่วน คือ","type":"long_text","required":false,"comment":true,"max_length":4000},
+      {"key":"return","prompt":"ท่านจะกลับมาบริจาคโลหิตอีกหรือไม่","type":"single_choice","required":false,"options":[{"key":"return","label":"มา"},{"key":"not_return","label":"ไม่มา"}]}
     ]}
   ]}$json$::jsonb
 );
