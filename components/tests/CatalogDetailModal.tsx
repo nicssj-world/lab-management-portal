@@ -211,8 +211,16 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
         .catalog-detail-modal-chip--ephis {
           gap: 4px;
         }
-        .catalog-detail-modal-chip--updated {
+        .catalog-detail-modal-updated-at {
+          display: inline-flex;
+          align-items: baseline;
           gap: 5px;
+          padding: 8px 0 2px;
+          color: var(--muted);
+          font-size: 12px;
+        }
+        .catalog-detail-modal-updated-at time {
+          color: var(--ink);
           font-weight: 600;
         }
         .catalog-detail-modal-title {
@@ -463,14 +471,6 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
               <strong>รหัส E-Phis:</strong><strong>{activeTest?.code ?? '-'}</strong>
             </span>
             <span className="catalog-detail-modal-chip">กรมบัญชีกลาง: {activeTest?.cgd ?? '-'}</span>
-            {activeTest?.updated_at && (
-              <span className="catalog-detail-modal-chip catalog-detail-modal-chip--updated">
-                <span>แก้ไขล่าสุด</span>
-                <time dateTime={activeTest.updated_at}>
-                  {new Intl.DateTimeFormat('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(activeTest.updated_at))}
-                </time>
-              </span>
-            )}
             {activeCategory && (
               <span
                 className="catalog-detail-modal-chip"
@@ -595,10 +595,18 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
                   )}
                 </Section>
 
-                {(activeTest.contact_name || activeTest.contact_phone || activeTest.contact_email || activeTest.contact_note) && (
+                {(activeTest.contact_name || activeTest.contact_phone || activeTest.contact_email || activeTest.contact_note || activeTest.updated_at) && (
                   <Section icon="phone" title="ติดต่อ">
                     <DetailRow label="ผู้ติดต่อ" value={activeTest.contact_name} />
                     <DetailRow label="โทรศัพท์" value={activeTest.contact_phone} />
+                    {activeTest.updated_at && (
+                      <div className="catalog-detail-modal-updated-at">
+                        <span>แก้ไขล่าสุด</span>
+                        <time dateTime={activeTest.updated_at}>
+                          {new Intl.DateTimeFormat('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(activeTest.updated_at))}
+                        </time>
+                      </div>
+                    )}
                     <DetailRow
                       label="อีเมล"
                       value={activeTest.contact_email
