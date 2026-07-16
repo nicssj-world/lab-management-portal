@@ -27,6 +27,7 @@ interface Props {
   onOpen?: (t: Test) => void
   nameSortKey?: string
   headerFontSize?: number
+  showUpdatedAt?: boolean
 }
 
 const TH: React.CSSProperties = {
@@ -89,6 +90,7 @@ export function TestTable({
   onSort, onPageChange, onDelete, onBulkDelete, getHref, onOpen,
   nameSortKey = 'th',
   headerFontSize,
+  showUpdatedAt = false,
 }: Props) {
   const router = useRouter()
   const catMap = Object.fromEntries(categories.map(c => [c.id, c]))
@@ -518,6 +520,12 @@ export function TestTable({
                         {t.available_24hr ? '24 ชั่วโมง' : (t.service ?? '—')}
                       </div>
                     </div>
+                    {showUpdatedAt && <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, paddingTop: 2, color: 'var(--muted)', fontSize: 11.5 }}>
+                      <span>แก้ไขล่าสุด</span>
+                      <time dateTime={t.updated_at} style={{ color: 'var(--ink)', fontWeight: 600 }}>
+                        {new Intl.DateTimeFormat('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(t.updated_at))}
+                      </time>
+                    </div>}
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
