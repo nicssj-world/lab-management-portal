@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -48,7 +49,9 @@ export function SatisfactionModule({
   initialSurveys: SatisfactionSurveyListItem[]
   initialCampaigns: SatisfactionCampaignListItem[]
 }) {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [createSurveyOpen, setCreateSurveyOpen] = useState(false)
   const canEdit = level === 'edit'
   const openCampaigns = useMemo(
     () => initialCampaigns.filter((campaign) => campaign.status === 'open'),
@@ -88,7 +91,7 @@ export function SatisfactionModule({
 
       <section className="satisfaction-hero">
         <div className="satisfaction-hero-copy"><div className="satisfaction-hero-kicker"><Icon name="clipboard" size={14} /> QUALITY EXPERIENCE</div><h1>แบบสำรวจความพึงพอใจ</h1><p>สร้างแบบสำรวจ เปิดรอบรับคำตอบ และติดตามผลอย่างเป็นระบบ โดยไม่เก็บข้อมูลระบุตัวบุคคล</p><div className="satisfaction-hero-metrics"><div className="satisfaction-hero-metric"><span>รอบที่กำลังเปิด</span><strong>{openCampaigns.length}</strong></div><div className="satisfaction-hero-metric"><span>คำตอบสะสม</span><strong>{totalResponses.toLocaleString('th-TH')}</strong></div><div className="satisfaction-hero-metric"><span>แบบสำรวจ</span><strong>{initialSurveys.length}</strong></div></div></div>
-        {canEdit && <div className="satisfaction-hero-actions"><Button icon="plus" onClick={() => setActiveTab('surveys')}>สร้างแบบสำรวจ</Button></div>}
+        {canEdit && <div className="satisfaction-hero-actions"><Button icon="plus" onClick={() => setCreateSurveyOpen(true)}>สร้างแบบสำรวจ</Button></div>}
       </section>
 
       <div role="tablist" aria-label="เมนูแบบสำรวจความพึงพอใจ" className="satisfaction-tabs">
@@ -130,7 +133,7 @@ export function SatisfactionModule({
             <SectionHeading
               title="แบบสำรวจ"
               hint="แบบที่เผยแพร่แล้วจะถูกล็อกและแก้ไขผ่านเวอร์ชันใหม่"
-              action={canEdit ? <Button size="sm" icon="plus">สร้างใหม่</Button> : undefined}
+              action={canEdit ? <Button size="sm" icon="plus" onClick={() => setCreateSurveyOpen(true)}>สร้างใหม่</Button> : undefined}
             />
             {initialSurveys.length === 0 ? (
               <EmptyState title="ยังไม่มีแบบสำรวจ" hint="หลังติดตั้ง SQL จะพบแบบมาตรฐานทั้ง 4 ชุด" icon="clipboard" />
@@ -165,7 +168,57 @@ export function SatisfactionModule({
           </Card>
         )}
       </section>
+      {createSurveyOpen && <CreateSurveyDialog onClose={() => setCreateSurveyOpen(false)} onCreated={(surveyId) => router.push(`/staff/satisfaction/${surveyId}`)} />}
     </main>
+  )
+}
+
+function CreateSurveyDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (surveyId: string) => void }) {
+  const [code, setCode] = useState('')
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const createSurvey = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true); setError('')
+    try {
+      const response = await fetch('/api/admin/satisfaction/surveys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, title, description: description.trim() || null }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || !result.surveyId) throw new Error(result.error ?? 'สร้างแบบสำรวจไม่สำเร็จ')
+      onCreated(result.surveyId)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'สร้างแบบสำรวจไม่สำเร็จ')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center', padding: 16, background: 'rgba(15,23,42,.58)' }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="create-survey-title" style={{ width: 'min(520px,100%)', borderRadius: 16, background: 'var(--surface)', boxShadow: '0 24px 80px rgba(0,0,0,.28)' }}>
+        <form onSubmit={createSurvey}>
+          <div style={{ padding: 20 }}>
+            <h2 id="create-survey-title" style={{ margin: 0, color: 'var(--ink)', fontSize: 18 }}>สร้างแบบสำรวจใหม่</h2>
+            <p style={{ margin: '7px 0 0', color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>ระบบจะสร้าง Version 1 เป็นฉบับร่าง แล้วเปิดหน้าสำหรับเพิ่มคำถามให้ทันที</p>
+            <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
+              <label className="create-survey-field">รหัสแบบสำรวจ<input autoFocus required maxLength={80} value={code} onChange={(event) => setCode(event.target.value)} placeholder="เช่น FM-QP-LAB-09-05" /></label>
+              <label className="create-survey-field">ชื่อแบบสำรวจ<input required maxLength={500} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="ระบุชื่อแบบสำรวจ" /></label>
+              <label className="create-survey-field">คำอธิบาย <span>(ไม่บังคับ)</span><textarea maxLength={4000} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="อธิบายกลุ่มผู้ตอบหรือวัตถุประสงค์" /></label>
+            </div>
+            {error && <div role="alert" style={{ marginTop: 14, padding: '9px 10px', borderRadius: 8, background: 'rgba(220,38,38,.08)', color: 'var(--danger)', fontSize: 12 }}>{error}</div>}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0 20px 20px' }}>
+            <Button variant="secondary" onClick={onClose} disabled={saving}>ยกเลิก</Button>
+            <Button type="submit" icon="plus" disabled={saving}>{saving ? 'กำลังสร้าง…' : 'สร้างและเริ่มแก้ไข'}</Button>
+          </div>
+        </form>
+      </section>
+      <style>{`.create-survey-field{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12px;font-weight:700}.create-survey-field span{font-weight:400}.create-survey-field input,.create-survey-field textarea{box-sizing:border-box;width:100%;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink);padding:9px 10px;font:inherit;font-size:13px;font-weight:400;resize:vertical}.create-survey-field input:focus-visible,.create-survey-field textarea:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 25%,transparent);outline-offset:1px;border-color:var(--primary)}`}</style>
+    </div>
   )
 }
 
