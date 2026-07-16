@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const sql = readFileSync(join(process.cwd(), 'scripts/satisfaction-survey-module.sql'), 'utf8')
+const repair = readFileSync(join(process.cwd(), 'scripts/repair-satisfaction-survey-source.mjs'), 'utf8')
 const normalized = sql.toLowerCase().replace(/\s+/g, ' ')
 
 const tables = [
@@ -64,6 +65,25 @@ for (const [code, expected] of expectedCounts) {
     `${code} rating count`,
   )
 }
+
+// The four controlled forms are transcribed from their approved PDF originals.
+// Keep their wording and answer choices verbatim; these are not generic templates.
+assert.match(sql, /21-30 ปี/)
+assert.match(sql, /เบิกจ่ายตรง\/ต้นสังกัด/)
+assert.match(sql, /การให้บริการของเจ้าหน้าที่บันทึกข้อมูล/)
+assert.match(sql, /แพทย์\/ทันตแพทย์/)
+assert.match(sql, /ความสำคัญของผลการตรวจวิเคราะห์ทางห้องปฏิบัติการในการรักษาผู้ป่วย/)
+assert.match(sql, /ความสะดวกในการส่งสิ่งตัวอย่างส่งตรวจ/)
+assert.match(sql, /ประกาศนียบัตร/)
+assert.match(sql, /ปริญญาตรีหรือสูงกว่า/)
+assert.match(sql, /เจ้าหน้าที่มีความชำนาญในการเจาะเลือด/)
+assert.match(sql, /การประชาสัมพันธ์เกี่ยวกับการบริจาคโลหิต/)
+assert.match(sql, /"label":"ดีมาก"/)
+assert.match(sql, /"label":"ต้องปรับปรุง"/)
+assert.match(repair, /sourceDefinition\(code\)/)
+assert.match(repair, /version_number: 2/)
+assert.match(repair, /from\('survey_responses'\)\s*\.delete\(\)/)
+assert.match(repair, /from\('survey_campaigns'\)\s*\.delete\(\)/)
 
 assert.match(normalized, /published_at/)
 assert.match(normalized, /prevent_published_survey_version_changes/)
