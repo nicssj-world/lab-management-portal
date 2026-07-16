@@ -13,6 +13,7 @@ import type {
   SatisfactionCampaignListItem,
   SatisfactionSurveyListItem,
 } from '@/lib/supabase/types'
+import { CampaignManager } from './CampaignManager'
 
 type Tab = 'overview' | 'surveys' | 'campaigns' | 'comments'
 
@@ -145,8 +146,7 @@ export function SatisfactionModule({
 
         {activeTab === 'campaigns' && (
           <Card padding={0}>
-            <SectionHeading title="รอบเก็บข้อมูล" hint="แต่ละรอบผูกกับเวอร์ชันและ QR token ของตนเอง" action={canEdit ? <Button size="sm" icon="plus">เปิดรอบใหม่</Button> : undefined} />
-            <CampaignTable campaigns={initialCampaigns} />
+            {canEdit ? <CampaignManager campaigns={initialCampaigns} surveys={initialSurveys} /> : <><SectionHeading title="รอบเก็บข้อมูล" hint="แต่ละรอบผูกกับเวอร์ชันและ QR token ของตนเอง" /><CampaignTable campaigns={initialCampaigns} /></>}
           </Card>
         )}
 

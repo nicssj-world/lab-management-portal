@@ -59,3 +59,34 @@ export const archiveSurveySchema = z.object({ archived: z.boolean() })
 export const draftMutationSchema = z.object({ definition: surveyDefinitionSchema })
 export const cloneDraftSchema = z.object({ sourceVersionId: z.string().uuid() })
 export const publishSurveySchema = z.object({ versionId: z.string().uuid() })
+
+export const createCampaignSchema = z.object({
+  surveyId: z.string().uuid(),
+  surveyVersionId: z.string().uuid(),
+  name: z.string().trim().min(1).max(500),
+  opensAt: z.string().datetime().nullable().optional(),
+  closesAt: z.string().datetime().nullable().optional(),
+  responseLimit: z.number().int().positive().max(1_000_000).nullable().optional(),
+  onePerDevice: z.boolean().default(false),
+})
+
+export const updateCampaignSchema = z.object({
+  name: z.string().trim().min(1).max(500).optional(),
+  status: z.enum(['draft', 'open', 'closed']).optional(),
+  opensAt: z.string().datetime().nullable().optional(),
+  closesAt: z.string().datetime().nullable().optional(),
+  responseLimit: z.number().int().positive().max(1_000_000).nullable().optional(),
+  onePerDevice: z.boolean().optional(),
+}).refine((value) => Object.keys(value).length > 0, 'ไม่มีข้อมูลที่ต้องแก้ไข')
+
+export const rotateCampaignTokenSchema = z.object({ confirm: z.literal(true) })
+export const publicSubmissionSchema = z.object({
+  submissionKey: z.string().uuid(),
+  answers: z.array(z.object({
+    questionId: z.string().uuid(),
+    optionId: z.string().uuid().nullable().optional(),
+    numericValue: z.number().finite().nullable().optional(),
+    textValue: z.string().nullable().optional(),
+    detailText: z.string().nullable().optional(),
+  })).max(500),
+})

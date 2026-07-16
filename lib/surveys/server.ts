@@ -20,6 +20,7 @@ type SurveyRow = {
   archived_at: string | null
   updated_at: string
   survey_versions: Array<{
+    id: string
     version_number: number
     status: SatisfactionSurveyListItem['latestStatus']
     published_at: string | null
@@ -30,7 +31,7 @@ type SurveyRow = {
 export async function listSurveys(): Promise<SatisfactionSurveyListItem[]> {
   const { data, error } = await supabaseAdmin
     .from('surveys')
-    .select('id, code, title, description, archived_at, updated_at, survey_versions(version_number, status, published_at, updated_at)')
+    .select('id, code, title, description, archived_at, updated_at, survey_versions(id, version_number, status, published_at, updated_at)')
     .order('updated_at', { ascending: false })
   fail(error)
 
@@ -45,6 +46,7 @@ export async function listSurveys(): Promise<SatisfactionSurveyListItem[]> {
       description: survey.description,
       archivedAt: survey.archived_at,
       latestVersion: latest?.version_number ?? null,
+      latestVersionId: latest?.id ?? null,
       latestStatus: latest?.status ?? null,
       publishedAt: latest?.published_at ?? null,
       updatedAt: latest?.updated_at ?? survey.updated_at,
@@ -56,6 +58,8 @@ type CampaignRow = {
   id: string
   name: string
   survey_id: string
+  survey_version_id: string
+  public_token: string
   status: SatisfactionCampaignListItem['status']
   response_count: number
   response_limit: number | null
@@ -69,7 +73,7 @@ type CampaignRow = {
 export async function listCampaigns(): Promise<SatisfactionCampaignListItem[]> {
   const { data, error } = await supabaseAdmin
     .from('survey_campaigns')
-    .select('id, name, survey_id, status, response_count, response_limit, opens_at, closes_at, updated_at, surveys(code, title), survey_versions(version_number)')
+    .select('id, name, survey_id, survey_version_id, public_token, status, response_count, response_limit, opens_at, closes_at, updated_at, surveys(code, title), survey_versions(version_number)')
     .order('updated_at', { ascending: false })
   fail(error)
 
@@ -77,9 +81,11 @@ export async function listCampaigns(): Promise<SatisfactionCampaignListItem[]> {
     id: campaign.id,
     name: campaign.name,
     surveyId: campaign.survey_id,
+    surveyVersionId: campaign.survey_version_id,
     surveyCode: campaign.surveys?.code ?? '—',
     surveyTitle: campaign.surveys?.title ?? 'ไม่พบแบบสำรวจ',
     versionNumber: campaign.survey_versions?.version_number ?? 0,
+    publicToken: campaign.public_token,
     status: campaign.status,
     responseCount: campaign.response_count,
     responseLimit: campaign.response_limit,
@@ -170,7 +176,7 @@ function hydrateDefinition(rows: DefinitionRows): SurveyVersionDefinition {
   }
 }
 
-async function loadDefinition(versionId: string): Promise<SurveyVersionDefinition | null> {
+export async function loadSurveyDefinition(versionId: string): Promise<SurveyVersionDefinition | null> {
   const { data: version, error: versionError } = await supabaseAdmin
     .from('survey_versions').select('*').eq('id', versionId).maybeSingle()
   fail(versionError)
@@ -203,7 +209,7 @@ export async function getSurveyWorkspace(surveyId: string): Promise<SurveyWorksp
   fail(surveyResult.error); fail(versionsResult.error)
   if (!surveyResult.data || !versionsResult.data?.length) return null
   const version = versionsResult.data.find((item) => item.status === 'draft') ?? versionsResult.data[0]
-  const definition = await loadDefinition(version.id)
+  const definition = await loadSurveyDefinition(version.id)
   if (!definition) return null
   return {
     survey: {
@@ -266,7 +272,7 @@ export async function cloneSurveyDraft(surveyId: string, sourceVersionId: string
   if (versions?.some((version) => version.status === 'draft')) {
     throw new Error('แบบสำรวจนี้มีฉบับร่างอยู่แล้ว')
   }
-  const source = await loadDefinition(sourceVersionId)
+  const source = await loadSurveyDefinition(sourceVersionId)
   if (!source || source.surveyId !== surveyId) throw new Error('ไม่พบเวอร์ชันต้นฉบับ')
   const nextVersion = Math.max(...(versions ?? []).map((version) => version.version_number), 0) + 1
   const draft = cloneDefinition(source, nextVersion)
@@ -285,7 +291,7 @@ export async function cloneSurveyDraft(surveyId: string, sourceVersionId: string
 }
 
 export async function publishSurveyDraft(surveyId: string, versionId: string) {
-  const definition = await loadDefinition(versionId)
+  const definition = await loadSurveyDefinition(versionId)
   if (!definition || definition.surveyId !== surveyId || definition.status !== 'draft') {
     throw new Error('ไม่พบฉบับร่างที่ต้องการเผยแพร่')
   }
