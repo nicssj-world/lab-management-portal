@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Icon } from '@/components/ui/Icon'
-import { PageHeader } from '@/components/ui/PageHeader'
 import type { PermLevel } from '@/lib/permissions'
 import type {
   SatisfactionCampaignListItem,
@@ -63,30 +62,34 @@ export function SatisfactionModule({
   return (
     <main className="satisfaction-page" style={{ padding: 24, minWidth: 0 }}>
       <style>{`
-        .satisfaction-tabs{display:flex;gap:4px;overflow-x:auto;padding:4px;background:var(--surface-2);border-radius:12px;margin-bottom:20px;scrollbar-width:thin}
-        .satisfaction-tab{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;padding:9px 14px;border-radius:9px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;cursor:pointer;transition:background .18s,color .18s}
-        .satisfaction-tab:hover{color:var(--ink);background:var(--card)}
-        .satisfaction-tab[aria-selected="true"]{color:var(--primary);background:var(--card);box-shadow:0 1px 4px rgba(15,23,42,.08)}
+        .satisfaction-page{max-width:1440px;margin:0 auto}
+        .satisfaction-hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:end;overflow:hidden;margin-bottom:18px;padding:26px;border:1px solid rgba(13,148,136,.2);border-radius:18px;background:linear-gradient(125deg,rgba(13,148,136,.14),rgba(37,99,235,.08) 54%,var(--card));box-shadow:0 12px 28px rgba(15,118,110,.07)}
+        .satisfaction-hero::after{content:"";position:absolute;width:260px;height:260px;right:-100px;top:-135px;border-radius:50%;background:rgba(13,148,136,.12);pointer-events:none}
+        .satisfaction-hero-copy,.satisfaction-hero-actions{position:relative;z-index:1}.satisfaction-hero-kicker{display:inline-flex;align-items:center;gap:7px;color:#0F766E;font-size:11px;font-weight:800;letter-spacing:.09em}.satisfaction-hero h1{margin:8px 0 0;color:var(--ink);font-size:clamp(24px,3vw,31px);line-height:1.2}.satisfaction-hero p{max-width:660px;margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.65}.satisfaction-hero-metrics{display:flex;gap:18px;margin-top:18px;flex-wrap:wrap}.satisfaction-hero-metric{min-width:104px;padding-left:12px;border-left:2px solid rgba(13,148,136,.34)}.satisfaction-hero-metric span{display:block;color:var(--muted);font-size:11px}.satisfaction-hero-metric strong{display:block;margin-top:2px;color:var(--ink);font-size:19px;line-height:1.1}
+        .satisfaction-tabs{display:flex;gap:5px;overflow-x:auto;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;margin-bottom:20px;scrollbar-width:thin}
+        .satisfaction-tab{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:700;padding:10px 14px;border-radius:10px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;cursor:pointer;transition:background .18s,color .18s,box-shadow .18s}
+        .satisfaction-tab:hover{color:var(--ink);background:color-mix(in srgb,var(--card) 78%,var(--primary-soft))}
+        .satisfaction-tab[aria-selected="true"]{color:var(--primary);background:var(--card);box-shadow:0 2px 7px rgba(15,23,42,.08)}
         .satisfaction-tab:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 30%,transparent);outline-offset:2px}
         .satisfaction-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:18px}
+        .satisfaction-summary-card{box-shadow:0 7px 18px rgba(15,23,42,.045)}
         .satisfaction-table-wrap{overflow-x:auto}
         .satisfaction-table{width:100%;border-collapse:collapse;min-width:720px}
-        .satisfaction-table th{text-align:left;color:var(--muted);font-size:11px;font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border);letter-spacing:.03em}
-        .satisfaction-table td{padding:13px 12px;border-bottom:1px solid var(--border);font-size:13px;color:var(--ink);vertical-align:middle}
+        .satisfaction-table th{text-align:left;color:var(--muted);font-size:11px;font-weight:800;padding:11px 14px;border-bottom:1px solid var(--border);letter-spacing:.04em;background:color-mix(in srgb,var(--surface-2) 75%,transparent)}
+        .satisfaction-table td{padding:14px;border-bottom:1px solid var(--border);font-size:13px;color:var(--ink);vertical-align:middle}
         .satisfaction-campaign-table th:nth-child(n+3),.satisfaction-campaign-table td:nth-child(n+3){text-align:center}
         .satisfaction-status-cell{display:flex;justify-content:center}
         .satisfaction-table tbody tr{transition:background .15s}
-        .satisfaction-table tbody tr:hover{background:var(--surface-2)}
-        @media(max-width: 767px){.satisfaction-page{padding:16px !important}.satisfaction-stats{grid-template-columns:1fr}.satisfaction-tabs{margin-inline:-4px}.satisfaction-tab{padding:9px 12px}}
+        .satisfaction-table tbody tr:hover{background:color-mix(in srgb,var(--surface-2) 76%,transparent)}
+        .satisfaction-section-heading{padding:17px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+        @media(max-width: 767px){.satisfaction-page{padding:16px !important}.satisfaction-hero{grid-template-columns:1fr;gap:18px;padding:21px}.satisfaction-hero-actions{display:flex}.satisfaction-hero-actions button{width:100%}.satisfaction-stats{grid-template-columns:1fr}.satisfaction-tabs{margin-inline:-4px}.satisfaction-tab{padding:9px 12px}.satisfaction-table{min-width:640px}}
         @media(prefers-reduced-motion:reduce){.satisfaction-tab,.satisfaction-table tbody tr{transition:none}}
       `}</style>
 
-      <PageHeader
-        eyebrow="QUALITY EXPERIENCE"
-        title="แบบสำรวจความพึงพอใจ"
-        subtitle="สร้างแบบสำรวจ เปิดรอบรับคำตอบ และติดตามผลโดยไม่เก็บข้อมูลระบุตัวบุคคล"
-        actions={canEdit ? <Button icon="plus" onClick={() => setActiveTab('surveys')}>สร้างแบบสำรวจ</Button> : undefined}
-      />
+      <section className="satisfaction-hero">
+        <div className="satisfaction-hero-copy"><div className="satisfaction-hero-kicker"><Icon name="clipboard" size={14} /> QUALITY EXPERIENCE</div><h1>แบบสำรวจความพึงพอใจ</h1><p>สร้างแบบสำรวจ เปิดรอบรับคำตอบ และติดตามผลอย่างเป็นระบบ โดยไม่เก็บข้อมูลระบุตัวบุคคล</p><div className="satisfaction-hero-metrics"><div className="satisfaction-hero-metric"><span>รอบที่กำลังเปิด</span><strong>{openCampaigns.length}</strong></div><div className="satisfaction-hero-metric"><span>คำตอบสะสม</span><strong>{totalResponses.toLocaleString('th-TH')}</strong></div><div className="satisfaction-hero-metric"><span>แบบสำรวจ</span><strong>{initialSurveys.length}</strong></div></div></div>
+        {canEdit && <div className="satisfaction-hero-actions"><Button icon="plus" onClick={() => setActiveTab('surveys')}>สร้างแบบสำรวจ</Button></div>}
+      </section>
 
       <div role="tablist" aria-label="เมนูแบบสำรวจความพึงพอใจ" className="satisfaction-tabs">
         {TABS.map((tab) => (
@@ -168,7 +171,7 @@ export function SatisfactionModule({
 
 function SummaryCard({ label, value, hint, icon, color }: { label: string; value: string | number; hint: string; icon: string; color: string }) {
   return (
-    <Card>
+    <Card className="satisfaction-summary-card">
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         <span style={{ width: 38, height: 38, display: 'grid', placeItems: 'center', borderRadius: 10, background: `${color}15`, color }}><Icon name={icon} size={19} /></span>
         <div><div style={{ color: 'var(--muted)', fontSize: 12 }}>{label}</div><div style={{ color: 'var(--ink)', fontSize: 26, lineHeight: 1.2, fontWeight: 800, marginTop: 3 }}>{value}</div><div style={{ color: 'var(--muted)', fontSize: 11.5, marginTop: 4 }}>{hint}</div></div>
@@ -178,7 +181,7 @@ function SummaryCard({ label, value, hint, icon, color }: { label: string; value
 }
 
 function SectionHeading({ title, hint, action }: { title: string; hint: string; action?: React.ReactNode }) {
-  return <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><div><h2 style={{ margin: 0, fontSize: 15, color: 'var(--ink)' }}>{title}</h2><p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)' }}>{hint}</p></div>{action}</div>
+  return <div className="satisfaction-section-heading"><div><h2 style={{ margin: 0, fontSize: 15, color: 'var(--ink)' }}>{title}</h2><p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)' }}>{hint}</p></div>{action}</div>
 }
 
 function CampaignTable({ campaigns }: { campaigns: SatisfactionCampaignListItem[] }) {
