@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/Badge'
@@ -198,9 +199,9 @@ function CreateSurveyDialog({ onClose, onCreated }: { onClose: () => void; onCre
     } finally { setSaving(false) }
   }
 
-  return (
-    <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center', padding: 16, background: 'rgba(15,23,42,.58)' }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="create-survey-title" style={{ width: 'min(520px,100%)', borderRadius: 16, background: 'var(--surface)', boxShadow: '0 24px 80px rgba(0,0,0,.28)' }}>
+  const content = (
+    <div className="modal-scrim" role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'grid', placeItems: 'center', padding: 16, background: 'rgba(15,23,42,.58)', backdropFilter: 'blur(3px)' }}>
+      <section className="modal-panel-pop" role="dialog" aria-modal="true" aria-labelledby="create-survey-title" style={{ width: 'min(520px,100%)', border: '1px solid var(--border)', borderRadius: 16, background: 'var(--card)', boxShadow: '0 24px 80px rgba(0,0,0,.28)', overflow: 'hidden' }}>
         <form onSubmit={createSurvey}>
           <div style={{ padding: 20 }}>
             <h2 id="create-survey-title" style={{ margin: 0, color: 'var(--ink)', fontSize: 18 }}>สร้างแบบสำรวจใหม่</h2>
@@ -218,9 +219,11 @@ function CreateSurveyDialog({ onClose, onCreated }: { onClose: () => void; onCre
           </div>
         </form>
       </section>
-      <style>{`.create-survey-field{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12px;font-weight:700}.create-survey-field span{font-weight:400}.create-survey-field input,.create-survey-field textarea{box-sizing:border-box;width:100%;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink);padding:9px 10px;font:inherit;font-size:13px;font-weight:400;resize:vertical}.create-survey-field input:focus-visible,.create-survey-field textarea:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 25%,transparent);outline-offset:1px;border-color:var(--primary)}`}</style>
+      <style>{`.create-survey-field{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12px;font-weight:700}.create-survey-field span{font-weight:400}.create-survey-field input,.create-survey-field textarea{box-sizing:border-box;width:100%;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--ink);padding:9px 10px;font:inherit;font-size:13px;font-weight:400;resize:vertical}.create-survey-field input:focus-visible,.create-survey-field textarea:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 25%,transparent);outline-offset:1px;border-color:var(--primary)}`}</style>
     </div>
   )
+
+  return typeof document === 'undefined' ? content : createPortal(content, document.body)
 }
 
 function SummaryCard({ label, value, hint, icon, color }: { label: string; value: string | number; hint: string; icon: string; color: string }) {
