@@ -211,6 +211,10 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
         .catalog-detail-modal-chip--ephis {
           gap: 4px;
         }
+        .catalog-detail-modal-chip--updated {
+          gap: 5px;
+          font-weight: 600;
+        }
         .catalog-detail-modal-title {
           margin: 0;
           color: var(--ink);
@@ -459,6 +463,14 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
               <strong>รหัส E-Phis:</strong><strong>{activeTest?.code ?? '-'}</strong>
             </span>
             <span className="catalog-detail-modal-chip">กรมบัญชีกลาง: {activeTest?.cgd ?? '-'}</span>
+            {activeTest?.updated_at && (
+              <span className="catalog-detail-modal-chip catalog-detail-modal-chip--updated">
+                <span>แก้ไขล่าสุด</span>
+                <time dateTime={activeTest.updated_at}>
+                  {new Intl.DateTimeFormat('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(activeTest.updated_at))}
+                </time>
+              </span>
+            )}
             {activeCategory && (
               <span
                 className="catalog-detail-modal-chip"
