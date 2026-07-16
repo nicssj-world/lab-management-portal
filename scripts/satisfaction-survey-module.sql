@@ -517,6 +517,61 @@ revoke all on function public.save_survey_draft(uuid, jsonb, uuid) from anon;
 revoke all on function public.save_survey_draft(uuid, jsonb, uuid) from authenticated;
 grant execute on function public.save_survey_draft(uuid, jsonb, uuid) to service_role;
 
+-- Publishes a closed campaign to the legacy annual KPI table atomically.
+create or replace function public.publish_survey_kpi(
+  p_campaign_id uuid,
+  p_fiscal_year integer,
+  p_metric_code text,
+  p_metric_name text,
+  p_normalized_pct numeric,
+  p_positive_pct numeric,
+  p_response_count integer,
+  p_formula text,
+  p_actor_id uuid
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_version_id uuid;
+  v_publication_id uuid := gen_random_uuid();
+begin
+  select survey_version_id into v_version_id
+  from public.survey_campaigns
+  where id = p_campaign_id and status = 'closed'
+  for update;
+  if not found then raise exception 'Campaign must be closed'; end if;
+  if exists (select 1 from public.survey_kpi_publications where campaign_id = p_campaign_id) then
+    raise exception 'Campaign was already published';
+  end if;
+  if exists (
+    select 1 from public.kpi_satisfaction
+    where metric_code = p_metric_code and fiscal_year = p_fiscal_year
+  ) then raise exception 'KPI metric/year already exists'; end if;
+
+  insert into public.survey_kpi_publications (
+    id, campaign_id, survey_version_id, fiscal_year, metric_code,
+    normalized_pct, positive_pct, response_count, formula, published_by
+  ) values (
+    v_publication_id, p_campaign_id, v_version_id, p_fiscal_year, p_metric_code,
+    p_normalized_pct, p_positive_pct, p_response_count, p_formula, p_actor_id
+  );
+  insert into public.kpi_satisfaction (
+    metric_code, metric_name, fiscal_year, value
+  ) values (
+    p_metric_code, p_metric_name, p_fiscal_year, p_normalized_pct
+  );
+  return v_publication_id;
+end;
+$$;
+
+revoke all on function public.publish_survey_kpi(uuid, integer, text, text, numeric, numeric, integer, text, uuid) from public;
+revoke all on function public.publish_survey_kpi(uuid, integer, text, text, numeric, numeric, integer, text, uuid) from anon;
+revoke all on function public.publish_survey_kpi(uuid, integer, text, text, numeric, numeric, integer, text, uuid) from authenticated;
+grant execute on function public.publish_survey_kpi(uuid, integer, text, text, numeric, numeric, integer, text, uuid) to service_role;
+
 -- Seed helper accepts the reviewed form as JSON and creates immutable Published Version 1.
 create or replace function private.seed_satisfaction_survey(
   p_code text,
