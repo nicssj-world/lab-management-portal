@@ -726,6 +726,7 @@ export interface SatisfactionSurveyListItem {
   description: string | null
   archivedAt: string | null
   latestVersion: number | null
+  latestVersionId: string | null
   latestStatus: 'draft' | 'published' | 'archived' | null
   publishedAt: string | null
   updatedAt: string
@@ -735,9 +736,11 @@ export interface SatisfactionCampaignListItem {
   id: string
   name: string
   surveyId: string
+  surveyVersionId: string
   surveyCode: string
   surveyTitle: string
   versionNumber: number
+  publicToken: string
   status: 'draft' | 'open' | 'closed'
   responseCount: number
   responseLimit: number | null
