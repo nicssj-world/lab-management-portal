@@ -14,6 +14,8 @@ import type {
   SatisfactionSurveyListItem,
 } from '@/lib/supabase/types'
 import { CampaignManager } from './CampaignManager'
+import { SatisfactionDashboard } from './SatisfactionDashboard'
+import { SurveyComments } from './SurveyComments'
 
 type Tab = 'overview' | 'surveys' | 'campaigns' | 'comments'
 
@@ -48,7 +50,6 @@ export function SatisfactionModule({
 }) {
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const canEdit = level === 'edit'
-  const canManageComments = actorRole === 'Admin' || actorRole === 'Manager'
   const openCampaigns = useMemo(
     () => initialCampaigns.filter((campaign) => campaign.status === 'open'),
     [initialCampaigns],
@@ -109,6 +110,7 @@ export function SatisfactionModule({
               <SummaryCard label="รอบที่กำลังเปิด" value={openCampaigns.length} hint="รับคำตอบแบบเรียลไทม์" icon="calendar" color="#2563EB" />
               <SummaryCard label="คำตอบสะสม" value={totalResponses.toLocaleString('th-TH')} hint="ไม่เก็บชื่อหรือ HN" icon="chart" color="#7C3AED" />
             </div>
+            <SatisfactionDashboard campaigns={initialCampaigns} />
             <Card padding={0}>
               <SectionHeading title="รอบเก็บข้อมูลล่าสุด" hint="สถานะและจำนวนคำตอบของแต่ละรอบ" />
               <CampaignTable campaigns={initialCampaigns.slice(0, 5)} />
@@ -152,8 +154,7 @@ export function SatisfactionModule({
 
         {activeTab === 'comments' && (
           <Card padding={0}>
-            <SectionHeading title="ความคิดเห็น" hint={canManageComments ? 'คุณสามารถจัดการสถานะอ่านและส่งออกรายการได้' : 'คุณมีสิทธิ์ดูและกรองความคิดเห็นเท่านั้น'} />
-            <EmptyState title="ยังไม่มีความคิดเห็น" hint="ความคิดเห็นจากคำตอบใหม่จะแสดงที่นี่โดยไม่ระบุตัวผู้ตอบ" icon="inbox" />
+            <SurveyComments actorRole={actorRole} campaigns={initialCampaigns} />
           </Card>
         )}
       </section>
