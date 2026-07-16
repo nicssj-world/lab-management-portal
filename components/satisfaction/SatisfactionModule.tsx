@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -129,7 +130,7 @@ export function SatisfactionModule({
                   <thead><tr><th>รหัส / ชื่อแบบสำรวจ</th><th>เวอร์ชัน</th><th>สถานะ</th><th>เผยแพร่เมื่อ</th><th>สิทธิ์</th></tr></thead>
                   <tbody>{initialSurveys.map((survey) => (
                     <tr key={survey.id}>
-                      <td><strong>{survey.code}</strong><div style={{ color: 'var(--muted)', marginTop: 3 }}>{survey.title}</div></td>
+                      <td><Link href={`/staff/satisfaction/${survey.id}`} style={{ color: 'var(--primary)', fontWeight: 800, textDecoration: 'none' }}>{survey.code}</Link><div style={{ color: 'var(--muted)', marginTop: 3 }}>{survey.title}</div></td>
                       <td>Version {survey.latestVersion ?? '—'}</td>
                       <td>{statusBadge(survey.latestStatus)}</td>
                       <td>{dateLabel(survey.publishedAt)}</td>

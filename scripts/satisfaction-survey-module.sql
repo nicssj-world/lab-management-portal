@@ -425,6 +425,98 @@ revoke all on function public.submit_survey_response(text, uuid, text, jsonb) fr
 revoke all on function public.submit_survey_response(text, uuid, text, jsonb) from authenticated;
 grant execute on function public.submit_survey_response(text, uuid, text, jsonb) to service_role;
 
+-- Replaces the complete draft graph inside one transaction. Published versions cannot match.
+create or replace function public.save_survey_draft(
+  p_survey_id uuid,
+  p_definition jsonb,
+  p_actor_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_version_id uuid := (p_definition->>'id')::uuid;
+  v_section jsonb;
+  v_question jsonb;
+  v_option jsonb;
+  v_section_id uuid;
+  v_question_id uuid;
+begin
+  if pg_column_size(p_definition) > 1048576 then
+    raise exception 'Survey definition is too large';
+  end if;
+  perform 1 from public.survey_versions
+  where id = v_version_id and survey_id = p_survey_id and status = 'draft'
+  for update;
+  if not found then raise exception 'Draft survey version not found'; end if;
+
+  update public.survey_versions set
+    title = left(p_definition->>'title', 500),
+    description = left(p_definition->>'description', 4000),
+    updated_at = now()
+  where id = v_version_id;
+  update public.surveys set
+    title = left(p_definition->>'title', 500),
+    description = left(p_definition->>'description', 4000),
+    updated_at = now()
+  where id = p_survey_id;
+
+  delete from public.survey_sections where survey_version_id = v_version_id;
+  for v_section in select value from jsonb_array_elements(p_definition->'sections')
+  loop
+    v_section_id := (v_section->>'id')::uuid;
+    insert into public.survey_sections (
+      id, survey_version_id, section_key, title, description, sort_order
+    ) values (
+      v_section_id, v_version_id, v_section->>'sectionKey', left(v_section->>'title', 500),
+      left(v_section->>'description', 2000), (v_section->>'sortOrder')::integer
+    );
+
+    for v_question in select value from jsonb_array_elements(v_section->'questions')
+    loop
+      v_question_id := (v_question->>'id')::uuid;
+      insert into public.survey_questions (
+        id, survey_version_id, survey_section_id, question_key, prompt, question_type,
+        required, help_text, placeholder, sort_order, numeric_min, numeric_max,
+        text_max_length, positive_threshold, allow_detail_text, detail_label, is_comment
+      ) values (
+        v_question_id, v_version_id, v_section_id, v_question->>'questionKey',
+        left(v_question->>'prompt', 1000), v_question->>'type',
+        coalesce((v_question->>'required')::boolean, false), left(v_question->>'helpText', 1000),
+        left(v_question->>'placeholder', 500), (v_question->>'sortOrder')::integer,
+        (v_question->>'min')::numeric, (v_question->>'max')::numeric,
+        (v_question->>'maxLength')::integer, (v_question->>'positiveThreshold')::numeric,
+        coalesce((v_question->>'allowDetailText')::boolean, false),
+        left(v_question->>'detailLabel', 500), coalesce((v_question->>'isComment')::boolean, false)
+      );
+
+      if jsonb_typeof(v_question->'options') = 'array' then
+        for v_option in select value from jsonb_array_elements(v_question->'options')
+        loop
+          insert into public.survey_question_options (
+            id, survey_version_id, survey_question_id, option_key, label, value,
+            score, allows_other_text, sort_order
+          ) values (
+            (v_option->>'id')::uuid, v_version_id, v_question_id, v_option->>'optionKey',
+            left(v_option->>'label', 500), left(v_option->>'value', 500),
+            (v_option->>'score')::numeric,
+            coalesce((v_option->>'allowsOtherText')::boolean, false),
+            (v_option->>'sortOrder')::integer
+          );
+        end loop;
+      end if;
+    end loop;
+  end loop;
+end;
+$$;
+
+revoke all on function public.save_survey_draft(uuid, jsonb, uuid) from public;
+revoke all on function public.save_survey_draft(uuid, jsonb, uuid) from anon;
+revoke all on function public.save_survey_draft(uuid, jsonb, uuid) from authenticated;
+grant execute on function public.save_survey_draft(uuid, jsonb, uuid) to service_role;
+
 -- Seed helper accepts the reviewed form as JSON and creates immutable Published Version 1.
 create or replace function private.seed_satisfaction_survey(
   p_code text,
