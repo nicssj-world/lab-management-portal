@@ -20,6 +20,7 @@
 :root {
   --bg:           #F7F9FC;
   --card:         #FFFFFF;
+  --surface:      var(--card);
   --surface-2:    #F1F4F9;
   --border:       #E5EAF0;
   --ink:          #0F172A;
