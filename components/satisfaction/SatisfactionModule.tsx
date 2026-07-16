@@ -64,9 +64,9 @@ export function SatisfactionModule({
   )
 
   return (
-    <main className="satisfaction-page" style={{ padding: 24, minWidth: 0 }}>
+    <main className="satisfaction-page" style={{ minWidth: 0 }}>
       <style>{`
-        .satisfaction-page{max-width:1440px;margin:0 auto}
+        .satisfaction-page{width:100%;max-width:none;margin:0;padding:16px;box-sizing:border-box}
         .satisfaction-tabs{display:flex;gap:5px;overflow-x:auto;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;margin-bottom:20px;scrollbar-width:thin}
         .satisfaction-tab{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:700;padding:10px 14px;border-radius:10px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;cursor:pointer;transition:background .18s,color .18s,box-shadow .18s}
         .satisfaction-tab:hover{color:var(--ink);background:color-mix(in srgb,var(--card) 78%,var(--primary-soft))}
@@ -83,7 +83,9 @@ export function SatisfactionModule({
         .satisfaction-table tbody tr{transition:background .15s}
         .satisfaction-table tbody tr:hover{background:color-mix(in srgb,var(--surface-2) 76%,transparent)}
         .satisfaction-section-heading{padding:17px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
-        @media(max-width: 767px){.satisfaction-page{padding:16px !important}.satisfaction-stats{grid-template-columns:1fr}.satisfaction-tabs{margin-inline:-4px}.satisfaction-tab{padding:9px 12px}.satisfaction-table{min-width:640px}}
+        @media(min-width:768px){.satisfaction-page{padding:24px}}
+        @media(min-width:1440px){.satisfaction-page{max-width:1440px;margin-inline:auto}}
+        @media(max-width: 767px){.satisfaction-stats{grid-template-columns:1fr}.satisfaction-tabs{margin-inline:-4px}.satisfaction-tab{padding:9px 12px}.satisfaction-table{min-width:640px}}
         @media(prefers-reduced-motion:reduce){.satisfaction-tab,.satisfaction-table tbody tr{transition:none}}
       `}</style>
 
