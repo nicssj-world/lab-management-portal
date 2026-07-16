@@ -168,6 +168,7 @@ function CatalogContent() {
           onOpen={(test) => setSelectedTestId(test.id)}
           nameSortKey="display_name_alpha"
           headerFontSize={11.5}
+          showUpdatedAt
         />
         <CatalogDetailModal
           testId={selectedTestId}
