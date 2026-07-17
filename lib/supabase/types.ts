@@ -59,12 +59,39 @@ export interface StaffTraining {
   profile_id: string
   topic: string
   training_date: string | null
+  training_end_date: string | null
   hours: number | null
   provider: string | null
   location: string | null
-  training_type: 'internal' | 'external' | 'CME' | 'CPD' | null
+  training_type: 'in_plan' | 'out_of_plan' | null
   cpd_credits: number | null
   evidence_url: string | null
+  notes: string | null
+  created_at: string
+  created_by: string | null
+  deleted_at: string | null
+}
+
+export interface StaffHealthRecord {
+  id: string
+  profile_id: string
+  record_type: 'vaccination' | 'health_check' | 'other'
+  name: string
+  record_date: string | null
+  next_due_date: string | null
+  result: string | null
+  evidence_url: string | null
+  notes: string | null
+  created_at: string
+  created_by: string | null
+  deleted_at: string | null
+}
+
+export interface StaffConfidentialityAgreement {
+  id: string
+  profile_id: string
+  signed_date: string | null
+  file_url: string | null
   notes: string | null
   created_at: string
   created_by: string | null

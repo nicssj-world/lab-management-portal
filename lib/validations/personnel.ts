@@ -1,8 +1,11 @@
 import { z } from 'zod'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 
-// Empty strings from form inputs → undefined (so optional date/text fields clear cleanly)
-const optStr = z.string().trim().optional().or(z.literal('').transform(() => undefined))
+// Empty/whitespace text inputs → null (so an edit that blanks a field clears it under .partial(), not omits it)
+const optStr = z.preprocess(
+  (v) => (typeof v === 'string' ? (v.trim() === '' ? null : v.trim()) : v),
+  z.string().optional().nullable(),
+)
 // Empty/whitespace date inputs → null (Postgres rejects '' for `date` columns; null clears cleanly)
 const optDate = z.preprocess(
   (v) => (typeof v === 'string' && v.trim() === '' ? null : v),
@@ -50,10 +53,11 @@ export type CertificationInput = z.infer<typeof CertificationSchema>
 export const TrainingSchema = z.object({
   topic:         z.string().min(1, 'กรุณากรอกหัวข้อการอบรม').max(300),
   training_date: optDate,
+  training_end_date: optDate,
   hours:         optNum,
   provider:      optStr,
   location:      optStr,
-  training_type: z.enum(['internal', 'external', 'CME', 'CPD']).optional().nullable(),
+  training_type: z.enum(['in_plan', 'out_of_plan']).optional().nullable(),
   cpd_credits:   optNum,
   evidence_url:  optStr,
   notes:         optStr,
@@ -147,6 +151,26 @@ export const OrientationSchema = z.object({
   completed: z.boolean().optional(),
 })
 export type OrientationInput = z.infer<typeof OrientationSchema>
+
+// ── Health / immunization records (ISO 6.2 — staff health) ──
+export const HealthRecordSchema = z.object({
+  record_type:   z.enum(['vaccination', 'health_check', 'other']).default('vaccination'),
+  name:          z.string().min(1, 'กรุณากรอกชื่อรายการ').max(300),
+  record_date:   optDate,
+  next_due_date: optDate,
+  result:        optStr,
+  evidence_url:  optStr,
+  notes:         optStr,
+})
+export type HealthRecordInput = z.infer<typeof HealthRecordSchema>
+
+// ── Confidentiality agreements (ISO 6.2 — signed confidentiality) ──
+export const ConfidentialitySchema = z.object({
+  signed_date: optDate,
+  file_url:    optStr,
+  notes:       optStr,
+})
+export type ConfidentialityInput = z.infer<typeof ConfidentialitySchema>
 
 // Default orientation template for a new staff member
 export const ORIENTATION_TEMPLATE: { key: string; label: string }[] = [

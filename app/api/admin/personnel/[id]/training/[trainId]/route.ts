@@ -4,7 +4,7 @@ import { TrainingSchema } from '@/lib/validations/personnel'
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string; trainId: string }> }) {
   const { id, trainId } = await ctx.params
-  return updateChild(req, 'staff_training', trainId, TrainingSchema, id)
+  return updateChild(req, 'staff_training', trainId, TrainingSchema, id, { fileColumns: ['evidence_url'] })
 }
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string; trainId: string }> }) {
