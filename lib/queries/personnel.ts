@@ -7,6 +7,8 @@ import type {
   StaffAuthorization,
   StaffJd,
   StaffTrainingPlan,
+  StaffHealthRecord,
+  StaffConfidentialityAgreement,
 } from '@/lib/supabase/types'
 
 export interface StaffDetail {
@@ -17,6 +19,8 @@ export interface StaffDetail {
   authorizations: StaffAuthorization[]
   jds: StaffJd[]
   trainingPlan: StaffTrainingPlan[]
+  healthRecords: StaffHealthRecord[]
+  confidentiality: StaffConfidentialityAgreement[]
 }
 
 // Roster — all active personnel (profiles are the staff registry)
@@ -39,13 +43,15 @@ export async function getStaffDetail(id: string): Promise<StaffDetail | null> {
   const profile = await getStaffProfile(id)
   if (!profile) return null
 
-  const [certs, training, comps, auths, jds, plan] = await Promise.all([
+  const [certs, training, comps, auths, jds, plan, health, confid] = await Promise.all([
     supabaseAdmin.from('staff_certifications').select('*').eq('profile_id', id).is('deleted_at', null).order('expiry_date', { ascending: true }),
     supabaseAdmin.from('staff_training').select('*').eq('profile_id', id).is('deleted_at', null).order('training_date', { ascending: false }),
     supabaseAdmin.from('staff_competencies').select('*').eq('profile_id', id).is('deleted_at', null).order('assessment_date', { ascending: false }),
     supabaseAdmin.from('staff_authorizations').select('*').eq('profile_id', id).is('deleted_at', null).order('created_at', { ascending: false }),
     supabaseAdmin.from('staff_jd').select('*').eq('profile_id', id).is('deleted_at', null).order('created_at', { ascending: false }),
     supabaseAdmin.from('staff_training_plan').select('*').eq('profile_id', id).is('deleted_at', null).order('year', { ascending: false }),
+    supabaseAdmin.from('staff_health_records').select('*').eq('profile_id', id).is('deleted_at', null).order('record_date', { ascending: false }),
+    supabaseAdmin.from('staff_confidentiality_agreements').select('*').eq('profile_id', id).is('deleted_at', null).order('signed_date', { ascending: false }),
   ])
 
   return {
@@ -56,6 +62,8 @@ export async function getStaffDetail(id: string): Promise<StaffDetail | null> {
     authorizations: (auths.data ?? []) as StaffAuthorization[],
     jds: (jds.data ?? []) as StaffJd[],
     trainingPlan: (plan.data ?? []) as StaffTrainingPlan[],
+    healthRecords: (health.data ?? []) as StaffHealthRecord[],
+    confidentiality: (confid.data ?? []) as StaffConfidentialityAgreement[],
   }
 }
 
@@ -90,6 +98,24 @@ export async function getActiveJdProfileIds(): Promise<Set<string>> {
     .from('staff_jd')
     .select('profile_id')
     .eq('status', 'Active')
+    .is('deleted_at', null)
+  return new Set((data ?? []).map((r) => r.profile_id as string))
+}
+
+// Profile IDs that have at least one health/immunization record (compliance coverage)
+export async function getHealthProfileIds(): Promise<Set<string>> {
+  const { data } = await supabaseAdmin
+    .from('staff_health_records')
+    .select('profile_id')
+    .is('deleted_at', null)
+  return new Set((data ?? []).map((r) => r.profile_id as string))
+}
+
+// Profile IDs that have signed a confidentiality agreement (compliance coverage)
+export async function getConfidentialityProfileIds(): Promise<Set<string>> {
+  const { data } = await supabaseAdmin
+    .from('staff_confidentiality_agreements')
+    .select('profile_id')
     .is('deleted_at', null)
   return new Set((data ?? []).map((r) => r.profile_id as string))
 }

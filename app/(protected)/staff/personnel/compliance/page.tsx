@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getRolePermissions } from '@/lib/permissions'
 import {
   getStaffRoster, getAllCertifications, getAllCompetencies, getAllTraining, getActiveJdProfileIds,
+  getHealthProfileIds, getConfidentialityProfileIds,
 } from '@/lib/queries/personnel'
 import { expiryStatus } from '@/lib/personnel/expiry'
 import { hasMedicalTechnologistLicenseScope, mainPersonnelRole } from '@/lib/personnel/roles'
@@ -16,8 +17,9 @@ export default async function CompliancePage() {
   const perms = actor?.role ? await getRolePermissions(actor.role) : {}
   if ((perms['บุคลากร'] ?? 'none') === 'none') redirect('/staff/dashboard')
 
-  const [roster, certs, comps, training, jdProfileIds] = await Promise.all([
+  const [roster, certs, comps, training, jdProfileIds, healthProfileIds, confidProfileIds] = await Promise.all([
     getStaffRoster(), getAllCertifications(), getAllCompetencies(), getAllTraining(), getActiveJdProfileIds(),
+    getHealthProfileIds(), getConfidentialityProfileIds(),
   ])
 
   const staffCount = roster.length
@@ -29,6 +31,8 @@ export default async function CompliancePage() {
   const staffWithTraining = new Set(training.map((t) => t.profile_id)).size
   const staffWithCompetency = new Set(comps.map((c) => c.profile_id)).size
   const compOverdue = comps.filter((c) => expiryStatus(c.next_due_date) === 'expired').length
+  const staffWithHealth = roster.filter((p) => healthProfileIds.has(p.id)).length
+  const staffWithConfid = roster.filter((p) => confidProfileIds.has(p.id)).length
 
   const data: ComplianceData = {
     generatedAt: new Date().toISOString(),
@@ -54,6 +58,8 @@ export default async function CompliancePage() {
       { clause: 'การอบรม',     title: 'การฝึกอบรม', met: staffWithTraining > 0, evidence: `${staffWithTraining}/${staffCount} คนมีบันทึก · รวม ${training.length} รายการ` },
       { clause: 'สมรรถนะ',    title: 'การประเมินสมรรถนะ', met: staffWithCompetency > 0, evidence: `${staffWithCompetency}/${staffCount} คนได้ประเมิน · ค้าง ${compOverdue}` },
       { clause: 'มอบหมายงาน', title: 'การมอบหมายสิทธิ์ปฏิบัติงาน', met: comps.length > 0, evidence: `อ้างอิงสมรรถนะ ${comps.length} รายการ` },
+      { clause: 'สุขภาพ',      title: 'สุขภาพ/ภูมิคุ้มกันบุคลากร', met: staffWithHealth > 0, evidence: `${staffWithHealth}/${staffCount} คนมีบันทึกสุขภาพ` },
+      { clause: 'รักษาความลับ', title: 'ข้อตกลงรักษาความลับ', met: staffCount > 0 && staffWithConfid === staffCount, evidence: `${staffWithConfid}/${staffCount} คนลงนาม` },
     ],
     staffRows: roster.map((p) => {
       const hasMtLicenseScope = hasMedicalTechnologistLicenseScope(p.role)

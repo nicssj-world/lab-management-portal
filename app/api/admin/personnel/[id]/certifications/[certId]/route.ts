@@ -4,7 +4,7 @@ import { CertificationSchema } from '@/lib/validations/personnel'
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string; certId: string }> }) {
   const { id, certId } = await ctx.params
-  return updateChild(req, 'staff_certifications', certId, CertificationSchema, id)
+  return updateChild(req, 'staff_certifications', certId, CertificationSchema, id, { fileColumns: ['file_url'] })
 }
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string; certId: string }> }) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requireResource, requirePersonnelEdit, type Actor } from '@/lib/auth/guards'
+import { removeStaffFile } from '@/lib/personnel/storage'
 
 const RESOURCE = 'บุคลากร' as const
 
@@ -64,6 +65,7 @@ export async function updateChild(
   childId: string,
   schema: z.AnyZodObject,
   ownerId: string,
+  opts?: { fileColumns?: string[] },
 ) {
   const { actor, response } = await requirePersonnelEdit(ownerId)
   if (!actor) return response
@@ -73,6 +75,13 @@ export async function updateChild(
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.errors[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
     }
+    // When a file column is being replaced, read the old paths first so we can clean them up after.
+    const replacing = (opts?.fileColumns ?? []).filter((col) => col in parsed.data)
+    let oldFiles: Record<string, string | null> = {}
+    if (replacing.length > 0) {
+      const { data: prev } = await supabaseAdmin.from(table).select(replacing.join(',')).eq('id', childId).single()
+      oldFiles = (prev ?? {}) as Record<string, string | null>
+    }
     const { data, error } = await supabaseAdmin
       .from(table)
       .update(parsed.data)
@@ -80,6 +89,11 @@ export async function updateChild(
       .select()
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    for (const col of replacing) {
+      const oldPath = oldFiles[col]
+      const newPath = (parsed.data as Record<string, unknown>)[col]
+      if (oldPath && oldPath !== newPath) removeStaffFile(oldPath).then(undefined, () => {})
+    }
     auditChild(`personnel.${table}.update`, actor, childId)
     return NextResponse.json(data)
   } catch (err) {

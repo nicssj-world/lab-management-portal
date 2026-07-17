@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import type {
   Profile, StaffCertification, StaffTraining, StaffCompetency, StaffAuthorization,
   StaffJd, StaffJdRevision, StaffTrainingPlan, OrientationItem,
+  StaffHealthRecord, StaffConfidentialityAgreement,
 } from '@/lib/supabase/types'
 import { expiryStatus, EXPIRY_COLOR, EXPIRY_LABEL_TH, daysLeft } from '@/lib/personnel/expiry'
 import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
@@ -25,6 +26,8 @@ interface DetailProps {
     authorizations: StaffAuthorization[]
     jds: StaffJd[]
     trainingPlan: StaffTrainingPlan[]
+    healthRecords: StaffHealthRecord[]
+    confidentiality: StaffConfidentialityAgreement[]
   }
   canEdit: boolean
   tests: TestOption[]
@@ -33,7 +36,7 @@ interface DetailProps {
   officialPhotoUrl?: string | null
 }
 
-type TabKey = 'profile' | 'training' | 'plan' | 'competency' | 'cert' | 'auth' | 'jd' | 'orient'
+type TabKey = 'profile' | 'training' | 'plan' | 'competency' | 'cert' | 'auth' | 'jd' | 'orient' | 'health'
 
 const TABS: { key: TabKey; th: string; icon: string }[] = [
   { key: 'profile',    th: 'ประวัติ',        icon: 'users' },
@@ -43,6 +46,7 @@ const TABS: { key: TabKey; th: string; icon: string }[] = [
   { key: 'cert',       th: 'ใบรับรอง',      icon: 'doc' },
   { key: 'auth',       th: 'มอบหมายงาน',   icon: 'shieldCheck' },
   { key: 'jd',         th: 'JDJS',          icon: 'edit' },
+  { key: 'health',     th: 'สุขภาพ & ข้อตกลง', icon: 'syringe' },
   { key: 'orient',     th: 'ปฐมนิเทศ',      icon: 'clock' },
 ]
 
@@ -69,6 +73,8 @@ export function StaffDetailClient({ detail, canEdit, tests, categories, staff, o
   const [auths, setAuths] = useState(detail.authorizations)
   const [jds, setJds] = useState(detail.jds)
   const [plan, setPlan] = useState(detail.trainingPlan)
+  const [health, setHealth] = useState(detail.healthRecords)
+  const [confid, setConfid] = useState(detail.confidentiality)
   const [prof, setProf] = useState(profile)
 
   const testById = useMemo(() => new Map(tests.map((t) => [t.id, t])), [tests])
@@ -103,7 +109,7 @@ export function StaffDetailClient({ detail, canEdit, tests, categories, staff, o
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '1px solid var(--border)', paddingBottom: 2 }}>
         {TABS.map((t) => {
           const active = tab === t.key
-          const count = t.key === 'training' ? training.length : t.key === 'competency' ? comps.length : t.key === 'cert' ? certs.length : t.key === 'auth' ? auths.length : t.key === 'jd' ? jds.length : t.key === 'plan' ? plan.length : null
+          const count = t.key === 'training' ? training.length : t.key === 'competency' ? comps.length : t.key === 'cert' ? certs.length : t.key === 'auth' ? auths.length : t.key === 'jd' ? jds.length : t.key === 'plan' ? plan.length : t.key === 'health' ? health.length + confid.length : null
           return (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
               display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px',
@@ -124,12 +130,13 @@ export function StaffDetailClient({ detail, canEdit, tests, categories, staff, o
           <OverviewSection prof={prof} training={training} plan={plan} comps={comps} certs={certs} auths={auths} jds={jds} onNavigate={setTab} />
         </>
       )}
-      {tab === 'training' && <TrainingTab profileId={prof.id} items={training} setItems={setTraining} canEdit={canEdit} toast={add} />}
+      {tab === 'training' && <TrainingTab profileId={prof.id} items={training} setItems={setTraining} plans={plan} canEdit={canEdit} toast={add} />}
       {tab === 'plan' && <TrainingPlanTab profileId={prof.id} items={plan} setItems={setPlan} training={training} canEdit={canEdit} toast={add} />}
       {tab === 'competency' && <CompetencyTab profileId={prof.id} items={comps} setItems={setComps} canEdit={canEdit} tests={tests} testById={testById} staff={staff} staffById={staffById} toast={add} />}
       {tab === 'cert' && <CertTab profileId={prof.id} items={certs} setItems={setCerts} canEdit={canEdit} toast={add} />}
       {tab === 'auth' && <AuthTab profileId={prof.id} items={auths} setItems={setAuths} canEdit={canEdit} tests={tests} testById={testById} categories={categories} competencies={comps} toast={add} />}
       {tab === 'jd' && <JdTab profileId={prof.id} items={jds} setItems={setJds} canEdit={canEdit} toast={add} />}
+      {tab === 'health' && <HealthTab profileId={prof.id} health={health} setHealth={setHealth} confid={confid} setConfid={setConfid} canEdit={canEdit} toast={add} />}
       {tab === 'orient' && <OrientationTab profileId={prof.id} canEdit={canEdit} toast={add} />}
 
       {/* Toasts */}
@@ -285,6 +292,9 @@ function sameDate(a: Date | null, b: Date | null) {
   return !!a && !!b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
+const DATE_POPUP_WIDTH = 306
+const DATE_POPUP_MARGIN = 8
+
 function DateInputBE({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
   const selected = dateFromIso(value)
   const today = new Date()
@@ -292,7 +302,9 @@ function DateInputBE({ value, onChange, disabled }: { value: string; onChange: (
   const [open, setOpen] = useState(false)
   const [viewYear, setViewYear] = useState(initial.getFullYear())
   const [viewMonth, setViewMonth] = useState(initial.getMonth())
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const popupRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const next = selected ?? today
@@ -305,10 +317,34 @@ function DateInputBE({ value, onChange, disabled }: { value: string; onChange: (
   useEffect(() => {
     if (!open) return
     function onPointerDown(event: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false)
+      const target = event.target as Node
+      if (wrapRef.current?.contains(target)) return
+      if (popupRef.current?.contains(target)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onPointerDown)
     return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [open])
+
+  // Popup is portaled to <body> with viewport-clamped fixed coordinates so a narrow
+  // grid column or a scrollable modal ancestor can't clip it (same issue Modal itself
+  // solves with a portal — here the calendar could otherwise render partly off-screen).
+  useEffect(() => {
+    if (!open) return
+    function updatePos() {
+      const rect = wrapRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const maxLeft = window.innerWidth - DATE_POPUP_WIDTH - DATE_POPUP_MARGIN
+      const left = Math.max(DATE_POPUP_MARGIN, Math.min(rect.right - DATE_POPUP_WIDTH, maxLeft))
+      setPos({ top: rect.bottom + 6, left })
+    }
+    updatePos()
+    window.addEventListener('resize', updatePos)
+    window.addEventListener('scroll', updatePos, true)
+    return () => {
+      window.removeEventListener('resize', updatePos)
+      window.removeEventListener('scroll', updatePos, true)
+    }
   }, [open])
 
   function moveMonth(delta: number) {
@@ -349,14 +385,14 @@ function DateInputBE({ value, onChange, disabled }: { value: string; onChange: (
         <Icon name="clock" size={15} />
       </button>
 
-      {open && (
-        <div style={{
-          position: 'absolute',
+      {open && pos && typeof document !== 'undefined' && createPortal(
+        <div ref={popupRef} style={{
+          position: 'fixed',
           zIndex: 1200,
-          top: 'calc(100% + 6px)',
-          right: 0,
-          width: 306,
-          maxWidth: 'min(306px, calc(100vw - 48px))',
+          top: pos.top,
+          left: pos.left,
+          width: DATE_POPUP_WIDTH,
+          maxWidth: 'min(306px, calc(100vw - 16px))',
           padding: 12,
           borderRadius: 12,
           border: '1px solid var(--border)',
@@ -428,7 +464,8 @@ function DateInputBE({ value, onChange, disabled }: { value: string; onChange: (
             <button type="button" onClick={() => { onChange(''); setOpen(false) }} style={ghostBtn}>ล้างค่า</button>
             <button type="button" onClick={() => selectDate(today)} style={primaryBtn}>วันนี้ {today.getFullYear() + 543}</button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
@@ -1063,14 +1100,46 @@ function openAttachment(profileId: string, path: string) {
 }
 
 // ════════════ Training tab ════════════
-function TrainingTab({ profileId, items, setItems, canEdit, toast }: { profileId: string; items: StaffTraining[]; setItems: (f: (p: StaffTraining[]) => StaffTraining[]) => void; canEdit: boolean; toast: (m: string, ok?: boolean) => void }) {
+const TRAINING_TYPE_LABEL: Record<string, string> = { in_plan: 'ในแผนอบรม', out_of_plan: 'นอกแผนอบรม' }
+const EMPTY_TRAINING = { topic: '', training_date: '', training_end_date: '', hours: '', provider: '', location: '', training_type: '', cpd_credits: '', notes: '' }
+
+// Multi-day training hours auto-fill: 8 hours per day of the date range (inclusive of both ends).
+function trainingDayCount(startIso: string, endIso: string): number {
+  const start = dateFromIso(startIso)
+  if (!start) return 1
+  const end = dateFromIso(endIso)
+  if (!end || end < start) return 1
+  return Math.round((end.getTime() - start.getTime()) / 86400000) + 1
+}
+function withAutoHours(f: typeof EMPTY_TRAINING): typeof EMPTY_TRAINING {
+  if (!f.training_date) return f
+  return { ...f, hours: String(trainingDayCount(f.training_date, f.training_end_date) * 8) }
+}
+function TrainingTab({ profileId, items, setItems, plans, canEdit, toast }: { profileId: string; items: StaffTraining[]; setItems: (f: (p: StaffTraining[]) => StaffTraining[]) => void; plans: StaffTrainingPlan[]; canEdit: boolean; toast: (m: string, ok?: boolean) => void }) {
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ topic: '', training_date: '', hours: '', provider: '', location: '', training_type: '', cpd_credits: '', notes: '' })
+  const [editing, setEditing] = useState<StaffTraining | null>(null)
+  const [form, setForm] = useState(EMPTY_TRAINING)
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
 
+  const doneTopics = useMemo(() => new Set(items.map((t) => t.topic.trim().toLowerCase())), [items])
+  const pendingPlans = useMemo(
+    () => plans.filter((p) => p.status === 'planned' && !doneTopics.has(p.topic.trim().toLowerCase())),
+    [plans, doneTopics],
+  )
+
+  function openAdd() { setEditing(null); setForm(EMPTY_TRAINING); setFile(null); setModal(true) }
+  function openEdit(t: StaffTraining) {
+    setEditing(t)
+    setForm({ topic: t.topic, training_date: t.training_date ?? '', training_end_date: t.training_end_date ?? '', hours: t.hours != null ? String(t.hours) : '', provider: t.provider ?? '', location: t.location ?? '', training_type: t.training_type ?? '', cpd_credits: t.cpd_credits != null ? String(t.cpd_credits) : '', notes: t.notes ?? '' })
+    setFile(null); setModal(true)
+  }
+
   async function save() {
     if (!form.topic.trim()) { toast('กรุณากรอกหัวข้อ', false); return }
+    if (form.training_end_date && form.training_date && form.training_end_date < form.training_date) {
+      toast('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม', false); return
+    }
     setSaving(true)
     try {
       let evidence_url: string | undefined
@@ -1079,16 +1148,22 @@ function TrainingTab({ profileId, items, setItems, canEdit, toast }: { profileId
         const up = await fetch(`/api/admin/personnel/${profileId}/files`, { method: 'POST', body: fd })
         const uj = await up.json(); if (!up.ok) throw new Error(uj.error); evidence_url = uj.file_url
       }
-      const payload = {
-        topic: form.topic, training_date: form.training_date || undefined, hours: form.hours ? Number(form.hours) : null,
-        provider: form.provider || undefined, location: form.location || undefined,
+      const base = {
+        topic: form.topic, training_date: form.training_date, training_end_date: form.training_end_date, hours: form.hours ? Number(form.hours) : null,
+        provider: form.provider, location: form.location,
         training_type: form.training_type || null, cpd_credits: form.cpd_credits ? Number(form.cpd_credits) : null,
-        evidence_url, notes: form.notes || undefined,
+        notes: form.notes,
       }
-      const created = await apiSend(`/api/admin/personnel/${profileId}/training`, 'POST', payload)
-      setItems((p) => [created, ...p])
-      setModal(false); setForm({ topic: '', training_date: '', hours: '', provider: '', location: '', training_type: '', cpd_credits: '', notes: '' }); setFile(null)
-      toast('บันทึกการอบรมแล้ว')
+      const payload = evidence_url ? { ...base, evidence_url } : base
+      if (editing) {
+        const updated = await apiSend(`/api/admin/personnel/${profileId}/training/${editing.id}`, 'PATCH', payload)
+        setItems((p) => p.map((x) => (x.id === updated.id ? updated : x)))
+      } else {
+        const created = await apiSend(`/api/admin/personnel/${profileId}/training`, 'POST', payload)
+        setItems((p) => [created, ...p])
+      }
+      setModal(false); setEditing(null); setForm(EMPTY_TRAINING); setFile(null)
+      toast(editing ? 'แก้ไขการอบรมแล้ว' : 'บันทึกการอบรมแล้ว')
     } catch (e) { toast(e instanceof Error ? e.message : 'error', false) } finally { setSaving(false) }
   }
 
@@ -1100,39 +1175,54 @@ function TrainingTab({ profileId, items, setItems, canEdit, toast }: { profileId
 
   return (
     <Card padding={20}>
-      <SectionHeader title="ประวัติการฝึกอบรม" sub="บันทึกการพัฒนาความรู้และทักษะ" canEdit={canEdit} onAdd={() => setModal(true)} />
+      <SectionHeader title="ประวัติการฝึกอบรม" sub="บันทึกการพัฒนาความรู้และทักษะ" canEdit={canEdit} onAdd={openAdd} />
       <ChildTable
         cols={['หัวข้อ', 'วันที่', 'ชั่วโมง', 'ประเภท', 'ผู้จัด', 'หลักฐาน', '']}
         empty="ยังไม่มีบันทึกการอบรม"
         rows={items.map((t) => (
           <tr key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
             <td style={{ ...td, fontWeight: 600 }}>{t.topic}{t.notes && <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 400 }}>{t.notes}</div>}</td>
-            <td style={td}>{fmtDate(t.training_date)}</td>
+            <td style={td}>{t.training_end_date && t.training_end_date !== t.training_date ? `${fmtDate(t.training_date)} – ${fmtDate(t.training_end_date)}` : fmtDate(t.training_date)}</td>
             <td style={td}>{t.hours ?? '—'}</td>
-            <td style={td}>{t.training_type ?? '—'}{t.cpd_credits ? <span style={{ color: 'var(--muted)' }}> · {t.cpd_credits} หน่วย</span> : ''}</td>
+            <td style={td}>{t.training_type ? TRAINING_TYPE_LABEL[t.training_type] : '—'}{t.cpd_credits ? <span style={{ color: 'var(--muted)' }}> · {t.cpd_credits} หน่วย</span> : ''}</td>
             <td style={td}>{t.provider ?? '—'}</td>
             <td style={td}>{t.evidence_url ? <button onClick={() => openAttachment(profileId, t.evidence_url!)} style={iconBtn}><Icon name="eye" size={14} /></button> : '—'}</td>
-            <td style={{ ...td, textAlign: 'right' }}>{canEdit && <button onClick={() => remove(t.id)} style={iconBtn}><Icon name="trash" size={14} /></button>}</td>
+            <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+              {canEdit && <button onClick={() => openEdit(t)} title="แก้ไข" style={iconBtn}><Icon name="edit" size={14} /></button>}
+              {canEdit && <button onClick={() => remove(t.id)} style={{ ...iconBtn, marginLeft: 4 }}><Icon name="trash" size={14} /></button>}
+            </td>
           </tr>
         ))}
       />
       {modal && (
-        <Modal title="เพิ่มการอบรม" onClose={() => setModal(false)}
+        <Modal title={editing ? 'แก้ไขการอบรม' : 'เพิ่มการอบรม'} onClose={() => setModal(false)}
           footer={<><button onClick={() => setModal(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
+          {!editing && pendingPlans.length > 0 && (
+            <Field label="เลือกจากแผนอบรม (ไม่บังคับ)">
+              <select style={inputStyle} value="" onChange={(e) => { const p = pendingPlans.find((x) => x.id === e.target.value); if (p) setForm({ ...form, topic: p.topic }) }}>
+                <option value="">— เลือกหัวข้อจากแผน —</option>
+                {pendingPlans.map((p) => <option key={p.id} value={p.id}>{p.year} · {p.topic}</option>)}
+              </select>
+            </Field>
+          )}
           <Field label="หัวข้อการอบรม *"><input style={inputStyle} value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="วันที่"><DateInputBE value={form.training_date} onChange={(value) => setForm({ ...form, training_date: value })} /></Field>
-            <Field label="จำนวนชั่วโมง"><input type="number" style={inputStyle} value={form.hours} onChange={(e) => setForm({ ...form, hours: e.target.value })} /></Field>
+            <Field label="วันที่เริ่ม"><DateInputBE value={form.training_date} onChange={(value) => setForm(withAutoHours({ ...form, training_date: value }))} /></Field>
+            <Field label="วันที่สิ้นสุด"><DateInputBE value={form.training_end_date} onChange={(value) => setForm(withAutoHours({ ...form, training_end_date: value }))} /></Field>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="ประเภท"><select style={inputStyle} value={form.training_type} onChange={(e) => setForm({ ...form, training_type: e.target.value })}><option value="">—</option><option value="internal">Internal</option><option value="external">External</option><option value="CME">CME</option><option value="CPD">CPD</option></select></Field>
-            <Field label="หน่วยกิต CME/CPD"><input type="number" style={inputStyle} value={form.cpd_credits} onChange={(e) => setForm({ ...form, cpd_credits: e.target.value })} /></Field>
+            <Field label="จำนวนชั่วโมง"><input type="number" style={inputStyle} value={form.hours} onChange={(e) => setForm({ ...form, hours: e.target.value })} /></Field>
+            <Field label="ประเภท"><select style={inputStyle} value={form.training_type} onChange={(e) => setForm({ ...form, training_type: e.target.value })}><option value="">—</option><option value="in_plan">ในแผนอบรม</option><option value="out_of_plan">นอกแผนอบรม</option></select></Field>
           </div>
+          <Field label="CMTE (ถ้าไม่มีให้เว้นว่าง)"><input type="number" placeholder="ใส่แต่ตัวเลข" style={inputStyle} value={form.cpd_credits} onChange={(e) => setForm({ ...form, cpd_credits: e.target.value })} /></Field>
           <Field label="ผู้จัด/วิทยากร"><input style={inputStyle} value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} /></Field>
           <Field label="สถานที่"><input style={inputStyle} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></Field>
           <Field label="หมายเหตุ"><input style={inputStyle} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
           <Field label="ไฟล์หลักฐาน (PDF/รูป ≤10MB)">
-            <FileDropZone file={file} accept=".pdf,image/*" note="รองรับ PDF และรูปภาพ ขนาดไม่เกิน 10MB" onFile={setFile} />
+            <FileDropZone file={file} accept=".pdf,image/*" note={editing?.evidence_url ? 'มีไฟล์เดิมแล้ว · ลากไฟล์ใหม่มาวางเพื่อแทนที่' : 'รองรับ PDF และรูปภาพ ขนาดไม่เกิน 10MB'} onFile={setFile} />
+            {editing?.evidence_url && !file && (
+              <button type="button" onClick={() => openAttachment(profileId, editing.evidence_url!)} style={{ ...ghostBtn, marginTop: 8, fontSize: 12 }}><Icon name="eye" size={13} /> ดูไฟล์ปัจจุบัน</button>
+            )}
           </Field>
         </Modal>
       )}
@@ -1146,6 +1236,7 @@ function CompetencyTab({ profileId, items, setItems, canEdit, tests, testById, s
   tests: TestOption[]; testById: Map<number, TestOption>; staff: StaffOption[]; staffById: Map<string, string>; toast: (m: string, ok?: boolean) => void
 }) {
   const [modal, setModal] = useState(false)
+  const [editing, setEditing] = useState<StaffCompetency | null>(null)
   const empty = { assessment_type: 'initial', area: '', test_id: '', assessor_id: '', assessment_date: '', next_due_date: '', score_knowledge: '', score_safety: '', score_practical: '', result: '', notes: '' }
   const [form, setForm] = useState(empty)
   const [saving, setSaving] = useState(false)
@@ -1153,20 +1244,38 @@ function CompetencyTab({ profileId, items, setItems, canEdit, tests, testById, s
   const overdue = items.filter((c) => expiryStatus(c.next_due_date) === 'expired').length
   const dueSoon = items.filter((c) => expiryStatus(c.next_due_date) === 'expiring').length
 
+  function openAdd() { setEditing(null); setForm(empty); setModal(true) }
+  function openEdit(c: StaffCompetency) {
+    setEditing(c)
+    setForm({
+      assessment_type: c.assessment_type, area: c.area ?? '', test_id: c.test_id != null ? String(c.test_id) : '', assessor_id: c.assessor_id ?? '',
+      assessment_date: c.assessment_date ?? '', next_due_date: c.next_due_date ?? '',
+      score_knowledge: c.score_knowledge != null ? String(c.score_knowledge) : '', score_safety: c.score_safety != null ? String(c.score_safety) : '', score_practical: c.score_practical != null ? String(c.score_practical) : '',
+      result: c.result ?? '', notes: c.notes ?? '',
+    })
+    setModal(true)
+  }
+
   async function save() {
     setSaving(true)
     try {
       const payload = {
-        assessment_type: form.assessment_type, area: form.area || undefined,
+        assessment_type: form.assessment_type, area: form.area,
         test_id: form.test_id ? Number(form.test_id) : null, assessor_id: form.assessor_id || null,
-        assessment_date: form.assessment_date || undefined, next_due_date: form.next_due_date || undefined,
+        assessment_date: form.assessment_date, next_due_date: form.next_due_date,
         score_knowledge: form.score_knowledge ? Number(form.score_knowledge) : null,
         score_safety: form.score_safety ? Number(form.score_safety) : null,
         score_practical: form.score_practical ? Number(form.score_practical) : null,
-        result: form.result || null, notes: form.notes || undefined,
+        result: form.result || null, notes: form.notes,
       }
-      const created = await apiSend(`/api/admin/personnel/${profileId}/competencies`, 'POST', payload)
-      setItems((p) => [created, ...p]); setModal(false); setForm(empty); toast('บันทึกการประเมินแล้ว')
+      if (editing) {
+        const updated = await apiSend(`/api/admin/personnel/${profileId}/competencies/${editing.id}`, 'PATCH', payload)
+        setItems((p) => p.map((x) => (x.id === updated.id ? updated : x)))
+      } else {
+        const created = await apiSend(`/api/admin/personnel/${profileId}/competencies`, 'POST', payload)
+        setItems((p) => [created, ...p])
+      }
+      setModal(false); setEditing(null); setForm(empty); toast(editing ? 'แก้ไขการประเมินแล้ว' : 'บันทึกการประเมินแล้ว')
     } catch (e) { toast(e instanceof Error ? e.message : 'error', false) } finally { setSaving(false) }
   }
   async function remove(id: string) {
@@ -1184,7 +1293,7 @@ function CompetencyTab({ profileId, items, setItems, canEdit, tests, testById, s
 
   return (
     <Card padding={20}>
-      <SectionHeader title="การประเมินสมรรถนะ" sub="สมรรถนะวิชาชีพ · ยืนยันโดยผู้ประเมิน" canEdit={canEdit} onAdd={() => setModal(true)} />
+      <SectionHeader title="การประเมินสมรรถนะ" sub="สมรรถนะวิชาชีพ · ยืนยันโดยผู้ประเมิน" canEdit={canEdit} onAdd={openAdd} />
       {(overdue > 0 || dueSoon > 0) && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           {overdue > 0 && <span style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(220,38,38,.1)', color: 'var(--danger)', fontSize: 12.5, fontWeight: 600 }}>เกินกำหนดประเมิน {overdue} รายการ</span>}
@@ -1213,13 +1322,16 @@ function CompetencyTab({ profileId, items, setItems, canEdit, tests, testById, s
                   <SignoffChip label="ผู้รับการประเมิน" done={!!c.assessee_ack} canEdit={canEdit} onToggle={() => signoff(c.id, 'assessee', !c.assessee_ack)} />
                 </div>
               </td>
-              <td style={{ ...td, textAlign: 'right' }}>{canEdit && <button onClick={() => remove(c.id)} style={iconBtn}><Icon name="trash" size={14} /></button>}</td>
+              <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                {canEdit && <button onClick={() => openEdit(c)} title="แก้ไข" style={iconBtn}><Icon name="edit" size={14} /></button>}
+                {canEdit && <button onClick={() => remove(c.id)} style={{ ...iconBtn, marginLeft: 4 }}><Icon name="trash" size={14} /></button>}
+              </td>
             </tr>
           )
         })}
       />
       {modal && (
-        <Modal title="ประเมินสมรรถนะ" onClose={() => setModal(false)}
+        <Modal title={editing ? 'แก้ไขการประเมินสมรรถนะ' : 'ประเมินสมรรถนะ'} onClose={() => setModal(false)}
           footer={<><button onClick={() => setModal(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="ประเภทการประเมิน"><select style={inputStyle} value={form.assessment_type} onChange={(e) => setForm({ ...form, assessment_type: e.target.value })}><option value="initial">ครั้งแรก</option><option value="periodic">ประเมินซ้ำ</option></select></Field>
@@ -1245,12 +1357,20 @@ function CompetencyTab({ profileId, items, setItems, canEdit, tests, testById, s
 }
 
 // ════════════ Certification tab ════════════
+const EMPTY_CERT = { cert_type: '', cert_name: '', cert_no: '', issuer: '', issue_date: '', expiry_date: '', remark: '' }
 function CertTab({ profileId, items, setItems, canEdit, toast }: { profileId: string; items: StaffCertification[]; setItems: (f: (p: StaffCertification[]) => StaffCertification[]) => void; canEdit: boolean; toast: (m: string, ok?: boolean) => void }) {
   const [modal, setModal] = useState(false)
-  const empty = { cert_type: '', cert_name: '', cert_no: '', issuer: '', issue_date: '', expiry_date: '', remark: '' }
-  const [form, setForm] = useState(empty)
+  const [editing, setEditing] = useState<StaffCertification | null>(null)
+  const [form, setForm] = useState(EMPTY_CERT)
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
+
+  function openAdd() { setEditing(null); setForm(EMPTY_CERT); setFile(null); setModal(true) }
+  function openEdit(c: StaffCertification) {
+    setEditing(c)
+    setForm({ cert_type: c.cert_type ?? '', cert_name: c.cert_name, cert_no: c.cert_no ?? '', issuer: c.issuer ?? '', issue_date: c.issue_date ?? '', expiry_date: c.expiry_date ?? '', remark: c.remark ?? '' })
+    setFile(null); setModal(true)
+  }
 
   async function save() {
     if (!form.cert_name.trim()) { toast('กรุณากรอกชื่อใบรับรอง', false); return }
@@ -1262,9 +1382,16 @@ function CertTab({ profileId, items, setItems, canEdit, toast }: { profileId: st
         const up = await fetch(`/api/admin/personnel/${profileId}/files`, { method: 'POST', body: fd })
         const uj = await up.json(); if (!up.ok) throw new Error(uj.error); file_url = uj.file_url
       }
-      const payload = { ...form, file_url, status: 'active' as const }
-      const created = await apiSend(`/api/admin/personnel/${profileId}/certifications`, 'POST', payload)
-      setItems((p) => [created, ...p]); setModal(false); setForm(empty); setFile(null); toast('บันทึกใบรับรองแล้ว')
+      const base = editing ? { ...form } : { ...form, status: 'active' as const }
+      const payload = file_url ? { ...base, file_url } : base
+      if (editing) {
+        const updated = await apiSend(`/api/admin/personnel/${profileId}/certifications/${editing.id}`, 'PATCH', payload)
+        setItems((p) => p.map((x) => (x.id === updated.id ? updated : x)))
+      } else {
+        const created = await apiSend(`/api/admin/personnel/${profileId}/certifications`, 'POST', payload)
+        setItems((p) => [created, ...p])
+      }
+      setModal(false); setEditing(null); setForm(EMPTY_CERT); setFile(null); toast(editing ? 'แก้ไขใบรับรองแล้ว' : 'บันทึกใบรับรองแล้ว')
     } catch (e) { toast(e instanceof Error ? e.message : 'error', false) } finally { setSaving(false) }
   }
   async function remove(id: string) {
@@ -1275,7 +1402,7 @@ function CertTab({ profileId, items, setItems, canEdit, toast }: { profileId: st
 
   return (
     <Card padding={20}>
-      <SectionHeader title="ใบอนุญาต / ใบรับรอง" sub="ใบอนุญาตและใบรับรองวิชาชีพ" canEdit={canEdit} onAdd={() => setModal(true)} />
+      <SectionHeader title="ใบอนุญาต / ใบรับรอง" sub="ใบอนุญาตและใบรับรองวิชาชีพ" canEdit={canEdit} onAdd={openAdd} />
       <ChildTable
         cols={['ชื่อใบรับรอง', 'เลขที่', 'ผู้ออก', 'ออกเมื่อ', 'หมดอายุ', 'ไฟล์', '']}
         empty="ยังไม่มีใบรับรอง"
@@ -1289,13 +1416,16 @@ function CertTab({ profileId, items, setItems, canEdit, toast }: { profileId: st
               <td style={td}>{fmtDate(c.issue_date)}</td>
               <td style={td}>{c.expiry_date ? <span style={{ color: EXPIRY_COLOR[s], fontWeight: s === 'valid' ? 400 : 600 }}>{fmtDate(c.expiry_date)}{s !== 'valid' && s !== 'none' ? ` · ${EXPIRY_LABEL_TH[s]}` : ''}{s === 'expiring' && daysLeft(c.expiry_date) !== null ? ` (${daysLeft(c.expiry_date)} วัน)` : ''}</span> : '—'}</td>
               <td style={td}>{c.file_url ? <button onClick={() => openAttachment(profileId, c.file_url!)} style={iconBtn}><Icon name="eye" size={14} /></button> : '—'}</td>
-              <td style={{ ...td, textAlign: 'right' }}>{canEdit && <button onClick={() => remove(c.id)} style={iconBtn}><Icon name="trash" size={14} /></button>}</td>
+              <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                {canEdit && <button onClick={() => openEdit(c)} title="แก้ไข" style={iconBtn}><Icon name="edit" size={14} /></button>}
+                {canEdit && <button onClick={() => remove(c.id)} style={{ ...iconBtn, marginLeft: 4 }}><Icon name="trash" size={14} /></button>}
+              </td>
             </tr>
           )
         })}
       />
       {modal && (
-        <Modal title="เพิ่มใบรับรอง" onClose={() => setModal(false)}
+        <Modal title={editing ? 'แก้ไขใบรับรอง' : 'เพิ่มใบรับรอง'} onClose={() => setModal(false)}
           footer={<><button onClick={() => setModal(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
           <Field label="ชื่อใบรับรอง *"><input style={inputStyle} value={form.cert_name} onChange={(e) => setForm({ ...form, cert_name: e.target.value })} /></Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1309,7 +1439,10 @@ function CertTab({ profileId, items, setItems, canEdit, toast }: { profileId: st
           </div>
           <Field label="หมายเหตุ"><input style={inputStyle} value={form.remark} onChange={(e) => setForm({ ...form, remark: e.target.value })} /></Field>
           <Field label="ไฟล์ใบรับรอง (PDF/รูป ≤10MB)">
-            <FileDropZone file={file} accept=".pdf,image/*" note="รองรับ PDF และรูปภาพ ขนาดไม่เกิน 10MB" onFile={setFile} />
+            <FileDropZone file={file} accept=".pdf,image/*" note={editing?.file_url ? 'มีไฟล์เดิมแล้ว · ลากไฟล์ใหม่มาวางเพื่อแทนที่' : 'รองรับ PDF และรูปภาพ ขนาดไม่เกิน 10MB'} onFile={setFile} />
+            {editing?.file_url && !file && (
+              <button type="button" onClick={() => openAttachment(profileId, editing.file_url!)} style={{ ...ghostBtn, marginTop: 8, fontSize: 12 }}><Icon name="eye" size={13} /> ดูไฟล์ปัจจุบัน</button>
+            )}
           </Field>
         </Modal>
       )}
@@ -1325,10 +1458,23 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
   tests: TestOption[]; testById: Map<number, TestOption>; categories: string[]; competencies: StaffCompetency[]; toast: (m: string, ok?: boolean) => void
 }) {
   const [modal, setModal] = useState(false)
+  const [editing, setEditing] = useState<StaffAuthorization | null>(null)
   const [scope, setScope] = useState<'test' | 'category'>('test')
-  const empty = { test_id: '', category: '', role_type: 'performer', competency_id: '', authorized_date: '', notes: '' }
+  const empty = { test_id: '', category: '', role_type: 'performer', competency_id: '', authorized_date: '', status: 'active', revoked_date: '', notes: '' }
   const [form, setForm] = useState(empty)
   const [saving, setSaving] = useState(false)
+
+  function openAdd() { setEditing(null); setScope('test'); setForm(empty); setModal(true) }
+  function openEdit(a: StaffAuthorization) {
+    setEditing(a)
+    setScope(a.test_id != null ? 'test' : 'category')
+    setForm({
+      test_id: a.test_id != null ? String(a.test_id) : '', category: a.category ?? '', role_type: a.role_type,
+      competency_id: a.competency_id ?? '', authorized_date: a.authorized_date ?? '',
+      status: a.status, revoked_date: a.revoked_date ?? '', notes: a.notes ?? '',
+    })
+    setModal(true)
+  }
 
   async function save() {
     if (scope === 'test' && !form.test_id) { toast('กรุณาเลือก test', false); return }
@@ -1337,12 +1483,21 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
     try {
       const payload = {
         test_id: scope === 'test' ? Number(form.test_id) : null,
-        category: scope === 'category' ? form.category : undefined,
+        category: scope === 'category' ? form.category : '',
         role_type: form.role_type, competency_id: form.competency_id || null,
-        authorized_date: form.authorized_date || undefined, status: 'active' as const, notes: form.notes || undefined,
+        authorized_date: form.authorized_date,
+        status: form.status as 'active' | 'revoked',
+        revoked_date: form.status === 'revoked' ? form.revoked_date : '',
+        notes: form.notes,
       }
-      const created = await apiSend(`/api/admin/personnel/${profileId}/authorizations`, 'POST', payload)
-      setItems((p) => [created, ...p]); setModal(false); setForm(empty); toast('มอบหมายสิทธิ์แล้ว')
+      if (editing) {
+        const updated = await apiSend(`/api/admin/personnel/${profileId}/authorizations/${editing.id}`, 'PATCH', payload)
+        setItems((p) => p.map((x) => (x.id === updated.id ? updated : x)))
+      } else {
+        const created = await apiSend(`/api/admin/personnel/${profileId}/authorizations`, 'POST', payload)
+        setItems((p) => [created, ...p])
+      }
+      setModal(false); setEditing(null); setForm(empty); toast(editing ? 'แก้ไขการมอบหมายแล้ว' : 'มอบหมายสิทธิ์แล้ว')
     } catch (e) { toast(e instanceof Error ? e.message : 'error', false) } finally { setSaving(false) }
   }
   async function remove(id: string) {
@@ -1353,7 +1508,7 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
 
   return (
     <Card padding={20}>
-      <SectionHeader title="มอบหมายสิทธิ์ทำการตรวจ" sub="สิทธิ์ปฏิบัติงาน · เชื่อมกับรายการตรวจ" canEdit={canEdit} onAdd={() => setModal(true)} />
+      <SectionHeader title="มอบหมายสิทธิ์ทำการตรวจ" sub="สิทธิ์ปฏิบัติงาน · เชื่อมกับรายการตรวจ" canEdit={canEdit} onAdd={openAdd} />
       <ChildTable
         cols={['ขอบเขต', 'บทบาท', 'อ้างอิงสมรรถนะ', 'วันที่มอบหมาย', 'สถานะ', '']}
         empty="ยังไม่มีการมอบหมาย"
@@ -1369,13 +1524,16 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
               <td style={td}>{a.competency_id ? <span style={{ color: 'var(--success)', fontSize: 12 }}>✓ มีหลักฐาน</span> : <span style={{ color: 'var(--muted)' }}>—</span>}</td>
               <td style={td}>{fmtDate(a.authorized_date)}</td>
               <td style={td}><span style={{ fontWeight: 600, color: a.status === 'active' ? 'var(--success)' : 'var(--muted)' }}>{a.status === 'active' ? 'ใช้งาน' : 'ถอนแล้ว'}</span></td>
-              <td style={{ ...td, textAlign: 'right' }}>{canEdit && <button onClick={() => remove(a.id)} style={iconBtn}><Icon name="trash" size={14} /></button>}</td>
+              <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                {canEdit && <button onClick={() => openEdit(a)} title="แก้ไข" style={iconBtn}><Icon name="edit" size={14} /></button>}
+                {canEdit && <button onClick={() => remove(a.id)} title="ถอน" style={{ ...iconBtn, marginLeft: 4 }}><Icon name="trash" size={14} /></button>}
+              </td>
             </tr>
           )
         })}
       />
       {modal && (
-        <Modal title="มอบหมายสิทธิ์ทำการตรวจ" onClose={() => setModal(false)}
+        <Modal title={editing ? 'แก้ไขการมอบหมายสิทธิ์' : 'มอบหมายสิทธิ์ทำการตรวจ'} onClose={() => setModal(false)}
           footer={<><button onClick={() => setModal(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
           <Field label="ขอบเขตการมอบหมาย">
             <div style={{ display: 'flex', gap: 8 }}>
@@ -1392,6 +1550,10 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
           <Field label="บทบาท"><select style={inputStyle} value={form.role_type} onChange={(e) => setForm({ ...form, role_type: e.target.value })}>{Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
           <Field label="อ้างอิงหลักฐานสมรรถนะ (ไม่บังคับ)"><select style={inputStyle} value={form.competency_id} onChange={(e) => setForm({ ...form, competency_id: e.target.value })}><option value="">—</option>{competencies.map((c) => <option key={c.id} value={c.id}>{(c.test_id ? testById.get(c.test_id)?.code : c.area) ?? 'สมรรถนะ'} · {fmtDate(c.assessment_date)} {c.result === 'pass' ? '(ผ่าน)' : ''}</option>)}</select></Field>
           <Field label="วันที่มอบหมาย"><DateInputBE value={form.authorized_date} onChange={(value) => setForm({ ...form, authorized_date: value })} /></Field>
+          <div style={{ display: 'grid', gridTemplateColumns: form.status === 'revoked' ? '1fr 1fr' : '1fr', gap: 12 }}>
+            <Field label="สถานะ"><select style={inputStyle} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="active">ใช้งาน</option><option value="revoked">ถอนแล้ว</option></select></Field>
+            {form.status === 'revoked' && <Field label="วันที่ถอน"><DateInputBE value={form.revoked_date} onChange={(value) => setForm({ ...form, revoked_date: value })} /></Field>}
+          </div>
           <Field label="หมายเหตุ"><input style={inputStyle} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
         </Modal>
       )}
@@ -1612,6 +1774,191 @@ function JdRevisionsModal({ profileId, jd, onClose }: { profileId: string; jd: S
             ))}
           </div>}
     </Modal>
+  )
+}
+
+// ════════════ Health & Confidentiality tab (ISO 6.2 — staff health) ════════════
+const HEALTH_TYPE_LABEL: Record<string, string> = { vaccination: 'วัคซีน', health_check: 'ตรวจสุขภาพ', other: 'อื่นๆ' }
+
+function HealthTab({ profileId, health, setHealth, confid, setConfid, canEdit, toast }: {
+  profileId: string
+  health: StaffHealthRecord[]; setHealth: (f: (p: StaffHealthRecord[]) => StaffHealthRecord[]) => void
+  confid: StaffConfidentialityAgreement[]; setConfid: (f: (p: StaffConfidentialityAgreement[]) => StaffConfidentialityAgreement[]) => void
+  canEdit: boolean; toast: (m: string, ok?: boolean) => void
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <HealthRecordsSection profileId={profileId} items={health} setItems={setHealth} canEdit={canEdit} toast={toast} />
+      <ConfidentialitySection profileId={profileId} items={confid} setItems={setConfid} canEdit={canEdit} toast={toast} />
+    </div>
+  )
+}
+
+const EMPTY_HEALTH = { record_type: 'vaccination', name: '', record_date: '', next_due_date: '', result: '', notes: '' }
+function HealthRecordsSection({ profileId, items, setItems, canEdit, toast }: { profileId: string; items: StaffHealthRecord[]; setItems: (f: (p: StaffHealthRecord[]) => StaffHealthRecord[]) => void; canEdit: boolean; toast: (m: string, ok?: boolean) => void }) {
+  const [modal, setModal] = useState(false)
+  const [editing, setEditing] = useState<StaffHealthRecord | null>(null)
+  const [form, setForm] = useState(EMPTY_HEALTH)
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  function openAdd() { setEditing(null); setForm(EMPTY_HEALTH); setFile(null); setModal(true) }
+  function openEdit(r: StaffHealthRecord) {
+    setEditing(r)
+    setForm({ record_type: r.record_type, name: r.name, record_date: r.record_date ?? '', next_due_date: r.next_due_date ?? '', result: r.result ?? '', notes: r.notes ?? '' })
+    setFile(null); setModal(true)
+  }
+
+  async function save() {
+    if (!form.name.trim()) { toast('กรุณากรอกชื่อรายการ', false); return }
+    setSaving(true)
+    try {
+      let evidence_url: string | undefined
+      if (file) {
+        const fd = new FormData(); fd.append('file', file); fd.append('kind', 'health')
+        const up = await fetch(`/api/admin/personnel/${profileId}/files`, { method: 'POST', body: fd })
+        const uj = await up.json(); if (!up.ok) throw new Error(uj.error); evidence_url = uj.file_url
+      }
+      const base = { record_type: form.record_type, name: form.name, record_date: form.record_date, next_due_date: form.next_due_date, result: form.result, notes: form.notes }
+      const payload = evidence_url ? { ...base, evidence_url } : base
+      if (editing) {
+        const updated = await apiSend(`/api/admin/personnel/${profileId}/health/${editing.id}`, 'PATCH', payload)
+        setItems((p) => p.map((x) => (x.id === updated.id ? updated : x)))
+      } else {
+        const created = await apiSend(`/api/admin/personnel/${profileId}/health`, 'POST', payload)
+        setItems((p) => [created, ...p])
+      }
+      setModal(false); setEditing(null); setForm(EMPTY_HEALTH); setFile(null); toast(editing ? 'แก้ไขบันทึกสุขภาพแล้ว' : 'บันทึกสุขภาพแล้ว')
+    } catch (e) { toast(e instanceof Error ? e.message : 'error', false) } finally { setSaving(false) }
+  }
+  async function remove(id: string) {
+    if (!confirm('ลบรายการนี้?')) return
+    try { await apiSend(`/api/admin/personnel/${profileId}/health/${id}`, 'DELETE'); setItems((p) => p.filter((x) => x.id !== id)); toast('ลบแล้ว') }
+    catch (e) { toast(e instanceof Error ? e.message : 'error', false) }
+  }
+
+  return (
+    <Card padding={20}>
+      <SectionHeader title="บันทึกสุขภาพ / วัคซีน" sub="ประวัติวัคซีนและการตรวจสุขภาพประจำปี" canEdit={canEdit} onAdd={openAdd} />
+      <ChildTable
+        cols={['รายการ', 'วันที่', 'ครบกำหนดถัดไป', 'ผล', 'หลักฐาน', '']}
+        empty="ยังไม่มีบันทึกสุขภาพ"
+        rows={items.map((r) => {
+          const s = expiryStatus(r.next_due_date)
+          return (
+            <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
+              <td style={{ ...td, fontWeight: 600 }}>{r.name}<div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>{HEALTH_TYPE_LABEL[r.record_type] ?? r.record_type}</div></td>
+              <td style={td}>{fmtDate(r.record_date)}</td>
+              <td style={td}>{r.next_due_date ? <span style={{ color: EXPIRY_COLOR[s], fontWeight: s === 'valid' ? 400 : 600 }}>{fmtDate(r.next_due_date)}{s !== 'valid' && s !== 'none' ? ` · ${EXPIRY_LABEL_TH[s]}` : ''}</span> : '—'}</td>
+              <td style={td}>{r.result ?? '—'}</td>
+              <td style={td}>{r.evidence_url ? <button onClick={() => openAttachment(profileId, r.evidence_url!)} style={iconBtn}><Icon name="eye" size={14} /></button> : '—'}</td>
+              <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                {canEdit && <button onClick={() => openEdit(r)} title="แก้ไข" style={iconBtn}><Icon name="edit" size={14} /></button>}
+                {canEdit && <button onClick={() => remove(r.id)} style={{ ...iconBtn, marginLeft: 4 }}><Icon name="trash" size={14} /></button>}
+              </td>
+            </tr>
+          )
+        })}
+      />
+      {modal && (
+        <Modal title={editing ? 'แก้ไขบันทึกสุขภาพ' : 'เพิ่มบันทึกสุขภาพ'} onClose={() => setModal(false)}
+          footer={<><button onClick={() => setModal(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12 }}>
+            <Field label="ประเภท"><select style={inputStyle} value={form.record_type} onChange={(e) => setForm({ ...form, record_type: e.target.value })}><option value="vaccination">วัคซีน</option><option value="health_check">ตรวจสุขภาพ</option><option value="other">อื่นๆ</option></select></Field>
+            <Field label="ชื่อรายการ *"><input style={inputStyle} placeholder="เช่น วัคซีน HBV เข็ม 3, ตรวจสุขภาพประจำปี" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="วันที่"><DateInputBE value={form.record_date} onChange={(value) => setForm({ ...form, record_date: value })} /></Field>
+            <Field label="ครบกำหนดถัดไป"><DateInputBE value={form.next_due_date} onChange={(value) => setForm({ ...form, next_due_date: value })} /></Field>
+          </div>
+          <Field label="ผล/รายละเอียด"><input style={inputStyle} value={form.result} onChange={(e) => setForm({ ...form, result: e.target.value })} /></Field>
+          <Field label="หมายเหตุ"><input style={inputStyle} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
+          <Field label="ไฟล์หลักฐาน (PDF/รูป ≤10MB)">
+            <FileDropZone file={file} accept=".pdf,image/*" note={editing?.evidence_url ? 'มีไฟล์เดิมแล้ว · ลากไฟล์ใหม่มาวางเพื่อแทนที่' : 'รองรับ PDF และรูปภาพ ขนาดไม่เกิน 10MB'} onFile={setFile} />
+            {editing?.evidence_url && !file && (
+              <button type="button" onClick={() => openAttachment(profileId, editing.evidence_url!)} style={{ ...ghostBtn, marginTop: 8, fontSize: 12 }}><Icon name="eye" size={13} /> ดูไฟล์ปัจจุบัน</button>
+            )}
+          </Field>
+        </Modal>
+      )}
+    </Card>
+  )
+}
+
+const EMPTY_CONFID = { signed_date: '', notes: '' }
+function ConfidentialitySection({ profileId, items, setItems, canEdit, toast }: { profileId: string; items: StaffConfidentialityAgreement[]; setItems: (f: (p: StaffConfidentialityAgreement[]) => StaffConfidentialityAgreement[]) => void; canEdit: boolean; toast: (m: string, ok?: boolean) => void }) {
+  const [modal, setModal] = useState(false)
+  const [editing, setEditing] = useState<StaffConfidentialityAgreement | null>(null)
+  const [form, setForm] = useState(EMPTY_CONFID)
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  function openAdd() { setEditing(null); setForm(EMPTY_CONFID); setFile(null); setModal(true) }
+  function openEdit(a: StaffConfidentialityAgreement) {
+    setEditing(a)
+    setForm({ signed_date: a.signed_date ?? '', notes: a.notes ?? '' })
+    setFile(null); setModal(true)
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      let file_url: string | undefined
+      if (file) {
+        const fd = new FormData(); fd.append('file', file); fd.append('kind', 'confidentiality')
+        const up = await fetch(`/api/admin/personnel/${profileId}/files`, { method: 'POST', body: fd })
+        const uj = await up.json(); if (!up.ok) throw new Error(uj.error); file_url = uj.file_url
+      }
+      const base = { signed_date: form.signed_date, notes: form.notes }
+      const payload = file_url ? { ...base, file_url } : base
+      if (editing) {
+        const updated = await apiSend(`/api/admin/personnel/${profileId}/confidentiality/${editing.id}`, 'PATCH', payload)
+        setItems((p) => p.map((x) => (x.id === updated.id ? updated : x)))
+      } else {
+        const created = await apiSend(`/api/admin/personnel/${profileId}/confidentiality`, 'POST', payload)
+        setItems((p) => [created, ...p])
+      }
+      setModal(false); setEditing(null); setForm(EMPTY_CONFID); setFile(null); toast(editing ? 'แก้ไขข้อตกลงแล้ว' : 'บันทึกข้อตกลงแล้ว')
+    } catch (e) { toast(e instanceof Error ? e.message : 'error', false) } finally { setSaving(false) }
+  }
+  async function remove(id: string) {
+    if (!confirm('ลบรายการนี้?')) return
+    try { await apiSend(`/api/admin/personnel/${profileId}/confidentiality/${id}`, 'DELETE'); setItems((p) => p.filter((x) => x.id !== id)); toast('ลบแล้ว') }
+    catch (e) { toast(e instanceof Error ? e.message : 'error', false) }
+  }
+
+  return (
+    <Card padding={20}>
+      <SectionHeader title="ข้อตกลงรักษาความลับ (Confidentiality)" sub="เอกสารลงนามรักษาความลับ · ลงนามซ้ำรายปีได้" canEdit={canEdit} onAdd={openAdd} />
+      <ChildTable
+        cols={['วันที่ลงนาม', 'หมายเหตุ', 'ไฟล์', '']}
+        empty="ยังไม่มีข้อตกลงรักษาความลับ"
+        rows={items.map((a) => (
+          <tr key={a.id} style={{ borderBottom: '1px solid var(--border)' }}>
+            <td style={{ ...td, fontWeight: 600 }}>{fmtDate(a.signed_date)}</td>
+            <td style={td}>{a.notes ?? '—'}</td>
+            <td style={td}>{a.file_url ? <button onClick={() => openAttachment(profileId, a.file_url!)} style={iconBtn}><Icon name="eye" size={14} /></button> : '—'}</td>
+            <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+              {canEdit && <button onClick={() => openEdit(a)} title="แก้ไข" style={iconBtn}><Icon name="edit" size={14} /></button>}
+              {canEdit && <button onClick={() => remove(a.id)} style={{ ...iconBtn, marginLeft: 4 }}><Icon name="trash" size={14} /></button>}
+            </td>
+          </tr>
+        ))}
+      />
+      {modal && (
+        <Modal title={editing ? 'แก้ไขข้อตกลงรักษาความลับ' : 'เพิ่มข้อตกลงรักษาความลับ'} onClose={() => setModal(false)}
+          footer={<><button onClick={() => setModal(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
+          <Field label="วันที่ลงนาม"><DateInputBE value={form.signed_date} onChange={(value) => setForm({ ...form, signed_date: value })} /></Field>
+          <Field label="หมายเหตุ"><input style={inputStyle} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
+          <Field label="ไฟล์เอกสารลงนาม (PDF/รูป ≤10MB)">
+            <FileDropZone file={file} accept=".pdf,image/*" note={editing?.file_url ? 'มีไฟล์เดิมแล้ว · ลากไฟล์ใหม่มาวางเพื่อแทนที่' : 'รองรับ PDF และรูปภาพ ขนาดไม่เกิน 10MB'} onFile={setFile} />
+            {editing?.file_url && !file && (
+              <button type="button" onClick={() => openAttachment(profileId, editing.file_url!)} style={{ ...ghostBtn, marginTop: 8, fontSize: 12 }}><Icon name="eye" size={13} /> ดูไฟล์ปัจจุบัน</button>
+            )}
+          </Field>
+        </Modal>
+      )}
+    </Card>
   )
 }
 
