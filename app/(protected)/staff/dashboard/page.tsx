@@ -50,6 +50,7 @@ function actionDotColor(action: string | null): string {
   if (a.startsWith('contract.'))                                   return '#7C3AED' // purple — สัญญา
   if (a.startsWith('risk.') || a.startsWith('rejection.'))        return '#DC2626' // red — ความเสี่ยง
   if (a.startsWith('kpi.'))                                        return '#16A34A' // green — KPI
+  if (a.startsWith('it_'))                                         return '#0369A1' // sky — งาน IT
   if (a.includes('news'))                                          return '#D97706' // amber — ข่าวสาร
   return '#64748B' // gray — อื่นๆ
 }
@@ -507,7 +508,7 @@ function OperationalFocus({
         )}
 
         {showQuality && (
-          <article className="priority-card" style={{ borderTop:'3px solid #0891B2' }}>
+          <article className="priority-card" style={{ borderTop:'3px solid #0891B2',display:'flex',flexDirection:'column',height:470,minHeight:470 }}>
             <div style={{ padding:'16px 18px 14px',borderBottom:'1px solid var(--border)',background:'var(--surface-2)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12 }}>
               <div style={{ display:'flex',alignItems:'center',gap:10 }}>
                 <span style={{ width:34,height:34,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(8,145,178,.12)',color:'#0891B2',flexShrink:0 }}><Icon name="calendar" size={17}/></span>
@@ -518,7 +519,7 @@ function OperationalFocus({
               </div>
               {qualityUrgent.length>0&&<span style={{ flexShrink:0,padding:'5px 9px',borderRadius:999,background:qualityUrgent.some(task=>task.urgency==='overdue')?'#FEE2E2':'#FEF3C7',color:qualityUrgent.some(task=>task.urgency==='overdue')?'#DC2626':'#B45309',fontSize:10.5,fontWeight:850 }}>{qualityUrgent.length} งานต้องติดตาม</span>}
             </div>
-            <div style={{ padding:'12px 14px 14px' }}>
+            <div style={{ padding:'12px 14px 14px',flex:1,overflowY:'auto' }}>
               {qualityUrgent.length>0&&<div style={{ display:'grid',gap:6,marginBottom:12 }}><div style={{ fontSize:10.5,fontWeight:850,color:'var(--muted)' }}>เร่งด่วน</div>{qualityUrgent.map(task=><Link key={task.key} href="/staff/quality-tasks" className="schedule-row" style={{ display:'grid',gridTemplateColumns:'6px minmax(0,1fr) auto',alignItems:'center',gap:8,padding:'7px 9px',border:'1px solid var(--border)',borderRadius:9,background:task.urgency==='overdue'?'#FFF7F7':'#FFFBEB',textDecoration:'none' }}><span style={{ width:6,height:28,borderRadius:99,background:task.urgency==='overdue'?'#DC2626':'#D97706' }}/><span style={{ minWidth:0 }}><span style={{ display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11.5,fontWeight:800,color:'var(--ink)' }}>{task.template.title}</span><span style={{ display:'block',marginTop:2,fontSize:10,color:task.urgency==='overdue'?'#B91C1C':'#B45309',fontWeight:700 }}>{task.urgency==='overdue'?'เกินกำหนด':'ใกล้กำหนด'} · {new Date(`${task.effectiveDueDate}T00:00:00+07:00`).toLocaleDateString('th-TH',{day:'numeric',month:'short',timeZone:'Asia/Bangkok'})}</span></span><Icon name="chevRight" size={13} style={{ color:'var(--muted)' }}/></Link>)}</div>}
               {qualityUrgent.length > 0 && (
                 <div style={{ height:1,background:'var(--border)',margin:'2px 0 10px' }}/>
@@ -677,6 +678,22 @@ const ACTION_LABELS: Record<string, string> = {
   'quality_task.template.create':                 'เพิ่มกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   'quality_task.template.update':                 'แก้ไขกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   'quality_task.template.delete':                  'ลบกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
+  // งาน IT — ระบบสารสนเทศ
+  'it_access.create':                             'เพิ่มสิทธิ์เข้าถึงระบบสารสนเทศ',
+  'it_access.update':                             'แก้ไขสิทธิ์เข้าถึงระบบสารสนเทศ',
+  'it_access.delete':                             'ถอนสิทธิ์เข้าถึงระบบสารสนเทศ',
+  'it_access.review':                             'ทบทวนสิทธิ์เข้าถึงประจำปี',
+  'it_access.review_approve':                      'อนุมัติการทบทวนสิทธิ์ประจำปี',
+  'it_system.create':                             'เพิ่มระบบสารสนเทศ',
+  'it_system.update':                             'แก้ไขระบบสารสนเทศ',
+  'it_editors.grant':                             'เพิ่มคณะทำงาน IT',
+  'it_editors.revoke':                            'ถอนคณะทำงาน IT',
+  'it_downtime.create':                           'บันทึกระบบล่ม',
+  'it_downtime.update':                           'แก้ไขบันทึกระบบล่ม',
+  'it_downtime.delete':                           'ลบบันทึกระบบล่ม',
+  'it_backup.create':                             'บันทึกการสำรองข้อมูล',
+  'it_backup.update':                             'แก้ไขบันทึกการสำรองข้อมูล',
+  'it_backup.delete':                             'ลบบันทึกการสำรองข้อมูล',
   // ข่าวสาร
   'create_news':                                  'เพิ่มข่าวสาร',
   'update_news':                                  'แก้ไขข่าวสาร',
