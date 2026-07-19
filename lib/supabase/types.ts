@@ -215,6 +215,89 @@ export interface StaffAuthorization {
   deleted_at: string | null
 }
 
+// ── IT Module — HIS & LIS access rights, downtime, backup (scripts/it-access-module.sql) ──
+export interface ItSystem {
+  id: string
+  name: string
+  is_active: boolean
+  display_order: number | null
+  created_at: string
+}
+
+export interface ItAccessRecord {
+  id: string
+  profile_id: string
+  lis_user_id: string | null
+  can_register: boolean
+  can_view_result: boolean
+  can_report_result: boolean
+  can_verify_result: boolean
+  can_edit_result: boolean
+  can_set_parameter: boolean
+  can_admin_setting: boolean
+  system_ids: string[]
+  display_order: number | null
+  created_at: string
+  created_by: string | null
+}
+
+// Register row joined with its profile (name/position/HIS-ID + active status for the "รอถอนสิทธิ์" flag)
+export interface ItAccessRecordWithProfile extends ItAccessRecord {
+  profile: {
+    id: string
+    name: string
+    position_title: string | null
+    ephis_id: string | null
+    status: UserStatus
+    deleted_at: string | null
+  } | null
+}
+
+export interface ItAccessReview {
+  id: string
+  reviewed_at: string
+  reviewed_by: string | null
+  reviewed_by_name: string
+  note: string | null
+  approved_at: string | null
+  approved_by: string | null
+  approved_by_name: string | null
+  created_at: string
+}
+
+export interface ItDowntimeLog {
+  id: string
+  system_id: string
+  started_at: string
+  ended_at: string | null
+  cause: string | null
+  resolution: string | null
+  used_contingency: boolean
+  created_at: string
+  created_by: string | null
+}
+
+export interface ItDowntimeLogWithSystem extends ItDowntimeLog {
+  system: { id: string; name: string } | null
+}
+
+export interface ItBackupLog {
+  id: string
+  system_id: string
+  log_date: string
+  activity: 'backup' | 'restore_test'
+  result: 'success' | 'failed'
+  performed_by: string | null
+  note: string | null
+  created_at: string
+  created_by: string | null
+}
+
+export interface ItBackupLogWithRefs extends ItBackupLog {
+  system: { id: string; name: string } | null
+  performer: { id: string; name: string } | null
+}
+
 export interface Category {
   id: string
   th: string

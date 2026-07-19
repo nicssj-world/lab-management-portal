@@ -5,6 +5,7 @@ import { StaffTopbar } from '@/components/layout/StaffTopbar'
 import { PermissionProvider } from '@/context/PermissionContext'
 import { SidebarProvider } from '@/context/SidebarContext'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
+import { normalizeRole } from '@/lib/roles'
 import { ensureOwnProfile } from '@/lib/auth/profile'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAssignedDeptIds } from '@/lib/queries/kpi'
@@ -24,6 +25,12 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   }
   const role = profile.role ? (LEGACY_ROLES[profile.role] ?? profile.role) : undefined
   const permissions = role ? await getPermissionsWithEquipmentOverride(role, user.id) : {}
+  // คณะทำงาน IT override: admin-equivalent edit on the งาน IT module regardless of role.
+  if (role && normalizeRole(role) !== 'Admin') {
+    const { data: itEditor } = await supabaseAdmin
+      .from('it_editors').select('user_id').eq('user_id', user.id).maybeSingle()
+    if (itEditor?.user_id) permissions['ระบบสารสนเทศ (IT)'] = 'edit'
+  }
   if (['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(profile.doc_role ?? '')) {
     permissions['เอกสารคุณภาพ'] = 'edit'
   }

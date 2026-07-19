@@ -63,6 +63,13 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/equipment',  th: 'ทะเบียนเครื่องมือ',   en: 'Equipment',      icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
   { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
   { href: '/staff/personnel',  th: 'บุคลากร',             en: 'MT-CBH Staff',   icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร' },
+  { section: 'งาน IT' },
+  { href: '/staff/it/access', th: 'สิทธิ์เข้าถึง HIS & LIS', en: 'IT Access Rights', icon: 'lock', color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)',
+    children: [
+      { href: '/staff/it/access',   th: 'สิทธิ์เข้าถึง HIS & LIS', en: 'Access Rights', icon: 'lock',     color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
+      { href: '/staff/it/downtime', th: 'บันทึกระบบล่ม',          en: 'Downtime Log',  icon: 'alert',    color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
+      { href: '/staff/it/backup',   th: 'การสำรองข้อมูล',         en: 'Backup Log',    icon: 'download', color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
+    ] },
   { section: 'Analytics' },
   { href: '/staff/satisfaction', th: 'แบบสำรวจความพึงพอใจ', en: 'Satisfaction', icon: 'clipboard', color: '#0F766E', resource: 'แบบสำรวจความพึงพอใจ' },
   { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',  color: '#16A34A', resource: 'KPI' },

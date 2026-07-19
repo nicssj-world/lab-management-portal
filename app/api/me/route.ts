@@ -32,7 +32,9 @@ export async function PATCH(req: NextRequest) {
   await ensureOwnProfile(user)
 
   const body = await req.json()
-  const allowed = ['name', 'avatar_url', 'document_position', 'phone'] as const
+  // name is intentionally excluded — self-service name editing is disabled;
+  // only Admin can rename a user, via /api/admin/users/[id].
+  const allowed = ['avatar_url', 'document_position', 'phone'] as const
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (!(key in body)) continue

@@ -39,7 +39,6 @@ export default function ProfilePage() {
   const signatureRef = useRef<HTMLInputElement>(null)
 
   const [profile, setProfile] = useState<ProfileData | null>(null)
-  const [displayName, setDisplayName] = useState('')
   const [phone, setPhone] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [documentPosition, setDocumentPosition] = useState('')
@@ -47,12 +46,10 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadingSignature, setUploadingSignature] = useState(false)
-  const [savingName, setSavingName] = useState(false)
   const [savingPhone, setSavingPhone] = useState(false)
   const [editingPhone, setEditingPhone] = useState(true)
   const [savingDocumentProfile, setSavingDocumentProfile] = useState(false)
   const [editingDocumentPosition, setEditingDocumentPosition] = useState(true)
-  const [editingName, setEditingName] = useState(false)
 
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -77,7 +74,6 @@ export default function ProfilePage() {
       .then((data: ProfileData | null) => {
         if (!data?.id) return
         setProfile(data)
-        setDisplayName(data.name ?? '')
         setPhone(data.phone ?? '')
         setEditingPhone(!data.phone)
         setAvatarUrl(data.avatar_url ?? null)
@@ -88,15 +84,6 @@ export default function ProfilePage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
-
-  async function handleSaveName() {
-    if (!profile || !displayName.trim()) return
-    setSavingName(true)
-    const res = await fetch('/api/me', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: displayName.trim() }) })
-    setSavingName(false)
-    if (!res.ok) showToast('บันทึกไม่สำเร็จ', false)
-    else { setProfile((p) => p ? { ...p, name: displayName.trim() } : p); setEditingName(false); showToast('บันทึกชื่อแล้ว') }
-  }
 
   async function handleSavePhone() {
     if (!profile) return
@@ -339,36 +326,9 @@ export default function ProfilePage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* Name row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
-              {editingName ? (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
-                  <input
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') { setEditingName(false); setDisplayName(profile?.name ?? '') } }}
-                    autoFocus
-                    style={{ ...inputStyle, fontSize: 20, fontWeight: 700, padding: '4px 10px', maxWidth: 300 }}
-                  />
-                  <button onClick={handleSaveName} disabled={savingName}
-                    style={{ padding: '5px 14px', borderRadius: 7, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    {savingName ? '...' : 'บันทึก'}
-                  </button>
-                  <button onClick={() => { setEditingName(false); setDisplayName(profile?.name ?? '') }}
-                    style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    ยกเลิก
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)', margin: 0, letterSpacing: '-0.02em' }}>
-                    {profile?.name ?? '—'}
-                  </h1>
-                  <button onClick={() => setEditingName(true)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 2, display: 'flex', alignItems: 'center' }}
-                    title="แก้ไขชื่อ">
-                    <Icon name="edit" size={13} />
-                  </button>
-                </>
-              )}
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)', margin: 0, letterSpacing: '-0.02em' }}>
+                {profile?.name ?? '—'}
+              </h1>
             </div>
 
             {/* Role + Doc Role badges */}
@@ -407,20 +367,18 @@ export default function ProfilePage() {
             )}
 
             {/* Avatar actions */}
-            {!editingName && (
-              <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-                <button onClick={() => fileRef.current?.click()} disabled={uploading}
-                  style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>
-                  {uploading ? 'กำลังอัปโหลด...' : 'เปลี่ยนรูปโปรไฟล์'}
+            <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+              <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>
+                {uploading ? 'กำลังอัปโหลด...' : 'เปลี่ยนรูปโปรไฟล์'}
+              </button>
+              {avatarUrl && (
+                <button onClick={handleRemoveAvatar}
+                  style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #FEE2E2', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: '#DC2626' }}>
+                  ลบรูป
                 </button>
-                {avatarUrl && (
-                  <button onClick={handleRemoveAvatar}
-                    style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #FEE2E2', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: '#DC2626' }}>
-                    ลบรูป
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </Card>
