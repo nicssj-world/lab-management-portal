@@ -141,10 +141,10 @@ export function SatisfactionModule({
             ) : (
               <div className="satisfaction-table-wrap">
                 <table className="satisfaction-table">
-                  <thead><tr><th>รหัส / ชื่อแบบสำรวจ</th><th>เวอร์ชัน</th><th>สถานะ</th><th>เผยแพร่เมื่อ</th><th>สิทธิ์</th></tr></thead>
+                  <thead><tr><th>ชื่อแบบสำรวจ / รหัส</th><th>เวอร์ชัน</th><th>สถานะ</th><th>เผยแพร่เมื่อ</th><th>สิทธิ์</th></tr></thead>
                   <tbody>{initialSurveys.map((survey) => (
                     <tr key={survey.id}>
-                      <td><Link href={`/staff/satisfaction/${survey.id}`} style={{ color: 'var(--primary)', fontWeight: 800, textDecoration: 'none' }}>{survey.code}</Link><div style={{ color: 'var(--muted)', marginTop: 3 }}>{survey.title}</div></td>
+                      <td><Link href={`/staff/satisfaction/${survey.id}`} style={{ color: 'var(--primary)', fontWeight: 800, textDecoration: 'none' }}>{survey.title}</Link><div style={{ color: 'var(--muted)', marginTop: 3, fontSize: 12 }}>{survey.code}</div></td>
                       <td>Version {survey.latestVersion ?? '—'}</td>
                       <td>{statusBadge(survey.latestStatus)}</td>
                       <td>{dateLabel(survey.publishedAt)}</td>

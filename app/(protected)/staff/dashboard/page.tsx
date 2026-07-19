@@ -234,7 +234,6 @@ export default async function StaffDashboardPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=DM+Mono:wght@400;500&display=swap');
         .dmono{font-family:'DM Mono',monospace}
         .ops-title{font-family:'Rajdhani',sans-serif;text-transform:uppercase}
         @keyframes breathe{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(34,211,238,.45)}50%{opacity:.65;box-shadow:0 0 0 7px rgba(34,211,238,0)}}
