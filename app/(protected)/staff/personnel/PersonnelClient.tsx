@@ -210,15 +210,6 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
               <Icon name="user" size={15} /> โปรไฟล์ของฉัน
             </Link>
           )}
-          <Link href="/staff/personnel/org" style={linkBtn}>
-            <Icon name="users" size={15} /> ผังองค์กร
-          </Link>
-          <Link href="/staff/personnel/workforce" style={linkBtn}>
-            <Icon name="chart" size={15} /> อัตรากำลัง
-          </Link>
-          <Link href="/staff/personnel/compliance" style={linkBtn}>
-            <Icon name="shieldCheck" size={15} /> รายงานคุณภาพ
-          </Link>
         </div>
       </div>
 
