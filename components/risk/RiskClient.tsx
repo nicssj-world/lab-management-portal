@@ -17,6 +17,7 @@ import {
 import type { Risk, RiskAction } from '@/lib/supabase/types'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { RiskHeatmap } from '@/components/lab/RiskHeatmap'
 import {
   LAB_DEPARTMENTS,
@@ -431,36 +432,42 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
     }))
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 5 }}>Risk Management</div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, lineHeight: 1.2, color: 'var(--ink)' }}>ทะเบียนความเสี่ยง</h1>
-          <div style={{ marginTop: 6, fontSize: 13, color: 'var(--muted)' }}>ติดตาม action plan, follow-up และ Residual Risk ตาม WI-G-OV06</div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+    <main className="risk-page" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <style>{`
+        .risk-page{width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box}
+        .risk-tabs{display:flex;gap:5px;overflow-x:auto;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;scrollbar-width:thin}
+        .risk-tab{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:700;padding:10px 14px;border-radius:10px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;cursor:pointer;transition:background .18s,color .18s,box-shadow .18s}
+        .risk-tab:hover{color:var(--ink);background:color-mix(in srgb,var(--card) 78%,var(--primary-soft))}
+        .risk-tab[aria-selected="true"]{color:var(--primary);background:var(--card);box-shadow:0 2px 7px rgba(15,23,42,.08)}
+        .risk-tab:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 30%,transparent);outline-offset:2px}
+        @media(max-width:767px){.risk-tabs{margin-inline:-4px}.risk-tab{padding:9px 12px}}
+        @media(prefers-reduced-motion:reduce){.risk-tab{transition:none}}
+      `}</style>
+      <PageHeader
+        eyebrow="RISK MANAGEMENT"
+        title="ทะเบียนความเสี่ยง"
+        subtitle="ติดตาม action plan, follow-up และ Residual Risk ตาม WI-G-OV06"
+        marginBottom={0}
+        actions={<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {canEdit && tab !== 'dashboard' && (
             <Button variant="secondary" icon="upload" onClick={() => { setImportMode(tab === 'smart' ? 'smart' : tab === 'ior' ? 'ior' : 'register'); setShowImport(true) }}>Import</Button>
           )}
           {canEdit && (tab === 'ior' || tab === 'register') && (
             <Button variant="primary" icon="plus" onClick={() => setShowCreate(true)}>เพิ่มรายการ</Button>
           )}
-        </div>
-      </div>
+        </div>}
+      />
 
-      <div style={{ display: 'inline-flex', alignSelf: 'flex-start', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, padding: 3, gap: 2 }}>
+      <div role="tablist" aria-label="เมนูทะเบียนความเสี่ยง" className="risk-tabs">
         {TABS.map(item => (
           <button
             key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.id}
+            aria-controls={`risk-panel-${item.id}`}
             onClick={() => setTab(item.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              border: 'none', borderRadius: 9, padding: '9px 14px',
-              background: tab === item.id ? 'var(--card)' : 'transparent',
-              color: tab === item.id ? 'var(--primary)' : 'var(--muted)',
-              boxShadow: tab === item.id ? '0 2px 8px rgba(15,23,42,.10)' : 'none',
-              fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer',
-            }}
+            className="risk-tab"
           >
             <Icon name={item.icon} size={15} /> {item.label}
           </button>
@@ -535,7 +542,7 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
       {previewing && <RiskEventPreviewModal risk={previewing} onClose={() => setPreviewing(null)} />}
       {canReview && editing && <RiskDetailModal risk={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refreshRiskData() }} />}
       {canEdit && showImport && <RiskImportModal mode={importMode} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); refreshRiskData(); setTab(importMode === 'smart' ? 'smart' : importMode === 'ior' ? 'ior' : 'register') }} />}
-    </div>
+    </main>
   )
 }
 

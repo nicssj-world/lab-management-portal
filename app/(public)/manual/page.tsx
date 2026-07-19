@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { ManualShell } from './ManualShell'
+import { getPublicOutlabPartners } from '@/lib/outlab/server'
 
 export const metadata = {
   title: 'คู่มือการใช้บริการห้องปฏิบัติการ — กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี',
@@ -22,6 +23,21 @@ export default async function ManualPage() {
     if (row.table_data && typeof row.table_data === 'object') {
       dbTables[row.id] = row.table_data as Record<string, unknown[]>
     }
+  }
+
+  // The relational OUTLAB registry is authoritative once its migration is present.
+  // Keep the existing constants/manual table as a safe fallback during rollout.
+  try {
+    const partners = await getPublicOutlabPartners()
+    if (partners.length > 0) {
+      dbTables.outlab = {
+        ...(dbTables.outlab ?? {}),
+        outlabPartners: partners,
+        outlabRegistryManaged: [{ enabled: true }],
+      }
+    }
+  } catch {
+    // Migration may not have reached this environment yet; preserve existing data.
   }
 
   let canEdit = false
