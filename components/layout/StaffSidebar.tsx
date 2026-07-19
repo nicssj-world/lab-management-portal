@@ -62,7 +62,13 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/risk',       th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',  icon: 'shield',     color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
   { href: '/staff/equipment',  th: 'ทะเบียนเครื่องมือ',   en: 'Equipment',      icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
   { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
-  { href: '/staff/personnel',  th: 'บุคลากร',             en: 'MT-CBH Staff',   icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร' },
+  { href: '/staff/personnel',  th: 'บุคลากร',             en: 'MT-CBH Staff',   icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร',
+    children: [
+      { href: '/staff/personnel',            th: 'ทะเบียนบุคลากร', en: 'Staff Registry',    icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร' },
+      { href: '/staff/personnel/workforce',  th: 'อัตรากำลัง',     en: 'Workforce',         icon: 'chart',       color: '#4338CA', resource: 'บุคลากร' },
+      { href: '/staff/personnel/org',        th: 'ผังองค์กร',      en: 'Org Chart',         icon: 'users',       color: '#4338CA', resource: 'บุคลากร' },
+      { href: '/staff/personnel/compliance', th: 'รายงานคุณภาพ',   en: 'Compliance Report', icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร' },
+    ] },
   { section: 'งาน IT' },
   { href: '/staff/it/access', th: 'สิทธิ์เข้าถึง HIS & LIS', en: 'IT Access Rights', icon: 'lock', color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)',
     children: [
