@@ -102,7 +102,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
         { value: 'priv', label: 'เอกชน' },
       ] },
       { key: 'name', label: 'ชื่อหน่วยงาน', kind: 'text' },
-      { key: 'brand', label: 'ชื่อย่อ / แบรนด์', kind: 'text' },
+      { key: 'brand', label: 'หน่วยงาน', kind: 'text' },
       { key: 'accred', label: 'การรับรอง', kind: 'text' },
     ],
   },

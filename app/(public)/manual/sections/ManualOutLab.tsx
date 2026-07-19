@@ -116,6 +116,8 @@ function DocChain({ steps, color = 'var(--primary)', bg = 'var(--primary-soft)',
 export function ManualOutLab({ lang }: Props) {
   const [editing, setEditing] = useState(false)
   const partners = useManualTable<OutLabPartner>('outlabPartners', 'outlab', OUTLAB_PARTNERS)
+  const registry = useManualTable<{ enabled: boolean }>('outlabRegistryManaged', 'outlab', [])
+  const registryManaged = registry.rows.some(row => row.enabled)
   const govt = partners.rows.filter((p) => p.sector === 'gov')
   const priv = partners.rows.filter((p) => p.sector === 'priv')
 
@@ -132,12 +134,17 @@ export function ManualOutLab({ lang }: Props) {
             : 'Tests not performed in-house are forwarded to accredited reference laboratories. The OUT LAB section (ext. 1461) handles packaging, shipment, follow-up, and returning the result via HIS.'}
         </P>
 
-        {partners.canEdit && !editing && (
+        {partners.canEdit && !registryManaged && !editing && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
             <button onClick={() => setEditing(true)}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
               แก้รายชื่อหน่วยงาน
             </button>
+          </div>
+        )}
+        {partners.canEdit && registryManaged && (
+          <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'right', marginBottom: 10 }}>
+            รายชื่อนี้จัดการจากทะเบียน OUTLAB ภายในระบบ
           </div>
         )}
         {editing ? (

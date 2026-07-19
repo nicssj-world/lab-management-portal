@@ -11,6 +11,8 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/dashboard':        { th: 'แดชบอร์ดภาพรวม',              en: 'Dashboard Overview' },
   '/staff/quality-tasks':     { th: 'งานคุณภาพ',                   en: 'Quality Tasks' },
   '/staff/quality-tasks/registry': { th: 'ทะเบียนกิจกรรมคุณภาพ',   en: 'Quality Task Registry' },
+  '/staff/eqa':              { th: 'การควบคุมคุณภาพภายนอก (EQA)', en: 'External Quality Assessment' },
+  '/staff/outlab':           { th: 'ทะเบียนห้องปฏิบัติการภายนอก', en: 'OUTLAB Registry' },
   '/staff/tests':            { th: 'จัดการรายการตรวจวิเคราะห์',    en: 'Test Management' },
   '/staff/tests/categories': { th: 'หมวดหมู่การตรวจวิเคราะห์',     en: 'Test Categories' },
   '/staff/news':             { th: 'จัดการข่าวสารห้องปฏิบัติการ',  en: 'News Management' },
