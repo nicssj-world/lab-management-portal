@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Icon } from '@/components/ui/Icon'
 import { Card } from '@/components/ui/Card'
+import { ViewTabs } from '@/components/ui/ViewTabs'
 import type {
   Profile, StaffCertification, StaffTraining, StaffCompetency, StaffAuthorization,
   StaffJd, StaffJdRevision, StaffTrainingPlan, OrientationItem,
@@ -13,6 +15,7 @@ import type {
 import { expiryStatus, EXPIRY_COLOR, EXPIRY_LABEL_TH, daysLeft } from '@/lib/personnel/expiry'
 import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
+import { normalizeNavigationValue } from '@/lib/navigation'
 
 export interface TestOption { id: number; code: string; th: string; category_id: string | null }
 export interface StaffOption { id: string; name: string }
@@ -64,7 +67,10 @@ function useToast() {
 
 export function StaffDetailClient({ detail, canEdit, tests, categories, staff, officialPhotoUrl }: DetailProps) {
   const { profile } = detail
-  const [tab, setTab] = useState<TabKey>('profile')
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const tab = normalizeNavigationValue(searchParams.get('section'), TABS.map(item => item.key), 'profile')
   const { toasts, add } = useToast()
 
   const [certs, setCerts] = useState(detail.certifications)
@@ -79,6 +85,15 @@ export function StaffDetailClient({ detail, canEdit, tests, categories, staff, o
 
   const testById = useMemo(() => new Map(tests.map((t) => [t.id, t])), [tests])
   const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s.name])), [staff])
+  const navigateSection = useCallback((section: TabKey) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('section', section)
+    router.push(`${pathname}?${params.toString()}`, { scroll: false })
+  }, [pathname, router, searchParams])
+  const viewItems = TABS.map((item) => {
+    const count = item.key === 'training' ? training.length : item.key === 'competency' ? comps.length : item.key === 'cert' ? certs.length : item.key === 'auth' ? auths.length : item.key === 'jd' ? jds.length : item.key === 'plan' ? plan.length : item.key === 'health' ? health.length + confid.length : null
+    return { id: item.key, label: count === null ? item.th : `${item.th} (${count})`, icon: item.icon }
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -106,28 +121,12 @@ export function StaffDetailClient({ detail, canEdit, tests, categories, staff, o
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '1px solid var(--border)', paddingBottom: 2 }}>
-        {TABS.map((t) => {
-          const active = tab === t.key
-          const count = t.key === 'training' ? training.length : t.key === 'competency' ? comps.length : t.key === 'cert' ? certs.length : t.key === 'auth' ? auths.length : t.key === 'jd' ? jds.length : t.key === 'plan' ? plan.length : t.key === 'health' ? health.length + confid.length : null
-          return (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px',
-              border: 'none', borderBottom: active ? '2px solid var(--primary)' : '2px solid transparent',
-              background: 'transparent', color: active ? 'var(--primary)' : 'var(--muted)',
-              fontWeight: active ? 700 : 500, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', marginBottom: -2,
-            }}>
-              <Icon name={t.icon} size={15} /> {t.th}
-              {count !== null && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{count}</span>}
-            </button>
-          )
-        })}
-      </div>
+      <ViewTabs items={viewItems} value={tab} param="section" label="ข้อมูลบุคลากร" compact />
 
       {tab === 'profile' && (
         <>
           <ProfileTab prof={prof} canEdit={canEdit} officialPhotoUrl={officialPhotoUrl} onSaved={(p) => { setProf(p); add('บันทึกประวัติแล้ว') }} onError={(m) => add(m, false)} />
-          <OverviewSection prof={prof} training={training} plan={plan} comps={comps} certs={certs} auths={auths} jds={jds} onNavigate={setTab} />
+          <OverviewSection prof={prof} training={training} plan={plan} comps={comps} certs={certs} auths={auths} jds={jds} onNavigate={navigateSection} />
         </>
       )}
       {tab === 'training' && <TrainingTab profileId={prof.id} items={training} setItems={setTraining} plans={plan} canEdit={canEdit} toast={add} />}

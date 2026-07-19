@@ -15,6 +15,10 @@ This project runs **Next.js 16 / React 19** — APIs differ from training data. 
 npm run dev      # Start dev server at localhost:3000
 npm run build    # Production build (also type-checks)
 npx tsc --noEmit # Type-check without building
+npx tsx scripts/navigation-primitives.test.ts    # Shared navigation semantics
+npx tsx scripts/navigation-routes.test.ts        # Nested route contracts
+npx tsx scripts/navigation-query-state.test.ts   # URL-backed view contracts
+npx tsx scripts/navigation-accessibility.test.ts # Navigation accessibility
 ```
 
 ## TAT Local Source Files
@@ -87,7 +91,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
-There are no lint or test scripts. Type-check is the only automated verification.
+There is no `npm test` or lint script. Focused regression tests live in `scripts/*.test.ts` and run with `npx tsx`; production build and `npx tsc --noEmit` remain required verification.
 
 ## Architecture
 
@@ -195,7 +199,7 @@ Validation schemas are in `lib/validations/` (Zod). API routes validate with `.s
 ### UI Component Library
 
 **Do not install external UI libraries.** Use only `components/ui/`:
-`Button`, `Card`, `Icon`, `Input`, `Select`, `Badge`, `PageHeader`, `Stat`, `EmptyState`, `MonthSelector`
+`Button`, `Card`, `Icon`, `Input`, `Select`, `Badge`, `PageHeader`, `Stat`, `EmptyState`, `MonthSelector`, `ModuleSubnav`, `ViewTabs`, `FilterChips`
 
 Forms use **controlled components + `useState`** (no React Hook Form). Tables use **plain `<table>` HTML** with inline sort/filter state. Charts use **Recharts**.
 
@@ -228,33 +232,28 @@ Component usage notes:
 
 ### UI Patterns
 
+**Navigation hierarchy** — keep these meanings distinct:
+
+- Sidebar = top-level module or large work group.
+- `ModuleSubnav` = route-backed destinations inside a module. Define labels/icons/routes centrally in `lib/navigation.ts`; use semantic `<nav>`, Next.js `<Link scroll={false}>`, and `aria-current="page"`. Preserve existing query parameters when moving within the module.
+- `ViewTabs` = views of the same data. Store state in `?view=` or `?section=`, preserve unrelated query parameters, validate values with `normalizeNavigationValue`, and fall back to the screen's default view for invalid values.
+- `FilterChips` = temporary local filters. Use `<button aria-pressed>` semantics; never use `role="tablist"` for filters.
+- Local `useState` tabs = only for non-shareable state, such as an import/form mode with unsaved input.
+
+Current route-backed modules:
+
+- EQA: `/staff/eqa`, `/programs`, `/rounds`, `/coverage`, `/capa`, `/settings` under `/staff/eqa`.
+- OUTLAB: `/staff/outlab`, `/laboratories`, `/services`, `/certificates`, `/settings` under `/staff/outlab`.
+- Risk: `/staff/risk`, `/ior`, `/register`, `/smart-rm` under `/staff/risk`.
+- Satisfaction: `/staff/satisfaction`, `/surveys`, `/campaigns`, `/comments` under `/staff/satisfaction`.
+
+EQA/OUTLAB settings must remain Admin-only both in navigation and direct-route loading. Keep the legacy OUTLAB `?tab=certificates` redirect and preserve its `filter` value. All current nested routes remain under `/staff`, so they are already protected by `proxy.ts`; only edit the proxy regex when introducing a new protected top-level prefix.
+
+Navigation controls must keep a minimum 44 px target, visible 3 px `:focus-visible` outline, color/shadow-only transitions of 150–200 ms, `prefers-reduced-motion`, decorative icons hidden from assistive technology, and contained horizontal scrolling on narrow screens. Do not let navigation create whole-page horizontal overflow.
+
 **Upload controls** — every file upload UI must support Drag & Drop in addition to click-to-browse. Use a visible drop zone with `dragover` feedback using `var(--primary-soft)`, keep keyboard-accessible file input/button behavior, and apply this consistently across documents, personnel evidence, imports, images, and any future upload feature.
 
-**Pill tabs (type filter)** — outlined, active = gray fill:
-```tsx
-<button style={{
-  padding: '5px 14px', borderRadius: 20, border: '1px solid var(--border)',
-  background: active ? 'var(--surface-2)' : 'transparent',
-  color: active ? 'var(--ink)' : 'var(--muted)',
-  fontWeight: active ? 700 : 500, fontSize: 13,
-  cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
-}}>
-  {label} <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{count}</span>
-</button>
-```
-
-**Filled pills (visibility / status filter)** — active = primary fill:
-```tsx
-<button style={{
-  padding: '5px 16px', borderRadius: 20, border: '1px solid var(--border)',
-  background: active ? 'var(--primary)' : 'transparent',
-  color: active ? '#fff' : 'var(--ink)',
-  fontWeight: 600, fontSize: 12.5,
-  cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
-}}>
-  {label}
-</button>
-```
+**Pill filters** — use `FilterChips` instead of hand-rolling tab-like buttons. It supports count, disabled state, color markers, pressed semantics, keyboard focus, reduced motion, and compact visual density without reducing the hit target below 44 px. Include an "all"/clear item when the screen needs to reset a filter.
 
 **Table rows** — hover effect:
 ```tsx
@@ -348,7 +347,7 @@ Paginate by filling blank rows on non-last pages. Use `.page { height: 277mm; di
 
 ### Topbar Page Titles
 
-`components/layout/StaffTopbar.tsx` maps exact pathnames to Thai/English titles via `PAGE_TITLES`. Add an entry for every new staff route — the topbar will show an empty string otherwise.
+`components/layout/StaffTopbar.tsx` resolves Thai/English titles with `resolvePageTitle` from `lib/navigation.ts`. It selects the longest matching route, so a nested route wins over its module root. Add explicit `PAGE_TITLES` entries for new named screens; dynamic detail routes may intentionally fall back to their nearest parent title.
 
 ### File Storage
 
@@ -566,12 +565,14 @@ Core invariants:
 | Documents | `เอกสารคุณภาพ` | `/staff/documents`, `/staff/documents/dashboard`, `/staff/documents/categories`, `/staff/documents/pending`, `/staff/documents/read-report` | `/api/admin/documents/`, `/api/admin/documents/[id]/`, `/api/admin/documents/[id]/revisions/`, `/api/admin/documents/[id]/read`, `/api/admin/documents/[id]/confirm-review`, `/api/admin/documents/bulk-annual-review`, `/api/admin/documents/bulk-read-audience`, `/api/admin/documents/purge-deleted` |
 | Master List | `Master List` | `/staff/documents/master-list` | — |
 | News | `ข่าวสาร` | `/staff/news` | — |
-| Rejection Log | `ความเสี่ยง / Rejection` | `/staff/rejection` | — |
-| Risk Register | `ความเสี่ยง / Rejection` | `/staff/risk` | — |
+| Rejection Log | `ความเสี่ยง / Rejection` | `/staff/rejection?view=<report-view-id>` | — |
+| Risk Register | `ความเสี่ยง / Rejection` | `/staff/risk`, `/staff/risk/ior`, `/staff/risk/register`, `/staff/risk/smart-rm` | — |
+| EQA / PT | — (authenticated; editor list controls mutation) | `/staff/eqa`, `/staff/eqa/programs`, `/staff/eqa/rounds`, `/staff/eqa/coverage`, `/staff/eqa/capa`, Admin `/staff/eqa/settings` | `/api/admin/eqa/*` |
+| OUTLAB | — (authenticated; editor list controls mutation) | `/staff/outlab`, `/staff/outlab/laboratories`, `/staff/outlab/services`, `/staff/outlab/certificates`, Admin `/staff/outlab/settings` | `/api/admin/outlab/*` |
 | Contracts | `สัญญา` | `/staff/contracts` | — |
-| KPI | `KPI` | `/kpi/*` | — |
-| Lab Workload | `Workload` | `/lab-workload/*` | — |
-| TAT | `TAT` | `/tat/*` | — |
+| KPI | `KPI` | `/kpi/dashboard?view=dashboard\|annual\|compare\|satisfaction` | — |
+| Lab Workload | `Workload` | `/lab-workload/dashboard?section=<overview-or-department-id>` | — |
+| TAT | `TAT` | `/tat/dashboard?view=overview\|phlebotomy\|lab` | — |
 | Users & Roles | `User Management` | `/staff/admin` | `/api/admin/users/`, `/api/admin/permissions` |
 | Quality Tasks | `งานคุณภาพ` | `/staff/quality-tasks/*` | `/api/admin/quality-tasks/*` |
-| Satisfaction Surveys | `แบบสำรวจความพึงพอใจ` | `/staff/satisfaction/*`, public `/s/[token]` | `/api/admin/satisfaction/*`, public `/api/satisfaction/[token]` |
+| Satisfaction Surveys | `แบบสำรวจความพึงพอใจ` | `/staff/satisfaction`, `/staff/satisfaction/surveys`, `/staff/satisfaction/campaigns`, `/staff/satisfaction/comments`, public `/s/[token]` | `/api/admin/satisfaction/*`, public `/api/satisfaction/[token]` |

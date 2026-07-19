@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import {
   ComposedChart, BarChart, Bar, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
@@ -12,7 +13,9 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MonthSelector } from '@/components/ui/MonthSelector'
+import { ViewTabs } from '@/components/ui/ViewTabs'
 import { getPreviousThaiFiscalMonth, getThaiFiscalYearForMonth, getThaiMonthLabel } from '@/lib/kpi-utils'
+import { normalizeNavigationValue } from '@/lib/navigation'
 
 interface KpiData {
   avg_tat: number
@@ -421,7 +424,9 @@ function writeTatClientCache(key: string, data: SummaryData) {
 
 export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   const defaultMonth = getPreviousThaiFiscalMonth()
-  const [activeTab, setActiveTab] = useState<TabId>('overview')
+  const searchParams = useSearchParams()
+  const activeTab = normalizeNavigationValue(searchParams.get('view'), TABS.map(item => item.id), 'overview')
+  const previousTab = useRef<TabId>(activeTab)
   const [fiscalYear, setFiscalYear] = useState(defaultMonth.fiscalYear)
   const [month, setMonth]           = useState(defaultMonth.month)
   const [labSection, setLabSection] = useState('')
@@ -518,13 +523,14 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
     }
   }, [data, labzone, activeTab])
 
-  const handleTabChange = (tab: TabId) => {
-    setActiveTab(tab)
+  useEffect(() => {
+    if (previousTab.current === activeTab) return
     setAllLabzones([])
-    if (tab === 'phlebotomy') { setLabSection(''); setWard(''); setPriority(''); setTestName('') }
-    else if (tab === 'lab')   { setLabzone('') }
+    if (activeTab === 'phlebotomy') { setLabSection(''); setWard(''); setPriority(''); setTestName('') }
+    else if (activeTab === 'lab')   { setLabzone('') }
     else                      { setWard(''); setTestName('') }
-  }
+    previousTab.current = activeTab
+  }, [activeTab])
 
   const handleLabSectionChange = (value: string) => {
     setLabSection(value)
@@ -638,29 +644,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
       />
 
       {/* ── Segmented tab control ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ display: 'inline-flex', background: 'var(--surface-2)', padding: 3, borderRadius: 28, gap: 2 }}>
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              style={{
-                padding: '8px 20px', borderRadius: 24, border: 'none',
-                background: activeTab === tab.id ? 'var(--card)' : 'transparent',
-                color: activeTab === tab.id ? 'var(--primary)' : 'var(--muted)',
-                fontWeight: activeTab === tab.id ? 700 : 500,
-                fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-                transition: 'all .2s',
-                boxShadow: activeTab === tab.id ? '0 2px 8px rgba(0,0,0,.10)' : 'none',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              <Icon name={tab.icon} size={13} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <ViewTabs items={TABS} value={activeTab} label="มุมมอง Turnaround Time" />
 
       {/* ── Filter bar ── */}
       <div style={{

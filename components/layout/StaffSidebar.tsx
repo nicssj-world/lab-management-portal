@@ -444,7 +444,7 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
             )}
           </Link>
           {!collapsed && (
-            <button onClick={handleLogout} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 2, display: 'flex', flexShrink: 0 }}>
+            <button aria-label="ออกจากระบบ" onClick={handleLogout} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 2, display: 'flex', flexShrink: 0 }}>
               <Icon name="logout" size={14} />
             </button>
           )}

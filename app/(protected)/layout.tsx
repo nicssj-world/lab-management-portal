@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { StaffSidebar } from '@/components/layout/StaffSidebar'
 import { StaffTopbar } from '@/components/layout/StaffTopbar'
+import { RouteBreadcrumbs } from '@/components/layout/RouteBreadcrumbs'
 import { PermissionProvider } from '@/context/PermissionContext'
 import { SidebarProvider } from '@/context/SidebarContext'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
@@ -54,6 +55,8 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         .protected-shell { display: flex; min-height: 100vh; background: var(--bg); }
         .protected-main { flex: 1; padding: 28px; min-width: 0; overflow-x: auto; }
         .staff-sidebar-overlay { display: none !important; }
+        .skip-to-content { position: fixed; top: 8px; left: 8px; z-index: 100; padding: 10px 14px; border-radius: 8px; background: var(--primary); color: #fff; font-weight: 700; text-decoration: none; transform: translateY(-160%); transition: transform .18s ease; }
+        .skip-to-content:focus { transform: translateY(0); }
 
         @media (max-width: 767px) {
           .protected-shell { min-height: 100svh; width: 100%; }
@@ -73,6 +76,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       `}</style>
 
       <div className="protected-shell">
+        <a href="#main-content" className="skip-to-content">ข้ามไปเนื้อหาหลัก</a>
         <StaffSidebar
           userRole={role}
           userName={profile.name ?? undefined}
@@ -83,7 +87,8 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <StaffTopbar />
           <PermissionProvider permissions={permissions}>
-            <main className="protected-main">
+            <main id="main-content" tabIndex={-1} className="protected-main">
+              <RouteBreadcrumbs />
               {children}
             </main>
           </PermissionProvider>

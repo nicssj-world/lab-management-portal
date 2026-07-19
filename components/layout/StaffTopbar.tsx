@@ -6,18 +6,31 @@ import { useEffect, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
 import { useSidebar } from '@/context/SidebarContext'
+import { resolvePageTitle } from '@/lib/navigation'
 
 const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/dashboard':        { th: 'แดชบอร์ดภาพรวม',              en: 'Dashboard Overview' },
   '/staff/quality-tasks':     { th: 'งานคุณภาพ',                   en: 'Quality Tasks' },
   '/staff/quality-tasks/registry': { th: 'ทะเบียนกิจกรรมคุณภาพ',   en: 'Quality Task Registry' },
   '/staff/eqa':              { th: 'การควบคุมคุณภาพภายนอก (EQA)', en: 'External Quality Assessment' },
+  '/staff/eqa/programs':     { th: 'โครงการ EQA / PT',             en: 'EQA Programs' },
+  '/staff/eqa/rounds':       { th: 'รอบและผล EQA / PT',            en: 'EQA Rounds & Results' },
+  '/staff/eqa/coverage':     { th: 'Coverage EQA / PT',            en: 'EQA Coverage' },
+  '/staff/eqa/capa':         { th: 'CAPA จากผล EQA',               en: 'EQA CAPA' },
+  '/staff/eqa/settings':     { th: 'ตั้งค่าสิทธิ์ EQA',             en: 'EQA Settings' },
   '/staff/outlab':           { th: 'ทะเบียนห้องปฏิบัติการภายนอก', en: 'OUTLAB Registry' },
+  '/staff/outlab/laboratories': { th: 'ห้องปฏิบัติการภายนอก',      en: 'External Laboratories' },
+  '/staff/outlab/services':     { th: 'บริการส่งต่อ',               en: 'Referral Services' },
+  '/staff/outlab/certificates': { th: 'ใบรับรองห้องปฏิบัติการ',    en: 'Laboratory Certificates' },
+  '/staff/outlab/settings':     { th: 'ตั้งค่าสิทธิ์ OUTLAB',       en: 'OUTLAB Settings' },
   '/staff/tests':            { th: 'จัดการรายการตรวจวิเคราะห์',    en: 'Test Management' },
   '/staff/tests/categories': { th: 'หมวดหมู่การตรวจวิเคราะห์',     en: 'Test Categories' },
   '/staff/news':             { th: 'จัดการข่าวสารห้องปฏิบัติการ',  en: 'News Management' },
   '/staff/rejection':        { th: 'บันทึกการปฏิเสธตัวอย่าง',      en: 'Specimen Rejection Log' },
   '/staff/risk':             { th: 'ทะเบียนความเสี่ยง',             en: 'Risk Register' },
+  '/staff/risk/ior':         { th: 'รายงานอุบัติการณ์ (IOR)',       en: 'Incident Reports' },
+  '/staff/risk/register':    { th: 'Risk Register',                 en: 'Risk Register' },
+  '/staff/risk/smart-rm':    { th: 'ความเสี่ยงจาก Smart-RM',       en: 'Smart-RM Risks' },
   '/staff/documents':        { th: 'คลังเอกสารคุณภาพ',             en: 'Quality Documents Library' },
   '/staff/documents/dashboard':   { th: 'แดชบอร์ดเอกสารคุณภาพ',    en: 'Documents Dashboard' },
   '/staff/documents/categories':  { th: 'หมวดหมู่เอกสารคุณภาพ',    en: 'Document Categories' },
@@ -38,6 +51,9 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/changelog':        { th: 'บันทึกการแก้ไขระบบ',           en: 'System Change Log' },
   '/staff/activity':         { th: 'กิจกรรมทั้งหมด',               en: 'Activity Log' },
   '/staff/satisfaction':     { th: 'แบบสำรวจความพึงพอใจ',          en: 'Satisfaction Surveys' },
+  '/staff/satisfaction/surveys':   { th: 'รายการแบบสำรวจ',          en: 'Survey Registry' },
+  '/staff/satisfaction/campaigns': { th: 'รอบเก็บข้อมูล',           en: 'Survey Campaigns' },
+  '/staff/satisfaction/comments':  { th: 'ความคิดเห็นจากแบบสำรวจ', en: 'Survey Comments' },
   '/kpi/dashboard':          { th: 'KPI Dashboard',                en: 'KPI Dashboard' },
   '/kpi/input':              { th: 'บันทึกข้อมูล KPI',             en: 'KPI Data Entry' },
   '/kpi/settings':           { th: 'ตั้งค่าการกรอก KPI',           en: 'KPI Entry Settings' },
@@ -79,7 +95,7 @@ export function StaffTopbar() {
     localStorage.setItem('theme', next ? 'dark' : 'light')
   }
 
-  const title = PAGE_TITLES[pathname] ?? { th: '', en: '' }
+  const title = resolvePageTitle(pathname, PAGE_TITLES, { th: '', en: '' })
   function handleMenuClick() {
     if (window.matchMedia('(max-width: 767px)').matches) toggleMobile()
     else toggle()
@@ -95,7 +111,7 @@ export function StaffTopbar() {
       }}
     >
       {/* Hamburger + title */}
-      <button onClick={handleMenuClick} style={{ ...BTN, flexShrink: 0 }} title="ย่อ/ขยาย sidebar">
+      <button aria-label="เปิดหรือย่อเมนูหลัก" onClick={handleMenuClick} style={{ ...BTN, flexShrink: 0 }} title="ย่อ/ขยาย sidebar">
         <Icon name="menu" size={15} />
       </button>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -106,6 +122,7 @@ export function StaffTopbar() {
 
       {/* Lang toggle */}
       <button
+        aria-label="เปลี่ยนภาษา"
         onClick={() => setLang(lang === 'th' ? 'en' : 'th')}
         style={{ ...BTN, fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit' }}
       >
@@ -113,12 +130,12 @@ export function StaffTopbar() {
       </button>
 
       {/* Dark mode toggle */}
-      <button onClick={toggleDark} style={BTN} title={dark ? 'Light mode' : 'Dark mode'}>
+      <button aria-label="เปลี่ยนธีม" onClick={toggleDark} style={BTN} title={dark ? 'Light mode' : 'Dark mode'}>
         <Icon name={dark ? 'sun' : 'moon'} size={15} />
       </button>
 
       {/* Home — public page */}
-      <Link href="/" style={BTN} title="หน้าแรก">
+      <Link href="/" aria-label="กลับหน้าเว็บไซต์" style={BTN} title="หน้าแรก">
         <Icon name="home" size={15} />
       </Link>
     </header>

@@ -13,6 +13,7 @@ const topbar = read('components/layout/StaffTopbar.tsx')
 const seed = read('scripts/seed-role-permissions.sql')
 const page = read('app/(protected)/staff/satisfaction/page.tsx')
 const module = read('components/satisfaction/SatisfactionModule.tsx')
+const navigation = read('lib/navigation.ts')
 const server = read('lib/surveys/server.ts')
 
 assert.ok(resources.includes("'แบบสำรวจความพึงพอใจ'"), 'registers the permission resource')
@@ -30,12 +31,12 @@ assert.ok(page.includes("redirect('/staff/dashboard')"), 'redirects denied users
 assert.ok(page.includes('Promise.all'), 'loads initial lists in parallel')
 assert.ok(page.includes('<SatisfactionModule'), 'renders the client shell')
 
-for (const tab of ['ภาพรวม', 'แบบสำรวจ', 'รอบเก็บข้อมูล', 'ความคิดเห็น']) {
-  assert.ok(module.includes(tab), `renders ${tab} tab`)
+for (const label of ['ภาพรวม', 'แบบสำรวจ', 'รอบเก็บข้อมูล', 'ความคิดเห็น']) {
+  assert.ok(navigation.includes(label), `registers ${label} navigation destination`)
 }
 assert.ok(module.includes("level === 'edit'"), 'shows mutations only to editors')
-assert.ok(module.includes('aria-selected'), 'exposes accessible tab state')
-assert.ok(module.includes('@media(max-width: 767px)'), 'has mobile styling')
+assert.ok(module.includes('<ModuleSubnav'), 'uses semantic route-backed module navigation')
+assert.ok(module.includes('activeSection'), 'renders the route-selected section')
 assert.ok(server.includes('export async function listSurveys'))
 assert.ok(server.includes('export async function listCampaigns'))
 

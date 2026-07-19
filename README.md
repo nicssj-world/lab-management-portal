@@ -106,7 +106,48 @@ Run `scripts/add-document-annual-review.sql` in Supabase before using these.
 - **Annual review reminder + one-click review** — QP/WI/Manual Published documents show a "ต้องทบทวน" badge as their yearly review approaches (and "เกินกำหนดทบทวน" when overdue). A Reviewer/DCC/Admin marks a QP/WI as "ทบทวนแล้ว"; confirmed documents queue under "รอทบทวนประจำปี" where a DCC records them in one click. This **does not bump the revision or change any content/dates** — it appends a "ทบทวนแล้ว ไม่มีการแก้ไข" (Rev "-") row to the document's revision-history page and resets the review clock. Manual (QM/MN) documents are reminded but must be reviewed through a normal Rev+.
 - **Read-compliance report** (`/staff/documents/read-report`, Admin/DCC/Quality Manager/Laboratory Director) — shows how many staff have read each Published QP/WI/Manual document (X/Y), with per-document read audiences (whole division or specific departments, settable in the upload form or in bulk). Read counts are measured against the current revision's publish date, so a real content revision resets them while a no-change review does not.
 
+## Navigation Architecture
+
+Navigation follows one hierarchy across the portal:
+
+- **Sidebar** — top-level modules or large groups of work. Existing sidebar groups and permission filtering remain the source of module access.
+- **Module sub-navigation** — real destinations within a module. Use `ModuleSubnav` with nested routes, semantic `<nav>`, Next.js links, and `aria-current="page"`.
+- **View navigation** — different presentations of the same data. Use `ViewTabs`; the selected view is stored in `?view=` or `?section=` while unrelated query parameters are preserved.
+- **Filter chips** — temporary local filters. Use `FilterChips` buttons with `aria-pressed`; filters are not tabs.
+- **Local state** — reserved for non-shareable UI such as form/import modes with unsaved data.
+
+Route-backed module destinations:
+
+| Module | Routes |
+| --- | --- |
+| EQA | `/staff/eqa`, `/programs`, `/rounds`, `/coverage`, `/capa`, `/settings` under `/staff/eqa` |
+| OUTLAB | `/staff/outlab`, `/laboratories`, `/services`, `/certificates`, `/settings` under `/staff/outlab` |
+| Risk | `/staff/risk`, `/ior`, `/register`, `/smart-rm` under `/staff/risk` |
+| Satisfaction | `/staff/satisfaction`, `/surveys`, `/campaigns`, `/comments` under `/staff/satisfaction` |
+
+EQA and OUTLAB settings routes are Admin-only. The legacy OUTLAB URL `/staff/outlab?tab=certificates&filter=...` redirects to `/staff/outlab/certificates?filter=...`.
+
+Query-backed views:
+
+| Screen | Query contract |
+| --- | --- |
+| KPI | `?view=dashboard\|annual\|compare\|satisfaction` |
+| TAT | `?view=overview\|phlebotomy\|lab` |
+| Rejection | `?view=<current-report-view-id>` |
+| Staff Detail | `?section=profile\|training\|plan\|competency\|cert\|auth\|jd\|health\|orient` |
+| Lab Workload | `?section=<overview-or-department-id>` |
+
+Shared definitions live in `lib/navigation.ts`; shared controls live in `components/ui/ModuleSubnav.tsx`, `ViewTabs.tsx`, and `FilterChips.tsx`. Navigation controls keep a minimum 44 px target, a visible 3 px focus ring, reduced-motion support, and contained horizontal scrolling on narrow screens. The protected layout provides a skip link and route-aware breadcrumbs for deeper pages.
+
 ## Changelog
+
+### 2026-07-19
+
+**Navigation and accessibility**
+- Added shared route-backed module navigation for EQA, OUTLAB, Risk, and Satisfaction, including Admin-only EQA/OUTLAB settings destinations.
+- Added URL-backed views for KPI, TAT, Rejection, Staff Detail, and Lab Workload so bookmarks, refresh, and browser Back/Forward restore the selected view.
+- Standardized local filters with pressed-state filter chips and added responsive scrolling, skip navigation, breadcrumbs, route-aware topbar titles, icon labels, focus visibility, and reduced-motion handling.
+- Added focused navigation regression tests in `scripts/navigation-*.test.ts`.
 
 ### 2026-07-12
 

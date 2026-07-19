@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend,
@@ -9,6 +10,8 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
+import { ViewTabs } from '@/components/ui/ViewTabs'
+import { normalizeNavigationValue } from '@/lib/navigation'
 import { RejectionLog, RejectionSummary } from '@/lib/queries/rejection'
 import type { RejectionUpload } from '@/lib/queries/rejection'
 import RejectionUploadModal from './RejectionUploadModal'
@@ -284,7 +287,16 @@ export default function RejectionClient({ canEdit }: Props) {
   // ── Filter state (tabs 1-6) ──────────────────────────────
   const [filterYear, setFilterYear] = useState<string>(String(new Date().getFullYear()))
   const [filterWork, setFilterWork] = useState<string>('ทั้งหมด')
-  const [tab, setTab] = useState<TabId>('overview')
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const tab = normalizeNavigationValue(searchParams.get('view'), TABS.map(item => item.id), 'overview')
+
+  const navigateTab = useCallback((nextTab: TabId) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('view', nextTab)
+    router.push(`${pathname}?${params.toString()}`, { scroll: false })
+  }, [pathname, router, searchParams])
 
   // ── Summary (tabs 1-6) ───────────────────────────────────
   const [summary, setSummary] = useState<RejectionSummary | null>(null)
@@ -437,33 +449,7 @@ export default function RejectionClient({ canEdit }: Props) {
       />
 
       {/* ── Tab bar ─────────────────────────────────────── */}
-      <div style={{
-        display: 'flex', gap: 2, overflowX: 'auto',
-        background: 'var(--surface-2)', borderRadius: 12, padding: 4,
-        scrollbarWidth: 'none',
-      }}>
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            className="rej-tab-btn"
-            onClick={() => setTab(t.id)}
-            style={{
-              padding: '8px 16px', borderRadius: 9, border: 'none',
-              background: tab === t.id
-                ? 'var(--card)'
-                : 'transparent',
-              color: tab === t.id ? 'var(--primary)' : 'var(--muted)',
-              fontWeight: tab === t.id ? 700 : 500, fontSize: 13,
-              cursor: 'pointer', fontFamily: 'inherit',
-              transition: 'all .18s',
-              whiteSpace: 'nowrap',
-              boxShadow: tab === t.id ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <ViewTabs items={TABS} value={tab} label="มุมมองรายงานการปฏิเสธสิ่งส่งตรวจ" compact />
 
       {/* ── Error banner ────────────────────────────────── */}
       {summaryError && (
@@ -1047,7 +1033,7 @@ export default function RejectionClient({ canEdit }: Props) {
               const [y, m] = dataMonth.split('-').map(Number)
               setSelYear(y)
               setSelMonth(m)
-              setTab('monthly_data')
+              navigateTab('monthly_data')
             }
             fetchMonthSummary()
             fetchLogs()
