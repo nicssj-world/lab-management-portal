@@ -9,6 +9,7 @@ import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/Select'
 import { StickyScroll } from '@/components/ui/StickyScroll'
+import { FilterChips } from '@/components/ui/FilterChips'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
@@ -2717,31 +2718,12 @@ export default function EquipmentClient({
       </div>
 
       {/* Status Tabs — underline style */}
-      <div className="eq-status-tabs">
-        {STATUS_TABS.map(t => {
-          const isActive = statusTab === t.value
-          return (
-            <button
-              key={t.value}
-              onClick={() => setStatusTab(t.value)}
-              className={`eq-status-tab ${isActive ? 'is-active' : ''}`}
-            >
-              {t.value && (
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: TAB_DOT[t.value] ?? 'var(--muted)', display: 'inline-block', flexShrink: 0, opacity: isActive ? 1 : 0.55 }} />
-              )}
-              {t.label}
-              <span style={{
-                fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 20,
-                background: isActive ? 'var(--primary-soft)' : 'var(--surface-2)',
-                color: isActive ? 'var(--primary)' : 'var(--muted)',
-                transition: 'all .15s',
-              }}>
-                {tabCounts[t.value] ?? 0}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      <FilterChips
+        label="กรองตามสถานะเครื่องมือ"
+        value={statusTab}
+        onChange={setStatusTab}
+        items={STATUS_TABS.map(t => ({ value: t.value, label: t.label, count: tabCounts[t.value] ?? 0, color: t.value ? (TAB_DOT[t.value] ?? 'var(--muted)') : undefined }))}
+      />
 
       {/* Filter row */}
       <div className="eq-filter-panel">

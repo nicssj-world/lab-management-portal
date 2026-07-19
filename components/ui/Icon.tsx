@@ -67,6 +67,8 @@ interface IconProps {
 export function Icon({ name, size = 16, stroke = 1.6, style, className }: IconProps) {
   return (
     <svg
+      aria-hidden="true"
+      focusable="false"
       width={size}
       height={size}
       viewBox="0 0 24 24"

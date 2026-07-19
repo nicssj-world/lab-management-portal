@@ -10,6 +10,8 @@ import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { ModuleSubnav } from '@/components/ui/ModuleSubnav'
+import { SATISFACTION_NAVIGATION } from '@/lib/navigation'
 import type { PermLevel } from '@/lib/permissions'
 import type {
   SatisfactionCampaignListItem,
@@ -20,14 +22,7 @@ import { SatisfactionDashboard } from './SatisfactionDashboard'
 import { SurveyComments } from './SurveyComments'
 import { SatisfactionExportActions } from './SatisfactionExportActions'
 
-type Tab = 'overview' | 'surveys' | 'campaigns' | 'comments'
-
-const TABS: Array<{ id: Tab; label: string; icon: string }> = [
-  { id: 'overview', label: 'ภาพรวม', icon: 'dash' },
-  { id: 'surveys', label: 'แบบสำรวจ', icon: 'clipboard' },
-  { id: 'campaigns', label: 'รอบเก็บข้อมูล', icon: 'calendar' },
-  { id: 'comments', label: 'ความคิดเห็น', icon: 'inbox' },
-]
+export type SatisfactionSection = 'overview' | 'surveys' | 'campaigns' | 'comments'
 
 const dateLabel = (value: string | null) =>
   value
@@ -45,14 +40,16 @@ export function SatisfactionModule({
   actorRole,
   initialSurveys,
   initialCampaigns,
+  activeSection,
 }: {
   level: PermLevel
   actorRole: string
   initialSurveys: SatisfactionSurveyListItem[]
   initialCampaigns: SatisfactionCampaignListItem[]
+  activeSection: SatisfactionSection
 }) {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const activeTab = activeSection
   const [createSurveyOpen, setCreateSurveyOpen] = useState(false)
   const canEdit = level === 'edit'
   const openCampaigns = useMemo(
@@ -65,7 +62,7 @@ export function SatisfactionModule({
   )
 
   return (
-    <main className="satisfaction-page" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="satisfaction-page" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <style>{`
         .satisfaction-page{width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box}
         .satisfaction-tabs{display:flex;gap:5px;overflow-x:auto;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;scrollbar-width:thin}
@@ -96,24 +93,9 @@ export function SatisfactionModule({
         marginBottom={0}
       />
 
-      <div role="tablist" aria-label="เมนูแบบสำรวจความพึงพอใจ" className="satisfaction-tabs">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab.id}
-            aria-controls={`satisfaction-panel-${tab.id}`}
-            className="satisfaction-tab"
-            onClick={() => setActiveTab(tab.id)}
-          >
-            <Icon name={tab.icon} size={15} />
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <ModuleSubnav items={SATISFACTION_NAVIGATION} label="เมนูแบบสำรวจความพึงพอใจ" />
 
-      <section id={`satisfaction-panel-${activeTab}`} role="tabpanel" tabIndex={0}>
+      <section id={`satisfaction-section-${activeTab}`}>
         {activeTab === 'overview' && (
           <>
             <SatisfactionExportActions campaigns={initialCampaigns} actorRole={actorRole} />
@@ -170,7 +152,7 @@ export function SatisfactionModule({
         )}
       </section>
       {createSurveyOpen && <CreateSurveyDialog onClose={() => setCreateSurveyOpen(false)} onCreated={(surveyId) => router.push(`/staff/satisfaction/${surveyId}`)} />}
-    </main>
+    </div>
   )
 }
 

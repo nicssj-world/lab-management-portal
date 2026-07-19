@@ -11,7 +11,7 @@ for (const source of [outlab, eqa]) {
   assert.ok(source.includes('แก้ไข'), 'offers an edit action')
   assert.ok(source.includes('ลบ') || source.includes('ปิดใช้งาน'), 'offers a removal/deactivation action')
   assert.equal(source.includes('>จัดการห้องปฏิบัติการ<') || source.includes('>จัดการผู้ให้บริการ EQA<'), false, 'does not duplicate record management above the lists')
-  assert.ok(source.includes('จัดการระบบ'), 'offers system management from the overview')
+  assert.ok(source.includes("item.id !== 'settings' || isAdmin"), 'offers system settings through permission-filtered module navigation')
   assert.equal(source.includes("['settings', 'ผู้แก้ไข']"), false, 'does not render the editor settings as a tab')
 }
 

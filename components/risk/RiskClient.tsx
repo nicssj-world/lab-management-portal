@@ -18,6 +18,8 @@ import type { Risk, RiskAction } from '@/lib/supabase/types'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { ModuleSubnav } from '@/components/ui/ModuleSubnav'
+import { RISK_NAVIGATION } from '@/lib/navigation'
 import { RiskHeatmap } from '@/components/lab/RiskHeatmap'
 import {
   LAB_DEPARTMENTS,
@@ -34,7 +36,7 @@ import {
   statusLabel,
 } from '@/lib/risk-utils'
 
-type TabId = 'dashboard' | 'smart' | 'ior' | 'register'
+export type RiskSection = 'dashboard' | 'smart' | 'ior' | 'register'
 type ImportMode = 'smart' | 'ior' | 'register'
 type RiskPermission = 'none' | 'view' | 'edit'
 type RiskWithActions = Risk & { actions: RiskAction[] }
@@ -46,13 +48,6 @@ type RiskListMeta = {
   page: number
   pageSize: number
 }
-
-const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: 'dashboard', label: 'LAB Risk Dashboard', icon: 'chart' },
-  { id: 'ior', label: 'รายงานอุบัติการณ์ (IOR)', icon: 'shield' },
-  { id: 'register', label: 'ทะเบียนความเสี่ยงในห้องปฏิบัติการ (Risk register)', icon: 'shield' },
-  { id: 'smart', label: 'ความเสี่ยงจาก Smart-RM', icon: 'shield' },
-]
 
 const SEVERITIES = ['', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
 const SEVERITY_FILTER_ORDER = ['ต่ำ', 'กลาง', 'ปานกลาง', 'สูง', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
@@ -335,9 +330,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-export function RiskClient({ permission, canReview }: { permission: RiskPermission; canReview: boolean }) {
+export function RiskClient({ permission, canReview, activeSection }: { permission: RiskPermission; canReview: boolean; activeSection: RiskSection }) {
   const canEdit = permission === 'edit'
-  const [tab, setTab] = useState<TabId>('dashboard')
+  const tab = activeSection
   const [risks, setRisks] = useState<RiskWithActions[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -432,7 +427,7 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
     }))
 
   return (
-    <main className="risk-page" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="risk-page" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <style>{`
         .risk-page{width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box}
         .risk-tabs{display:flex;gap:5px;overflow-x:auto;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;scrollbar-width:thin}
@@ -458,21 +453,7 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
         </div>}
       />
 
-      <div role="tablist" aria-label="เมนูทะเบียนความเสี่ยง" className="risk-tabs">
-        {TABS.map(item => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.id}
-            aria-controls={`risk-panel-${item.id}`}
-            onClick={() => setTab(item.id)}
-            className="risk-tab"
-          >
-            <Icon name={item.icon} size={15} /> {item.label}
-          </button>
-        ))}
-      </div>
+      <ModuleSubnav items={RISK_NAVIGATION} label="เมนูทะเบียนความเสี่ยง" />
 
       {error && <div style={{ padding: 13, borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA', fontSize: 13 }}>{error}</div>}
       {loading && <div style={{ padding: 42, textAlign: 'center', color: 'var(--muted)' }}>กำลังโหลดทะเบียนความเสี่ยง...</div>}
@@ -538,11 +519,11 @@ export function RiskClient({ permission, canReview }: { permission: RiskPermissi
         />
       )}
 
-      {canEdit && showCreate && <RiskFormModal initialEventType={tab === 'register' ? 'risk_assessment' : 'near_miss'} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); refreshRiskData(); setTab(tab === 'register' ? 'register' : 'ior') }} />}
+      {canEdit && showCreate && <RiskFormModal initialEventType={tab === 'register' ? 'risk_assessment' : 'near_miss'} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); refreshRiskData() }} />}
       {previewing && <RiskEventPreviewModal risk={previewing} onClose={() => setPreviewing(null)} />}
       {canReview && editing && <RiskDetailModal risk={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refreshRiskData() }} />}
-      {canEdit && showImport && <RiskImportModal mode={importMode} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); refreshRiskData(); setTab(importMode === 'smart' ? 'smart' : importMode === 'ior' ? 'ior' : 'register') }} />}
-    </main>
+      {canEdit && showImport && <RiskImportModal mode={importMode} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); refreshRiskData() }} />}
+    </div>
   )
 }
 

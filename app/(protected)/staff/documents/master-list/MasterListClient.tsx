@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StickyScroll } from '@/components/ui/StickyScroll'
+import { FilterChips } from '@/components/ui/FilterChips'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
@@ -439,19 +440,13 @@ const { toasts, add: toast } = useToast()
       </div>
 
       {/* Type tabs */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {TYPE_TABS.map(t => (
-          <button key={t} onClick={() => { setActiveType(t); setPage(0) }} style={{
-            padding: '5px 14px', borderRadius: 20, border: '1px solid var(--border)', cursor: 'pointer',
-            fontFamily: 'inherit', fontSize: 13, transition: 'all .15s',
-            background: activeType === t ? 'var(--surface-2)' : 'transparent',
-            color: activeType === t ? 'var(--ink)' : 'var(--muted)',
-            fontWeight: activeType === t ? 700 : 500,
-          }}>
-            {t === 'All' ? t : (TYPE_LABEL[t] ?? t)}
-          </button>
-        ))}
-      </div>
+      <FilterChips
+        label="กรองตามประเภทเอกสาร"
+        value={activeType}
+        onChange={(value) => { setActiveType(value); setPage(0) }}
+        compact
+        items={TYPE_TABS.map(t => ({ value: t, label: t === 'All' ? t : (TYPE_LABEL[t] ?? t) }))}
+      />
 
       {/* Table */}
       <Card padding={0}>

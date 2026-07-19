@@ -1,11 +1,11 @@
 import { redirect } from 'next/navigation'
-import { SatisfactionModule } from '@/components/satisfaction/SatisfactionModule'
+import { SatisfactionModule, type SatisfactionSection } from '@/components/satisfaction/SatisfactionModule'
 import { getActor, getPermissionLevel } from '@/lib/auth/guards'
 import { listCampaigns, listSurveys } from '@/lib/surveys/server'
 
 export const dynamic = 'force-dynamic'
 
-export default async function SatisfactionPage() {
+export async function renderSatisfactionSection(activeSection: SatisfactionSection) {
   const actor = await getActor()
   if (!actor) redirect('/login')
 
@@ -20,6 +20,11 @@ export default async function SatisfactionPage() {
       actorRole={actor.role}
       initialSurveys={surveys}
       initialCampaigns={campaigns}
+      activeSection={activeSection}
     />
   )
+}
+
+export default async function SatisfactionPage() {
+  return renderSatisfactionSection('overview')
 }

@@ -5,6 +5,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { FilterChips } from '@/components/ui/FilterChips'
 import { CATEGORIES, CAT_MAP } from '@/lib/validations/news'
 import { firstBodyImage } from '@/lib/line/news-flex'
 import type { News } from '@/lib/supabase/types'
@@ -1126,29 +1127,13 @@ export function NewsManageClient({ canEdit, initialCreate = false }: Props) {
           {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.th}</option>)}
         </select>
 
-        <div style={{ display: 'flex', gap: 4 }}>
-          {TABS.map(tab => {
-            const active = statusFilter === tab.key
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setStatusFilter(tab.key)}
-                style={{
-                  padding: '5px 14px', borderRadius: 20, cursor: 'pointer',
-                  fontFamily: 'inherit', fontSize: 12.5, transition: 'all .15s',
-                  border: `1.5px solid ${active ? 'var(--primary)' : 'var(--border)'}`,
-                  background: active ? 'var(--primary)' : 'transparent',
-                  color: active ? '#fff' : 'var(--muted)', fontWeight: active ? 700 : 500,
-                }}
-              >
-                {tab.label}
-                {tab.count > 0 && (
-                  <span style={{ marginLeft: 5, fontSize: 11, opacity: active ? 0.8 : 0.7 }}>{tab.count}</span>
-                )}
-              </button>
-            )
-          })}
-        </div>
+        <FilterChips
+          label="กรองตามสถานะข่าว"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          compact
+          items={TABS.map(tab => ({ value: tab.key, label: tab.label, count: tab.count }))}
+        />
 
         <div style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
           พบ <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{filtered.length}</span> รายการ

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import {
   Bar, BarChart, CartesianGrid, Cell,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -10,7 +11,9 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { MonthSelector } from '@/components/ui/MonthSelector'
+import { ViewTabs } from '@/components/ui/ViewTabs'
 import { getCurrentThaiFiscalYear, getPreviousThaiFiscalMonth, getThaiMonthLabel } from '@/lib/kpi-utils'
+import { normalizeNavigationValue } from '@/lib/navigation'
 
 const DOW_LABELS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 const COLORS = ['#1E5FAD', '#16A34A', '#D97706', '#9333EA', '#0F766E', '#DC2626', '#475569', '#2563EB']
@@ -272,9 +275,9 @@ async function readJsonResponse(res: Response) {
 
 export default function WorkloadDashboardPage() {
   const defaultMonth = getPreviousThaiFiscalMonth()
+  const searchParams = useSearchParams()
   const [year, setYear] = useState(defaultMonth.fiscalYear)
   const [month, setMonth] = useState(defaultMonth.month)
-  const [activeTab, setActiveTab] = useState('ภาพรวม')
   const metricMode: MetricMode = 'ln'
   const [data, setData] = useState<WorkloadData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -303,7 +306,6 @@ export default function WorkloadDashboardPage() {
       const nextData = json as WorkloadData
       writeWorkloadClientCache(cacheKey, nextData)
       setData(nextData)
-      setActiveTab(prev => prev === 'ภาพรวม' || prev === OPD_TAB || json.departments.some((d: DepartmentRow) => d.section === prev) ? prev : 'ภาพรวม')
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         setError((err as Error).message)
@@ -317,6 +319,8 @@ export default function WorkloadDashboardPage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   const tabs = useMemo(() => ['ภาพรวม', OPD_TAB, ...(data?.departments.map(d => d.section) ?? [])], [data])
+  const activeTab = normalizeNavigationValue(searchParams.get('section'), tabs, 'ภาพรวม')
+  const viewItems = tabs.map(tab => ({ id: tab, label: tab }))
   const showsMonthFilter = activeTab === 'ภาพรวม'
   const currentSection = activeTab === 'ภาพรวม' ? null : activeTab
   const currentRows = currentSection && currentSection !== OPD_TAB ? (data?.section_details[currentSection] ?? []) : []
@@ -374,23 +378,7 @@ export default function WorkloadDashboardPage() {
       </div>
 
       {data && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {tabs.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: '7px 14px', borderRadius: 999, border: '1px solid var(--border)',
-                background: activeTab === tab ? 'var(--primary)' : 'var(--card)',
-                color: activeTab === tab ? '#fff' : 'var(--ink)',
-                fontWeight: activeTab === tab ? 700 : 600,
-                fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        <ViewTabs items={viewItems} value={activeTab} param="section" label="ส่วนงาน Lab Workload" compact />
       )}
 
       {loading && <div style={{ padding: 48, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>กำลังโหลดข้อมูล workload...</div>}

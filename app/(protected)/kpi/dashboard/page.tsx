@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Icon } from '@/components/ui/Icon'
@@ -13,7 +14,9 @@ import { KpiExportButton } from '@/components/kpi/KpiExportButton'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
+import { ViewTabs } from '@/components/ui/ViewTabs'
 import { usePermission } from '@/context/PermissionContext'
+import { normalizeNavigationValue } from '@/lib/navigation'
 import type { Department } from '@/lib/supabase/types'
 
 type Tab = 'dashboard' | 'annual' | 'compare' | 'satisfaction'
@@ -35,7 +38,8 @@ export default function KpiDashboardPage() {
   const [year, setYear]     = useState(getCurrentThaiFiscalYear())
   const [month, setMonth]   = useState(new Date().getMonth() + 1)
   const [deptCode, setDeptCode] = useState('')
-  const [tab, setTab]       = useState<Tab>('dashboard')
+  const searchParams = useSearchParams()
+  const tab = normalizeNavigationValue(searchParams.get('view'), TABS.map(item => item.id), 'dashboard')
   const [depts, setDepts]   = useState<Department[]>([])
   const [satAddOpen, setSatAddOpen] = useState(false)
   const [assignedDeptIds, setAssignedDeptIds] = useState<number[]>([])
@@ -69,34 +73,7 @@ export default function KpiDashboardPage() {
         ) : undefined}
       />
 
-      {/* Segmented tab control */}
-      <div style={{
-        display: 'inline-flex', gap: 2, padding: 4, borderRadius: 12,
-        background: 'var(--surface-2)', width: 'fit-content', maxWidth: '100%', overflowX: 'auto',
-      }}>
-        {TABS.map(t => {
-          const active = tab === t.id
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 7,
-                padding: '8px 16px', border: 'none', borderRadius: 9,
-                background: active ? 'var(--card)' : 'transparent',
-                color: active ? 'var(--primary)' : 'var(--muted)',
-                boxShadow: active ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
-                fontWeight: active ? 700 : 500, fontSize: 13,
-                cursor: 'pointer', fontFamily: 'inherit',
-                transition: 'all .15s', whiteSpace: 'nowrap',
-              }}
-            >
-              <Icon name={t.icon} size={15} />
-              {t.label}
-            </button>
-          )
-        })}
-      </div>
+      <ViewTabs items={TABS} value={tab} label="มุมมอง KPI" />
 
       {/* Toolbar: selectors (year + dept — visible on annual & compare tabs) */}
       {tab !== 'satisfaction' && (
