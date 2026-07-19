@@ -1,0 +1,5 @@
+import { NextRequest,NextResponse } from 'next/server'
+import { externalQualityContext,auditExternalQuality,externalQualityError } from '@/lib/external-quality/access'
+import { coverageSchema } from '@/lib/eqa/schemas'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+export async function PUT(req:NextRequest){const ctx=await externalQualityContext('eqa',true);if(ctx.response)return ctx.response;try{const input=coverageSchema.parse(await req.json());const payload={test_id:input.testId,fiscal_year_be:input.fiscalYearBe,mode:input.mode,reason:input.reason,updated_at:new Date().toISOString(),updated_by:ctx.actor!.id};const{data,error}=await supabaseAdmin.from('eqa_coverage_requirements').upsert({...payload,created_by:ctx.actor!.id},{onConflict:'test_id,fiscal_year_be'}).select('*').single();if(error)throw error;await auditExternalQuality('eqa','coverage.upsert',ctx.actor!.id,data.id,`${data.test_id} · ${data.mode}`);return NextResponse.json(data)}catch(error){return externalQualityError(error)}}

@@ -16,6 +16,8 @@ import { getEntryStatus } from '@/lib/queries/kpi'
 import { getPreviousThaiFiscalMonth } from '@/lib/kpi-utils'
 import { getKpiCompletionState, getKpiProgressColor } from '@/lib/dashboard/kpi-completion'
 import type { PermLevel } from '@/lib/permissions'
+import { getExternalQualityAlerts } from '@/lib/external-quality/dashboard'
+import { ExternalQualityAlerts } from '@/components/dashboard/ExternalQualityAlerts'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +52,8 @@ function actionDotColor(action: string | null): string {
   if (a.startsWith('contract.'))                                   return '#7C3AED' // purple — สัญญา
   if (a.startsWith('risk.') || a.startsWith('rejection.'))        return '#DC2626' // red — ความเสี่ยง
   if (a.startsWith('kpi.'))                                        return '#16A34A' // green — KPI
+  if (a.startsWith('eqa.'))                                        return '#0F766E'
+  if (a.startsWith('outlab.'))                                     return '#C2410C'
   if (a.startsWith('it_'))                                         return '#0369A1' // sky — งาน IT
   if (a.includes('news'))                                          return '#D97706' // amber — ข่าวสาร
   return '#64748B' // gray — อื่นๆ
@@ -121,6 +125,7 @@ export default async function StaffDashboardPage() {
 
   const qualityLevel = (permissions['งานคุณภาพ'] ?? 'none') as PermLevel
   const qualityToday = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+  const externalQualityAlerts = await getExternalQualityAlerts(qualityToday)
   const qualityYear = Number(qualityToday.slice(0, 4)); const qualityMonth = Number(qualityToday.slice(5, 7))
   const qualityFiscalStart = `${qualityMonth >= 10 ? qualityYear : qualityYear - 1}-10-01`
   const qualityFiscalEnd = `${qualityMonth >= 10 ? qualityYear + 1 : qualityYear}-09-30`
@@ -361,6 +366,10 @@ export default async function StaffDashboardPage() {
             staffCompetencyDueSoon={staffCompetencyDueSoon}
             permissions={permissions}
           />
+        </div>
+
+        <div className="dash-fade" style={{ animationDelay: '.24s' }}>
+          <ExternalQualityAlerts data={externalQualityAlerts} />
         </div>
 
         {/* ══ RECENT ACTIVITY ══ */}
@@ -612,6 +621,31 @@ function KpiCard({ icon, label, value, sub, accent, warn = false, change, change
 }
 
 const ACTION_LABELS: Record<string, string> = {
+  'outlab.laboratory.create':                     'เพิ่มห้องปฏิบัติการภายนอก',
+  'outlab.laboratory.update':                     'แก้ไขห้องปฏิบัติการภายนอก',
+  'outlab.laboratory.deactivate':                 'ปิดใช้ห้องปฏิบัติการภายนอก',
+  'outlab.service.create':                        'เพิ่มบริการส่งตรวจ OUTLAB',
+  'outlab.service.update':                        'แก้ไขบริการส่งตรวจ OUTLAB',
+  'outlab.service.deactivate':                    'ปิดบริการส่งตรวจ OUTLAB',
+  'outlab.certificate.create':                    'เพิ่ม/ต่ออายุใบรับรอง OUTLAB',
+  'outlab.certificate.update':                    'แก้ไขใบรับรอง OUTLAB',
+  'outlab.certificate.revoke':                    'เพิกถอนใบรับรอง OUTLAB',
+  'outlab.attachment.upload':                     'แนบไฟล์ใบรับรอง OUTLAB',
+  'outlab.attachment.delete':                     'ลบไฟล์ใบรับรอง OUTLAB',
+  'outlab.editor.update':                         'แก้ไขสิทธิ์ผู้ดูแล OUTLAB',
+  'eqa.provider.create':                          'เพิ่มผู้ให้บริการ EQA',
+  'eqa.program.create':                           'เพิ่มโครงการ EQA',
+  'eqa.program_test.create':                      'ผูกรายการตรวจกับ EQA',
+  'eqa.coverage.upsert':                          'กำหนด EQA Coverage',
+  'eqa.round.create':                             'เพิ่มรอบ EQA',
+  'eqa.round.update':                             'ปรับสถานะรอบ EQA',
+  'eqa.round.close':                              'ปิดรอบ EQA',
+  'eqa.result.upsert':                            'บันทึกผล EQA',
+  'eqa.capa.create':                              'เปิด CAPA จากผล EQA',
+  'eqa.capa.update':                              'อัปเดต CAPA ของ EQA',
+  'eqa.attachment.upload':                        'แนบไฟล์ EQA',
+  'eqa.attachment.delete':                        'ลบไฟล์ EQA',
+  'eqa.editor.update':                            'แก้ไขสิทธิ์ผู้ดูแล EQA',
   // รายการตรวจ
   'test.create':                                  'เพิ่มรายการตรวจ',
   'test.update':                                  'แก้ไขรายการตรวจ',
