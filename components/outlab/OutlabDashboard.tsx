@@ -7,6 +7,7 @@ import type { OutlabCertificate, OutlabFile, OutlabOverview } from '@/lib/outlab
 import { catalogServiceDefaults, findOutlabCatalogTestByEphisCode, isOutlabCatalogTest, OUTLAB_SECTOR_LABEL } from '@/lib/outlab/domain'
 import { RecordEditDialog, type RecordEditField } from '@/components/external-quality/RecordEditDialog'
 import { Icon } from '@/components/ui/Icon'
+import { AssigneePicker } from '@/components/ui/AssigneePicker'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { ModuleSubnav } from '@/components/ui/ModuleSubnav'
 import { OUTLAB_NAVIGATION } from '@/lib/navigation'
@@ -225,7 +226,18 @@ export function OutlabDashboard({ overview, canEdit, isAdmin, activeSection }: {
       <section style={card}><div className="eq-scroll"><table className="eq-table"><thead><tr><th>ห้อง/มาตรฐาน</th><th>เลขที่/หน่วยรับรอง</th><th style={{ textAlign: 'center' }}>ขอบข่าย</th><th style={{ textAlign: 'center' }}>วันมีผล</th><th style={{ textAlign: 'center' }}>สถานะ</th><th>ไฟล์</th>{canEdit && <th style={{ textAlign: 'center' }}>จัดการ</th>}</tr></thead><tbody>{certs.map(cert => <tr key={cert.id}><td><strong>{labName.get(cert.laboratory_id)}</strong><br />{cert.standard_name}</td><td>{cert.certificate_no || '—'}<br />{cert.accreditation_body}</td><td style={{ textAlign: 'center' }}>{cert.scope || '—'}</td><td style={{ textAlign: 'center', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmt(cert.valid_from)} – {fmt(cert.expires_on)}</td><td style={{ textAlign: 'center' }}><div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}><LifecycleBadge lifecycle={cert.lifecycle} /><span className="eq-badge">{urgencyLabel[cert.urgency]}</span></div></td><td><CertificateFiles certificate={cert} canEdit={canEdit} refresh={refresh} onView={setPreviewFile} /></td>{canEdit && <td style={{ textAlign: 'center' }}><div style={{ display: 'inline-flex', gap: 6, justifyContent: 'center' }}><button type="button" style={{ ...button, minHeight: 28, padding: '0 9px', fontSize: 11 }} onClick={() => editCertificate(cert)}>แก้ไข</button>{cert.lifecycle !== 'revoked' && <button type="button" style={{ ...button, minHeight: 28, padding: '0 9px', fontSize: 11, background: '#B91C1C' }} onClick={() => deactivate(`/api/admin/outlab/certificates/${cert.id}`, `เพิกถอนใบรับรอง ${cert.standard_name}`)}>เพิกถอน</button>}</div></td>}</tr>)}</tbody></table></div></section>
     </>}
 
-    {tab === 'settings' && isAdmin && <section style={card}><h2 style={{ marginTop: 0 }}>ผู้มีสิทธิ์แก้ไข OUTLAB</h2><p style={{ color: 'var(--muted)' }}>Admin แก้ไขได้โดยอัตโนมัติ ผู้รับผิดชอบไม่ได้สิทธิ์แก้ไขจนกว่าจะถูกเพิ่มในรายการนี้</p><div className="eq-grid">{overview.people.map(person => <label key={person.id} style={{ display: 'flex', gap: 9, alignItems: 'center', padding: 10, border: '1px solid var(--border)', borderRadius: 9 }}><input type="checkbox" checked={editors.includes(person.id)} onChange={async event => { const enabled = event.target.checked; await jsonRequest('/api/admin/outlab/editors', 'PATCH', { userId: person.id, enabled }); setEditors(current => enabled ? [...current, person.id] : current.filter(id => id !== person.id)) }} /> <span>{person.name}<small style={{ display: 'block', color: 'var(--muted)' }}>{person.dept || person.role}</small></span></label>)}</div></section>}
+    {tab === 'settings' && isAdmin && <section style={card}><AssigneePicker
+      people={overview.people}
+      selectedIds={editors}
+      title="ผู้มีสิทธิ์แก้ไข OUTLAB"
+      description="Admin แก้ไขได้โดยอัตโนมัติ ผู้รับผิดชอบไม่ได้สิทธิ์แก้ไขจนกว่าจะถูกเพิ่มในรายการนี้"
+      searchPlaceholder="ค้นหาชื่อ แผนก หรือตำแหน่ง เพื่อเพิ่มผู้มีสิทธิ์แก้ไข"
+      emptyText="ยังไม่มีผู้มีสิทธิ์แก้ไขนอกเหนือจาก Admin"
+      onToggle={async (userId, enabled) => {
+        await jsonRequest('/api/admin/outlab/editors', 'PATCH', { userId, enabled })
+        setEditors(current => enabled ? [...current, userId] : current.filter(id => id !== userId))
+      }}
+    /></section>}
     {editor && <RecordEditDialog title={editor.title} fields={editor.fields} initialValues={editor.initialValues} onSave={editor.onSave} onClose={() => setEditor(null)} />}
     {previewFile && <CertificateFilePreview file={previewFile} onClose={() => setPreviewFile(null)} />}
   </div>
