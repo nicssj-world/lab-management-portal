@@ -512,7 +512,7 @@ export default async function PublicHome() {
                     flexShrink: 0, lineHeight: 0,
                   }}>
                     <img
-                      src="https://qr-official.line.me/gs/M_759ksiuc_BW.png"
+                      src="/line-qr.png"
                       alt="LINE QR Code @759ksiuc"
                       width={64} height={64}
                       style={{ display: 'block', borderRadius: 6 }}
