@@ -31,6 +31,10 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     const { data: itEditor } = await supabaseAdmin
       .from('it_editors').select('user_id').eq('user_id', user.id).maybeSingle()
     if (itEditor?.user_id) permissions['ระบบสารสนเทศ (IT)'] = 'edit'
+    // Satisfaction override: edit on the whole แบบสำรวจความพึงพอใจ module regardless of role.
+    const { data: surveyEditor } = await supabaseAdmin
+      .from('satisfaction_editors').select('user_id').eq('user_id', user.id).maybeSingle()
+    if (surveyEditor?.user_id) permissions['แบบสำรวจความพึงพอใจ'] = 'edit'
   }
   if (['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(profile.doc_role ?? '')) {
     permissions['เอกสารคุณภาพ'] = 'edit'

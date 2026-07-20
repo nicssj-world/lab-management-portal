@@ -21,8 +21,9 @@ import { CampaignManager } from './CampaignManager'
 import { SatisfactionDashboard } from './SatisfactionDashboard'
 import { SurveyComments } from './SurveyComments'
 import { SatisfactionExportActions } from './SatisfactionExportActions'
+import { SatisfactionEditors } from './SatisfactionEditors'
 
-export type SatisfactionSection = 'overview' | 'surveys' | 'campaigns' | 'comments'
+export type SatisfactionSection = 'overview' | 'surveys' | 'campaigns' | 'comments' | 'settings'
 
 const dateLabel = (value: string | null) =>
   value
@@ -37,12 +38,14 @@ const statusBadge = (status: string | null) => {
 
 export function SatisfactionModule({
   level,
+  isAdmin,
   actorRole,
   initialSurveys,
   initialCampaigns,
   activeSection,
 }: {
   level: PermLevel
+  isAdmin: boolean
   actorRole: string
   initialSurveys: SatisfactionSurveyListItem[]
   initialCampaigns: SatisfactionCampaignListItem[]
@@ -52,6 +55,11 @@ export function SatisfactionModule({
   const activeTab = activeSection
   const [createSurveyOpen, setCreateSurveyOpen] = useState(false)
   const canEdit = level === 'edit'
+  // Settings holds the editor-assignment list, which only a real Admin may hand out.
+  const navItems = useMemo(
+    () => (isAdmin ? SATISFACTION_NAVIGATION : SATISFACTION_NAVIGATION.filter((item) => item.id !== 'settings')),
+    [isAdmin],
+  )
   const openCampaigns = useMemo(
     () => initialCampaigns.filter((campaign) => campaign.status === 'open'),
     [initialCampaigns],
@@ -93,7 +101,7 @@ export function SatisfactionModule({
         marginBottom={0}
       />
 
-      <ModuleSubnav items={SATISFACTION_NAVIGATION} label="เมนูแบบสำรวจความพึงพอใจ" />
+      <ModuleSubnav items={navItems} label="เมนูแบบสำรวจความพึงพอใจ" />
 
       <section id={`satisfaction-section-${activeTab}`}>
         {activeTab === 'overview' && (
@@ -150,6 +158,8 @@ export function SatisfactionModule({
             <SurveyComments actorRole={actorRole} campaigns={initialCampaigns} />
           </Card>
         )}
+
+        {activeTab === 'settings' && isAdmin && <SatisfactionEditors />}
       </section>
       {createSurveyOpen && <CreateSurveyDialog onClose={() => setCreateSurveyOpen(false)} onCreated={(surveyId) => router.push(`/staff/satisfaction/${surveyId}`)} />}
     </div>

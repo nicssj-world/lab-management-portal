@@ -43,6 +43,7 @@ export const SATISFACTION_NAVIGATION = [
   { id: 'surveys', href: '/staff/satisfaction/surveys', labelTh: 'แบบสำรวจ', labelEn: 'Surveys', icon: 'clipboard' },
   { id: 'campaigns', href: '/staff/satisfaction/campaigns', labelTh: 'รอบเก็บข้อมูล', labelEn: 'Campaigns', icon: 'calendar' },
   { id: 'comments', href: '/staff/satisfaction/comments', labelTh: 'ความคิดเห็น', labelEn: 'Comments', icon: 'inbox' },
+  { id: 'settings', href: '/staff/satisfaction/settings', labelTh: 'ตั้งค่า', labelEn: 'Settings', icon: 'settings' },
 ] as const satisfies readonly ModuleNavigationItem[]
 
 export const ROUTE_LABELS: Record<string, { th: string; en: string }> = {

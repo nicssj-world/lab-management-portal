@@ -75,6 +75,26 @@ export async function updateCampaign(campaignId: string, patch: {
   fail(error)
 }
 
+export async function deleteCampaign(campaignId: string) {
+  const { data: current, error: currentError } = await supabaseAdmin
+    .from('survey_campaigns').select('id').eq('id', campaignId).maybeSingle()
+  fail(currentError)
+  if (!current) throw new Error('ไม่พบรอบเก็บข้อมูล')
+
+  const { count: responseCount, error: responseError } = await supabaseAdmin
+    .from('survey_responses').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId)
+  fail(responseError)
+  if ((responseCount ?? 0) > 0) throw new Error('ลบไม่ได้ เพราะรอบนี้มีคำตอบแล้ว')
+
+  const { count: kpiCount, error: kpiError } = await supabaseAdmin
+    .from('survey_kpi_publications').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId)
+  fail(kpiError)
+  if ((kpiCount ?? 0) > 0) throw new Error('ลบไม่ได้ เพราะรอบนี้ถูกส่งขึ้น KPI แล้ว')
+
+  const { error } = await supabaseAdmin.from('survey_campaigns').delete().eq('id', campaignId)
+  fail(error)
+}
+
 export async function rotateCampaignToken(campaignId: string) {
   const { data, error } = await supabaseAdmin.from('survey_campaigns').update({
     public_token: createPublicToken(), updated_at: new Date().toISOString(),

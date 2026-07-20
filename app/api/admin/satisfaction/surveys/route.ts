@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server'
-import { requireResource } from '@/lib/auth/guards'
+import { requireSatisfaction } from '@/lib/surveys/guard'
 import { createSurveySchema } from '@/lib/surveys/schemas'
 import { createSurveyWithDraft, listSurveys } from '@/lib/surveys/server'
 
 export async function GET() {
-  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'view')
+  const access = await requireSatisfaction('view')
   if (access.response) return access.response
   return NextResponse.json({ surveys: await listSurveys() })
 }
 
 export async function POST(request: Request) {
-  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'edit')
+  const access = await requireSatisfaction('edit')
   if (access.response) return access.response
   const parsed = createSurveySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {

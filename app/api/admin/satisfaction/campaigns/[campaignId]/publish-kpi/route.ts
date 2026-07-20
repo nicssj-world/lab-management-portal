@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { canAccessResource, requireResource } from '@/lib/auth/guards'
+import { canAccessResource } from '@/lib/auth/guards'
+import { requireSatisfaction } from '@/lib/surveys/guard'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getSurveyDashboardData } from '@/lib/surveys/dashboard-server'
 
@@ -12,7 +13,7 @@ const publishKpiSchema = z.object({
 type Context = { params: Promise<{ campaignId: string }> }
 
 export async function POST(request: Request, { params }: Context) {
-  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'edit')
+  const access = await requireSatisfaction('edit')
   if (access.response) return access.response
   const actor = access.actor
   if (!(await canAccessResource(actor, 'KPI', 'edit'))) return NextResponse.json({ error: 'ต้องมีสิทธิ์แก้ไข KPI ด้วย' }, { status: 403 })
