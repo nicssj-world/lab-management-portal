@@ -1,7 +1,10 @@
-import type { Test } from '@/lib/supabase/types'
+import type { Test, TestDocument } from '@/lib/supabase/types'
 import type { LineFlexMessage } from '@/lib/line/client'
+import { htmlToPlainText } from '@/lib/html-sanitize'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? ''
+
+type Doc = Pick<TestDocument, 'name' | 'doc_type'>
 
 const PRIMARY = '#1E5FAD'  // var(--primary)
 const GREY = '#94A3B8'     // muted grey for the "not found" card
@@ -30,7 +33,14 @@ function infoRow(emoji: string, value: string): Record<string, unknown> {
   }
 }
 
-function foundBubble({ test, extraContacts }: { test: Test; extraContacts: string[] }): Record<string, unknown> {
+interface FoundOpts { docs?: Doc[]; full?: boolean }
+
+// A single test card. `full` (single-test reply) adds the detail the compact carousel
+// card omits: method, storage, reject criteria, note, and attached documents.
+function foundBubble(
+  { test, extraContacts }: { test: Test; extraContacts: string[] },
+  { docs = [], full = false }: FoundOpts = {},
+): Record<string, unknown> {
   const name = test.th || test.en || 'รายการตรวจ'
   const rows: Record<string, unknown>[] = []
 
@@ -40,6 +50,12 @@ function foundBubble({ test, extraContacts }: { test: Test; extraContacts: strin
   if (tat) rows.push(infoRow('⏱', tat))
   if (test.available_24hr) rows.push(infoRow('🕐', 'บริการ 24 ชั่วโมง'))
   else if (test.service) rows.push(infoRow('🕐', test.service.replace(/\s*\n+\s*/g, ' ')))
+  if (full && test.transport_condition) rows.push(infoRow('🌡', `การเก็บรักษา: ${test.transport_condition}`))
+  if (full && test.reject) {
+    const rejectCount = test.reject.split('\n').map(l => l.trim()).filter(Boolean).length
+    if (rejectCount > 0) rows.push(infoRow('⛔', `เกณฑ์ปฏิเสธ: มี ${rejectCount} ข้อ (ดูรายละเอียดเต็ม)`))
+  }
+  if (full && test.specimen_note) rows.push(infoRow('📝', `หมายเหตุ: ${htmlToPlainText(test.specimen_note)}`))
   if (test.contact_staff) rows.push(infoRow('⚠️', 'ติดต่อเจ้าหน้าที่ก่อนเก็บตัวอย่าง'))
 
   // primary contact from the picked row, then any extra department contacts
@@ -53,8 +69,28 @@ function foundBubble({ test, extraContacts }: { test: Test; extraContacts: strin
   if (test.en && test.en !== name) {
     bodyContents.push({ type: 'text', text: test.en, size: 'xs', color: '#64748B', wrap: true, margin: 'xs' })
   }
+  if (full && test.method) {
+    bodyContents.push({ type: 'text', text: `หลักการ: ${test.method}`, size: 'xs', color: '#64748B', wrap: true, margin: 'xs' })
+  }
   bodyContents.push({ type: 'separator', margin: 'md', color: '#E5EAF0' })
   bodyContents.push({ type: 'box', layout: 'vertical', margin: 'md', spacing: 'none', contents: rows })
+
+  if (full && docs.length > 0) {
+    const docLines: Record<string, unknown>[] = docs.slice(0, 3).map(d => ({
+      type: 'text', text: `• ${d.doc_type} - ${d.name}`, size: 'xs', color: '#334155', wrap: true,
+    }))
+    if (docs.length > 3) {
+      docLines.push({ type: 'text', text: `และอีก ${docs.length - 3} รายการ`, size: 'xs', color: '#64748B', wrap: true })
+    }
+    bodyContents.push({ type: 'separator', margin: 'md', color: '#E5EAF0' })
+    bodyContents.push({
+      type: 'box', layout: 'vertical', margin: 'md', spacing: 'xs',
+      contents: [
+        { type: 'text', text: `📎 เอกสารแนบ ${docs.length} รายการ`, size: 'xs', weight: 'bold', color: '#0F172A' },
+        ...docLines,
+      ],
+    })
+  }
 
   const bubble: Record<string, unknown> = {
     type: 'bubble',
@@ -100,6 +136,16 @@ function notFoundBubble(query: string): Record<string, unknown> {
         action: { type: 'message', label: 'ค้นหาใหม่', text: query },
       }],
     },
+  }
+}
+
+// Single-test reply: one full-detail card (same look as the carousel cards, more fields).
+export function buildTestFlex(test: Test, extraContacts: string[], docs: Doc[] = []): LineFlexMessage {
+  const name = test.th || test.en || 'รายการตรวจ'
+  return {
+    type: 'flex',
+    altText: `🧪 ${name} · รหัส E-Phis ${test.code}`.slice(0, 400),
+    contents: foundBubble({ test, extraContacts }, { docs, full: true }),
   }
 }
 
