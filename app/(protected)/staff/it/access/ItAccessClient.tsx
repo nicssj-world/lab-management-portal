@@ -22,6 +22,7 @@ interface Props {
   profiles: PickProfile[]
   canEdit: boolean
   isAdmin: boolean
+  canApprove: boolean
 }
 
 const inputStyle: React.CSSProperties = {
@@ -96,7 +97,7 @@ function useToast() {
   return { toasts, add }
 }
 
-export function ItAccessClient({ initialRecords, initialSystems, latestReview: initialReview, profiles, canEdit, isAdmin }: Props) {
+export function ItAccessClient({ initialRecords, initialSystems, latestReview: initialReview, profiles, canEdit, isAdmin, canApprove }: Props) {
   const [records, setRecords] = useState(initialRecords)
   const [systems, setSystems] = useState(initialSystems)
   const [latestReview, setLatestReview] = useState(initialReview)
@@ -266,10 +267,10 @@ export function ItAccessClient({ initialRecords, initialSystems, latestReview: i
               : rStatus.level === 'soon' ? 'ใกล้ครบกำหนด' : 'ทบทวนแล้ว'}
           </Badge>
         </div>
-        {canEdit && (rStatus.phase === 'pending-approval'
-          ? <Button size="sm" variant="primary" icon="check" onClick={() => setApproveOpen(true)}>อนุมัติ</Button>
-          : <Button size="sm" variant="secondary" icon="check" onClick={() => setReviewOpen(true)}>ยืนยันการทบทวน</Button>
-        )}
+        {rStatus.phase === 'pending-approval'
+          ? canApprove && <Button size="sm" variant="primary" icon="check" onClick={() => setApproveOpen(true)}>อนุมัติ</Button>
+          : canEdit && <Button size="sm" variant="secondary" icon="check" onClick={() => setReviewOpen(true)}>ยืนยันการทบทวน</Button>
+        }
       </div>
 
       {/* Search + filter pills */}
