@@ -75,6 +75,42 @@ const ACTION_LABELS: Record<string, string> = {
   'satisfaction.comments.export':                 'ส่งออกความคิดเห็นแบบสำรวจ',
   'satisfaction.kpi.publish':                     'เผยแพร่ผลสำรวจไปยัง KPI',
   'satisfaction.draft.discard':                    'ยกเลิกฉบับร่างแบบสำรวจ',
+  // EQA
+  'eqa.provider.create':                          'เพิ่มผู้ให้บริการ EQA',
+  'eqa.provider.update':                          'แก้ไขผู้ให้บริการ EQA',
+  'eqa.provider.deactivate':                      'ปิดใช้งานผู้ให้บริการ EQA',
+  'eqa.program.create':                           'เพิ่มโครงการ EQA',
+  'eqa.program.update':                           'แก้ไขโครงการ EQA',
+  'eqa.program.deactivate':                       'ปิดใช้งานโครงการ EQA',
+  'eqa.program_test.create':                      'ผูกรายการตรวจกับ EQA',
+  'eqa.program_test.deactivate':                  'ยกเลิกผูกรายการตรวจกับ EQA',
+  'eqa.coverage.upsert':                          'กำหนด EQA Coverage',
+  'eqa.round.create':                             'เพิ่มรอบ EQA',
+  'eqa.round.update':                             'ปรับสถานะรอบ EQA',
+  'eqa.round.close':                              'ปิดรอบ EQA',
+  'eqa.round.delete':                             'ลบรอบ EQA',
+  'eqa.result.upsert':                            'บันทึกผล EQA',
+  'eqa.result.delete':                            'ลบผล EQA',
+  'eqa.capa.create':                              'เปิด CAPA จากผล EQA',
+  'eqa.capa.update':                              'อัปเดต CAPA ของ EQA',
+  'eqa.capa.delete':                              'ลบ CAPA ของ EQA',
+  'eqa.attachment.upload':                        'แนบไฟล์ EQA',
+  'eqa.attachment.delete':                        'ลบไฟล์ EQA',
+  'eqa.editor.update':                            'แก้ไขสิทธิ์ผู้ดูแล EQA',
+  // OUTLAB
+  'outlab.laboratory.create':                     'เพิ่มห้องปฏิบัติการภายนอก',
+  'outlab.laboratory.update':                     'แก้ไขห้องปฏิบัติการภายนอก',
+  'outlab.laboratory.deactivate':                 'ปิดใช้งานห้องปฏิบัติการภายนอก',
+  'outlab.service.create':                        'เพิ่มบริการส่งตรวจ OUTLAB',
+  'outlab.service.update':                        'แก้ไขบริการส่งตรวจ OUTLAB',
+  'outlab.service.deactivate':                    'ปิดใช้งานบริการส่งตรวจ OUTLAB',
+  'outlab.service.bulk_import':                   'นำเข้าบริการส่งตรวจ OUTLAB (กลุ่ม)',
+  'outlab.certificate.create':                    'เพิ่ม/ต่ออายุใบรับรอง OUTLAB',
+  'outlab.certificate.update':                    'แก้ไขใบรับรอง OUTLAB',
+  'outlab.certificate.revoke':                    'เพิกถอนใบรับรอง OUTLAB',
+  'outlab.attachment.upload':                     'แนบไฟล์ใบรับรอง OUTLAB',
+  'outlab.attachment.delete':                     'ลบไฟล์ใบรับรอง OUTLAB',
+  'outlab.editor.update':                         'แก้ไขสิทธิ์ผู้ดูแล OUTLAB',
   // งานคุณภาพ
   'quality_task.attachment.upload':               'อัปโหลดไฟล์แนบงานคุณภาพ',
   'quality_task.attachment.delete':               'ลบไฟล์แนบงานคุณภาพ',
@@ -155,6 +191,8 @@ function dotColor(action: string | null) {
   if (a.startsWith('risk.') || a.startsWith('rejection.')) return '#DC2626'
   if (a.startsWith('kpi.'))                                 return '#16A34A'
   if (a.startsWith('satisfaction.'))                        return '#0F766E'
+  if (a.startsWith('eqa.'))                                 return '#0369A1'
+  if (a.startsWith('outlab.'))                              return '#C2410C'
   if (a.includes('news'))                                   return '#D97706'
   if (a.startsWith('quality_task.'))                        return '#9333EA'
   return '#64748B'

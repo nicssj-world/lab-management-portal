@@ -183,6 +183,7 @@ Shared definitions live in `lib/navigation.ts`; shared controls live in `compone
 ## Maintenance
 
 - **Audit log archive** — `audit_log` (backs `/staff/activity`) has no automatic cleanup or cron; it just grows. Periodically (e.g. once a year) run `scripts/archive-audit-log.sql` in Supabase Dashboard > SQL Editor to move rows older than 1 year into `audit_log_archive` (cold storage, not deleted — audit_log is the QMS audit trail and should stay recoverable). Safe to re-run; no-ops on rows already archived. There's no reminder system for this — it has to be done manually when someone remembers.
+- **Activity log labels** — `/staff/activity` (`ActivityClient.tsx`) has its own `ACTION_LABELS` map that translates raw `audit_log.action` codes (e.g. `outlab.certificate.create`) into Thai display names, plus a `dotColor()` prefix map for the row indicator color. When adding a new module or a new audit action, add its entries to both maps here — otherwise the activity feed falls back to showing the raw action code.
 
 ## Satisfaction survey module
 
