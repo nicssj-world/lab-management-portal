@@ -92,3 +92,36 @@ export function formatNotFound(q: string): string {
     ? `ไม่พบรายการตรวจ "${q}"\nลองพิมพ์ชื่อภาษาอังกฤษหรือรหัสตรวจ${catalogLink}`
     : `ไม่พบรายการตรวจ "${q}"${catalogLink}`
 }
+
+// A single E-Phis code is a short numeric token (e.g. "31", "30074") — this lets us tell
+// a list of codes apart from a natural-language search phrase that merely contains spaces.
+export const CODE_TOKEN = /^\d{1,6}$/
+
+// Detect a "multiple tests in one message" request and split it into individual query terms.
+// Returns null when the text should be treated as a single search (the existing flow).
+//  1. Comma- or newline-separated → items (names or codes), if ≥2 pieces.
+//  2. Otherwise, whitespace-separated only when EVERY token is a numeric code (so "vitamin d"
+//     stays a single search but "31 30074" becomes two lookups).
+// Items are de-duplicated case-insensitively, preserving first-seen order. No length cap here —
+// the caller slices to the carousel limit and reports any overflow.
+export function parseBatchItems(text: string): string[] | null {
+  const trimmed = text.trim()
+  let items = trimmed.split(/[\n,]+/).map(s => s.trim()).filter(Boolean)
+  if (items.length < 2) {
+    const tokens = trimmed.split(/\s+/).filter(Boolean)
+    if (tokens.length >= 2 && tokens.every(t => CODE_TOKEN.test(t))) {
+      items = tokens
+    } else {
+      return null
+    }
+  }
+  const seen = new Set<string>()
+  const deduped: string[] = []
+  for (const it of items) {
+    const key = it.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(it)
+  }
+  return deduped
+}
