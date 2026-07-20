@@ -3,10 +3,12 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getTests } from '@/lib/queries/tests'
 import type { Test } from '@/lib/supabase/types'
 import { verifyLineSignature, replyMessage, type LineMessage } from '@/lib/line/client'
-import { formatListReply, formatNotFound, buildListMoreQuickReply, LIST_MORE_PREFIX, parseBatchItems, CODE_TOKEN } from '@/lib/line/format'
-import { buildTestFlex, buildTestCarousel, type BatchResult } from '@/lib/line/test-flex'
+import { formatNotFound, LIST_MORE_PREFIX, parseBatchItems, CODE_TOKEN } from '@/lib/line/format'
+import { buildTestFlex, buildTestCarousel, buildTestListFlex, type BatchResult } from '@/lib/line/test-flex'
 
 const BATCH_CARD_LIMIT = 12  // LINE Flex carousel holds at most 12 bubbles
+const LIST_PER_PAGE = 10     // results-menu rows shown per page
+const LIST_FETCH = 200       // rows pulled once, then grouped by code and paginated in memory
 
 export async function GET() {
   return NextResponse.json({ ok: true })
@@ -94,11 +96,21 @@ export async function POST(req: NextRequest) {
     if (msg?.type !== 'text') continue
     const q = (msg.text as string).trim()
     const replyToken = event.replyToken as string
-    // A "ดูเพิ่มเติม" quick-reply sends the marker prefix + original query back — the
-    // webhook is stateless per request, so page 2 is just re-running the same search
-    // and slicing further in rather than tracking any session state.
+    // A "ดูเพิ่มเติม" tap sends `<prefix><page>|<query>` back. The webhook is stateless, so
+    // it just re-runs the search and returns the requested page of grouped results.
     const isMoreRequest = q.startsWith(LIST_MORE_PREFIX)
-    const searchQuery = isMoreRequest ? q.slice(LIST_MORE_PREFIX.length).trim() : q
+    let searchQuery = q
+    let searchPage = 0
+    if (isMoreRequest) {
+      const rest = q.slice(LIST_MORE_PREFIX.length)
+      const sep = rest.indexOf('|')
+      if (sep >= 0) {
+        searchPage = Math.max(0, parseInt(rest.slice(0, sep), 10) || 0)
+        searchQuery = rest.slice(sep + 1).trim()
+      } else {
+        searchQuery = rest.trim()
+      }
+    }
 
     try {
       // batch: user typed several tests in one message (comma/newline separated, or
@@ -139,25 +151,28 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const { data: rawData } = await getTests(supabaseAdmin, { search: searchQuery, active: true, pageSize: 20 })
-      const data = groupTestRows(rawData).slice(0, 10)
+      const { data: rawData, count } = await getTests(supabaseAdmin, { search: searchQuery, active: true, pageSize: LIST_FETCH })
+      const groups = groupTestRows(rawData)
+      // fetched rows hit the cap → more codes may exist beyond what we grouped
+      const approx = count > rawData.length
 
-      if (data.length === 1) {
-        const { primary, extraContacts } = toTestResult(data[0])
+      if (groups.length === 1) {
+        const { primary, extraContacts } = toTestResult(groups[0])
         const { data: docs } = await supabaseAdmin
           .from('test_documents')
           .select('name, doc_type')
           .eq('test_id', primary.id)
         await replyMessage(replyToken, [buildTestFlex(primary, extraContacts, docs ?? [])])
-      } else if (data.length > 1) {
-        const tests = data.map(rows => rows[0])
-        if (isMoreRequest) {
-          await replyMessage(replyToken, [{ type: 'text', text: formatListReply(tests, 5) }])
-        } else {
-          const remaining = tests.length - 5
-          const quickReply = remaining > 0 ? buildListMoreQuickReply(searchQuery, remaining) : undefined
-          await replyMessage(replyToken, [{ type: 'text', text: formatListReply(tests, 0), ...(quickReply ? { quickReply } : {}) }])
-        }
+      } else if (groups.length > 1) {
+        const pageGroups = groups.slice(searchPage * LIST_PER_PAGE, searchPage * LIST_PER_PAGE + LIST_PER_PAGE)
+        // a stale "more" tap could land past the end → fall back to the first page
+        const safePage = pageGroups.length > 0 ? searchPage : 0
+        const shown = pageGroups.length > 0 ? pageGroups : groups.slice(0, LIST_PER_PAGE)
+        const tests = shown.map(rows => rows[0])
+        const hasMore = (safePage + 1) * LIST_PER_PAGE < groups.length
+        await replyMessage(replyToken, [buildTestListFlex(tests, searchQuery, {
+          page: safePage, perPage: LIST_PER_PAGE, total: groups.length, approx, hasMore,
+        })])
       } else {
         await replyMessage(replyToken, [{ type: 'text', text: formatNotFound(searchQuery) }])
       }
