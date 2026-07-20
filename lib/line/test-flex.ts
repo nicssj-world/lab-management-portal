@@ -1,6 +1,7 @@
 import type { Test, TestDocument } from '@/lib/supabase/types'
 import type { LineFlexMessage } from '@/lib/line/client'
 import { htmlToPlainText } from '@/lib/html-sanitize'
+import { LIST_MORE_PREFIX } from '@/lib/line/format'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
@@ -70,7 +71,7 @@ function foundBubble(
     bodyContents.push({ type: 'text', text: test.en, size: 'xs', color: '#64748B', wrap: true, margin: 'xs' })
   }
   if (full && test.method) {
-    bodyContents.push({ type: 'text', text: `หลักการ: ${test.method}`, size: 'xs', color: '#64748B', wrap: true, margin: 'xs' })
+    bodyContents.push({ type: 'text', text: `🔬 หลักการ: ${test.method}`, size: 'xs', color: '#64748B', wrap: true, margin: 'xs' })
   }
   bodyContents.push({ type: 'separator', margin: 'md', color: '#E5EAF0' })
   bodyContents.push({ type: 'box', layout: 'vertical', margin: 'md', spacing: 'none', contents: rows })
@@ -146,6 +147,67 @@ export function buildTestFlex(test: Test, extraContacts: string[], docs: Doc[] =
     type: 'flex',
     altText: `🧪 ${name} · รหัส E-Phis ${test.code}`.slice(0, 400),
     contents: foundBubble({ test, extraContacts }, { docs, full: true }),
+  }
+}
+
+// Search that matched many tests → a vertical "results menu" bubble. Each row is tappable
+// (sends its code back → the single-result flow replies with the full card). "ดูเพิ่มเติม"
+// carries the next page number so the stateless webhook can fetch further results.
+export interface TestListOpts { page: number; perPage: number; total: number; approx: boolean; hasMore: boolean }
+
+export function buildTestListFlex(tests: Test[], query: string, opts: TestListOpts): LineFlexMessage {
+  const { page, perPage, total, approx, hasMore } = opts
+  const start = page * perPage + 1
+  const end = page * perPage + tests.length
+
+  const rows: Record<string, unknown>[] = []
+  tests.forEach((t, i) => {
+    if (i > 0) rows.push({ type: 'separator', color: '#E5EAF0' })
+    const name = t.th || t.en || t.code
+    const priceText = t.price != null ? ` · 💰 ${new Intl.NumberFormat('th-TH').format(t.price)} บาท` : ''
+    rows.push({
+      type: 'box', layout: 'horizontal', paddingTop: 'md', paddingBottom: 'md', spacing: 'sm',
+      action: { type: 'message', text: t.code },
+      contents: [
+        {
+          type: 'box', layout: 'vertical', flex: 1, spacing: 'xs',
+          contents: [
+            { type: 'text', text: name, size: 'sm', weight: 'bold', color: '#0F172A', wrap: true },
+            { type: 'text', text: `🔢 ${t.code}${priceText}`, size: 'xs', color: '#64748B', wrap: true },
+          ],
+        },
+        { type: 'text', text: '›', size: 'xl', color: '#94A3B8', flex: 0, gravity: 'center', align: 'end' },
+      ],
+    })
+  })
+
+  const footerContents: Record<string, unknown>[] = []
+  if (hasMore) {
+    footerContents.push({
+      type: 'button', style: 'secondary', height: 'sm',
+      action: { type: 'message', label: 'ดูเพิ่มเติม', text: `${LIST_MORE_PREFIX}${page + 1}|${query}` },
+    })
+  }
+  footerContents.push({
+    type: 'text', text: `แสดง ${start}–${end} · 💬 แตะรายการเพื่อดูรายละเอียดเต็ม`,
+    size: 'xxs', color: '#94A3B8', align: 'center', wrap: true,
+  })
+
+  return {
+    type: 'flex',
+    altText: `🔎 พบ ${total}${approx ? '+' : ''} รายการสำหรับ "${query}"`.slice(0, 400),
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: PRIMARY, paddingAll: '14px', spacing: 'xs',
+        contents: [
+          { type: 'text', text: `🔎 พบ ${total}${approx ? '+' : ''} รายการ`, color: '#FFFFFF', size: 'md', weight: 'bold' },
+          { type: 'text', text: `"${query}"`, color: '#FFFFFFCC', size: 'xs', wrap: true },
+        ],
+      },
+      body: { type: 'box', layout: 'vertical', paddingStart: '14px', paddingEnd: '14px', paddingTop: 'sm', paddingBottom: 'sm', contents: rows },
+      footer: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px', contents: footerContents },
+    },
   }
 }
 

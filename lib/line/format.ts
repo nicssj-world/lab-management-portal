@@ -49,41 +49,10 @@ export function formatTestReply(
   return lines.join('\n')
 }
 
-// Follow-up "แสดงเพิ่มเติม" quick replies send this prefix + the original query back,
-// so the stateless webhook can tell a page-2 request apart from a fresh search.
+// A "ดูเพิ่มเติม" tap on the results-menu bubble sends `<prefix><page>|<query>` back, so the
+// stateless webhook can tell a paged follow-up apart from a fresh search. The bubble itself
+// is built in lib/line/test-flex.ts (buildTestListFlex).
 export const LIST_MORE_PREFIX = 'ดูเพิ่มเติม: '
-const PAGE_SIZE = 5
-
-export function formatListReply(tests: Test[], start = 0): string {
-  const page = tests.slice(start, start + PAGE_SIZE)
-  const items = page
-    .map((t, i) => {
-      const primary = t.th || t.en
-      // Search matches th/en/code/cgd/loinc, but only th (often just the short abbreviation,
-      // e.g. "HbA1C") is shown by default — append the full en name when it differs, so a
-      // match found only in the full name (e.g. searching "hemo" → "Hemoglobin A1c") isn't a mystery.
-      const name = t.en && t.en !== primary ? `${primary} — ${t.en}` : primary
-      const methodLine = t.method ? `\n🔬 ${t.method}` : ''
-      return `${start + i + 1}. ${name}${methodLine}\n🔢 รหัส E-Phis: ${t.code}`
-    })
-    .join('\n\n')
-  const example = page[0]?.code ?? ''
-  const remaining = tests.length - (start + page.length)
-  const rangeLabel = tests.length > page.length
-    ? ` (แสดงรายการที่ ${start + 1}-${start + page.length})`
-    : ''
-  const moreHint = remaining > 0 ? `\n\n➕ ยังมีอีก ${remaining} รายการ กดปุ่ม "ดูเพิ่มเติม" ด้านล่าง` : ''
-  return `🔎 พบ ${tests.length} รายการ${rangeLabel}\n\n${items}${moreHint}\n\n💬 พิมพ์รหัส E-Phis เพื่อดูรายละเอียด${example ? ` เช่น ${example}` : ''}`
-}
-
-export function buildListMoreQuickReply(query: string, remaining: number) {
-  return {
-    items: [{
-      type: 'action' as const,
-      action: { type: 'message' as const, label: `ดูเพิ่มเติม (${remaining})`, text: `${LIST_MORE_PREFIX}${query}` },
-    }],
-  }
-}
 
 export function formatNotFound(q: string): string {
   const hasThai = /[฀-๿]/.test(q)
