@@ -26,8 +26,8 @@ export const EQA_NAVIGATION = [
 export const OUTLAB_NAVIGATION = [
   { id: 'dashboard', href: '/staff/outlab', labelTh: 'ภาพรวม', labelEn: 'Overview', icon: 'dash', exact: true },
   { id: 'laboratories', href: '/staff/outlab/laboratories', labelTh: 'ห้องปฏิบัติการ', labelEn: 'Laboratories', icon: 'building' },
-  { id: 'services', href: '/staff/outlab/services', labelTh: 'บริการส่งต่อ', labelEn: 'Referral Services', icon: 'clipboard' },
   { id: 'certificates', href: '/staff/outlab/certificates', labelTh: 'ใบรับรอง', labelEn: 'Certificates', icon: 'doc' },
+  { id: 'services', href: '/staff/outlab/services', labelTh: 'บริการส่งต่อ', labelEn: 'Referral Services', icon: 'clipboard' },
   { id: 'settings', href: '/staff/outlab/settings', labelTh: 'ตั้งค่า', labelEn: 'Settings', icon: 'settings' },
 ] as const satisfies readonly ModuleNavigationItem[]
 
