@@ -3,8 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getTests } from '@/lib/queries/tests'
 import type { Test } from '@/lib/supabase/types'
 import { verifyLineSignature, replyMessage, type LineMessage } from '@/lib/line/client'
-import { formatTestReply, formatListReply, formatNotFound, buildListMoreQuickReply, LIST_MORE_PREFIX, parseBatchItems, CODE_TOKEN } from '@/lib/line/format'
-import { buildTestCarousel, type BatchResult } from '@/lib/line/test-flex'
+import { formatListReply, formatNotFound, buildListMoreQuickReply, LIST_MORE_PREFIX, parseBatchItems, CODE_TOKEN } from '@/lib/line/format'
+import { buildTestFlex, buildTestCarousel, type BatchResult } from '@/lib/line/test-flex'
 
 const BATCH_CARD_LIMIT = 12  // LINE Flex carousel holds at most 12 bubbles
 
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
             .from('test_documents')
             .select('name, doc_type')
             .eq('test_id', primary.id)
-          await replyMessage(replyToken, [{ type: 'text', text: formatTestReply(primary, docs ?? [], extraContacts) }])
+          await replyMessage(replyToken, [buildTestFlex(primary, extraContacts, docs ?? [])])
           continue
         }
       }
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
           .from('test_documents')
           .select('name, doc_type')
           .eq('test_id', primary.id)
-        await replyMessage(replyToken, [{ type: 'text', text: formatTestReply(primary, docs ?? [], extraContacts) }])
+        await replyMessage(replyToken, [buildTestFlex(primary, extraContacts, docs ?? [])])
       } else if (data.length > 1) {
         const tests = data.map(rows => rows[0])
         if (isMoreRequest) {
