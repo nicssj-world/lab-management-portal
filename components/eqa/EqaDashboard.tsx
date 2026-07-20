@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import type { EqaOverview } from '@/lib/eqa/types'
 import { RecordEditDialog, type RecordEditField } from '@/components/external-quality/RecordEditDialog'
 import { Icon } from '@/components/ui/Icon'
+import { AssigneePicker } from '@/components/ui/AssigneePicker'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { ModuleSubnav } from '@/components/ui/ModuleSubnav'
 import { EQA_NAVIGATION } from '@/lib/navigation'
@@ -184,7 +185,18 @@ export function EqaDashboard({ overview, fiscalYearBe, canEdit, isAdmin, activeS
       <section style={card}><div className="eqa-scroll"><table className="eqa-table"><thead><tr><th>รอบ/เรื่อง</th><th>สาเหตุ/การแก้ไข</th><th>ผู้รับผิดชอบ</th><th>กำหนด</th><th>สถานะ/ทวนสอบ</th>{canEdit && <th>จัดการ</th>}</tr></thead><tbody>{overview.capas.map(capa => <tr key={capa.id}><td>{roundName.get(capa.round_id)}<br /><strong>{capa.title}</strong></td><td>{capa.root_cause}<br />{capa.corrective_action}</td><td>{overview.people.find(p => p.id === capa.owner_id)?.name ?? '—'}</td><td>{fmt(capa.due_on)}</td><td><span className="eqa-badge">{statusTh[capa.status]}</span>{canEdit && capa.status === 'open' && <button style={{ ...button, minHeight: 28, marginLeft: 6 }} onClick={() => submit(`/api/admin/eqa/capas/${capa.id}`, 'PATCH', { status: 'completed' })}>เสร็จแล้ว</button>}{canEdit && capa.status === 'completed' && <button style={{ ...button, minHeight: 28, marginLeft: 6 }} onClick={() => { const result = prompt('ผลการทวนสอบประสิทธิผล'); if (result) submit(`/api/admin/eqa/capas/${capa.id}`, 'PATCH', { status: 'verified', effectivenessResult: result }) }}>ทวนสอบ</button>}<div>{capa.effectiveness_result}</div></td>{canEdit && <td><div style={{ display: 'flex', gap: 6 }}><button type="button" style={{ ...button, minHeight: 28, padding: '0 9px', fontSize: 11 }} onClick={() => editCapa(capa)}>แก้ไข</button>{capa.status === 'open' && <button type="button" style={{ ...button, minHeight: 28, padding: '0 9px', fontSize: 11, background: '#B91C1C' }} onClick={() => deactivate(`/api/admin/eqa/capas/${capa.id}`, `ลบ CAPA ${capa.title}`)}>ลบ</button>}</div></td>}</tr>)}</tbody></table></div></section>
     </>}
 
-    {tab === 'settings' && isAdmin && <section style={card}><h2 style={{ marginTop: 0 }}>ผู้มีสิทธิ์แก้ไข EQA</h2><p style={{ color: 'var(--muted)' }}>Admin แก้ไขได้โดยอัตโนมัติ ผู้รับผิดชอบไม่ได้สิทธิ์แก้ไขจนกว่าจะเพิ่มในรายการนี้</p><div className="eqa-grid">{overview.people.map(person => <label key={person.id} style={{ display: 'flex', gap: 9, alignItems: 'center', padding: 10, border: '1px solid var(--border)', borderRadius: 9 }}><input type="checkbox" checked={editors.includes(person.id)} onChange={async event => { const enabled = event.target.checked; await request('/api/admin/eqa/editors', 'PATCH', { userId: person.id, enabled }); setEditors(current => enabled ? [...current, person.id] : current.filter(id => id !== person.id)) }} /><span>{person.name}<small style={{ display: 'block', color: 'var(--muted)' }}>{person.dept || person.role}</small></span></label>)}</div></section>}
+    {tab === 'settings' && isAdmin && <section style={card}><AssigneePicker
+      people={overview.people}
+      selectedIds={editors}
+      title="ผู้มีสิทธิ์แก้ไข EQA"
+      description="Admin แก้ไขได้โดยอัตโนมัติ ผู้รับผิดชอบไม่ได้สิทธิ์แก้ไขจนกว่าจะเพิ่มในรายการนี้"
+      searchPlaceholder="ค้นหาชื่อ แผนก หรือตำแหน่ง เพื่อเพิ่มผู้มีสิทธิ์แก้ไข"
+      emptyText="ยังไม่มีผู้มีสิทธิ์แก้ไขนอกเหนือจาก Admin"
+      onToggle={async (userId, enabled) => {
+        await request('/api/admin/eqa/editors', 'PATCH', { userId, enabled })
+        setEditors(current => enabled ? [...current, userId] : current.filter(id => id !== userId))
+      }}
+    /></section>}
     {editor && <RecordEditDialog title={editor.title} fields={editor.fields} initialValues={editor.initialValues} onSave={editor.onSave} onClose={() => setEditor(null)} />}
   </div>
 }
