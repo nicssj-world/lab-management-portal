@@ -9,6 +9,10 @@ import { PublicHeroSearch } from '@/components/public/PublicHeroSearch'
 import { LineQrCard } from '@/components/public/LineQrCard'
 import { CAT_MAP } from '@/lib/validations/news'
 
+// หน้านี้ดึงข่าว/หมวด/settings ผ่าน supabaseAdmin (ไม่แตะ cookie) Next จึง prerender เป็น static
+// ตอน build ทำให้ข่าวค้าง — ใช้ ISR 60 วิ ร่วมกับ revalidatePath('/') ในเส้นทาง API ข่าว
+export const revalidate = 60
+
 export default async function PublicHome() {
   const [categories, featuredNews, settingsRow] = await Promise.all([
     getCategories(supabaseAdmin).catch(() => []),

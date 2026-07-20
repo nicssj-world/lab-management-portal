@@ -4,6 +4,7 @@ import { NewsSchema } from '@/lib/validations/news'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 
 async function getActor() {
   const supabase = await createClient()
@@ -111,6 +112,7 @@ export async function PATCH(
       .insert({ action: 'update_news', user_id: actor.id, target: id, detail: updated.title })
       .then(undefined, () => {})
 
+    revalidatePath('/')
     return NextResponse.json(updated)
   } catch (err) {
     return NextResponse.json({ error: toMsg(err) }, { status: 500 })
@@ -146,6 +148,7 @@ export async function DELETE(
       .insert({ action: 'delete_news', user_id: actor.id, target: id, detail: current.title })
       .then(undefined, () => {})
 
+    revalidatePath('/')
     return new NextResponse(null, { status: 204 })
   } catch (err) {
     return NextResponse.json({ error: toMsg(err) }, { status: 500 })

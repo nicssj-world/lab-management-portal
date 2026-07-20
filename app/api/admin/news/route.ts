@@ -4,6 +4,7 @@ import { NewsSchema } from '@/lib/validations/news'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 
 async function getActor() {
   const supabase = await createClient()
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
       .insert({ action: 'create_news', user_id: actor.id, target: String(news.id), detail: news.title })
       .then(undefined, () => {})
 
+    revalidatePath('/')
     return NextResponse.json(news, { status: 201 })
   } catch (err) {
     return NextResponse.json({ error: toMsg(err) }, { status: 500 })
