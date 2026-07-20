@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { requireResource } from '@/lib/auth/guards'
+import { requireSatisfaction } from '@/lib/surveys/guard'
 import { getSurveyDashboardData } from '@/lib/surveys/dashboard-server'
 
 export async function GET(request: Request) {
-  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'view')
+  const access = await requireSatisfaction('view')
   if (access.response) return access.response
   const query = new URL(request.url).searchParams
   const campaignId = query.get('campaignId')

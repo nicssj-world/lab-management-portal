@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireResource } from '@/lib/auth/guards'
+import { requireSatisfaction } from '@/lib/surveys/guard'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 const readStateSchema = z.object({ read: z.boolean() })
 type Context = { params: Promise<{ answerId: string }> }
 
 export async function PATCH(request: Request, { params }: Context) {
-  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'view')
+  const access = await requireSatisfaction('view')
   if (access.response) return access.response
   const actor = access.actor
   if (!(actor.role === 'Admin' || actor.role === 'Manager')) {

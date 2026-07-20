@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { requireResource } from '@/lib/auth/guards'
+import { requireSatisfaction } from '@/lib/surveys/guard'
 import { publishSurveySchema } from '@/lib/surveys/schemas'
 import { publishSurveyDraft } from '@/lib/surveys/server'
 
 type Context = { params: Promise<{ surveyId: string }> }
 
 export async function POST(request: Request, { params }: Context) {
-  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'edit')
+  const access = await requireSatisfaction('edit')
   if (access.response) return access.response
   const parsed = publishSurveySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'ข้อมูลเวอร์ชันไม่ถูกต้อง' }, { status: 400 })

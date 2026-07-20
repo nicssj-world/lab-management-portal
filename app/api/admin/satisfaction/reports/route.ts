@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireResource } from '@/lib/auth/guards'
+import { requireSatisfaction } from '@/lib/surveys/guard'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getSurveyDashboardData } from '@/lib/surveys/dashboard-server'
 import { buildAnnualReportModel } from '@/lib/surveys/report'
@@ -10,7 +10,7 @@ const fiscalPeriod = (fiscalYear: number) => {
 }
 
 export async function GET(request: Request) {
-  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'view')
+  const access = await requireSatisfaction('view')
   if (access.response) return access.response
   const params = new URL(request.url).searchParams
   const campaignId = params.get('campaignId')

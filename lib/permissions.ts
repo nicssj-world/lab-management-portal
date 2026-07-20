@@ -50,6 +50,27 @@ export async function getPermissionsWithEquipmentOverride(
   return perms
 }
 
+// Grants a designated member edit access to the whole แบบสำรวจความพึงพอใจ module
+// (surveys + campaigns), regardless of role.
+export async function getPermissionsWithSatisfactionOverride(
+  role: string,
+  userId: string,
+): Promise<Permissions> {
+  const perms = await getRolePermissions(role)
+  if (normalizeRole(role) === 'Admin') return perms
+
+  const { data, error } = await supabaseAdmin
+    .from('satisfaction_editors')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  // Keep existing role-based behaviour if the SQL has not been run yet.
+  if (error) return perms
+  if (data?.user_id) perms['แบบสำรวจความพึงพอใจ'] = 'edit'
+  return perms
+}
+
 // Grants a designated "คณะทำงาน IT" member admin-equivalent edit access to the whole
 // งาน IT module (access register + downtime log + backup log), regardless of role.
 export async function getPermissionsWithItOverride(

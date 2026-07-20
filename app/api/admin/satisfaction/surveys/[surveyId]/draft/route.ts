@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireResource } from '@/lib/auth/guards'
+import { requireSatisfaction } from '@/lib/surveys/guard'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { cloneDraftSchema, discardDraftSchema, draftMutationSchema } from '@/lib/surveys/schemas'
 import { cloneSurveyDraft, discardSurveyDraft, saveSurveyDraft } from '@/lib/surveys/server'
@@ -8,7 +8,7 @@ import type { SurveyVersionDefinition } from '@/lib/surveys/types'
 type Context = { params: Promise<{ surveyId: string }> }
 
 export async function PUT(request: Request, { params }: Context) {
-  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'edit')
+  const access = await requireSatisfaction('edit')
   if (access.response) return access.response
   const parsed = draftMutationSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'โครงสร้างแบบสำรวจไม่ถูกต้อง', issues: parsed.error.flatten() }, { status: 400 })
@@ -25,7 +25,7 @@ export async function PUT(request: Request, { params }: Context) {
 }
 
 export async function POST(request: Request, { params }: Context) {
-  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'edit')
+  const access = await requireSatisfaction('edit')
   if (access.response) return access.response
   const parsed = cloneDraftSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'ข้อมูลเวอร์ชันไม่ถูกต้อง' }, { status: 400 })
@@ -39,7 +39,7 @@ export async function POST(request: Request, { params }: Context) {
 }
 
 export async function DELETE(request: Request, { params }: Context) {
-  const access = await requireResource('แบบสำรวจความพึงพอใจ', 'edit')
+  const access = await requireSatisfaction('edit')
   if (access.response) return access.response
   const parsed = discardDraftSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'ข้อมูลฉบับร่างไม่ถูกต้อง' }, { status: 400 })
