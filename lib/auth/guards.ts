@@ -53,6 +53,11 @@ export async function getActor(): Promise<Actor | null> {
   } as Actor
 }
 
+// Public "เอกสารที่เกี่ยวข้อง" page sections — Admin (profiles.role) or DCC (profiles.doc_role)
+export function canManagePublicSections(actor: Actor): boolean {
+  return actor.role === 'Admin' || actor.doc_role === 'Document Controller'
+}
+
 export async function getPermissionLevel(actor: Actor, resource: ResourceKey): Promise<PermLevel> {
   const perms = await getRolePermissions(actor.role)
   return perms[resource] ?? 'none'
