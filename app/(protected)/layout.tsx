@@ -35,6 +35,14 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     const { data: surveyEditor } = await supabaseAdmin
       .from('satisfaction_editors').select('user_id').eq('user_id', user.id).maybeSingle()
     if (surveyEditor?.user_id) permissions['แบบสำรวจความพึงพอใจ'] = 'edit'
+    // EQA / OUTLAB overrides: the module editor lists grant edit regardless of role,
+    // matching externalQualityContext() so the sidebar matches what the routes allow.
+    const { data: eqaEditor } = await supabaseAdmin
+      .from('eqa_editors').select('user_id').eq('user_id', user.id).maybeSingle()
+    if (eqaEditor?.user_id) permissions['EQA / PT'] = 'edit'
+    const { data: outlabEditor } = await supabaseAdmin
+      .from('outlab_editors').select('user_id').eq('user_id', user.id).maybeSingle()
+    if (outlabEditor?.user_id) permissions['OUTLAB'] = 'edit'
   }
   if (['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer'].includes(profile.doc_role ?? '')) {
     permissions['เอกสารคุณภาพ'] = 'edit'

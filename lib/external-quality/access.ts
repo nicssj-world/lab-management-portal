@@ -1,22 +1,38 @@
 import { NextResponse } from 'next/server'
 import type { Actor } from '@/lib/auth/guards'
+import type { PermLevel } from '@/lib/permissions'
+import type { ResourceKey } from '@/lib/permission-resources'
 import { isAdminRole } from '@/lib/roles'
 
 export type ExternalQualityModule = 'outlab' | 'eqa'
 
-export function canEditExternalQualityModule(role: string, listedEditor: boolean) {
-  return isAdminRole(role) || listedEditor
+export const EXTERNAL_QUALITY_RESOURCE: Record<ExternalQualityModule, ResourceKey> = {
+  eqa: 'EQA / PT',
+  outlab: 'OUTLAB',
+}
+
+// Admin and members of the module's editor list always get edit; everyone else
+// follows the permission matrix level for the module resource.
+export function externalQualityLevel(role: string, listedEditor: boolean, roleLevel: PermLevel): PermLevel {
+  if (isAdminRole(role) || listedEditor) return 'edit'
+  return roleLevel
+}
+
+export function canEditExternalQualityModule(role: string, listedEditor: boolean, roleLevel: PermLevel = 'none') {
+  return externalQualityLevel(role, listedEditor, roleLevel) === 'edit'
 }
 
 export async function externalQualityContext(module: ExternalQualityModule, edit = false): Promise<{
   actor?: Actor
   canEdit?: boolean
   isAdmin?: boolean
+  level?: PermLevel
   response?: NextResponse
 }> {
-  const [{ getActor }, { supabaseAdmin }] = await Promise.all([
+  const [{ getActor }, { supabaseAdmin }, { getRolePermissions }] = await Promise.all([
     import('@/lib/auth/guards'),
     import('@/lib/supabase/admin'),
+    import('@/lib/permissions'),
   ])
   const actor = await getActor()
   if (!actor) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
@@ -33,9 +49,14 @@ export async function externalQualityContext(module: ExternalQualityModule, edit
     }
     listedEditor = Boolean(data?.user_id)
   }
-  const canEdit = canEditExternalQualityModule(actor.role, listedEditor)
-  if (edit && !canEdit) return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
-  return { actor, canEdit, isAdmin }
+  const perms = await getRolePermissions(actor.role)
+  const level = externalQualityLevel(actor.role, listedEditor, perms[EXTERNAL_QUALITY_RESOURCE[module]] ?? 'none')
+  const canEdit = level === 'edit'
+  if (level === 'none') {
+    return { actor, canEdit, isAdmin, level, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  }
+  if (edit && !canEdit) return { actor, canEdit, isAdmin, level, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  return { actor, canEdit, isAdmin, level }
 }
 
 export async function auditExternalQuality(

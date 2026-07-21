@@ -6,8 +6,6 @@ const required = [
   'app/(protected)/staff/eqa/page.tsx',
   'components/outlab/OutlabDashboard.tsx',
   'components/eqa/EqaDashboard.tsx',
-  'components/dashboard/ExternalQualityAlerts.tsx',
-  'lib/external-quality/dashboard.ts',
 ]
 for (const file of required) assert.equal(existsSync(file), true, `exists: ${file}`)
 
@@ -20,8 +18,9 @@ assert.ok(topbar.includes("'/staff/eqa'"))
 
 const manual = readFileSync('app/(public)/manual/page.tsx', 'utf8')
 assert.ok(manual.includes('getPublicOutlabPartners'))
+// หน้า dashboard รวมไม่แสดงการ์ด EQA/OUTLAB แล้ว — ดูในโมดูลของตัวเองเท่านั้น
 const dashboard = readFileSync('app/(protected)/staff/dashboard/page.tsx', 'utf8')
-assert.ok(dashboard.includes('ExternalQualityAlerts'))
+assert.equal(dashboard.includes('ExternalQualityAlerts'), false)
 const outlabDashboard = readFileSync('components/outlab/OutlabDashboard.tsx', 'utf8')
 const eqaDashboard = readFileSync('components/eqa/EqaDashboard.tsx', 'utf8')
 const navigation = readFileSync('lib/navigation.ts', 'utf8')

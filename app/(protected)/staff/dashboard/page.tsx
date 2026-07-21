@@ -16,8 +16,6 @@ import { getEntryStatus } from '@/lib/queries/kpi'
 import { getPreviousThaiFiscalMonth } from '@/lib/kpi-utils'
 import { getKpiCompletionState, getKpiProgressColor } from '@/lib/dashboard/kpi-completion'
 import type { PermLevel } from '@/lib/permissions'
-import { getExternalQualityAlerts } from '@/lib/external-quality/dashboard'
-import { ExternalQualityAlerts } from '@/components/dashboard/ExternalQualityAlerts'
 
 export const dynamic = 'force-dynamic'
 
@@ -125,7 +123,6 @@ export default async function StaffDashboardPage() {
 
   const qualityLevel = (permissions['งานคุณภาพ'] ?? 'none') as PermLevel
   const qualityToday = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-  const externalQualityAlerts = await getExternalQualityAlerts(qualityToday)
   const qualityYear = Number(qualityToday.slice(0, 4)); const qualityMonth = Number(qualityToday.slice(5, 7))
   const qualityFiscalStart = `${qualityMonth >= 10 ? qualityYear : qualityYear - 1}-10-01`
   const qualityFiscalEnd = `${qualityMonth >= 10 ? qualityYear + 1 : qualityYear}-09-30`
@@ -365,10 +362,6 @@ export default async function StaffDashboardPage() {
             staffCompetencyDueSoon={staffCompetencyDueSoon}
             permissions={permissions}
           />
-        </div>
-
-        <div className="dash-fade" style={{ animationDelay: '.24s' }}>
-          <ExternalQualityAlerts data={externalQualityAlerts} />
         </div>
 
         {/* ══ RECENT ACTIVITY ══ */}

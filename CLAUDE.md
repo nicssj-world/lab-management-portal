@@ -567,8 +567,8 @@ Core invariants:
 | News | `ข่าวสาร` | `/staff/news` | — |
 | Rejection Log | `ความเสี่ยง / Rejection` | `/staff/rejection?view=<report-view-id>` | — |
 | Risk Register | `ความเสี่ยง / Rejection` | `/staff/risk`, `/staff/risk/ior`, `/staff/risk/register`, `/staff/risk/smart-rm` | — |
-| EQA / PT | — (authenticated; editor list controls mutation) | `/staff/eqa`, `/staff/eqa/programs`, `/staff/eqa/rounds`, `/staff/eqa/coverage`, `/staff/eqa/capa`, Admin `/staff/eqa/settings` | `/api/admin/eqa/*` |
-| OUTLAB | — (authenticated; editor list controls mutation) | `/staff/outlab`, `/staff/outlab/laboratories`, `/staff/outlab/services`, `/staff/outlab/certificates`, Admin `/staff/outlab/settings` | `/api/admin/outlab/*` |
+| EQA / PT | `EQA / PT` (editor list overrides to edit) | `/staff/eqa`, `/staff/eqa/programs`, `/staff/eqa/rounds`, `/staff/eqa/coverage`, `/staff/eqa/capa`, Admin `/staff/eqa/settings` | `/api/admin/eqa/*` |
+| OUTLAB | `OUTLAB` (editor list overrides to edit) | `/staff/outlab`, `/staff/outlab/laboratories`, `/staff/outlab/services`, `/staff/outlab/certificates`, Admin `/staff/outlab/settings` | `/api/admin/outlab/*` |
 | Contracts | `สัญญา` | `/staff/contracts` | — |
 | KPI | `KPI` | `/kpi/dashboard?view=dashboard\|annual\|compare\|satisfaction` | — |
 | Lab Workload | `Workload` | `/lab-workload/dashboard?section=<overview-or-department-id>` | — |
