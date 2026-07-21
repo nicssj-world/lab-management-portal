@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: '/',        th: 'หน้าแรก',              en: 'Home' },
   { href: '/catalog', th: 'รายการตรวจวิเคราะห์',   en: 'Test Catalog' },
   { href: '/manual',  th: 'คู่มือห้องปฏิบัติการ',  en: 'Lab Manual' },
+  { href: '/related-documents', th: 'เอกสารที่เกี่ยวข้อง', en: 'Related Documents' },
   { href: '/news',    th: 'ข่าวสาร',               en: 'News' },
   { href: '/contact', th: 'โครงสร้างองค์กร',      en: 'Organization' },
 ]
@@ -78,12 +79,12 @@ export function PublicNav() {
         .pub-nav-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
         .pub-hamburger { display: none; }
         .pub-nav-inner {
-          max-width: 1280px;
+          max-width: 1440px;
           margin: 0 auto;
           padding: 14px 20px;
           display: flex;
           align-items: center;
-          gap: 20px;
+          gap: 16px;
           min-width: 0;
         }
         .pub-logo-link {
@@ -136,7 +137,8 @@ export function PublicNav() {
         [data-theme="dark"] .pub-profile-chip {
           box-shadow: inset 0 1px 0 rgba(255,255,255,.06), var(--public-shadow-sm);
         }
-        @media (max-width: 1100px) {
+        /* Six Thai nav labels + logo + actions stop fitting comfortably below this width. */
+        @media (max-width: 1240px) {
           .pub-header {
             position: relative;
             top: auto;
@@ -207,7 +209,7 @@ export function PublicNav() {
                   className="pub-nav-link"
                   data-active={active ? 'true' : 'false'}
                   style={{
-                    padding: '9px 13px 11px', borderRadius: 10, textDecoration: 'none',
+                    padding: '9px 11px 11px', borderRadius: 10, textDecoration: 'none',
                     background: active ? 'var(--primary-soft)' : 'transparent',
                     color: active ? 'var(--primary)' : 'var(--ink)',
                     fontWeight: active ? 600 : 500, fontSize: 13,
@@ -267,8 +269,16 @@ export function PublicNav() {
                       {sessionUser.name.charAt(0).toUpperCase()}
                     </div>
                   )}
-                  <div style={{ lineHeight: 1.2 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+                  <div style={{ lineHeight: 1.2, minWidth: 0 }}>
+                    {/* Names are user-supplied and unbounded — cap the chip so a long one
+                        cannot push the nav into the logo. */}
+                    <div
+                      title={sessionUser.name}
+                      style={{
+                        fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap',
+                        maxWidth: 132, overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}
+                    >
                       {sessionUser.name}
                     </div>
                     <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, letterSpacing: '.04em' }}>
@@ -279,8 +289,11 @@ export function PublicNav() {
                 </div>
               </Link>
             ) : (
+              // Staff-only action on a page built for patients and external units —
+              // it stays in the expected top-right slot but must not outrank the
+              // public-facing nav links visually.
               <Link href="/login">
-                <Button variant="primary" size="md" icon="lock">
+                <Button variant="secondary" size="md" icon="lock">
                   {lang === 'th' ? 'เข้าสู่ระบบ' : 'Sign in'}
                 </Button>
               </Link>
@@ -349,7 +362,7 @@ export function PublicNav() {
           className="pub-mobile-nav-panel"
         >
           <style>{`
-            @media (max-width: 1100px) {
+            @media (max-width: 1240px) {
               .pub-mobile-nav-panel { display: block !important; }
             }
           `}</style>
@@ -406,7 +419,7 @@ export function PublicNav() {
               <Link href="/login" style={{ display: 'block' }}>
                 <button style={{
                   width: '100%', padding: '12px', borderRadius: 10,
-                  background: 'var(--primary)', color: '#fff', border: 'none',
+                  background: 'var(--card)', color: 'var(--ink)', border: '1px solid var(--border)',
                   fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 }}>
