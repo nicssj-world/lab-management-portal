@@ -208,8 +208,14 @@ function DonutCard({ icon, title, subtitle, rows, total, centerLabel }: { icon: 
 
   return (
     <Card padding={18}>
+      <style>{`
+        .workforce-donut-container { container-type: inline-size; }
+        .workforce-donut-grid { display: grid; grid-template-columns: 138px minmax(0, 1fr); gap: 18px; align-items: center; margin-top: 18px; }
+        @container (max-width: 300px) { .workforce-donut-grid { grid-template-columns: 1fr; justify-items: center; } }
+      `}</style>
+      <div className="workforce-donut-container">
       <SectionTitle icon={icon} title={title} subtitle={subtitle} />
-      <div style={{ display: 'grid', gridTemplateColumns: '138px minmax(0, 1fr)', gap: 18, alignItems: 'center', marginTop: 18 }}>
+      <div className="workforce-donut-grid">
         <div
           role="img"
           aria-label={`${title} รวม ${total} คน`}
@@ -230,10 +236,11 @@ function DonutCard({ icon, title, subtitle, rows, total, centerLabel }: { icon: 
           </div>
         </div>
 
-        <div style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+        <div style={{ display: 'grid', gap: 8, minWidth: 0, width: '100%' }}>
           {activeRows.map((row) => <LegendRow key={row.label} row={row} total={total} />)}
           {activeRows.length === 0 && <div style={{ color: 'var(--muted)', fontSize: 12.5 }}>ไม่มีข้อมูลที่บันทึกไว้</div>}
         </div>
+      </div>
       </div>
     </Card>
   )
