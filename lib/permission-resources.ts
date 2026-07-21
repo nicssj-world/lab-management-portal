@@ -20,6 +20,8 @@ export const RESOURCES = [
   'งานคุณภาพ',
   'แบบสำรวจความพึงพอใจ',
   'ระบบสารสนเทศ (IT)',
+  'EQA / PT',
+  'OUTLAB',
 ] as const
 
 export type ResourceKey = typeof RESOURCES[number]

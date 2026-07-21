@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic'
 export async function renderEqaSection(activeSection: EqaSection, searchParams: Promise<{ fiscalYearBe?: string }>) {
   const context = await externalQualityContext('eqa')
   if (!context.actor) redirect('/login?next=/staff/eqa')
+  if (context.level === 'none') redirect('/staff/dashboard')
   if (activeSection === 'settings' && !context.isAdmin) redirect('/staff/eqa')
   const requested = Number((await searchParams).fiscalYearBe)
   const fiscalYearBe = Number.isInteger(requested) && requested >= 2500 ? requested : fiscalYearBeForDate(bangkokToday())

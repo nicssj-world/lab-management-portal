@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic'
 export async function renderOutlabSection(activeSection: OutlabSection) {
   const context = await externalQualityContext('outlab')
   if (!context.actor) redirect('/login?next=/staff/outlab')
+  if (context.level === 'none') redirect('/staff/dashboard')
   if (activeSection === 'settings' && !context.isAdmin) redirect('/staff/outlab')
   const overview = await getOutlabOverview()
   return <OutlabDashboard overview={overview} canEdit={Boolean(context.canEdit)} isAdmin={Boolean(context.isAdmin)} activeSection={activeSection} />

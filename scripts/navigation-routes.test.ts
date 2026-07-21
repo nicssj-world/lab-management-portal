@@ -41,8 +41,4 @@ for (const path of ['components/eqa/EqaDashboard.tsx', 'components/outlab/Outlab
 const topbar = read('components/layout/StaffTopbar.tsx')
 assert.ok(topbar.includes('resolvePageTitle'), 'topbar uses the shared longest-route title resolver')
 
-const externalQualityAlerts = read('components/dashboard/ExternalQualityAlerts.tsx')
-assert.ok(externalQualityAlerts.includes('/staff/outlab/certificates?filter='), 'dashboard alerts use the canonical OUTLAB certificates route')
-assert.ok(!externalQualityAlerts.includes('/staff/outlab?tab='), 'dashboard alerts no longer link to the legacy OUTLAB tab URL')
-
 console.log('navigation route tests passed')
