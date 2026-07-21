@@ -9,12 +9,16 @@ type Doc = Pick<TestDocument, 'name' | 'doc_type'>
 
 const PRIMARY = '#1E5FAD'  // var(--primary)
 const GREY = '#94A3B8'     // muted grey for the "not found" card
+const AMBER = '#D97706'    // var(--warning), for the "multiple matches" card
 
 // One card per query term, kept in the order the user typed them so a missing item
 // shows a grey "not found" card in place rather than silently dropping out of the list.
+// A term matching several distinct catalog entries (e.g. "hemo") is "ambiguous" rather
+// than "found" — the batch flow never guesses which one the user meant.
 export type BatchResult =
   | { kind: 'found'; test: Test; extraContacts: string[] }
   | { kind: 'notFound'; query: string }
+  | { kind: 'ambiguous'; query: string; count: number }
 
 // Same precedence as formatTestReply: explicit minutes label → hours → freeform tat text.
 function tatLabel(test: Test): string | null {
@@ -140,6 +144,32 @@ function notFoundBubble(query: string): Record<string, unknown> {
   }
 }
 
+function ambiguousBubble(query: string, count: number): Record<string, unknown> {
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: AMBER, paddingAll: '12px',
+      contents: [{ type: 'text', text: 'พบหลายรายการ', color: '#FFFFFF', size: 'sm', weight: 'bold' }],
+    },
+    body: {
+      type: 'box', layout: 'vertical', paddingAll: '14px', spacing: 'sm',
+      contents: [
+        { type: 'text', text: `🔎 "${query}"`, weight: 'bold', size: 'md', color: '#0F172A', wrap: true },
+        { type: 'text', text: `พบ ${count} รายการที่ตรงกัน กดปุ่มด้านล่างเพื่อดูตัวเลือกทั้งหมด`, size: 'xs', color: '#64748B', wrap: true, margin: 'sm' },
+      ],
+    },
+    footer: {
+      type: 'box', layout: 'vertical', paddingStart: '14px', paddingEnd: '14px', paddingBottom: '14px',
+      contents: [{
+        type: 'button', style: 'secondary', height: 'sm',
+        // Re-sends this single term so it runs through the normal single-search flow,
+        // which replies with the results-menu list (buildTestListFlex) for >1 match.
+        action: { type: 'message', label: `ดูตัวเลือก (${count})`, text: query },
+      }],
+    },
+  }
+}
+
 // Single-test reply: one full-detail card (same look as the carousel cards, more fields).
 export function buildTestFlex(test: Test, extraContacts: string[], docs: Doc[] = []): LineFlexMessage {
   const name = test.th || test.en || 'รายการตรวจ'
@@ -165,17 +195,19 @@ export function buildTestListFlex(tests: Test[], query: string, opts: TestListOp
     if (i > 0) rows.push({ type: 'separator', color: '#E5EAF0' })
     const name = t.th || t.en || t.code
     const priceText = t.price != null ? ` · 💰 ${new Intl.NumberFormat('th-TH').format(t.price)} บาท` : ''
+    const lines: Record<string, unknown>[] = [
+      { type: 'text', text: name, size: 'sm', weight: 'bold', color: '#0F172A', wrap: true },
+      { type: 'text', text: `🔢 ${t.code}${priceText}`, size: 'xs', color: '#64748B', wrap: true },
+    ]
+    // which lab section handles the test — helps tell same-named entries apart
+    if (t.contact_name) {
+      lines.push({ type: 'text', text: `🏥 ${t.contact_name}`, size: 'xs', color: '#94A3B8', wrap: true })
+    }
     rows.push({
       type: 'box', layout: 'horizontal', paddingTop: 'md', paddingBottom: 'md', spacing: 'sm',
       action: { type: 'message', text: t.code },
       contents: [
-        {
-          type: 'box', layout: 'vertical', flex: 1, spacing: 'xs',
-          contents: [
-            { type: 'text', text: name, size: 'sm', weight: 'bold', color: '#0F172A', wrap: true },
-            { type: 'text', text: `🔢 ${t.code}${priceText}`, size: 'xs', color: '#64748B', wrap: true },
-          ],
-        },
+        { type: 'box', layout: 'vertical', flex: 1, spacing: 'xs', contents: lines },
         { type: 'text', text: '›', size: 'xl', color: '#94A3B8', flex: 0, gravity: 'center', align: 'end' },
       ],
     })
@@ -211,11 +243,20 @@ export function buildTestListFlex(tests: Test[], query: string, opts: TestListOp
   }
 }
 
+function batchBubble(r: BatchResult): Record<string, unknown> {
+  if (r.kind === 'found') return foundBubble(r)
+  if (r.kind === 'ambiguous') return ambiguousBubble(r.query, r.count)
+  return notFoundBubble(r.query)
+}
+
 export function buildTestCarousel(results: BatchResult[]): LineFlexMessage {
-  const bubbles = results.map(r => r.kind === 'found' ? foundBubble(r) : notFoundBubble(r.query))
+  const bubbles = results.map(batchBubble)
   const foundCount = results.filter(r => r.kind === 'found').length
-  const notFoundCount = results.length - foundCount
-  const altText = `ผลค้นหา ${results.length} รายการ (พบ ${foundCount}${notFoundCount ? ` ไม่พบ ${notFoundCount}` : ''})`
+  const ambiguousCount = results.filter(r => r.kind === 'ambiguous').length
+  const notFoundCount = results.length - foundCount - ambiguousCount
+  const altText = `ผลค้นหา ${results.length} รายการ (พบ ${foundCount}`
+    + `${ambiguousCount ? ` พบหลายรายการ ${ambiguousCount}` : ''}`
+    + `${notFoundCount ? ` ไม่พบ ${notFoundCount}` : ''})`
 
   return {
     type: 'flex',
