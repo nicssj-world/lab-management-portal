@@ -14,10 +14,15 @@ export async function GET() {
   return NextResponse.json({ ok: true })
 }
 
-// among rows sharing a code, prefer the row from a "main" department (anything
-// other than ศูนย์สุขภาพชุมชนเมืองชลบุรี) as the primary contact/link target
+// anything other than ศูนย์สุขภาพชุมชนเมืองชลบุรี counts as a "main" department
+function isMainDeptRow(row: { contact_name?: string | null } | undefined): boolean {
+  return !(row?.contact_name ?? '').includes('ศูนย์สุขภาพชุมชนเมืองชลบุรี')
+}
+
+// among rows sharing a code, prefer the row from a "main" department as the primary
+// contact/link target
 function pickPrimaryRow<T extends { contact_name?: string | null }>(rows: T[]): T {
-  return rows.find(r => !(r.contact_name ?? '').includes('ศูนย์สุขภาพชุมชนเมืองชลบุรี')) ?? rows[0]
+  return rows.find(isMainDeptRow) ?? rows[0]
 }
 
 // rows sharing a code = same catalog entry with multiple department contacts: pick a
@@ -31,7 +36,10 @@ function toTestResult(rows: Test[]): { primary: Test; extraContacts: string[] } 
 }
 
 // dedupe by id, then group by code (preserving first-seen order) — the tests table has
-// multiple rows per code across categories.
+// multiple rows per code across categories. Distinct codes matching the same search term
+// (e.g. glucose under two different departments) are then reordered so any group backed by
+// a main department sorts ahead of a ศูนย์สุขภาพชุมชนเมืองชลบุรี-only group; order within
+// each tier is otherwise unchanged (stable sort).
 function groupTestRows(rawData: Test[]): Test[][] {
   const seenIds = new Set<number>()
   const groups = new Map<string, Test[]>()
@@ -42,7 +50,9 @@ function groupTestRows(rawData: Test[]): Test[][] {
     if (group) group.push(t)
     else groups.set(t.code, [t])
   }
-  return [...groups.values()]
+  return [...groups.values()].sort(
+    (a, b) => Number(!isMainDeptRow(pickPrimaryRow(a))) - Number(!isMainDeptRow(pickPrimaryRow(b))),
+  )
 }
 
 // Resolve each term of a multi-test message, keeping the user's original order so the
