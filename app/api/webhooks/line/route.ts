@@ -78,7 +78,14 @@ async function resolveBatch(items: string[]): Promise<BatchResult[]> {
       rows = codeMap.get(item.toUpperCase())
     } else {
       const { data: rawData } = await getTests(supabaseAdmin, { search: item, active: true, pageSize: 20 })
-      rows = groupTestRows(rawData)[0]
+      const groups = groupTestRows(rawData)
+      // a name term matching several distinct E-Phis codes is ambiguous — never guess
+      // which one the user meant, even after main-department sorting picks a "first".
+      if (groups.length > 1) {
+        results.push({ kind: 'ambiguous', query: item, count: groups.length })
+        continue
+      }
+      rows = groups[0]
     }
     if (rows && rows.length > 0) {
       const { primary, extraContacts } = toTestResult(rows)
@@ -178,7 +185,9 @@ export async function POST(req: NextRequest) {
         // a stale "more" tap could land past the end → fall back to the first page
         const safePage = pageGroups.length > 0 ? searchPage : 0
         const shown = pageGroups.length > 0 ? pageGroups : groups.slice(0, LIST_PER_PAGE)
-        const tests = shown.map(rows => rows[0])
+        // the list shows each entry's department, so use the primary row rather than
+        // whichever row happened to come back first
+        const tests = shown.map(pickPrimaryRow)
         const hasMore = (safePage + 1) * LIST_PER_PAGE < groups.length
         await replyMessage(replyToken, [buildTestListFlex(tests, searchQuery, {
           page: safePage, perPage: LIST_PER_PAGE, total: groups.length, approx, hasMore,
