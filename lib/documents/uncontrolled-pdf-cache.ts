@@ -33,9 +33,19 @@ function bangkokDate(now: Date) {
   }).format(now)
 }
 
+export function uncontrolledDerivativeRoot(documentId: string) {
+  return `documents/uncontrolled/${documentId}`
+}
+
 function derivativeKey(documentId: string, variant: DeliveryVariant) {
-  const root = `documents/uncontrolled/${documentId}`
+  const root = uncontrolledDerivativeRoot(documentId)
   return variant === 'preview' ? `${root}/preview.pdf` : `${root}/download-current.pdf`
+}
+
+// Every derivative this cache can write for a document. Purging a document must clean
+// these up too, otherwise they outlive the row that explains what they are.
+export function uncontrolledDerivativeKeys(documentId: string) {
+  return [derivativeKey(documentId, 'preview'), derivativeKey(documentId, 'download')]
 }
 
 function sourceKeySha256(sourceKey: string) {

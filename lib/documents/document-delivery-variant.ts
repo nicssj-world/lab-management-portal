@@ -3,12 +3,11 @@ import {
   type CacheableDocument,
 } from '@/lib/documents/uncontrolled-pdf-cache'
 import {
+  ELIGIBLE_TYPES,
   shouldUseUncontrolledCopy,
   type DeliveryVariant,
   type UncontrolledAudience,
 } from '@/lib/documents/uncontrolled-pdf'
-
-const CONTROLLED_DOCUMENT_TYPES = new Set(['QM', 'QP', 'WI', 'Manual'])
 
 export class InvalidDeliveryVariantError extends Error {
   readonly code = 'INVALID_DELIVERY_VARIANT'
@@ -42,8 +41,10 @@ export function resolveDownloadAudience(input: {
   return input.actor?.doc_role === 'Viewer' ? 'viewer' : 'staff'
 }
 
+// Shares ELIGIBLE_TYPES with shouldUseUncontrolledCopy on purpose — when the two lists
+// were separate copies they could silently disagree about which types are controlled.
 export function isEligibleControlledDocument(document: Pick<DeliveryDocument, 'type' | 'status'>) {
-  return document.status === 'Published' && CONTROLLED_DOCUMENT_TYPES.has(document.type)
+  return document.status === 'Published' && ELIGIBLE_TYPES.has(document.type)
 }
 
 function isPdf(document: Pick<DeliveryDocument, 'file_name' | 'mime_type' | 'file_url'>) {

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { uncontrolledDerivativeKeys } from '@/lib/documents/uncontrolled-pdf-cache'
 import { NextResponse } from 'next/server'
 
 async function getActor() {
@@ -49,6 +50,11 @@ export async function DELETE() {
     }
     if (row.word_url) {
       r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: row.word_url })).catch(() => {})
+    }
+    // Stamped uncontrolled copies live under a key derived from the document id, so once
+    // the row is gone nothing can identify them any more.
+    for (const key of uncontrolledDerivativeKeys(row.id)) {
+      r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key })).catch(() => {})
     }
   }
 
