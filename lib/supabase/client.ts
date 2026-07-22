@@ -1,34 +1,30 @@
 import { createBrowserClient } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isProtectedPath } from '@/lib/auth/session-guard'
 
 let browserClient: SupabaseClient | undefined
 let staleAuthHandlerInstalled = false
 
-export function isInvalidRefreshTokenError(reason: unknown) {
-  const message = reason instanceof Error
+function errorMessage(reason: unknown) {
+  return reason instanceof Error
     ? reason.message
     : typeof reason === 'object' && reason && 'message' in reason
       ? String((reason as { message?: unknown }).message)
       : String(reason ?? '')
+}
+
+export function isInvalidRefreshTokenError(reason: unknown) {
+  const message = errorMessage(reason)
 
   return message.includes('Invalid Refresh Token') || message.includes('Refresh Token Not Found')
 }
 
-export function isRecoverableAuthSessionError(reason: unknown) {
-  const message = reason instanceof Error
-    ? reason.message
-    : typeof reason === 'object' && reason && 'message' in reason
-      ? String((reason as { message?: unknown }).message)
-      : String(reason ?? '')
-
-  return isInvalidRefreshTokenError(reason)
-    || message.includes('Failed to fetch')
-    || message.includes('NetworkError')
-    || message.includes('Load failed')
-}
-
+/**
+ * ล้าง session ที่เก็บไว้เฉพาะกรณี refresh token ตายจริงเท่านั้น
+ * ความล้มเหลวระดับเครือข่ายเกิดกับ fetch ตัวไหนในแอปก็ได้ ไม่ใช่สัญญาณว่า session เสีย
+ */
 export function recoverStaleAuthSession(reason: unknown) {
-  if (!isRecoverableAuthSessionError(reason)) return false
+  if (!isInvalidRefreshTokenError(reason)) return false
   clearStaleAuthSession()
   return true
 }
@@ -50,6 +46,13 @@ export function clearStaleAuthSession() {
     })
 }
 
+// การไม่มี session เป็นเรื่องปกติของหน้า public — เด้งไป /login เฉพาะหน้าที่ต้องล็อกอินจริง
+function redirectToLoginIfProtected() {
+  if (typeof window === 'undefined') return
+  if (!isProtectedPath(window.location.pathname)) return
+  window.location.assign('/login')
+}
+
 function installStaleAuthHandler() {
   if (staleAuthHandlerInstalled || typeof window === 'undefined') return
   staleAuthHandlerInstalled = true
@@ -57,9 +60,7 @@ function installStaleAuthHandler() {
   window.addEventListener('unhandledrejection', (event) => {
     if (!recoverStaleAuthSession(event.reason)) return
     event.preventDefault()
-    if (window.location.pathname !== '/login') {
-      window.location.assign('/login')
-    }
+    redirectToLoginIfProtected()
   })
 }
 
@@ -71,9 +72,7 @@ export function createClient() {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
     browserClient.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT' && typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        window.location.assign('/login')
-      }
+      if (event === 'SIGNED_OUT') redirectToLoginIfProtected()
     })
   }
   return browserClient

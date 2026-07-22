@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { RETURN_PATH_PARAM, isAuthServiceUnavailable, isProtectedPath, safeReturnPath } from '@/lib/auth/session-guard'
 
 function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) {
   request.cookies
@@ -20,8 +21,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const isProtected = /^\/(staff|kpi|lab-workload|tat)(?:\/|$)/.test(path)
-  if (!isProtected) {
+  if (!isProtectedPath(path)) {
     return NextResponse.next()
   }
 
@@ -47,6 +47,12 @@ export async function proxy(request: NextRequest) {
   }))
 
   if (error || !user) {
+    // ติดต่อ auth server ไม่ได้ ≠ ไม่ได้ล็อกอิน — ปล่อยผ่านโดยคง cookie ไว้
+    // layout ของ (protected) ยังตรวจ session ซ้ำฝั่ง server อยู่แล้ว
+    if (isAuthServiceUnavailable(error)) {
+      return response
+    }
+
     clearSupabaseAuthCookies(request, response)
 
     if (/\/api\//.test(path)) {
@@ -54,7 +60,13 @@ export async function proxy(request: NextRequest) {
       response.cookies.getAll().forEach((cookie) => unauthorizedResponse.cookies.set(cookie))
       return unauthorizedResponse
     }
-    const redirectResponse = NextResponse.redirect(new URL('/login', request.url))
+    // ฝากปลายทางเดิมไว้ให้หน้า login พากลับ — ไม่งั้นลิงก์ตรงและ QR ที่แปะไว้ในแล็บ
+    // จะพาไป dashboard ทุกครั้งแล้วผู้ใช้ต้องไปหาหน้าที่ต้องการเอง
+    const loginUrl = new URL('/login', request.url)
+    const returnTo = safeReturnPath(`${request.nextUrl.pathname}${request.nextUrl.search}`)
+    if (returnTo) loginUrl.searchParams.set(RETURN_PATH_PARAM, returnTo)
+
+    const redirectResponse = NextResponse.redirect(loginUrl)
     response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie))
     return redirectResponse
   }

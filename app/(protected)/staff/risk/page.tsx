@@ -1,29 +1,23 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getRolePermissions } from '@/lib/permissions'
-import { RiskClient, type RiskSection } from '@/components/risk/RiskClient'
+import { RiskOverview } from '@/components/risk/RiskOverview'
+import { getRiskActor, getRiskPermission } from '@/lib/risk/access'
 
-export async function renderRiskSection(activeSection: RiskSection) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+/** ผู้ใช้ที่เข้าโมดูลได้ พร้อมสิทธิ์ที่ใช้ตัดสินว่าเห็นปุ่มอะไรบ้าง */
+export async function requireRiskAccess() {
+  const actor = await getRiskActor()
+  if (!actor) redirect('/login')
 
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('id, role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile) redirect('/login')
-
-  const perms = await getRolePermissions(profile.role)
-  const permission = perms['ความเสี่ยง / Rejection'] ?? 'none'
+  const permission = await getRiskPermission(actor.role)
   if (permission === 'none') redirect('/staff/dashboard')
 
-  return <RiskClient permission={permission} canReview={profile.role === 'Admin' || profile.role === 'Manager'} activeSection={activeSection} />
+  return {
+    actor,
+    canEdit: permission === 'edit',
+    canReview: actor.role === 'Admin' || actor.role === 'Manager',
+  }
 }
 
-export default async function RiskPage() {
-  return renderRiskSection('dashboard')
+export default async function RiskOverviewPage() {
+  await requireRiskAccess()
+  return <RiskOverview />
 }

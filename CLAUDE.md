@@ -19,6 +19,11 @@ npx tsx scripts/navigation-primitives.test.ts    # Shared navigation semantics
 npx tsx scripts/navigation-routes.test.ts        # Nested route contracts
 npx tsx scripts/navigation-query-state.test.ts   # URL-backed view contracts
 npx tsx scripts/navigation-accessibility.test.ts # Navigation accessibility
+npx tsx scripts/session-guard.test.ts            # Protected-path + transient auth-failure rules
+npx tsx lib/risk/smart-rm.test.ts                # BE/CE date parsing, HIS field normalisation
+npx tsx lib/risk/incident.test.ts                # IOR schemas + review-only field stripping
+npx tsx lib/risk/register.test.ts                # L×S scoring + annual review cycle
+npx tsx lib/risk/matrix.test.ts                  # Risk matrix bands, cells, movement
 ```
 
 ## TAT Local Source Files
@@ -113,6 +118,8 @@ app/
 ### Auth & Permissions
 
 Auth is enforced in `app/(protected)/layout.tsx` via Supabase server session. Role comes from `profiles.role` in the DB.
+
+**Deep links survive login.** `proxy.ts` appends the original path+query as `?next=` when it bounces an unauthenticated user to `/login`, and the login page returns them there instead of always landing on `/staff/dashboard` — this is what makes a shared link or a QR code posted in the lab actually work. Both sides go through `safeReturnPath` in `lib/auth/session-guard.ts`, which only accepts internal paths that pass `isProtectedPath`; that allowlist is the open-redirect guard, so never loosen it to accept arbitrary values. The login page reads the param from `window.location` inside the submit handler rather than `useSearchParams`, which would force a `<Suspense>` boundary at prerender time.
 
 Roles: `'Admin' | 'Manager' | 'Document Controller' | 'Medical Technologist' | 'Medical Science Technician' | 'Assistant'`
 
@@ -244,7 +251,7 @@ Current route-backed modules:
 
 - EQA: `/staff/eqa`, `/programs`, `/rounds`, `/coverage`, `/capa`, `/settings` under `/staff/eqa`.
 - OUTLAB: `/staff/outlab`, `/laboratories`, `/services`, `/certificates`, `/settings` under `/staff/outlab`.
-- Risk: `/staff/risk`, `/ior`, `/register`, `/smart-rm` under `/staff/risk`.
+- Risk: `/staff/risk`, `/report`, `/ior`, `/register`, `/smart-rm` under `/staff/risk`. Each is its own page + client component (no `[section]` catch-all).
 - Satisfaction: `/staff/satisfaction`, `/surveys`, `/campaigns`, `/comments` under `/staff/satisfaction`.
 
 EQA/OUTLAB settings must remain Admin-only both in navigation and direct-route loading. Keep the legacy OUTLAB `?tab=certificates` redirect and preserve its `filter` value. All current nested routes remain under `/staff`, so they are already protected by `proxy.ts`; only edit the proxy regex when introducing a new protected top-level prefix.
@@ -556,6 +563,60 @@ Core invariants:
 - Satisfaction score is `sum(score) / sum(max score for each answered scored question) * 100`; missing optional answers are excluded. Positive-response rate is secondary.
 - KPI publication requires survey `edit` + KPI `edit`, a closed campaign, and no existing metric/year row. Never overwrite historical `kpi_satisfaction` data.
 
+### Risk Management (three separate systems)
+
+Schema: `scripts/risk-module-v2.sql`. Apply it manually before testing. It renames the old `risks` table to `risks_legacy` (kept — it's a QMS record) and splits it into three tables with genuinely different lifecycles. **Do not merge them back.**
+
+| Table | What it is | Lifecycle |
+|---|---|---|
+| `smart_rm_events` | Incident data imported from the hospital HIS, for analysis only | None. No status, no L×S, no residual, no actions |
+| `incident_reports` | IOR the lab handles itself (ISO 15189 **8.7**) | `reported → reviewing → action → monitoring → closed` |
+| `risk_register` | Proactive risk assessment (ISO 15189 **8.5**) | `open → treating → monitoring → accepted/closed` + annual review |
+
+Core invariants:
+
+- **IOR uses severity A–I only. The register uses L×S + residual only.** These are incompatible vocabularies; the old single `severity_level` column held both (Thai words *and* letters), which is what forced `isRiskAssessment` branching throughout the old code. Keep them apart.
+- `risk_register.score`, `level`, `residual_score`, `residual_level` are **generated columns** — the DB derives them from L×S. They cannot be written from application code, and zod schemas must not include them. This is what guarantees the level always matches the score.
+- An IOR that reveals a systemic risk is **escalated** into the register via `incident_reports.escalated_register_id` (`POST .../incidents/[id]/escalate`). That is the only bridge between 8.7 and 8.5 — don't give IOR its own residual fields.
+- `risk_actions` and `risk_attachments` use two nullable FKs (`incident_id` / `register_id`) with a check constraint that exactly one is set — same pattern as `eqa_attachments`.
+- Deletes are soft (`deleted_at`); every GET filters `.is('deleted_at', null)`.
+- `syncIncidentStatus` must return early when status is `closed`. Editing an action on a closed record must never silently reopen it.
+
+**There is exactly one way to create an incident: `/staff/risk/report`.** It is a standalone page, not a modal, and it does **not** render `ModuleSubnav` — so `report` must stay out of `RISK_NAVIGATION` (a tab leading to a page with no tab strip strands the user and marks no tab `aria-current`). The IOR registry's "บันทึกอุบัติการณ์" button is a `<Link>` to that page, not a second form. Do not reintroduce `POST /api/admin/risk/incidents`; `POST .../incidents/report` is the only creation route and it always sets `reported_by` from the session, which is what makes every record traceable under ISO 15189 8.7.
+
+Recording on behalf of someone (phone call, paper form): the report form shows a "ผู้รายงาน" field only when the user has `edit`, and the route accepts that name only after re-checking `canEditRisk`. `reported_by` still records who submitted it — never trust the client for that.
+
+Permissions — three distinct levels, do not conflate:
+
+| Action | Gate |
+|---|---|
+| Report an incident (`/staff/risk/report`) | Signed in. **No permission check** — gating reporting is what kills incident-reporting culture |
+| Edit factual fields, record on behalf of another reporter | `canEditRisk` (permission matrix, `ความเสี่ยง / Rejection`) |
+| Review, set severity, RCA, actions, residual, close | `canReviewRisk` (Admin/Manager — quality judgement, not data entry) |
+
+`stripReviewOnlyFields` in `lib/risk/fields.ts` enforces the second/third split server-side and returns `warnings` listing what it dropped. It lives apart from `lib/risk/access.ts` so it stays testable without Supabase.
+
+Sidebar: the risk group is a submenu whose **parent carries no `resource`** — each child carries its own instead, and the report child carries none. `isEntryVisible` in `StaffSidebar.tsx` checks the parent's `resource` and returns `false` *before* looking at children, so putting the gate on the parent would hide incident reporting from exactly the users it exists for. Keep the report child first in the list: `parentHref` falls back to the first visible child, so a user who can only report still gets a working group link. `scripts/navigation-routes.test.ts` guards both facts.
+
+Why the guarantee must be structural rather than configured: the permission matrix is editable at runtime, so an admin setting `Assistant → none` on `ความเสี่ยง / Rejection` (a reasonable call — assistants don't need to browse the register) would otherwise silently remove their ability to report incidents, and nobody would connect the two. Separately, roles outside `PERMISSION_ROLES` (e.g. a `profiles.role` of `Document Controller`) never get rows written by `/api/admin/permissions`, so they resolve to `none` everywhere.
+
+UI rules specific to this module (`components/risk/shared/tokens.ts` is the single source for meaning → visual):
+
+- **Never convey meaning by colour alone.** Every severity/level/status indicator carries a letter, word, or icon as well. `RiskMatrix` shows counts as numbers, has a numbered legend, keyboard-reachable cells, and a "view as table" fallback.
+
+**Risk matrix** — all matrix logic lives in `lib/risk/matrix.ts` (pure, tested in `matrix.test.ts`); `components/risk/RiskMatrix.tsx` only draws, and `lib/risk/matrix-pdf.ts` reuses the same `cellsFor` so the exported PDF always matches the screen. `MATRIX_BANDS` thresholds must stay in sync with the generated `level` column in `scripts/risk-module-v2.sql` and `riskLevel` in `shared/tokens.ts` — the test asserts all three agree across scores 1–25.
+
+- Three views via `?matrix=inherent|residual|movement` (`ViewTabs`). The movement view draws lines from inherent to residual positions — hollow circle at the start, filled at the end, so direction reads without colour. It is the only view that answers "did the treatment work"; two side-by-side grids cannot.
+- **Lines are aggregated per cell-pair, not per risk** (`movementFlows`). One line per distinct route, thickness and a label showing how many risks took it. Drawing one line per risk does not survive a real register — 150 risks would be 150 lines over 25 cells. Line count now grows with the number of distinct routes, which stays small. Risks that never left their cell get a counted ring instead of a zero-length line.
+- The movement view hides per-cell counts: the message is the routes, and end markers would cover the numbers anyway. It also states how many routes are drawn out of how many assessed risks, so an empty-looking matrix is explained by the pending residual assessments rather than looking broken.
+- The arrow layer is a **grid item spanning `grid-column: 2 / -1; grid-row: 2 / -1`** with percentage coordinates — no `ResizeObserver`, and no `viewBox`/`preserveAspectRatio="none"` (which distorts strokes when cells aren't square).
+- Cells are only clickable in the inherent/residual views; in movement view a cell is both a source and a destination so drilling down would be ambiguous.
+- **The matrix excludes `closed` risks but keeps `accepted` ones**, matching the `residualHigh` KPI. Before this, the matrix counted closed risks while the KPI beside it did not, so the two disagreed. Say so in the caption — the number has to be explainable during an audit.
+- PDF colours are literal RGB in `matrix-pdf.ts` because PDFs can't read CSS variables; keep them in step with `MATRIX_BANDS`.
+- Filters live in the URL (`useUrlFilters`), not `useState`, so back-navigation and shared links work and KPI cards can deep-link into a filtered list.
+- L and S are picked with labelled 1–5 radio scales (`ScalePicker`), never a bare number `<select>` — the labels are what make scores comparable between assessors.
+- The public report form auto-saves a draft to `localStorage`, validates on blur, and focuses the first invalid field on submit.
+
 ## Module Reference
 
 | Module | Resource Key (lib/permission-resources.ts) | Staff Route | API Routes |
@@ -566,7 +627,7 @@ Core invariants:
 | Master List | `Master List` | `/staff/documents/master-list` | — |
 | News | `ข่าวสาร` | `/staff/news` | — |
 | Rejection Log | `ความเสี่ยง / Rejection` | `/staff/rejection?view=<report-view-id>` | — |
-| Risk Register | `ความเสี่ยง / Rejection` | `/staff/risk`, `/staff/risk/ior`, `/staff/risk/register`, `/staff/risk/smart-rm` | — |
+| Risk Management | `ความเสี่ยง / Rejection` | `/staff/risk`, `/staff/risk/ior`, `/staff/risk/register`, `/staff/risk/smart-rm`; `/staff/risk/report` is open to **any signed-in user** | `/api/admin/risk/{incidents,register,smart-rm,overview,attachments,export}` |
 | EQA / PT | `EQA / PT` (editor list overrides to edit) | `/staff/eqa`, `/staff/eqa/programs`, `/staff/eqa/rounds`, `/staff/eqa/coverage`, `/staff/eqa/capa`, Admin `/staff/eqa/settings` | `/api/admin/eqa/*` |
 | OUTLAB | `OUTLAB` (editor list overrides to edit) | `/staff/outlab`, `/staff/outlab/laboratories`, `/staff/outlab/services`, `/staff/outlab/certificates`, Admin `/staff/outlab/settings` | `/api/admin/outlab/*` |
 | Contracts | `สัญญา` | `/staff/contracts` | — |

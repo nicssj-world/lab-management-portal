@@ -7,7 +7,7 @@ import { Logo } from '@/components/lab/Logo'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
-import { clearStaleAuthSession, createClient, recoverStaleAuthSession } from '@/lib/supabase/client'
+import { createClient, recoverStaleAuthSession } from '@/lib/supabase/client'
 
 const NAV_ITEMS = [
   { href: '/',        th: 'หน้าแรก',              en: 'Home' },
@@ -32,7 +32,8 @@ export function PublicNav() {
     supabase.auth.getUser()
       .then(async ({ data: { user }, error }) => {
         if (error) {
-          if (!recoverStaleAuthSession(error)) clearStaleAuthSession()
+          // ไม่ได้ล็อกอินเป็นสถานะปกติของหน้า public — ล้าง session เฉพาะตอน token ตายจริง
+          recoverStaleAuthSession(error)
           return
         }
         if (!user) return
@@ -40,7 +41,7 @@ export function PublicNav() {
         if (data) setSessionUser({ name: data.name, role: data.role, avatar_url: data.avatar_url ?? null })
       })
       .catch((error) => {
-        if (!recoverStaleAuthSession(error)) clearStaleAuthSession()
+        recoverStaleAuthSession(error)
       })
   }, [])
 

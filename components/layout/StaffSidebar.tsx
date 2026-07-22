@@ -60,7 +60,19 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/tests',      th: 'รายการตรวจ',         en: 'Tests',          icon: 'flask',  color: '#1E5FAD', resource: 'รายการตรวจ' },
   { href: '/staff/eqa', th: 'การควบคุมคุณภาพภายนอก', en: 'EQA / PT', icon: 'shieldCheck', color: '#0F766E', resource: 'EQA / PT' },
   { href: '/staff/news',       th: 'จัดการข่าวสาร',        en: 'News',           icon: 'bell',       color: '#D97706', resource: 'ข่าวสาร' },
-  { href: '/staff/risk',       th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',  icon: 'shield',     color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+  // แม่ต้องไม่มี resource — isEntryVisible เช็ค resource ของแม่ก่อนแล้ว return false ทิ้งเลย
+  // ถ้าใส่ที่นี่ ลูก "รายงานอุบัติการณ์" จะหายไปด้วยสำหรับคนที่ไม่มีสิทธิ์เข้าทะเบียน
+  // ซึ่งรวมถึง Document Controller ที่ไม่มีแถวใน role_permissions โดยโครงสร้าง
+  { href: '/staff/risk',       th: 'ความเสี่ยง',          en: 'Risk Management', icon: 'shield',    color: '#DC2626',
+    children: [
+      // ไม่มี resource โดยตั้งใจ — เจ้าหน้าที่ทุกคนต้องรายงานอุบัติการณ์ได้เสมอ
+      // และอยู่ลำดับแรกเพื่อให้ลิงก์ของกลุ่มตกมาที่นี่เมื่อผู้ใช้เห็นได้เพียงรายการเดียว
+      { href: '/staff/risk/report',   th: 'รายงานอุบัติการณ์',   en: 'Report an Incident', icon: 'alert',     color: '#DC2626' },
+      { href: '/staff/risk',          th: 'ภาพรวมความเสี่ยง',    en: 'Risk Overview',      icon: 'chart',     color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+      { href: '/staff/risk/ior',      th: 'ทะเบียนอุบัติการณ์',  en: 'Incident Reports',   icon: 'shield',    color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+      { href: '/staff/risk/register', th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',      icon: 'clipboard', color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+      { href: '/staff/risk/smart-rm', th: 'วิเคราะห์ Smart-RM',  en: 'Smart-RM Analytics', icon: 'trending',  color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+    ] },
   { href: '/staff/equipment',  th: 'ทะเบียนเครื่องมือ',   en: 'Equipment',      icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
   { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
   { href: '/staff/outlab', th: 'ห้องปฏิบัติการภายนอก', en: 'OUTLAB Registry', icon: 'building', color: '#C2410C', resource: 'OUTLAB' },

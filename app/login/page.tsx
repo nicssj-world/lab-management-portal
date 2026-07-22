@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { clearStaleAuthSession, createClient } from '@/lib/supabase/client'
+import { RETURN_PATH_PARAM, safeReturnPath } from '@/lib/auth/session-guard'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
@@ -36,7 +37,10 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/staff/dashboard')
+    // อ่านจาก window แทน useSearchParams เพราะโค้ดนี้รันหลังผู้ใช้กดปุ่มแล้วเสมอ
+    // จึงไม่ต้องผ่าหน้านี้ออกเป็นสองไฟล์เพื่อครอบ <Suspense> ตอน prerender
+    const returnTo = safeReturnPath(new URLSearchParams(window.location.search).get(RETURN_PATH_PARAM))
+    router.push(returnTo ?? '/staff/dashboard')
   }
 
   return (
