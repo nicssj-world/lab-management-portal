@@ -1060,7 +1060,7 @@ export function QualityTaskDashboard({
                     : fmt(selected.plannedDate)
                 }
               />
-              <Info label="เส้นตาย" value={fmt(selected.effectiveDueDate)} />
+              <Info label="วันครบกำหนด" value={fmt(selected.effectiveDueDate)} />
               <Info
                 label="ผู้เข้าร่วมประชุม"
                 value={
