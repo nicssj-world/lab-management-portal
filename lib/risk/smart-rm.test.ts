@@ -5,7 +5,9 @@ import {
   toValidIsoDate,
   parseSmartRmDate,
   normalizeIsoDate,
-} from './risk-utils'
+  normalizeSeverity,
+  stripLabSuffix,
+} from './smart-rm'
 
 // toCeYear: BE (พ.ศ.) full year → CE (ค.ศ.)
 assert.equal(toCeYear(2569), 2026)
@@ -48,4 +50,23 @@ const twice = normalizeIsoDate(once)
 assert.equal(twice, once)
 assert.equal(twice, '2026-07-31')
 
-console.log('risk-utils date tests passed')
+console.log('  date parsing ok')
+
+// ── normalizeSeverity: DB บังคับ A–I ค่าอื่นต้องกลายเป็น null ไม่ใช่ทำ insert ล้ม ──
+assert.equal(normalizeSeverity('a'), 'A')
+assert.equal(normalizeSeverity(' d '), 'D')
+assert.equal(normalizeSeverity('I'), 'I')
+assert.equal(normalizeSeverity('J'), null)      // นอกช่วง A–I
+assert.equal(normalizeSeverity('ต่ำ'), null)     // คำไทยเป็นศัพท์ของทะเบียน ไม่ใช่ของ Smart-RM
+assert.equal(normalizeSeverity(''), null)
+assert.equal(normalizeSeverity(null), null)
+
+// ── stripLabSuffix: ชื่อหน่วยงานจาก HIS มีคำต่อท้ายที่ระบบเราไม่ใช้ ──
+assert.equal(stripLabSuffix('งานเคมีคลินิก กลุ่มงานเทคนิคการแพทย์'), 'งานเคมีคลินิก')
+assert.equal(stripLabSuffix('งานโลหิตวิทยา (Lab)'), 'งานโลหิตวิทยา')
+assert.equal(stripLabSuffix('งานคลังเลือด'), 'งานคลังเลือด')
+// ตัดแล้วเหลือค่าว่างต้องคืนข้อความเดิม ไม่ใช่ทำให้หน่วยงานหายไป
+assert.equal(stripLabSuffix('กลุ่มงานเทคนิคการแพทย์'), 'กลุ่มงานเทคนิคการแพทย์')
+assert.equal(stripLabSuffix(''), null)
+
+console.log('smart-rm tests passed')

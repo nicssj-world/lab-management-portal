@@ -32,10 +32,12 @@ export const OUTLAB_NAVIGATION = [
 ] as const satisfies readonly ModuleNavigationItem[]
 
 export const RISK_NAVIGATION = [
+  // ไม่มี report ที่นี่โดยตั้งใจ — /staff/risk/report เป็นหน้างานเดี่ยวที่ไม่แสดงเมนูโมดูล
+  // และเข้าถึงได้แม้ไม่มีสิทธิ์ในโมดูล จึงอยู่ใน sidebar ระดับบนแทน (ดู StaffSidebar)
   { id: 'dashboard', href: '/staff/risk', labelTh: 'ภาพรวมความเสี่ยง', labelEn: 'Risk Overview', icon: 'chart', exact: true },
-  { id: 'ior', href: '/staff/risk/ior', labelTh: 'รายงานอุบัติการณ์ (IOR)', labelEn: 'Incident Reports', icon: 'shield' },
-  { id: 'register', href: '/staff/risk/register', labelTh: 'Risk Register', labelEn: 'Risk Register', icon: 'clipboard' },
-  { id: 'smart', href: '/staff/risk/smart-rm', labelTh: 'Smart-RM', labelEn: 'Smart-RM', icon: 'shield' },
+  { id: 'ior', href: '/staff/risk/ior', labelTh: 'ทะเบียนอุบัติการณ์ (IOR)', labelEn: 'Incident Reports', icon: 'shield' },
+  { id: 'register', href: '/staff/risk/register', labelTh: 'ทะเบียนความเสี่ยง', labelEn: 'Risk Register', icon: 'clipboard' },
+  { id: 'smart', href: '/staff/risk/smart-rm', labelTh: 'วิเคราะห์ Smart-RM', labelEn: 'Smart-RM Analytics', icon: 'trending' },
 ] as const satisfies readonly ModuleNavigationItem[]
 
 export const SATISFACTION_NAVIGATION = [

@@ -15,11 +15,20 @@ export function buildExcel(sheets: ExportSheet[]) {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 }
 
-export function buildThaiPdf(title: string, subtitle: string, headers: string[], rows: string[][]) {
-  const doc = new jsPDF({ orientation: headers.length > 5 ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' })
+/**
+ * เอกสาร PDF ที่ฝังฟอนต์ Sarabun ไว้แล้ว — ไม่งั้นภาษาไทยจะกลายเป็นกล่อง
+ * แยกออกมาให้ผู้เรียกที่ต้องวาดเองก่อนค่อยต่อด้วยตาราง (เช่น ตารางความเสี่ยง) ใช้ได้
+ */
+export function createThaiPdfDoc(orientation: 'portrait' | 'landscape' = 'portrait') {
+  const doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' })
   doc.addFileToVFS('Sarabun-Regular.ttf', sarabunBase64)
   doc.addFont('Sarabun-Regular.ttf', 'Sarabun', 'normal')
   doc.setFont('Sarabun')
+  return doc
+}
+
+export function buildThaiPdf(title: string, subtitle: string, headers: string[], rows: string[][]) {
+  const doc = createThaiPdfDoc(headers.length > 5 ? 'landscape' : 'portrait')
   doc.setFontSize(16)
   doc.text(title, 14, 16)
   doc.setFontSize(10)

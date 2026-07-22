@@ -1,4 +1,4 @@
-type BadgeColor = 'gray' | 'blue' | 'green' | 'red' | 'amber' | 'purple' | 'teal'
+export type BadgeColor = 'gray' | 'blue' | 'green' | 'red' | 'amber' | 'purple' | 'teal'
 
 interface BadgeProps {
   children: React.ReactNode
