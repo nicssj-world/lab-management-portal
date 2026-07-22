@@ -10,10 +10,18 @@ export const UNCONTROLLED_TRANSFORM_VERSION = 'uncontrolled-v2'
 export const PREVIEW_TEXT = 'เอกสารไม่ควบคุม / UNCONTROLLED DOCUMENT'
 export const DOWNLOAD_PREFIX = 'เอกสารไม่ควบคุม / UNCONTROLLED DOCUMENT - Downloaded on: '
 
-const ELIGIBLE_TYPES = new Set(['QM', 'QP', 'WI', 'Manual'])
+// Types whose public/viewer copies get the uncontrolled stamp. `Manual` (MN-) is
+// deliberately absent: those are uploaded as-is with no system cover, so they are
+// delivered like Form/Reference/Card file. The Quality Manual is its own `QM` type
+// and stays eligible.
+export const ELIGIBLE_TYPES = new Set(['QM', 'QP', 'WI'])
 const BASELINE_TOP_MM = 12
 const SIDE_MARGIN_MM = 12
 const MIN_DOWNLOAD_FONT_SIZE_PT = 13.5
+// Preview needs headroom below its requested 18pt for the same reason download does:
+// a page even a fraction narrower than exact A4 (e.g. 595pt, or 595.276pt from a
+// 210mm sheet) scales the text down slightly, and without a floor that is rejected.
+const MIN_PREVIEW_FONT_SIZE_PT = 15
 const A4_WIDTH_PT = 595.28
 const MM_TO_PT = 72 / 25.4
 
@@ -69,7 +77,7 @@ export function chooseStampLayout(input: {
   firstInkTopMm: number
 }) {
   const requestedSize = input.variant === 'preview' ? 18 : 16
-  const minSize = input.variant === 'preview' ? 18 : MIN_DOWNLOAD_FONT_SIZE_PT
+  const minSize = input.variant === 'preview' ? MIN_PREVIEW_FONT_SIZE_PT : MIN_DOWNLOAD_FONT_SIZE_PT
   const horizontalScale = Math.min(
     1,
     Math.max(0, (input.pageWidthPt - 2 * SIDE_MARGIN_MM * MM_TO_PT) / (A4_WIDTH_PT - 2 * SIDE_MARGIN_MM * MM_TO_PT)),

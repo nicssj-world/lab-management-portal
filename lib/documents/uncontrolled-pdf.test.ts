@@ -27,6 +27,10 @@ const input = {
 assert.equal(shouldUseUncontrolledCopy(input), true)
 assert.equal(shouldUseUncontrolledCopy({ ...input, audience: 'staff' }), false)
 assert.equal(shouldUseUncontrolledCopy({ ...input, type: 'Form' }), false)
+// MN- manuals are delivered like Form/Reference/Card file — no cover, no stamp.
+// The Quality Manual is the separate QM type and stays eligible.
+assert.equal(shouldUseUncontrolledCopy({ ...input, type: 'Manual' }), false)
+assert.equal(shouldUseUncontrolledCopy({ ...input, type: 'QM' }), true)
 assert.equal(shouldUseUncontrolledCopy({ ...input, status: 'Draft' }), false)
 assert.equal(shouldUseUncontrolledCopy({ ...input, requestedPath: 'documents/doc-1/source.docx' }), false)
 
@@ -52,6 +56,18 @@ assert.deepEqual(
 assert.equal(
   chooseStampLayout({ variant: 'download', pageWidthPt: 535, firstInkTopMm: 15.5 }).fontSizePt < 16,
   true,
+)
+// A page a hair narrower than exact A4 is still A4 — 210mm is 595.2756pt, and PDFs written
+// by other tools round to 595pt. Preview used to reject these outright because its floor
+// equalled its requested size, leaving no room for the horizontal scale to do its job.
+for (const pageWidthPt of [595.276, 595, 590]) {
+  const layout = chooseStampLayout({ variant: 'preview', pageWidthPt, firstInkTopMm: 15.5 })
+  assert.equal(layout.fontSizePt >= 15 && layout.fontSizePt <= 18, true)
+}
+// The vertical guard must still fail closed when there is genuinely no room up top.
+assert.throws(
+  () => chooseStampLayout({ variant: 'preview', pageWidthPt: 595.28, firstInkTopMm: 9.2 }),
+  UnsafeStampLayoutError,
 )
 assert.throws(
   () => chooseStampLayout({ variant: 'download', pageWidthPt: 595.28, firstInkTopMm: 8 }),
