@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import QRCode from 'qrcode'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -1889,6 +1890,141 @@ function AddCalPlanModal({ onClose, onSaved, existingGroups }: {
   )
 }
 
+function EquipmentQrTab({ classifications, departments }: { classifications: string[]; departments: string[] }) {
+  const [items, setItems] = useState<Equipment[] | null>(null)
+  const [error, setError] = useState('')
+  const [department, setDepartment] = useState('')
+  const [classification, setClassification] = useState('')
+  const [search, setSearch] = useState('')
+  const [qrMap, setQrMap] = useState<Record<string, string>>({})
+  const [origin, setOrigin] = useState('')
+
+  useEffect(() => { setOrigin(window.location.origin) }, [])
+
+  useEffect(() => {
+    fetch('/api/admin/equipment?all=1&sortDir=asc')
+      .then(async r => {
+        const json = await r.json()
+        if (!r.ok) throw new Error(json.error ?? 'โหลดข้อมูลไม่สำเร็จ')
+        setItems(parseEquipmentPayload(json).items ?? [])
+      })
+      .catch(err => { setItems([]); setError((err as Error).message) })
+  }, [])
+
+  const filtered = (items ?? []).filter(eq => {
+    if (department && eq.department !== department) return false
+    if (classification && eq.classification !== classification) return false
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      const hay = [eq.equipment_type, eq.cbh_code, eq.serial_number, eq.responsible_person].filter(Boolean).join(' ').toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
+
+  // สร้าง QR data URL สำหรับรายการที่ผ่าน filter (เฉพาะที่ยังไม่มี)
+  useEffect(() => {
+    if (!origin) return
+    let cancelled = false
+    const missing = filtered.filter(eq => !qrMap[eq.id])
+    if (missing.length === 0) return
+    Promise.all(missing.map(async eq => {
+      const dataUrl = await QRCode.toDataURL(`${origin}/e/${eq.id}`, { width: 240, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#0F172A', light: '#FFFFFF' } })
+      return [eq.id, dataUrl] as const
+    })).then(pairs => {
+      if (cancelled) return
+      setQrMap(prev => { const next = { ...prev }; pairs.forEach(([id, url]) => { next[id] = url }); return next })
+    }).catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [origin, filtered.map(e => e.id).join(',')])
+
+  function printCards(list: Equipment[]) {
+    const ready = list.filter(eq => qrMap[eq.id])
+    if (ready.length === 0) return
+    const cells = ready.map(eq => `
+      <div class="cell">
+        <img src="${qrMap[eq.id]}" alt="QR" />
+        <div class="code">${escapeHtmlQr(labCodeLabel(eq))}</div>
+        <div class="name">${escapeHtmlQr(eq.equipment_type)}</div>
+      </div>`).join('')
+    const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>QR เครื่องมือ</title><style>
+      @page{size:A4 portrait;margin:10mm}
+      *{font-family:Sarabun,"TH Sarabun New","Noto Sans Thai",sans-serif;box-sizing:border-box}
+      body{margin:0;color:#0f172a}
+      .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm}
+      .cell{border:1px solid #cbd5e1;border-radius:8px;padding:8px;text-align:center;page-break-inside:avoid}
+      .cell img{width:100%;max-width:150px;height:auto;display:block;margin:0 auto 4px}
+      .code{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;color:#0f172a;word-break:break-all}
+      .name{font-size:12px;color:#334155;line-height:1.3;margin-top:2px}
+      @media print{button{display:none}}
+    </style></head><body><div class="grid">${cells}</div><script>window.onload=()=>window.print()</script></body></html>`
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  if (items === null) return (
+    <div style={{ padding: 48, textAlign: 'center' }}>
+      <div style={{ width: 28, height: 28, border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin .8s linear infinite', margin: '0 auto' }} />
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {error && <div style={{ padding: 12, borderRadius: 10, border: '1px solid #FCA5A5', color: '#B91C1C', background: '#FEF2F2', fontSize: 13 }}>{error}</div>}
+
+      {/* Toolbar */}
+      <div className="eq-filter-panel">
+        <Icon name="filter" size={13} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+        <div className="eq-search-box">
+          <Input value={search} onChange={setSearch} placeholder="ค้นหาชื่อ, LAB, Serial, ผู้รับผิดชอบ..." />
+        </div>
+        <select value={department} onChange={e => setDepartment(e.target.value)} className="eq-filter-select" style={{ minWidth: 148 }}>
+          <option value="">ทุกแผนก</option>
+          {departments.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select value={classification} onChange={e => setClassification(e.target.value)} className="eq-filter-select" style={{ minWidth: 148 }}>
+          <option value="">ทุก Classification</option>
+          {classifications.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>{filtered.length} รายการ</span>
+        <Button variant="primary" icon="download" onClick={() => printCards(filtered)} disabled={filtered.length === 0} style={{ fontWeight: 600 }}>พิมพ์ทั้งหมด / PDF</Button>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div style={{ padding: 42, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>ไม่พบเครื่องมือตามเงื่อนไข</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
+          {filtered.map(eq => (
+            <div key={eq.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              {qrMap[eq.id]
+                ? <img src={qrMap[eq.id]} alt={`QR ${eq.equipment_type}`} style={{ width: '100%', maxWidth: 150, borderRadius: 8, border: '1px solid var(--border)', background: '#fff' }} />
+                : <div style={{ width: 150, height: 150, borderRadius: 8, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 12 }}>กำลังสร้าง…</div>}
+              <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12.5, fontWeight: 700, color: 'var(--primary)', wordBreak: 'break-all' }}>{labCodeLabel(eq)}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink)', lineHeight: 1.35, minHeight: 34 }}>{eq.equipment_type}</div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 'auto', width: '100%' }}>
+                <Button size="sm" variant="secondary" icon="doc" onClick={() => printCards([eq])} disabled={!qrMap[eq.id]} style={{ flex: 1, justifyContent: 'center' }}>พิมพ์</Button>
+                {qrMap[eq.id] && (
+                  <a href={qrMap[eq.id]} download={`${(eq.cbh_code || eq.equipment_type).replace(/[\\/:*?"<>|]/g, '-')}-qr.png`} style={{ textDecoration: 'none', flex: 1 }}>
+                    <Button size="sm" variant="secondary" icon="download" style={{ width: '100%', justifyContent: 'center' }}>PNG</Button>
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function escapeHtmlQr(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]!))
+}
+
 function CalibrationPlanTab({ canEdit }: { canEdit: boolean }) {
   const [rows, setRows] = useState<CalRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -2129,7 +2265,7 @@ export default function EquipmentClient({
   const [dashboardError, setDashboardError] = useState('')
   const [responsibleUsers, setResponsibleUsers] = useState<ResponsibleUser[]>([])
 
-  const [view, setView] = useState<'list' | 'dashboard' | 'calplan'>('list')
+  const [view, setView] = useState<'list' | 'dashboard' | 'calplan' | 'qr'>('list')
   const [addModal, setAddModal] = useState(initialCreate && canEdit)
   const [editItem, setEditItem] = useState<Equipment | null>(null)
   const [deleteItem, setDeleteItem] = useState<Equipment | null>(null)
@@ -2681,7 +2817,7 @@ export default function EquipmentClient({
 
       {/* View switcher */}
       <div className="eq-view-switcher">
-        {([['dashboard', 'chart', 'Dashboard'], ['list', 'beaker', 'รายการ'], ['calplan', 'clock', 'แผนสอบเทียบ']] as const).map(([key, icon, label]) => (
+        {([['dashboard', 'chart', 'Dashboard'], ['list', 'beaker', 'รายการ'], ['calplan', 'clock', 'แผนสอบเทียบ'], ['qr', 'qr', 'QR Code']] as const).map(([key, icon, label]) => (
           <button key={key} onClick={() => setView(key)} className={`eq-view-button ${view === key ? 'is-active' : ''}`}>
             <Icon name={icon} size={14} /> {label}
           </button>
@@ -2699,6 +2835,8 @@ export default function EquipmentClient({
       )}
 
       {view === 'calplan' && <CalibrationPlanTab canEdit={canEdit} />}
+
+      {view === 'qr' && <EquipmentQrTab classifications={classifications} departments={allDepts} />}
 
       {view === 'list' && <>
 
