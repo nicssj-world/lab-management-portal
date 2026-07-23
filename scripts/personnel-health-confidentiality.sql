@@ -44,5 +44,6 @@ CREATE INDEX IF NOT EXISTS staff_confidentiality_profile_idx ON staff_confidenti
 ALTER TABLE staff_health_records            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff_confidentiality_agreements ENABLE ROW LEVEL SECURITY;
 
-DO $$ BEGIN CREATE POLICY "staff_health_records_select" ON staff_health_records FOR SELECT TO authenticated USING (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY "staff_confidentiality_select" ON staff_confidentiality_agreements FOR SELECT TO authenticated USING (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DROP POLICY IF EXISTS "staff_health_records_select" ON staff_health_records;
+DROP POLICY IF EXISTS "staff_confidentiality_select" ON staff_confidentiality_agreements;
+REVOKE SELECT ON TABLE staff_health_records, staff_confidentiality_agreements FROM anon, authenticated;

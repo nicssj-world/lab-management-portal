@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { createHmac, randomBytes } from 'node:crypto'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { requiredEnv } from '@/lib/env'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { campaignAvailability, type CampaignAvailability } from './campaign'
@@ -8,6 +8,20 @@ import { loadSurveyDefinition } from './server'
 import type { NormalizedSurveyAnswer, SurveyCampaign, SurveyVersionDefinition } from './types'
 
 export const DEVICE_COOKIE_NAME = 'lab_satisfaction_device'
+const CHALLENGE_MIN_AGE_MS = 750
+const CHALLENGE_MAX_AGE_MS = 4 * 60 * 60 * 1000
+
+type PublicSurveyChallengePayload = {
+  v: 1
+  tokenHash: string
+  visitorId: string
+  issuedAt: number
+}
+
+export type VerifiedPublicSurveyChallenge = {
+  visitorId: string
+  issuedAt: number
+}
 
 export type PublicSurveyState = {
   availability: CampaignAvailability
@@ -23,6 +37,53 @@ export function deviceHash(campaignId: string, deviceToken: string) {
   return createHmac('sha256', requiredEnv('SUPABASE_SERVICE_ROLE_KEY'))
     .update(`${campaignId}:${deviceToken}`)
     .digest('hex')
+}
+
+function challengeTokenHash(token: string) {
+  return createHash('sha256').update(token).digest('base64url')
+}
+
+function signChallengePayload(encodedPayload: string) {
+  return createHmac('sha256', requiredEnv('SUPABASE_SERVICE_ROLE_KEY'))
+    .update(`survey-challenge:${encodedPayload}`)
+    .digest('base64url')
+}
+
+export function createPublicSurveyChallenge(token: string, now = Date.now()) {
+  const payload: PublicSurveyChallengePayload = {
+    v: 1,
+    tokenHash: challengeTokenHash(token),
+    visitorId: randomBytes(18).toString('base64url'),
+    issuedAt: now,
+  }
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url')
+  return `${encodedPayload}.${signChallengePayload(encodedPayload)}`
+}
+
+export function verifyPublicSurveyChallenge(
+  token: string,
+  challenge: string,
+  now = Date.now(),
+): VerifiedPublicSurveyChallenge | null {
+  const [encodedPayload, providedSignature, extra] = challenge.split('.')
+  if (!encodedPayload || !providedSignature || extra) return null
+
+  const expectedSignature = signChallengePayload(encodedPayload)
+  const provided = Buffer.from(providedSignature)
+  const expected = Buffer.from(expectedSignature)
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) return null
+
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as Partial<PublicSurveyChallengePayload>
+    if (payload.v !== 1 || payload.tokenHash !== challengeTokenHash(token)) return null
+    if (typeof payload.visitorId !== 'string' || !/^[A-Za-z0-9_-]{24}$/.test(payload.visitorId)) return null
+    if (typeof payload.issuedAt !== 'number' || !Number.isFinite(payload.issuedAt)) return null
+    const age = now - payload.issuedAt
+    if (age < CHALLENGE_MIN_AGE_MS || age > CHALLENGE_MAX_AGE_MS) return null
+    return { visitorId: payload.visitorId, issuedAt: payload.issuedAt }
+  } catch {
+    return null
+  }
 }
 
 export async function getPublicSurveyState(token: string, deviceToken?: string | null): Promise<PublicSurveyState | null> {

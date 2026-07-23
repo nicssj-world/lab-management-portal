@@ -90,8 +90,8 @@ create policy "tat_entries_staff_write" on tat_entries for all
   using (get_my_role() in ('staff','admin'));
 
 drop policy if exists "profiles_self_update" on profiles;
-create policy "profiles_self_update" on profiles for update
-  using (id = auth.uid());
+-- Self-service updates are handled by /api/me with a safe field allowlist.
+revoke insert, update, delete on table profiles from anon, authenticated;
 
 drop policy if exists "profiles_admin_write" on profiles;
 create policy "profiles_admin_write" on profiles for insert

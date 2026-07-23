@@ -11,6 +11,8 @@ import {
   parseDeliveryVariant,
   resolveServedKey,
 } from '@/lib/documents/document-delivery-variant'
+import { consumeRateLimit } from '@/lib/security/rate-limit'
+import { getClientIp, privateRequestKey } from '@/lib/security/request-protection'
 
 export const runtime = 'nodejs'
 
@@ -26,6 +28,24 @@ export async function GET(req: NextRequest) {
     throw error
   }
   const proxy = req.nextUrl.searchParams.get('proxy') === '1'
+  const clientKey = privateRequestKey('public-document-download-ip', getClientIp(req.headers))
+  const globalLimit = consumeRateLimit({ key: `document-download:${clientKey}`, limit: 600, windowMs: 10 * 60 * 1000 })
+  if (!globalLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many document requests' },
+      { status: 429, headers: { 'Retry-After': String(globalLimit.retryAfterSeconds), 'Cache-Control': 'no-store' } },
+    )
+  }
+
+  if (proxy) {
+    const documentLimit = consumeRateLimit({ key: `document-proxy:${clientKey}:${privateRequestKey('public-document-path', path)}`, limit: 120, windowMs: 10 * 60 * 1000 })
+    if (!documentLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many document requests' },
+        { status: 429, headers: { 'Retry-After': String(documentLimit.retryAfterSeconds), 'Cache-Control': 'no-store' } },
+      )
+    }
+  }
 
   // Verify document is public before serving
   const { data: doc } = await supabaseAdmin

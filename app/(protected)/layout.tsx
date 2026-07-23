@@ -7,7 +7,7 @@ import { PermissionProvider } from '@/context/PermissionContext'
 import { SidebarProvider } from '@/context/SidebarContext'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { normalizeRole } from '@/lib/roles'
-import { ensureOwnProfile } from '@/lib/auth/profile'
+import { ensureOwnProfile, isProfileNotProvisionedError } from '@/lib/auth/profile'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAssignedDeptIds } from '@/lib/queries/kpi'
 
@@ -19,7 +19,13 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     redirect('/login')
   }
 
-  const profile = await ensureOwnProfile(user)
+  let profile
+  try {
+    profile = await ensureOwnProfile(user)
+  } catch (profileError) {
+    if (isProfileNotProvisionedError(profileError)) redirect('/login?error=account_not_provisioned')
+    throw profileError
+  }
 
   const LEGACY_ROLES: Record<string, string> = {
     admin: 'Admin', staff: 'Manager', editor: 'Medical Technologist', viewer: 'Assistant',

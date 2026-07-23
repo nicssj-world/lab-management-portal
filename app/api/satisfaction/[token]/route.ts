@@ -8,17 +8,33 @@ import {
   existingSubmission,
   getPublicSurveyState,
   submitPublicSurvey,
+  verifyPublicSurveyChallenge,
 } from '@/lib/surveys/public-server'
 import type { SurveyAnswerInput } from '@/lib/surveys/types'
+import { consumeRateLimit, type RateLimitResult } from '@/lib/security/rate-limit'
+import { getClientIp, privateRequestKey } from '@/lib/security/request-protection'
 
 const MAX_BODY_BYTES = 64 * 1024
 type Context = { params: Promise<{ token: string }> }
 
+function tooManyRequests(limit: RateLimitResult) {
+  return NextResponse.json(
+    { error: 'มีคำขอมากเกินไป กรุณารอสักครู่แล้วลองใหม่', code: 'rate_limited' },
+    { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds), 'Cache-Control': 'no-store' } },
+  )
+}
+
 export async function GET(request: NextRequest, { params }: Context) {
   const { token } = await params
+  const ipLimit = consumeRateLimit({
+    key: `survey-get:${privateRequestKey('survey-get-ip', getClientIp(request.headers))}`,
+    limit: 300,
+    windowMs: 10 * 60 * 1000,
+  })
+  if (!ipLimit.allowed) return tooManyRequests(ipLimit)
   const state = await getPublicSurveyState(token, request.cookies.get(DEVICE_COOKIE_NAME)?.value)
   return state
-    ? NextResponse.json(state)
+    ? NextResponse.json(state, { headers: { 'Cache-Control': 'no-store' } })
     : NextResponse.json({ error: 'ไม่พบแบบสำรวจ' }, { status: 404 })
 }
 
@@ -37,6 +53,35 @@ export async function POST(request: NextRequest, { params }: Context) {
   if (!parsed.success) return NextResponse.json({ error: 'ข้อมูลคำตอบไม่ถูกต้อง' }, { status: 400 })
 
   const { token } = await params
+  if (parsed.data.website.trim()) {
+    return NextResponse.json({ error: 'ไม่สามารถส่งคำตอบได้', code: 'rejected' }, { status: 429 })
+  }
+  const challenge = verifyPublicSurveyChallenge(token, parsed.data.challenge)
+  if (!challenge) {
+    return NextResponse.json({ error: 'แบบสำรวจหมดอายุ กรุณาเปิดลิงก์หรือ QR Code ใหม่', code: 'challenge_invalid' }, { status: 429 })
+  }
+
+  const windowMs = 10 * 60 * 1000
+  const limits = [
+    consumeRateLimit({
+      key: `survey-submit-visitor:${privateRequestKey('survey-visitor', challenge.visitorId)}`,
+      limit: 6,
+      windowMs,
+    }),
+    consumeRateLimit({
+      key: `survey-submit-ip:${privateRequestKey('survey-submit-ip', getClientIp(request.headers))}`,
+      limit: 120,
+      windowMs,
+    }),
+    consumeRateLimit({
+      key: `survey-submit-campaign:${privateRequestKey('survey-campaign', token)}`,
+      limit: 1_200,
+      windowMs,
+    }),
+  ]
+  const rejectedLimit = limits.find((limit) => !limit.allowed)
+  if (rejectedLimit) return tooManyRequests(rejectedLimit)
+
   const currentDeviceToken = request.cookies.get(DEVICE_COOKIE_NAME)?.value
   const state = await getPublicSurveyState(token, currentDeviceToken)
   if (!state || !state.definition) return NextResponse.json({ error: 'ไม่พบแบบสำรวจ' }, { status: 404 })

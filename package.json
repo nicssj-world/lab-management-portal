@@ -8,6 +8,7 @@
     "deploy": "vercel deploy --prod",
     "deploy:preview": "vercel deploy",
     "start": "next start",
+    "test:security": "tsx scripts/rate-limit.test.ts && tsx scripts/security-hardening.test.ts && tsx scripts/satisfaction-public-flow.test.ts",
     "tat:local": "node scripts/tat-local-analyze.mjs",
     "tat:clean-raw": "node scripts/tat-clean-raw.mjs"
   },

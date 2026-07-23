@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { createSignatureSignedUrl } from '@/lib/signatures'
-import { ensureOwnProfile } from '@/lib/auth/profile'
+import { ensureOwnProfile, isProfileNotProvisionedError } from '@/lib/auth/profile'
 
 async function getUser() {
   const supabase = await createClient()
@@ -21,6 +21,9 @@ export async function GET() {
       signature_signed_url: await createSignatureSignedUrl(data.signature_url),
     })
   } catch (err) {
+    if (isProfileNotProvisionedError(err)) {
+      return NextResponse.json({ error: err.message }, { status: 403 })
+    }
     const msg = err instanceof Error ? err.message : 'Failed to load profile'
     return NextResponse.json({ error: msg }, { status: 500 })
   }
@@ -29,7 +32,12 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  await ensureOwnProfile(user)
+  try {
+    await ensureOwnProfile(user)
+  } catch (err) {
+    if (isProfileNotProvisionedError(err)) return NextResponse.json({ error: err.message }, { status: 403 })
+    throw err
+  }
 
   const body = await req.json()
   // name is intentionally excluded — self-service name editing is disabled;

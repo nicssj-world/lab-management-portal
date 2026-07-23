@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
-import { ensureOwnProfile } from '@/lib/auth/profile'
+import { ensureOwnProfile, isProfileNotProvisionedError } from '@/lib/auth/profile'
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024
 const AVATAR_EXT_BY_TYPE: Record<string, string> = {
@@ -15,7 +15,12 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  await ensureOwnProfile(user)
+  try {
+    await ensureOwnProfile(user)
+  } catch (err) {
+    if (isProfileNotProvisionedError(err)) return NextResponse.json({ error: err.message }, { status: 403 })
+    throw err
+  }
 
   const form = await req.formData()
   const file = form.get('file') as File | null
@@ -62,7 +67,12 @@ export async function DELETE() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  await ensureOwnProfile(user)
+  try {
+    await ensureOwnProfile(user)
+  } catch (err) {
+    if (isProfileNotProvisionedError(err)) return NextResponse.json({ error: err.message }, { status: 403 })
+    throw err
+  }
 
   const { error } = await supabaseAdmin
     .from('profiles')

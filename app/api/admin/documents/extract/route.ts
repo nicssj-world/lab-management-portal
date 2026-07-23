@@ -1,9 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { extractDocxHeaderMetadata } from '@/lib/documents/docx-header'
 import { extractXlsxHeaderMetadata } from '@/lib/documents/xlsx-header'
+import { getActor, canAccessDocuments } from '@/lib/auth/guards'
+import { consumeRateLimit } from '@/lib/security/rate-limit'
+import { privateRequestKey } from '@/lib/security/request-protection'
 
 const EXTRACT_MAX_BYTES = 20 * 1024 * 1024
 
@@ -29,9 +31,22 @@ async function getObjectBuffer(key: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const actor = await getActor()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await canAccessDocuments(actor, 'edit'))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  const extractLimit = consumeRateLimit({
+    key: `document-extract:${privateRequestKey('document-extract-actor', actor.id)}`,
+    limit: 40,
+    windowMs: 10 * 60 * 1000,
+  })
+  if (!extractLimit.allowed) {
+    return NextResponse.json(
+      { error: 'มีคำขออ่านไฟล์มากเกินไป กรุณารอสักครู่แล้วลองใหม่' },
+      { status: 429, headers: { 'Retry-After': String(extractLimit.retryAfterSeconds) } },
+    )
+  }
 
   const contentType = req.headers.get('content-type') ?? ''
   let buffer: Buffer
@@ -44,6 +59,9 @@ export async function POST(req: NextRequest) {
     const fileKey = (body.file_key ?? '').trim()
     fileName = (body.file_name ?? '').trim()
     if (!fileKey || !fileName) return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
+    if (!fileKey.startsWith('documents/') || fileKey.includes('..') || fileKey.length > 1_024) {
+      return NextResponse.json({ error: 'ไม่อนุญาตให้อ่านไฟล์จากตำแหน่งนี้' }, { status: 403 })
+    }
 
     const size = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: fileKey }))
       .then((o) => o.ContentLength ?? 0)
