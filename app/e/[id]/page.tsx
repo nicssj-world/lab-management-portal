@@ -191,7 +191,7 @@ export default async function PublicEquipmentPage({ params }: { params: Promise<
 
         {/* 6. Collapsible full details */}
         <div className="eqp-card">
-          <details className="eqp-sec" open>
+          <details className="eqp-sec">
             <summary className="eqp-sum">ข้อมูลทั่วไป</summary>
             <div className="eqp-sec-body">
               <Row label="แผนก" value={eq.department} />
@@ -204,7 +204,7 @@ export default async function PublicEquipmentPage({ params }: { params: Promise<
             </div>
           </details>
 
-          <details className="eqp-sec" open>
+          <details className="eqp-sec">
             <summary className="eqp-sum">ผู้ผลิต / จำหน่าย</summary>
             <div className="eqp-sec-body">
               <Row label="Manufacturer" value={eq.manufacturer} />
@@ -222,7 +222,7 @@ export default async function PublicEquipmentPage({ params }: { params: Promise<
             </div>
           </details>
 
-          <details className="eqp-sec" open>
+          <details className="eqp-sec">
             <summary className="eqp-sum">การสอบเทียบ</summary>
             <div className="eqp-sec-body">
               <Row label="ต้องการสอบเทียบ" value={eq.needs_calibration ? 'ต้องการ' : 'ไม่ต้องการ'} />
