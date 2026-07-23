@@ -36,16 +36,15 @@ function withOptionalColumns(row: Partial<OwnProfile> & Pick<OwnProfile, 'id' | 
   }
 }
 
-function fallbackName(user: User) {
-  const meta = user.user_metadata ?? {}
-  const name = meta.name ?? meta.full_name ?? meta.display_name
-  if (typeof name === 'string' && name.trim()) return name.trim()
-  return user.email?.split('@')[0] || 'User'
+export class ProfileNotProvisionedError extends Error {
+  constructor() {
+    super('Account has not been provisioned by an administrator')
+    this.name = 'ProfileNotProvisionedError'
+  }
 }
 
-function fallbackEphisId(user: User) {
-  const local = user.email?.split('@')[0] ?? ''
-  return /^\d+$/.test(local) ? local : null
+export function isProfileNotProvisionedError(error: unknown): error is ProfileNotProvisionedError {
+  return error instanceof ProfileNotProvisionedError
 }
 
 export async function getOwnProfile(userId: string): Promise<OwnProfile | null> {
@@ -74,32 +73,5 @@ export async function getOwnProfile(userId: string): Promise<OwnProfile | null> 
 export async function ensureOwnProfile(user: User): Promise<OwnProfile> {
   const existing = await getOwnProfile(user.id)
   if (existing) return existing
-
-  const name = fallbackName(user)
-  const ephisId = fallbackEphisId(user)
-  const attempts: Record<string, unknown>[] = [
-    { id: user.id, name, role: 'Assistant', dept: null, status: 'active', ephis_id: ephisId },
-    { id: user.id, name, role: 'Assistant', dept: null, status: 'active' },
-    { id: user.id, name, role: 'Assistant', dept: null },
-  ]
-
-  let lastError: unknown = null
-  for (const payload of attempts) {
-    const { data, error } = await supabaseAdmin
-      .from('profiles')
-      .insert(payload)
-      .select(BASIC_SELECT)
-      .single()
-
-    if (!error && data) return withOptionalColumns(data as Pick<OwnProfile, 'id' | 'name' | 'role' | 'dept'>)
-    lastError = error
-
-    const recovered = await getOwnProfile(user.id)
-    if (recovered) return recovered
-  }
-
-  if (lastError && typeof lastError === 'object' && 'message' in lastError) {
-    throw new Error(String(lastError.message))
-  }
-  throw new Error('Unable to create profile')
+  throw new ProfileNotProvisionedError()
 }

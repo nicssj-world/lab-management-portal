@@ -5,8 +5,10 @@ import { sanitizeTest, sanitizeTestDocument, type PublicRelatedTestDocument } fr
 import type { Category, TestDocument, TestReferenceRange } from '@/lib/supabase/types'
 import { orderRelatedTestDocuments } from '@/lib/documents/related-test-documents'
 import { normalizeDocumentAccess } from '@/lib/tests/document-access'
+import { consumeClientRateLimit } from '@/lib/security/request-protection'
 
 type Params = { params: Promise<{ id: string }> }
+const PUBLIC_CACHE = { 'Cache-Control': 'public, max-age=0, s-maxage=120, stale-while-revalidate=300' }
 
 function toMsg(err: unknown): string {
   if (err && typeof err === 'object') {
@@ -16,7 +18,9 @@ function toMsg(err: unknown): string {
   return String(err)
 }
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
+  const limit = consumeClientRateLimit(req.headers, 'public-test-detail', 300, 10 * 60 * 1000)
+  if (!limit.allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds), 'Cache-Control': 'no-store' } })
   try {
     const { id } = await params
     const test = await getTestByCatalogParam(supabaseAdmin, id)
@@ -49,7 +53,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       referenceRanges: (rangesRes.data ?? []) as TestReferenceRange[],
       documents: (docsRes.data ?? []).map((doc) => sanitizeTestDocument(doc as TestDocument)),
       relatedDocuments,
-    })
+    }, { headers: PUBLIC_CACHE })
   } catch (err) {
     return NextResponse.json({ error: toMsg(err) }, { status: 500 })
   }

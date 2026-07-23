@@ -365,9 +365,8 @@ do $$ begin
       id = auth.uid() or (select role from profiles where id = auth.uid()) = 'admin'
     );
   end if;
-  if not exists (select 1 from pg_policies where tablename='profiles' and policyname='profiles_self_update') then
-    create policy "profiles_self_update" on profiles for update using (id = auth.uid());
-  end if;
+  -- Self updates go through /api/me, which allowlists safe fields. Do not create
+  -- a broad UPDATE policy here: it would also permit changing role/doc_role.
   if not exists (select 1 from pg_policies where tablename='profiles' and policyname='profiles_admin_write') then
     create policy "profiles_admin_write" on profiles for insert with check (
       (select role from profiles where id = auth.uid()) = 'admin'
@@ -472,3 +471,6 @@ do $$ begin
   end if;
 
 end $$;
+
+drop policy if exists "profiles_self_update" on profiles;
+revoke insert, update, delete on table profiles from anon, authenticated;

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { clearStaleAuthSession, createClient } from '@/lib/supabase/client'
@@ -17,6 +17,12 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('error') !== 'account_not_provisioned') return
+    setError('บัญชีนี้ยังไม่ได้รับอนุญาตให้ใช้งาน กรุณาติดต่อผู้ดูแลระบบ')
+    createClient().auth.signOut({ scope: 'local' }).catch(() => clearStaleAuthSession())
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

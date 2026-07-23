@@ -30,9 +30,16 @@ assert.ok(publicRoute.includes('submissionKey'))
 assert.ok(publicRoute.includes('validateSubmission'))
 assert.ok(publicServer.includes("rpc('submit_survey_response'"))
 assert.ok(publicRoute.includes('deviceHash'))
+assert.ok(publicRoute.includes('verifyPublicSurveyChallenge'))
+assert.ok(publicRoute.includes('survey-submit-visitor:'))
+assert.ok(publicRoute.includes('survey-submit-ip:'))
+assert.ok(publicRoute.includes('survey-submit-campaign:'))
+assert.ok(publicRoute.includes('parsed.data.website.trim()'))
+assert.ok(publicRoute.includes('status: 429'))
+assert.ok(publicPage.includes('createPublicSurveyChallenge'))
 
 for (const source of [adminRoute, itemRoute, tokenRoute]) {
-  assert.ok(source.includes("requireResource('แบบสำรวจความพึงพอใจ', 'edit')"))
+  assert.ok(source.includes("requireSatisfaction('edit')"))
   assert.ok(source.includes('.safeParse('))
 }
 assert.ok(manager.includes('QRCode.toDataURL'))
@@ -45,6 +52,8 @@ assert.ok(publicForm.includes('role="alert"'))
 assert.ok(publicForm.includes('aria-live="polite"'))
 assert.ok(publicForm.includes('disabled={submitting'))
 assert.ok(publicForm.includes('submissionKeyRef'))
+assert.ok(publicForm.includes('challenge'))
+assert.ok(publicForm.includes('honeypotRef'))
 for (const state of ['scheduled', 'closed', 'expired', 'limit_reached', 'duplicate']) {
   assert.ok(publicForm.includes(state), `renders ${state} state`)
 }

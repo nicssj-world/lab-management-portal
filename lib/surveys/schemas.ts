@@ -83,6 +83,8 @@ export const updateCampaignSchema = z.object({
 export const rotateCampaignTokenSchema = z.object({ confirm: z.literal(true) })
 export const publicSubmissionSchema = z.object({
   submissionKey: z.string().uuid(),
+  challenge: z.string().min(40).max(2_048),
+  website: z.string().max(200).optional().default(''),
   answers: z.array(z.object({
     questionId: z.string().uuid(),
     optionId: z.string().uuid().nullable().optional(),
