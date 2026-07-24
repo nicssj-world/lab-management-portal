@@ -32,6 +32,8 @@ export const programTestSchema = z.object({
   manualTestName: z.string().trim().min(1).max(300).nullable().default(null),
   testNameSnapshot: z.string().trim().min(1).max(300),
   analyteCode: nullableText,
+  equipmentId: z.string().uuid().nullable().optional().default(null),
+  equipmentNameSnapshot: nullableText,
   active: z.boolean().default(true),
 }).superRefine((value, ctx) => {
   if (Boolean(value.testId) === Boolean(value.manualTestName)) {

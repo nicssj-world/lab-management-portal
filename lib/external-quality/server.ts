@@ -7,6 +7,15 @@ export type ExternalQualityPerson = {
   role: string
 }
 
+export type EqaAnalyzer = {
+  id: string
+  cbh_code: string | null
+  equipment_type: string
+  model: string | null
+  classification: string | null
+  department: string | null
+}
+
 export type ExternalQualityCatalogTest = {
   id: number
   code: string
@@ -37,6 +46,17 @@ export async function listExternalQualityPeople(): Promise<ExternalQualityPerson
     .order('name')
   if (error) throw error
   return (data ?? []) as ExternalQualityPerson[]
+}
+
+export async function listEqaAnalyzers(): Promise<EqaAnalyzer[]> {
+  const { data, error } = await supabaseAdmin
+    .from('equipment')
+    .select('id, cbh_code, equipment_type, model, classification, department, status')
+    .in('classification', ['Analyzer', 'Analyzer (Rental)'])
+    .eq('status', 'Active')
+    .order('cbh_code')
+  if (error) throw error
+  return (data ?? []).map(({ status: _status, ...analyzer }) => analyzer) as EqaAnalyzer[]
 }
 
 export async function listExternalQualityCatalogTests(): Promise<ExternalQualityCatalogTest[]> {

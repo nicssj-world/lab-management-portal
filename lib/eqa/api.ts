@@ -20,7 +20,9 @@ export const programPayload = (input: ProgramInput, actorId: string) => ({
 })
 export const programTestPayload = (input: ProgramTestInput) => ({
   program_id: input.programId, test_id: input.testId, manual_test_name: input.manualTestName,
-  test_name_snapshot: input.testNameSnapshot, analyte_code: input.analyteCode, active: input.active,
+  test_name_snapshot: input.testNameSnapshot, analyte_code: input.analyteCode,
+  equipment_id: input.equipmentId ?? null, equipment_name_snapshot: input.equipmentNameSnapshot ?? null,
+  active: input.active,
 })
 export const roundPayload = (input: RoundInput, actorId: string) => ({
   program_id: input.programId, round_code: input.roundCode, expected_receipt_on: input.expectedReceiptOn,
