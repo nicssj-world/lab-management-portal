@@ -33,6 +33,7 @@ interface DetailProps {
     confidentiality: StaffConfidentialityAgreement[]
   }
   canEdit: boolean
+  canManage: boolean
   tests: TestOption[]
   categories: string[]
   staff: StaffOption[]
@@ -65,7 +66,7 @@ function useToast() {
   return { toasts, add }
 }
 
-export function StaffDetailClient({ detail, canEdit, tests, categories, staff, officialPhotoUrl }: DetailProps) {
+export function StaffDetailClient({ detail, canEdit, canManage, tests, categories, staff, officialPhotoUrl }: DetailProps) {
   const { profile } = detail
   const router = useRouter()
   const pathname = usePathname()
@@ -130,13 +131,13 @@ export function StaffDetailClient({ detail, canEdit, tests, categories, staff, o
         </>
       )}
       {tab === 'training' && <TrainingTab profileId={prof.id} items={training} setItems={setTraining} plans={plan} canEdit={canEdit} toast={add} />}
-      {tab === 'plan' && <TrainingPlanTab profileId={prof.id} items={plan} setItems={setPlan} training={training} canEdit={canEdit} toast={add} />}
-      {tab === 'competency' && <CompetencyTab profileId={prof.id} items={comps} setItems={setComps} canEdit={canEdit} tests={tests} testById={testById} staff={staff} staffById={staffById} toast={add} />}
+      {tab === 'plan' && <TrainingPlanTab profileId={prof.id} items={plan} setItems={setPlan} training={training} canEdit={canManage} toast={add} />}
+      {tab === 'competency' && <CompetencyTab profileId={prof.id} items={comps} setItems={setComps} canEdit={canEdit} canManage={canManage} tests={tests} testById={testById} staff={staff} staffById={staffById} toast={add} />}
       {tab === 'cert' && <CertTab profileId={prof.id} items={certs} setItems={setCerts} canEdit={canEdit} toast={add} />}
-      {tab === 'auth' && <AuthTab profileId={prof.id} items={auths} setItems={setAuths} canEdit={canEdit} tests={tests} testById={testById} categories={categories} competencies={comps} toast={add} />}
+      {tab === 'auth' && <AuthTab profileId={prof.id} items={auths} setItems={setAuths} canEdit={canManage} tests={tests} testById={testById} categories={categories} competencies={comps} toast={add} />}
       {tab === 'jd' && <JdTab profileId={prof.id} items={jds} setItems={setJds} canEdit={canEdit} toast={add} />}
       {tab === 'health' && <HealthTab profileId={prof.id} health={health} setHealth={setHealth} confid={confid} setConfid={setConfid} canEdit={canEdit} toast={add} />}
-      {tab === 'orient' && <OrientationTab profileId={prof.id} canEdit={canEdit} toast={add} />}
+      {tab === 'orient' && <OrientationTab profileId={prof.id} canEdit={canEdit} canManage={canManage} toast={add} />}
 
       {/* Toasts */}
       <div style={{ position: 'fixed', bottom: 20, right: 20, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 2000 }}>
@@ -1230,8 +1231,8 @@ function TrainingTab({ profileId, items, setItems, plans, canEdit, toast }: { pr
 }
 
 // ════════════ Competency tab ════════════
-function CompetencyTab({ profileId, items, setItems, canEdit, tests, testById, staff, staffById, toast }: {
-  profileId: string; items: StaffCompetency[]; setItems: (f: (p: StaffCompetency[]) => StaffCompetency[]) => void; canEdit: boolean
+function CompetencyTab({ profileId, items, setItems, canEdit, canManage, tests, testById, staff, staffById, toast }: {
+  profileId: string; items: StaffCompetency[]; setItems: (f: (p: StaffCompetency[]) => StaffCompetency[]) => void; canEdit: boolean; canManage: boolean
   tests: TestOption[]; testById: Map<number, TestOption>; staff: StaffOption[]; staffById: Map<string, string>; toast: (m: string, ok?: boolean) => void
 }) {
   const [modal, setModal] = useState(false)
@@ -1292,7 +1293,7 @@ function CompetencyTab({ profileId, items, setItems, canEdit, tests, testById, s
 
   return (
     <Card padding={20}>
-      <SectionHeader title="การประเมินสมรรถนะ" sub="สมรรถนะวิชาชีพ · ยืนยันโดยผู้ประเมิน" canEdit={canEdit} onAdd={openAdd} />
+      <SectionHeader title="การประเมินสมรรถนะ" sub="สมรรถนะวิชาชีพ · ยืนยันโดยผู้ประเมิน" canEdit={canManage} onAdd={openAdd} />
       {(overdue > 0 || dueSoon > 0) && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           {overdue > 0 && <span style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(220,38,38,.1)', color: 'var(--danger)', fontSize: 12.5, fontWeight: 600 }}>เกินกำหนดประเมิน {overdue} รายการ</span>}
@@ -1317,13 +1318,13 @@ function CompetencyTab({ profileId, items, setItems, canEdit, tests, testById, s
               <td style={td}>{c.result ? <span style={{ fontWeight: 700, color: c.result === 'pass' ? 'var(--success)' : 'var(--danger)' }}>{c.result === 'pass' ? 'ผ่าน' : 'ไม่ผ่าน'}</span> : '—'}</td>
               <td style={td}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <SignoffChip label="ผู้ประเมิน" done={!!c.assessor_signoff} canEdit={canEdit} onToggle={() => signoff(c.id, 'assessor', !c.assessor_signoff)} />
-                  <SignoffChip label="ผู้รับการประเมิน" done={!!c.assessee_ack} canEdit={canEdit} onToggle={() => signoff(c.id, 'assessee', !c.assessee_ack)} />
+                  <SignoffChip label="ผู้ประเมิน" done={!!c.assessor_signoff} canEdit={canManage} onToggle={() => signoff(c.id, 'assessor', !c.assessor_signoff)} />
+                  <SignoffChip label="ผู้รับการประเมิน" done={!!c.assessee_ack} canEdit={canEdit || canManage} onToggle={() => signoff(c.id, 'assessee', !c.assessee_ack)} />
                 </div>
               </td>
               <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                {canEdit && <button onClick={() => openEdit(c)} title="แก้ไข" style={iconBtn}><Icon name="edit" size={14} /></button>}
-                {canEdit && <button onClick={() => remove(c.id)} style={{ ...iconBtn, marginLeft: 4 }}><Icon name="trash" size={14} /></button>}
+                {canManage && <button onClick={() => openEdit(c)} title="แก้ไข" style={iconBtn}><Icon name="edit" size={14} /></button>}
+                {canManage && <button onClick={() => remove(c.id)} style={{ ...iconBtn, marginLeft: 4 }}><Icon name="trash" size={14} /></button>}
               </td>
             </tr>
           )
@@ -1962,7 +1963,7 @@ function ConfidentialitySection({ profileId, items, setItems, canEdit, toast }: 
 }
 
 // ════════════ Orientation tab (ISO 6.2.4) ════════════
-function OrientationTab({ profileId, canEdit, toast }: { profileId: string; canEdit: boolean; toast: (m: string, ok?: boolean) => void }) {
+function OrientationTab({ profileId, canEdit, canManage, toast }: { profileId: string; canEdit: boolean; canManage: boolean; toast: (m: string, ok?: boolean) => void }) {
   const [items, setItems] = useState<OrientationItem[] | null>(null)
   const [completedAt, setCompletedAt] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -1974,7 +1975,7 @@ function OrientationTab({ profileId, canEdit, toast }: { profileId: string; canE
 
   async function persist(next: OrientationItem[]) {
     setItems(next)
-    if (!canEdit) return
+    if (!canEdit && !canManage) return
     setSaving(true)
     try {
       const saved = await apiSend(`/api/admin/personnel/${profileId}/orientation`, 'PUT', { items: next })
@@ -2014,12 +2015,12 @@ function OrientationTab({ profileId, canEdit, toast }: { profileId: string; canE
         : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {items.map((i) => (
               <div key={i.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 8, background: i.done ? 'rgba(22,163,74,.06)' : 'var(--card)' }}>
-                <input type="checkbox" checked={i.done} disabled={!canEdit} onChange={() => toggle(i.key)} style={{ width: 16, height: 16, cursor: canEdit ? 'pointer' : 'default' }} />
+                <input type="checkbox" checked={i.done} disabled={!canEdit && !canManage} onChange={() => toggle(i.key)} style={{ width: 16, height: 16, cursor: (canEdit || canManage) ? 'pointer' : 'default' }} />
                 <span style={{ flex: 1, fontSize: 13, color: 'var(--ink)', textDecoration: i.done ? 'line-through' : 'none' }}>{i.label}</span>
-                {canEdit && <button onClick={() => removeItem(i.key)} style={iconBtn}><Icon name="trash" size={13} /></button>}
+                {canManage && <button onClick={() => removeItem(i.key)} style={iconBtn}><Icon name="trash" size={13} /></button>}
               </div>
             ))}
-            {canEdit && (
+            {canManage && (
               <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                 <input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="เพิ่มหัวข้อปฐมนิเทศ" style={inputStyle} onKeyDown={(e) => { if (e.key === 'Enter') addItem() }} />
                 <button onClick={addItem} style={primaryBtn}><Icon name="plus" size={15} /> เพิ่ม</button>

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requirePersonnelEdit } from '@/lib/auth/guards'
+import { getActor, canAccessResource, jsonUnauthorized, jsonForbidden } from '@/lib/auth/guards'
+import { canManagePersonnel } from '@/lib/personnel/roles'
 import { toMsg } from '@/lib/personnel/crud'
 
 const ROLE_LABEL = { assessor: 'ผู้ประเมิน (Assessor)', assessee: 'ผู้ถูกประเมิน (Assessee)' } as const
@@ -11,8 +12,12 @@ const SignoffSchema = z.object({ role: z.enum(['assessor', 'assessee']), value: 
 // POST peer-assessment sign-off: assessor sign-off or assessee acknowledgement
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string; compId: string }> }) {
   const { id, compId } = await ctx.params
-  const { actor, response } = await requirePersonnelEdit(id)
-  if (!actor) return response
+  // Assessee (owner) may acknowledge their own; assessor sign-off is done by a manager.
+  const actor = await getActor()
+  if (!actor) return jsonUnauthorized()
+  if (actor.id !== id && !canManagePersonnel(actor.role) && !(await canAccessResource(actor, 'บุคลากร', 'edit'))) {
+    return jsonForbidden()
+  }
   try {
     const parsed = SignoffSchema.safeParse(await req.json())
     if (!parsed.success) return NextResponse.json({ error: 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })

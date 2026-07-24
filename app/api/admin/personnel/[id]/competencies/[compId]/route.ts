@@ -4,10 +4,10 @@ import { CompetencySchema } from '@/lib/validations/personnel'
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string; compId: string }> }) {
   const { id, compId } = await ctx.params
-  return updateChild(req, 'staff_competencies', compId, CompetencySchema, id)
+  return updateChild(req, 'staff_competencies', compId, CompetencySchema, id, { access: 'manage' })
 }
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string; compId: string }> }) {
   const { id, compId } = await ctx.params
-  return softDeleteChild('staff_competencies', compId, id)
+  return softDeleteChild('staff_competencies', compId, id, 'manage')
 }

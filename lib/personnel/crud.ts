@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requireResource, requirePersonnelEdit, type Actor } from '@/lib/auth/guards'
+import { requireResource, requirePersonnelEdit, requirePersonnelManage, type Actor } from '@/lib/auth/guards'
 import { removeStaffFile } from '@/lib/personnel/storage'
 
 const RESOURCE = 'บุคลากร' as const
+
+// 'edit' = self-owner OR บุคลากร edit (default). 'manage' = Admin/Manager only.
+export type PersonnelAccess = 'edit' | 'manage'
+function requireAccess(access: PersonnelAccess, ownerId: string) {
+  return access === 'manage' ? requirePersonnelManage() : requirePersonnelEdit(ownerId)
+}
 
 export function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
@@ -36,8 +42,9 @@ export async function createChild<T extends z.ZodTypeAny>(
   table: string,
   profileId: string,
   schema: T,
+  access: PersonnelAccess = 'edit',
 ) {
-  const { actor, response } = await requirePersonnelEdit(profileId)
+  const { actor, response } = await requireAccess(access, profileId)
   if (!actor) return response
   try {
     const body = await req.json()
@@ -65,9 +72,9 @@ export async function updateChild(
   childId: string,
   schema: z.AnyZodObject,
   ownerId: string,
-  opts?: { fileColumns?: string[] },
+  opts?: { fileColumns?: string[]; access?: PersonnelAccess },
 ) {
-  const { actor, response } = await requirePersonnelEdit(ownerId)
+  const { actor, response } = await requireAccess(opts?.access ?? 'edit', ownerId)
   if (!actor) return response
   try {
     const body = await req.json()
@@ -102,8 +109,8 @@ export async function updateChild(
 }
 
 // DELETE soft-delete a child row (own or edit permission)
-export async function softDeleteChild(table: string, childId: string, ownerId: string) {
-  const { actor, response } = await requirePersonnelEdit(ownerId)
+export async function softDeleteChild(table: string, childId: string, ownerId: string, access: PersonnelAccess = 'edit') {
+  const { actor, response } = await requireAccess(access, ownerId)
   if (!actor) return response
   const { error } = await supabaseAdmin
     .from(table)

@@ -9,5 +9,5 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
-  return createChild(req, 'staff_authorizations', id, AuthorizationSchema)
+  return createChild(req, 'staff_authorizations', id, AuthorizationSchema, 'manage')
 }

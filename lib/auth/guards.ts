@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions, type PermLevel } from '@/lib/permissions'
 import type { ResourceKey } from '@/lib/permission-resources'
 import { normalizeRole } from '@/lib/roles'
+import { canManagePersonnel } from '@/lib/personnel/roles'
 
 export type Actor = {
   id: string
@@ -105,5 +106,16 @@ export async function requirePersonnelEdit(
   if (!actor) return { response: jsonUnauthorized() }
   if (actor.id === profileId) return { actor }
   if (await canAccessResource(actor, 'บุคลากร', 'edit')) return { actor }
+  return { response: jsonForbidden() }
+}
+
+// Allows only Admin/Manager — for actions that manage OTHER staff (orientation topics,
+// work-assignment, training plans, competencies). No self-edit exception.
+export async function requirePersonnelManage(): Promise<
+  { actor: Actor; response?: undefined } | { actor?: undefined; response: NextResponse }
+> {
+  const actor = await getActor()
+  if (!actor) return { response: jsonUnauthorized() }
+  if (canManagePersonnel(actor.role)) return { actor }
   return { response: jsonForbidden() }
 }
