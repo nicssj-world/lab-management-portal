@@ -1,12 +1,13 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { bangkokToday, listExternalQualityCatalogTests, listExternalQualityPeople } from '@/lib/external-quality/server'
+import { bangkokToday, listEqaAnalyzers, listExternalQualityCatalogTests, listExternalQualityPeople } from '@/lib/external-quality/server'
+import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
 import { deadlineUrgency, roundClosureBlockers, summarizeCoverage } from './domain'
 import type { EqaOverview } from './types'
 
 type Row = Record<string, any>
 
 export async function getEqaOverview(fiscalYearBe: number, today = bangkokToday()): Promise<EqaOverview> {
-  const [providersResult, programsResult, ownersResult, testsResult, coverageResult, roundsResult, resultsResult, capasResult, linksResult, attachmentsResult, categoriesResult, people, tests] = await Promise.all([
+  const [providersResult, programsResult, ownersResult, testsResult, coverageResult, roundsResult, resultsResult, capasResult, linksResult, attachmentsResult, categoriesResult, people, tests, analyzers] = await Promise.all([
     supabaseAdmin.from('eqa_providers').select('*').order('name'),
     supabaseAdmin.from('eqa_programs').select('*').eq('fiscal_year_be', fiscalYearBe).order('name'),
     supabaseAdmin.from('eqa_program_owners').select('*'),
@@ -20,6 +21,7 @@ export async function getEqaOverview(fiscalYearBe: number, today = bangkokToday(
     supabaseAdmin.from('categories').select('id, th, sort_order').eq('active', true).order('sort_order').order('th'),
     listExternalQualityPeople(),
     listExternalQualityCatalogTests(),
+    listEqaAnalyzers(),
   ])
   for (const result of [providersResult, programsResult, ownersResult, testsResult, coverageResult, roundsResult, resultsResult, capasResult, linksResult, attachmentsResult, categoriesResult]) {
     if (result.error) throw result.error
@@ -66,10 +68,11 @@ export async function getEqaOverview(fiscalYearBe: number, today = bangkokToday(
     }
   })
   const coverageSummary = summarizeCoverage(coverageRows)
+  const responsiblePeople = people.filter(person => hasMedicalTechnologistLicenseScope(person.role))
   return {
     providers: providersResult.data ?? [], programs, programTests,
-    coverageRequirements: coverageResult.data ?? [], rounds, results, capas, attachments,
-    people, tests, categories: categoriesResult.data ?? [], coverageSummary,
+    coverageRequirements: coverageResult.data ?? [], rounds, results, capas, attachments, capaLinks: links,
+    people, responsiblePeople, tests, analyzers, categories: categoriesResult.data ?? [], coverageSummary,
     summary: {
       activePrograms: programs.filter(program => program.active).length,
       urgentRounds: rounds.filter(round => round.status !== 'closed' && ['upcoming', 'due-soon', 'critical', 'overdue'].includes(round.urgency)).length,

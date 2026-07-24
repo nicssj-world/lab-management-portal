@@ -27,7 +27,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'มีรายการผลที่ไม่ได้อยู่ในโครงการของรอบนี้' }, { status: 422 })
     }
     const payload = input.results.map(result => ({ ...resultPayload(id, result, ctx.actor!.id), created_by: ctx.actor!.id }))
-    const { error } = await supabaseAdmin.from('eqa_round_results').upsert(payload, { onConflict: 'round_id,program_test_id,sample_code' })
+    const { data: saved, error } = await supabaseAdmin
+      .from('eqa_round_results')
+      .upsert(payload, { onConflict: 'round_id,program_test_id,sample_code' })
+      .select('id, program_test_id, outcome')
     if (error) throw error
     const { count: failureCount, error: failureError } = await supabaseAdmin
       .from('eqa_round_results').select('id', { count: 'exact', head: true }).eq('round_id', id).eq('outcome', 'unacceptable')
@@ -39,7 +42,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       .neq('status', 'closed')
     if (updateError) throw updateError
     await auditExternalQuality('eqa', 'result.upsert', ctx.actor!.id, id, `${input.results.length} results`)
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, results: saved ?? [] })
   } catch (error) {
     return externalQualityError(error)
   }

@@ -161,12 +161,15 @@ create table if not exists public.eqa_program_tests (
   manual_test_name text,
   test_name_snapshot text not null,
   analyte_code text,
+  equipment_id uuid references public.equipment(id),
+  equipment_name_snapshot text,
   active boolean not null default true,
   created_at timestamptz not null default now(),
   created_by uuid references public.profiles(id),
   check ((test_id is not null and manual_test_name is null) or (test_id is null and manual_test_name is not null and nullif(btrim(manual_test_name), '') is not null))
 );
 create index if not exists eqa_program_tests_program on public.eqa_program_tests(program_id);
+create index if not exists eqa_program_tests_equipment on public.eqa_program_tests(equipment_id);
 
 create table if not exists public.eqa_rounds (
   id uuid primary key default gen_random_uuid(),

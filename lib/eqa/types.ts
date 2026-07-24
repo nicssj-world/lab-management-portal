@@ -1,5 +1,5 @@
 import type { EqaDeadlineUrgency, EqaRoundStatus } from './domain'
-import type { ExternalQualityCatalogTest, ExternalQualityPerson } from '@/lib/external-quality/server'
+import type { EqaAnalyzer, ExternalQualityCatalogTest, ExternalQualityPerson } from '@/lib/external-quality/server'
 
 export type EqaCatalogCategory = {
   id: string
@@ -16,8 +16,11 @@ export type EqaOverview = {
   results: Record<string, any>[]
   capas: Record<string, any>[]
   attachments: Record<string, any>[]
+  capaLinks: Record<string, any>[]
   people: ExternalQualityPerson[]
+  responsiblePeople: ExternalQualityPerson[]
   tests: ExternalQualityCatalogTest[]
+  analyzers: EqaAnalyzer[]
   categories: EqaCatalogCategory[]
   coverageSummary: { eligible: number; planned: number; completed: number; plannedPct: number; completedPct: number }
   summary: { activePrograms: number; urgentRounds: number; unacceptableResults: number; openCapas: number }
