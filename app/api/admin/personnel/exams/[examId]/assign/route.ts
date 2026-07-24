@@ -15,9 +15,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: parsed.error.errors[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
   }
   const ids = [...new Set(parsed.data.profileIds)]
-  const rows = ids.map((profileId) => ({ exam_id: examId, profile_id: profileId, assigned_by: actor.id }))
-  // Ignore people already assigned this exam (unique exam_id, profile_id).
-  const { error } = await supabaseAdmin.from('exam_assignments').upsert(rows, { onConflict: 'exam_id,profile_id', ignoreDuplicates: true })
+  // Re-assigning someone who already took it opens a fresh attempt (resets to 'open').
+  // Their earlier result stays recorded in staff_competencies as history.
+  const rows = ids.map((profileId) => ({
+    exam_id: examId, profile_id: profileId, assigned_by: actor.id,
+    status: 'open', score: null, passed: null, answers: null, competency_id: null,
+    submitted_at: null, assigned_at: new Date().toISOString(),
+  }))
+  const { error } = await supabaseAdmin.from('exam_assignments').upsert(rows, { onConflict: 'exam_id,profile_id' })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   supabaseAdmin.from('audit_log')

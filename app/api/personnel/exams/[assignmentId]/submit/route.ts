@@ -9,6 +9,12 @@ function bangkokToday() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 }
 
+// Competency exams are re-assessed annually — next due date = one year from today.
+function addYears(dateStr: string, years: number) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(Date.UTC(y + years, m - 1, d)).toISOString().slice(0, 10)
+}
+
 // The assigned staff member submits their answers; auto-graded and recorded as a competency.
 export async function POST(req: NextRequest, { params }: Params) {
   const actor = await getActor()
@@ -46,6 +52,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       area: exam.title,
       assessor_id: assignment.assigned_by,
       assessment_date: today,
+      next_due_date: addYears(today, 1),
       score_knowledge: result.score,
       result: result.passed ? 'pass' : 'fail',
       notes: `ข้อสอบสมรรถนะ: ตอบถูก ${result.correct}/${result.total} ข้อ (${result.score}%)`,
@@ -62,6 +69,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     })
     .eq('id', assignmentId)
   if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
+
+  // Passing the exam auto-grants a performer authorization for the linked หมวด (ISO 15189 loop).
+  if (result.passed && definition.authorizeCategory) {
+    await supabaseAdmin.from('staff_authorizations').insert({
+      profile_id: actor.id, category: definition.authorizeCategory, role_type: 'performer',
+      competency_id: comp?.id ?? null, authorized_date: today, status: 'active',
+      authorized_by: assignment.assigned_by, created_by: actor.id,
+    })
+  }
 
   return NextResponse.json({ ok: true, score: result.score, passed: result.passed, correct: result.correct, total: result.total, answerKey })
 }
