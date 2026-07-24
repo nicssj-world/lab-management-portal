@@ -34,7 +34,12 @@ export interface Profile {
   education?: string | null
   mt_license_no?: string | null
   mt_license_expiry?: string | null
+  // group org-chart role (added by scripts/personnel-dept-role.sql)
+  dept_role?: DeptRole | null
 }
+
+// Placement in the group org chart. null = ลูกน้อง (member).
+export type DeptRole = 'group_lead' | 'group_deputy' | 'section_head'
 
 // ── MT-CBH Staff / Personnel module (ISO 15189 clause 6.2) ──
 export interface StaffCertification {

@@ -136,7 +136,7 @@ function Pill({ color, children }: { color: string; children: React.ReactNode })
   )
 }
 
-export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'all' }: { rows: RosterRow[]; currentUserId?: string; initialSummaryFilter?: PersonnelSummaryFilter }) {
+export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'all', canManage = false }: { rows: RosterRow[]; currentUserId?: string; initialSummaryFilter?: PersonnelSummaryFilter; canManage?: boolean }) {
   const router = useRouter()
   const { canEdit } = usePermission('บุคลากร')
   const [search, setSearch] = useState('')
@@ -205,6 +205,16 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
           marginBottom={0}
         />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0, position: 'relative' }}>
+          {canManage && (
+            <>
+              <Link href="/staff/personnel/manage" style={linkBtn}>
+                <Icon name="settings" size={15} /> จัดการกลุ่มงาน
+              </Link>
+              <Link href="/staff/personnel/team-org" style={linkBtn}>
+                <Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน
+              </Link>
+            </>
+          )}
           {hasOwnRecord && (
             <Link href={`/staff/personnel/${currentUserId}`} style={linkBtn}>
               <Icon name="user" size={15} /> โปรไฟล์ของฉัน

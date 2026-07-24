@@ -5,7 +5,8 @@ import { getStaffRoster, getAllCertifications, getAllCompetencies } from '@/lib/
 import { expiryStatus } from '@/lib/personnel/expiry'
 import { createStaffSignedUrl } from '@/lib/personnel/storage'
 import { PersonnelClient, type RosterRow } from './PersonnelClient'
-import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
+import { hasMedicalTechnologistLicenseScope, canManagePersonnel } from '@/lib/personnel/roles'
+import { normalizeRole } from '@/lib/roles'
 
 export default async function PersonnelPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   const { filter } = await searchParams
@@ -18,6 +19,7 @@ export default async function PersonnelPage({ searchParams }: { searchParams: Pr
   const { data: actor } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   const perms = actor?.role ? await getRolePermissions(actor.role) : {}
   if ((perms['บุคลากร'] ?? 'none') === 'none') redirect('/staff/dashboard')
+  const canManage = canManagePersonnel(normalizeRole(actor?.role))
 
   const [roster, certs, comps] = await Promise.all([
     getStaffRoster(),
@@ -72,5 +74,5 @@ export default async function PersonnelPage({ searchParams }: { searchParams: Pr
     }
   })
 
-  return <PersonnelClient rows={rows} currentUserId={user.id} initialSummaryFilter={initialSummaryFilter} />
+  return <PersonnelClient rows={rows} currentUserId={user.id} initialSummaryFilter={initialSummaryFilter} canManage={canManage} />
 }
