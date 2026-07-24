@@ -3,7 +3,8 @@ import { z } from 'zod'
 // ── Definition (stored in competency_exams.definition JSONB) ──
 export type ExamOption = { id: string; label: string; isCorrect: boolean }
 export type ExamQuestion = { id: string; prompt: string; type: 'single_choice' | 'yes_no'; options: ExamOption[] }
-export type ExamDefinition = { questions: ExamQuestion[] }
+// authorizeCategory: when set, passing the exam auto-grants a performer authorization for that หมวด.
+export type ExamDefinition = { questions: ExamQuestion[]; authorizeCategory?: string | null }
 
 export type CompetencyExam = {
   id: string
@@ -46,6 +47,7 @@ const ExamQuestionSchema = z.object({
 
 export const ExamDefinitionSchema = z.object({
   questions: z.array(ExamQuestionSchema).min(1, 'ต้องมีอย่างน้อยหนึ่งคำถาม'),
+  authorizeCategory: z.string().trim().max(300).nullable().optional(),
 })
 
 export const ExamUpsertSchema = z.object({

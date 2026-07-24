@@ -28,17 +28,24 @@ export default async function ExamsPage() {
 
   let exams: ExamRow[] = []
   let roster: RosterPerson[] = []
+  let categories: string[] = []
   if (canManage) {
-    const [{ data: examData }, rosterData] = await Promise.all([
+    const [{ data: examData }, rosterData, { data: cats }] = await Promise.all([
       supabaseAdmin.from('competency_exams').select('*').eq('active', true).order('created_at', { ascending: false }),
       getStaffRoster(),
+      supabaseAdmin.from('categories').select('th').order('th'),
     ])
     const counts = new Map<string, number>()
-    const { data: assignAll } = await supabaseAdmin.from('exam_assignments').select('exam_id')
-    for (const a of assignAll ?? []) counts.set(a.exam_id, (counts.get(a.exam_id) ?? 0) + 1)
-    exams = ((examData ?? []) as CompetencyExam[]).map((e) => ({ ...e, assignedCount: counts.get(e.id) ?? 0 }))
+    const graded = new Map<string, number>()
+    const { data: assignAll } = await supabaseAdmin.from('exam_assignments').select('exam_id, status')
+    for (const a of assignAll ?? []) {
+      counts.set(a.exam_id, (counts.get(a.exam_id) ?? 0) + 1)
+      if (a.status === 'graded') graded.set(a.exam_id, (graded.get(a.exam_id) ?? 0) + 1)
+    }
+    exams = ((examData ?? []) as CompetencyExam[]).map((e) => ({ ...e, assignedCount: counts.get(e.id) ?? 0, gradedCount: graded.get(e.id) ?? 0 }))
     roster = rosterData.map((p) => ({ id: p.id, name: p.name, dept: p.dept }))
+    categories = (cats ?? []).map((c) => c.th as string)
   }
 
-  return <ExamsClient myAssignments={myAssignments} exams={exams} roster={roster} canManage={canManage} />
+  return <ExamsClient myAssignments={myAssignments} exams={exams} roster={roster} categories={categories} canManage={canManage} />
 }

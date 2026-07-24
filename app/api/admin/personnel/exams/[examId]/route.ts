@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requirePersonnelManage } from '@/lib/auth/guards'
-import { ExamUpsertSchema } from '@/lib/personnel/exam'
+import { ExamUpsertSchema, type ExamDefinition } from '@/lib/personnel/exam'
 
 type Params = { params: Promise<{ examId: string }> }
 
@@ -14,6 +14,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: parsed.error.errors[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
   }
   const { title, description, definition, passMark } = parsed.data
+
+  // Once someone has taken this exam, the questions/answer key are frozen so that
+  // recorded scores stay consistent. Title/description/pass mark/หมวด may still change.
+  const [{ data: existing }, { count: gradedCount }] = await Promise.all([
+    supabaseAdmin.from('competency_exams').select('definition').eq('id', examId).single(),
+    supabaseAdmin.from('exam_assignments').select('id', { count: 'exact', head: true }).eq('exam_id', examId).eq('status', 'graded'),
+  ])
+  const existingQuestions = (existing?.definition as ExamDefinition | undefined)?.questions ?? []
+  if ((gradedCount ?? 0) > 0 && JSON.stringify(existingQuestions) !== JSON.stringify(definition.questions)) {
+    return NextResponse.json({ error: 'ข้อสอบนี้มีผู้ทำแล้ว ไม่สามารถแก้ไขคำถามหรือเฉลยได้ กรุณาสร้างข้อสอบใหม่' }, { status: 422 })
+  }
+
   const { data, error } = await supabaseAdmin
     .from('competency_exams')
     .update({ title, description: description ?? null, definition, pass_mark: passMark, updated_at: new Date().toISOString() })
