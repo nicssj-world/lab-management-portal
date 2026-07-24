@@ -769,6 +769,13 @@ const ACTION_LABELS: Record<string, string> = {
   'personnel.staff_authorizations.create':         'เพิ่มการมอบหมายงาน (Authorization)',
   'personnel.staff_authorizations.update':         'แก้ไขการมอบหมายงาน (Authorization)',
   'personnel.staff_authorizations.delete':         'ลบการมอบหมายงาน (Authorization)',
+  'personnel.dept_role.set':                      'กำหนดบทบาทในผังกลุ่มงาน',
+  'personnel.work_group.create':                  'รวมงานเป็นกลุ่มในผังองค์กร',
+  'personnel.bulk.authorizations':                'มอบสิทธิทำการตรวจ (หลายคน)',
+  'personnel.bulk.training-plan':                 'กำหนดแผนอบรม (หลายคน)',
+  'personnel.bulk.competencies':                  'ประเมินสมรรถนะ (หลายคน)',
+  'personnel.exam.create':                        'สร้างข้อสอบสมรรถนะ',
+  'personnel.exam.assign':                        'มอบหมายข้อสอบสมรรถนะ',
   // โปรไฟล์เอกสาร / ลายเซ็น
   'document_profile.update':                      'แก้ไขโปรไฟล์เอกสาร',
   'document_profile.update_self':                 'แก้ไขโปรไฟล์เอกสาร (ตัวเอง)',
