@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requireResource, requirePersonnelEdit } from '@/lib/auth/guards'
+import { requireResource, getActor, canAccessResource, jsonUnauthorized, jsonForbidden } from '@/lib/auth/guards'
+import { canManagePersonnel } from '@/lib/personnel/roles'
 import { OrientationSchema, ORIENTATION_TEMPLATE } from '@/lib/validations/personnel'
 import { toMsg } from '@/lib/personnel/crud'
 import type { OrientationItem, StaffOrientation } from '@/lib/supabase/types'
@@ -67,8 +68,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 // PUT upsert the checklist. Done-state is per profile; topic add/remove is synced globally.
 export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
-  const { actor, response } = await requirePersonnelEdit(id)
-  if (!actor) return response
+  const actor = await getActor()
+  if (!actor) return jsonUnauthorized()
   try {
     const parsed = OrientationSchema.safeParse(await req.json())
     if (!parsed.success) {
@@ -79,6 +80,14 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     const existingRows = (existingData ?? []) as OrientationRow[]
     const current = existingRows.find((row) => row.profile_id === id) ?? null
     const structureChanged = isStructureChange(templateFromRows(existingRows), parsed.data.items)
+
+    // Changing the topic list fans out to every profile → Admin/Manager only.
+    // Toggling one's own done-state stays available to the owner (or บุคลากร edit).
+    if (structureChanged) {
+      if (!canManagePersonnel(actor.role)) return jsonForbidden()
+    } else if (actor.id !== id && !canManagePersonnel(actor.role) && !(await canAccessResource(actor, 'บุคลากร', 'edit'))) {
+      return jsonForbidden()
+    }
 
     if (structureChanged) {
       const { data: profiles, error: profileError } = await supabaseAdmin

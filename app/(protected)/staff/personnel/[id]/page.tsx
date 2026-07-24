@@ -4,6 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { getStaffDetail } from '@/lib/queries/personnel'
 import { createStaffSignedUrl } from '@/lib/personnel/storage'
+import { canManagePersonnel } from '@/lib/personnel/roles'
+import { normalizeRole } from '@/lib/roles'
 import { StaffDetailClient, type TestOption, type StaffOption } from './StaffDetailClient'
 
 export default async function StaffDetailPage(ctx: { params: Promise<{ id: string }> }) {
@@ -15,6 +17,7 @@ export default async function StaffDetailPage(ctx: { params: Promise<{ id: strin
   const perms = actor?.role ? await getRolePermissions(actor.role) : {}
   if ((perms['บุคลากร'] ?? 'none') === 'none' && user.id !== id) redirect('/staff/dashboard')
   const canEdit = perms['บุคลากร'] === 'edit' || user.id === id
+  const canManage = canManagePersonnel(normalizeRole(actor?.role))
 
   const detail = await getStaffDetail(id)
   if (!detail) notFound()
@@ -34,6 +37,7 @@ export default async function StaffDetailPage(ctx: { params: Promise<{ id: strin
     <StaffDetailClient
       detail={detail}
       canEdit={canEdit}
+      canManage={canManage}
       tests={testOptions}
       categories={categories}
       staff={staffOptions}

@@ -16,3 +16,9 @@ export function mainPersonnelRole(role: string | null | undefined): MainPersonne
 export function hasMedicalTechnologistLicenseScope(role: string | null | undefined): boolean {
   return mainPersonnelRole(role) === 'Medical Technologist'
 }
+
+// Admin/Manager may manage other people's orientation, work assignments, training plans,
+// competencies, dept structure, and competency exams (follows the lib/risk/access.ts pattern).
+export function canManagePersonnel(role: string | null | undefined): boolean {
+  return role === 'Admin' || role === 'Manager'
+}
