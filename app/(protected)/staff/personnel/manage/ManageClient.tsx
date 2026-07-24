@@ -15,6 +15,9 @@ export type ManageRow = {
   position_title: string | null
   role: string
 }
+export type CompStat = { overdue: number; dueSoon: number }
+
+type BulkType = 'authorizations' | 'training-plan' | 'competencies'
 
 const DEPT_ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'ลูกน้อง (สมาชิก)' },
@@ -22,25 +25,49 @@ const DEPT_ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: 'group_deputy', label: 'รองหัวหน้ากลุ่มงาน' },
   { value: 'group_lead', label: 'หัวหน้ากลุ่มงาน' },
 ]
+const ROLE_TYPE_OPTIONS = [
+  { value: 'performer', label: 'ผู้ปฏิบัติ (Performer)' },
+  { value: 'reporter', label: 'ผู้รายงานผล (Reporter)' },
+  { value: 'approver', label: 'ผู้อนุมัติ (Approver)' },
+  { value: 'authorized_signatory', label: 'ผู้ลงนามรับรอง' },
+  { value: 'deputy', label: 'ผู้ปฏิบัติแทน (Deputy)' },
+]
 
-const input: React.CSSProperties = { minHeight: 38, border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px', background: 'var(--card)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 13 }
+const input: React.CSSProperties = { minHeight: 38, width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px', background: 'var(--card)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 13, boxSizing: 'border-box' }
 const card: React.CSSProperties = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }
 const th: React.CSSProperties = { padding: '9px 12px', fontSize: 11, fontWeight: 600, color: 'var(--muted)', textAlign: 'left', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }
 const td: React.CSSProperties = { padding: '9px 12px', fontSize: 13, color: 'var(--ink)', verticalAlign: 'middle' }
+const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 34, padding: '0 12px', borderRadius: 8, border: 0, background: 'var(--primary)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }
+const ghost: React.CSSProperties = { ...btn, background: 'var(--surface-2)', color: 'var(--ink)', border: '1px solid var(--border)' }
 
-export function ManageClient({ rows: initialRows }: { rows: ManageRow[] }) {
+const BULK_TITLE: Record<BulkType, string> = {
+  authorizations: 'มอบสิทธิทำการตรวจ',
+  'training-plan': 'กำหนดแผนอบรม',
+  competencies: 'ประเมิน/กำหนดสมรรถนะ',
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}><span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>{label}</span>{children}</label>
+}
+
+export function ManageClient({ rows: initialRows, categories, compStats }: { rows: ManageRow[]; categories: string[]; compStats: Record<string, CompStat> }) {
   const [rows, setRows] = useState(initialRows)
   const [dept, setDept] = useState<string>(DEPARTMENTS[0])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [bulk, setBulk] = useState<BulkType | null>(null)
 
   const deptRows = useMemo(() => rows.filter((r) => r.dept === dept), [rows, dept])
-  const selectedInDept = deptRows.filter((r) => selected.has(r.id))
+  const selectedIds = useMemo(() => deptRows.filter((r) => selected.has(r.id)).map((r) => r.id), [deptRows, selected])
+  const deptComp = useMemo(() => deptRows.reduce((acc, r) => {
+    const s = compStats[r.id]
+    if (s) { acc.overdue += s.overdue; acc.dueSoon += s.dueSoon }
+    return acc
+  }, { overdue: 0, dueSoon: 0 }), [deptRows, compStats])
 
   async function setDeptRole(id: string, value: string) {
-    setBusyId(id)
-    setError('')
+    setBusyId(id); setError('')
     const deptRole = (value || null) as DeptRole | null
     try {
       const res = await fetch('/api/admin/personnel/manage/dept-role', {
@@ -49,11 +76,7 @@ export function ManageClient({ rows: initialRows }: { rows: ManageRow[] }) {
       })
       if (!res.ok) throw new Error((await res.json())?.error ?? 'บันทึกไม่สำเร็จ')
       setRows((prev) => prev.map((r) => (r.id === id ? { ...r, dept_role: deptRole } : r)))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
-    } finally {
-      setBusyId(null)
-    }
+    } catch (e) { setError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ') } finally { setBusyId(null) }
   }
 
   function toggle(id: string) {
@@ -72,7 +95,7 @@ export function ManageClient({ rows: initialRows }: { rows: ManageRow[] }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <PageHeader eyebrow="กลุ่มงานเทคนิคการแพทย์" title="จัดการกลุ่มงาน" subtitle="กำหนดหัวหน้างานและมอบหมายงานให้บุคลากรในแต่ละงาน" marginBottom={0} />
-        <Link href="/staff/personnel/team-org" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+        <Link href="/staff/personnel/team-org" style={{ ...ghost, textDecoration: 'none' }}>
           <Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน
         </Link>
       </div>
@@ -80,18 +103,26 @@ export function ManageClient({ rows: initialRows }: { rows: ManageRow[] }) {
       {error && <div role="alert" style={{ padding: 10, borderRadius: 8, background: '#FEF2F2', color: '#B91C1C', fontSize: 13 }}>{error}</div>}
 
       <div style={card}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 420 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>เลือกงาน (แผนก)</span>
-          <select value={dept} onChange={(e) => { setDept(e.target.value); setSelected(new Set()) }} style={input}>
+        <Field label="เลือกงาน (แผนก)">
+          <select value={dept} onChange={(e) => { setDept(e.target.value); setSelected(new Set()) }} style={{ ...input, maxWidth: 420 }}>
             {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
-        </label>
+        </Field>
+        {(deptComp.overdue > 0 || deptComp.dueSoon > 0) && (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+            {deptComp.overdue > 0 && <span style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(220,38,38,.1)', color: '#DC2626', fontSize: 12.5, fontWeight: 600 }}>เกินกำหนดประเมินสมรรถนะ {deptComp.overdue} รายการ</span>}
+            {deptComp.dueSoon > 0 && <span style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(217,119,6,.1)', color: '#D97706', fontSize: 12.5, fontWeight: 600 }}>ใกล้ครบกำหนด {deptComp.dueSoon} รายการ</span>}
+          </div>
+        )}
       </div>
 
-      {selectedInDept.length > 0 && (
-        <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: 'var(--surface-2)' }}>
-          <strong style={{ fontSize: 13 }}>เลือก {selectedInDept.length} คน</strong>
-          <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>มอบหมายทีละหลายคน (มอบสิทธิ / แผนอบรม / สมรรถนะ) จะเพิ่มในขั้นถัดไป</span>
+      {selectedIds.length > 0 && (
+        <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--surface-2)' }}>
+          <strong style={{ fontSize: 13 }}>เลือก {selectedIds.length} คน</strong>
+          <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>มอบหมายทีละหลายคน:</span>
+          <button style={btn} onClick={() => setBulk('authorizations')}>มอบสิทธิ</button>
+          <button style={btn} onClick={() => setBulk('training-plan')}>แผนอบรม</button>
+          <button style={btn} onClick={() => setBulk('competencies')}>สมรรถนะ</button>
         </div>
       )}
 
@@ -109,10 +140,14 @@ export function ManageClient({ rows: initialRows }: { rows: ManageRow[] }) {
             {deptRows.map((r) => (
               <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
                 <td style={td}><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} /></td>
-                <td style={{ ...td, fontWeight: 600 }}><Link href={`/staff/personnel/${r.id}`} style={{ color: 'var(--ink)', textDecoration: 'none' }}>{r.name}</Link></td>
+                <td style={{ ...td, fontWeight: 600 }}>
+                  <Link href={`/staff/personnel/${r.id}`} style={{ color: 'var(--ink)', textDecoration: 'none' }}>{r.name}</Link>
+                  {compStats[r.id]?.overdue ? <span title="เกินกำหนดประเมินสมรรถนะ" style={{ marginLeft: 6, padding: '1px 7px', borderRadius: 999, background: 'rgba(220,38,38,.12)', color: '#DC2626', fontSize: 11, fontWeight: 700 }}>เกิน {compStats[r.id].overdue}</span> : null}
+                  {compStats[r.id]?.dueSoon ? <span title="ใกล้ครบกำหนดประเมิน" style={{ marginLeft: 6, padding: '1px 7px', borderRadius: 999, background: 'rgba(217,119,6,.12)', color: '#D97706', fontSize: 11, fontWeight: 700 }}>ใกล้ {compStats[r.id].dueSoon}</span> : null}
+                </td>
                 <td style={{ ...td, color: 'var(--muted)' }}>{r.position_title ?? r.role}</td>
                 <td style={td}>
-                  <select value={r.dept_role ?? ''} disabled={busyId === r.id} onChange={(e) => setDeptRole(r.id, e.target.value)} style={{ ...input, minHeight: 32 }}>
+                  <select value={r.dept_role ?? ''} disabled={busyId === r.id} onChange={(e) => setDeptRole(r.id, e.target.value)} style={{ ...input, minHeight: 32, maxWidth: 220 }}>
                     {DEPT_ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </td>
@@ -121,6 +156,107 @@ export function ManageClient({ rows: initialRows }: { rows: ManageRow[] }) {
             {deptRows.length === 0 && <tr><td colSpan={4} style={{ ...td, textAlign: 'center', color: 'var(--muted)' }}>ไม่มีบุคลากรในงานนี้</td></tr>}
           </tbody>
         </table>
+      </div>
+
+      {bulk && (
+        <BulkModal
+          type={bulk}
+          count={selectedIds.length}
+          categories={categories}
+          assessors={deptRows}
+          onClose={() => setBulk(null)}
+          onDone={(msg) => { setBulk(null); setSelected(new Set()); setError(''); alert(msg) }}
+          onError={setError}
+          profileIds={selectedIds}
+        />
+      )}
+    </div>
+  )
+}
+
+function BulkModal({ type, count, categories, assessors, profileIds, onClose, onDone, onError }: {
+  type: BulkType; count: number; categories: string[]; assessors: ManageRow[]; profileIds: string[]
+  onClose: () => void; onDone: (msg: string) => void; onError: (m: string) => void
+}) {
+  const yearBe = new Date().getFullYear() + 543
+  const [form, setForm] = useState<Record<string, string>>({
+    year: String(yearBe), topic: '', source: '', notes: '',
+    category: categories[0] ?? '', role_type: 'performer', authorized_date: '',
+    assessment_type: 'initial', area: '', assessor_id: '', assessment_date: '', next_due_date: '', result: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }))
+
+  function buildPayload(): Record<string, unknown> | string {
+    if (type === 'training-plan') {
+      if (!form.topic.trim()) return 'กรุณากรอกหัวข้อ'
+      return { year: Number(form.year), topic: form.topic.trim(), source: form.source || null, notes: form.notes || null, status: 'planned' }
+    }
+    if (type === 'authorizations') {
+      if (!form.category) return 'กรุณาเลือกหมวด'
+      return { category: form.category, role_type: form.role_type, authorized_date: form.authorized_date || null, notes: form.notes || null, status: 'active' }
+    }
+    // competencies
+    return {
+      assessment_type: form.assessment_type, area: form.area || null, assessor_id: form.assessor_id || null,
+      assessment_date: form.assessment_date || null, next_due_date: form.next_due_date || null,
+      result: form.result || null, notes: form.notes || null,
+    }
+  }
+
+  async function submit() {
+    const payload = buildPayload()
+    if (typeof payload === 'string') { onError(payload); return }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/admin/personnel/bulk', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, profileIds, payload }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? 'บันทึกไม่สำเร็จ')
+      onDone(`บันทึกให้ ${data.count} คนแล้ว`)
+    } catch (e) { onError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ'); onClose() } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', overflow: 'auto' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>{BULK_TITLE[type]} · {count} คน</div>
+          <button onClick={onClose} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--muted)' }}><Icon name="x" size={18} /></button>
+        </div>
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {type === 'training-plan' && <>
+            <Field label="ปี (พ.ศ.)"><input type="number" value={form.year} onChange={(e) => set('year', e.target.value)} style={input} /></Field>
+            <Field label="หัวข้อการอบรม"><input value={form.topic} onChange={(e) => set('topic', e.target.value)} style={input} /></Field>
+            <Field label="ที่มา"><input value={form.source} onChange={(e) => set('source', e.target.value)} placeholder="เช่น แผนประจำปี / competency gap" style={input} /></Field>
+            <Field label="หมายเหตุ"><input value={form.notes} onChange={(e) => set('notes', e.target.value)} style={input} /></Field>
+          </>}
+          {type === 'authorizations' && <>
+            <Field label="หมวดรายการตรวจ"><select value={form.category} onChange={(e) => set('category', e.target.value)} style={input}><option value="">— เลือก —</option>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+            <Field label="บทบาท"><select value={form.role_type} onChange={(e) => set('role_type', e.target.value)} style={input}>{ROLE_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+            <Field label="วันที่มอบหมาย"><input type="date" value={form.authorized_date} onChange={(e) => set('authorized_date', e.target.value)} style={input} /></Field>
+            <Field label="หมายเหตุ"><input value={form.notes} onChange={(e) => set('notes', e.target.value)} style={input} /></Field>
+          </>}
+          {type === 'competencies' && <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field label="ประเภทการประเมิน"><select value={form.assessment_type} onChange={(e) => set('assessment_type', e.target.value)} style={input}><option value="initial">ครั้งแรก</option><option value="periodic">ประเมินซ้ำ</option></select></Field>
+              <Field label="ผล"><select value={form.result} onChange={(e) => set('result', e.target.value)} style={input}><option value="">—</option><option value="pass">ผ่าน</option><option value="fail">ไม่ผ่าน</option></select></Field>
+            </div>
+            <Field label="หัวข้อสมรรถนะ"><input value={form.area} onChange={(e) => set('area', e.target.value)} style={input} /></Field>
+            <Field label="ผู้ประเมิน"><select value={form.assessor_id} onChange={(e) => set('assessor_id', e.target.value)} style={input}><option value="">—</option>{assessors.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field label="วันที่ประเมิน"><input type="date" value={form.assessment_date} onChange={(e) => set('assessment_date', e.target.value)} style={input} /></Field>
+              <Field label="ครบกำหนดครั้งถัดไป"><input type="date" value={form.next_due_date} onChange={(e) => set('next_due_date', e.target.value)} style={input} /></Field>
+            </div>
+            <Field label="หมายเหตุ"><input value={form.notes} onChange={(e) => set('notes', e.target.value)} style={input} /></Field>
+          </>}
+        </div>
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button onClick={onClose} style={ghost}>ยกเลิก</button>
+          <button onClick={submit} disabled={saving} style={btn}>{saving ? 'กำลังบันทึก…' : `บันทึกให้ ${count} คน`}</button>
+        </div>
       </div>
     </div>
   )

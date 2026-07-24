@@ -1,9 +1,11 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getStaffRoster } from '@/lib/queries/personnel'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getStaffRoster, getAllCompetencies } from '@/lib/queries/personnel'
+import { expiryStatus } from '@/lib/personnel/expiry'
 import { canManagePersonnel } from '@/lib/personnel/roles'
 import { normalizeRole } from '@/lib/roles'
-import { ManageClient, type ManageRow } from './ManageClient'
+import { ManageClient, type ManageRow, type CompStat } from './ManageClient'
 
 export default async function PersonnelManagePage() {
   const supabase = await createClient()
@@ -12,7 +14,11 @@ export default async function PersonnelManagePage() {
   const { data: actor } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (!canManagePersonnel(normalizeRole(actor?.role))) redirect('/staff/personnel')
 
-  const roster = await getStaffRoster()
+  const [roster, comps, { data: cats }] = await Promise.all([
+    getStaffRoster(),
+    getAllCompetencies(),
+    supabaseAdmin.from('categories').select('th').order('th'),
+  ])
   const rows: ManageRow[] = roster.map((p) => ({
     id: p.id,
     name: p.name,
@@ -21,6 +27,18 @@ export default async function PersonnelManagePage() {
     position_title: p.position_title ?? null,
     role: p.role,
   }))
+  const categories = (cats ?? []).map((c) => c.th as string)
 
-  return <ManageClient rows={rows} />
+  // Per-person competency due status (overdue / due soon) for the section dashboard.
+  const compStats: Record<string, CompStat> = {}
+  for (const c of comps) {
+    const s = expiryStatus(c.next_due_date)
+    if (s !== 'expiring' && s !== 'expired') continue
+    const cur = compStats[c.profile_id] ?? { overdue: 0, dueSoon: 0 }
+    if (s === 'expired') cur.overdue++
+    else cur.dueSoon++
+    compStats[c.profile_id] = cur
+  }
+
+  return <ManageClient rows={rows} categories={categories} compStats={compStats} />
 }
