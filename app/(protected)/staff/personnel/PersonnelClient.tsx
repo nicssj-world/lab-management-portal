@@ -215,6 +215,9 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
               </Link>
             </>
           )}
+          <Link href="/staff/personnel/exams" style={linkBtn}>
+            <Icon name="doc" size={15} /> ข้อสอบสมรรถนะ
+          </Link>
           {hasOwnRecord && (
             <Link href={`/staff/personnel/${currentUserId}`} style={linkBtn}>
               <Icon name="user" size={15} /> โปรไฟล์ของฉัน
