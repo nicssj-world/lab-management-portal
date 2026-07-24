@@ -3,12 +3,13 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { createStaffSignedUrl } from '@/lib/personnel/storage'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import type { DeptRole } from '@/lib/supabase/types'
 
-type Person = { id: string; name: string; dept: string | null; dept_role: DeptRole | null; position_title: string | null; role: string | null; avatar_url: string | null }
+type Person = { id: string; name: string; dept: string | null; dept_role: DeptRole | null; position_title: string | null; role: string | null; photo: string | null }
 
 const ROLE_LABEL: Record<DeptRole, string> = {
   group_lead: 'หัวหน้ากลุ่มงาน',
@@ -24,7 +25,7 @@ function PersonBox({ person, tone }: { person: Person; tone?: string }) {
     <Link href={`/staff/personnel/${person.id}`} style={{ textDecoration: 'none' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: `1px solid ${accent}`, borderRadius: 10, background: 'var(--card)', minWidth: 200 }}>
         <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {person.avatar_url ? <img src={person.avatar_url} alt={person.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontWeight: 800, color: 'var(--muted)' }}>{person.name.charAt(0)}</span>}
+          {person.photo ? <img src={person.photo} alt={person.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontWeight: 800, color: 'var(--muted)' }}>{person.name.charAt(0)}</span>}
         </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{person.name}</div>
@@ -45,10 +46,17 @@ export default async function TeamOrgPage() {
 
   const { data } = await supabaseAdmin
     .from('profiles')
-    .select('id, name, dept, dept_role, position_title, role, avatar_url')
+    .select('id, name, dept, dept_role, position_title, role, avatar_url, official_photo_url')
     .is('deleted_at', null)
     .order('name')
-  const people = (data ?? []) as Person[]
+  const raw = data ?? []
+  // Official photos live in the private staff-files bucket and need a signed URL each;
+  // fall back to the public display avatar when no official photo has been uploaded.
+  const photos = await Promise.all(raw.map((p) => (p.official_photo_url ? createStaffSignedUrl(p.official_photo_url) : Promise.resolve(null))))
+  const people: Person[] = raw.map((p, i) => ({
+    id: p.id, name: p.name, dept: p.dept, dept_role: p.dept_role, position_title: p.position_title, role: p.role,
+    photo: photos[i] ?? p.avatar_url ?? null,
+  }))
 
   const groupLeads = people.filter((p) => p.dept_role === 'group_lead')
   const groupDeputies = people.filter((p) => p.dept_role === 'group_deputy')

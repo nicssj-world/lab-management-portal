@@ -70,6 +70,11 @@ export default async function StaffDashboardPage() {
     : { data: null }
   const permissions = actor?.role ? await getRolePermissions(actor.role) : {}
 
+  // Competency exams assigned to me and not yet done — surfaced as a banner for everyone.
+  const { count: myOpenExamCount } = user
+    ? await supabaseAdmin.from('exam_assignments').select('id', { count: 'exact', head: true }).eq('profile_id', user.id).eq('status', 'open')
+    : { count: 0 }
+
   const now = new Date()
   const year  = now.getFullYear()
   const month = now.getMonth() + 1
@@ -298,6 +303,22 @@ export default async function StaffDashboardPage() {
             </p>
           </div>
         </div>
+
+        {/* ══ EXAM REMINDER ══ */}
+        {(myOpenExamCount ?? 0) > 0 && (
+          <Link href="/staff/personnel/exams" className="dash-fade section-link" style={{
+            display:'flex', alignItems:'center', gap:12, padding:'14px 18px', borderRadius:14,
+            border:'1px solid color-mix(in srgb, var(--primary) 30%, var(--border))', background:'var(--primary-soft)',
+            textDecoration:'none', color:'var(--ink)',
+          }}>
+            <span style={{ width:38, height:38, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', background:'var(--primary)', color:'#fff', flexShrink:0 }}><Icon name="doc" size={18} /></span>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:14, fontWeight:800 }}>คุณมีแบบทดสอบสมรรถนะที่ต้องทำ {myOpenExamCount} รายการ</div>
+              <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>กดเพื่อเข้าทำแบบทดสอบที่ได้รับมอบหมาย</div>
+            </div>
+            <Icon name="arrowRight" size={18} style={{ color:'var(--primary)' }} />
+          </Link>
+        )}
 
         {/* ══ KPI ROW ══ */}
         <div className="dash-kpi-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
