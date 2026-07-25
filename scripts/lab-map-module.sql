@@ -187,5 +187,34 @@ INSERT INTO lab_map_stations (code, name_th) VALUES
   ('south-corridor', 'โถงทางเดินด้านทิศใต้')
 ON CONFLICT (code) DO UPDATE SET name_th = EXCLUDED.name_th, updated_at = now();
 
+CREATE OR REPLACE FUNCTION publish_lab_map_release(
+  p_release_id uuid,
+  p_manifest_hash text,
+  p_actor_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE target lab_map_versions%ROWTYPE;
+BEGIN
+  LOCK TABLE lab_map_versions IN SHARE ROW EXCLUSIVE MODE;
+  SELECT * INTO target FROM lab_map_versions WHERE id = p_release_id FOR UPDATE;
+  IF NOT FOUND OR target.status <> 'draft' THEN RAISE EXCEPTION 'release_not_draft'; END IF;
+  IF target.manifest_hash <> p_manifest_hash THEN RAISE EXCEPTION 'manifest_hash_mismatch'; END IF;
+  IF target.effective_date IS NULL OR target.reviewed_by IS NULL OR target.approved_by IS NULL THEN
+    RAISE EXCEPTION 'release_metadata_incomplete';
+  END IF;
+  IF target.reviewed_by = target.approved_by THEN RAISE EXCEPTION 'reviewer_must_differ'; END IF;
+  UPDATE lab_map_versions SET status = 'retired', updated_at = now() WHERE status = 'published';
+  UPDATE lab_map_versions SET status = 'published', approved_at = now(), updated_at = now()
+    WHERE id = p_release_id;
+  RETURN jsonb_build_object('id', p_release_id, 'status', 'published', 'approvedByActor', p_actor_id);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION publish_lab_map_release(uuid,text,uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION publish_lab_map_release(uuid,text,uuid) TO service_role;
+
 NOTIFY pgrst, 'reload schema';
 COMMIT;

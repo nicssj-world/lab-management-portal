@@ -23,6 +23,9 @@ const ACTION_LABELS: Record<string, string> = {
   'lab_map.person_assignment.create':             'กำหนดพื้นที่บุคลากรบนแผนที่',
   'lab_map.person_assignment.update':             'แก้ไขพื้นที่บุคลากรบนแผนที่',
   'lab_map.person_assignment.delete':             'ยกเลิกพื้นที่บุคลากรบนแผนที่',
+  'lab_map.release.create':                       'สร้างฉบับร่างแผนที่',
+  'lab_map.release.update':                       'แก้ไขข้อมูลฉบับแผนที่',
+  'lab_map.release.publish':                      'เผยแพร่แผนที่ฉบับใช้งานจริง',
   // รายการตรวจ
   'test.create':                                  'เพิ่มรายการตรวจ',
   'test.update':                                  'แก้ไขรายการตรวจ',
