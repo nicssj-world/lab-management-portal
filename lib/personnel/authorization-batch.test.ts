@@ -14,7 +14,7 @@ async function main() {
     common: { authorized_date: '2026-07-25' },
   })
   assert.equal(rows.length, 8)
-  assert.equal(new Set(rows.map((row: { profile_id: string; category: string | null; role_type: string }) => mod.authorizationRowKey(row))).size, 8)
+  assert.equal(new Set(rows.map((row) => mod.authorizationRowKey(row))).size, 8)
 
   const testRows = mod.expandAuthorizationRows({
     profileIds: ['p1'], testId: 1, categories: [], roles: ['performer', 'performer'], common: {},
