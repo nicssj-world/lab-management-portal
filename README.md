@@ -243,6 +243,8 @@ The `door-electrical-control` access point is permanently locked and must never 
 
 Repository validation does not replace a physical walkthrough. Before publishing or installing any printed map, verify geometry, checkpoints, exits 3A/3B/3C, and every evacuation preset on site with the responsible safety staff and record the reviewer, approver, effective date, and map version.
 
+Controlled A3/A4 PDF and PNG previews are available at `/staff/lab-map/print`. Drafts always carry a “ร่าง — ห้ามใช้ติดตั้ง” watermark; official export is enabled only for a published release whose manifest hash and approval metadata still validate. Use [the floor-3 acceptance checklist](docs/lab-map/floor-3-acceptance.md) and [release runbook](docs/lab-map/release-runbook.md) before replacing any physical sign. Approved installed signs remain the operational fallback during power or network outages.
+
 ## Getting Started
 
 First, run the development server:
