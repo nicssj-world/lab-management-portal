@@ -7,6 +7,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Icon } from '@/components/ui/Icon'
 import { Card } from '@/components/ui/Card'
 import { ViewTabs } from '@/components/ui/ViewTabs'
+import { TrainingImportDialog } from '@/components/personnel/TrainingImportDialog'
+import { AuthorizationMultiSelect } from '@/components/personnel/AuthorizationMultiSelect'
 import type {
   Profile, StaffCertification, StaffTraining, StaffCompetency, StaffAuthorization,
   StaffJd, StaffJdRevision, StaffTrainingPlan, OrientationItem,
@@ -14,6 +16,7 @@ import type {
 } from '@/lib/supabase/types'
 import { expiryStatus, EXPIRY_COLOR, EXPIRY_LABEL_TH, daysLeft } from '@/lib/personnel/expiry'
 import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
+import { availableTrainingYears, filterAndSortTraining, type TrainingDateSort } from '@/lib/personnel/training-filters'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import { normalizeNavigationValue } from '@/lib/navigation'
 
@@ -243,14 +246,17 @@ function FileDropZone({ file, accept, note, onFile }: { file: File | null; accep
   )
 }
 
-function SectionHeader({ title, sub, onAdd, canEdit }: { title: string; sub?: string; onAdd?: () => void; canEdit: boolean }) {
+function SectionHeader({ title, sub, onAdd, canEdit, extraAction }: { title: string; sub?: string; onAdd?: () => void; canEdit: boolean; extraAction?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
       <div>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{title}</div>
         {sub && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{sub}</div>}
       </div>
-      {canEdit && onAdd && <button onClick={onAdd} style={primaryBtn}><Icon name="plus" size={15} /> เพิ่ม</button>}
+      {canEdit && <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {extraAction}
+        {onAdd && <button onClick={onAdd} style={primaryBtn}><Icon name="plus" size={15} /> เพิ่ม</button>}
+      </div>}
     </div>
   )
 }
@@ -1121,12 +1127,21 @@ function withAutoHours(f: typeof EMPTY_TRAINING): typeof EMPTY_TRAINING {
 }
 function TrainingTab({ profileId, items, setItems, plans, canEdit, toast }: { profileId: string; items: StaffTraining[]; setItems: (f: (p: StaffTraining[]) => StaffTraining[]) => void; plans: StaffTrainingPlan[]; canEdit: boolean; toast: (m: string, ok?: boolean) => void }) {
   const [modal, setModal] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<StaffTraining | null>(null)
   const [form, setForm] = useState(EMPTY_TRAINING)
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
+  const [trainingYear, setTrainingYear] = useState<number | 'all'>('all')
+  const [trainingQuery, setTrainingQuery] = useState('')
+  const [trainingSort, setTrainingSort] = useState<TrainingDateSort>('newest')
 
   const doneTopics = useMemo(() => new Set(items.map((t) => t.topic.trim().toLowerCase())), [items])
+  const trainingYears = useMemo(() => availableTrainingYears(items), [items])
+  const visibleTraining = useMemo(
+    () => filterAndSortTraining(items, { year: trainingYear, query: trainingQuery, sort: trainingSort }),
+    [items, trainingYear, trainingQuery, trainingSort],
+  )
   const pendingPlans = useMemo(
     () => plans.filter((p) => p.status === 'planned' && !doneTopics.has(p.topic.trim().toLowerCase())),
     [plans, doneTopics],
@@ -1179,11 +1194,54 @@ function TrainingTab({ profileId, items, setItems, plans, canEdit, toast }: { pr
 
   return (
     <Card padding={20}>
-      <SectionHeader title="ประวัติการฝึกอบรม" sub="บันทึกการพัฒนาความรู้และทักษะ" canEdit={canEdit} onAdd={openAdd} />
+      <SectionHeader
+        title="ประวัติการฝึกอบรม"
+        sub="บันทึกการพัฒนาความรู้และทักษะ"
+        canEdit={canEdit}
+        onAdd={openAdd}
+        extraAction={<button type="button" onClick={() => setImportOpen(true)} style={ghostBtn}><Icon name="upload" size={14} /> นำเข้า HIS</button>}
+      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <select
+          aria-label="กรองปีการอบรม"
+          value={trainingYear}
+          onChange={(e) => setTrainingYear(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+          style={{ ...inputStyle, width: 'auto', minWidth: 112 }}
+        >
+          <option value="all">ทุกปี</option>
+          {trainingYears.map((year) => <option key={year} value={year}>{year + 543}</option>)}
+        </select>
+        <input
+          aria-label="ค้นหาการอบรม"
+          type="search"
+          value={trainingQuery}
+          onChange={(e) => setTrainingQuery(e.target.value)}
+          placeholder="ค้นหาหัวข้อ ผู้จัด สถานที่ หรือหมายเหตุ"
+          style={{ ...inputStyle, flex: '1 1 250px', minWidth: 200 }}
+        />
+        {(trainingYear !== 'all' || trainingQuery) && (
+          <button type="button" onClick={() => { setTrainingYear('all'); setTrainingQuery('') }} style={ghostBtn}>ล้างตัวกรอง</button>
+        )}
+        <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 12 }}>{`แสดง ${visibleTraining.length} จาก ${items.length} รายการ`}</span>
+      </div>
       <ChildTable
         cols={['หัวข้อ', 'วันที่', 'ชั่วโมง', 'ประเภท', 'ผู้จัด', 'หลักฐาน', '']}
+        headerCells={[
+          'หัวข้อ',
+          <button
+            key="training-date-sort"
+            type="button"
+            onClick={() => setTrainingSort((sort) => sort === 'newest' ? 'oldest' : 'newest')}
+            aria-label={`เรียงตามวันที่: ${trainingSort === 'newest' ? 'ใหม่สุดก่อน' : 'เก่าสุดก่อน'}`}
+            title="เรียงตามวันที่"
+            style={{ padding: 0, border: 0, background: 'transparent', color: 'inherit', font: 'inherit', fontWeight: 'inherit', cursor: 'pointer' }}
+          >
+            วันที่ {trainingSort === 'newest' ? '↓' : '↑'}
+          </button>,
+          'ชั่วโมง', 'ประเภท', 'ผู้จัด', 'หลักฐาน', '',
+        ]}
         empty="ยังไม่มีบันทึกการอบรม"
-        rows={items.map((t) => (
+        rows={visibleTraining.map((t) => (
           <tr key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
             <td style={{ ...td, fontWeight: 600 }}>{t.topic}{t.notes && <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 400 }}>{t.notes}</div>}</td>
             <td style={td}>{t.training_end_date && t.training_end_date !== t.training_date ? `${fmtDate(t.training_date)} – ${fmtDate(t.training_end_date)}` : fmtDate(t.training_date)}</td>
@@ -1229,6 +1287,17 @@ function TrainingTab({ profileId, items, setItems, plans, canEdit, toast }: { pr
             )}
           </Field>
         </Modal>
+      )}
+      {importOpen && (
+        <TrainingImportDialog
+          mode="self"
+          profileId={profileId}
+          onClose={() => setImportOpen(false)}
+          onImported={(result) => {
+            setItems((current) => [...result.created, ...current])
+            toast(`นำเข้าการอบรมแล้ว ${result.inserted} รายการ`)
+          }}
+        />
       )}
     </Card>
   )
@@ -1477,6 +1546,7 @@ function CertTab({ profileId, items, setItems, canEdit, toast, mtLicenseNo, mtLi
 
 // ════════════ Authorization tab (work assignment matrix) ════════════
 const ROLE_LABEL: Record<string, string> = { performer: 'ผู้ปฏิบัติ', reporter: 'ผู้รายงานผล', approver: 'ผู้รับรองผล', authorized_signatory: 'Authorized Signatory', deputy: 'ผู้ปฏิบัติแทน' }
+const AUTHORIZATION_ROLE_OPTIONS = Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }))
 
 function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categories, competencies, toast }: {
   profileId: string; items: StaffAuthorization[]; setItems: (f: (p: StaffAuthorization[]) => StaffAuthorization[]) => void; canEdit: boolean
@@ -1485,7 +1555,7 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState<StaffAuthorization | null>(null)
   const [scope, setScope] = useState<'test' | 'category'>('test')
-  const empty = { test_id: '', category: '', role_type: 'performer', competency_id: '', authorized_date: '', status: 'active', revoked_date: '', notes: '' }
+  const empty = { test_id: '', category: '', categories: [] as string[], role_type: 'performer', role_types: ['performer'] as string[], competency_id: '', authorized_date: '', status: 'active', revoked_date: '', notes: '' }
   const [form, setForm] = useState(empty)
   const [saving, setSaving] = useState(false)
 
@@ -1494,7 +1564,7 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
     setEditing(a)
     setScope(a.test_id != null ? 'test' : 'category')
     setForm({
-      test_id: a.test_id != null ? String(a.test_id) : '', category: a.category ?? '', role_type: a.role_type,
+      test_id: a.test_id != null ? String(a.test_id) : '', category: a.category ?? '', categories: a.category ? [a.category] : [], role_type: a.role_type, role_types: [a.role_type],
       competency_id: a.competency_id ?? '', authorized_date: a.authorized_date ?? '',
       status: a.status, revoked_date: a.revoked_date ?? '', notes: a.notes ?? '',
     })
@@ -1503,26 +1573,34 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
 
   async function save() {
     if (scope === 'test' && !form.test_id) { toast('กรุณาเลือก test', false); return }
-    if (scope === 'category' && !form.category) { toast('กรุณาเลือกหมวด', false); return }
+    if (scope === 'category' && !(editing ? form.category : form.categories.length)) { toast('กรุณาเลือกหมวด', false); return }
+    if (!editing && form.role_types.length === 0) { toast('กรุณาเลือกบทบาท', false); return }
     setSaving(true)
     try {
-      const payload = {
-        test_id: scope === 'test' ? Number(form.test_id) : null,
-        category: scope === 'category' ? form.category : '',
-        role_type: form.role_type, competency_id: form.competency_id || null,
-        authorized_date: form.authorized_date,
-        status: form.status as 'active' | 'revoked',
-        revoked_date: form.status === 'revoked' ? form.revoked_date : '',
-        notes: form.notes,
-      }
       if (editing) {
+        const payload = {
+          test_id: scope === 'test' ? Number(form.test_id) : null,
+          category: scope === 'category' ? form.category : '',
+          role_type: form.role_type, competency_id: form.competency_id || null,
+          authorized_date: form.authorized_date,
+          status: form.status as 'active' | 'revoked',
+          revoked_date: form.status === 'revoked' ? form.revoked_date : '',
+          notes: form.notes,
+        }
         const updated = await apiSend(`/api/admin/personnel/${profileId}/authorizations/${editing.id}`, 'PATCH', payload)
         setItems((p) => p.map((x) => (x.id === updated.id ? updated : x)))
       } else {
-        const created = await apiSend(`/api/admin/personnel/${profileId}/authorizations`, 'POST', payload)
-        setItems((p) => [created, ...p])
+        const result = await apiSend(`/api/admin/personnel/${profileId}/authorizations/batch`, 'POST', {
+          test_id: scope === 'test' ? Number(form.test_id) : null,
+          categories: scope === 'category' ? form.categories : [],
+          roles: form.role_types, competency_id: form.competency_id || null,
+          authorized_date: form.authorized_date || null, notes: form.notes || null,
+        })
+        setItems((p) => [...result.created, ...p])
+        toast(`มอบหมายสิทธิ์แล้ว ${result.inserted} รายการ${result.skipped ? ` · ข้ามรายการซ้ำ ${result.skipped}` : ''}`)
       }
-      setModal(false); setEditing(null); setForm(empty); toast(editing ? 'แก้ไขการมอบหมายแล้ว' : 'มอบหมายสิทธิ์แล้ว')
+      setModal(false); setEditing(null); setForm(empty)
+      if (editing) toast('แก้ไขการมอบหมายแล้ว')
     } catch (e) { toast(e instanceof Error ? e.message : 'error', false) } finally { setSaving(false) }
   }
   async function remove(id: string) {
@@ -1571,8 +1649,13 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
           </Field>
           {scope === 'test'
             ? <Field label="เลือก Test"><select style={inputStyle} value={form.test_id} onChange={(e) => setForm({ ...form, test_id: e.target.value })}><option value="">— เลือก —</option>{tests.map((t) => <option key={t.id} value={t.id}>{t.code} · {t.th}</option>)}</select></Field>
-            : <Field label="เลือกหมวด"><select style={inputStyle} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}><option value="">— เลือก —</option>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>}
-          <Field label="บทบาท"><select style={inputStyle} value={form.role_type} onChange={(e) => setForm({ ...form, role_type: e.target.value })}>{Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+            : editing
+              ? <Field label="เลือกหมวด"><select style={inputStyle} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}><option value="">— เลือก —</option>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+              : <Field label="เลือกหมวด"><AuthorizationMultiSelect label="เลือกหมวด" options={categories.map((value) => ({ value, label: value }))} value={form.categories} onChange={(categories) => setForm({ ...form, categories })} /></Field>}
+          {editing
+            ? <Field label="บทบาท"><select style={inputStyle} value={form.role_type} onChange={(e) => setForm({ ...form, role_type: e.target.value })}>{AUTHORIZATION_ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
+            : <Field label="บทบาท"><AuthorizationMultiSelect label="เลือกบทบาท" options={AUTHORIZATION_ROLE_OPTIONS} value={form.role_types} onChange={(role_types) => setForm({ ...form, role_types })} /></Field>}
+          {!editing && <div style={{ marginTop: -4, color: 'var(--muted)', fontSize: 12 }}>{`จะสร้างสิทธิ์ ${form.role_types.length * (scope === 'category' ? form.categories.length : form.test_id ? 1 : 0)} รายการ`}</div>}
           <Field label="อ้างอิงหลักฐานสมรรถนะ (ไม่บังคับ)"><select style={inputStyle} value={form.competency_id} onChange={(e) => setForm({ ...form, competency_id: e.target.value })}><option value="">—</option>{competencies.map((c) => <option key={c.id} value={c.id}>{(c.test_id ? testById.get(c.test_id)?.code : c.area) ?? 'สมรรถนะ'} · {fmtDate(c.assessment_date)} {c.result === 'pass' ? '(ผ่าน)' : ''}</option>)}</select></Field>
           <Field label="วันที่มอบหมาย"><DateInputBE value={form.authorized_date} onChange={(value) => setForm({ ...form, authorized_date: value })} /></Field>
           <div style={{ display: 'grid', gridTemplateColumns: form.status === 'revoked' ? '1fr 1fr' : '1fr', gap: 12 }}>
@@ -1587,11 +1670,12 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
 }
 
 // ── reusable child table shell ──
-function ChildTable({ cols, rows, empty }: { cols: string[]; rows: React.ReactNode[]; empty: string }) {
+function ChildTable({ cols, rows, empty, headerCells }: { cols: string[]; rows: React.ReactNode[]; empty: string; headerCells?: React.ReactNode[] }) {
+  const headers = headerCells ?? cols
   return (
     <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr style={{ background: 'var(--surface-2)' }}>{cols.map((c, i) => <th key={i} style={th}>{c}</th>)}</tr></thead>
+        <thead><tr style={{ background: 'var(--surface-2)' }}>{headers.map((cell, i) => <th key={i} style={th}>{cell}</th>)}</tr></thead>
         <tbody>{rows.length === 0 ? <tr><td colSpan={cols.length} style={{ padding: 28, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>{empty}</td></tr> : rows}</tbody>
       </table>
     </div>

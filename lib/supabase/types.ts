@@ -1,4 +1,7 @@
 import type { DocumentAccessMode, DocumentVisibility } from '@/lib/tests/document-access'
+import type {
+  ActivityType, Appointment, BadgeState, OrgType, SafetyAck, VisitType,
+} from '@/lib/it-visitor/constants'
 
 export type Role = 'Admin' | 'Manager' | 'Medical Technologist' | 'Assistant' | 'Document Controller' | 'Medical Science Technician'
 
@@ -74,9 +77,29 @@ export interface StaffTraining {
   cpd_credits: number | null
   evidence_url: string | null
   notes: string | null
+  source_system?: string | null
+  source_record_id?: string | null
+  source_details?: {
+    budgetYear: number | null
+    activityType: string | null
+    dayCount: number | null
+  } | null
+  import_batch_id?: string | null
   created_at: string
   created_by: string | null
   deleted_at: string | null
+}
+
+export interface StaffTrainingImportBatch {
+  id: string
+  mode: 'self' | 'bulk'
+  imported_by: string
+  file_count: number
+  row_count: number
+  inserted_count: number
+  skipped_count: number
+  error_count: number
+  created_at: string
 }
 
 export interface StaffHealthRecord {
@@ -303,6 +326,45 @@ export interface ItBackupLog {
 export interface ItBackupLogWithRefs extends ItBackupLog {
   system: { id: string; name: string } | null
   performer: { id: string; name: string } | null
+}
+
+// บันทึกการเข้า-ออก — see scripts/it-visitor-log.sql
+export interface ItVisitorFormSettings {
+  singleton: boolean
+  public_token: string
+  is_open: boolean
+  updated_at: string
+  updated_by: string | null
+}
+
+export interface ItVisitorLog {
+  id: string
+  visit_type: VisitType
+  visit_date: string
+  visitor_name: string
+  group_name: string | null
+  member_names: string | null
+  party_size: number
+  phone: string
+  email: string | null
+  org_type: OrgType
+  org_name: string
+  contact_dept: string
+  entered_at: string
+  exited_at: string | null
+  activity_type: ActivityType
+  activity_other: string | null
+  appointment: Appointment
+  badge_exchanged: BadgeState
+  safety_ack: SafetyAck
+  submission_key: string
+  created_at: string
+  closed_by: string | null
+  closed_at: string | null
+}
+
+export interface ItVisitorLogWithRefs extends ItVisitorLog {
+  closer: { id: string; name: string } | null
 }
 
 export interface Category {

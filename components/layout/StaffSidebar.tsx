@@ -84,11 +84,18 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/staff/personnel/compliance', th: 'รายงานคุณภาพ',   en: 'Compliance Report', icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร' },
     ] },
   { section: 'งาน IT' },
-  { href: '/staff/it/access', th: 'สิทธิ์เข้าถึง HIS & LIS', en: 'IT Access Rights', icon: 'lock', color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)',
+  // ตัวแม่ของกลุ่มนี้ **ต้องไม่ถือ `resource`** — isEntryVisible เช็ค resource ของแม่แล้ว
+  // return false ก่อนจะไปดูลูก ถ้าใส่ 'ระบบสารสนเทศ (IT)' ไว้ที่แม่ คนที่มีสิทธิ์เฉพาะ
+  // 'บันทึกการเข้า-ออก' (นักเทคนิคการแพทย์ส่วนใหญ่) จะไม่เห็นกลุ่มนี้เลย
+  // parentHref fallback ไปลูกตัวแรกที่มองเห็นอยู่แล้ว จึงไม่ต้องแก้อย่างอื่น
+  // ชื่อกลุ่มต้องเป็นชื่อรวมเหมือนกลุ่มความเสี่ยง/บุคลากร ไม่ใช่ชื่อลูกตัวแรก —
+  // ลูกในกลุ่มนี้มีทั้งสิทธิ์เข้าถึง ระบบล่ม สำรองข้อมูล และบันทึกการเข้า-ออก
+  { href: '/staff/it/access', th: 'ระบบสารสนเทศ', en: 'IT Systems', icon: 'lock', color: '#0369A1',
     children: [
       { href: '/staff/it/access',   th: 'สิทธิ์เข้าถึง HIS & LIS', en: 'Access Rights', icon: 'lock',     color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
       { href: '/staff/it/downtime', th: 'บันทึกระบบล่ม',          en: 'Downtime Log',  icon: 'alert',    color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
       { href: '/staff/it/backup',   th: 'การสำรองข้อมูล',         en: 'Backup Log',    icon: 'download', color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
+      { href: '/staff/it/visitors', th: 'บันทึกการเข้า-ออก',      en: 'Visitor Log',   icon: 'users',    color: '#0369A1', resource: 'บันทึกการเข้า-ออก' },
     ] },
   { section: 'Analytics' },
   { href: '/staff/satisfaction', th: 'แบบสำรวจความพึงพอใจ', en: 'Satisfaction', icon: 'clipboard', color: '#0F766E', resource: 'แบบสำรวจความพึงพอใจ' },

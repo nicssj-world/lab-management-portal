@@ -6,6 +6,8 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import type { DeptRole } from '@/lib/supabase/types'
+import { TrainingImportDialog } from '@/components/personnel/TrainingImportDialog'
+import { AuthorizationMultiSelect } from '@/components/personnel/AuthorizationMultiSelect'
 
 export type ManageRow = {
   id: string
@@ -67,6 +69,7 @@ export function ManageClient({ rows: initialRows, categories, compStats, workGro
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [bulk, setBulk] = useState<BulkType | null>(null)
+  const [hisImportOpen, setHisImportOpen] = useState(false)
 
   const deptRows = useMemo(() => rows.filter((r) => r.dept != null && depts.has(r.dept)), [rows, depts])
   const multiDept = depts.size > 1
@@ -137,9 +140,12 @@ export function ManageClient({ rows: initialRows, categories, compStats, workGro
       <style>{CSS}</style>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <PageHeader eyebrow="กลุ่มงานเทคนิคการแพทย์" title="จัดการกลุ่มงาน" subtitle="กำหนดหัวหน้างานและมอบหมายงานให้บุคลากรในแต่ละงาน" marginBottom={0} />
-        <Link href="/staff/personnel/team-org" style={{ ...ghost, textDecoration: 'none' }}>
-          <Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน
-        </Link>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => setHisImportOpen(true)} style={btn}><Icon name="upload" size={15} /> นำเข้าอบรมจาก HIS</button>
+          <Link href="/staff/personnel/team-org" style={{ ...ghost, textDecoration: 'none' }}>
+            <Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน
+          </Link>
+        </div>
       </div>
 
       {error && <div role="alert" style={{ padding: 10, borderRadius: 8, background: '#FEF2F2', color: '#B91C1C', fontSize: 13 }}>{error}</div>}
@@ -252,6 +258,7 @@ export function ManageClient({ rows: initialRows, categories, compStats, workGro
           profileIds={selectedIds}
         />
       )}
+      {hisImportOpen && <TrainingImportDialog mode="bulk" onClose={() => setHisImportOpen(false)} />}
     </div>
   )
 }
@@ -263,9 +270,11 @@ function BulkModal({ type, count, categories, assessors, profileIds, onClose, on
   const yearBe = new Date().getFullYear() + 543
   const [form, setForm] = useState<Record<string, string>>({
     year: String(yearBe), topic: '', source: '', notes: '',
-    category: categories[0] ?? '', role_type: 'performer', authorized_date: '',
+    authorized_date: '',
     assessment_type: 'initial', area: '', assessor_id: '', assessment_date: '', next_due_date: '', result: '',
   })
+  const [authorizationCategories, setAuthorizationCategories] = useState<string[]>([])
+  const [authorizationRoles, setAuthorizationRoles] = useState<string[]>(['performer'])
   const [saving, setSaving] = useState(false)
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -275,8 +284,9 @@ function BulkModal({ type, count, categories, assessors, profileIds, onClose, on
       return { year: Number(form.year), topic: form.topic.trim(), source: form.source || null, notes: form.notes || null, status: 'planned' }
     }
     if (type === 'authorizations') {
-      if (!form.category) return 'กรุณาเลือกหมวด'
-      return { category: form.category, role_type: form.role_type, authorized_date: form.authorized_date || null, notes: form.notes || null, status: 'active' }
+      if (authorizationCategories.length === 0) return 'กรุณาเลือกหมวด'
+      if (authorizationRoles.length === 0) return 'กรุณาเลือกบทบาท'
+      return { categories: authorizationCategories, roles: authorizationRoles, authorized_date: form.authorized_date || null, notes: form.notes || null, status: 'active' }
     }
     // competencies
     return {
@@ -297,7 +307,9 @@ function BulkModal({ type, count, categories, assessors, profileIds, onClose, on
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? 'บันทึกไม่สำเร็จ')
-      onDone(`บันทึกให้ ${data.count} คนแล้ว`)
+      onDone(type === 'authorizations'
+        ? `มอบสิทธิ์แล้ว ${data.count} รายการ${data.skipped ? ` · ข้ามรายการซ้ำ ${data.skipped}` : ''}`
+        : `บันทึกให้ ${data.count} คนแล้ว`)
     } catch (e) { onError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ'); onClose() } finally { setSaving(false) }
   }
 
@@ -316,8 +328,9 @@ function BulkModal({ type, count, categories, assessors, profileIds, onClose, on
             <Field label="หมายเหตุ"><input value={form.notes} onChange={(e) => set('notes', e.target.value)} style={input} /></Field>
           </>}
           {type === 'authorizations' && <>
-            <Field label="หมวดรายการตรวจ"><select value={form.category} onChange={(e) => set('category', e.target.value)} style={input}><option value="">— เลือก —</option>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
-            <Field label="บทบาท"><select value={form.role_type} onChange={(e) => set('role_type', e.target.value)} style={input}>{ROLE_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+            <Field label="หมวดรายการตรวจ"><AuthorizationMultiSelect label="เลือกหมวดรายการตรวจ" options={categories.map((value) => ({ value, label: value }))} value={authorizationCategories} onChange={setAuthorizationCategories} /></Field>
+            <Field label="บทบาท"><AuthorizationMultiSelect label="เลือกบทบาท" options={ROLE_TYPE_OPTIONS} value={authorizationRoles} onChange={setAuthorizationRoles} /></Field>
+            <div style={{ marginTop: -4, color: 'var(--muted)', fontSize: 12 }}>{`สิทธิ์ที่จะสร้าง ${count * authorizationCategories.length * authorizationRoles.length} รายการ`}</div>
             <Field label="วันที่มอบหมาย"><input type="date" value={form.authorized_date} onChange={(e) => set('authorized_date', e.target.value)} style={input} /></Field>
             <Field label="หมายเหตุ"><input value={form.notes} onChange={(e) => set('notes', e.target.value)} style={input} /></Field>
           </>}
