@@ -23,6 +23,8 @@ export interface LabMapShellProps {
   description?: string
   eyebrow?: string
   renderDetail?: (selectedCode: string | null, map: LabMapDTO) => ReactNode
+  searchItems?: readonly { code: string; label: string; type: string; keywords?: string }[]
+  highlightedCodesForSelection?: (selectedCode: string | null, map: LabMapDTO) => readonly string[]
 }
 
 export function LabMapShell({
@@ -35,6 +37,8 @@ export function LabMapShell({
   description = 'เลือกพื้นที่บนแผนที่หรือค้นหาจากชื่อห้องและหน่วยงาน',
   eyebrow = 'อาคารเฉลิมราชสมบัติ · ชั้น 3',
   renderDetail,
+  searchItems = [],
+  highlightedCodesForSelection,
 }: LabMapShellProps) {
   const defaultMode = initialMode && allowedModes.includes(initialMode) ? initialMode : allowedModes[0] ?? 'overview'
   const [mode, setMode] = useState<MapMode>(defaultMode)
@@ -52,12 +56,17 @@ export function LabMapShell({
     const zones = map.zones
       .filter((zone) => `${zone.nameTh} ${zone.workUnits.join(' ')}`.toLocaleLowerCase('th').includes(normalizedQuery))
       .map((zone) => ({ code: zone.code, label: zone.nameTh, type: 'โซน' }))
-    return [...spaces, ...zones].slice(0, 8)
-  }, [map.spaces, map.zones, normalizedQuery])
+    const extras = searchItems.filter((item) =>
+      `${item.label} ${item.keywords ?? ''}`.toLocaleLowerCase('th').includes(normalizedQuery),
+    )
+    return [...spaces, ...zones, ...extras].slice(0, 10)
+  }, [map.spaces, map.zones, normalizedQuery, searchItems])
 
   const selectedSpace = map.spaces.find((space) => space.code === selectedCode) ?? null
   const selectedZone = map.zones.find((zone) => zone.code === selectedCode) ?? null
-  const highlightedSpaceCodes = selectedZone?.spaceCodes ?? []
+  const highlightedSpaceCodes = highlightedCodesForSelection?.(selectedCode, map)
+    ?? selectedZone?.spaceCodes
+    ?? []
 
   function selectResult(code: string) {
     setSelectedCode(code)
