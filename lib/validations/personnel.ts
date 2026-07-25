@@ -83,10 +83,11 @@ export type CompetencyInput = z.infer<typeof CompetencySchema>
 
 // ── Authorizations / work assignment (ISO 6.2.6) ──
 // Base object (used for PATCH .partial()); refined version (used for create) enforces test_id|category.
+export const AuthorizationRoleSchema = z.enum(['performer', 'reporter', 'approver', 'authorized_signatory', 'deputy'])
 export const AuthorizationBaseSchema = z.object({
   test_id:         z.number().int().positive().optional().nullable(),
   category:        optStr,
-  role_type:       z.enum(['performer', 'reporter', 'approver', 'authorized_signatory', 'deputy']).default('performer'),
+  role_type:       AuthorizationRoleSchema.default('performer'),
   competency_id:   z.string().uuid().optional().nullable(),
   authorized_date: optDate,
   status:          z.enum(['active', 'revoked']).default('active'),
@@ -98,6 +99,24 @@ export const AuthorizationSchema = AuthorizationBaseSchema.refine(
   { message: 'ต้องระบุ test หรือหมวดอย่างน้อยหนึ่งอย่าง', path: ['test_id'] },
 )
 export type AuthorizationInput = z.infer<typeof AuthorizationSchema>
+
+export const AuthorizationBatchSchema = z.object({
+  test_id:         z.number().int().positive().optional().nullable(),
+  categories:      z.array(z.string().trim().min(1)).default([]),
+  roles:           z.array(AuthorizationRoleSchema).min(1, 'เลือกบทบาทอย่างน้อยหนึ่งบทบาท'),
+  competency_id:   z.string().uuid().optional().nullable(),
+  authorized_date: optDate,
+  status:          z.literal('active').default('active'),
+  notes:           optStr,
+}).superRefine((value, ctx) => {
+  if (value.test_id == null && value.categories.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['categories'], message: 'เลือก test หรือหมวดอย่างน้อยหนึ่งรายการ' })
+  }
+  if (value.test_id != null && value.categories.length > 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['categories'], message: 'เลือกได้เพียง test หรือหมวด' })
+  }
+})
+export type AuthorizationBatchInput = z.infer<typeof AuthorizationBatchSchema>
 
 // ── Org chart nodes (editable organization chart) ──
 export const OrgNodeCreateSchema = z.object({
