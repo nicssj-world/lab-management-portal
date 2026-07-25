@@ -6,7 +6,7 @@ import { RETURN_PATH_PARAM, isAuthServiceUnavailable, isProtectedPath, safeRetur
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
 
 // หน้าที่ต้องล็อกอิน — ตรงกับ route group (protected)
-for (const path of ['/staff', '/staff/risk/ior', '/staff/lab-map', '/kpi/dashboard', '/lab-workload/dashboard', '/tat']) {
+for (const path of ['/staff', '/staff/risk/ior', '/staff/lab-map', '/staff/lab-map/print', '/kpi/dashboard', '/lab-workload/dashboard', '/tat']) {
   assert.ok(isProtectedPath(path), `${path} ต้องล็อกอิน`)
 }
 

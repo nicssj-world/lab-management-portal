@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { LabMapStaffClient } from '@/components/lab-map/LabMapStaffClient'
 import { createClient } from '@/lib/supabase/server'
 import { getRolePermissions } from '@/lib/permissions'
@@ -12,5 +13,5 @@ export default async function StaffLabMapPage() {
   if (!profile?.role) redirect('/staff/dashboard')
   const permissions = await getRolePermissions(profile.role)
   const map = await getStaffLabMapDTO({ permissions })
-  return <LabMapStaffClient map={map} />
+  return <><div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}><Link href="/staff/lab-map/print">ส่งออก A3/A4 PDF หรือ PNG</Link></div><LabMapStaffClient map={map} /></>
 }
