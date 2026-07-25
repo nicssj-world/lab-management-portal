@@ -28,6 +28,7 @@ const codeOnly = (source: string) =>
 const publicRoute = read('app/api/it-visitors/[token]/route.ts')
 const publicPage = read('app/v/[token]/page.tsx')
 const publicForm = read('components/it-visitor/PublicVisitorForm.tsx')
+const activeVisitCard = read('components/it-visitor/ActiveVisitCard.tsx')
 const publicServer = read('lib/it-visitor/public-server.ts')
 const guard = read('lib/it-visitor/guard.ts')
 const listRoute = read('app/api/admin/it-visitors/route.ts')
@@ -84,6 +85,22 @@ assert.ok(selfCheckoutSql.includes('checkout_method'), 'migration tracks checkou
 assert.ok(selfCheckoutSql.includes('checkout_secret_hash'), 'migration stores checkout secret hash')
 assert.ok(publicPage.includes('await cookies()'), 'page restores the same-device active visit')
 assert.ok(publicPage.includes('initialActiveVisit'), 'page passes a minimal active visit DTO')
+
+// self checkout ต้องใช้ credential ใน HttpOnly cookie และป้องกัน cross-site request
+assert.ok(publicRoute.includes('export async function PATCH'), 'public route supports self checkout')
+assert.ok(publicRoute.includes("request.cookies.get('lab_visitor_checkout')"), 'reads checkout cookie')
+assert.ok(publicRoute.includes('isSameOriginRequest'), 'validates Origin against request host')
+assert.ok(publicRoute.includes('visitor-checkout-ip:'), 'rate limits checkout by IP')
+assert.ok(publicRoute.includes('visitor-checkout-form:'), 'rate limits checkout by form')
+assert.ok(publicServer.includes('selfCheckoutVisitor'), 'server exposes one-time self checkout')
+assert.ok(publicServer.includes("checkout_method: 'self'"), 'marks self checkout method')
+assert.ok(publicServer.includes('checkout_secret_hash: null'), 'invalidates checkout secret after use')
+assert.ok(publicServer.includes("action: 'it_visitor.self_checkout'"), 'audits self checkout')
+
+assert.ok(activeVisitCard.includes('/lab-map/office?destination='), 'active card links to safe public map')
+assert.ok(activeVisitCard.includes('mode=safety'), 'active card links to safety view')
+assert.ok(activeVisitCard.includes('บันทึกออก'), 'active card offers checkout')
+assert.ok(activeVisitCard.includes('disabled={submitting}'), 'checkout button prevents duplicate submits')
 
 // ── 3. Routing — /v ต้อง public, /staff ต้องถูกป้องกัน ──
 assert.equal(isProtectedPath('/v/abc'), false, '/v must stay public')
