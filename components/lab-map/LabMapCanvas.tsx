@@ -14,6 +14,7 @@ export interface LabMapCanvasProps {
   mode: MapMode
   selectedCode: string | null
   activeRouteCode: string | null
+  activeRouteCodes?: readonly string[]
   onSelect: (code: string) => void
   highlightedSpaceCodes?: readonly string[]
   interactive?: boolean
@@ -105,6 +106,7 @@ export function LabMapCanvas({
   mode,
   selectedCode,
   activeRouteCode,
+  activeRouteCodes = [],
   onSelect,
   highlightedSpaceCodes = [],
   interactive = true,
@@ -118,7 +120,7 @@ export function LabMapCanvas({
   const [view, setView] = useState<ViewTransform>({ scale: 1, x: 0, y: 0 })
   const dragStart = useRef<{ pointerX: number; pointerY: number; viewX: number; viewY: number } | null>(null)
 
-  const activeRoute = map.routes.find((route) => route.code === activeRouteCode) ?? null
+  const activeRoutes = map.routes.filter((route) => route.code === activeRouteCode || activeRouteCodes.includes(route.code))
   const highlighted = useMemo(() => new Set(highlightedSpaceCodes), [highlightedSpaceCodes])
 
   function resetView() {
@@ -212,7 +214,7 @@ export function LabMapCanvas({
                   data-space-code={space.code}
                   data-selected={isSelected || undefined}
                   data-highlighted={isHighlighted || undefined}
-                  role="button"
+                  role={interactive ? 'button' : undefined}
                   tabIndex={interactive ? 0 : -1}
                   aria-label={`${space.nameTh}${space.controlled ? ' พื้นที่ควบคุม' : ''}`}
                   onClick={() => interactive && onSelect(space.code)}
@@ -231,12 +233,12 @@ export function LabMapCanvas({
               )
             })}
 
-            {activeRoute ? (
-              <g className="lab-map-route" aria-label={`เส้นทาง ${activeRoute.code}`}>
+            {activeRoutes.map((activeRoute) => (
+              <g key={activeRoute.code} className="lab-map-route" aria-label={`เส้นทาง ${activeRoute.code}`} data-variant={activeRoute.variant}>
                 <polyline className="lab-map-route-halo" points={activeRoute.polyline.map(([x, y]) => `${x},${y}`).join(' ')} />
                 <polyline className="lab-map-route-line" points={activeRoute.polyline.map(([x, y]) => `${x},${y}`).join(' ')} />
               </g>
-            ) : null}
+            ))}
 
             {showSafetyPoints ? map.accessPoints.map((point) => (
               <g
