@@ -212,6 +212,15 @@ Before deploying the visitor same-link checkout flow, apply the visitor migratio
 
 The second migration adds the one-time hashed checkout credential and records whether the visitor or a staff member closed the visit. Application builds do not apply either migration automatically.
 
+Staff/personnel rollout order:
+
+1. Deploy the map foundation and verify the repository manifest tests.
+2. Apply `scripts/lab-map-module.sql` in Supabase.
+3. Compare the seeded space, zone, access-point, and station codes with `lib/lab-map/manifest.ts`.
+4. Deploy the staff/personnel UI, then assign each person an optional primary or responsible area.
+
+Personnel assignments describe work responsibility only; they are not live location or attendance tracking. The map module does not alter, relate to, or display the equipment registry. Geometry changes remain code-reviewed in Git—there is no drag-and-drop floor-plan editor.
+
 The phase-one floor map is available at `/lab-map/[stationCode]` for the coarse public projection and `/staff/lab-map` for the protected internal view. Geometry and approved route presets are maintained in `lib/lab-map/manifest.ts`; the public route reads only `lib/lab-map/public-manifest.ts` so internal room topology is not serialized to visitors.
 
 Reference drawings:

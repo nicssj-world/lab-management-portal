@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   LAB_ACCESS_POINTS,
   LAB_ROUTE_PRESETS,
@@ -79,5 +80,12 @@ assert.ok(
     route.destinationCode.startsWith('fingerprint-'),
   ),
 )
+
+const mapTypes = readFileSync('lib/lab-map/types.ts', 'utf8')
+const staffClient = readFileSync('components/lab-map/LabMapStaffClient.tsx', 'utf8')
+const mapSql = readFileSync('scripts/lab-map-module.sql', 'utf8')
+assert.doesNotMatch(mapTypes.match(/export type MapMode[^\n]+/)?.[0] ?? '', /equipment/)
+assert.doesNotMatch(staffClient, /['"]equipment['"]/)
+assert.doesNotMatch(mapSql, /alter table\s+(?:public\.)?equipment|lab_map_equipment/i)
 
 console.log('lab map domain tests passed')
