@@ -203,6 +203,30 @@ Operational rules:
 
 Focused verification commands are listed in `docs/superpowers/plans/2026-07-17-satisfaction-survey-builder.md`. Database-backed acceptance remains gated on manually applying the SQL above; application builds do not apply it automatically.
 
+## Digital laboratory map
+
+The phase-one floor map is available at `/lab-map/[stationCode]` for the coarse public projection and `/staff/lab-map` for the protected internal view. Geometry and approved route presets are maintained in `lib/lab-map/manifest.ts`; the public route reads only `lib/lab-map/public-manifest.ts` so internal room topology is not serialized to visitors.
+
+Reference drawings:
+
+- `C:\Users\User\OneDrive\Pictures\Screenshots 1\Screenshot 2026-07-26 015253.png` — current geometry, PPE zone, cold material/reagent storage, and the electrical-control-room door.
+- `C:\Users\User\OneDrive\Pictures\Screenshots 1\Screenshot 2026-07-26 020049.png` — infection-control classifications.
+- `Screenshot 2026-07-26 012951.png` and `Screenshot 2026-07-26 012957.png` — approved-route source drawings for two “ท่านอยู่ที่นี่” positions.
+
+Run the focused foundation checks with:
+
+```bash
+npm run test:lab-map
+npm run test:lab-map-ui
+npm run test:lab-map-public
+npm run test:lab-map-navigation
+npx tsx scripts/session-guard.test.ts
+```
+
+The `door-electrical-control` access point is permanently locked and must never be added to a visitor, staff-orientation, or evacuation route. Public visitor routes must end at a fingerprint checkpoint. Do not add equipment-registry data to the map.
+
+Repository validation does not replace a physical walkthrough. Before publishing or installing any printed map, verify geometry, checkpoints, exits 3A/3B/3C, and every evacuation preset on site with the responsible safety staff and record the reviewer, approver, effective date, and map version.
+
 ## Getting Started
 
 First, run the development server:
