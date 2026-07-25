@@ -90,8 +90,7 @@ export function ManualHome({ lang, goto }: Props) {
         .manual-stat-card,
         .manual-info-card,
         .manual-team-card,
-        .manual-section-link,
-        .manual-pdf-card {
+        .manual-section-link {
           box-shadow: var(--manual-shadow-sm), inset 0 1px 0 rgba(255,255,255,.76);
         }
         .manual-stat-card {
@@ -154,10 +153,6 @@ export function ManualHome({ lang, goto }: Props) {
           border: 1px solid rgba(30,95,173,.14);
           box-shadow: inset 0 1px 0 rgba(255,255,255,.84);
         }
-        .manual-pdf-icon {
-          background: linear-gradient(135deg, var(--manual-accent), #0E3F7E) !important;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 10px 22px rgba(30,95,173,.22);
-        }
         @media (max-width: 760px) {
           .manual-team-grid {
             grid-template-columns: 1fr;
@@ -197,19 +192,6 @@ export function ManualHome({ lang, goto }: Props) {
         .manual-section-link:focus-visible .manual-section-icon {
           box-shadow: inset 0 1px 0 rgba(255,255,255,.26), 0 12px 26px rgba(15,23,42,.22);
         }
-        .manual-pdf-card {
-          background: linear-gradient(135deg, rgba(30,95,173,.12), rgba(255,255,255,.88) 44%, rgba(30,95,173,.06)) !important;
-          border-color: rgba(30,95,173,.22) !important;
-        }
-        .manual-pdf-button {
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 10px 24px rgba(30,95,173,.24);
-          transition: transform .15s ease, opacity .15s ease, box-shadow .15s ease;
-        }
-        .manual-pdf-button:hover {
-          transform: translateY(-1px);
-          opacity: 1 !important;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 14px 30px rgba(30,95,173,.30);
-        }
         [data-theme="dark"] .manual-home {
           --manual-accent: #60A5FA;
           --manual-accent-soft: rgba(96,165,250,.15);
@@ -239,8 +221,7 @@ export function ManualHome({ lang, goto }: Props) {
         [data-theme="dark"] .manual-stat-card,
         [data-theme="dark"] .manual-info-card,
         [data-theme="dark"] .manual-team-card,
-        [data-theme="dark"] .manual-section-link,
-        [data-theme="dark"] .manual-pdf-card {
+        [data-theme="dark"] .manual-section-link {
           box-shadow: var(--manual-shadow-sm), inset 0 1px 0 rgba(255,255,255,.07) !important;
         }
         [data-theme="dark"] .manual-stat-card {
@@ -278,16 +259,11 @@ export function ManualHome({ lang, goto }: Props) {
         [data-theme="dark"] .manual-section-index {
           color: rgba(148,163,184,.30) !important;
         }
-        [data-theme="dark"] .manual-pdf-card {
-          background: linear-gradient(135deg, rgba(96,165,250,.16), rgba(30,41,59,.88) 46%, rgba(15,23,42,.78)) !important;
-          border-color: rgba(96,165,250,.28) !important;
-        }
         @media (prefers-reduced-motion: reduce) {
           .manual-stat-card,
           .manual-info-card,
           .manual-team-card,
-          .manual-section-link,
-          .manual-pdf-button {
+          .manual-section-link {
             transition: none !important;
           }
         }
@@ -473,28 +449,6 @@ export function ManualHome({ lang, goto }: Props) {
           : <span><strong>Fees</strong> follow the Ministry of Public Health 2006 schedule. Insurance patients must complete eligibility verification before specimen collection.</span>}
       </Callout>
 
-      {/* ── PDF download ── */}
-      <div className="manual-pdf-card" style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14, padding: '14px 16px', background: 'var(--manual-accent-soft)', border: '1px solid var(--manual-accent-border)', borderRadius: 12, flexWrap: 'wrap' }}>
-        <div className="manual-pdf-icon" style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--manual-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Icon name="doc" size={20} style={{ color: '#fff' }} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--manual-accent)' }}>{lang === 'th' ? 'คู่มือฉบับเต็ม (PDF)' : 'Full Manual (PDF)'}</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>MN-LAB-01 · พ.ศ. 2569 · 116 หน้า · กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี</div>
-        </div>
-        <a
-          href="/documents/MN-LAB-01.pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="manual-pdf-button"
-          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '9px 16px', borderRadius: 8, background: 'var(--manual-accent)', color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0, transition: 'transform .15s ease, opacity .15s ease, box-shadow .15s ease' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '.85' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
-        >
-          <Icon name="download" size={14} style={{ color: '#fff' }} />
-          {lang === 'th' ? 'ดาวน์โหลด PDF' : 'Download PDF'}
-        </a>
-      </div>
       </div>
     </Section>
   )
