@@ -44,6 +44,7 @@ export default async function WorkforceDashboardPage() {
   if ((perms['บุคลากร'] ?? 'none') === 'none') redirect('/staff/dashboard')
 
   const roster = await getStaffRoster()
+  const hasOwnRecord = roster.some((p) => p.id === user.id)
   const total = roster.length
   const roleCounts = new Map<MainPersonnelRole | 'Other', number>()
   const unitCounts = new Map<string, number>()
@@ -93,6 +94,19 @@ export default async function WorkforceDashboardPage() {
             marginBottom={0}
           />
         </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <Link href="/staff/personnel/team-org" style={linkBtn}>
+            <Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน
+          </Link>
+          <Link href="/staff/personnel/exams" style={linkBtn}>
+            <Icon name="doc" size={15} /> ข้อสอบสมรรถนะ
+          </Link>
+          {hasOwnRecord && (
+            <Link href={`/staff/personnel/${user.id}`} style={linkBtn}>
+              <Icon name="user" size={15} /> โปรไฟล์ของฉัน
+            </Link>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1.15fr) minmax(320px, .85fr)', gap: 14 }}>
@@ -141,6 +155,13 @@ export default async function WorkforceDashboardPage() {
       </div>
     </div>
   )
+}
+
+const linkBtn: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+  padding: '8px 14px', borderRadius: 8,
+  border: '1px solid var(--border)', background: 'var(--card)',
+  color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none',
 }
 
 function addCount(map: Map<string, number>, key: string) {

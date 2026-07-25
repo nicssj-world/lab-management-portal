@@ -92,6 +92,7 @@ export function OrgChartClient({ canEdit, staff }: { canEdit: boolean; staff: St
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <Link href="/staff/personnel" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}><Icon name="arrowLeft" size={16} /> บุคลากร</Link>
         <div style={{ flex: 1 }}><PageHeader eyebrow="กลุ่มงานเทคนิคการแพทย์" title="ผังองค์กร" subtitle="รพ.ชลบุรี" marginBottom={0} /></div>
+        <Link href="/staff/personnel/team-org" style={{ ...btn, textDecoration: 'none' }}><Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน</Link>
         <button onClick={() => window.print()} style={btn}><Icon name="download" size={15} /> พิมพ์</button>
         {canEdit && roots.length === 0 && !loading && (
           <button onClick={() => setAddParent({ id: '', title: '', is_linkable: false } as OrgNodeView)} style={{ ...btn, background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' }}><Icon name="plus" size={15} /> เพิ่มกล่องบนสุด</button>

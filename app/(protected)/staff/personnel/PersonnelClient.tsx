@@ -206,15 +206,16 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
         />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0, position: 'relative' }}>
           {canManage && (
-            <>
-              <Link href="/staff/personnel/manage" style={linkBtn}>
-                <Icon name="settings" size={15} /> จัดการกลุ่มงาน
-              </Link>
-              <Link href="/staff/personnel/team-org" style={linkBtn}>
-                <Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน
-              </Link>
-            </>
+            <Link href="/staff/personnel/manage" style={linkBtn}>
+              <Icon name="settings" size={15} /> จัดการกลุ่มงาน
+            </Link>
           )}
+          <Link href="/staff/personnel/workforce" style={linkBtn}>
+            <Icon name="chart" size={15} /> Dashboard อัตรากำลัง
+          </Link>
+          <Link href="/staff/personnel/team-org" style={linkBtn}>
+            <Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน
+          </Link>
           <Link href="/staff/personnel/exams" style={linkBtn}>
             <Icon name="doc" size={15} /> ข้อสอบสมรรถนะ
           </Link>
