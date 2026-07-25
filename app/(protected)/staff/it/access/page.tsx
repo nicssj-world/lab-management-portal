@@ -12,14 +12,14 @@ export const dynamic = 'force-dynamic'
 export default async function ItAccessPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const { data: actor } = await supabase.from('profiles').select('role, doc_role').eq('id', user!.id).single()
+  const { data: actor } = await supabase.from('profiles').select('role, doc_role, dept_role').eq('id', user!.id).single()
   const perms = actor?.role ? await getPermissionsWithItOverride(actor.role, user!.id) : {}
   if ((perms['ระบบสารสนเทศ (IT)'] ?? 'none') === 'none') redirect('/staff/dashboard')
   const canEdit = perms['ระบบสารสนเทศ (IT)'] === 'edit'
   // Only a real Admin (not an IT-editor override) may grant/revoke the override itself.
   const isAdmin = isAdminRole(actor?.role)
-  // Approving the annual review is narrower than IT edit — Admin or Laboratory Director only.
-  const canApprove = canApproveItReview({ role: actor?.role ?? '', doc_role: actor?.doc_role ?? null })
+  // Approving the annual review is narrower than IT edit — Admin or group lead only.
+  const canApprove = canApproveItReview({ role: actor?.role ?? '', dept_role: actor?.dept_role ?? null })
 
   const [records, systems, latestReview, profilesRes] = await Promise.all([
     getItAccessRecords(supabaseAdmin),

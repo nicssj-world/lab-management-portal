@@ -5,11 +5,11 @@ import { requireIt, auditIt, canApproveItReview } from '@/lib/it-access/guard'
 // Second step of the annual review: stamp the approval (ผู้อนุมัติ) onto an existing
 // review row that has been reviewed but not yet approved.
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const guard = await requireIt('edit')
+  const guard = await requireIt('view')
   if ('error' in guard) return guard.error
   const actor = guard.actor
   if (!canApproveItReview(actor)) {
-    return NextResponse.json({ error: 'เฉพาะ Admin และผู้อำนวยการห้องปฏิบัติการเท่านั้นที่อนุมัติได้' }, { status: 403 })
+    return NextResponse.json({ error: 'เฉพาะ Admin และหัวหน้ากลุ่มงานเท่านั้นที่อนุมัติได้' }, { status: 403 })
   }
   const { id } = await params
 

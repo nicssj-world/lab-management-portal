@@ -2,25 +2,26 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithItOverride } from '@/lib/permissions'
 import { isAdminRole } from '@/lib/roles'
+import type { DeptRole } from '@/lib/supabase/types'
 import { NextResponse } from 'next/server'
 
 export const IT_RESOURCE = 'ระบบสารสนเทศ (IT)'
 
-export type ItActor = { id: string; role: string; name: string | null; doc_role: string | null }
+export type ItActor = { id: string; role: string; name: string | null; doc_role: string | null; dept_role: DeptRole | null }
 
 export async function getItActor(): Promise<ItActor | null> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data } = await supabaseAdmin
-    .from('profiles').select('id, role, name, doc_role').eq('id', user.id).single()
+    .from('profiles').select('id, role, name, doc_role, dept_role').eq('id', user.id).single()
   return (data as ItActor) ?? null
 }
 
-// Annual-review approval (ผู้อนุมัติ) is limited to Admin and the Laboratory Director,
+// Annual-review approval (ผู้อนุมัติ) is limited to Admin and the group lead,
 // even though general IT edit permission is broader.
-export function canApproveItReview(actor: Pick<ItActor, 'role' | 'doc_role'>): boolean {
-  return isAdminRole(actor.role) || actor.doc_role === 'Laboratory Director'
+export function canApproveItReview(actor: Pick<ItActor, 'role' | 'dept_role'>): boolean {
+  return isAdminRole(actor.role) || actor.dept_role === 'group_lead'
 }
 
 // Resolves the actor and enforces the IT permission at `level`.
