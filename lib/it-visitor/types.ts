@@ -58,3 +58,17 @@ export interface PublicVisitorFormState {
   available: boolean
   reason?: 'closed'
 }
+
+export interface ActiveVisitorDTO {
+  enteredAt: string
+  contactDept: string
+  destinationCode: string | null
+  checkpointCode: string | null
+  directionsTh: readonly string[]
+}
+
+export interface VisitorCheckInResult {
+  logId: string
+  checkoutSecret: string
+  activeVisit: ActiveVisitorDTO
+}
