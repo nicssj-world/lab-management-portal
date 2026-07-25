@@ -617,6 +617,32 @@ UI rules specific to this module (`components/risk/shared/tokens.ts` is the sing
 - L and S are picked with labelled 1–5 radio scales (`ScalePicker`), never a bare number `<select>` — the labels are what make scores comparable between assessors.
 - The public report form auto-saves a draft to `localStorage`, validates on blur, and focuses the first invalid field on submit.
 
+### งาน IT
+
+Schema: `scripts/it-access-module.sql` (+ `add-it-access-editors.sql`, `add-it-access-review-approval.sql`) and `scripts/it-visitor-log.sql`. Apply manually.
+
+Three of the four screens share the resource `ระบบสารสนเทศ (IT)` and the guard `requireIt` in `lib/it-access/guard.ts`; **the visitor log deliberately does not** (see below). `getPermissionsWithItOverride` upgrades a `it_editors` member ("คณะทำงาน IT") to `edit` on the IT resource only. Routes live under `/api/admin/it-access`, `/api/admin/it-downtime`, `/api/admin/it-backup`, `/api/admin/it-visitors` — note the folder names are `it-*`, not a nested `it/`. This module uses sidebar children, **not** `ModuleSubnav`, so there is no `IT_NAVIGATION` in `lib/navigation.ts`.
+
+**The IT sidebar group's parent carries no `resource`** — each child carries its own. `isEntryVisible` in `StaffSidebar.tsx` checks the parent's `resource` and returns `false` *before* looking at children, so putting `ระบบสารสนเทศ (IT)` back on the parent would hide the visitor log from every Medical Technologist who isn't on the IT committee — i.e. from almost everyone the visitor log exists for. `parentHref` falls back to the first visible child, so a user who can only see the visitor log still gets a working group link. Same structural rule as the risk group; `scripts/it-visitor-log.test.ts` guards it.
+
+### บันทึกการเข้า-ออก (Visitor Log)
+
+Schema: `scripts/it-visitor-log.sql`. Replaces a Google Form. One permanent QR → `/v/[token]` → the visitor picks **รายบุคคล** or **หมู่คณะ**, then fills the form themselves.
+
+- **Resource is `บันทึกการเข้า-ออก`, not `ระบบสารสนเทศ (IT)`.** Seeded `edit` for Manager / Medical Technologist / Medical Science Technician; Assistant gets no row (`none`); Admin is `edit` by hardcode. Guard is `requireVisitorLog` in `lib/it-visitor/guard.ts` — it uses plain `getRolePermissions` with **no `it_editors` override**, because the rule is "every role except Assistant", adjustable from the Permission Matrix.
+- **Deleting is Admin-only** (`canDeleteVisitorLog`), enforced in the `DELETE` route, not just hidden in the UI — the log is an ISO record.
+- **Check-in first, check-out later.** The public form writes `entered_at` and leaves `exited_at` null; the staff table shows a "ยังอยู่ในพื้นที่" badge and a button that PATCHes `exited_at` + `closed_by`/`closed_at`. Same shape as the downtime log's `ended_at`.
+- **One table, `visit_type` discriminates.** `party_size` is always the total headcount *including* the person filling the form: the individual form asks "ผู้ติดตาม N" and stores `N+1`; the group form asks "ทั้งหมด N" and stores `N`. `lib/it-visitor/validation.ts` owns that conversion — don't re-derive it at call sites.
+- `it_visitor_form_settings` is a one-row table (`check (singleton)`) holding the public token. Unlike every other table in this module it has **RLS on with no policy at all** plus `revoke all from anon, authenticated` — the token would let anyone post to the public form, so staff only ever see it through a guarded route.
+- Public flow copies the satisfaction survey's: signed challenge (750 ms–4 h window), honeypot answering **429** not 400, three rate-limit tiers, 32 KiB body cap measured twice, and an **idempotency check placed before the form-closed gate** so a retry after the form closes still returns the original id. There is deliberately **no device cookie** — the same visitor legitimately returns many times.
+- `lib/it-visitor/validation.ts` is pure (types + constants only) and is called from both the browser and the API route, so client and server rules cannot drift.
+- `lib/it-visitor/constants.ts` is the single source for every enum + Thai label; its values must match the `CHECK` constraints in the SQL, which the contract test asserts.
+- Answering "ไม่สะดวกและไม่ยินยอมศึกษาข้อมูล" to the safety-policy question is **recorded, not blocked** — it raises a red badge and a stat counter for staff to follow up.
+
+### Shared public-form challenge
+
+`lib/security/public-challenge.ts` holds the signed-challenge crypto (HMAC + `timingSafeEqual` + token binding + 750 ms–4 h age window) used by both public forms. `createPublicChallenge(purpose, token)` / `verifyPublicChallenge(purpose, token, challenge)`. The `purpose` string is part of the signed payload, so a challenge minted for one form cannot be replayed against the other. `lib/surveys/public-server.ts` passes `'survey-challenge'` — the exact string it used to hardcode, which keeps signatures byte-identical; **do not change it** or every challenge currently held by someone mid-form breaks. The visitor log uses `'visitor-challenge'`.
+
 ## Module Reference
 
 | Module | Resource Key (lib/permission-resources.ts) | Staff Route | API Routes |
@@ -637,3 +663,5 @@ UI rules specific to this module (`components/risk/shared/tokens.ts` is the sing
 | Users & Roles | `User Management` | `/staff/admin` | `/api/admin/users/`, `/api/admin/permissions` |
 | Quality Tasks | `งานคุณภาพ` | `/staff/quality-tasks/*` | `/api/admin/quality-tasks/*` |
 | Satisfaction Surveys | `แบบสำรวจความพึงพอใจ` | `/staff/satisfaction`, `/staff/satisfaction/surveys`, `/staff/satisfaction/campaigns`, `/staff/satisfaction/comments`, public `/s/[token]` | `/api/admin/satisfaction/*`, public `/api/satisfaction/[token]` |
+| งาน IT | `ระบบสารสนเทศ (IT)` | `/staff/it/access`, `/staff/it/downtime`, `/staff/it/backup` | `/api/admin/it-access/*`, `/api/admin/it-downtime/*`, `/api/admin/it-backup/*` |
+| บันทึกการเข้า-ออก | `บันทึกการเข้า-ออก` (ทุก role ยกเว้น Assistant; ลบได้เฉพาะ Admin) | `/staff/it/visitors`, public `/v/[token]` | `/api/admin/it-visitors/*`, public `/api/it-visitors/[token]` |

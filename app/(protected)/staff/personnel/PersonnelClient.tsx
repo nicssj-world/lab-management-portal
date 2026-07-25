@@ -210,9 +210,6 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
               <Icon name="settings" size={15} /> จัดการกลุ่มงาน
             </Link>
           )}
-          <Link href="/staff/personnel/workforce" style={linkBtn}>
-            <Icon name="chart" size={15} /> Dashboard อัตรากำลัง
-          </Link>
           <Link href="/staff/personnel/team-org" style={linkBtn}>
             <Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน
           </Link>

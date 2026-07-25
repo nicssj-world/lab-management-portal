@@ -5,6 +5,7 @@ import type {
   ItAccessReview,
   ItDowntimeLogWithSystem,
   ItBackupLogWithRefs,
+  ItVisitorLogWithRefs,
 } from '@/lib/supabase/types'
 
 const RECORD_SELECT =
@@ -58,4 +59,17 @@ export async function getItBackupLogs(supabase: SupabaseClient): Promise<ItBacku
     .select('*, system:it_systems(id, name), performer:profiles!it_backup_logs_performed_by_fkey(id, name)')
     .order('log_date', { ascending: false })
   return (data ?? []) as ItBackupLogWithRefs[]
+}
+
+// บันทึกการเข้า-ออก — จำกัดจำนวนแถวเพราะทะเบียนนี้โตเร็วกว่าตารางอื่นในโมดูล
+export async function getItVisitorLogs(
+  supabase: SupabaseClient,
+  options: { limit?: number } = {},
+): Promise<ItVisitorLogWithRefs[]> {
+  const { data } = await supabase
+    .from('it_visitor_logs')
+    .select('*, closer:profiles!it_visitor_logs_closed_by_fkey(id, name)')
+    .order('entered_at', { ascending: false })
+    .limit(options.limit ?? 1000)
+  return (data ?? []) as ItVisitorLogWithRefs[]
 }

@@ -572,6 +572,8 @@ function OperationalFocus({
 function DashboardQuickActions({ permissions, userId }: { permissions: Permissions; userId?: string }) {
   const actions = [
     ...(userId ? [{ href:`/staff/personnel/${userId}`, icon:'user', title:'โปรไฟล์ของฉัน', detail:'ดูข้อมูลส่วนตัว ใบรับรอง และสมรรถนะ', color:'#1E5FAD' }] : []),
+    // ไม่มีเงื่อนไข permission — รายงานอุบัติการณ์เปิดให้ผู้ที่ล็อกอินทุกคนเสมอ (ISO 15189 8.7)
+    { href:'/staff/risk/report', icon:'alert', title:'รายงานอุบัติการณ์', detail:'บันทึกอุบัติการณ์ที่พบในหน่วยงาน', color:'#DC2626' },
     ...((permissions['เอกสารคุณภาพ'] ?? 'none') !== 'none' ? [{ href:'/staff/documents/categories', icon:'doc', title:'เอกสารคุณภาพ', detail:'จัดการหมวดหมู่เอกสารคุณภาพ', color:'#0D9488' }] : []),
     ...((permissions['งานคุณภาพ'] ?? 'none') === 'edit' ? [{ href:'/staff/quality-tasks?create=1', icon:'calendar', title:'สร้างงานเฉพาะกิจ', detail:'เพิ่มงานคุณภาพนอกแผน', color:'#0891B2' }] : []),
     ...((permissions['เอกสารคุณภาพ'] ?? 'none') === 'edit' ? [{ href:'/staff/documents?create=1', icon:'doc', title:'สร้าง Draft เอกสาร', detail:'เริ่มจัดทำเอกสารฉบับใหม่', color:'#0D9488' }] : []),
@@ -742,6 +744,11 @@ const ACTION_LABELS: Record<string, string> = {
   'it_backup.create':                             'บันทึกการสำรองข้อมูล',
   'it_backup.update':                             'แก้ไขบันทึกการสำรองข้อมูล',
   'it_backup.delete':                             'ลบบันทึกการสำรองข้อมูล',
+  'it_visitor.checkout':                          'บันทึกเวลาออกของผู้มาติดต่อ',
+  'it_visitor.update':                            'แก้ไขบันทึกการเข้า-ออก',
+  'it_visitor.delete':                            'ลบบันทึกการเข้า-ออก',
+  'it_visitor.settings':                          'ตั้งค่าแบบฟอร์มบันทึกการเข้า-ออก',
+  'it_visitor.rotate_token':                      'เปลี่ยนลิงก์/QR บันทึกการเข้า-ออก',
   // ข่าวสาร
   'create_news':                                  'เพิ่มข่าวสาร',
   'update_news':                                  'แก้ไขข่าวสาร',
