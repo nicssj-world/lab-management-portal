@@ -9,6 +9,7 @@
     "deploy:preview": "vercel deploy",
     "start": "next start",
     "test:lab-map": "tsx scripts/lab-map-domain.test.ts",
+    "test:lab-map-ui": "tsx scripts/lab-map-ui.test.ts",
     "test:security": "tsx scripts/rate-limit.test.ts && tsx scripts/security-hardening.test.ts && tsx scripts/satisfaction-public-flow.test.ts && tsx scripts/it-visitor-log.test.ts && tsx scripts/head-contact-module.test.ts",
     "tat:local": "node scripts/tat-local-analyze.mjs",
     "tat:clean-raw": "node scripts/tat-clean-raw.mjs"
