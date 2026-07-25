@@ -22,6 +22,12 @@ import { normalizeNavigationValue } from '@/lib/navigation'
 
 export interface TestOption { id: number; code: string; th: string; category_id: string | null }
 export interface StaffOption { id: string; name: string }
+type AgreementHistory = {
+  campaignId: string; fiscalYear: number; title: string; campaignStatus: 'draft' | 'open' | 'approved'
+  status: 'pending' | 'completed' | 'certified' | 'exempt'; completedAt: string | null
+  confidentialityAcceptedAt: string | null; impartialityAcceptedAt: string | null
+  exemptReason: string | null; hasEvidence: boolean
+}
 
 interface DetailProps {
   detail: {
@@ -41,9 +47,11 @@ interface DetailProps {
   categories: string[]
   staff: StaffOption[]
   officialPhotoUrl?: string | null
+  agreementHistory: AgreementHistory[]
+  isOwnProfile: boolean
 }
 
-type TabKey = 'profile' | 'training' | 'plan' | 'competency' | 'cert' | 'auth' | 'jd' | 'orient' | 'health'
+type TabKey = 'profile' | 'training' | 'plan' | 'competency' | 'cert' | 'auth' | 'jd' | 'orient' | 'health' | 'agreements'
 
 const TABS: { key: TabKey; th: string; icon: string }[] = [
   { key: 'profile',    th: 'ประวัติ',        icon: 'users' },
@@ -51,9 +59,10 @@ const TABS: { key: TabKey; th: string; icon: string }[] = [
   { key: 'plan',       th: 'แผนอบรม',       icon: 'chart' },
   { key: 'competency', th: 'สมรรถนะ',       icon: 'check' },
   { key: 'cert',       th: 'ใบรับรอง',      icon: 'doc' },
-  { key: 'auth',       th: 'มอบหมายงาน',   icon: 'shieldCheck' },
+  { key: 'auth',       th: 'สิทธิ์การตรวจ', icon: 'shieldCheck' },
   { key: 'jd',         th: 'JDJS',          icon: 'edit' },
-  { key: 'health',     th: 'สุขภาพ & ข้อตกลง', icon: 'syringe' },
+  { key: 'health',     th: 'สุขภาพ',           icon: 'syringe' },
+  { key: 'agreements', th: 'ข้อตกลง',          icon: 'shieldCheck' },
   { key: 'orient',     th: 'ปฐมนิเทศ',      icon: 'clock' },
 ]
 
@@ -69,7 +78,7 @@ function useToast() {
   return { toasts, add }
 }
 
-export function StaffDetailClient({ detail, canEdit, canManage, tests, categories, staff, officialPhotoUrl }: DetailProps) {
+export function StaffDetailClient({ detail, canEdit, canManage, tests, categories, staff, officialPhotoUrl, agreementHistory, isOwnProfile }: DetailProps) {
   const { profile } = detail
   const router = useRouter()
   const pathname = usePathname()
@@ -95,7 +104,7 @@ export function StaffDetailClient({ detail, canEdit, canManage, tests, categorie
     router.push(`${pathname}?${params.toString()}`, { scroll: false })
   }, [pathname, router, searchParams])
   const viewItems = TABS.map((item) => {
-    const count = item.key === 'training' ? training.length : item.key === 'competency' ? comps.length : item.key === 'cert' ? certs.length : item.key === 'auth' ? auths.length : item.key === 'jd' ? jds.length : item.key === 'plan' ? plan.length : item.key === 'health' ? health.length + confid.length : null
+    const count = item.key === 'training' ? training.length : item.key === 'competency' ? comps.length : item.key === 'cert' ? certs.length : item.key === 'auth' ? auths.length : item.key === 'jd' ? jds.length : item.key === 'plan' ? plan.length : item.key === 'health' ? health.length : null
     return { id: item.key, label: count === null ? item.th : `${item.th} (${count})`, icon: item.icon }
   })
 
@@ -139,7 +148,8 @@ export function StaffDetailClient({ detail, canEdit, canManage, tests, categorie
       {tab === 'cert' && <CertTab profileId={prof.id} items={certs} setItems={setCerts} canEdit={canEdit} toast={add} mtLicenseNo={prof.mt_license_no} mtLicenseExpiry={prof.mt_license_expiry} />}
       {tab === 'auth' && <AuthTab profileId={prof.id} items={auths} setItems={setAuths} canEdit={canManage} tests={tests} testById={testById} categories={categories} competencies={comps} toast={add} />}
       {tab === 'jd' && <JdTab profileId={prof.id} items={jds} setItems={setJds} canEdit={canEdit} toast={add} />}
-      {tab === 'health' && <HealthTab profileId={prof.id} health={health} setHealth={setHealth} confid={confid} setConfid={setConfid} canEdit={canEdit} toast={add} />}
+      {tab === 'health' && <HealthTab profileId={prof.id} health={health} setHealth={setHealth} canEdit={canEdit} toast={add} />}
+      {tab === 'agreements' && <AgreementProfileTab profileId={prof.id} confid={confid} setConfid={setConfid} canEdit={canEdit} canManage={canManage} agreementHistory={agreementHistory} isOwnProfile={isOwnProfile} toast={add} />}
       {tab === 'orient' && <OrientationTab profileId={prof.id} canEdit={canEdit} canManage={canManage} toast={add} />}
 
       {/* Toasts */}
@@ -246,7 +256,7 @@ function FileDropZone({ file, accept, note, onFile }: { file: File | null; accep
   )
 }
 
-function SectionHeader({ title, sub, onAdd, canEdit, extraAction }: { title: string; sub?: string; onAdd?: () => void; canEdit: boolean; extraAction?: React.ReactNode }) {
+function SectionHeader({ title, sub, onAdd, canEdit, extraAction, addLabel = 'เพิ่ม' }: { title: string; sub?: string; onAdd?: () => void; canEdit: boolean; extraAction?: React.ReactNode; addLabel?: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
       <div>
@@ -255,7 +265,7 @@ function SectionHeader({ title, sub, onAdd, canEdit, extraAction }: { title: str
       </div>
       {canEdit && <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {extraAction}
-        {onAdd && <button onClick={onAdd} style={primaryBtn}><Icon name="plus" size={15} /> เพิ่ม</button>}
+        {onAdd && <button onClick={onAdd} style={primaryBtn}><Icon name="plus" size={15} /> {addLabel}</button>}
       </div>}
     </div>
   )
@@ -1068,9 +1078,9 @@ function OverviewSection({ prof, training, plan, comps, certs, auths, jds, onNav
           ))}
         </OverviewWidget>
 
-        <OverviewWidget icon="shieldCheck" title="มอบหมายงาน" count={activeAuths.length} onOpen={() => onNavigate('auth')} openLabel="ดูการมอบหมาย" delay={160}>
-          {auths.length === 0 ? <OverviewEmpty text="ยังไม่มีการมอบหมาย" /> : <>
-            <OverviewPill tone="info">มอบหมายที่ใช้งานอยู่ {activeAuths.length}</OverviewPill>
+        <OverviewWidget icon="shieldCheck" title="สิทธิ์การตรวจ" count={activeAuths.length} onOpen={() => onNavigate('auth')} openLabel="ดูสิทธิ์การตรวจ" delay={160}>
+          {auths.length === 0 ? <OverviewEmpty text="ยังไม่มีสิทธิ์การตรวจ" /> : <>
+            <OverviewPill tone="info">สิทธิ์ที่ใช้งานอยู่ {activeAuths.length}</OverviewPill>
             {activeAuths.slice(0, 2).map((a) => <OverviewRow key={a.id} text={a.category ?? a.role_type} />)}
           </>}
         </OverviewWidget>
@@ -1597,21 +1607,21 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
           authorized_date: form.authorized_date || null, notes: form.notes || null,
         })
         setItems((p) => [...result.created, ...p])
-        toast(`มอบหมายสิทธิ์แล้ว ${result.inserted} รายการ${result.skipped ? ` · ข้ามรายการซ้ำ ${result.skipped}` : ''}`)
+        toast(`กำหนดสิทธิ์แล้ว ${result.inserted} รายการ${result.skipped ? ` · ข้ามรายการซ้ำ ${result.skipped}` : ''}`)
       }
       setModal(false); setEditing(null); setForm(empty)
-      if (editing) toast('แก้ไขการมอบหมายแล้ว')
+      if (editing) toast('แก้ไขสิทธิ์การตรวจแล้ว')
     } catch (e) { toast(e instanceof Error ? e.message : 'error', false) } finally { setSaving(false) }
   }
   async function remove(id: string) {
-    if (!confirm('ถอนการมอบหมายนี้?')) return
-    try { await apiSend(`/api/admin/personnel/${profileId}/authorizations/${id}`, 'DELETE'); setItems((p) => p.filter((x) => x.id !== id)); toast('ถอนแล้ว') }
+    if (!confirm('ถอนสิทธิ์การตรวจนี้?')) return
+    try { await apiSend(`/api/admin/personnel/${profileId}/authorizations/${id}`, 'DELETE'); setItems((p) => p.filter((x) => x.id !== id)); toast('ถอนสิทธิ์แล้ว') }
     catch (e) { toast(e instanceof Error ? e.message : 'error', false) }
   }
 
   return (
     <Card padding={20}>
-      <SectionHeader title="มอบหมายสิทธิ์ทำการตรวจ" sub="สิทธิ์ปฏิบัติงาน · เชื่อมกับรายการตรวจ" canEdit={canEdit} onAdd={openAdd} />
+      <SectionHeader title="สิทธิ์ปฏิบัติงานตรวจ" sub="บทบาทและสิทธิ์สำหรับรายการตรวจ" canEdit={canEdit} onAdd={openAdd} addLabel="กำหนดสิทธิ์การตรวจ" />
       <ChildTable
         cols={['ขอบเขต', 'บทบาท', 'อ้างอิงสมรรถนะ', 'วันที่มอบหมาย', 'สถานะ', '']}
         empty="ยังไม่มีการมอบหมาย"
@@ -1636,7 +1646,7 @@ function AuthTab({ profileId, items, setItems, canEdit, tests, testById, categor
         })}
       />
       {modal && (
-        <Modal title={editing ? 'แก้ไขการมอบหมายสิทธิ์' : 'มอบหมายสิทธิ์ทำการตรวจ'} onClose={() => setModal(false)}
+        <Modal title={editing ? 'แก้ไขสิทธิ์การตรวจ' : 'กำหนดสิทธิ์การตรวจ'} onClose={() => setModal(false)}
           footer={<><button onClick={() => setModal(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
           <Field label="ขอบเขตการมอบหมาย">
             <div style={{ display: 'flex', gap: 8 }}>
@@ -1886,20 +1896,72 @@ function JdRevisionsModal({ profileId, jd, onClose }: { profileId: string; jd: S
   )
 }
 
-// ════════════ Health & Confidentiality tab (ISO 6.2 — staff health) ════════════
+// ════════════ Health tab (ISO 6.2 — staff health) ════════════
 const HEALTH_TYPE_LABEL: Record<string, string> = { vaccination: 'วัคซีน', health_check: 'ตรวจสุขภาพ', other: 'อื่นๆ' }
 
-function HealthTab({ profileId, health, setHealth, confid, setConfid, canEdit, toast }: {
+function HealthTab({ profileId, health, setHealth, canEdit, toast }: {
   profileId: string
   health: StaffHealthRecord[]; setHealth: (f: (p: StaffHealthRecord[]) => StaffHealthRecord[]) => void
-  confid: StaffConfidentialityAgreement[]; setConfid: (f: (p: StaffConfidentialityAgreement[]) => StaffConfidentialityAgreement[]) => void
   canEdit: boolean; toast: (m: string, ok?: boolean) => void
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <HealthRecordsSection profileId={profileId} items={health} setItems={setHealth} canEdit={canEdit} toast={toast} />
-      <ConfidentialitySection profileId={profileId} items={confid} setItems={setConfid} canEdit={canEdit} toast={toast} />
     </div>
+  )
+}
+
+function AgreementProfileTab({ profileId, confid, setConfid, canEdit, canManage, agreementHistory, isOwnProfile, toast }: {
+  profileId: string
+  confid: StaffConfidentialityAgreement[]; setConfid: (f: (p: StaffConfidentialityAgreement[]) => StaffConfidentialityAgreement[]) => void
+  canEdit: boolean; canManage: boolean; agreementHistory: AgreementHistory[]; isOwnProfile: boolean; toast: (m: string, ok?: boolean) => void
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Card padding={20}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <span style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--primary-soft)', color: 'var(--primary)', display: 'grid', placeItems: 'center' }}><Icon name="shieldCheck" size={18} /></span>
+          <div style={{ flex: 1, minWidth: 230 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>ข้อตกลงประจำปีแบบอิเล็กทรอนิกส์</div>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.55 }}>ประกอบด้วยการรักษาความลับ ความเป็นกลาง และการยืนยัน/เปิดเผยกิจกรรมที่อาจกระทบความเป็นกลาง โดยหลักฐานของแต่ละรอบจะถูกล็อกหลังรับรอง</div>
+          </div>
+          {isOwnProfile && <Link href="/staff/agreements" style={{ ...primaryBtn, textDecoration: 'none' }}><Icon name="edit" size={14} /> ทำข้อตกลงประจำปี</Link>}
+          {canManage && <Link href="/staff/personnel/agreements" style={{ ...ghostBtn, textDecoration: 'none' }}><Icon name="chart" size={14} /> จัดการรอบปี</Link>}
+        </div>
+      </Card>
+      <AnnualAgreementRecordSection items={agreementHistory} isOwnProfile={isOwnProfile} />
+    </div>
+  )
+}
+
+function AnnualAgreementRecordSection({ items, isOwnProfile }: { items: AgreementHistory[]; isOwnProfile: boolean }) {
+  const title = 'ข้อตกลงรักษาความลับและความเป็นกลาง (Confidentiality & Impartiality)'
+  return (
+    <Card padding={20}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+        <div><div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{title}</div><div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>ประวัติการยอมรับข้อตกลง Fm-QP-LAB-27/01 ในแต่ละรอบปี</div></div>
+        <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{items.length} รอบ</span>
+      </div>
+      <ChildTable
+        cols={['ปีงบประมาณ', 'รอบข้อตกลง', 'สถานะ', 'วันที่', 'หลักฐาน']}
+        empty={`ยังไม่มี${title}`}
+        rows={items.map((item) => {
+          const acceptedAt = item.confidentialityAcceptedAt && item.impartialityAcceptedAt
+            ? item.completedAt ?? item.confidentialityAcceptedAt
+            : null
+          const status = item.status
+          const statusLabel = status === 'certified' ? 'รับรองแล้ว' : status === 'completed' ? 'ลงนามแล้ว' : status === 'exempt' ? 'ยกเว้น' : 'รอดำเนินการ'
+          const statusColor = status === 'certified' || status === 'completed' ? 'var(--success)' : status === 'exempt' ? 'var(--muted)' : '#D97706'
+          return <tr key={item.campaignId} style={{ borderBottom: '1px solid var(--border)' }}>
+            <td style={{ ...td, fontWeight: 700 }}>พ.ศ. {item.fiscalYear}</td>
+            <td style={td}>{item.title}</td>
+            <td style={td}><span style={{ color: statusColor, fontWeight: 700 }}>{statusLabel}</span>{status === 'exempt' && item.exemptReason ? <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>{item.exemptReason}</div> : null}</td>
+            <td style={td}>{acceptedAt ? fmtDateTimeDateBE(acceptedAt) : '—'}</td>
+            <td style={td}>{(status === 'completed' || status === 'certified') && item.hasEvidence && isOwnProfile ? <a href={`/api/me/annual-agreements/${item.campaignId}/evidence`} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}>ดู PDF</a> : status === 'pending' && isOwnProfile ? <Link href="/staff/agreements" style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}>ดำเนินการ</Link> : '—'}</td>
+          </tr>
+        })}
+      />
+    </Card>
   )
 }
 
@@ -2038,7 +2100,7 @@ function ConfidentialitySection({ profileId, items, setItems, canEdit, toast }: 
 
   return (
     <Card padding={20}>
-      <SectionHeader title="ข้อตกลงรักษาความลับ (Confidentiality)" sub="เอกสารลงนามรักษาความลับ · ลงนามซ้ำรายปีได้" canEdit={canEdit} onAdd={openAdd} />
+      <SectionHeader title="เอกสารข้อตกลงรักษาความลับเดิม" sub="ประวัติเอกสารกระดาษ/ไฟล์เดิมก่อนใช้ข้อตกลงรายปีในระบบ" canEdit={canEdit} onAdd={openAdd} />
       <ChildTable
         cols={['วันที่ลงนาม', 'หมายเหตุ', 'ไฟล์', '']}
         empty="ยังไม่มีข้อตกลงรักษาความลับ"

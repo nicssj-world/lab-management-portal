@@ -436,10 +436,10 @@ export default function ProfilePage() {
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>ข้อมูลสำหรับเอกสารคุณภาพ</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>ตำแหน่งและลายเซ็นที่ระบบใช้บนหน้าปก QP/WI</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>ตำแหน่งและลายเซ็นทางการที่ใช้บนเอกสาร QP/WI และข้อตกลงประจำปี</div>
           </div>
           {!canEditDocumentProfile && (
-            <Badge color="gray" size="sm">ดูอย่างเดียว</Badge>
+            <Badge color="gray" size="sm">ตำแหน่งดูอย่างเดียว</Badge>
           )}
         </div>
         <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: '1fr 220px', gap: 18, alignItems: 'start' }}>
@@ -470,7 +470,7 @@ export default function ProfilePage() {
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 5, display: 'block' }}>ลายเซ็น</label>
+            <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 5, display: 'block' }}>ลายเซ็นทางการ</label>
             <div style={{ height: 92, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, marginBottom: 8 }}>
               {signatureUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -485,23 +485,22 @@ export default function ProfilePage() {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button
                 onClick={() => signatureRef.current?.click()}
-                disabled={!canEditDocumentProfile || uploadingSignature}
-                style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: canEditDocumentProfile ? 'pointer' : 'not-allowed', fontFamily: 'inherit', color: 'var(--ink)' }}
+                disabled={uploadingSignature}
+                style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: uploadingSignature ? 'not-allowed' : 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}
               >
                 {uploadingSignature ? 'กำลังอัปโหลด...' : 'อัปโหลด'}
               </button>
               {signatureUrl && (
                 <button
                   onClick={handleRemoveSignature}
-                  disabled={!canEditDocumentProfile}
-                  style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #FEE2E2', background: 'transparent', cursor: canEditDocumentProfile ? 'pointer' : 'not-allowed', fontFamily: 'inherit', color: '#DC2626' }}
+                  style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #FEE2E2', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: '#DC2626' }}
                 >
                   ลบ
                 </button>
               )}
             </div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6, lineHeight: 1.4 }}>
-              รองรับ PNG, JPG, WebP ไม่เกิน 2 MB; ระบบจะปรับเป็น PNG 900x260 ให้อัตโนมัติ
+              รองรับ PNG, JPG, WebP ไม่เกิน 2 MB; ระบบจะปรับเป็น PNG 900x260 ให้อัตโนมัติ และลายเซ็นนี้จะใช้กับข้อตกลงประจำปีเมื่อเลือก “ใช้ลายเซ็นที่บันทึกไว้”
             </div>
           </div>
         </div>

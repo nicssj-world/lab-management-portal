@@ -8,14 +8,9 @@ import {
   normalizeSignatureImage,
 } from '@/lib/signatures'
 
-function canEditOwn(actor: { role: string; doc_role: string | null }) {
-  return actor.role === 'Admin' || actor.role === 'Manager' || actor.doc_role === 'Reviewer'
-}
-
 export async function POST(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return jsonUnauthorized()
-  if (!canEditOwn(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const form = await req.formData()
   const file = form.get('file') as File | null
@@ -65,7 +60,6 @@ export async function POST(req: NextRequest) {
 export async function DELETE() {
   const actor = await getActor()
   if (!actor) return jsonUnauthorized()
-  if (!canEditOwn(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data } = await supabaseAdmin
     .from('profiles')
