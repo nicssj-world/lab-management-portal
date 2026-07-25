@@ -5,6 +5,8 @@ import { getRolePermissions, type PermLevel } from '@/lib/permissions'
 import type { ResourceKey } from '@/lib/permission-resources'
 import { normalizeRole } from '@/lib/roles'
 import { canManagePersonnel } from '@/lib/personnel/roles'
+import { canApproveAgreementCampaign, canViewAgreementCampaigns } from '@/lib/personnel/agreement-access'
+import type { DeptRole } from '@/lib/supabase/types'
 
 export type Actor = {
   id: string
@@ -12,6 +14,7 @@ export type Actor = {
   doc_role: string | null
   name?: string | null
   dept?: string | null
+  dept_role?: DeptRole | null
 }
 
 export const DOC_WORKFLOW_ROLES = [
@@ -41,7 +44,7 @@ export async function getActor(): Promise<Actor | null> {
 
   const { data } = await supabaseAdmin
     .from('profiles')
-    .select('id, role, doc_role, name, dept')
+    .select('id, role, doc_role, name, dept, dept_role')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -117,5 +120,23 @@ export async function requirePersonnelManage(): Promise<
   const actor = await getActor()
   if (!actor) return { response: jsonUnauthorized() }
   if (canManagePersonnel(actor.role)) return { actor }
+  return { response: jsonForbidden() }
+}
+
+export async function requireAgreementCampaignView(): Promise<
+  { actor: Actor; response?: undefined } | { actor?: undefined; response: NextResponse }
+> {
+  const actor = await getActor()
+  if (!actor) return { response: jsonUnauthorized() }
+  if (canViewAgreementCampaigns(actor.role, actor.dept_role)) return { actor }
+  return { response: jsonForbidden() }
+}
+
+export async function requireAgreementCampaignApprove(): Promise<
+  { actor: Actor; response?: undefined } | { actor?: undefined; response: NextResponse }
+> {
+  const actor = await getActor()
+  if (!actor) return { response: jsonUnauthorized() }
+  if (canApproveAgreementCampaign(actor.dept_role)) return { actor }
   return { response: jsonForbidden() }
 }

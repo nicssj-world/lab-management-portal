@@ -128,6 +128,46 @@ export interface StaffConfidentialityAgreement {
   deleted_at: string | null
 }
 
+// Annual paperless agreements. Legacy confidentiality records above remain unchanged.
+export interface StaffAgreementCampaign {
+  id: string
+  fiscal_year: number
+  title: string
+  opens_on: string
+  due_on: string
+  status: 'draft' | 'open' | 'approved'
+  agreement_document_snapshot: Record<string, unknown>
+  disclosure_document_snapshot: Record<string, unknown>
+  created_at: string
+  created_by: string | null
+  opened_at: string | null
+  approved_at: string | null
+  approved_by: string | null
+  approval_signature_url: string | null
+  approval_signature_method: 'drawn' | 'saved' | null
+  approval_manifest_sha256: string | null
+  locked_at: string | null
+}
+
+export interface StaffAgreementCampaignRecipient {
+  campaign_id: string
+  profile_id: string
+  status: 'pending' | 'completed' | 'certified' | 'exempt'
+  exempt_reason: string | null
+  exempted_at: string | null
+  exempted_by: string | null
+  completed_at: string | null
+  evidence_url: string | null
+  evidence_sha256: string | null
+  certification_batch_id: string | null
+  certified_at: string | null
+  certified_by: string | null
+  certification_actor_snapshot: Record<string, unknown> | null
+  certification_signature_url: string | null
+  certification_signature_method: 'drawn' | 'saved' | null
+  certification_manifest_sha256: string | null
+}
+
 export interface StaffCompetency {
   id: string
   profile_id: string

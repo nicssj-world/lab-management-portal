@@ -5,6 +5,7 @@ import { getRolePermissions } from '@/lib/permissions'
 import { getStaffDetail } from '@/lib/queries/personnel'
 import { createStaffSignedUrl } from '@/lib/personnel/storage'
 import { canManagePersonnel } from '@/lib/personnel/roles'
+import { listAgreementHistoryForProfile } from '@/lib/personnel/annual-agreements-server'
 import { normalizeRole } from '@/lib/roles'
 import { StaffDetailClient, type TestOption, type StaffOption } from './StaffDetailClient'
 
@@ -22,10 +23,11 @@ export default async function StaffDetailPage(ctx: { params: Promise<{ id: strin
   const detail = await getStaffDetail(id)
   if (!detail) notFound()
 
-  const [{ data: tests }, { data: cats }, { data: staff }] = await Promise.all([
+  const [{ data: tests }, { data: cats }, { data: staff }, agreementHistory] = await Promise.all([
     supabaseAdmin.from('tests').select('id, code, th, category_id').eq('active', true).order('th'),
     supabaseAdmin.from('categories').select('id, th').order('th'),
     supabaseAdmin.from('profiles').select('id, name').is('deleted_at', null).order('name'),
+    listAgreementHistoryForProfile(id),
   ])
 
   const testOptions: TestOption[] = (tests ?? []).map((t) => ({ id: t.id, code: t.code, th: t.th, category_id: t.category_id }))
@@ -42,6 +44,8 @@ export default async function StaffDetailPage(ctx: { params: Promise<{ id: strin
       categories={categories}
       staff={staffOptions}
       officialPhotoUrl={officialPhotoUrl}
+      agreementHistory={agreementHistory}
+      isOwnProfile={user.id === id}
     />
   )
 }

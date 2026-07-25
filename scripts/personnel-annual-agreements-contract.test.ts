@@ -1,0 +1,116 @@
+import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+
+async function main() {
+  const sql = await readFile('scripts/personnel-annual-agreements.sql', 'utf8')
+  for (const table of [
+    'staff_agreement_campaigns',
+    'staff_agreement_campaign_recipients',
+    'staff_agreement_acknowledgements',
+    'staff_activity_disclosures',
+  ]) assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`))
+  assert.doesNotMatch(sql, /staff_agreement_signature_profiles/)
+  assert.match(sql, /status IN \('draft', 'open', 'approved'\)/)
+  assert.match(sql, /approval_actor_snapshot jsonb/)
+  assert.match(sql, /'pending', 'completed', 'certified', 'exempt'/)
+  assert.match(sql, /certification_signature_url text/)
+  assert.match(sql, /public, file_size_limit/)
+
+  const selfClient = await readFile('components/personnel/AnnualAgreementsClient.tsx', 'utf8')
+  assert.match(selfClient, /ข้อตกลงรักษาความลับและความเป็นกลาง/)
+  assert.match(selfClient, /agreementAccepted/)
+  assert.doesNotMatch(selfClient, /setConfidentiality|setImpartiality/)
+  assert.match(selfClient, /การเปิดเผยกิจกรรม/)
+  assert.match(selfClient, /AgreementSignatureCanvas/)
+  assert.match(selfClient, /ต้องการเก็บลายเซ็นนี้ไว้ใช้ครั้งหน้าหรือไม่/)
+
+  const detail = await readFile('app/(protected)/staff/personnel/[id]/StaffDetailClient.tsx', 'utf8')
+  assert.match(detail, /th: 'สุขภาพ'/)
+  assert.match(detail, /th: 'ข้อตกลง'/)
+  assert.doesNotMatch(detail, /th: 'สุขภาพ & ข้อตกลง'/)
+  assert.match(detail, /agreementHistory/)
+  assert.match(detail, /ข้อตกลงรักษาความลับและความเป็นกลาง \(Confidentiality & Impartiality\)/)
+  assert.match(detail, /AnnualAgreementRecordSection/)
+  assert.equal(detail.match(/<AnnualAgreementRecordSection/g)?.length, 1)
+  assert.doesNotMatch(detail, /<ConfidentialitySection profileId=/)
+
+  const detailPage = await readFile('app/(protected)/staff/personnel/[id]/page.tsx', 'utf8')
+  assert.match(detailPage, /listAgreementHistoryForProfile/)
+  const agreementServer = await readFile('lib/personnel/annual-agreements-server.ts', 'utf8')
+  assert.match(agreementServer, /export async function listAgreementHistoryForProfile/)
+  assert.match(agreementServer, /agreement_type, accepted_at/)
+  assert.match(agreementServer, /fm-qp-lab-27-v8/)
+  assert.match(agreementServer, /recipientsAwaitingCertification/)
+  assert.match(agreementServer, /certification_signature_url/)
+  assert.match(agreementServer, /evidenceVersionMarker/)
+  assert.match(agreementServer, /lockCampaignIfReady/)
+  assert.match(agreementServer, /await lockCampaignIfReady/)
+  assert.match(agreementServer, /dept_role !== 'group_lead'/)
+  assert.match(agreementServer, /certification_actor_snapshot/)
+  assert.match(agreementServer, /personnel\.agreements\.certify_batch/)
+  const evidencePdf = await readFile('lib/personnel/agreement-evidence-pdf.ts', 'utf8')
+  assert.match(evidencePdf, /AGREEMENT_TEMPLATE_PATH/)
+  assert.match(evidencePdf, /DISCLOSURE_TEMPLATE_PATH/)
+  assert.match(evidencePdf, /FORM_NAME_FONT_SIZE = 10/)
+  assert.match(evidencePdf, /FORM_DATE_FONT_SIZE = 9/)
+  assert.match(evidencePdf, /FORM_POSITION_FONT_SIZE = 10\.5/)
+  assert.match(evidencePdf, /`วันที่ \$\{date\.day\} \$\{date\.month\} \$\{date\.year\}`/)
+  assert.match(evidencePdf, /fillApproverBlock/)
+  assert.match(evidencePdf, /drawSignerName/)
+  assert.match(evidencePdf, /\(\$\{name\}\)/)
+  assert.doesNotMatch(evidencePdf, /หลักฐานการยอมรับข้อตกลงประจำปี/)
+  const templateChecks = [
+    ['assets/personnel/agreements/Fm-QP-LAB-27-01.pdf', '58738d96ccbb1d80aeebc7125b0e641d0c23dd4816c999d05101f39b4102e82c'],
+    ['assets/personnel/agreements/Fm-QP-LAB-27-02.pdf', '4d223ce40e4395c76c56ad255ea4b9ac02b8ba2619540de793081dda7609458e'],
+  ] as const
+  for (const [file, expectedHash] of templateChecks) {
+    const bytes = await readFile(file)
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), expectedHash)
+  }
+  assert.match(selfClient, /section=agreements/)
+
+  const submitRoute = await readFile('app/api/me/annual-agreements/[campaignId]/submit/route.ts', 'utf8')
+  assert.match(submitRoute, /profileId: actor\.id/)
+  const selfEvidenceRoute = await readFile('app/api/me/annual-agreements/[campaignId]/evidence/route.ts', 'utf8')
+  assert.match(selfEvidenceRoute, /refreshAgreementEvidence\(campaignId, actor\.id\)/)
+  const managerEvidenceRoute = await readFile('app/api/admin/personnel/agreements/campaigns/[campaignId]/evidence/[profileId]/route.ts', 'utf8')
+  assert.match(managerEvidenceRoute, /requireAgreementCampaignView/)
+  assert.match(managerEvidenceRoute, /refreshAgreementEvidence\(campaignId, profileId\)/)
+  const managerRoute = await readFile('app/api/admin/personnel/agreements/campaigns/route.ts', 'utf8')
+  assert.match(managerRoute, /requireAgreementCampaignView/)
+  assert.match(managerRoute, /requirePersonnelManage/)
+  const campaignDetailRoute = await readFile('app/api/admin/personnel/agreements/campaigns/[campaignId]/route.ts', 'utf8')
+  assert.match(campaignDetailRoute, /requireAgreementCampaignView/)
+  assert.match(campaignDetailRoute, /requirePersonnelManage/)
+  const approvalRoute = await readFile('app/api/admin/personnel/agreements/campaigns/[campaignId]/approve/route.ts', 'utf8')
+  assert.match(approvalRoute, /requireAgreementCampaignApprove/)
+  const reportRoute = await readFile('app/api/admin/personnel/agreements/campaigns/[campaignId]/report/route.ts', 'utf8')
+  assert.match(reportRoute, /requireAgreementCampaignView/)
+  const officialSignatureRoute = await readFile('app/api/me/signature/route.ts', 'utf8')
+  assert.doesNotMatch(officialSignatureRoute, /canEditOwn/)
+  const profile = await readFile('app/(protected)/staff/profile/page.tsx', 'utf8')
+  assert.match(profile, /ลายเซ็นทางการ/)
+  const sidebar = await readFile('components/layout/StaffSidebar.tsx', 'utf8')
+  assert.doesNotMatch(sidebar, /href: '\/staff\/agreements'/)
+  assert.doesNotMatch(sidebar, /href: '\/staff\/personnel\/agreements'/)
+  const personnelPage = await readFile('app/(protected)/staff/personnel/page.tsx', 'utf8')
+  assert.match(personnelPage, /canApproveAgreements/)
+  const personnelClient = await readFile('app/(protected)/staff/personnel/PersonnelClient.tsx', 'utf8')
+  assert.match(personnelClient, /ข้อตกลงของฉัน/)
+  assert.match(personnelClient, /จัดการข้อตกลงประจำปี/)
+  assert.match(personnelClient, /รับรองข้อตกลงประจำปี/)
+  assert.match(personnelClient, /\/staff\/personnel\/agreements/)
+  assert.match(campaignDetailRoute, /export async function DELETE/)
+  const campaignManager = await readFile('components/personnel/AgreementCampaignManagerClient.tsx', 'utf8')
+  const campaignManagerPage = await readFile('app/(protected)/staff/personnel/agreements/page.tsx', 'utf8')
+  assert.match(campaignManagerPage, /canManageCampaigns/)
+  assert.match(campaignManagerPage, /canApproveCampaigns/)
+  assert.match(campaignManager, /canManageCampaigns/)
+  assert.match(campaignManager, /canApproveCampaigns/)
+  assert.match(campaignManager, /รับรองแล้ว/)
+  assert.match(campaignManager, /ลงนามแล้ว/)
+  assert.match(campaignManager, /ลบรอบ/)
+}
+
+void main()

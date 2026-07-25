@@ -136,7 +136,7 @@ function Pill({ color, children }: { color: string; children: React.ReactNode })
   )
 }
 
-export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'all', canManage = false }: { rows: RosterRow[]; currentUserId?: string; initialSummaryFilter?: PersonnelSummaryFilter; canManage?: boolean }) {
+export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'all', canManage = false, canApproveAgreements = false }: { rows: RosterRow[]; currentUserId?: string; initialSummaryFilter?: PersonnelSummaryFilter; canManage?: boolean; canApproveAgreements?: boolean }) {
   const router = useRouter()
   const { canEdit } = usePermission('บุคลากร')
   const [search, setSearch] = useState('')
@@ -205,9 +205,22 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
           marginBottom={0}
         />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0, position: 'relative' }}>
+          <Link href="/staff/agreements" style={linkBtn}>
+            <Icon name="shieldCheck" size={15} /> ข้อตกลงของฉัน
+          </Link>
           {canManage && (
-            <Link href="/staff/personnel/manage" style={linkBtn}>
-              <Icon name="settings" size={15} /> จัดการกลุ่มงาน
+            <>
+              <Link href="/staff/personnel/manage" style={linkBtn}>
+                <Icon name="settings" size={15} /> จัดการกลุ่มงาน
+              </Link>
+              <Link href="/staff/personnel/agreements" style={linkBtn}>
+                <Icon name="shieldCheck" size={15} /> จัดการข้อตกลงประจำปี
+              </Link>
+            </>
+          )}
+          {canApproveAgreements && (
+            <Link href="/staff/personnel/agreements" style={linkBtn}>
+              <Icon name="check" size={15} /> รับรองข้อตกลงประจำปี
             </Link>
           )}
           <Link href="/staff/personnel/team-org" style={linkBtn}>

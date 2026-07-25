@@ -52,7 +52,7 @@ const CSS = `
 `
 
 const BULK_TITLE: Record<BulkType, string> = {
-  authorizations: 'มอบสิทธิทำการตรวจ',
+  authorizations: 'กำหนดสิทธิ์การตรวจ',
   'training-plan': 'กำหนดแผนอบรม',
   competencies: 'ประเมิน/กำหนดสมรรถนะ',
 }
@@ -200,7 +200,7 @@ export function ManageClient({ rows: initialRows, categories, compStats, workGro
         <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--surface-2)' }}>
           <strong style={{ fontSize: 13 }}>เลือก {selectedIds.length} คน</strong>
           <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>มอบหมายทีละหลายคน:</span>
-          <button style={btn} onClick={() => setBulk('authorizations')}>มอบสิทธิ</button>
+          <button style={btn} onClick={() => setBulk('authorizations')}>กำหนดสิทธิ์การตรวจ</button>
           <button style={btn} onClick={() => setBulk('training-plan')}>แผนอบรม</button>
           <button style={btn} onClick={() => setBulk('competencies')}>สมรรถนะ</button>
         </div>
@@ -308,7 +308,7 @@ function BulkModal({ type, count, categories, assessors, profileIds, onClose, on
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? 'บันทึกไม่สำเร็จ')
       onDone(type === 'authorizations'
-        ? `มอบสิทธิ์แล้ว ${data.count} รายการ${data.skipped ? ` · ข้ามรายการซ้ำ ${data.skipped}` : ''}`
+        ? `กำหนดสิทธิ์แล้ว ${data.count} รายการ${data.skipped ? ` · ข้ามรายการซ้ำ ${data.skipped}` : ''}`
         : `บันทึกให้ ${data.count} คนแล้ว`)
     } catch (e) { onError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ'); onClose() } finally { setSaving(false) }
   }
