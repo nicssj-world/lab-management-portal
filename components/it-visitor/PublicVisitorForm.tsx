@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
+import { ActiveVisitCard } from '@/components/it-visitor/ActiveVisitCard'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import {
   ACTIVITY_TYPES, ACTIVITY_LABEL, APPOINTMENTS, APPOINTMENT_LABEL,
@@ -70,20 +71,10 @@ export function PublicVisitorForm({ token, initialState, challenge, initialActiv
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({})
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
+  const [activeVisit, setActiveVisit] = useState<ActiveVisitorDTO | null>(initialActiveVisit ?? null)
   // สร้างครั้งเดียวตอน mount — กดส่งซ้ำ/เน็ตหลุดแล้วยิงใหม่จึงไม่เกิดแถวซ้ำ
   const submissionKeyRef = useRef<string>(crypto.randomUUID())
   const honeypotRef = useRef<HTMLInputElement>(null)
-
-  if (initialActiveVisit) {
-    return (
-      <TerminalState
-        title="ลงทะเบียนเข้าแล้ว"
-        detail={`ปลายทาง ${initialActiveVisit.contactDept} — กรุณาติดต่อเจ้าหน้าที่เมื่อถึงจุดสแกนนิ้วมือ`}
-        success
-      />
-    )
-  }
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((v) => ({ ...v, [key]: value }))
@@ -114,14 +105,8 @@ export function PublicVisitorForm({ token, initialState, challenge, initialActiv
   if (!initialState.available) {
     return <TerminalState title="ปิดรับแบบฟอร์มชั่วคราว" detail="ขณะนี้ยังไม่เปิดรับการบันทึกผ่านแบบฟอร์มนี้ กรุณาติดต่อเจ้าหน้าที่กลุ่มงานเทคนิคการแพทย์" />
   }
-  if (submitted) {
-    return (
-      <TerminalState
-        success
-        title="บันทึกการเข้าเรียบร้อยแล้ว"
-        detail="ขอบคุณที่ให้ความร่วมมือ กรุณาแจ้งเจ้าหน้าที่เมื่อออกจากพื้นที่ เพื่อบันทึกเวลาออกให้ครบถ้วน"
-      />
-    )
+  if (activeVisit) {
+    return <ActiveVisitCard token={token} visit={activeVisit} />
   }
 
   // ── หน้าจอ 1: เลือกประเภทฟอร์ม ──
@@ -183,7 +168,8 @@ export function PublicVisitorForm({ token, initialState, challenge, initialActiv
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'บันทึกไม่สำเร็จ')
-      setSubmitted(true)
+      if (!result.activeVisit) throw new Error('ไม่พบข้อมูลการเข้า กรุณาติดต่อเจ้าหน้าที่')
+      setActiveVisit(result.activeVisit)
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง')
     } finally {

@@ -113,6 +113,50 @@ export async function getActiveVisitorBySecret(secret: string): Promise<ActiveVi
   return toActiveVisitorDTO(data as { entered_at: string; contact_dept: string })
 }
 
+export type SelfCheckoutResult =
+  | { status: 'checked_out'; exitedAt: string }
+  | { status: 'already_closed' }
+  | { status: 'invalid' }
+
+export async function selfCheckoutVisitor(secret: string): Promise<SelfCheckoutResult> {
+  if (!/^[A-Za-z0-9_-]{40,128}$/.test(secret)) return { status: 'invalid' }
+
+  const secretHash = hashCheckoutSecret(secret)
+  const { data: current, error: lookupError } = await supabaseAdmin
+    .from('it_visitor_logs')
+    .select('id, exited_at')
+    .eq('checkout_secret_hash', secretHash)
+    .maybeSingle()
+  if (lookupError) throw new Error(lookupError.message)
+  if (!current) return { status: 'invalid' }
+  if (current.exited_at) return { status: 'already_closed' }
+
+  const exitedAt = new Date().toISOString()
+  const { data: updated, error: updateError } = await supabaseAdmin
+    .from('it_visitor_logs')
+    .update({
+      exited_at: exitedAt,
+      closed_at: exitedAt,
+      checkout_method: 'self',
+      checkout_secret_hash: null,
+    })
+    .eq('id', current.id)
+    .is('exited_at', null)
+    .select('id')
+    .maybeSingle()
+  if (updateError) throw new Error(updateError.message)
+  if (!updated) return { status: 'already_closed' }
+
+  await supabaseAdmin.from('audit_log').insert({
+    action: 'it_visitor.self_checkout',
+    user_id: null,
+    target: current.id,
+    detail: 'ผู้มาติดต่อบันทึกเวลาออกจากลิงก์เดิม',
+  })
+
+  return { status: 'checked_out', exitedAt }
+}
+
 // ── ฝั่งเจ้าหน้าที่ ──
 
 export async function getVisitorFormSettings() {

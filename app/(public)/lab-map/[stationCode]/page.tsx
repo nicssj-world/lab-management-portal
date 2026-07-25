@@ -29,6 +29,11 @@ export default async function PublicLabMapPage(
         (route) => route.kind === 'visitor' && route.destinationCode === requestedDestination,
       ) ?? null
     : null
+  const requestedMode = searchParams.mode === 'safety'
+    ? 'safety'
+    : activeRoute
+      ? 'overview'
+      : 'safety'
 
   return (
     <div className="public-lab-map-page">
@@ -48,7 +53,7 @@ export default async function PublicLabMapPage(
       <LabMapShell
         map={map}
         allowedModes={['overview', 'safety']}
-        initialMode={activeRoute ? 'overview' : 'safety'}
+        initialMode={requestedMode}
         initialRouteCode={activeRoute?.code ?? null}
         heading="แผนที่นำทางห้องปฏิบัติการ"
         description="เลือกจุดหมายและเดินตามป้ายจริงภายในอาคาร เส้นทางบุคคลภายนอกสิ้นสุดที่จุดสแกนนิ้วมือ"

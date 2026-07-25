@@ -5,6 +5,7 @@ import {
   existingVisitorSubmission,
   getPublicVisitorFormState,
   insertVisitorLog,
+  selfCheckoutVisitor,
   verifyVisitorChallenge,
 } from '@/lib/it-visitor/public-server'
 import type { VisitorSubmissionInput } from '@/lib/it-visitor/types'
@@ -45,6 +46,31 @@ function tooManyRequests(limit: RateLimitResult) {
     { error: 'มีคำขอมากเกินไป กรุณารอสักครู่แล้วลองใหม่', code: 'rate_limited' },
     { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds), 'Cache-Control': 'no-store' } },
   )
+}
+
+function isSameOriginRequest(request: NextRequest) {
+  const origin = request.headers.get('origin')
+  if (!origin) return true
+  try {
+    const originUrl = new URL(origin)
+    const requestUrl = new URL(request.url)
+    const expectedHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? requestUrl.host
+    const expectedProtocol = request.headers.get('x-forwarded-proto') ?? requestUrl.protocol.replace(':', '')
+    return originUrl.host === expectedHost && originUrl.protocol === `${expectedProtocol}:`
+  } catch {
+    return false
+  }
+}
+
+function expireCheckoutCookie(response: NextResponse) {
+  response.cookies.set('lab_visitor_checkout', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  })
+  return response
 }
 
 export async function GET(request: NextRequest, { params }: Context) {
@@ -148,5 +174,52 @@ export async function POST(request: NextRequest, { params }: Context) {
     }
     const message = error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ'
     return NextResponse.json({ error: message, code: 'submit_failed' }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: NextRequest, { params }: Context) {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: 'คำขอมาจากแหล่งที่ไม่อนุญาต' }, { status: 403 })
+  }
+
+  const { token } = await params
+  const limits = [
+    consumeRateLimit({
+      key: `visitor-checkout-ip:${privateRequestKey('visitor-checkout-ip', getClientIp(request.headers))}`,
+      limit: 30,
+      windowMs: 10 * 60 * 1000,
+    }),
+    consumeRateLimit({
+      key: `visitor-checkout-form:${privateRequestKey('visitor-checkout-form', token)}`,
+      limit: 600,
+      windowMs: 10 * 60 * 1000,
+    }),
+  ]
+  const rejectedLimit = limits.find((limit) => !limit.allowed)
+  if (rejectedLimit) return tooManyRequests(rejectedLimit)
+
+  const state = await getPublicVisitorFormState(token)
+  if (!state) return NextResponse.json({ error: 'ไม่พบแบบฟอร์ม' }, { status: 404 })
+
+  const checkoutSecret = request.cookies.get('lab_visitor_checkout')?.value
+  if (!checkoutSecret) {
+    return NextResponse.json({ error: 'ไม่พบสิทธิ์บันทึกออก กรุณาติดต่อเจ้าหน้าที่' }, { status: 401 })
+  }
+
+  try {
+    const result = await selfCheckoutVisitor(checkoutSecret)
+    if (result.status === 'invalid') {
+      return expireCheckoutCookie(
+        NextResponse.json({ error: 'สิทธิ์บันทึกออกไม่ถูกต้องหรือหมดอายุ' }, { status: 401 }),
+      )
+    }
+    if (result.status === 'already_closed') {
+      return expireCheckoutCookie(
+        NextResponse.json({ error: 'รายการนี้บันทึกเวลาออกแล้ว' }, { status: 409 }),
+      )
+    }
+    return expireCheckoutCookie(NextResponse.json({ ok: true, exitedAt: result.exitedAt }))
+  } catch {
+    return NextResponse.json({ error: 'บันทึกเวลาออกไม่สำเร็จ กรุณาติดต่อเจ้าหน้าที่' }, { status: 500 })
   }
 }
