@@ -98,3 +98,19 @@ export interface StaffLabMapDTO extends LabMapDTO {
   people?: readonly StaffMapPersonDTO[]
   unassignedPeople?: readonly Pick<StaffMapPersonDTO, 'profileId' | 'name' | 'department'>[]
 }
+
+export type MapReleaseStatus = 'draft' | 'published' | 'retired'
+
+export interface MapReleaseDTO {
+  id?: string
+  versionCode: string
+  status: MapReleaseStatus
+  manifestHash: string
+  effectiveDate: string | null
+  reviewedBy: string | null
+  approvedBy: string | null
+  approvedAt: string | null
+  reviewerName?: string | null
+  approverName?: string | null
+  notes?: string | null
+}
