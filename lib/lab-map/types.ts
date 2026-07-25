@@ -80,3 +80,21 @@ export interface RoutePresetLookup {
   destinationCode: string
   variant?: RouteVariant
 }
+
+export type MapPersonnelAssignmentType = 'primary' | 'responsible'
+
+export interface StaffMapPersonDTO {
+  assignmentId: string
+  profileId: string
+  name: string
+  department: string | null
+  assignmentType: MapPersonnelAssignmentType
+  spaceCode: string | null
+  zoneCode: string | null
+}
+
+export interface StaffLabMapDTO extends LabMapDTO {
+  canEditPersonnelAssignments: boolean
+  people?: readonly StaffMapPersonDTO[]
+  unassignedPeople?: readonly Pick<StaffMapPersonDTO, 'profileId' | 'name' | 'department'>[]
+}
