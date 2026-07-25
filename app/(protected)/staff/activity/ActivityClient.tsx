@@ -17,6 +17,9 @@ interface LogEntry {
 }
 
 const ACTION_LABELS: Record<string, string> = {
+  // ผู้มาติดต่อ
+  'it_visitor.checkout':                         'เจ้าหน้าที่บันทึกเวลาออกของผู้มาติดต่อ',
+  'it_visitor.self_checkout':                    'ผู้มาติดต่อบันทึกเวลาออกด้วยตนเอง',
   // รายการตรวจ
   'test.create':                                  'เพิ่มรายการตรวจ',
   'test.update':                                  'แก้ไขรายการตรวจ',

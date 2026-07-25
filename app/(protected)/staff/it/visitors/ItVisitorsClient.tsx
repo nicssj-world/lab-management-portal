@@ -47,6 +47,12 @@ function toLocalInput(iso: string | null): string {
   const d = new Date(iso)
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
+
+function checkoutMethodLabel(method: ItVisitorLogWithRefs['checkout_method']) {
+  if (method === 'self') return 'ผู้มาติดต่อบันทึกเอง'
+  if (method === 'staff') return 'เจ้าหน้าที่บันทึกให้'
+  return 'ไม่ระบุ (ข้อมูลเดิม)'
+}
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '-'
   return new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -390,6 +396,7 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
             <DRow label="จำนวนคน" value={`${detail.party_size} คน`} />
             <DRow label="เวลาเข้า" value={fmtDateTime(detail.entered_at)} />
             <DRow label="เวลาออก" value={detail.exited_at ? `${fmtDateTime(detail.exited_at)} · ${durationLabel(detail.entered_at, detail.exited_at)}` : 'ยังอยู่ในพื้นที่'} />
+            {detail.exited_at && <DRow label="วิธีบันทึกเวลาออก" value={checkoutMethodLabel(detail.checkout_method)} />}
             {detail.closer?.name && <DRow label="ผู้บันทึกเวลาออก" value={detail.closer.name} />}
             <DRow label="กิจกรรม" value={detail.activity_type === 'other' && detail.activity_other ? detail.activity_other : ACTIVITY_LABEL[detail.activity_type]} />
             <DRow label="นัดหมายล่วงหน้า" value={APPOINTMENT_LABEL[detail.appointment]} />

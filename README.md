@@ -205,6 +205,13 @@ Focused verification commands are listed in `docs/superpowers/plans/2026-07-17-s
 
 ## Digital laboratory map
 
+Before deploying the visitor same-link checkout flow, apply the visitor migrations to Supabase in this order:
+
+1. `scripts/it-visitor-log.sql`
+2. `scripts/it-visitor-self-checkout.sql`
+
+The second migration adds the one-time hashed checkout credential and records whether the visitor or a staff member closed the visit. Application builds do not apply either migration automatically.
+
 The phase-one floor map is available at `/lab-map/[stationCode]` for the coarse public projection and `/staff/lab-map` for the protected internal view. Geometry and approved route presets are maintained in `lib/lab-map/manifest.ts`; the public route reads only `lib/lab-map/public-manifest.ts` so internal room topology is not serialized to visitors.
 
 Reference drawings:

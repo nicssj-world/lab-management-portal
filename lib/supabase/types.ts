@@ -401,6 +401,7 @@ export interface ItVisitorLog {
   created_at: string
   closed_by: string | null
   closed_at: string | null
+  checkout_method: 'self' | 'staff' | null
 }
 
 export interface ItVisitorLogWithRefs extends ItVisitorLog {
