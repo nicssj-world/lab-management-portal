@@ -12,6 +12,7 @@
     "test:lab-map-ui": "tsx scripts/lab-map-ui.test.ts",
     "test:lab-map-public": "tsx scripts/lab-map-public.test.ts",
     "test:lab-map-navigation": "tsx scripts/lab-map-navigation.test.ts",
+    "test:lab-map-schema": "tsx scripts/lab-map-schema.test.ts",
     "test:security": "tsx scripts/rate-limit.test.ts && tsx scripts/security-hardening.test.ts && tsx scripts/satisfaction-public-flow.test.ts && tsx scripts/it-visitor-log.test.ts && tsx scripts/head-contact-module.test.ts",
     "tat:local": "node scripts/tat-local-analyze.mjs",
     "tat:clean-raw": "node scripts/tat-clean-raw.mjs"
