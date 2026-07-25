@@ -20,6 +20,9 @@ const ACTION_LABELS: Record<string, string> = {
   // ผู้มาติดต่อ
   'it_visitor.checkout':                         'เจ้าหน้าที่บันทึกเวลาออกของผู้มาติดต่อ',
   'it_visitor.self_checkout':                    'ผู้มาติดต่อบันทึกเวลาออกด้วยตนเอง',
+  'lab_map.person_assignment.create':             'กำหนดพื้นที่บุคลากรบนแผนที่',
+  'lab_map.person_assignment.update':             'แก้ไขพื้นที่บุคลากรบนแผนที่',
+  'lab_map.person_assignment.delete':             'ยกเลิกพื้นที่บุคลากรบนแผนที่',
   // รายการตรวจ
   'test.create':                                  'เพิ่มรายการตรวจ',
   'test.update':                                  'แก้ไขรายการตรวจ',
