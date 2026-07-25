@@ -3,8 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { auditIt } from '@/lib/it-access/guard'
 import { canDeleteVisitorLog, requireVisitorLog } from '@/lib/it-visitor/guard'
 import { ItVisitorUpdateSchema } from '@/lib/validations/it-visitor'
-
-const SELECT = '*, closer:profiles!it_visitor_logs_closed_by_fkey(id, name)'
+import { IT_VISITOR_LOG_SELECT } from '@/lib/queries/it-access'
 
 // PATCH ทำทั้งแก้ไขข้อมูลและ "บันทึกเวลาออก" — การปิดเวลาออกคือการ set exited_at
 // จึงไม่ต้องมี route แยก แต่ต้องตามด้วย closed_by/closed_at เพื่อให้รู้ว่าใครปิด
@@ -34,13 +33,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (exited && !before.exited_at) {
     patch.closed_by = actor.id
     patch.closed_at = new Date().toISOString()
+    patch.checkout_method = 'staff'
+    patch.checkout_secret_hash = null
   } else if (!exited && before.exited_at) {
     patch.closed_by = null
     patch.closed_at = null
+    patch.checkout_method = null
   }
 
   const { data, error } = await supabaseAdmin
-    .from('it_visitor_logs').update(patch).eq('id', id).select(SELECT).single()
+    .from('it_visitor_logs').update(patch).eq('id', id).select(IT_VISITOR_LOG_SELECT).single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const action = exited && !before.exited_at ? 'it_visitor.checkout' : 'it_visitor.update'

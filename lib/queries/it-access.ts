@@ -11,6 +11,16 @@ import type {
 const RECORD_SELECT =
   '*, profile:profiles!it_access_records_profile_id_fkey(id, name, position_title, ephis_id, status, deleted_at)'
 
+// ระบุคอลัมน์แทน `*` เพื่อไม่ส่ง checkout_secret_hash ซึ่งเป็น credential verifier ไปยัง client
+export const IT_VISITOR_LOG_SELECT = [
+  'id', 'visit_type', 'visit_date', 'visitor_name', 'group_name', 'member_names',
+  'party_size', 'phone', 'email', 'org_type', 'org_name', 'contact_dept',
+  'entered_at', 'exited_at', 'activity_type', 'activity_other', 'appointment',
+  'badge_exchanged', 'safety_ack', 'submission_key', 'created_at', 'closed_by',
+  'closed_at', 'checkout_method',
+  'closer:profiles!it_visitor_logs_closed_by_fkey(id, name)',
+].join(', ')
+
 // Whole register, ordered like the paper form (manual display_order first, then name).
 export async function getItAccessRecords(supabase: SupabaseClient): Promise<ItAccessRecordWithProfile[]> {
   const { data } = await supabase
@@ -68,8 +78,8 @@ export async function getItVisitorLogs(
 ): Promise<ItVisitorLogWithRefs[]> {
   const { data } = await supabase
     .from('it_visitor_logs')
-    .select('*, closer:profiles!it_visitor_logs_closed_by_fkey(id, name)')
+    .select(IT_VISITOR_LOG_SELECT)
     .order('entered_at', { ascending: false })
     .limit(options.limit ?? 1000)
-  return (data ?? []) as ItVisitorLogWithRefs[]
+  return (data ?? []) as unknown as ItVisitorLogWithRefs[]
 }

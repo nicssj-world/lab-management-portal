@@ -36,6 +36,11 @@ const itemRoute = read('app/api/admin/it-visitors/[id]/route.ts')
 const settingsRoute = read('app/api/admin/it-visitors/settings/route.ts')
 const staffClient = read('app/(protected)/staff/it/visitors/ItVisitorsClient.tsx')
 const staffPage = read('app/(protected)/staff/it/visitors/page.tsx')
+const activityClient = read('app/(protected)/staff/activity/ActivityClient.tsx')
+const dashboardPage = read('app/(protected)/staff/dashboard/page.tsx')
+const supabaseTypes = read('lib/supabase/types.ts')
+const itQueries = read('lib/queries/it-access.ts')
+const readme = read('README.md')
 const sidebar = read('components/layout/StaffSidebar.tsx')
 const sql = read('scripts/it-visitor-log.sql')
 const selfCheckoutSql = read('scripts/it-visitor-self-checkout.sql')
@@ -101,6 +106,21 @@ assert.ok(activeVisitCard.includes('/lab-map/office?destination='), 'active card
 assert.ok(activeVisitCard.includes('mode=safety'), 'active card links to safety view')
 assert.ok(activeVisitCard.includes('บันทึกออก'), 'active card offers checkout')
 assert.ok(activeVisitCard.includes('disabled={submitting}'), 'checkout button prevents duplicate submits')
+
+// ฝั่งเจ้าหน้าที่ต้องปิดรายการแทนได้ และเห็นที่มาของเวลาออกอย่างชัดเจน
+assert.ok(itemRoute.includes("checkout_method = 'staff'") || itemRoute.includes("checkout_method: 'staff'"),
+  'staff checkout records its method')
+assert.ok(itemRoute.includes('checkout_secret_hash = null') || itemRoute.includes('checkout_secret_hash: null'),
+  'staff checkout invalidates the visitor credential')
+assert.ok(staffClient.includes('ผู้มาติดต่อบันทึกเอง'), 'staff detail labels self checkout')
+assert.ok(staffClient.includes('เจ้าหน้าที่บันทึกให้'), 'staff detail labels assisted checkout')
+assert.ok(activityClient.includes("'it_visitor.self_checkout'"), 'activity page labels self checkout')
+assert.ok(dashboardPage.includes("'it_visitor.self_checkout'"), 'dashboard labels self checkout')
+assert.ok(supabaseTypes.includes('checkout_method:'), 'visitor row type includes checkout method')
+assert.ok(itQueries.includes('IT_VISITOR_LOG_SELECT'), 'staff list uses an explicit visitor projection')
+assert.ok(!itQueries.includes(".select('*, closer:profiles!it_visitor_logs"),
+  'staff list must not serialize the checkout credential hash')
+assert.ok(readme.includes('it-visitor-self-checkout.sql'), 'deployment docs include checkout migration')
 
 // ── 3. Routing — /v ต้อง public, /staff ต้องถูกป้องกัน ──
 assert.equal(isProtectedPath('/v/abc'), false, '/v must stay public')
