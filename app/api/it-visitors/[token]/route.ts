@@ -16,6 +16,30 @@ import { getClientIp, privateRequestKey } from '@/lib/security/request-protectio
 const MAX_BODY_BYTES = 32 * 1024
 type Context = { params: Promise<{ token: string }> }
 
+function successfulCheckInResponse(result: {
+  logId: string
+  activeVisit: import('@/lib/it-visitor/types').ActiveVisitorDTO
+  checkoutSecret?: string
+}, idempotent = false) {
+  const response = NextResponse.json({
+    ok: true,
+    logId: result.logId,
+    activeVisit: result.activeVisit,
+    ...(idempotent ? { idempotent: true } : {}),
+  })
+  if (result.checkoutSecret) {
+    response.cookies.set('lab_visitor_checkout', result.checkoutSecret, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24,
+      priority: 'high',
+    })
+  }
+  return response
+}
+
 function tooManyRequests(limit: RateLimitResult) {
   return NextResponse.json(
     { error: 'มีคำขอมากเกินไป กรุณารอสักครู่แล้วลองใหม่', code: 'rate_limited' },
@@ -97,7 +121,7 @@ export async function POST(request: NextRequest, { params }: Context) {
   // เช็ค idempotency ก่อน gate เปิด/ปิด — ยิงซ้ำหลังฟอร์มเพิ่งถูกปิด
   // ต้องได้ id เดิมกลับไป ไม่ใช่ 409 ที่ทำให้ผู้ใช้คิดว่าบันทึกไม่สำเร็จ
   const existing = await existingVisitorSubmission(parsed.data.submissionKey)
-  if (existing) return NextResponse.json({ ok: true, logId: existing, idempotent: true })
+  if (existing) return successfulCheckInResponse(existing, true)
 
   if (!state.available) {
     return NextResponse.json(
@@ -112,14 +136,14 @@ export async function POST(request: NextRequest, { params }: Context) {
   }
 
   try {
-    const logId = await insertVisitorLog(validation.row, parsed.data.submissionKey)
-    return NextResponse.json({ ok: true, logId })
+    const result = await insertVisitorLog(validation.row, parsed.data.submissionKey)
+    return successfulCheckInResponse(result)
   } catch (error) {
     const code = (error as { code?: string } | null)?.code
     if (code === '23505') {
       // ชนกับ submission_key ที่เพิ่งถูก insert โดย request คู่แข่ง — ถือว่าสำเร็จ
       const raced = await existingVisitorSubmission(parsed.data.submissionKey)
-      if (raced) return NextResponse.json({ ok: true, logId: raced, idempotent: true })
+      if (raced) return successfulCheckInResponse(raced, true)
       return NextResponse.json({ error: 'ข้อมูลซ้ำ', code: 'duplicate' }, { status: 409 })
     }
     const message = error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ'

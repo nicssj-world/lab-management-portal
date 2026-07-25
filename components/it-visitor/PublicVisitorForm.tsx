@@ -12,7 +12,11 @@ import {
 import type {
   ActivityType, Appointment, BadgeState, OrgType, SafetyAck, VisitType,
 } from '@/lib/it-visitor/constants'
-import type { PublicVisitorFormState, VisitorSubmissionInput } from '@/lib/it-visitor/types'
+import type {
+  ActiveVisitorDTO,
+  PublicVisitorFormState,
+  VisitorSubmissionInput,
+} from '@/lib/it-visitor/types'
 import { validateVisitorSubmission } from '@/lib/it-visitor/validation'
 
 type FieldKey = keyof VisitorSubmissionInput
@@ -55,10 +59,11 @@ function emptyValues(): FormValues {
   }
 }
 
-export function PublicVisitorForm({ token, initialState, challenge }: {
+export function PublicVisitorForm({ token, initialState, challenge, initialActiveVisit }: {
   token: string
   initialState: PublicVisitorFormState
   challenge: string
+  initialActiveVisit?: ActiveVisitorDTO | null
 }) {
   const [mode, setMode] = useState<VisitType | null>(null)
   const [values, setValues] = useState<FormValues>(emptyValues)
@@ -69,6 +74,16 @@ export function PublicVisitorForm({ token, initialState, challenge }: {
   // สร้างครั้งเดียวตอน mount — กดส่งซ้ำ/เน็ตหลุดแล้วยิงใหม่จึงไม่เกิดแถวซ้ำ
   const submissionKeyRef = useRef<string>(crypto.randomUUID())
   const honeypotRef = useRef<HTMLInputElement>(null)
+
+  if (initialActiveVisit) {
+    return (
+      <TerminalState
+        title="ลงทะเบียนเข้าแล้ว"
+        detail={`ปลายทาง ${initialActiveVisit.contactDept} — กรุณาติดต่อเจ้าหน้าที่เมื่อถึงจุดสแกนนิ้วมือ`}
+        success
+      />
+    )
+  }
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((v) => ({ ...v, [key]: value }))

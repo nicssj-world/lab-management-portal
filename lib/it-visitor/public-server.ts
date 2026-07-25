@@ -3,7 +3,14 @@ import 'server-only'
 import { randomBytes } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createPublicChallenge, verifyPublicChallenge } from '@/lib/security/public-challenge'
-import type { NormalizedVisitorLog, PublicVisitorFormState } from './types'
+import { createCheckoutSecret, hashCheckoutSecret } from './checkout'
+import { resolveVisitorDestination } from './destination'
+import type {
+  ActiveVisitorDTO,
+  NormalizedVisitorLog,
+  PublicVisitorFormState,
+  VisitorCheckInResult,
+} from './types'
 
 /** purpose ของ challenge ระบบนี้ — คนละค่ากับแบบสำรวจ จึง replay ข้ามกันไม่ได้ */
 const VISITOR_CHALLENGE_PURPOSE = 'visitor-challenge'
@@ -40,24 +47,70 @@ export async function getPublicVisitorFormState(token: string): Promise<PublicVi
 }
 
 /** idempotency — กดส่งซ้ำ/เน็ตหลุดแล้วยิงใหม่ ต้องได้บันทึกเดิม ไม่ใช่แถวใหม่ */
-export async function existingVisitorSubmission(submissionKey: string): Promise<string | null> {
+export interface ExistingVisitorSubmission {
+  logId: string
+  activeVisit: ActiveVisitorDTO
+}
+
+function toActiveVisitorDTO(row: { entered_at: string; contact_dept: string }): ActiveVisitorDTO {
+  const destination = resolveVisitorDestination(row.contact_dept)
+  return {
+    enteredAt: row.entered_at,
+    contactDept: row.contact_dept,
+    destinationCode: destination?.destinationCode ?? null,
+    checkpointCode: destination?.checkpointCode ?? null,
+    directionsTh: destination?.directionsTh ?? [],
+  }
+}
+
+export async function existingVisitorSubmission(submissionKey: string): Promise<ExistingVisitorSubmission | null> {
   const { data, error } = await supabaseAdmin
     .from('it_visitor_logs')
-    .select('id')
+    .select('id, entered_at, contact_dept')
     .eq('submission_key', submissionKey)
     .maybeSingle()
   if (error) throw new Error(error.message)
-  return data?.id ?? null
+  if (!data) return null
+  return {
+    logId: data.id as string,
+    activeVisit: toActiveVisitorDTO(data as { entered_at: string; contact_dept: string }),
+  }
 }
 
-export async function insertVisitorLog(row: NormalizedVisitorLog, submissionKey: string): Promise<string> {
+export async function insertVisitorLog(
+  row: NormalizedVisitorLog,
+  submissionKey: string,
+): Promise<VisitorCheckInResult> {
+  const checkoutSecret = createCheckoutSecret()
   const { data, error } = await supabaseAdmin
     .from('it_visitor_logs')
-    .insert({ ...row, submission_key: submissionKey })
-    .select('id')
+    .insert({
+      ...row,
+      submission_key: submissionKey,
+      checkout_secret_hash: hashCheckoutSecret(checkoutSecret),
+    })
+    .select('id, entered_at, contact_dept')
     .single()
   if (error) throw error
-  return data.id as string
+  return {
+    logId: data.id as string,
+    checkoutSecret,
+    activeVisit: toActiveVisitorDTO(data as { entered_at: string; contact_dept: string }),
+  }
+}
+
+export async function getActiveVisitorBySecret(secret: string): Promise<ActiveVisitorDTO | null> {
+  if (!/^[A-Za-z0-9_-]{40,128}$/.test(secret)) return null
+
+  const { data, error } = await supabaseAdmin
+    .from('it_visitor_logs')
+    .select('entered_at, exited_at, contact_dept')
+    .eq('checkout_secret_hash', hashCheckoutSecret(secret))
+    .is('exited_at', null)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) return null
+  return toActiveVisitorDTO(data as { entered_at: string; contact_dept: string })
 }
 
 // ── ฝั่งเจ้าหน้าที่ ──
