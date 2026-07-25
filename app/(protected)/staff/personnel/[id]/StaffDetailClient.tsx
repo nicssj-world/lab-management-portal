@@ -133,7 +133,7 @@ export function StaffDetailClient({ detail, canEdit, canManage, tests, categorie
       {tab === 'training' && <TrainingTab profileId={prof.id} items={training} setItems={setTraining} plans={plan} canEdit={canEdit} toast={add} />}
       {tab === 'plan' && <TrainingPlanTab profileId={prof.id} items={plan} setItems={setPlan} training={training} canEdit={canManage} toast={add} />}
       {tab === 'competency' && <CompetencyTab profileId={prof.id} items={comps} setItems={setComps} canEdit={canEdit} canManage={canManage} tests={tests} testById={testById} staff={staff} staffById={staffById} toast={add} />}
-      {tab === 'cert' && <CertTab profileId={prof.id} items={certs} setItems={setCerts} canEdit={canEdit} toast={add} />}
+      {tab === 'cert' && <CertTab profileId={prof.id} items={certs} setItems={setCerts} canEdit={canEdit} toast={add} mtLicenseNo={prof.mt_license_no} mtLicenseExpiry={prof.mt_license_expiry} />}
       {tab === 'auth' && <AuthTab profileId={prof.id} items={auths} setItems={setAuths} canEdit={canManage} tests={tests} testById={testById} categories={categories} competencies={comps} toast={add} />}
       {tab === 'jd' && <JdTab profileId={prof.id} items={jds} setItems={setJds} canEdit={canEdit} toast={add} />}
       {tab === 'health' && <HealthTab profileId={prof.id} health={health} setHealth={setHealth} confid={confid} setConfid={setConfid} canEdit={canEdit} toast={add} />}
@@ -498,6 +498,10 @@ const EDUCATION_OPTIONS = [
   'ประกาศนียบัตรวิชาชีพ',
   'มัธยมศึกษาตอนปลาย',
 ]
+
+const CERT_TYPE_OPTIONS = ['ใบประกอบโรคฯทนพ.', 'Certificate', 'Training']
+const MT_LICENSE_CERT_TYPE = 'ใบประกอบโรคฯทนพ.'
+const MT_LICENSE_ISSUER = 'สภาเทคนิคการแพทย์'
 
 const JDJS_DEFAULT_EFFECTIVE_DATE = '2026-03-09'
 const JDJS_DEFAULT_APPROVER_NAME = 'นางเกศสิรี กรสิทธิกุล'
@@ -1358,7 +1362,10 @@ function CompetencyTab({ profileId, items, setItems, canEdit, canManage, tests, 
 
 // ════════════ Certification tab ════════════
 const EMPTY_CERT = { cert_type: '', cert_name: '', cert_no: '', issuer: '', issue_date: '', expiry_date: '', remark: '' }
-function CertTab({ profileId, items, setItems, canEdit, toast }: { profileId: string; items: StaffCertification[]; setItems: (f: (p: StaffCertification[]) => StaffCertification[]) => void; canEdit: boolean; toast: (m: string, ok?: boolean) => void }) {
+function CertTab({ profileId, items, setItems, canEdit, toast, mtLicenseNo, mtLicenseExpiry }: {
+  profileId: string; items: StaffCertification[]; setItems: (f: (p: StaffCertification[]) => StaffCertification[]) => void; canEdit: boolean; toast: (m: string, ok?: boolean) => void
+  mtLicenseNo?: string | null; mtLicenseExpiry?: string | null
+}) {
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState<StaffCertification | null>(null)
   const [form, setForm] = useState(EMPTY_CERT)
@@ -1370,6 +1377,19 @@ function CertTab({ profileId, items, setItems, canEdit, toast }: { profileId: st
     setEditing(c)
     setForm({ cert_type: c.cert_type ?? '', cert_name: c.cert_name, cert_no: c.cert_no ?? '', issuer: c.issuer ?? '', issue_date: c.issue_date ?? '', expiry_date: c.expiry_date ?? '', remark: c.remark ?? '' })
     setFile(null); setModal(true)
+  }
+  function onCertTypeChange(value: string) {
+    if (value === MT_LICENSE_CERT_TYPE) {
+      setForm((f) => ({
+        ...f,
+        cert_type: value,
+        cert_no: formatMtLicense(mtLicenseNo) ?? f.cert_no,
+        expiry_date: mtLicenseExpiry ?? f.expiry_date,
+        issuer: MT_LICENSE_ISSUER,
+      }))
+    } else {
+      setForm((f) => ({ ...f, cert_type: value }))
+    }
   }
 
   async function save() {
@@ -1429,7 +1449,12 @@ function CertTab({ profileId, items, setItems, canEdit, toast }: { profileId: st
           footer={<><button onClick={() => setModal(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
           <Field label="ชื่อใบรับรอง *"><input style={inputStyle} value={form.cert_name} onChange={(e) => setForm({ ...form, cert_name: e.target.value })} /></Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="ประเภท"><input style={inputStyle} placeholder="license / certificate / training" value={form.cert_type} onChange={(e) => setForm({ ...form, cert_type: e.target.value })} /></Field>
+            <Field label="ประเภท">
+              <select style={inputStyle} value={form.cert_type} onChange={(e) => onCertTypeChange(e.target.value)}>
+                <option value="">— เลือกประเภท —</option>
+                {optionsWithCurrent(CERT_TYPE_OPTIONS, form.cert_type).map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
             <Field label="เลขที่"><input style={inputStyle} value={form.cert_no} onChange={(e) => setForm({ ...form, cert_no: e.target.value })} /></Field>
           </div>
           <Field label="ผู้ออก"><input style={inputStyle} value={form.issuer} onChange={(e) => setForm({ ...form, issuer: e.target.value })} /></Field>

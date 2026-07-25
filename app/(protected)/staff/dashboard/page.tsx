@@ -424,7 +424,7 @@ export default async function StaffDashboardPage() {
             </div>
           </div>
 
-          <DashboardQuickActions permissions={permissions} />
+          <DashboardQuickActions permissions={permissions} userId={user?.id} />
 
         </div>
 
@@ -569,8 +569,9 @@ function OperationalFocus({
   )
 }
 
-function DashboardQuickActions({ permissions }: { permissions: Permissions }) {
+function DashboardQuickActions({ permissions, userId }: { permissions: Permissions; userId?: string }) {
   const actions = [
+    ...(userId ? [{ href:`/staff/personnel/${userId}`, icon:'user', title:'โปรไฟล์ของฉัน', detail:'ดูข้อมูลส่วนตัว ใบรับรอง และสมรรถนะ', color:'#1E5FAD' }] : []),
     ...((permissions['เอกสารคุณภาพ'] ?? 'none') !== 'none' ? [{ href:'/staff/documents/categories', icon:'doc', title:'เอกสารคุณภาพ', detail:'จัดการหมวดหมู่เอกสารคุณภาพ', color:'#0D9488' }] : []),
     ...((permissions['งานคุณภาพ'] ?? 'none') === 'edit' ? [{ href:'/staff/quality-tasks?create=1', icon:'calendar', title:'สร้างงานเฉพาะกิจ', detail:'เพิ่มงานคุณภาพนอกแผน', color:'#0891B2' }] : []),
     ...((permissions['เอกสารคุณภาพ'] ?? 'none') === 'edit' ? [{ href:'/staff/documents?create=1', icon:'doc', title:'สร้าง Draft เอกสาร', detail:'เริ่มจัดทำเอกสารฉบับใหม่', color:'#0D9488' }] : []),
