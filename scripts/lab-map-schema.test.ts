@@ -10,7 +10,7 @@ for (const table of [
 
 assert.match(sql, /num_nonnulls\(space_id, zone_id\) = 1/i)
 assert.match(sql, /enable row level security/gi)
-assert.match(sql, /unique.*code|code text not null unique/is)
+assert.match(sql, /unique[\s\S]*code|code text not null unique/i)
 assert.match(sql, /references profiles\(id\)/i)
 assert.match(sql, /on conflict \(code\) do update/gi)
 assert.doesNotMatch(sql, /alter table\s+(?:public\.)?equipment/i)
