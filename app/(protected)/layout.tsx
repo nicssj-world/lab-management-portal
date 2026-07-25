@@ -100,6 +100,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           userName={profile.name ?? undefined}
           userAvatar={profile.avatar_url ?? undefined}
           userDocRole={profile.doc_role ?? undefined}
+          userDeptRole={profile.dept_role ?? undefined}
           userPermissions={permissions}
         />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>

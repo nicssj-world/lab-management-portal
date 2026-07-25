@@ -48,6 +48,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/it/downtime':          { th: 'บันทึกระบบล่ม',             en: 'System Downtime Log' },
   '/staff/it/backup':            { th: 'ทะเบียนการสำรองข้อมูล',      en: 'Backup Log' },
   '/staff/it/visitors':          { th: 'บันทึกการเข้า-ออก',          en: 'Visitor Log' },
+  '/staff/it/head-contact':      { th: 'สื่อสารถึงหัวหน้า',          en: 'Contact Group Lead' },
   '/staff/admin':            { th: 'จัดการผู้ใช้และสิทธิ์',          en: 'Users & Roles' },
   '/staff/settings':         { th: 'ตั้งค่าระบบ',                  en: 'System Settings' },
   '/staff/changelog':        { th: 'บันทึกการแก้ไขระบบ',           en: 'System Change Log' },
