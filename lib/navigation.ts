@@ -70,6 +70,7 @@ export const ROUTE_LABELS: Record<string, { th: string; en: string }> = {
   surveys: { th: 'แบบสำรวจ', en: 'Surveys' },
   campaigns: { th: 'รอบเก็บข้อมูล', en: 'Campaigns' },
   comments: { th: 'ความคิดเห็น', en: 'Comments' },
+  'head-contact': { th: 'สื่อสารถึงหัวหน้า', en: 'Contact Group Lead' },
 }
 
 export function isPathActive(pathname: string, item: Pick<ModuleNavigationItem, 'href' | 'exact'>) {

@@ -18,6 +18,7 @@ interface NavChild {
   color: string
   role?: string | string[]
   docRole?: string | string[]
+  deptRole?: string | string[]
   resource?: string
 }
 
@@ -96,6 +97,7 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/staff/it/downtime', th: 'บันทึกระบบล่ม',          en: 'Downtime Log',  icon: 'alert',    color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
       { href: '/staff/it/backup',   th: 'การสำรองข้อมูล',         en: 'Backup Log',    icon: 'download', color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
       { href: '/staff/it/visitors', th: 'บันทึกการเข้า-ออก',      en: 'Visitor Log',   icon: 'users',    color: '#0369A1', resource: 'บันทึกการเข้า-ออก' },
+      { href: '/staff/it/head-contact', th: 'สื่อสารถึงหัวหน้า', en: 'Contact Group Lead', icon: 'mail', color: '#0369A1', role: 'Admin', deptRole: 'group_lead' },
     ] },
   { section: 'Analytics' },
   { href: '/staff/satisfaction', th: 'แบบสำรวจความพึงพอใจ', en: 'Satisfaction', icon: 'clipboard', color: '#0F766E', resource: 'แบบสำรวจความพึงพอใจ' },
@@ -124,10 +126,11 @@ interface StaffSidebarProps {
   userName?: string
   userAvatar?: string
   userDocRole?: string
+  userDeptRole?: string
   userPermissions?: Record<string, string>
 }
 
-export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, userPermissions }: StaffSidebarProps) {
+export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, userDeptRole, userPermissions }: StaffSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { lang } = useLang()
@@ -166,10 +169,11 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
   // A child is visible when its resource permission allows it, OR (for role/docRole
   // gated items) when either the user's role or doc_role matches.
   const childVisible = (child: NavChild) => {
-    if (child.role || child.docRole) {
+    if (child.role || child.docRole || child.deptRole) {
       const roles = child.role ? (Array.isArray(child.role) ? child.role : [child.role]) : []
       const docRoles = child.docRole ? (Array.isArray(child.docRole) ? child.docRole : [child.docRole]) : []
-      if (roles.includes(userRole ?? '') || docRoles.includes(userDocRole ?? '')) return true
+      const deptRoles = child.deptRole ? (Array.isArray(child.deptRole) ? child.deptRole : [child.deptRole]) : []
+      if (roles.includes(userRole ?? '') || docRoles.includes(userDocRole ?? '') || deptRoles.includes(userDeptRole ?? '')) return true
       if (!child.resource) return false
     }
     if (child.resource) {

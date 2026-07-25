@@ -1,11 +1,13 @@
 import type { User } from '@supabase/supabase-js'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import type { DeptRole } from '@/lib/supabase/types'
 
 export type OwnProfile = {
   id: string
   name: string
   role: string
   dept: string | null
+  dept_role: DeptRole | null
   phone: string | null
   avatar_url: string | null
   doc_role: string | null
@@ -14,7 +16,7 @@ export type OwnProfile = {
   signature_updated_at: string | null
 }
 
-const FULL_SELECT = 'id, name, role, dept, phone, avatar_url, doc_role, document_position, signature_url, signature_updated_at'
+const FULL_SELECT = 'id, name, role, dept, dept_role, phone, avatar_url, doc_role, document_position, signature_url, signature_updated_at'
 const BASIC_SELECT = 'id, name, role, dept'
 
 function isNoRows(error: { code?: string; message?: string } | null) {
@@ -27,6 +29,7 @@ function withOptionalColumns(row: Partial<OwnProfile> & Pick<OwnProfile, 'id' | 
     name: row.name,
     role: row.role,
     dept: row.dept ?? null,
+    dept_role: row.dept_role ?? null,
     phone: row.phone ?? null,
     avatar_url: row.avatar_url ?? null,
     doc_role: row.doc_role ?? null,

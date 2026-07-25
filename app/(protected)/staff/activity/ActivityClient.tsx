@@ -160,6 +160,15 @@ const ACTION_LABELS: Record<string, string> = {
   'personnel.bulk.competencies':                  'ประเมินสมรรถนะ (หลายคน)',
   'personnel.exam.create':                        'สร้างข้อสอบสมรรถนะ',
   'personnel.exam.assign':                        'มอบหมายข้อสอบสมรรถนะ',
+  // สื่อสารถึงหัวหน้า
+  'head_contact.status_update':                   'เปลี่ยนสถานะเรื่องสื่อสารถึงหัวหน้า',
+  'head_contact.action_note_update':              'บันทึกผลเรื่องสื่อสารถึงหัวหน้า',
+  'head_contact.contact_logged':                  'บันทึกการติดต่อกลับผู้ส่งเรื่อง',
+  'head_contact.delete':                          'ลบเรื่องสื่อสารถึงหัวหน้า',
+  'head_contact.settings':                        'ตั้งค่าฟอร์มสื่อสารถึงหัวหน้า',
+  'head_contact.rotate_token':                    'เปลี่ยนลิงก์/QR สื่อสารถึงหัวหน้า',
+  'head_contact.unit_create':                     'เพิ่มหน่วยรับบริการในฟอร์มสื่อสารถึงหัวหน้า',
+  'head_contact.unit_update':                     'แก้ไขหน่วยรับบริการในฟอร์มสื่อสารถึงหัวหน้า',
   // โปรไฟล์เอกสาร / ลายเซ็น
   'document_profile.update':                      'แก้ไขโปรไฟล์เอกสาร',
   'document_profile.update_self':                 'แก้ไขโปรไฟล์เอกสาร (ตัวเอง)',
