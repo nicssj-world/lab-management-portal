@@ -74,6 +74,7 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/staff/risk/register', th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',      icon: 'clipboard', color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
       { href: '/staff/risk/smart-rm', th: 'วิเคราะห์ Smart-RM',  en: 'Smart-RM Analytics', icon: 'trending',  color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
     ] },
+  { href: '/staff/lab-map', th: 'แผนที่ห้องปฏิบัติการ', en: 'Laboratory Map', icon: 'building', color: '#0E7490' },
   { href: '/staff/equipment',  th: 'ทะเบียนเครื่องมือ',   en: 'Equipment',      icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
   { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
   { href: '/staff/outlab', th: 'ห้องปฏิบัติการภายนอก', en: 'OUTLAB Registry', icon: 'building', color: '#C2410C', resource: 'OUTLAB' },

@@ -40,6 +40,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/documents/master-list': { th: 'จัดการทะเบียนเอกสารคุณภาพ', en: 'Documents Master List' },
   '/staff/contracts':        { th: 'บริหารสัญญา',                en: 'Contracts Management' },
   '/staff/equipment':        { th: 'ทะเบียนเครื่องมือ',           en: 'Equipment Registry' },
+  '/staff/lab-map':          { th: 'แผนที่ห้องปฏิบัติการ',        en: 'Laboratory Map' },
   '/staff/personnel':            { th: 'ทะเบียนบุคลากร',          en: 'MT-CBH Staff' },
   '/staff/personnel/compliance': { th: 'รายงานคุณภาพบุคลากร',     en: 'Personnel Quality Report' },
   '/staff/personnel/workforce':  { th: 'Dashboard อัตรากำลัง',     en: 'Workforce Dashboard' },
