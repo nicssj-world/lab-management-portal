@@ -197,7 +197,8 @@ export default async function PublicHome() {
           color: #64748B;
         }
         .public-hero-cta,
-        .manual-card {
+        .manual-card,
+        .map-card {
           min-height: 44px;
           transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease;
           touch-action: manipulation;
@@ -211,7 +212,7 @@ export default async function PublicHome() {
           align-items: stretch;
           gap: 12px;
           margin-top: 20px;
-          max-width: 560px;
+          max-width: 790px;
         }
         .public-photo-stack {
           position: absolute;
@@ -385,7 +386,7 @@ export default async function PublicHome() {
           .public-hero-search { width: 100%; }
           .public-hero-cta { width: 100%; justify-content: center; }
           .public-hero-secondary-links { flex-direction: column; max-width: 360px; }
-          .line-card, .manual-card { width: 100%; box-sizing: border-box; }
+          .line-card, .manual-card, .map-card { width: 100%; box-sizing: border-box; }
           .public-section { padding-left: 20px !important; padding-right: 20px !important; }
           .public-news-grid { grid-template-columns: 1fr !important; }
           .public-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
@@ -421,12 +422,14 @@ export default async function PublicHome() {
           transition: background .18s, border-color .18s, transform .18s, box-shadow .18s;
           box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
         }
-        .manual-card {
+        .manual-card,
+        .map-card {
           transition: background .18s, border-color .18s, transform .18s, box-shadow .18s;
           box-shadow: inset 0 1px 0 rgba(255,255,255,.14);
         }
         .line-card:hover,
-        .manual-card:hover {
+        .manual-card:hover,
+        .map-card:hover {
           background: rgba(255,255,255,.22) !important;
           border-color: rgba(255,255,255,.36) !important;
           transform: translateY(-1px);
@@ -444,6 +447,7 @@ export default async function PublicHome() {
           .public-hero-search,
           .public-hero-cta,
           .manual-card,
+          .map-card,
           .public-photo-card,
           .line-card,
           .news-featured,
@@ -530,6 +534,41 @@ export default async function PublicHome() {
                   </span>
                   <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', lineHeight: 1.25 }}>
                     คู่มือห้องปฏิบัติการ
+                  </span>
+                </span>
+              </Link>
+              <Link
+                href="/lab-map/office"
+                className="map-card"
+                style={{
+                  textDecoration: 'none',
+                  minHeight: 100,
+                  minWidth: 214,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  background: 'rgba(255,255,255,.13)',
+                  color: '#fff',
+                  border: '1px solid rgba(255,255,255,.22)',
+                  borderRadius: 14,
+                  padding: '14px 18px',
+                  backdropFilter: 'blur(10px)',
+                }}
+              >
+                <span style={{
+                  width: 44, height: 44, borderRadius: 12,
+                  background: 'rgba(240,180,41,.25)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <Icon name="building" size={21} />
+                </span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                  <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,.72)', fontWeight: 500 }}>
+                    ดูจุดสแกนนิ้วมือและทางออก
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', lineHeight: 1.25 }}>
+                    แผนที่ห้องปฏิบัติการ
                   </span>
                 </span>
               </Link>
