@@ -37,6 +37,7 @@ const staffClient = read('app/(protected)/staff/it/visitors/ItVisitorsClient.tsx
 const staffPage = read('app/(protected)/staff/it/visitors/page.tsx')
 const sidebar = read('components/layout/StaffSidebar.tsx')
 const sql = read('scripts/it-visitor-log.sql')
+const selfCheckoutSql = read('scripts/it-visitor-self-checkout.sql')
 const surveyPublicServer = read('lib/surveys/public-server.ts')
 
 for (const source of [publicRoute, publicPage, itemRoute]) {
@@ -73,8 +74,16 @@ const closedGateAt = publicRoute.indexOf('!state.available')
 assert.ok(idempotencyAt > 0 && closedGateAt > 0, 'both checks present')
 assert.ok(idempotencyAt < closedGateAt, 'idempotency check must come before the closed-form gate')
 
-// ไม่มี device cookie — ผู้มาติดต่อคนเดิมเข้าออกได้หลายครั้ง
-assert.ok(!codeOnly(publicRoute).includes('cookies.set'), 'no one-per-device cookie')
+// checkout credential ผูกกับรายการที่เปิดอยู่ ไม่ใช่ cookie กันส่งแบบสำรวจซ้ำ
+assert.ok(publicRoute.includes("response.cookies.set('lab_visitor_checkout'"), 'sets checkout cookie')
+assert.ok(publicRoute.includes('httpOnly: true'), 'checkout cookie is HttpOnly')
+assert.ok(publicRoute.includes("sameSite: 'lax'"), 'checkout cookie is SameSite=Lax')
+assert.ok(publicRoute.includes("secure: process.env.NODE_ENV === 'production'"), 'checkout cookie is Secure in production')
+assert.ok(publicServer.includes('checkout_secret_hash'), 'stores only the checkout secret hash')
+assert.ok(selfCheckoutSql.includes('checkout_method'), 'migration tracks checkout method')
+assert.ok(selfCheckoutSql.includes('checkout_secret_hash'), 'migration stores checkout secret hash')
+assert.ok(publicPage.includes('await cookies()'), 'page restores the same-device active visit')
+assert.ok(publicPage.includes('initialActiveVisit'), 'page passes a minimal active visit DTO')
 
 // ── 3. Routing — /v ต้อง public, /staff ต้องถูกป้องกัน ──
 assert.equal(isProtectedPath('/v/abc'), false, '/v must stay public')

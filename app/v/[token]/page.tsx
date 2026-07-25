@@ -1,6 +1,10 @@
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { PublicVisitorForm } from '@/components/it-visitor/PublicVisitorForm'
-import { createVisitorChallenge, getPublicVisitorFormState } from '@/lib/it-visitor/public-server'
+import {
+  createVisitorChallenge,
+  getActiveVisitorBySecret,
+  getPublicVisitorFormState,
+} from '@/lib/it-visitor/public-server'
 import { consumeRateLimit } from '@/lib/security/rate-limit'
 import { getClientIp, privateRequestKey } from '@/lib/security/request-protection'
 
@@ -22,6 +26,11 @@ export default async function PublicVisitorPage({ params }: { params: Promise<{ 
 
   const state = await getPublicVisitorFormState(token)
   const challenge = state ? createVisitorChallenge(token) : null
+  const cookieStore = await cookies()
+  const checkoutSecret = cookieStore.get('lab_visitor_checkout')?.value
+  const initialActiveVisit = state && checkoutSecret
+    ? await getActiveVisitorBySecret(checkoutSecret)
+    : null
 
   return (
     <main className="public-visitor-page">
@@ -32,7 +41,12 @@ export default async function PublicVisitorPage({ params }: { params: Promise<{ 
       `}</style>
       <div className="public-visitor-page-inner">
         {state && challenge ? (
-          <PublicVisitorForm token={token} initialState={state} challenge={challenge} />
+          <PublicVisitorForm
+            token={token}
+            initialState={state}
+            challenge={challenge}
+            initialActiveVisit={initialActiveVisit}
+          />
         ) : (
           <div role="alert" className="public-visitor-not-found">
             <h1 style={{ color: 'var(--ink)', margin: 0, fontSize: 22 }}>ไม่พบแบบฟอร์ม</h1>
