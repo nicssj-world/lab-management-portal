@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getActor } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { currentManifestHash } from '@/lib/lab-map/release'
+import { manifestHashForSnapshots } from '@/lib/lab-map/release'
+import { assemblyPointSnapshot, safetyAssetSnapshot } from '@/lib/lab-map/safety-server'
 import { auditMapRelease, canManageMapReleases, mapReleaseRow } from '@/lib/lab-map/release-server'
 
 const createSchema = z.object({
@@ -27,10 +28,13 @@ export async function POST(request: NextRequest) {
   if (!canManageMapReleases(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const parsed = createSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 400 })
+  const [assets, assemblyPoints] = await Promise.all([safetyAssetSnapshot(), assemblyPointSnapshot()])
   const { data, error } = await supabaseAdmin.from('lab_map_versions').insert({
     version_code: parsed.data.versionCode,
     status: 'draft',
-    manifest_hash: currentManifestHash(),
+    manifest_hash: manifestHashForSnapshots(assets, assemblyPoints),
+    asset_snapshot: assets,
+    assembly_point_snapshot: assemblyPoints,
     effective_date: parsed.data.effectiveDate ?? null,
     reviewed_by: parsed.data.reviewedBy ?? null,
     approved_by: parsed.data.approvedBy ?? null,

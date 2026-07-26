@@ -28,6 +28,7 @@ export function applyRegisterFilters(query: any, sp: URLSearchParams) {
   const level = sp.get('level')
   const residualLevel = sp.get('residualLevel')
   const department = sp.get('department')
+  const spaceCode = sp.get('spaceCode')
   const q = (sp.get('q') ?? '').trim()
 
   query = query.is('deleted_at', null)
@@ -35,6 +36,8 @@ export function applyRegisterFilters(query: any, sp: URLSearchParams) {
   if (level) query = query.eq('level', level)
   if (residualLevel) query = query.eq('residual_level', residualLevel)
   if (department) query = query.eq('department', department)
+  if (spaceCode) query = query.eq('space_code', spaceCode)
+  if (sp.get('active') === '1') query = query.neq('status', 'closed')
 
   for (const [param, column] of [
     ['likelihood', 'likelihood'],

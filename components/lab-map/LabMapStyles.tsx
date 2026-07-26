@@ -40,6 +40,7 @@ export function LabMapStyles() {
       }
       .lab-map-version span { color: var(--map-muted); font-size: .62rem; letter-spacing: .13em; }
       .lab-map-version strong { font-size: .82rem; margin-top: 3px; }
+      .lab-map-version em { background: #fff4ce; border: 1px solid #e3b341; border-radius: 999px; color: #6f4e00; font-size: .68rem; font-style: normal; font-weight: 700; margin-top: 5px; padding: 2px 7px; }
 
       .lab-map-toolbar {
         align-items: flex-end;
@@ -236,10 +237,16 @@ export function LabMapStyles() {
 
       /* อุปกรณ์ความปลอดภัย — แยกรูปทรงต่อชนิด จุดที่ยังไม่ยืนยันหน้างานใช้เส้นขอบประ */
       .lab-map-safety-equipment { pointer-events: none; }
-      .lab-map-equipment { fill: var(--map-exit); stroke: #12324a; stroke-linejoin: round; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+      .lab-map-equipment { cursor: pointer; fill: var(--map-exit); outline: none; pointer-events: visiblePainted; stroke: #12324a; stroke-linejoin: round; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
       .lab-map-equipment--fire-hose { fill: var(--map-route); }
       .lab-map-equipment--manual-call-point { fill: var(--map-safety); }
       .lab-map-equipment:not([data-verified]) { fill-opacity: .45; stroke-dasharray: 3 2; }
+      .lab-map-equipment[data-operational-status="failed"] { fill: #b42318; stroke: #7a1f26; }
+      .lab-map-equipment[data-selected] .lab-map-equipment-icon,
+      .lab-map-equipment:focus-visible .lab-map-equipment-icon { filter: drop-shadow(0 0 5px rgba(29, 111, 150, .75)); }
+      .lab-map-equipment-selection-halo { fill: rgba(240, 180, 41, .24); stroke: var(--map-safety); stroke-dasharray: none; stroke-width: 3; vector-effect: non-scaling-stroke; }
+      .lab-map-equipment-selection-label { fill: var(--map-navy); font-size: 16px; font-weight: 800; paint-order: stroke; pointer-events: none; stroke: #fff; stroke-linejoin: round; stroke-width: 5px; vector-effect: non-scaling-stroke; }
+      .lab-map-equipment-alert { fill: none; pointer-events: none; stroke: #7a1f26; stroke-linecap: round; stroke-width: 3; vector-effect: non-scaling-stroke; }
 
       .lab-map-route-steps {
         background: #fff;
@@ -319,9 +326,24 @@ export function LabMapStyles() {
       .lab-map-legend i[data-class="station"] { background: var(--map-route); border-radius: 50%; width: 17px; }
       .lab-map-legend i[data-class="lift-restricted"] { background: linear-gradient(45deg, transparent 46%, var(--map-locked) 46%, var(--map-locked) 54%, transparent 54%), linear-gradient(-45deg, transparent 46%, var(--map-locked) 46%, var(--map-locked) 54%, transparent 54%); }
       .lab-map-legend i[data-class="fire-extinguisher"] { background: var(--map-exit); }
+      .lab-map-legend i[data-class="fire-hose"],
+      .lab-map-legend i[data-class="manual-call-point"] { background: #b42318; }
+      .lab-map-legend i[data-class="aed"],
+      .lab-map-legend i[data-class="first-aid-kit"] { background: #087f5b; }
+      .lab-map-legend i[data-class="eyewash"],
+      .lab-map-legend i[data-class="emergency-shower"] { background: #1677b8; }
+      .lab-map-legend i[data-class="spill-kit"] { background: #9a6700; }
+      .lab-map-legend i[data-class="emergency-shutoff"] { background: #6f42c1; }
 
       .lab-map-station-picker { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; background: #fff; border: 1px solid #dbe5e8; border-top: 0; }
-      .lab-map-assembly-note { background: #eef6f8; border-left: 3px solid var(--map-route); color: #12324a; font-size: .78rem; margin: 22px 0 0; padding: 10px 12px; }
+      .lab-map-assembly-list { display: grid; gap: 10px; margin-top: 22px; }
+      .lab-map-assembly-card { background: #eef6f8; border-left: 3px solid var(--map-route); color: #12324a; padding: 10px 12px; }
+      .lab-map-assembly-card h3 { font-size: .88rem; margin: 0 0 4px; }
+      .lab-map-assembly-card p { font-size: .78rem; margin: 4px 0; }
+      .lab-map-assembly-card code { display: block; font-size: .76rem; margin-top: 8px; }
+      .lab-map-assembly-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+      .lab-map-assembly-actions button, .lab-map-assembly-actions a { align-items: center; background: #fff; border: 1px solid var(--map-route); border-radius: 7px; color: #12324a; cursor: pointer; display: inline-flex; font: inherit; font-size: .76rem; justify-content: center; min-height: 44px; padding: 8px 11px; text-decoration: none; }
+      .lab-map-assembly-actions button:focus-visible, .lab-map-assembly-actions a:focus-visible { outline: 3px solid color-mix(in srgb, var(--map-route) 34%, transparent); outline-offset: 2px; }
 
       /* โหมดกะทัดรัด — ใช้ในป๊อปอัพของบัตรผู้มาติดต่อ */
       .lab-map-shell[data-compact] .lab-map-header { display: none; }

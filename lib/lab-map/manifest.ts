@@ -423,10 +423,10 @@ export const LAB_ACCESS_POINTS: readonly LabAccessPointDefinition[] = [
 
 export const LAB_STATIONS: readonly LabStationDefinition[] = [
   // 'installation' — จุดติดตั้งป้ายจริง เข้าแคตตาล็อกงานพิมพ์
-  { code: 'office', nameTh: 'จุดติดตั้งแผนที่ หน้าสำนักงานกลุ่มงานฯ', kind: 'installation', x: 1052, y: 730, checkpointCode: 'fingerprint-office' },
-  { code: 'central-corridor', nameTh: 'จุดติดตั้งแผนที่ โถงหน้าห้องปฏิบัติการกลาง', kind: 'installation', x: 770, y: 165 },
-  { code: 'south-corridor', nameTh: 'จุดติดตั้งแผนที่ โถงทางเดินด้านทิศใต้', kind: 'installation', x: 700, y: 790 },
-  { code: 'meeting-room', nameTh: 'จุดติดตั้งแผนที่ ห้องประชุม', kind: 'installation', x: 742, y: 525, checkpointCode: 'door-meeting-room' },
+  { code: 'office', nameTh: 'จุด หน้าสำนักงานกลุ่มงานฯ', kind: 'installation', x: 1052, y: 730, checkpointCode: 'fingerprint-office' },
+  { code: 'central-corridor', nameTh: 'จุด โถงหน้าห้องปฏิบัติการกลาง', kind: 'installation', x: 770, y: 165 },
+  { code: 'south-corridor', nameTh: 'จุด โถงทางเดินด้านทิศใต้', kind: 'installation', x: 700, y: 790 },
+  { code: 'meeting-room', nameTh: 'จุด ห้องประชุม', kind: 'installation', x: 742, y: 525, checkpointCode: 'door-meeting-room' },
   // 'checkpoint' — จุดที่ผู้มาติดต่อยืนรอจริง วางทับพิกัดจุดสแกนเป๊ะ ๆ ไม่ใช่จุดติดตั้งป้าย
   // จึงไม่เข้าแคตตาล็อกงานพิมพ์ ใช้เป็นจุดเริ่มต้นของแผนหนีไฟให้ตรงตำแหน่งจริงของผู้มาติดต่อ
   { code: 'at-central-lab', nameTh: 'จุดสแกนนิ้วมือ ห้องปฏิบัติการกลาง', kind: 'checkpoint', x: 951, y: 131, checkpointCode: 'fingerprint-central-lab' },

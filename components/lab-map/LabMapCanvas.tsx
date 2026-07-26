@@ -20,6 +20,8 @@ export interface LabMapCanvasProps {
   selectedCode: string | null
   activeRouteCodes?: readonly string[]
   onSelect: (code: string) => void
+  onCoordinateSelect?: (x: number, y: number) => void
+  spaceTones?: Readonly<Record<string, 'low' | 'medium' | 'high' | 'unassessed'>>
   highlightedSpaceCodes?: readonly string[]
   /** จุดสแกนปลายทางของเส้นทางที่กำลังแสดง — ไฮไลต์และประกาศให้ผู้ใช้ทราบว่าเส้นทางจบที่นี่ */
   destinationPointCode?: string | null
@@ -51,7 +53,11 @@ function renderShape(shape: SvgShape): ReactNode {
   }
 }
 
-function fillForSpace(space: LabMapSpaceDTO, mode: MapMode, patternIds: Record<string, string>): string {
+function fillForSpace(space: LabMapSpaceDTO, mode: MapMode, patternIds: Record<string, string>, riskTone?: string): string {
+  if (riskTone === 'high') return 'color-mix(in srgb,var(--danger) 42%,var(--map-room))'
+  if (riskTone === 'medium') return 'color-mix(in srgb,var(--warning) 38%,var(--map-room))'
+  if (riskTone === 'low') return 'color-mix(in srgb,var(--success) 30%,var(--map-room))'
+  if (riskTone === 'unassessed') return 'color-mix(in srgb,var(--muted) 24%,var(--map-room))'
   if (mode !== 'infection') return space.controlled ? 'var(--map-controlled)' : 'var(--map-room)'
   if (space.infectionClass === 'infectious') return `url(#${patternIds.infectious})`
   if (space.infectionClass === 'risk') return `url(#${patternIds.risk})`
@@ -95,7 +101,14 @@ function safetyEquipmentSymbol(item: LabSafetyEquipmentDefinition): ReactNode {
   if (item.kind === 'fire-hose') {
     return <polygon points={`${item.x},${item.y - 10} ${item.x + 10},${item.y} ${item.x},${item.y + 10} ${item.x - 10},${item.y}`} />
   }
-  return <polygon points={`${item.x},${item.y - 10} ${item.x + 9},${item.y + 7} ${item.x - 9},${item.y + 7}`} />
+  if (item.kind === 'manual-call-point') return <polygon points={`${item.x},${item.y - 10} ${item.x + 9},${item.y + 7} ${item.x - 9},${item.y + 7}`} />
+  if (item.kind === 'aed') return <path d={`M ${item.x} ${item.y + 10} C ${item.x - 18} ${item.y}, ${item.x - 8} ${item.y - 13}, ${item.x} ${item.y - 5} C ${item.x + 8} ${item.y - 13}, ${item.x + 18} ${item.y}, ${item.x} ${item.y + 10} M ${item.x + 2} ${item.y - 7} L ${item.x - 3} ${item.y + 1} H ${item.x + 2} L ${item.x - 2} ${item.y + 8}`} />
+  if (item.kind === 'first-aid-kit') return <path d={`M ${item.x - 10} ${item.y - 7} H ${item.x + 10} V ${item.y + 8} H ${item.x - 10} Z M ${item.x - 3} ${item.y} H ${item.x + 3} M ${item.x} ${item.y - 3} V ${item.y + 3}`} />
+  if (item.kind === 'eyewash') return <path d={`M ${item.x - 10} ${item.y} Q ${item.x} ${item.y - 10} ${item.x + 10} ${item.y} Q ${item.x} ${item.y + 10} ${item.x - 10} ${item.y} M ${item.x} ${item.y - 4} A 4 4 0 1 0 ${item.x} ${item.y + 4} A 4 4 0 1 0 ${item.x} ${item.y - 4}`} />
+  if (item.kind === 'emergency-shower') return <path d={`M ${item.x - 8} ${item.y - 7} H ${item.x + 8} M ${item.x} ${item.y - 12} V ${item.y - 7} M ${item.x - 6} ${item.y - 3} L ${item.x - 9} ${item.y + 4} M ${item.x} ${item.y - 3} V ${item.y + 7} M ${item.x + 6} ${item.y - 3} L ${item.x + 9} ${item.y + 4}`} />
+  if (item.kind === 'spill-kit') return <path d={`M ${item.x - 9} ${item.y - 8} H ${item.x + 9} V ${item.y + 9} H ${item.x - 9} Z M ${item.x - 5} ${item.y - 8} V ${item.y - 12} H ${item.x + 5} V ${item.y - 8} M ${item.x} ${item.y - 4} V ${item.y + 5}`} />
+  if (item.kind === 'emergency-shutoff') return <path d={`M ${item.x - 10} ${item.y} H ${item.x + 10} M ${item.x} ${item.y - 10} V ${item.y + 10} M ${item.x - 7} ${item.y - 7} L ${item.x + 7} ${item.y + 7}`} />
+  return <circle cx={item.x} cy={item.y} r={9} />
 }
 
 function LabelText({ item }: { item: LabLabelDefinition }) {
@@ -135,6 +148,8 @@ export function LabMapCanvas({
   selectedCode,
   activeRouteCodes = [],
   onSelect,
+  onCoordinateSelect,
+  spaceTones,
   highlightedSpaceCodes = [],
   destinationPointCode = null,
   activeStationCode = null,
@@ -170,6 +185,7 @@ export function LabMapCanvas({
     [activeRoutes],
   )
   const visiblePoints = map.accessPoints.filter((point) => {
+    if (mode === 'safety-assets') return false
     if (mode !== 'safety') return true
     if (point.kind === 'exit' || point.status === 'permanently_locked') return true
     return routePointCodes.has(point.code)
@@ -194,7 +210,7 @@ export function LabMapCanvas({
 
   function startPan(event: ReactPointerEvent<SVGSVGElement>) {
     const target = event.target as Element
-    if (!interactive || target.closest('[data-space-code]')) return
+    if (!interactive || target.closest('[data-space-code], [data-equipment-code]')) return
     dragStart.current = { pointerX: event.clientX, pointerY: event.clientY, viewX: view.x, viewY: view.y }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -217,6 +233,20 @@ export function LabMapCanvas({
     }
   }
 
+  function selectCoordinate(event: React.MouseEvent<SVGSVGElement>) {
+    if (!onCoordinateSelect || (event.target as Element).closest('[data-space-code], [data-equipment-code]')) return
+    const point = event.currentTarget.createSVGPoint()
+    point.x = event.clientX
+    point.y = event.clientY
+    const matrix = event.currentTarget.getScreenCTM()?.inverse()
+    if (!matrix) return
+    const svgPoint = point.matrixTransform(matrix)
+    onCoordinateSelect(
+      Math.max(0, Math.min(1477, (svgPoint.x - view.x) / view.scale)),
+      Math.max(0, Math.min(892, (svgPoint.y - view.y) / view.scale)),
+    )
+  }
+
   return (
     <section className="lab-map-canvas-frame" aria-label="แผนผังห้องปฏิบัติการ">
       {interactive ? (
@@ -237,6 +267,7 @@ export function LabMapCanvas({
           onPointerMove={movePan}
           onPointerUp={stopPan}
           onPointerCancel={stopPan}
+          onClick={selectCoordinate}
         >
           <defs>
             <pattern id={patternIds.infectious} width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
@@ -271,12 +302,13 @@ export function LabMapCanvas({
                   data-space-code={space.code}
                   data-selected={isSelected || undefined}
                   data-highlighted={isHighlighted || undefined}
+                  data-risk-level={spaceTones?.[space.code]}
                   role={interactive ? 'button' : undefined}
                   tabIndex={interactive ? 0 : -1}
                   aria-label={`${space.nameTh}${space.controlled ? ' พื้นที่ควบคุม' : ''}`}
                   onClick={() => interactive && onSelect(space.code)}
                   onKeyDown={(event) => handleSpaceKeyDown(event, space.code)}
-                  style={{ '--space-fill': fillForSpace(space, mode, patternIds) } as React.CSSProperties}
+                  style={{ '--space-fill': fillForSpace(space, mode, patternIds, spaceTones?.[space.code]) } as React.CSSProperties}
                 >
                   {renderShape(space.shape)}
                 </g>
@@ -346,19 +378,32 @@ export function LabMapCanvas({
               </g>
             ) : null}
 
-            {mode === 'safety' ? (
+            {mode === 'safety' || mode === 'safety-assets' ? (
               <g className="lab-map-safety-equipment">
-                {map.safetyEquipment.map((item) => (
+                {map.safetyEquipment
+                  .filter((item) => mode === 'safety' ? item.kind === 'fire-extinguisher' : item.kind !== 'fire-extinguisher')
+                  .map((item) => (
                   <g
                     key={item.code}
                     className={`lab-map-equipment lab-map-equipment--${item.kind}`}
                     data-verified={item.verified || undefined}
-                    role="img"
-                    aria-label={`${item.nameTh}${item.verified ? '' : ' — รอยืนยันตำแหน่ง'}`}
+                    data-operational-status={item.operationalStatus}
+                    data-equipment-code={item.code}
+                    data-selected={selectedCode === item.code || undefined}
+                    role={interactive ? 'button' : 'img'}
+                    tabIndex={interactive ? 0 : -1}
+                    aria-label={`${item.nameTh}${item.verified ? '' : ' — รอยืนยันตำแหน่ง'}${item.operationalStatus === 'failed' ? ' — ไม่พร้อมใช้' : ''}${selectedCode === item.code ? ' — กำลังเลือก' : ''}`}
+                    onClick={(event) => { event.stopPropagation(); if (interactive) onSelect(item.code) }}
+                    onKeyDown={(event) => handleSpaceKeyDown(event, item.code)}
                   >
-                    {safetyEquipmentSymbol(item)}
+                    {selectedCode === item.code ? <circle className="lab-map-equipment-selection-halo" cx={item.x} cy={item.y} r={19} /> : null}
+                    <g className="lab-map-equipment-icon">{safetyEquipmentSymbol(item)}</g>
+                    {selectedCode === item.code ? <text className="lab-map-equipment-selection-label" x={item.x} y={item.y - 25} textAnchor="middle">{item.nameTh}</text> : null}
+                    {item.operationalStatus === 'failed' ? (
+                      <path className="lab-map-equipment-alert" d={`M ${item.x - 11} ${item.y - 11} L ${item.x + 11} ${item.y + 11} M ${item.x + 11} ${item.y - 11} L ${item.x - 11} ${item.y + 11}`} />
+                    ) : null}
                   </g>
-                ))}
+                  ))}
               </g>
             ) : null}
 

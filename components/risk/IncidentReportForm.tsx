@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { ErrorBanner, Field, Panel } from './shared/ui'
+import { LAB_MAP_SPACE_OPTIONS } from '@/lib/lab-map/space-options'
 import {
   FONT, INCIDENT_CATEGORIES, LAB_DEPARTMENTS, REPORTER_POSITIONS, SPACE,
   inputStyle, tabularNums, textareaStyle, todayIso,
@@ -16,6 +17,7 @@ type Draft = {
   event_time: string
   department_found: string
   department_target: string
+  space_code: string
   event_category: string
   event_detail: string
   immediate_correction: string
@@ -30,6 +32,7 @@ const EMPTY: Draft = {
   event_time: '',
   department_found: '',
   department_target: '',
+  space_code: '',
   event_category: '',
   event_detail: '',
   immediate_correction: '',
@@ -115,6 +118,7 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
           ...draft,
           event_time: draft.event_time || null,
           department_target: draft.department_target || null,
+          space_code: draft.space_code || null,
           immediate_correction: draft.immediate_correction || null,
           reporter_position: draft.reporter_position || null,
           reporter_name: canRecordOnBehalf ? draft.reporter_name.trim() || null : null,
@@ -244,6 +248,13 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
                 onChange={e => set({ department_target: e.target.value })}
                 style={inputStyle}
               />
+            </Field>
+
+            <Field label="ห้องบนแผนที่" hint="ไม่บังคับ — เลือกเมื่อเหตุเกิดในชั้น 3" htmlFor="space_code">
+              <select id="space_code" name="space_code" value={draft.space_code} onChange={e => set({ space_code: e.target.value })} style={inputStyle}>
+                <option value="">— ไม่ระบุ / นอกแผนที่ —</option>
+                {LAB_MAP_SPACE_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+              </select>
             </Field>
 
             <Field label="ตำแหน่งของคุณ" hint="ไม่บังคับ" htmlFor="reporter_position">
