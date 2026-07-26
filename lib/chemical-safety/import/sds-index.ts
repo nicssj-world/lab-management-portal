@@ -157,11 +157,17 @@ function indexedPath(rootPath: string, entry: Dirent): IndexedPath | null {
   }
 }
 
-async function extractEvidenceText(extension: SdsEvidenceExtension, bytes: Buffer): Promise<string | null> {
+export type SdsPdfLoader = (bytes: Uint8Array) => Promise<SdsPdfProxy>
+
+export async function extractEvidenceText(
+  extension: SdsEvidenceExtension,
+  bytes: Buffer,
+  loadPdf: SdsPdfLoader = getDocumentProxy,
+): Promise<string | null> {
   try {
     if (extension === '.pdf') {
-      const pdf = await getDocumentProxy(new Uint8Array(bytes))
-      return extractFirstTwoPdfPages(pdf)
+      const pdf = await loadPdf(new Uint8Array(bytes))
+      return await extractFirstTwoPdfPages(pdf)
     }
     if (extension === '.docx') {
       const result = await mammoth.extractRawText({ buffer: bytes })
