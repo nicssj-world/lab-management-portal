@@ -34,11 +34,15 @@ assert.deepEqual(calculateHoldingTotal([{ value: 250, unit: 'g', count: 4 }]), {
 assert.deepEqual(calculateHoldingTotal([{ value: 2.5, unit: 'L', count: 1 }, { value: 1, unit: 'L', count: 1 }]), { value: 3.5, unit: 'L' })
 assert.throws(() => calculateHoldingTotal([{ value: 1, unit: 'L', count: 1 }, { value: 1, unit: 'g', count: 1 }]), /mass and volume/i)
 assert.throws(() => calculateHoldingTotal([{ value: -1, unit: 'L', count: 1 }]), /non-negative/i)
+assert.throws(() => calculateHoldingTotal([{ value: Number.MAX_VALUE, unit: 'L', count: 2 }]), /finite/i)
 
 assert.equal(detectQuantityConflict({ calculated: { value: 3.5, unit: 'L' }, reportedRaw: '18 ลิตร' }), true)
 assert.equal(detectQuantityConflict({ calculated: { value: 5, unit: 'L' }, reportedRaw: '5 ลิตร' }), false)
 assert.equal(detectQuantityConflict({ calculated: { value: 500, unit: 'mL' }, reportedRaw: '0.5 L' }), false)
 assert.equal(detectQuantityConflict({ calculated: { value: 2, unit: 'kg' }, reportedRaw: '2 kilograms' }), false)
+assert.equal(detectQuantityConflict({ calculated: { value: 1, unit: 'L' }, reportedRaw: '1,000 mL' }), false)
+assert.equal(detectQuantityConflict({ calculated: { value: 1.5, unit: 'L' }, reportedRaw: '1,5 L' }), false)
+assert.equal(detectQuantityConflict({ calculated: { value: 500, unit: 'mL' }, reportedRaw: '500 MILLILITERS' }), false)
 assert.equal(detectQuantityConflict({ calculated: { value: 2, unit: 'kg' }, reportedRaw: 'not recorded' }), true)
 assert.equal(detectQuantityConflict({ calculated: { value: 2, unit: 'kg' }, reportedRaw: '  ' }), false)
 
