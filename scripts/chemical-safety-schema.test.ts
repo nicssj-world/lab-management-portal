@@ -56,12 +56,26 @@ const tables = [
   'chemical_import_batches', 'chemical_import_rows', 'chemical_qr_tokens',
 ]
 
+const createdTables = [...sql.matchAll(/create table(?: if not exists)? public\.([a-z0-9_]+)\s*\(/gi)]
+  .map(match => match[1])
+assert.deepEqual(createdTables, tables, 'migration creates exactly the 15 required application tables')
+assert.equal(new Set(createdTables).size, 15, 'application table names are unique')
+
 for (const table of tables) {
   assert.match(sql, new RegExp(`create table if not exists public\\.${table}`, 'i'), table)
   assert.match(sql, new RegExp(`alter table public\\.${table} enable row level security`, 'i'), table)
 }
-assert.match(sql, /revoke all[\s\S]+from anon, authenticated/i)
-assert.match(sql, /grant select, insert, update, delete[\s\S]+to service_role/i)
+
+const revokedTableNames = [...sql.matchAll(/revoke all on\s+(public\.[\s\S]*?)\s+from anon, authenticated;/gi)]
+  .flatMap(statement => [...statement[1].matchAll(/public\.([a-z0-9_]+)/gi)].map(match => match[1]))
+const grantedTableNames = [...sql.matchAll(/grant select, insert, update, delete on\s+(public\.[\s\S]*?)\s+to service_role;/gi)]
+  .flatMap(statement => [...statement[1].matchAll(/public\.([a-z0-9_]+)/gi)].map(match => match[1]))
+assert.deepEqual(revokedTableNames, tables, 'anon/authenticated revokes cover exactly every application table')
+assert.deepEqual(grantedTableNames, tables, 'service-role CRUD grants cover exactly every application table')
+for (const table of tables) {
+  assert.equal(revokedTableNames.filter(name => name === table).length, 1, `${table} has one explicit revoke`)
+  assert.equal(grantedTableNames.filter(name => name === table).length, 1, `${table} has one explicit service-role grant`)
+}
 assert.match(sql, /status[^;]+draft[^;]+in_review[^;]+approved[^;]+superseded[^;]+rejected/i)
 const sdsTable = tableDefinition('chemical_sds_versions')
 const changeTable = tableDefinition('chemical_change_requests')
@@ -123,6 +137,22 @@ const rpcDeclarations: Record<string, RegExp> = {
   review_chemical_sds_version: /\(\s*p_version_id uuid, p_actor_id uuid, p_decision text, p_reason text\s*\) returns uuid/i,
 }
 
+const createdFunctionNames = [...sql.matchAll(/create or replace function public\.([a-z0-9_]+)\s*\(/gi)]
+  .map(match => match[1])
+const infrastructureFunctionNames = new Set([
+  'chemical_sds_statements_valid',
+  'guard_chemical_import_batch_provenance',
+  'guard_chemical_import_row_provenance',
+])
+const applicationRpcNames = createdFunctionNames.filter(name => !infrastructureFunctionNames.has(name))
+assert.deepEqual(
+  applicationRpcNames,
+  Object.keys(rpcSignatures),
+  'migration creates exactly the five required application RPCs',
+)
+assert.equal(applicationRpcNames.length, 5, 'application RPC count')
+assert.equal(createdFunctionNames.length, 8, 'only the five RPCs and three named infrastructure functions exist')
+
 for (const [name, signature] of Object.entries(rpcSignatures)) {
   const definition = functionDefinition(name)
   assert.match(definition, rpcDeclarations[name], `${name} declaration signature`)
@@ -148,6 +178,16 @@ for (const [name, signature] of Object.entries(rpcSignatures)) {
 const submitChange = functionDefinition('submit_chemical_change_request')
 assert.match(submitChange, /where id = p_request_id\s+for update/i)
 assert.match(submitChange, /current_row\.status\s*<>\s*'draft'/i)
+assert.match(
+  submitChange,
+  /update public\.chemical_change_requests[\s\S]*?set status = 'in_review', submitted_by = p_actor_id, submitted_at = now\(\)[\s\S]*?where id = p_request_id/i,
+  'change submit records actor and timestamp',
+)
+assert.match(
+  submitChange,
+  /insert into public\.audit_log\(action, user_id, target, detail\)[\s\S]*?'chemical_safety\.change_request\.submit'[\s\S]*?'before', current_row\.status, 'after', 'in_review'/i,
+  'change submit writes its action-specific audit',
+)
 
 const reviewChange = functionDefinition('review_chemical_change_request')
 assert.match(reviewChange, /where id = p_request_id\s+for update/i)
@@ -175,9 +215,34 @@ assert.match(updateDraft, /current_row\.updated_at is distinct from p_expected_u
 assert.match(updateDraft, /delete from public\.chemical_sds_hazards/i)
 assert.match(updateDraft, /'before', before_detail, 'after', after_detail/i)
 
+const statementValidator = functionDefinition('chemical_sds_statements_valid')
+assert.match(statementValidator, /jsonb_typeof\(statement->'code'\)\s*<>\s*'string'/i, 'reusable validator rejects null/non-string codes')
+assert.match(statementValidator, /jsonb_typeof\(statement->'text'\)\s*<>\s*'string'/i, 'reusable validator rejects null/non-string text')
+assert.match(sdsTable, /chemical_sds_statements_valid\(h_statements, 'H'\)/i)
+assert.match(sdsTable, /chemical_sds_statements_valid\(p_statements, 'P'\)/i)
+
+const hValidation = updateDraft.match(/if p_metadata \? 'h_statements' and exists \(([\s\S]*?)\) then raise exception 'invalid_h_statements'/i)?.[1]
+const pValidation = updateDraft.match(/if p_metadata \? 'p_statements' and exists \(([\s\S]*?)\) then raise exception 'invalid_p_statements'/i)?.[1]
+assert.ok(hValidation, 'H statement RPC validation exists')
+assert.ok(pValidation, 'P statement RPC validation exists')
+for (const [kind, validation] of [['H', hValidation], ['P', pValidation]] as const) {
+  assert.match(validation, /jsonb_typeof\(statement->'code'\)\s*<>\s*'string'/i, `${kind} path rejects a JSON-null code`)
+  assert.match(validation, /jsonb_typeof\(statement->'text'\)\s*<>\s*'string'/i, `${kind} path rejects numeric text`)
+}
+
 const submitSds = functionDefinition('submit_chemical_sds_version')
 assert.match(submitSds, /where id = p_version_id\s+for update/i)
 assert.match(submitSds, /current_row\.status\s*<>\s*'draft'/i)
+assert.match(
+  submitSds,
+  /update public\.chemical_sds_versions[\s\S]*?set status = 'in_review', submitted_by = p_actor_id, submitted_at = now\(\)[\s\S]*?where id = p_version_id/i,
+  'SDS submit records actor and timestamp',
+)
+assert.match(
+  submitSds,
+  /insert into public\.audit_log\(action, user_id, target, detail\)[\s\S]*?'chemical_safety\.sds\.submit'[\s\S]*?'before', current_row\.status, 'after', 'in_review'/i,
+  'SDS submit writes its action-specific audit',
+)
 
 const reviewSds = functionDefinition('review_chemical_sds_version')
 assert.match(reviewSds, /where id = p_version_id for update/i)
@@ -201,13 +266,15 @@ const batchGuard = functionDefinition('guard_chemical_import_batch_provenance')
 for (const column of ['id', 'source_kind', 'source_name', 'source_path', 'source_sha256', 'source_r2_key', 'parser_version', 'imported_by', 'created_at']) {
   assert.match(batchGuard, new RegExp(`new\\.${column} is distinct from old\\.${column}`, 'i'), `batch ${column} immutable`)
 }
-assert.match(batchGuard, /tg_op = 'delete'[\s\S]*?old\.status in \('completed','reviewed','committed','imported'\)/i)
 assert.match(
   batchGuard,
   /old\.status in \('completed','reviewed','committed','imported'\)[\s\S]*?new\.status not in \('completed','reviewed','committed','imported'\)[\s\S]*?raise exception 'import_batch_status_regression'/i,
   'terminal import evidence cannot be made deletable by regressing its status',
 )
-assert.match(batchGuard, /exists \([\s\S]*?from public\.chemical_import_rows[\s\S]*?batch_id = old\.id/i)
+const batchDeleteGuard = batchGuard.match(/if tg_op = 'delete' then([\s\S]*?)end if;/i)?.[1]
+assert.ok(batchDeleteGuard, 'batch delete guard exists')
+assert.match(batchDeleteGuard, /raise exception 'immutable_import_batch_delete'/i)
+assert.doesNotMatch(batchDeleteGuard, /\bif\b|\bexists\b|old\./i, 'every import batch delete is rejected unconditionally')
 assert.match(sql, /create trigger chemical_import_batches_provenance_guard\s+before update or delete on public\.chemical_import_batches/i)
 
 assert.match(sql, /create or replace function public\.guard_chemical_import_row_provenance/i)

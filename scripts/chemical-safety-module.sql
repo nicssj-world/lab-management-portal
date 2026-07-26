@@ -18,6 +18,8 @@ LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
           SELECT 1 FROM jsonb_object_keys(statement) AS statement_key(key)
           WHERE key NOT IN ('code','text')
         )
+        OR jsonb_typeof(statement->'code') <> 'string'
+        OR jsonb_typeof(statement->'text') <> 'string'
         OR statement->>'code' !~ ('^' || p_prefix || '[0-9]{3}$')
         OR nullif(btrim(statement->>'text'), '') IS NULL
     );
@@ -295,15 +297,7 @@ BEGIN
   END IF;
 
   IF TG_OP = 'DELETE' THEN
-    IF OLD.status IN ('completed','reviewed','committed','imported')
-      OR EXISTS (
-        SELECT 1 FROM public.chemical_import_rows
-        WHERE batch_id = OLD.id
-      )
-    THEN
-      RAISE EXCEPTION 'immutable_import_batch_evidence';
-    END IF;
-    RETURN OLD;
+    RAISE EXCEPTION 'immutable_import_batch_delete';
   END IF;
 
   RETURN NULL;
@@ -681,6 +675,8 @@ BEGIN
         SELECT 1 FROM jsonb_object_keys(statement) AS statement_key(key)
         WHERE key NOT IN ('code','text')
       )
+      OR jsonb_typeof(statement->'code') <> 'string'
+      OR jsonb_typeof(statement->'text') <> 'string'
       OR statement->>'code' !~ '^H[0-9]{3}$'
       OR nullif(btrim(statement->>'text'), '') IS NULL
   ) THEN RAISE EXCEPTION 'invalid_h_statements'; END IF;
@@ -693,6 +689,8 @@ BEGIN
         SELECT 1 FROM jsonb_object_keys(statement) AS statement_key(key)
         WHERE key NOT IN ('code','text')
       )
+      OR jsonb_typeof(statement->'code') <> 'string'
+      OR jsonb_typeof(statement->'text') <> 'string'
       OR statement->>'code' !~ '^P[0-9]{3}$'
       OR nullif(btrim(statement->>'text'), '') IS NULL
   ) THEN RAISE EXCEPTION 'invalid_p_statements'; END IF;
