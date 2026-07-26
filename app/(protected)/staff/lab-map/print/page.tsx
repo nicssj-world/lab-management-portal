@@ -33,7 +33,11 @@ export default async function LabMapPrintPage() {
     }
   }
   // ไม่มีเส้นทางสาธารณะแบบ URL อีกต่อไป — QR ชี้กลับไปที่แผนที่ฝั่งเจ้าหน้าที่
-  const destinations = [...new Set(LAB_ROUTE_PRESETS.filter((route) => route.kind === 'visitor' && route.fromStationCode === VISITOR_STATION_CODE).map((route) => route.destinationCode))]
+  // ไม่รวมจุดสแกนของสำนักงานเอง (checkpoint ของ VISITOR_STATION_CODE) เป็นตัวเลือกปลายทางที่พิมพ์ได้ —
+  // ผู้มาติดต่อยืนอยู่หน้าสำนักงานอยู่แล้ว เส้นทางไปจุดสแกนที่ติดกับประตูเดียวกันไม่จำเป็นต้องมีป้ายพิมพ์แยก
+  // (เส้นทางนี้ยังคงอยู่ใน manifest เพื่อใช้กับการนำทางในแอปสำหรับผู้มาติดต่อของแผนกนี้)
+  const ownCheckpointCode = LAB_STATIONS.find((station) => station.code === VISITOR_STATION_CODE)?.checkpointCode
+  const destinations = [...new Set(LAB_ROUTE_PRESETS.filter((route) => route.kind === 'visitor' && route.fromStationCode === VISITOR_STATION_CODE && route.destinationCode !== ownCheckpointCode).map((route) => route.destinationCode))]
   for (const paperSize of papers) for (const destinationCode of destinations) {
     const result = buildMapPrintDTO({ release, kind: 'visitor_navigation', paperSize, stationCode: VISITOR_STATION_CODE, destinationCode, webUrl: `${siteUrl}/staff/lab-map` })
     if (result.ok) catalog.push(result.value)
