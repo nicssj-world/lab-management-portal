@@ -22,7 +22,7 @@ const codeOnly = (source: string) =>
   source
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n')
-    .map((line) => line.replace(/(^|\s)\/\/.*$/, ''))
+    .map((line) => line.replace(/(^|\s)\/\/.*\r?$/, ''))
     .join('\n')
 
 const publicRoute = read('app/api/it-visitors/[token]/route.ts')
