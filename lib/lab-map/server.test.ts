@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { LAB_ZONES, REQUIRED_SPACE_CODES } from './manifest'
 import { buildStaffLabMapDTO, type StaffMapRepository } from './server-builder'
 
@@ -23,6 +24,11 @@ const repository: StaffMapRepository = {
 }
 
 async function main() {
+  const serverSource = readFileSync('lib/lab-map/server.ts', 'utf8')
+  assert.ok(serverSource.includes(".select('id,name,dept')"), 'profile roster uses the real profiles.dept column')
+  assert.ok(serverSource.includes('id,name,dept), space:'), 'assignment relation uses the real profiles.dept column')
+  assert.ok(!serverSource.includes('id,name,department'), 'profile queries must not reference a nonexistent department column')
+
   const geometryOnly = await buildStaffLabMapDTO({ บุคลากร: 'none' }, repository)
   assert.ok(!('people' in geometryOnly), 'personnel property is omitted without permission')
   assert.equal(personnelReads, 0, 'personnel repository is never queried without permission')
