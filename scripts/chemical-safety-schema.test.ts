@@ -44,8 +44,8 @@ assert.match(normalized, /^--[\s\S]*\bBEGIN;/i, 'migration starts a transaction'
 assert.match(normalized, /NOTIFY pgrst, 'reload schema';\s*COMMIT;$/i, 'migration commits after schema reload')
 assert.equal(
   packageJson.scripts?.['test:chemical-safety'],
-  'tsx scripts/chemical-safety-schema.test.ts',
-  'Task 1 package script stays focused on the schema contract',
+  'tsx scripts/chemical-safety-schema.test.ts && tsx lib/chemical-safety/domain.test.ts',
+  'Chemical safety package script runs the schema and domain contracts',
 )
 
 const tables = [
