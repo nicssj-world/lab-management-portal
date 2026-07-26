@@ -82,8 +82,21 @@ export function scoreSdsCandidate(product: SdsMatchProduct, candidate: SdsMatchC
     }
   }
 
-  score += scoreExpectedTextField('manufacturer', product.manufacturer, combinedOriginal, positiveEvidence)
-  score += scoreExpectedTextField('supplier', product.supplier, combinedOriginal, positiveEvidence)
+  const labeledIdentityFields = extractLabeledIdentityFields(candidate.extractedText ?? '')
+  score += scoreExpectedIdentityField(
+    'manufacturer',
+    product.manufacturer,
+    labeledIdentityFields.manufacturer,
+    positiveEvidence,
+    negativeEvidence,
+  )
+  score += scoreExpectedIdentityField(
+    'supplier',
+    product.supplier,
+    labeledIdentityFields.supplier,
+    positiveEvidence,
+    negativeEvidence,
+  )
   score += scoreProductCode(product.productCode, combinedOriginal, positiveEvidence, negativeEvidence)
 
   return {
@@ -101,15 +114,46 @@ export function classifySdsCandidate(score: SdsCandidateScore): SdsMatchStatus {
   return 'candidate'
 }
 
-function scoreExpectedTextField(
+function scoreExpectedIdentityField(
   label: 'manufacturer' | 'supplier',
   expected: string | null | undefined,
-  candidateText: string,
+  recognizedValues: readonly string[],
   positiveEvidence: string[],
+  negativeEvidence: string[],
 ): number {
-  if (!expected || !containsIdentity(normalizeIdentity(candidateText), expected)) return 0
-  positiveEvidence.push(`${label} confirmed: ${expected}`)
-  return 15
+  if (!expected || recognizedValues.length === 0) return 0
+
+  let fieldScore = 0
+  const matchingValues = recognizedValues.filter(value => containsIdentity(normalizeIdentity(value), expected))
+  if (matchingValues.length > 0) {
+    positiveEvidence.push(`${label} confirmed: ${expected}`)
+    fieldScore += 15
+  }
+  for (const value of recognizedValues.filter(value => !containsIdentity(normalizeIdentity(value), expected))) {
+    negativeEvidence.push(`${label} differs: ${value} (expected ${expected})`)
+    fieldScore -= 15
+  }
+  return fieldScore
+}
+
+function extractLabeledIdentityFields(candidateText: string): Record<'manufacturer' | 'supplier', string[]> {
+  const fields: Record<'manufacturer' | 'supplier', string[]> = { manufacturer: [], supplier: [] }
+  const label = '(?:manufacturer|manufactured by|supplier|supplied by|distributor|distributed by)'
+  const nextLabel = '(?:manufacturer|manufactured by|supplier|supplied by|distributor|distributed by|product(?:\\s*(?:code|number|no\\.?))?|catalog(?:ue)?\\s*(?:code|number|no\\.?)?|cas(?:\\s*(?:number|no\\.?))?|concentration)'
+  const pattern = new RegExp(
+    `\\b(${label})\\s*[:#-]\\s*(.*?)(?=\\r?\\n|(?:\\s*[/;|]\\s*|\\s+)${nextLabel}\\s*[:#-]|$)`,
+    'gis',
+  )
+
+  for (const match of candidateText.matchAll(pattern)) {
+    const normalizedLabel = match[1].toLowerCase()
+    const field = normalizedLabel.startsWith('manufacturer') || normalizedLabel === 'manufactured by'
+      ? 'manufacturer'
+      : 'supplier'
+    const value = match[2].trim().replace(/\s+/g, ' ')
+    if (value !== '' && !fields[field].includes(value)) fields[field].push(value)
+  }
+  return fields
 }
 
 function scoreProductCode(
