@@ -23,7 +23,7 @@ export interface CurrentSdsStateInput {
 }
 
 export function normalizeChemicalName(value: string | null | undefined): string {
-  return (value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+  return (value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
 export function normalizeCasNumber(value: string | null | undefined): string | null {
@@ -46,7 +46,14 @@ export function calculateHoldingTotal(parts: readonly QuantityPart[]): QuantityT
       throw new Error('Package values and counts must be finite non-negative numbers')
     }
 
-    return total + toBaseUnit(part.value * part.count, part.unit)
+    const packageTotal = part.value * part.count
+    const baseValue = toBaseUnit(packageTotal, part.unit)
+    const nextTotal = total + baseValue
+    if (!Number.isFinite(packageTotal) || !Number.isFinite(baseValue) || !Number.isFinite(nextTotal)) {
+      throw new Error('Calculated quantity must be finite')
+    }
+
+    return nextTotal
   }, 0)
   const dimension = dimensions.values().next().value
 
@@ -105,16 +112,34 @@ function roundToSix(value: number): number {
 }
 
 function parseReportedQuantity(value: string): { baseValue: number; dimension: 'volume' | 'mass' } | null {
-  const match = value.normalize('NFKC').toLocaleLowerCase().match(
-    /([-+]?(?:\d+(?:[.,]\d*)?|\.\d+))\s*(?<![a-z])((?:millilit(?:er|re)s?|ml|lit(?:er|re)s?|l|kilograms?|kg|grams?|g)|มิลลิลิตร|มล\.?|ลิตร|กิโลกรัม|กก\.?|กรัม)(?![a-z])/
+  const match = value.normalize('NFKC').toLowerCase().match(
+    /([-+]?(?:\d[\d.,]*|\.\d+))\s*(?<![a-z])((?:millilit(?:er|re)s?|ml|lit(?:er|re)s?|l|kilograms?|kg|grams?|g)|มิลลิลิตร|มล\.?|ลิตร|กิโลกรัม|กก\.?|กรัม)(?![a-z])/
   )
   if (!match) return null
 
-  const parsedValue = Number(match[1].replace(',', '.'))
-  if (!Number.isFinite(parsedValue) || parsedValue < 0) return null
+  const parsedValue = parseQuantityNumber(match[1])
+  if (parsedValue === null || parsedValue < 0) return null
 
   const unit = normalizedQuantityUnit(match[2])
   return unit ? { baseValue: toBaseUnit(parsedValue, unit), dimension: unitDimension(unit) } : null
+}
+
+function parseQuantityNumber(value: string): number | null {
+  let canonical: string
+  if (/^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(value)) {
+    canonical = value.replace(/,/g, '')
+  } else if (/^[+-]?\d{1,3}(?:\.\d{3})+(?:,\d+)?$/.test(value)) {
+    canonical = value.replace(/\./g, '').replace(',', '.')
+  } else if (/^[+-]?\d+,\d+$/.test(value)) {
+    canonical = value.replace(',', '.')
+  } else if (/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) {
+    canonical = value
+  } else {
+    return null
+  }
+
+  const parsed = Number(canonical)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function normalizedQuantityUnit(value: string): QuantityUnit | null {
