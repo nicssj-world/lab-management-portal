@@ -90,8 +90,8 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/lab-map', th: 'ความปลอดภัย', en: 'Safety', icon: 'shield', color: '#0E7490',
     children: [
       { href: '/staff/lab-map', th: 'แผนที่ห้องปฏิบัติการ', en: 'Laboratory Map', icon: 'building', color: '#0E7490' },
-      { href: '/staff/lab-map/chemicals', th: 'ห้องสารเคมี', en: 'Chemical Room', icon: 'flask', color: '#0E7490' },
-      { href: '/staff/lab-map/sds', th: 'จัดการ SDS', en: 'SDS Management', icon: 'doc', color: '#0E7490' },
+      { href: '/staff/lab-map/chemicals', th: 'ห้องสารเคมี', en: 'Chemical Room', icon: 'flask', color: '#0E7490', role: 'Admin' },
+      { href: '/staff/lab-map/sds', th: 'จัดการ SDS', en: 'SDS Management', icon: 'doc', color: '#0E7490', role: 'Admin' },
     ] },
   { section: 'งาน IT' },
   // ตัวแม่ของกลุ่มนี้ **ต้องไม่ถือ `resource`** — isEntryVisible เช็ค resource ของแม่แล้ว

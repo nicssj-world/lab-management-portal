@@ -6,7 +6,7 @@ import { RETURN_PATH_PARAM, isAuthServiceUnavailable, isProtectedPath, safeRetur
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
 
 // หน้าที่ต้องล็อกอิน — ตรงกับ route group (protected)
-for (const path of ['/staff', '/staff/risk/ior', '/staff/lab-map', '/staff/lab-map/print', '/kpi/dashboard', '/lab-workload/dashboard', '/tat']) {
+for (const path of ['/staff', '/staff/risk/ior', '/staff/lab-map', '/staff/lab-map/print', '/kpi/dashboard', '/lab-workload/dashboard', '/tat', '/sds']) {
   assert.ok(isProtectedPath(path), `${path} ต้องล็อกอิน`)
 }
 
@@ -62,6 +62,7 @@ assert.ok(
 assert.equal(safeReturnPath('/staff/risk/report'), '/staff/risk/report')
 assert.equal(safeReturnPath('/staff/risk/ior?status=reported'), '/staff/risk/ior?status=reported')
 assert.equal(safeReturnPath('/tat/dashboard?view=overview'), '/tat/dashboard?view=overview')
+assert.equal(safeReturnPath('/sds'), '/sds')
 
 // พาออกนอกเว็บไม่ได้ — นี่คือเหตุผลทั้งหมดที่ฟังก์ชันนี้มีอยู่
 for (const attack of [

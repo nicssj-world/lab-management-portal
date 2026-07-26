@@ -1,11 +1,15 @@
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { PublicSdsLibrary } from '@/components/chemical-safety/PublicSdsLibrary'
+import { requireChemicalAdmin } from '@/lib/chemical-safety/access'
 import { searchPublicSds } from '@/lib/chemical-safety/public'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'SDS | ข้อมูลความปลอดภัยสารเคมี' }
 
 export default async function PublicSdsPage() {
+  const guard = await requireChemicalAdmin()
+  if (guard.response) notFound()
   const items = await searchPublicSds()
   return <main className="sds-public-page">
     <style>{`

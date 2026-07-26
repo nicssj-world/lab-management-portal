@@ -8,13 +8,14 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
 import { createClient, recoverStaleAuthSession } from '@/lib/supabase/client'
+import { isAdminRole } from '@/lib/roles'
 
 const NAV_ITEMS = [
   { href: '/',        th: 'หน้าแรก',              en: 'Home' },
   { href: '/catalog', th: 'รายการตรวจวิเคราะห์',   en: 'Test Catalog' },
   { href: '/manual',  th: 'คู่มือห้องปฏิบัติการ',  en: 'Lab Manual' },
   { href: '/related-documents', th: 'เอกสารที่เกี่ยวข้อง', en: 'Related Documents' },
-  { href: '/sds',      th: 'SDS สารเคมี',          en: 'Chemical SDS' },
+  { href: '/sds',      th: 'SDS สารเคมี',          en: 'Chemical SDS', adminOnly: true },
   { href: '/news',    th: 'ข่าวสาร',               en: 'News' },
   { href: '/contact', th: 'โครงสร้างองค์กร',      en: 'Organization' },
 ]
@@ -67,6 +68,7 @@ export function PublicNav() {
   }
 
   const activeHref = pathname.startsWith('/news') ? '/news' : pathname
+  const visibleNavItems = NAV_ITEMS.filter(item => !('adminOnly' in item && item.adminOnly) || isAdminRole(sessionUser?.role))
 
   return (
     <>
@@ -202,7 +204,7 @@ export function PublicNav() {
 
           {/* Desktop nav */}
           <nav className="pub-nav-desktop" style={{ gap: 2, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
-            {NAV_ITEMS.map((item) => {
+            {visibleNavItems.map((item) => {
               const active = item.href === '/' ? pathname === '/' : activeHref.startsWith(item.href)
               return (
                 <Link
@@ -369,7 +371,7 @@ export function PublicNav() {
             }
           `}</style>
           <nav style={{ padding: '8px 0' }}>
-            {NAV_ITEMS.map((item) => {
+            {visibleNavItems.map((item) => {
               const active = item.href === '/' ? pathname === '/' : activeHref.startsWith(item.href)
               return (
                 <Link
