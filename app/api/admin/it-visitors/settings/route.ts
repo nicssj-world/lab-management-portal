@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auditIt } from '@/lib/it-access/guard'
-import { requireVisitorLog } from '@/lib/it-visitor/guard'
+import { canManageVisitorFormSettings, requireVisitorLog } from '@/lib/it-visitor/guard'
 import {
   getVisitorFormSettings,
   rotateVisitorToken,
@@ -25,6 +25,9 @@ export async function PATCH(req: NextRequest) {
   const guard = await requireVisitorLog('edit')
   if ('error' in guard) return guard.error
   const actor = guard.actor
+  if (!canManageVisitorFormSettings(actor)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const parsed = ItVisitorSettingsSchema.safeParse(await req.json())
   if (!parsed.success) {

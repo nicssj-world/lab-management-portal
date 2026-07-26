@@ -170,6 +170,15 @@ assert.ok(
 assert.ok(itemRoute.includes('canDeleteVisitorLog'), 'DELETE enforces the admin-only rule')
 assert.ok(guard.includes('isAdminRole'), 'canDeleteVisitorLog is role-based')
 assert.ok(itemRoute.includes('status: 403'))
+assert.ok(
+  guard.includes('canManageVisitorFormSettings'),
+  'visitor form settings expose an Admin role guard',
+)
+assert.ok(
+  settingsRoute.includes('canManageVisitorFormSettings'),
+  'settings PATCH enforces the Admin-only rule',
+)
+assert.ok(settingsRoute.includes('status: 403'), 'non-Admin settings mutations return 403')
 
 for (const source of [listRoute, itemRoute, settingsRoute]) {
   assert.ok(source.includes('requireVisitorLog('), 'staff route is guarded')
@@ -208,6 +217,16 @@ assert.ok(!publicServer.includes('public_token') || publicServer.includes('.eq(\
 assert.ok(staffClient.includes('QRCode.toDataURL'))
 assert.ok(staffClient.includes('download'))
 assert.ok(staffClient.includes('/v/'))
+const qrAction = staffClient.match(/<Button variant="primary" icon="globe" onClick=\{showQr\}>ลิงก์ \/ QR Code<\/Button>/)
+assert.ok(qrAction, 'every authorized visitor-log viewer can open the QR dialog')
+const formSettingsLabelAt = staffClient.indexOf('เปิดรับการบันทึกผ่านแบบฟอร์มสาธารณะ')
+const formSettingsGate = staffClient.slice(Math.max(0, formSettingsLabelAt - 1_200), formSettingsLabelAt)
+assert.ok(formSettingsGate.includes('{isAdmin && ('), 'visitor form mutation controls are rendered only for Admin')
+assert.ok(!formSettingsGate.includes('{canEdit && ('), 'edit permission does not expose visitor form mutations')
+assert.ok(
+  !staffClient.includes('{canEdit && <Button variant="primary" icon="globe" onClick={showQr}>'),
+  'QR read access is not restricted to editors',
+)
 
 // ── 10. refactor challenge ต้องไม่ทำแบบสำรวจพัง ──
 assert.ok(surveyPublicServer.includes('export function createPublicSurveyChallenge'))

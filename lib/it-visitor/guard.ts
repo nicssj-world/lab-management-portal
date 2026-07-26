@@ -31,3 +31,10 @@ export async function requireVisitorLog(
 export function canDeleteVisitorLog(actor: Pick<ItActor, 'role'>): boolean {
   return isAdminRole(actor.role)
 }
+
+/**
+ * การเปิด/ปิดฟอร์มและเปลี่ยนลิงก์สาธารณะทำได้เฉพาะ Admin
+ */
+export function canManageVisitorFormSettings(actor: Pick<ItActor, 'role'>): boolean {
+  return isAdminRole(actor.role)
+}

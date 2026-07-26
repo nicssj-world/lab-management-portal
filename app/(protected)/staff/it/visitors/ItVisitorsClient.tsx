@@ -262,7 +262,7 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Button variant="secondary" icon="download" onClick={printRegister}>พิมพ์ทะเบียน</Button>
-            {canEdit && <Button variant="primary" icon="globe" onClick={showQr}>ลิงก์ / QR Code</Button>}
+            <Button variant="primary" icon="globe" onClick={showQr}>ลิงก์ / QR Code</Button>
           </div>
         }
       />
@@ -490,7 +490,7 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
             )}
             <Button variant="secondary" icon="doc" onClick={() => { navigator.clipboard.writeText(publicUrl); add('คัดลอกลิงก์แล้ว') }}>คัดลอกลิงก์</Button>
           </div>
-          {canEdit && (
+          {isAdmin && (
             <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'grid', gap: 12 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, cursor: 'pointer' }}>
                 <input type="checkbox" checked={settings.is_open}
