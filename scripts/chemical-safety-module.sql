@@ -121,6 +121,30 @@ CREATE TABLE IF NOT EXISTS public.chemical_sds_files (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE OR REPLACE FUNCTION public.merge_chemical_sds_file_source_paths()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  SELECT COALESCE(jsonb_agg(to_jsonb(merged.path) ORDER BY merged.path), '[]'::jsonb)
+  INTO NEW.source_paths
+  FROM (
+    SELECT DISTINCT combined.path
+    FROM (
+      SELECT jsonb_array_elements_text(OLD.source_paths) AS path
+      UNION ALL
+      SELECT jsonb_array_elements_text(NEW.source_paths) AS path
+    ) AS combined
+  ) AS merged;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS chemical_sds_files_source_paths_merge
+  ON public.chemical_sds_files;
+CREATE TRIGGER chemical_sds_files_source_paths_merge
+BEFORE UPDATE OF source_paths ON public.chemical_sds_files
+FOR EACH ROW EXECUTE FUNCTION public.merge_chemical_sds_file_source_paths();
+
 CREATE TABLE IF NOT EXISTS public.chemical_sds_versions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   product_id uuid NOT NULL REFERENCES public.chemical_products(id) ON DELETE RESTRICT,
@@ -394,6 +418,8 @@ GRANT EXECUTE ON FUNCTION public.chemical_sds_statements_valid(jsonb,text)
 REVOKE ALL ON FUNCTION public.guard_chemical_import_batch_provenance()
   FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.guard_chemical_import_row_provenance()
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.merge_chemical_sds_file_source_paths()
   FROM PUBLIC, anon, authenticated, service_role;
 
 INSERT INTO public.chemical_rooms (code, name_th, map_space_code)
