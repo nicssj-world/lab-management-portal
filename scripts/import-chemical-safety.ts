@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
 import { lstat, readFile } from 'node:fs/promises'
 import { basename, extname, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import type { S3Client } from '@aws-sdk/client-s3'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import dotenv from 'dotenv'
 
 import {
   buildChemicalSdsImportKey,
@@ -30,23 +30,22 @@ import { assertSourceFile } from '../lib/chemical-safety/import/source-files'
 import { CHEMICAL_PREP_LOCATIONS } from '../lib/chemical-safety/storage-manifest'
 import type { SdsMatchStatus } from '../lib/chemical-safety/types'
 
-dotenv.config({ path: '.env.local', quiet: true })
-
 const LAYOUT_SHA256 = '5195b2f1d00672c3f625e464abc743ab9ef0ee2de6215bf64222453f5f7a951d'
+const REVIEWED_ARCHIVE_SHA256 = '1eb2b4ebf4b5f8fcf27eb41998887d3d2479b37e045acb9f7cdab5f4b8d34e6f'
 const PARSER_VERSION = 'chemical-safety-foundation-v1'
 const BATCH_SIZE = 100
 const PRIVATE_SOURCE_PREFIX = 'chemical-safety/sources/'
 const PRIVATE_IMPORT_PREFIX = 'chemical-safety/imports/'
 const TERMINAL_BATCH_STATUSES = new Set(['completed', 'reviewed', 'committed', 'imported'])
 
-interface CliOptions {
+export interface CliOptions {
   masterlistPath: string
   layoutPath: string
   sdsRootPath: string
   apply: boolean
 }
 
-interface ImportSummary {
+export interface ImportSummary {
   mode: 'dry-run' | 'apply'
   masterlistRows: number
   positions: number
@@ -67,24 +66,33 @@ interface ImportSummary {
   }
 }
 
-interface ProductAssociation {
+export type ReviewedAssociationValidationRule =
+  | 'scorer_candidate'
+  | 'hard_identity_mismatch'
+  | 'concentration_not_confirmed'
+  | 'identity_not_confirmed'
+  | 'missing_full_archive'
+
+export interface ReviewedAssociation {
   rowNo: number
   matchStatus: Extract<SdsMatchStatus, 'candidate' | 'mismatch' | 'missing'>
   sourcePath?: string
+  evidenceSha256?: string
+  validationRule: ReviewedAssociationValidationRule
   reviewReason: string
   product: SdsMatchProduct
 }
 
-interface ResolvedAssociation {
+export interface ResolvedAssociation {
   rowNo: number
-  matchStatus: ProductAssociation['matchStatus']
+  matchStatus: ReviewedAssociation['matchStatus']
   reviewReason: string
   file: SdsIndexedFile | null
   score: SdsCandidateScore | null
   automatedClassification: SdsMatchStatus | null
 }
 
-interface PreparedImport {
+export interface PreparedImport {
   options: CliOptions
   masterlist: Awaited<ReturnType<typeof readJune2026Masterlist>>
   proposals: ReturnType<typeof buildJune2026NormalizedProposals>
@@ -93,51 +101,118 @@ interface PreparedImport {
   summary: ImportSummary
 }
 
-interface ImportBatch {
+export interface ImportBatch {
   id: string
   status: string
   needsProcessing: boolean
 }
 
-const REVIEWED_ASSOCIATIONS: readonly ProductAssociation[] = [
-  { rowNo: 1, matchStatus: 'candidate', sourcePath: 'งานคลังเลือด/7.SDS 70_ alcohol.pdf', reviewReason: 'Filename evidence for 70% alcohol; exact product label remains to be reviewed.', product: { name: '70% Alcohol', aliases: ['70 alcohol', 'Ethanol'], casNumber: null, concentration: null } },
-  { rowNo: 2, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/1 Acetic acid.pdf', reviewReason: 'The selected file identifies sodium acetate rather than acetic acid.', product: { name: 'Acetic acid', casNumber: '64-19-7', concentration: null } },
-  { rowNo: 3, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/31 Acetonitrile.pdf', reviewReason: 'Name evidence is plausible; exact CAS, grade, and supplier remain to be reviewed.', product: { name: 'Acetonitrile', casNumber: null, concentration: null } },
-  { rowNo: 4, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/3-5 Ammonia.pdf', reviewReason: 'The selected file describes anhydrous ammonia, not the listed 25% solution.', product: { name: 'Ammonia', aliases: ['Ammonia solution 25%'], casNumber: '1336-21-6', concentration: '25%' } },
-  { rowNo: 5, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/3-5 Ammonia.pdf', reviewReason: 'The selected file describes anhydrous ammonia, not the listed 28% solution.', product: { name: 'Ammonia', aliases: ['Ammonia solution 28%'], casNumber: '1336-21-6', concentration: '28%' } },
-  { rowNo: 6, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/3-5 Ammonia.pdf', reviewReason: 'The selected file describes anhydrous ammonia, not the listed 30% solution.', product: { name: 'Ammonia', aliases: ['Ammonia solution 30%'], casNumber: '1336-21-6', concentration: '30%' } },
-  { rowNo: 7, matchStatus: 'missing', reviewReason: 'No product-specific alcohol hand-rub SDS was found in the supplied archive.', product: { name: 'Alcohol hand rub', casNumber: null, concentration: null } },
-  { rowNo: 8, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/6 Citric acid.pdf', reviewReason: 'Name evidence is plausible; hydrate form and exact product remain to be reviewed.', product: { name: 'Citric acid', casNumber: null, concentration: null } },
-  { rowNo: 9, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/7 Dichloromethane.pdf', reviewReason: 'Name evidence is plausible; exact product remains to be reviewed.', product: { name: 'Dichloromethane', casNumber: null, concentration: null } },
-  { rowNo: 10, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/8 Ethanol.pdf', reviewReason: 'Name evidence is plausible; exact product and grade remain to be reviewed.', product: { name: 'Ethanol', casNumber: null, concentration: null } },
-  { rowNo: 11, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/9 Ethyl alcohol 95_.pdf', reviewReason: 'The selected ethanol file does not confirm the listed 95% concentration.', product: { name: 'Ethyl alcohol', aliases: ['Ethanol'], casNumber: null, concentration: '95%' } },
-  { rowNo: 12, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/30.formaldehyde.pdf', reviewReason: 'Formaldehyde name evidence is plausible for formalin; solution identity remains to be reviewed.', product: { name: 'Formalin', aliases: ['Formaldehyde'], casNumber: null, concentration: null } },
-  { rowNo: 13, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/33 Formic acid.pdf', reviewReason: 'Name evidence is plausible; exact product remains to be reviewed.', product: { name: 'Formic acid', casNumber: null, concentration: null } },
-  { rowNo: 14, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/11 Hydrochloric acid.pdf', reviewReason: 'Name evidence is plausible; the listed 37% concentration remains to be reviewed.', product: { name: 'Hydrochloric acid', casNumber: null, concentration: null } },
-  { rowNo: 15, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/36 Methanol.pdf', reviewReason: 'Name evidence is plausible; exact product remains to be reviewed.', product: { name: 'Methanol', casNumber: null, concentration: null } },
-  { rowNo: 16, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/25 Papanicolaou_s solution 1a Harris hematoxylin solution.pdf', reviewReason: 'Product-name evidence is plausible; exact stain product remains to be reviewed.', product: { name: 'Papanicolaou’s solution 1a Harris hematoxylin solution', aliases: ["Papanicolaou's solution 1a Harris hematoxylin solution"], casNumber: null, concentration: null } },
-  { rowNo: 17, matchStatus: 'missing', reviewReason: 'No product-specific Papanicolaou solution 2a (OG6) SDS was found.', product: { name: 'Papanicolaou solution 2a OG6', casNumber: null, concentration: null } },
-  { rowNo: 18, matchStatus: 'missing', reviewReason: 'No product-specific Papanicolaou solution 3b (EA50) SDS was found.', product: { name: 'Papanicolaou solution 3b EA50', casNumber: null, concentration: null } },
-  { rowNo: 19, matchStatus: 'missing', reviewReason: 'No product-specific Permount/Toluene solution SDS was found.', product: { name: 'Permount Toluene solution', casNumber: null, concentration: null } },
-  { rowNo: 20, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/24 Propan-2-ol.pdf', reviewReason: 'Name evidence is plausible; exact product remains to be reviewed.', product: { name: 'Propan-2-ol', aliases: ['Isopropanol'], casNumber: null, concentration: null } },
-  { rowNo: 21, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/13 Sodium acetate.pdf', reviewReason: 'Name evidence is plausible; anhydrous form remains to be reviewed.', product: { name: 'Sodium acetate', casNumber: null, concentration: null } },
-  { rowNo: 22, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/14 Sulfuric acid.pdf', reviewReason: 'Name evidence is plausible; exact product remains to be reviewed.', product: { name: 'Sulfuric acid', aliases: ['Sulphuric acid'], casNumber: null, concentration: null } },
-  { rowNo: 23, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/32 Trifluoroacetic acid.pdf', reviewReason: 'The selected file identifies deuterated TFA rather than trifluoroacetic acid.', product: { name: 'Trifluoroacetic acid', casNumber: '76-05-1', concentration: null } },
-  { rowNo: 24, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/15 Wright_s  Eosin Methylene blue.PDF', reviewReason: 'The selected stain file does not clearly identify the listed Wright’s Baso product.', product: { name: 'Wright’s Baso', casNumber: null, concentration: null } },
-  { rowNo: 25, matchStatus: 'missing', reviewReason: 'No product-specific xylene SDS was found in the supplied archive.', product: { name: 'Xylene', casNumber: null, concentration: null } },
-] as const
-
-async function main(): Promise<void> {
-  const options = parseCli(process.argv.slice(2))
-  const prepared = await prepareImport(options)
-  if (options.apply) {
-    assertApplyBaseline(prepared.summary)
-    await applyImport(prepared)
-  }
-  process.stdout.write(`${JSON.stringify(prepared.summary)}\n`)
+export interface ReviewedAssociationPolicy {
+  archiveSha256: string
+  associations: readonly ReviewedAssociation[]
 }
 
-function parseCli(args: readonly string[]): CliOptions {
+export interface PreparationDependencies {
+  readMasterlist: typeof readJune2026Masterlist
+  assertSourceFile: typeof assertSourceFile
+  indexSdsArchive: typeof indexSdsArchive
+  reviewPolicy: ReviewedAssociationPolicy
+}
+
+export interface ImportBatchPayload extends Record<string, unknown> {
+  source_kind: string
+  source_name: string
+  source_path: string
+  source_sha256: string
+  source_r2_key: string | null
+}
+
+export interface ChemicalImportDatabase {
+  ensureBatch(payload: ImportBatchPayload): Promise<ImportBatch>
+  upsertRows(table: string, rows: readonly Record<string, unknown>[], onConflict: string): Promise<void>
+  ensureAudit(archiveBatchId: string, summary: ImportSummary): Promise<void>
+  completeBatches(ids: readonly string[], summary: ImportSummary): Promise<void>
+  failBatches(ids: readonly string[], summary: Record<string, unknown>): Promise<void>
+}
+
+export interface ChemicalObjectStore {
+  exists(key: string): Promise<boolean>
+  put(key: string, bytes: Uint8Array, contentType: string): Promise<void>
+}
+
+export interface ApplyFileAccess {
+  read(path: string): Promise<Uint8Array>
+  assertRegular(path: string): Promise<void>
+}
+
+export interface ApplyRuntime {
+  database: ChemicalImportDatabase
+  objects: ChemicalObjectStore
+  files: ApplyFileAccess
+}
+
+export interface ChemicalSafetyCliDependencies {
+  preparation?: Partial<PreparationDependencies>
+  loadApplyRuntime?: () => Promise<ApplyRuntime>
+}
+
+export interface ChemicalSafetyCliIo {
+  stdout(value: string): void
+  stderr(value: string): void
+}
+
+export const REVIEWED_ASSOCIATIONS: readonly ReviewedAssociation[] = [
+  { rowNo: 1, matchStatus: 'candidate', sourcePath: 'งานคลังเลือด/7.SDS 70_ alcohol.pdf', evidenceSha256: '55f06e664a4e59a3a28804e75f87e93b8b6b1356cb698d3e51442919ea420826', validationRule: 'scorer_candidate', reviewReason: 'Filename evidence for 70% alcohol; exact product label remains to be reviewed.', product: { name: '70% Alcohol', aliases: ['70 alcohol', 'Ethanol'], casNumber: null, concentration: null } },
+  { rowNo: 2, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/1 Acetic acid.pdf', evidenceSha256: '617421596a59679a939a4b40b4886cf9761e1cf2de2cb1fb3781aa3be6529a90', validationRule: 'hard_identity_mismatch', reviewReason: 'The selected file identifies sodium acetate rather than acetic acid.', product: { name: 'Acetic acid', casNumber: '64-19-7', concentration: null } },
+  { rowNo: 3, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/31 Acetonitrile.pdf', evidenceSha256: '716f0eeac5cfb25e657af765d7b1c682e82b2f886ee7144a25d66cfe9fe66c51', validationRule: 'scorer_candidate', reviewReason: 'Name evidence is plausible; exact CAS, grade, and supplier remain to be reviewed.', product: { name: 'Acetonitrile', casNumber: null, concentration: null } },
+  { rowNo: 4, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/3-5 Ammonia.pdf', evidenceSha256: '507c69ee614612f185e64177ae5340234324a343b3d642b188c025ea7887f29e', validationRule: 'hard_identity_mismatch', reviewReason: 'The selected file describes anhydrous ammonia, not the listed 25% solution.', product: { name: 'Ammonia', aliases: ['Ammonia solution 25%'], casNumber: '1336-21-6', concentration: '25%' } },
+  { rowNo: 5, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/3-5 Ammonia.pdf', evidenceSha256: '507c69ee614612f185e64177ae5340234324a343b3d642b188c025ea7887f29e', validationRule: 'hard_identity_mismatch', reviewReason: 'The selected file describes anhydrous ammonia, not the listed 28% solution.', product: { name: 'Ammonia', aliases: ['Ammonia solution 28%'], casNumber: '1336-21-6', concentration: '28%' } },
+  { rowNo: 6, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/3-5 Ammonia.pdf', evidenceSha256: '507c69ee614612f185e64177ae5340234324a343b3d642b188c025ea7887f29e', validationRule: 'hard_identity_mismatch', reviewReason: 'The selected file describes anhydrous ammonia, not the listed 30% solution.', product: { name: 'Ammonia', aliases: ['Ammonia solution 30%'], casNumber: '1336-21-6', concentration: '30%' } },
+  { rowNo: 7, matchStatus: 'missing', validationRule: 'missing_full_archive', reviewReason: 'No product-specific alcohol hand-rub SDS was found in the supplied archive.', product: { name: 'Alcohol hand rub', casNumber: null, concentration: null } },
+  { rowNo: 8, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/6 Citric acid.pdf', evidenceSha256: '631b90a50c784886e43849e9566ead76c6d373b1f84cc91618701d41609e767e', validationRule: 'scorer_candidate', reviewReason: 'Name evidence is plausible; hydrate form and exact product remain to be reviewed.', product: { name: 'Citric acid', casNumber: null, concentration: null } },
+  { rowNo: 9, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/7 Dichloromethane.pdf', evidenceSha256: '138830277e6f1ea1746d5ea7bd040db15a2657b3000d11ce6dfff44853d1ec79', validationRule: 'scorer_candidate', reviewReason: 'Name evidence is plausible; exact product remains to be reviewed.', product: { name: 'Dichloromethane', casNumber: null, concentration: null } },
+  { rowNo: 10, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/8 Ethanol.pdf', evidenceSha256: 'd10b7072c475d334c7ebf07adae6a5d09257b50499f784634b8622846902fbc6', validationRule: 'scorer_candidate', reviewReason: 'Name evidence is plausible; exact product and grade remain to be reviewed.', product: { name: 'Ethanol', casNumber: null, concentration: null } },
+  { rowNo: 11, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/9 Ethyl alcohol 95_.pdf', evidenceSha256: 'd10b7072c475d334c7ebf07adae6a5d09257b50499f784634b8622846902fbc6', validationRule: 'concentration_not_confirmed', reviewReason: 'The selected ethanol file does not confirm the listed 95% concentration.', product: { name: 'Ethyl alcohol', aliases: ['Ethanol'], casNumber: null, concentration: '95%' } },
+  { rowNo: 12, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/30.formaldehyde.pdf', evidenceSha256: 'de120560ab92e51c9c0c0c9d9377453f2128328c0af49f9a37433749883a73f4', validationRule: 'scorer_candidate', reviewReason: 'Formaldehyde name evidence is plausible for formalin; solution identity remains to be reviewed.', product: { name: 'Formalin', aliases: ['Formaldehyde'], casNumber: null, concentration: null } },
+  { rowNo: 13, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/33 Formic acid.pdf', evidenceSha256: 'fed4343d73a111b27faf2bd39555779353a6b899e758305fbc935b140fd46afe', validationRule: 'scorer_candidate', reviewReason: 'Name evidence is plausible; exact product remains to be reviewed.', product: { name: 'Formic acid', casNumber: null, concentration: null } },
+  { rowNo: 14, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/11 Hydrochloric acid.pdf', evidenceSha256: 'ac04c9736e775f4aab1f4289dbed8e2af3039cc26e5c05ee2db6004d288b3e14', validationRule: 'scorer_candidate', reviewReason: 'Name evidence is plausible; the listed 37% concentration remains to be reviewed.', product: { name: 'Hydrochloric acid', casNumber: null, concentration: null } },
+  { rowNo: 15, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/36 Methanol.pdf', evidenceSha256: '41bf90fa198a4003417488b7fa15b817ef941b1ad5948131cb78dfcf2209f99d', validationRule: 'scorer_candidate', reviewReason: 'Name evidence is plausible; exact product remains to be reviewed.', product: { name: 'Methanol', casNumber: null, concentration: null } },
+  { rowNo: 16, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/25 Papanicolaou_s solution 1a Harris hematoxylin solution.pdf', evidenceSha256: 'f50f90ec92c1380d315de88f309e92ac39af664a6665afa46ef1ff4422de0d9d', validationRule: 'scorer_candidate', reviewReason: 'Product-name evidence is plausible; exact stain product remains to be reviewed.', product: { name: 'Papanicolaou’s solution 1a Harris hematoxylin solution', aliases: ["Papanicolaou's solution 1a Harris hematoxylin solution"], casNumber: null, concentration: null } },
+  { rowNo: 17, matchStatus: 'missing', validationRule: 'missing_full_archive', reviewReason: 'No product-specific Papanicolaou solution 2a (OG6) SDS was found.', product: { name: 'Papanicolaou solution 2a OG6', casNumber: null, concentration: null } },
+  { rowNo: 18, matchStatus: 'missing', validationRule: 'missing_full_archive', reviewReason: 'No product-specific Papanicolaou solution 3b (EA50) SDS was found.', product: { name: 'Papanicolaou solution 3b EA50', casNumber: null, concentration: null } },
+  { rowNo: 19, matchStatus: 'missing', validationRule: 'missing_full_archive', reviewReason: 'No product-specific Permount/Toluene solution SDS was found.', product: { name: 'Permount Toluene solution', casNumber: null, concentration: null } },
+  { rowNo: 20, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/24 Propan-2-ol.pdf', evidenceSha256: 'a052489d21f8b0804855896fba519b80f6066f4b3f455b3052ca428d525ee0c3', validationRule: 'scorer_candidate', reviewReason: 'Name evidence is plausible; exact product remains to be reviewed.', product: { name: 'Propan-2-ol', aliases: ['Isopropanol'], casNumber: null, concentration: null } },
+  { rowNo: 21, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/13 Sodium acetate.pdf', evidenceSha256: 'ef342289bbbd3d7fd6f6bd2f8d86d484261d83ac9a8ef00ab9517992a87605e5', validationRule: 'scorer_candidate', reviewReason: 'Name evidence is plausible; anhydrous form remains to be reviewed.', product: { name: 'Sodium acetate', casNumber: null, concentration: null } },
+  { rowNo: 22, matchStatus: 'candidate', sourcePath: 'ห้องสารเคมี/14 Sulfuric acid.pdf', evidenceSha256: '61fbc5b14af503ff6e2a61a3e8d116723ec10e7d016b04dd52d89492486a0e5d', validationRule: 'scorer_candidate', reviewReason: 'Name evidence is plausible; exact product remains to be reviewed.', product: { name: 'Sulfuric acid', aliases: ['Sulphuric acid'], casNumber: null, concentration: null } },
+  { rowNo: 23, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/32 Trifluoroacetic acid.pdf', evidenceSha256: 'b2a2d7bead57a12fe4e4671bcbd6cad9977158355d987e88f0c25ae8a495e1c2', validationRule: 'hard_identity_mismatch', reviewReason: 'The selected file identifies deuterated TFA rather than trifluoroacetic acid.', product: { name: 'Trifluoroacetic acid', casNumber: '76-05-1', concentration: null } },
+  { rowNo: 24, matchStatus: 'mismatch', sourcePath: 'ห้องสารเคมี/15 Wright_s  Eosin Methylene blue.PDF', evidenceSha256: '547015d9c9abcd0e322e82a69d4d0402fe90adf5ee635aa460ee5f0a89c2a62d', validationRule: 'identity_not_confirmed', reviewReason: 'The selected stain file does not clearly identify the listed Wright’s Baso product.', product: { name: 'Wright’s Baso', casNumber: null, concentration: null } },
+  { rowNo: 25, matchStatus: 'missing', validationRule: 'missing_full_archive', reviewReason: 'No product-specific xylene SDS was found in the supplied archive.', product: { name: 'Xylene', casNumber: null, concentration: null } },
+] as const
+
+export async function runChemicalSafetyCli(
+  args: readonly string[],
+  dependencies: ChemicalSafetyCliDependencies = {},
+  io: ChemicalSafetyCliIo = {
+    stdout: value => { process.stdout.write(value) },
+    stderr: value => { process.stderr.write(value) },
+  },
+): Promise<number> {
+  try {
+    const options = parseCli(args)
+    const prepared = await prepareImport(options, dependencies.preparation)
+    if (options.apply) {
+      assertApplyBaseline(prepared.summary)
+      await applyImport(prepared, dependencies.loadApplyRuntime)
+    }
+    io.stdout(`${JSON.stringify(prepared.summary)}\n`)
+    return 0
+  } catch (error) {
+    io.stderr(`${redactCliError(error, args)}\n`)
+    return 1
+  }
+}
+
+export function parseCli(args: readonly string[]): CliOptions {
   const values = new Map<string, string>()
   let apply = false
 
@@ -172,13 +247,26 @@ function parseCli(args: readonly string[]): CliOptions {
   }
 }
 
-async function prepareImport(options: CliOptions): Promise<PreparedImport> {
+export async function prepareImport(
+  options: CliOptions,
+  dependencyOverrides: Partial<PreparationDependencies> = {},
+): Promise<PreparedImport> {
+  const dependencies: PreparationDependencies = {
+    readMasterlist: readJune2026Masterlist,
+    assertSourceFile,
+    indexSdsArchive,
+    reviewPolicy: {
+      archiveSha256: REVIEWED_ARCHIVE_SHA256,
+      associations: REVIEWED_ASSOCIATIONS,
+    },
+    ...dependencyOverrides,
+  }
   await assertRegularSource(options.masterlistPath, '.pdf', '--masterlist')
   await assertRegularSource(options.layoutPath, '.png', '--layout')
-  const masterlist = await readJune2026Masterlist(options.masterlistPath)
-  const layoutSha256 = await assertSourceFile(options.layoutPath, LAYOUT_SHA256)
+  const masterlist = await dependencies.readMasterlist(options.masterlistPath)
+  const layoutSha256 = await dependencies.assertSourceFile(options.layoutPath, LAYOUT_SHA256)
   const proposals = buildJune2026NormalizedProposals(masterlist.rows)
-  const files = await indexSdsArchive(options.sdsRootPath)
+  const files = await dependencies.indexSdsArchive(options.sdsRootPath)
 
   if (masterlist.sha256 !== JUNE_2026_MASTERLIST_SHA256) {
     throw new Error('Unexpected June 2026 master-list source hash')
@@ -192,8 +280,8 @@ async function prepareImport(options: CliOptions): Promise<PreparedImport> {
 
   const fileTypes = countFileTypes(files)
   if (fileTypes.pdf === 0) throw new Error('The SDS archive contains zero PDF files')
-  const associations = resolveAssociations(files)
   const archiveSha256 = hashArchiveManifest(files)
+  const associations = validateReviewedAssociations(files, dependencies.reviewPolicy)
   const apply = options.apply
   const summary: ImportSummary = {
     mode: apply ? 'apply' : 'dry-run',
@@ -238,16 +326,55 @@ function countFileTypes(files: readonly SdsIndexedFile[]): ImportSummary['fileTy
   }
 }
 
-function resolveAssociations(files: readonly SdsIndexedFile[]): ResolvedAssociation[] {
+export function validateReviewedAssociations(
+  files: readonly SdsIndexedFile[],
+  policy: ReviewedAssociationPolicy,
+): ResolvedAssociation[] {
+  if (!/^[a-f0-9]{64}$/.test(policy.archiveSha256)) {
+    throw new Error('Reviewed archive hash must be a lowercase SHA-256 value')
+  }
   const indexedByPath = new Map(files.map(file => [file.relativePath, file]))
-  if (REVIEWED_ASSOCIATIONS.length !== 25) {
-    throw new Error(`Unexpected reviewed association count: ${REVIEWED_ASSOCIATIONS.length}`)
+  for (const association of policy.associations) {
+    if (!association.sourcePath || !association.evidenceSha256) continue
+    if (!/^[a-f0-9]{64}$/.test(association.evidenceSha256)) {
+      throw new Error(`Reviewed SDS evidence hash is invalid for row ${association.rowNo}`)
+    }
+    const evidence = indexedByPath.get(association.sourcePath)
+    if (evidence && evidence.sha256 !== association.evidenceSha256) {
+      throw new Error(`Reviewed SDS evidence hash differs for row ${association.rowNo}`)
+    }
+  }
+  const actualArchiveSha256 = hashArchiveManifest(files)
+  if (actualArchiveSha256 !== policy.archiveSha256) {
+    throw new Error('SDS evidence does not match the reviewed archive hash')
+  }
+  if (policy.associations.length !== 25) {
+    throw new Error(`Unexpected reviewed association count: ${policy.associations.length}`)
+  }
+  const rowNumbers = new Set(policy.associations.map(association => association.rowNo))
+  if (rowNumbers.size !== 25 || [...rowNumbers].some(rowNo => rowNo < 1 || rowNo > 25)) {
+    throw new Error('Reviewed associations must contain each master-list row exactly once')
   }
 
-  return REVIEWED_ASSOCIATIONS.map(association => {
+  return policy.associations.map(association => {
     if (!association.sourcePath) {
-      if (association.matchStatus !== 'missing') {
-        throw new Error(`Association row ${association.rowNo} has no source evidence`)
+      if (
+        association.matchStatus !== 'missing'
+        || association.validationRule !== 'missing_full_archive'
+        || association.evidenceSha256 !== undefined
+      ) {
+        throw new Error(`Association row ${association.rowNo} status does not match its validation rule`)
+      }
+      const viableEvidence = files.find(file => {
+        const score = scoreSdsCandidate(association.product, {
+          fileName: basename(file.relativePath),
+          extractedText: file.extractedText,
+          sha256: file.sha256,
+        })
+        return classifySdsCandidate(score) === 'candidate'
+      })
+      if (viableEvidence) {
+        throw new Error(`Viable evidence exists for reviewed missing row ${association.rowNo}`)
       }
       return {
         rowNo: association.rowNo,
@@ -259,17 +386,47 @@ function resolveAssociations(files: readonly SdsIndexedFile[]): ResolvedAssociat
       }
     }
 
+    if (association.matchStatus === 'missing' || association.validationRule === 'missing_full_archive') {
+      throw new Error(`Association row ${association.rowNo} status does not match its validation rule`)
+    }
+    if (!association.evidenceSha256) {
+      throw new Error(`Reviewed SDS evidence hash is absent for row ${association.rowNo}`)
+    }
     const file = indexedByPath.get(association.sourcePath)
     if (!file) throw new Error(`Reviewed SDS evidence is absent for row ${association.rowNo}`)
     if (file.extension !== '.pdf') throw new Error(`Reviewed SDS evidence is not a PDF for row ${association.rowNo}`)
+    if (file.sha256 !== association.evidenceSha256) {
+      throw new Error(`Reviewed SDS evidence hash differs for row ${association.rowNo}`)
+    }
     const score = scoreSdsCandidate(association.product, {
       fileName: basename(file.relativePath),
       extractedText: file.extractedText,
       sha256: file.sha256,
     })
     const automatedClassification = classifySdsCandidate(score)
-    if (association.matchStatus === 'candidate' && automatedClassification !== 'candidate') {
-      throw new Error(`Conservative scorer rejected the reviewed candidate for row ${association.rowNo}`)
+    if (association.validationRule === 'scorer_candidate') {
+      if (association.matchStatus !== 'candidate') {
+        throw new Error(`Association row ${association.rowNo} status does not match its validation rule`)
+      }
+      if (automatedClassification !== 'candidate' || score.positiveEvidence.length === 0) {
+        throw new Error(`Conservative scorer rejected the reviewed candidate for row ${association.rowNo}`)
+      }
+    } else {
+      if (association.matchStatus !== 'mismatch') {
+        throw new Error(`Association row ${association.rowNo} status does not match its validation rule`)
+      }
+      if (association.validationRule === 'hard_identity_mismatch' && (!score.hardMismatch || automatedClassification !== 'mismatch')) {
+        throw new Error(`Hard identity mismatch was not established for row ${association.rowNo}`)
+      }
+      if (association.validationRule === 'concentration_not_confirmed' && (
+        score.concentrationConfirmed
+        || !score.negativeEvidence.some(item => item.includes('concentration not confirmed'))
+      )) {
+        throw new Error(`Concentration mismatch was not established for row ${association.rowNo}`)
+      }
+      if (association.validationRule === 'identity_not_confirmed' && automatedClassification !== 'mismatch') {
+        throw new Error(`Identity mismatch was not established for row ${association.rowNo}`)
+      }
     }
 
     return {
@@ -283,7 +440,7 @@ function resolveAssociations(files: readonly SdsIndexedFile[]): ResolvedAssociat
   })
 }
 
-function hashArchiveManifest(files: readonly SdsIndexedFile[]): string {
+export function hashArchiveManifest(files: readonly SdsIndexedFile[]): string {
   const lines = files
     .map(file => `${file.relativePath}:${file.sha256}`)
     .sort(compareText)
@@ -313,20 +470,50 @@ function assertApplyBaseline(summary: ImportSummary): void {
   }
 }
 
-async function applyImport(prepared: PreparedImport): Promise<void> {
-  const [{ supabaseAdmin }, { r2, R2_BUCKET }, aws] = await Promise.all([
-    import('../lib/supabase/admin'),
-    import('../lib/r2/client'),
-    import('@aws-sdk/client-s3'),
-  ])
-  const clients = {
-    supabase: supabaseAdmin as SupabaseClient,
-    r2: r2 as S3Client,
-    bucket: R2_BUCKET,
-    HeadObjectCommand: aws.HeadObjectCommand,
-    PutObjectCommand: aws.PutObjectCommand,
+export async function applyImport(
+  prepared: PreparedImport,
+  loadRuntime?: () => Promise<ApplyRuntime>,
+): Promise<void> {
+  let runtime: ApplyRuntime
+  if (loadRuntime) {
+    runtime = await loadRuntime()
+  } else {
+    const dotenv = await import('dotenv')
+    dotenv.default.config({ path: '.env.local', quiet: true })
+    const [{ supabaseAdmin }, { r2, R2_BUCKET }, aws] = await Promise.all([
+      import('../lib/supabase/admin'),
+      import('../lib/r2/client'),
+      import('@aws-sdk/client-s3'),
+    ])
+    const clients: ApplyClients = {
+      supabase: supabaseAdmin as SupabaseClient,
+      r2: r2 as S3Client,
+      bucket: R2_BUCKET,
+      HeadObjectCommand: aws.HeadObjectCommand,
+      PutObjectCommand: aws.PutObjectCommand,
+    }
+    runtime = {
+      database: createSupabaseDatabase(clients.supabase),
+      objects: {
+        exists: key => objectExists(clients, key),
+        async put(key, bytes, contentType) {
+          await clients.r2.send(new clients.PutObjectCommand({
+            Bucket: clients.bucket,
+            Key: key,
+            Body: bytes,
+            ContentType: contentType,
+          }))
+        },
+      },
+      files: {
+        read: path => readFile(path),
+        async assertRegular(path) {
+          const stats = await lstat(path)
+          if (stats.isSymbolicLink() || !stats.isFile()) throw new Error('SDS evidence changed after indexing')
+        },
+      },
+    }
   }
-
   const masterlistKey = buildChemicalSourceKey(prepared.summary.masterlistSha256, basename(prepared.options.masterlistPath))
   const layoutKey = buildChemicalSourceKey(prepared.summary.layoutSha256, basename(prepared.options.layoutPath))
   assertPrivateKey(masterlistKey, PRIVATE_SOURCE_PREFIX)
@@ -335,7 +522,7 @@ async function applyImport(prepared: PreparedImport): Promise<void> {
   let batches: { masterlist?: ImportBatch; layout?: ImportBatch; archive?: ImportBatch } = {}
 
   try {
-    batches.masterlist = await ensureImportBatch(clients.supabase, {
+    batches.masterlist = await runtime.database.ensureBatch({
       source_kind: 'chemical-masterlist-june-2026',
       source_name: basename(prepared.options.masterlistPath),
       source_path: prepared.options.masterlistPath,
@@ -348,7 +535,7 @@ async function applyImport(prepared: PreparedImport): Promise<void> {
     })
     if (batches.masterlist.needsProcessing) processingBatchIds.push(batches.masterlist.id)
 
-    batches.layout = await ensureImportBatch(clients.supabase, {
+    batches.layout = await runtime.database.ensureBatch({
       source_kind: 'chemical-layout-2026-02-02',
       source_name: basename(prepared.options.layoutPath),
       source_path: prepared.options.layoutPath,
@@ -361,7 +548,7 @@ async function applyImport(prepared: PreparedImport): Promise<void> {
     })
     if (batches.layout.needsProcessing) processingBatchIds.push(batches.layout.id)
 
-    batches.archive = await ensureImportBatch(clients.supabase, {
+    batches.archive = await runtime.database.ensureBatch({
       source_kind: 'chemical-sds-archive',
       source_name: basename(prepared.options.sdsRootPath),
       source_path: prepared.options.sdsRootPath,
@@ -375,9 +562,9 @@ async function applyImport(prepared: PreparedImport): Promise<void> {
     if (batches.archive.needsProcessing) processingBatchIds.push(batches.archive.id)
 
     if (batches.masterlist.needsProcessing) {
-      await uploadSourceIfAbsent(clients, masterlistKey, prepared.options.masterlistPath, prepared.summary.masterlistSha256, 'application/pdf')
+      await uploadSourceIfAbsent(runtime, masterlistKey, prepared.options.masterlistPath, prepared.summary.masterlistSha256, 'application/pdf')
       await upsertInChunks(
-        clients.supabase,
+        runtime.database,
         'chemical_import_rows',
         buildMasterlistRows(batches.masterlist.id, prepared),
         'batch_id,row_key',
@@ -385,9 +572,9 @@ async function applyImport(prepared: PreparedImport): Promise<void> {
     }
 
     if (batches.layout.needsProcessing) {
-      await uploadSourceIfAbsent(clients, layoutKey, prepared.options.layoutPath, prepared.summary.layoutSha256, 'image/png')
+      await uploadSourceIfAbsent(runtime, layoutKey, prepared.options.layoutPath, prepared.summary.layoutSha256, 'image/png')
       await upsertInChunks(
-        clients.supabase,
+        runtime.database,
         'chemical_import_rows',
         CHEMICAL_PREP_LOCATIONS.map(location => ({
           batch_id: batches.layout!.id,
@@ -403,15 +590,15 @@ async function applyImport(prepared: PreparedImport): Promise<void> {
     }
 
     if (batches.archive.needsProcessing) {
-      await uploadUniquePdfEvidence(clients, prepared.files)
+      await uploadUniquePdfEvidence(runtime, prepared.files)
       await upsertInChunks(
-        clients.supabase,
+        runtime.database,
         'chemical_sds_files',
         buildSdsFileRows(prepared.files),
         'sha256',
       )
       await upsertInChunks(
-        clients.supabase,
+        runtime.database,
         'chemical_import_rows',
         buildArchiveRows(batches.archive.id, prepared.files),
         'batch_id,row_key',
@@ -419,29 +606,19 @@ async function applyImport(prepared: PreparedImport): Promise<void> {
     }
 
     if (processingBatchIds.length > 0) {
-      await ensureImportAudit(clients.supabase, batches.archive.id, prepared.summary)
-      const completion = await clients.supabase
-        .from('chemical_import_batches')
-        .update({ status: 'completed', summary: prepared.summary })
-        .in('id', processingBatchIds)
-        .select('id')
-      assertDbResult(completion, 'complete chemical import batches')
-      assertReturnedIds(completion.data, processingBatchIds, 'complete chemical import batches')
+      await runtime.database.ensureAudit(batches.archive.id, prepared.summary)
+      await runtime.database.completeBatches(processingBatchIds, prepared.summary)
     }
   } catch (error) {
     if (processingBatchIds.length > 0) {
-      const failure = await clients.supabase
-        .from('chemical_import_batches')
-        .update({
-          status: 'failed',
-          summary: { ...prepared.summary, error: safeFailureEvidence(error, prepared.options) },
+      try {
+        await runtime.database.failBatches(processingBatchIds, {
+          ...prepared.summary,
+          error: redactCliError(error, cliArgsFromOptions(prepared.options)),
         })
-        .in('id', processingBatchIds)
-        .select('id')
-      if (failure.error) {
-        throw new AggregateError([error, failure.error], 'Chemical safety import failed and failed-batch evidence could not be recorded')
+      } catch (failureError) {
+        throw new AggregateError([error, failureError], 'Chemical safety import failed and failed-batch evidence could not be recorded')
       }
-      assertReturnedIds(failure.data, processingBatchIds, 'record failed chemical import batches')
     }
     throw error
   }
@@ -484,6 +661,35 @@ async function ensureImportBatch(
   const resumedRow = resumed.data as { id: string; status: string } | null
   if (!resumedRow) throw new Error('Resumed chemical import batch was not returned')
   return { ...resumedRow, needsProcessing: true }
+}
+
+function createSupabaseDatabase(supabase: SupabaseClient): ChemicalImportDatabase {
+  return {
+    ensureBatch: payload => ensureImportBatch(supabase, payload),
+    async upsertRows(table, rows, onConflict) {
+      const result = await supabase.from(table).upsert(rows, { onConflict })
+      assertDbResult(result, `upsert ${table}`)
+    },
+    ensureAudit: (archiveBatchId, summary) => ensureImportAudit(supabase, archiveBatchId, summary),
+    async completeBatches(ids, summary) {
+      const result = await supabase
+        .from('chemical_import_batches')
+        .update({ status: 'completed', summary })
+        .in('id', ids)
+        .select('id')
+      assertDbResult(result, 'complete chemical import batches')
+      assertReturnedIds(result.data, ids, 'complete chemical import batches')
+    },
+    async failBatches(ids, summary) {
+      const result = await supabase
+        .from('chemical_import_batches')
+        .update({ status: 'failed', summary })
+        .in('id', ids)
+        .select('id')
+      assertDbResult(result, 'record failed chemical import batches')
+      assertReturnedIds(result.data, ids, 'record failed chemical import batches')
+    },
+  }
 }
 
 function buildMasterlistRows(batchId: string, prepared: PreparedImport): Record<string, unknown>[] {
@@ -579,25 +785,21 @@ function buildArchiveRows(batchId: string, files: readonly SdsIndexedFile[]): Re
 }
 
 async function uploadSourceIfAbsent(
-  clients: ApplyClients,
+  runtime: ApplyRuntime,
   sourceKey: string,
   path: string,
   expectedSha256: string,
   contentType: string,
 ): Promise<void> {
-  if (await objectExists(clients, sourceKey)) return
-  const bytes = await readFile(path)
+  if (await runtime.objects.exists(sourceKey)) return
+  await runtime.files.assertRegular(path)
+  const bytes = await runtime.files.read(path)
   const actualSha256 = createHash('sha256').update(bytes).digest('hex')
   if (actualSha256 !== expectedSha256) throw new Error('Source file changed after validation')
-  await clients.r2.send(new clients.PutObjectCommand({
-    Bucket: clients.bucket,
-    Key: sourceKey,
-    Body: bytes,
-    ContentType: contentType,
-  }))
+  await runtime.objects.put(sourceKey, bytes, contentType)
 }
 
-async function uploadUniquePdfEvidence(clients: ApplyClients, files: readonly SdsIndexedFile[]): Promise<void> {
+async function uploadUniquePdfEvidence(runtime: ApplyRuntime, files: readonly SdsIndexedFile[]): Promise<void> {
   const uniquePdfs = new Map<string, SdsIndexedFile>()
   for (const file of files) {
     if (file.extension === '.pdf' && !uniquePdfs.has(file.sha256)) uniquePdfs.set(file.sha256, file)
@@ -606,20 +808,14 @@ async function uploadUniquePdfEvidence(clients: ApplyClients, files: readonly Sd
   for (const [sha256, file] of [...uniquePdfs.entries()].sort(([left], [right]) => compareText(left, right))) {
     const sdsKey = buildChemicalSdsImportKey(sha256)
     assertPrivateKey(sdsKey, PRIVATE_IMPORT_PREFIX)
-    if (await objectExists(clients, sdsKey)) continue
-    const stats = await lstat(file.absolutePath)
-    if (stats.isSymbolicLink() || !stats.isFile()) throw new Error('SDS evidence changed after indexing')
-    const bytes = await readFile(file.absolutePath)
+    if (await runtime.objects.exists(sdsKey)) continue
+    await runtime.files.assertRegular(file.absolutePath)
+    const bytes = await runtime.files.read(file.absolutePath)
     const actualSha256 = createHash('sha256').update(bytes).digest('hex')
     if (actualSha256 !== sha256 || bytes.byteLength !== file.sizeBytes) {
       throw new Error('SDS evidence changed after indexing')
     }
-    await clients.r2.send(new clients.PutObjectCommand({
-      Bucket: clients.bucket,
-      Key: sdsKey,
-      Body: bytes,
-      ContentType: 'application/pdf',
-    }))
+    await runtime.objects.put(sdsKey, bytes, 'application/pdf')
   }
 }
 
@@ -644,16 +840,13 @@ async function objectExists(clients: ApplyClients, key: string): Promise<boolean
 }
 
 async function upsertInChunks(
-  supabase: SupabaseClient,
+  database: ChemicalImportDatabase,
   table: string,
   rows: readonly Record<string, unknown>[],
   onConflict: string,
 ): Promise<void> {
   for (let offset = 0; offset < rows.length; offset += BATCH_SIZE) {
-    const result = await supabase
-      .from(table)
-      .upsert(rows.slice(offset, offset + BATCH_SIZE), { onConflict })
-    assertDbResult(result, `upsert ${table} rows ${offset + 1}-${Math.min(offset + BATCH_SIZE, rows.length)}`)
+    await database.upsertRows(table, rows.slice(offset, offset + BATCH_SIZE), onConflict)
   }
 }
 
@@ -717,16 +910,29 @@ function assertReturnedIds(data: unknown, expectedIds: readonly string[], operat
   }
 }
 
-function safeFailureEvidence(error: unknown, options: CliOptions): string {
+export function redactCliError(error: unknown, args: readonly string[] = []): string {
   const message = error instanceof Error ? error.message : String(error)
   let redacted = message
-  for (const localPath of [options.masterlistPath, options.layoutPath, options.sdsRootPath]) {
-    redacted = redacted.replaceAll(localPath, '[local source]')
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index]
+    if (!value || value.startsWith('--')) continue
+    for (const localPath of [value, resolve(value)]) {
+      redacted = redacted.replaceAll(localPath, '[local source]')
+    }
   }
   return redacted
-    .replace(/[A-Za-z]:\\[^\r\n]+/g, '[local source]')
-    .replace(/\/[\w./-]*?(?:Downloads|MSDS)[\w./ -]*/gi, '[local source]')
+    .replace(/\\\\[^\\\r\n]+\\[^\r\n:]+/g, '[local source]')
+    .replace(/[A-Za-z]:\\[^\r\n:]+/g, '[local source]')
+    .replace(/\/(?:[^/\s:]+\/)+[^\r\n:]+/g, '[local source]')
     .slice(0, 1000)
+}
+
+function cliArgsFromOptions(options: CliOptions): string[] {
+  return [
+    '--masterlist', options.masterlistPath,
+    '--layout', options.layoutPath,
+    '--sds-root', options.sdsRootPath,
+  ]
 }
 
 function assertPrivateKey(key: string, requiredPrefix: string): void {
@@ -739,8 +945,9 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-void main().catch(error => {
-  const message = error instanceof Error ? error.message : String(error)
-  process.stderr.write(`${message}\n`)
-  process.exitCode = 1
-})
+const entryPoint = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : ''
+if (import.meta.url === entryPoint) {
+  void runChemicalSafetyCli(process.argv.slice(2)).then(exitCode => {
+    process.exitCode = exitCode
+  })
+}

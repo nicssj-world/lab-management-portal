@@ -44,8 +44,8 @@ assert.match(normalized, /^--[\s\S]*\bBEGIN;/i, 'migration starts a transaction'
 assert.match(normalized, /NOTIFY pgrst, 'reload schema';\s*COMMIT;$/i, 'migration commits after schema reload')
 assert.equal(
   packageJson.scripts?.['test:chemical-safety'],
-  'tsx scripts/chemical-safety-schema.test.ts && tsx lib/chemical-safety/domain.test.ts && tsx lib/chemical-safety/import/masterlist-june-2026.test.ts && tsx lib/chemical-safety/import/sds-import.test.ts && tsx scripts/chemical-safety-import-cli.test.ts',
-  'Chemical safety package script runs the schema, domain, master-list, SDS import, and CLI contracts',
+  'tsx scripts/chemical-safety-schema.test.ts && tsx lib/chemical-safety/domain.test.ts && tsx lib/chemical-safety/import/masterlist-june-2026.test.ts && tsx lib/chemical-safety/import/sds-import.test.ts && tsx scripts/chemical-safety-import-cli.test.ts && tsx scripts/chemical-safety-import-runtime.test.ts',
+  'Chemical safety package script runs the schema, domain, master-list, SDS import, CLI, and runtime contracts',
 )
 
 const tables = [
@@ -143,6 +143,7 @@ const infrastructureFunctionNames = new Set([
   'chemical_sds_statements_valid',
   'guard_chemical_import_batch_provenance',
   'guard_chemical_import_row_provenance',
+  'merge_chemical_sds_file_source_paths',
 ])
 const applicationRpcNames = createdFunctionNames.filter(name => !infrastructureFunctionNames.has(name))
 assert.deepEqual(
@@ -151,7 +152,7 @@ assert.deepEqual(
   'migration creates exactly the five required application RPCs',
 )
 assert.equal(applicationRpcNames.length, 5, 'application RPC count')
-assert.equal(createdFunctionNames.length, 8, 'only the five RPCs and three named infrastructure functions exist')
+assert.equal(createdFunctionNames.length, 9, 'only the five RPCs and four named infrastructure functions exist')
 
 for (const [name, signature] of Object.entries(rpcSignatures)) {
   const definition = functionDefinition(name)
@@ -286,6 +287,22 @@ assert.match(rowGuard, /tg_op = 'delete'[\s\S]*?raise exception 'immutable_impor
 assert.doesNotMatch(rowGuard, /new\.(normalized_data|match_status|conflict_codes|target_product_id|decision_note|decided_by|decided_at) is distinct from old\./i)
 assert.doesNotMatch(batchGuard, /new\.(status|summary) is distinct from old\./i)
 assert.match(sql, /create trigger chemical_import_rows_provenance_guard\s+before update or delete on public\.chemical_import_rows/i)
+
+const sourcePathMerge = functionDefinition('merge_chemical_sds_file_source_paths')
+assert.match(sourcePathMerge, /jsonb_array_elements_text\(old\.source_paths\)/i)
+assert.match(sourcePathMerge, /jsonb_array_elements_text\(new\.source_paths\)/i)
+assert.match(sourcePathMerge, /select distinct/i, 'source paths are atomically deduplicated')
+assert.match(sourcePathMerge, /jsonb_agg\([\s\S]*?order by/i, 'merged source paths are sorted')
+assert.match(
+  sql,
+  /create trigger chemical_sds_files_source_paths_merge\s+before update of source_paths on public\.chemical_sds_files\s+for each row execute function public\.merge_chemical_sds_file_source_paths\(\)/i,
+  'SDS source path merge runs inside the conflicting upsert update',
+)
+assert.match(
+  sql,
+  /revoke all on function public\.merge_chemical_sds_file_source_paths\(\)\s+from PUBLIC, anon, authenticated, service_role/i,
+  'source-path trigger function is not directly callable',
+)
 
 const seedBlock = sql.match(/cross join \(values([\s\S]*?)\) as location\(code, zone_code, location_kind, display_order\)/i)?.[1]
 assert.ok(seedBlock, 'location seed block exists')
