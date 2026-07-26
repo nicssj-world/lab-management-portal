@@ -18,7 +18,7 @@
 - GHS data is not inferred from a filename, location color, or the master list's free text. It requires the exact product SDS and bottle-label review.
 - Every imported SDS remains draft/quarantined until a separate reviewer approves it.
 - Legacy DOC/DOCX/HTML files remain review evidence; do not auto-convert them into an approved public SDS.
-- Initial source PDF: `C:\Users\User\Downloads\Unit Chemical Inventory List ห้องเก็บสารเคมี (1).pdf`, SHA-256 `71d25b0e50b3056f97edb3238a1a7949584744f67fc0bfbafcaa70273d83ddb`.
+- Initial source PDF: `C:\Users\User\Downloads\Unit Chemical Inventory List ห้องเก็บสารเคมี (1).pdf`, SHA-256 `71d25b0e50b3056f97edb3238a1a7949584744f67fc0bfbfafcaa70273d83ddb`.
 - Initial storage image: `E:\ISO\ISO15190\safety\ห้องสาร\ผังสารเคมี.png`, SHA-256 `5195b2f1d00672c3f625e464abc743ab9ef0ee2de6215bf64222453f5f7a951d`.
 - Initial SDS root: `C:\Users\User\Downloads\MSDS 2568`; the baseline scan is 556 files: 521 PDF, 18 DOCX, 16 DOC, and 1 HTML.
 - Import commands are dry-run by default and require `--apply` for database/R2 writes.
@@ -370,7 +370,7 @@ git commit -m "feat(chemical-safety): define registry domain and storage plan"
 Create a test that reads the supplied absolute path only when it exists, always tests the checked source constant, and asserts:
 
 ```ts
-assert.equal(JUNE_2026_MASTERLIST_SHA256, '71d25b0e50b3056f97edb3238a1a7949584744f67fc0bfbafcaa70273d83ddb')
+assert.equal(JUNE_2026_MASTERLIST_SHA256, '71d25b0e50b3056f97edb3238a1a7949584744f67fc0bfbfafcaa70273d83ddb')
 assert.equal(JUNE_2026_MASTERLIST_ROWS.length, 25)
 assert.deepEqual(JUNE_2026_MASTERLIST_ROWS.map(row => row.no), Array.from({ length: 25 }, (_, i) => i + 1))
 assert.deepEqual(findConflictNames(JUNE_2026_MASTERLIST_ROWS), [

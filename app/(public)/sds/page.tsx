@@ -1,0 +1,25 @@
+import type { Metadata } from 'next'
+import { PublicSdsLibrary } from '@/components/chemical-safety/PublicSdsLibrary'
+import { searchPublicSds } from '@/lib/chemical-safety/public'
+
+export const dynamic = 'force-dynamic'
+export const metadata: Metadata = { title: 'SDS | ข้อมูลความปลอดภัยสารเคมี' }
+
+export default async function PublicSdsPage() {
+  const items = await searchPublicSds()
+  return <main className="sds-public-page">
+    <style>{`
+      .sds-public-page{--sds-navy:#082b4f;--sds-blue:#0d5ea8;--sds-cyan:#12a6a6;max-width:1420px;margin:0 auto;padding:38px 24px 72px;color:var(--ink)}
+      .sds-hero{position:relative;overflow:hidden;padding:40px;border-radius:24px;background:linear-gradient(125deg,var(--sds-navy),#0b4b75 62%,#087e80);color:white;box-shadow:0 24px 70px rgba(8,43,79,.22)}
+      .sds-hero:after{content:"GHS";position:absolute;right:30px;top:-30px;font-size:150px;font-weight:900;color:rgba(255,255,255,.06);letter-spacing:-.08em}.sds-hero p{max-width:720px;line-height:1.7;color:#d8edf7}.sds-hero h1{font-size:clamp(30px,5vw,58px);line-height:1.05;margin:8px 0 14px;letter-spacing:-.03em}.sds-kicker{font-weight:800;letter-spacing:.16em;font-size:12px;color:#85f3eb!important}
+      .manual-banner{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:22px 0 28px;padding:20px 22px;border:1px solid #f3c86a;border-left:8px solid #e69b14;border-radius:16px;background:#fff8e7;color:#513407}.manual-banner strong{display:block;font-size:18px}.manual-banner a{min-height:44px;display:inline-flex;align-items:center;padding:0 18px;border-radius:10px;background:#9a5b00;color:white;text-decoration:none;font-weight:800;white-space:nowrap}
+      .sds-filter-panel{display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;margin:28px 0 20px;padding:18px;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:0 10px 34px rgba(8,43,79,.07)}.sds-filter-panel label{display:grid;gap:7px;font-size:12px;font-weight:800;color:var(--muted)}.sds-filter-panel input,.sds-filter-panel select{width:100%;min-height:46px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--ink);padding:0 13px;font:inherit}.sds-filter-panel input:focus-visible,.sds-filter-panel select:focus-visible,.sds-actions a:focus-visible,.manual-banner a:focus-visible{outline:3px solid #54c7c7;outline-offset:2px}
+      .sds-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.sds-card{border:1px solid var(--border);border-top:5px solid var(--sds-blue);border-radius:16px;padding:20px;background:var(--card);box-shadow:0 12px 34px rgba(8,43,79,.08)}.sds-card-head{display:flex;justify-content:space-between;gap:18px}.sds-card h2{margin:2px 0 5px;font-size:23px}.sds-card-head p{margin:0;color:var(--muted)}.sds-eyebrow{font-size:10px!important;font-weight:900;letter-spacing:.15em;color:var(--sds-blue)!important}.sds-signal{height:34px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--border);border-radius:999px;font-weight:900}.sds-signal.is-alert{background:#a11118;color:white;border-color:#a11118}.sds-card dl{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:18px 0}.sds-card dl div{padding:10px;background:var(--surface-2);border-radius:10px}.sds-card dt{font-size:10px;color:var(--muted);font-weight:800}.sds-card dd{margin:4px 0 0;font-size:13px}.sds-ghs-row{display:flex;gap:10px;flex-wrap:wrap;padding:12px 0}.sds-hazards{padding-left:20px;font-size:12px;line-height:1.55}.sds-actions{display:flex;gap:10px;margin-top:16px}.sds-actions a{min-height:44px;display:inline-flex;align-items:center;padding:0 16px;border-radius:10px;text-decoration:none;font-weight:800;background:var(--sds-blue);color:white}.sds-actions a+ a{background:transparent;color:var(--sds-blue);border:1px solid var(--sds-blue)}.sds-state{text-align:center;padding:30px}.sds-error{color:#b42318}
+      @media(max-width:850px){.sds-card-grid{grid-template-columns:1fr}.sds-filter-panel{grid-template-columns:1fr}.manual-banner{align-items:flex-start;flex-direction:column}.sds-card dl{grid-template-columns:1fr}.sds-public-page{padding:20px 14px 48px}.sds-hero{padding:28px 22px}}
+      @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+    `}</style>
+    <section className="sds-hero"><p className="sds-kicker">CHEMICAL SAFETY · ALL DEPARTMENTS</p><h1>SDS ที่เชื่อถือได้<br/>เข้าถึงได้โดยไม่ต้องล็อกอิน</h1><p>ค้นหาเอกสารข้อมูลความปลอดภัยสารเคมีฉบับที่อนุมัติและใช้งานอยู่ ครอบคลุมทุกหน่วยงาน โดยไม่เปิดเผยข้อมูลคลัง ตำแหน่งจัดเก็บ หรือข้อมูลภายใน</p></section>
+    <aside className="manual-banner"><div><strong>MN-LAB-02 คู่มือความปลอดภัยทางห้องปฏิบัติการ</strong><span>ฉบับประกาศใช้ปัจจุบัน · เปิดอ่านได้โดยไม่ต้องล็อกอิน</span></div><a href="/api/public/safety-manual/MN-LAB-02?disposition=inline" target="_blank" rel="noopener noreferrer">เปิดคู่มือความปลอดภัย</a></aside>
+    <PublicSdsLibrary initialItems={items} />
+  </main>
+}
