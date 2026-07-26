@@ -2,6 +2,52 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const sql = readFileSync('scripts/chemical-safety-module.sql', 'utf8')
+const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+  scripts?: Record<string, string>
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function functionDefinition(name: string) {
+  const start = sql.search(new RegExp(`create or replace function public\\.${name}\\s*\\(`, 'i'))
+  assert.notEqual(start, -1, `missing function ${name}`)
+  const end = sql.indexOf('$$;', start)
+  assert.notEqual(end, -1, `unterminated function ${name}`)
+  return sql.slice(start, end + 3)
+}
+
+function tableDefinition(name: string) {
+  const start = sql.search(new RegExp(`create table if not exists public\\.${name}\\s*\\(`, 'i'))
+  assert.notEqual(start, -1, `missing table ${name}`)
+  const end = sql.indexOf('\n);', start)
+  assert.notEqual(end, -1, `unterminated table ${name}`)
+  return sql.slice(start, end + 3)
+}
+
+function constraintDefinition(tableSql: string, name: string) {
+  const start = tableSql.search(new RegExp(`constraint ${name} check \\(`, 'i'))
+  assert.notEqual(start, -1, `missing constraint ${name}`)
+  const open = tableSql.indexOf('(', start)
+  let depth = 0
+  for (let index = open; index < tableSql.length; index += 1) {
+    if (tableSql[index] === '(') depth += 1
+    if (tableSql[index] === ')') depth -= 1
+    if (depth === 0) return tableSql.slice(start, index + 1)
+  }
+  assert.fail(`unterminated constraint ${name}`)
+}
+
+const normalized = sql.trim()
+assert.match(normalized, /^--[\s\S]*\bBEGIN;/i, 'migration starts a transaction')
+assert.match(normalized, /NOTIFY pgrst, 'reload schema';\s*COMMIT;$/i, 'migration commits after schema reload')
+assert.equal(
+  packageJson.scripts?.['test:chemical-safety'],
+  'tsx scripts/chemical-safety-schema.test.ts',
+  'Task 1 package script stays focused on the schema contract',
+)
+
 const tables = [
   'chemical_units', 'chemical_rooms', 'chemical_storage_locations',
   'chemical_products', 'chemical_product_aliases', 'chemical_unit_products',
@@ -17,14 +63,181 @@ for (const table of tables) {
 assert.match(sql, /revoke all[\s\S]+from anon, authenticated/i)
 assert.match(sql, /grant select, insert, update, delete[\s\S]+to service_role/i)
 assert.match(sql, /status[^;]+draft[^;]+in_review[^;]+approved[^;]+superseded[^;]+rejected/i)
-assert.match(sql, /reviewed_by[^;]+<>[^;]+submitted_by/i, 'database blocks self approval')
-assert.match(sql, /where status = 'approved'/i, 'one approved/current SDS is enforced with a partial index')
-assert.match(sql, /security definer set search_path = ''/gi)
-assert.match(sql, /insert into public\.audit_log/i, 'state transitions audit inside their transaction')
-assert.match(sql, /chemical-prep/i)
-for (const code of ['A1','A2','B1','B2','B3','B4','C1','C2','C3','C4','C5','T1','T2']) {
-  assert.ok(sql.includes(`'${code}'`), `missing location ${code}`)
+const sdsTable = tableDefinition('chemical_sds_versions')
+const changeTable = tableDefinition('chemical_change_requests')
+assert.match(sdsTable, /constraint chemical_sds_no_self_review[\s\S]*?reviewed_by\s*<>\s*submitted_by/i)
+assert.match(changeTable, /constraint chemical_change_no_self_review[\s\S]*?reviewed_by\s*<>\s*submitted_by/i)
+const sdsWorkflow = constraintDefinition(sdsTable, 'chemical_sds_workflow_coherent')
+const changeWorkflow = constraintDefinition(changeTable, 'chemical_change_workflow_coherent')
+assert.match(
+  sdsWorkflow,
+  /constraint chemical_sds_workflow_coherent[\s\S]*?status\s*=\s*'in_review'[\s\S]*?submitted_by is not null[\s\S]*?submitted_at is not null[\s\S]*?status in \('approved','superseded','rejected'\)[\s\S]*?reviewed_by is not null[\s\S]*?reviewed_at is not null/i,
+  'SDS workflow rows require coherent submit/review actors and timestamps',
+)
+assert.match(
+  sdsWorkflow,
+  /status\s*=\s*'draft'[\s\S]*?submitted_by is null[\s\S]*?submitted_at is null[\s\S]*?reviewed_by is null[\s\S]*?reviewed_at is null/i,
+  'SDS drafts cannot carry submit/review state',
+)
+assert.match(
+  sdsWorkflow,
+  /status in \('approved','superseded','rejected'\)[\s\S]*?submitted_by is not null[\s\S]*?submitted_at is not null[\s\S]*?reviewed_by is not null[\s\S]*?reviewed_at is not null/i,
+  'reviewed SDS rows retain complete submit and review state',
+)
+assert.match(sdsWorkflow, /status <> 'rejected' or nullif\(btrim\(review_reason\), ''\) is not null/i)
+assert.match(
+  changeWorkflow,
+  /constraint chemical_change_workflow_coherent[\s\S]*?status\s*=\s*'in_review'[\s\S]*?submitted_by is not null[\s\S]*?submitted_at is not null[\s\S]*?status in \('approved','rejected'\)[\s\S]*?reviewed_by is not null[\s\S]*?reviewed_at is not null/i,
+  'change-request rows require coherent submit/review actors and timestamps',
+)
+assert.match(
+  changeWorkflow,
+  /status\s*=\s*'draft'[\s\S]*?submitted_by is null[\s\S]*?submitted_at is null[\s\S]*?reviewed_by is null[\s\S]*?reviewed_at is null/i,
+  'change-request drafts cannot carry submit/review state',
+)
+assert.match(
+  changeWorkflow,
+  /status in \('approved','rejected'\)[\s\S]*?submitted_by is not null[\s\S]*?submitted_at is not null[\s\S]*?reviewed_by is not null[\s\S]*?reviewed_at is not null/i,
+  'reviewed change requests retain complete submit and review state',
+)
+assert.match(changeWorkflow, /status <> 'rejected' or nullif\(btrim\(review_reason\), ''\) is not null/i)
+assert.match(
+  sql,
+  /create unique index if not exists uq_chemical_sds_one_approved_per_product\s+on public\.chemical_sds_versions\(product_id\) where status = 'approved'/i,
+  'one approved/current SDS is enforced with the named partial index',
+)
+
+const rpcSignatures: Record<string, string> = {
+  submit_chemical_change_request: 'uuid,uuid',
+  review_chemical_change_request: 'uuid,uuid,text,text',
+  update_chemical_sds_draft: 'uuid,uuid,timestamptz,jsonb,jsonb',
+  submit_chemical_sds_version: 'uuid,uuid',
+  review_chemical_sds_version: 'uuid,uuid,text,text',
 }
-assert.match(sql, /on conflict/i, 'seed is idempotent')
+
+const rpcDeclarations: Record<string, RegExp> = {
+  submit_chemical_change_request: /\(\s*p_request_id uuid, p_actor_id uuid\s*\) returns uuid/i,
+  review_chemical_change_request: /\(\s*p_request_id uuid, p_actor_id uuid, p_decision text, p_reason text\s*\) returns uuid/i,
+  update_chemical_sds_draft: /\(\s*p_version_id uuid, p_actor_id uuid, p_expected_updated_at timestamptz,\s*p_metadata jsonb, p_hazards jsonb\s*\) returns uuid/i,
+  submit_chemical_sds_version: /\(\s*p_version_id uuid, p_actor_id uuid\s*\) returns uuid/i,
+  review_chemical_sds_version: /\(\s*p_version_id uuid, p_actor_id uuid, p_decision text, p_reason text\s*\) returns uuid/i,
+}
+
+for (const [name, signature] of Object.entries(rpcSignatures)) {
+  const definition = functionDefinition(name)
+  assert.match(definition, rpcDeclarations[name], `${name} declaration signature`)
+  assert.match(definition, /language plpgsql security definer set search_path = ''/i, `${name} search path`)
+  assert.match(
+    definition,
+    /if p_actor_id is null then raise exception 'actor_required'; end if;/i,
+    `${name} rejects a null actor up front`,
+  )
+  const escapedCall = `${escapeRegExp(name)}\\(${escapeRegExp(signature)}\\)`
+  assert.match(
+    sql,
+    new RegExp(`revoke all on function public\\.${escapedCall}\\s+from PUBLIC, anon, authenticated`, 'i'),
+    `${name} revoke`,
+  )
+  assert.match(
+    sql,
+    new RegExp(`grant execute on function public\\.${escapedCall}\\s+to service_role`, 'i'),
+    `${name} service-role grant`,
+  )
+}
+
+const submitChange = functionDefinition('submit_chemical_change_request')
+assert.match(submitChange, /where id = p_request_id\s+for update/i)
+assert.match(submitChange, /current_row\.status\s*<>\s*'draft'/i)
+
+const reviewChange = functionDefinition('review_chemical_change_request')
+assert.match(reviewChange, /where id = p_request_id\s+for update/i)
+assert.match(reviewChange, /current_row\.status\s*<>\s*'in_review'/i)
+assert.match(reviewChange, /current_row\.submitted_by\s*=\s*p_actor_id/i)
+assert.match(reviewChange, /p_decision is null or p_decision not in \('approved','rejected'\)/i)
+assert.match(
+  reviewChange,
+  /p_decision = 'rejected'[\s\S]*?nullif\(btrim\(p_reason\), ''\) is null[\s\S]*?raise exception 'rejection_reason_required'/i,
+)
+assert.match(reviewChange, /select to_jsonb\(product\)[\s\S]*?into target_before[\s\S]*?for update/i)
+assert.match(reviewChange, /update public\.chemical_products as product[\s\S]*?returning to_jsonb\(product\) into target_after/i)
+assert.match(reviewChange, /select to_jsonb\(holding\)[\s\S]*?into target_before[\s\S]*?for update/i)
+assert.match(reviewChange, /update public\.chemical_inventory_holdings as holding[\s\S]*?returning to_jsonb\(holding\) into target_after/i)
+assert.match(reviewChange, /'target_before', target_before[\s\S]*?'target_after', target_after/i)
+
+const updateDraft = functionDefinition('update_chemical_sds_draft')
+assert.match(updateDraft, /current_row\.status\s*<>\s*'draft'/i)
+assert.match(
+  updateDraft,
+  /current_row\.created_by is not null[\s\S]*?current_row\.created_by = p_actor_id[\s\S]*?current_row\.submitted_by is not null[\s\S]*?current_row\.submitted_by = p_actor_id/i,
+  'draft ownership requires a non-null matching owner',
+)
+assert.match(updateDraft, /current_row\.updated_at is distinct from p_expected_updated_at[\s\S]*?stale_sds_draft/i)
+assert.match(updateDraft, /delete from public\.chemical_sds_hazards/i)
+assert.match(updateDraft, /'before', before_detail, 'after', after_detail/i)
+
+const submitSds = functionDefinition('submit_chemical_sds_version')
+assert.match(submitSds, /where id = p_version_id\s+for update/i)
+assert.match(submitSds, /current_row\.status\s*<>\s*'draft'/i)
+
+const reviewSds = functionDefinition('review_chemical_sds_version')
+assert.match(reviewSds, /where id = p_version_id for update/i)
+assert.match(reviewSds, /current_row\.status\s*<>\s*'in_review'/i)
+assert.match(reviewSds, /current_row\.submitted_by\s*=\s*p_actor_id/i)
+assert.match(reviewSds, /p_decision is null or p_decision not in \('approved','rejected'\)/i)
+assert.match(
+  reviewSds,
+  /p_decision = 'rejected'[\s\S]*?nullif\(btrim\(p_reason\), ''\) is null[\s\S]*?raise exception 'rejection_reason_required'/i,
+)
+assert.match(
+  reviewSds,
+  /update public\.chemical_sds_versions[\s\S]*?status = 'superseded'[\s\S]*?returning \*[\s\S]*?insert into public\.audit_log[\s\S]*?chemical_safety\.sds\.supersede/i,
+  'every superseded version is returned and audited',
+)
+assert.match(reviewSds, /update public\.chemical_sds_versions as reviewed_version[\s\S]*?returning to_jsonb\(reviewed_version\) into reviewed_after/i)
+assert.match(reviewSds, /chemical_safety\.sds\.review[\s\S]*?'before', to_jsonb\(current_row\)[\s\S]*?'after', reviewed_after/i)
+
+assert.match(sql, /create or replace function public\.guard_chemical_import_batch_provenance/i)
+const batchGuard = functionDefinition('guard_chemical_import_batch_provenance')
+for (const column of ['id', 'source_kind', 'source_name', 'source_path', 'source_sha256', 'source_r2_key', 'parser_version', 'imported_by', 'created_at']) {
+  assert.match(batchGuard, new RegExp(`new\\.${column} is distinct from old\\.${column}`, 'i'), `batch ${column} immutable`)
+}
+assert.match(batchGuard, /tg_op = 'delete'[\s\S]*?old\.status in \('completed','reviewed','committed','imported'\)/i)
+assert.match(
+  batchGuard,
+  /old\.status in \('completed','reviewed','committed','imported'\)[\s\S]*?new\.status not in \('completed','reviewed','committed','imported'\)[\s\S]*?raise exception 'import_batch_status_regression'/i,
+  'terminal import evidence cannot be made deletable by regressing its status',
+)
+assert.match(batchGuard, /exists \([\s\S]*?from public\.chemical_import_rows[\s\S]*?batch_id = old\.id/i)
+assert.match(sql, /create trigger chemical_import_batches_provenance_guard\s+before update or delete on public\.chemical_import_batches/i)
+
+assert.match(sql, /create or replace function public\.guard_chemical_import_row_provenance/i)
+const rowGuard = functionDefinition('guard_chemical_import_row_provenance')
+for (const column of ['id', 'batch_id', 'row_key', 'raw_data', 'created_at']) {
+  assert.match(rowGuard, new RegExp(`new\\.${column} is distinct from old\\.${column}`, 'i'), `row ${column} immutable`)
+}
+assert.match(rowGuard, /tg_op = 'delete'[\s\S]*?raise exception 'immutable_import_row_delete'/i)
+assert.doesNotMatch(rowGuard, /new\.(normalized_data|match_status|conflict_codes|target_product_id|decision_note|decided_by|decided_at) is distinct from old\./i)
+assert.doesNotMatch(batchGuard, /new\.(status|summary) is distinct from old\./i)
+assert.match(sql, /create trigger chemical_import_rows_provenance_guard\s+before update or delete on public\.chemical_import_rows/i)
+
+const seedBlock = sql.match(/cross join \(values([\s\S]*?)\) as location\(code, zone_code, location_kind, display_order\)/i)?.[1]
+assert.ok(seedBlock, 'location seed block exists')
+const seededCodes = [...seedBlock.matchAll(/\('([A-Z]\d)'/g)].map(match => match[1])
+assert.deepEqual(seededCodes, ['A1','A2','B1','B2','B3','B4','C1','C2','C3','C4','C5','T1','T2'])
+for (const code of seededCodes) {
+  const kind = code.startsWith('T') ? 'table' : 'cabinet'
+  assert.match(seedBlock, new RegExp(`\\('${code}', '${code[0]}', '${kind}', \\d+\\)`), `${code} seed kind`)
+}
+assert.match(sql, /values \('chemical-prep', 'ห้องเตรียมสารเคมี', 'chemical-prep'\)\s+on conflict \(code\) do nothing/i)
+assert.match(sql, /on conflict \(room_id, code\) do nothing/i)
+
+assert.doesNotMatch(sql, /execute\s+format\s*\(/i, 'change snapshots never use dynamic SQL')
+assert.doesNotMatch(sql, /chemical_(stock_ledger|purchase_orders|procurement)/i, 'no stock ledger or procurement scope')
+assert.doesNotMatch(sql, /(infer|derive)_ghs|ghs_(infer|derive)/i, 'no GHS inference')
+assert.doesNotMatch(sql, /(infer|derive)[\s_]+compatib|compatib[\s_]+(infer|derive)/i, 'no compatibility inference')
+assert.doesNotMatch(sql, /chemical_import[\s\S]{0,80}set\s+status\s*=\s*'approved'/i, 'imports never auto-approve SDS')
+assert.doesNotMatch(sql, /legacy[\s\S]{0,80}status\s*=\s*'approved'/i, 'legacy documents never auto-approve')
+assert.match(sdsTable, /status text not null default 'draft'/i, 'new/imported SDS remains draft until review')
+assert.doesNotMatch(batchGuard + rowGuard, /chemical_sds_versions/i, 'import provenance guards never publish SDS')
 
 console.log('chemical safety schema contract passed')

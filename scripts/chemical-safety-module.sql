@@ -152,6 +152,22 @@ CREATE TABLE IF NOT EXISTS public.chemical_sds_versions (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT chemical_sds_no_self_review CHECK (
     reviewed_by IS NULL OR submitted_by IS NULL OR reviewed_by <> submitted_by
+  ),
+  CONSTRAINT chemical_sds_workflow_coherent CHECK (
+    (
+      status = 'draft'
+      AND submitted_by IS NULL AND submitted_at IS NULL
+      AND reviewed_by IS NULL AND reviewed_at IS NULL AND review_reason IS NULL
+    ) OR (
+      status = 'in_review'
+      AND submitted_by IS NOT NULL AND submitted_at IS NOT NULL
+      AND reviewed_by IS NULL AND reviewed_at IS NULL AND review_reason IS NULL
+    ) OR (
+      status IN ('approved','superseded','rejected')
+      AND submitted_by IS NOT NULL AND submitted_at IS NOT NULL
+      AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL
+      AND (status <> 'rejected' OR nullif(btrim(review_reason), '') IS NOT NULL)
+    )
   )
 );
 
@@ -190,6 +206,22 @@ CREATE TABLE IF NOT EXISTS public.chemical_change_requests (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT chemical_change_no_self_review CHECK (
     reviewed_by IS NULL OR submitted_by IS NULL OR reviewed_by <> submitted_by
+  ),
+  CONSTRAINT chemical_change_workflow_coherent CHECK (
+    (
+      status = 'draft'
+      AND submitted_by IS NULL AND submitted_at IS NULL
+      AND reviewed_by IS NULL AND reviewed_at IS NULL AND review_reason IS NULL
+    ) OR (
+      status = 'in_review'
+      AND submitted_by IS NOT NULL AND submitted_at IS NOT NULL
+      AND reviewed_by IS NULL AND reviewed_at IS NULL AND review_reason IS NULL
+    ) OR (
+      status IN ('approved','rejected')
+      AND submitted_by IS NOT NULL AND submitted_at IS NOT NULL
+      AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL
+      AND (status <> 'rejected' OR nullif(btrim(review_reason), '') IS NOT NULL)
+    )
   )
 );
 
@@ -236,6 +268,83 @@ CREATE TABLE IF NOT EXISTS public.chemical_qr_tokens (
   revoked_at timestamptz,
   CONSTRAINT chemical_qr_revocation_pair CHECK ((revoked_by IS NULL) = (revoked_at IS NULL))
 );
+
+CREATE OR REPLACE FUNCTION public.guard_chemical_import_batch_provenance()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.id IS DISTINCT FROM OLD.id
+      OR NEW.source_kind IS DISTINCT FROM OLD.source_kind
+      OR NEW.source_name IS DISTINCT FROM OLD.source_name
+      OR NEW.source_path IS DISTINCT FROM OLD.source_path
+      OR NEW.source_sha256 IS DISTINCT FROM OLD.source_sha256
+      OR NEW.source_r2_key IS DISTINCT FROM OLD.source_r2_key
+      OR NEW.parser_version IS DISTINCT FROM OLD.parser_version
+      OR NEW.imported_by IS DISTINCT FROM OLD.imported_by
+      OR NEW.created_at IS DISTINCT FROM OLD.created_at
+    THEN
+      RAISE EXCEPTION 'immutable_import_batch_provenance';
+    END IF;
+    IF OLD.status IN ('completed','reviewed','committed','imported')
+      AND NEW.status NOT IN ('completed','reviewed','committed','imported')
+    THEN
+      RAISE EXCEPTION 'import_batch_status_regression';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.status IN ('completed','reviewed','committed','imported')
+      OR EXISTS (
+        SELECT 1 FROM public.chemical_import_rows
+        WHERE batch_id = OLD.id
+      )
+    THEN
+      RAISE EXCEPTION 'immutable_import_batch_evidence';
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS chemical_import_batches_provenance_guard
+  ON public.chemical_import_batches;
+CREATE TRIGGER chemical_import_batches_provenance_guard
+BEFORE UPDATE OR DELETE ON public.chemical_import_batches
+FOR EACH ROW EXECUTE FUNCTION public.guard_chemical_import_batch_provenance();
+
+CREATE OR REPLACE FUNCTION public.guard_chemical_import_row_provenance()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.id IS DISTINCT FROM OLD.id
+      OR NEW.batch_id IS DISTINCT FROM OLD.batch_id
+      OR NEW.row_key IS DISTINCT FROM OLD.row_key
+      OR NEW.raw_data IS DISTINCT FROM OLD.raw_data
+      OR NEW.created_at IS DISTINCT FROM OLD.created_at
+    THEN
+      RAISE EXCEPTION 'immutable_import_row_provenance';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'immutable_import_row_delete';
+  END IF;
+
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS chemical_import_rows_provenance_guard
+  ON public.chemical_import_rows;
+CREATE TRIGGER chemical_import_rows_provenance_guard
+BEFORE UPDATE OR DELETE ON public.chemical_import_rows
+FOR EACH ROW EXECUTE FUNCTION public.guard_chemical_import_row_provenance();
 
 CREATE INDEX IF NOT EXISTS idx_chemical_alias_normalized
   ON public.chemical_product_aliases(normalized_alias);
@@ -288,6 +397,10 @@ REVOKE ALL ON FUNCTION public.chemical_sds_statements_valid(jsonb,text)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.chemical_sds_statements_valid(jsonb,text)
   TO service_role;
+REVOKE ALL ON FUNCTION public.guard_chemical_import_batch_provenance()
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.guard_chemical_import_row_provenance()
+  FROM PUBLIC, anon, authenticated, service_role;
 
 INSERT INTO public.chemical_rooms (code, name_th, map_space_code)
 VALUES ('chemical-prep', 'ห้องเตรียมสารเคมี', 'chemical-prep')
@@ -315,6 +428,7 @@ CREATE OR REPLACE FUNCTION public.submit_chemical_change_request(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE current_row public.chemical_change_requests%rowtype;
 BEGIN
+  IF p_actor_id IS NULL THEN RAISE EXCEPTION 'actor_required'; END IF;
   SELECT * INTO current_row
   FROM public.chemical_change_requests
   WHERE id = p_request_id
@@ -341,7 +455,9 @@ CREATE OR REPLACE FUNCTION public.review_chemical_change_request(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
   current_row public.chemical_change_requests%rowtype;
-  affected_rows integer;
+  target_before jsonb;
+  target_after jsonb;
+  request_after jsonb;
   product_keys constant text[] := ARRAY[
     'canonical_name', 'cas_number', 'manufacturer', 'supplier', 'product_code',
     'concentration', 'physical_state', 'lifecycle_status'
@@ -353,6 +469,7 @@ DECLARE
     'expires_on', 'effective_on'
   ];
 BEGIN
+  IF p_actor_id IS NULL THEN RAISE EXCEPTION 'actor_required'; END IF;
   SELECT * INTO current_row
   FROM public.chemical_change_requests
   WHERE id = p_request_id
@@ -360,9 +477,20 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'change_request_not_found'; END IF;
   IF current_row.status <> 'in_review' THEN RAISE EXCEPTION 'change_request_not_in_review'; END IF;
   IF current_row.submitted_by = p_actor_id THEN RAISE EXCEPTION 'self_approval_forbidden'; END IF;
-  IF p_decision NOT IN ('approved','rejected') THEN RAISE EXCEPTION 'invalid_decision'; END IF;
+  IF p_decision IS NULL OR p_decision NOT IN ('approved','rejected') THEN
+    RAISE EXCEPTION 'invalid_decision';
+  END IF;
+  IF p_decision = 'rejected' AND nullif(btrim(p_reason), '') IS NULL THEN
+    RAISE EXCEPTION 'rejection_reason_required';
+  END IF;
 
   IF p_decision = 'approved' AND current_row.entity_type = 'product' THEN
+    SELECT to_jsonb(product) INTO target_before
+    FROM public.chemical_products AS product
+    WHERE product.id = current_row.entity_id
+    FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'chemical_product_not_found'; END IF;
+
     IF NOT current_row.proposed_data ?& product_keys
       OR EXISTS (
         SELECT 1 FROM jsonb_object_keys(current_row.proposed_data) AS proposed_key(key)
@@ -388,7 +516,7 @@ BEGIN
       )
     THEN RAISE EXCEPTION 'invalid_product_snapshot'; END IF;
 
-    UPDATE public.chemical_products
+    UPDATE public.chemical_products AS product
     SET canonical_name = current_row.proposed_data->>'canonical_name',
       cas_number = current_row.proposed_data->>'cas_number',
       manufacturer = current_row.proposed_data->>'manufacturer',
@@ -398,10 +526,15 @@ BEGIN
       physical_state = current_row.proposed_data->>'physical_state',
       lifecycle_status = current_row.proposed_data->>'lifecycle_status',
       updated_at = now()
-    WHERE id = current_row.entity_id;
-    GET DIAGNOSTICS affected_rows = ROW_COUNT;
-    IF affected_rows <> 1 THEN RAISE EXCEPTION 'chemical_product_not_found'; END IF;
+    WHERE product.id = current_row.entity_id
+    RETURNING to_jsonb(product) INTO target_after;
   ELSIF p_decision = 'approved' AND current_row.entity_type = 'holding' THEN
+    SELECT to_jsonb(holding) INTO target_before
+    FROM public.chemical_inventory_holdings AS holding
+    WHERE holding.id = current_row.entity_id
+    FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'chemical_holding_not_found'; END IF;
+
     IF NOT current_row.proposed_data ?& holding_keys
       OR EXISTS (
         SELECT 1 FROM jsonb_object_keys(current_row.proposed_data) AS proposed_key(key)
@@ -441,7 +574,7 @@ BEGIN
       )
     THEN RAISE EXCEPTION 'invalid_holding_snapshot'; END IF;
 
-    UPDATE public.chemical_inventory_holdings
+    UPDATE public.chemical_inventory_holdings AS holding
     SET product_id = (current_row.proposed_data->>'product_id')::uuid,
       unit_id = (current_row.proposed_data->>'unit_id')::uuid,
       location_id = (current_row.proposed_data->>'location_id')::uuid,
@@ -458,23 +591,24 @@ BEGIN
       expires_on = (current_row.proposed_data->>'expires_on')::date,
       effective_on = (current_row.proposed_data->>'effective_on')::date,
       approved_by = p_actor_id, approved_at = now(), updated_at = now()
-    WHERE id = current_row.entity_id;
-    GET DIAGNOSTICS affected_rows = ROW_COUNT;
-    IF affected_rows <> 1 THEN RAISE EXCEPTION 'chemical_holding_not_found'; END IF;
+    WHERE holding.id = current_row.entity_id
+    RETURNING to_jsonb(holding) INTO target_after;
   END IF;
 
-  UPDATE public.chemical_change_requests
+  UPDATE public.chemical_change_requests AS request
   SET status = p_decision, reviewed_by = p_actor_id, reviewed_at = now(),
     review_reason = nullif(btrim(p_reason), ''), updated_at = now()
-  WHERE id = p_request_id;
+  WHERE request.id = p_request_id
+  RETURNING to_jsonb(request) INTO request_after;
 
   INSERT INTO public.audit_log(action, user_id, target, detail)
   VALUES (
     'chemical_safety.change_request.review', p_actor_id, p_request_id::text,
     jsonb_build_object(
-      'before', current_row.status, 'after', p_decision, 'reason', p_reason,
+      'before', to_jsonb(current_row), 'after', request_after, 'reason', p_reason,
       'entity_type', current_row.entity_type, 'entity_id', current_row.entity_id,
-      'proposed_data', current_row.proposed_data
+      'proposed_data', current_row.proposed_data,
+      'target_before', target_before, 'target_after', target_after
     )::text
   );
   RETURN p_request_id;
@@ -502,15 +636,17 @@ DECLARE
   before_detail jsonb;
   after_detail jsonb;
 BEGIN
+  IF p_actor_id IS NULL THEN RAISE EXCEPTION 'actor_required'; END IF;
   SELECT * INTO current_row
   FROM public.chemical_sds_versions
   WHERE id = p_version_id
   FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'sds_not_found'; END IF;
   IF current_row.status <> 'draft' THEN RAISE EXCEPTION 'sds_not_draft'; END IF;
-  IF p_actor_id IS DISTINCT FROM current_row.created_by
-    AND p_actor_id IS DISTINCT FROM current_row.submitted_by
-  THEN RAISE EXCEPTION 'sds_draft_edit_forbidden'; END IF;
+  IF NOT (
+    (current_row.created_by IS NOT NULL AND current_row.created_by = p_actor_id)
+    OR (current_row.submitted_by IS NOT NULL AND current_row.submitted_by = p_actor_id)
+  ) THEN RAISE EXCEPTION 'sds_draft_edit_forbidden'; END IF;
   IF current_row.updated_at IS DISTINCT FROM p_expected_updated_at THEN
     RAISE EXCEPTION 'stale_sds_draft';
   END IF;
@@ -635,6 +771,7 @@ CREATE OR REPLACE FUNCTION public.submit_chemical_sds_version(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE current_row public.chemical_sds_versions%rowtype;
 BEGIN
+  IF p_actor_id IS NULL THEN RAISE EXCEPTION 'actor_required'; END IF;
   SELECT * INTO current_row
   FROM public.chemical_sds_versions
   WHERE id = p_version_id
@@ -659,27 +796,57 @@ CREATE OR REPLACE FUNCTION public.review_chemical_sds_version(
   p_version_id uuid, p_actor_id uuid, p_decision text, p_reason text
 ) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE current_row public.chemical_sds_versions%rowtype;
+DECLARE
+  current_row public.chemical_sds_versions%rowtype;
+  superseded_row public.chemical_sds_versions%rowtype;
+  superseded_before jsonb;
+  reviewed_after jsonb;
 BEGIN
+  IF p_actor_id IS NULL THEN RAISE EXCEPTION 'actor_required'; END IF;
   SELECT * INTO current_row FROM public.chemical_sds_versions
     WHERE id = p_version_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'sds_not_found'; END IF;
   IF current_row.status <> 'in_review' THEN RAISE EXCEPTION 'sds_not_in_review'; END IF;
   IF current_row.submitted_by = p_actor_id THEN RAISE EXCEPTION 'self_approval_forbidden'; END IF;
-  IF p_decision NOT IN ('approved','rejected') THEN RAISE EXCEPTION 'invalid_decision'; END IF;
+  IF p_decision IS NULL OR p_decision NOT IN ('approved','rejected') THEN
+    RAISE EXCEPTION 'invalid_decision';
+  END IF;
+  IF p_decision = 'rejected' AND nullif(btrim(p_reason), '') IS NULL THEN
+    RAISE EXCEPTION 'rejection_reason_required';
+  END IF;
   IF p_decision = 'approved' THEN
     PERFORM 1 FROM public.chemical_products
       WHERE id = current_row.product_id FOR UPDATE;
-    UPDATE public.chemical_sds_versions SET status = 'superseded', updated_at = now()
-      WHERE product_id = current_row.product_id AND status = 'approved' AND id <> p_version_id;
+    FOR superseded_row IN
+      SELECT * FROM public.chemical_sds_versions
+      WHERE product_id = current_row.product_id AND status = 'approved' AND id <> p_version_id
+      FOR UPDATE
+    LOOP
+      superseded_before := to_jsonb(superseded_row);
+      UPDATE public.chemical_sds_versions
+      SET status = 'superseded', updated_at = now()
+      WHERE id = superseded_row.id
+      RETURNING * INTO superseded_row;
+      INSERT INTO public.audit_log(action, user_id, target, detail)
+      VALUES (
+        'chemical_safety.sds.supersede', p_actor_id, superseded_row.id::text,
+        jsonb_build_object(
+          'before', superseded_before, 'after', to_jsonb(superseded_row),
+          'replacement_version_id', p_version_id
+        )::text
+      );
+    END LOOP;
   END IF;
-  UPDATE public.chemical_sds_versions SET status = p_decision,
+  UPDATE public.chemical_sds_versions AS reviewed_version SET status = p_decision,
     reviewed_by = p_actor_id, reviewed_at = now(), review_reason = nullif(btrim(p_reason), ''),
     updated_at = now()
-    WHERE id = p_version_id;
+    WHERE reviewed_version.id = p_version_id
+    RETURNING to_jsonb(reviewed_version) INTO reviewed_after;
   INSERT INTO public.audit_log(action, user_id, target, detail)
     VALUES ('chemical_safety.sds.review', p_actor_id, p_version_id::text,
-      jsonb_build_object('before', current_row.status, 'after', p_decision, 'reason', p_reason)::text);
+      jsonb_build_object(
+        'before', to_jsonb(current_row), 'after', reviewed_after, 'reason', p_reason
+      )::text);
   RETURN p_version_id;
 END;
 $$;
