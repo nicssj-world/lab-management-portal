@@ -16,7 +16,7 @@ import {
   safeChemicalFilename,
   validateChemicalPdf,
 } from '../files'
-import { extractFirstTwoPdfPages, indexSdsArchive } from './sds-index'
+import { extractEvidenceText, extractFirstTwoPdfPages, indexSdsArchive } from './sds-index'
 import { classifySdsCandidate, scoreSdsCandidate } from './sds-match'
 
 const pdfSignature = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])
@@ -315,8 +315,43 @@ async function testPdfProxyCleanup() {
   assert.equal(failedDestroyCalls, 1, 'a PDF proxy is destroyed when extraction fails')
 }
 
+async function testPdfEvidenceFailureDoesNotAbortPeerFiles() {
+  const destroyed = new Set<string>()
+  const [failedEvidence, peerEvidence] = await Promise.all([
+    extractEvidenceText('.pdf', Buffer.from('failing PDF'), async () => ({
+      numPages: 1,
+      async getPage() {
+        throw new Error('text extraction failed')
+      },
+      async destroy() {
+        await Promise.resolve()
+        destroyed.add('failed')
+      },
+    })),
+    extractEvidenceText('.pdf', Buffer.from('peer PDF'), async () => ({
+      numPages: 1,
+      async getPage() {
+        return {
+          async getTextContent() {
+            return { items: [{ str: 'peer file still indexed', hasEOL: false }] }
+          },
+        }
+      },
+      async destroy() {
+        await Promise.resolve()
+        destroyed.add('peer')
+      },
+    })),
+  ])
+
+  assert.equal(failedEvidence, null, 'a page/text rejection becomes null evidence')
+  assert.equal(peerEvidence, 'peer file still indexed', 'another indexed PDF continues after the peer failure')
+  assert.deepEqual([...destroyed].sort(), ['failed', 'peer'], 'both asynchronous proxy destroys finish before wrapper resolution')
+}
+
 async function main() {
   await testPdfProxyCleanup()
+  await testPdfEvidenceFailureDoesNotAbortPeerFiles()
   await testArchiveIndex()
   await testAncestorJunctionRoot()
   console.log('chemical safety SDS import tests passed')
