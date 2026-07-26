@@ -6,7 +6,7 @@ import { getActor } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { LAB_MAP_VERSION, LAB_ROUTE_PRESETS, LAB_STATIONS } from '@/lib/lab-map/manifest'
 import { VISITOR_STATION_CODE } from '@/lib/lab-map/visitor'
-import { currentManifestHash } from '@/lib/lab-map/release'
+import { currentManifestHash, pickReleaseRows } from '@/lib/lab-map/release'
 import { canManageMapReleases, mapReleaseRow } from '@/lib/lab-map/release-server'
 import { buildMapPrintDTO, type MapPaperSize, type MapPrintDTO } from '@/lib/lab-map/print'
 import type { MapReleaseDTO } from '@/lib/lab-map/types'
@@ -39,23 +39,15 @@ export default async function LabMapPrintPage() {
 
   const { data: releaseRows } = await supabaseAdmin.from('lab_map_versions').select('*')
     .in('status', ['published', 'draft']).order('created_at', { ascending: false }).limit(20)
-  const publishedRow = releaseRows?.find((row) => row.status === 'published') ?? null
-  const draftRow = releaseRows?.find((row) => row.status === 'draft') ?? null
+  const { printRow, managedRow } = pickReleaseRows(releaseRows ?? [])
 
-  // แผ่นพิมพ์ใช้ฉบับเผยแพร่จริงเสมอถ้ามี — ไม่งั้นฉบับร่างที่ยังไม่ผ่านการอนุมัติจะกลายเป็น "ฉบับใช้งานจริง"
-  const release: MapReleaseDTO = await withReviewerNames(
-    publishedRow ? mapReleaseRow(publishedRow) : draftRow ? mapReleaseRow(draftRow) : fallbackRelease(),
-  )
-  // แผงจัดการต้องเห็นฉบับร่างที่กำลังทำอยู่ก่อนเสมอ ไม่งั้นสร้างฉบับร่างใหม่ไปแล้วจะกลับมาแก้ไม่ได้อีก
-  // ตราบใดที่ยังมีฉบับเผยแพร่ค้างอยู่
-  const managedRelease: MapReleaseDTO = draftRow
-    ? await withReviewerNames(mapReleaseRow(draftRow))
-    : publishedRow
-      ? await withReviewerNames(mapReleaseRow(publishedRow))
-      : fallbackRelease()
+  const release: MapReleaseDTO = await withReviewerNames(printRow ? mapReleaseRow(printRow) : fallbackRelease())
+  const managedRelease: MapReleaseDTO = managedRow === printRow
+    ? release
+    : await withReviewerNames(managedRow ? mapReleaseRow(managedRow) : fallbackRelease())
 
   const staffRows = canManage
-    ? await supabaseAdmin.from('profiles').select('id, name, role').order('name')
+    ? await supabaseAdmin.from('profiles').select('id, name, role').eq('status', 'active').is('deleted_at', null).order('name')
     : { data: [] as { id: string; name: string | null; role: string }[] }
   const staff = (staffRows.data ?? []).map((row) => ({ id: String(row.id), name: row.name as string | null, role: String(row.role) }))
 
@@ -83,7 +75,7 @@ export default async function LabMapPrintPage() {
 
   return <>
     <PageHeader title="ส่งออกแผนที่ควบคุม" subtitle="A3/A4 · PDF/PNG · แยกชั้นข้อมูลตามวัตถุประสงค์" />
-    {canManage ? <LabMapReleasePanel release={managedRelease} staff={staff} /> : null}
+    {canManage ? <LabMapReleasePanel key={managedRelease.id ?? 'new'} release={managedRelease} staff={staff} /> : null}
     <LabMapExportClient catalog={catalog} />
   </>
 }
