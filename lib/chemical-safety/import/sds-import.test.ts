@@ -349,9 +349,85 @@ async function testPdfEvidenceFailureDoesNotAbortPeerFiles() {
   assert.deepEqual([...destroyed].sort(), ['failed', 'peer'], 'both asynchronous proxy destroys finish before wrapper resolution')
 }
 
+async function testDestroyFailureDoesNotAbortPeerFiles() {
+  let failedDestroyStarted = false
+  let peerDestroyCompleted = false
+  const [destroyFailureEvidence, peerEvidence] = await Promise.all([
+    extractEvidenceText('.pdf', Buffer.from('destroy rejection PDF'), async () => ({
+      numPages: 1,
+      async getPage() {
+        return {
+          async getTextContent() {
+            return { items: [{ str: 'text discarded after cleanup failure', hasEOL: false }] }
+          },
+        }
+      },
+      async destroy() {
+        failedDestroyStarted = true
+        await Promise.resolve()
+        throw new Error('asynchronous destroy failed')
+      },
+    })),
+    extractEvidenceText('.pdf', Buffer.from('peer survives destroy rejection'), async () => ({
+      numPages: 1,
+      async getPage() {
+        return {
+          async getTextContent() {
+            return { items: [{ str: 'peer remains indexed', hasEOL: false }] }
+          },
+        }
+      },
+      async destroy() {
+        await Promise.resolve()
+        peerDestroyCompleted = true
+      },
+    })),
+  ])
+
+  assert.equal(failedDestroyStarted, true)
+  assert.equal(destroyFailureEvidence, null, 'an asynchronous destroy rejection becomes null evidence')
+  assert.equal(peerEvidence, 'peer remains indexed', 'a cleanup failure does not abort another indexed PDF')
+  assert.equal(peerDestroyCompleted, true)
+}
+
+async function testWrapperWaitsForDeferredDestroy() {
+  let markDestroyStarted!: () => void
+  let releaseDestroy!: () => void
+  const destroyStarted = new Promise<void>(resolve => { markDestroyStarted = resolve })
+  const destroyGate = new Promise<void>(resolve => { releaseDestroy = resolve })
+  let wrapperSettled = false
+
+  const result = extractEvidenceText('.pdf', Buffer.from('deferred cleanup PDF'), async () => ({
+    numPages: 1,
+    async getPage() {
+      return {
+        async getTextContent() {
+          return { items: [{ str: 'evidence after cleanup', hasEOL: false }] }
+        },
+      }
+    },
+    async destroy() {
+      markDestroyStarted()
+      await destroyGate
+    },
+  })).then(value => {
+    wrapperSettled = true
+    return value
+  })
+
+  await destroyStarted
+  await Promise.resolve()
+  assert.equal(wrapperSettled, false, 'the evidence wrapper stays pending while destroy is gated')
+  releaseDestroy()
+  assert.equal(await result, 'evidence after cleanup')
+  assert.equal(wrapperSettled, true)
+}
+
 async function main() {
   await testPdfProxyCleanup()
   await testPdfEvidenceFailureDoesNotAbortPeerFiles()
+  await testDestroyFailureDoesNotAbortPeerFiles()
+  await testWrapperWaitsForDeferredDestroy()
   await testArchiveIndex()
   await testAncestorJunctionRoot()
   console.log('chemical safety SDS import tests passed')
