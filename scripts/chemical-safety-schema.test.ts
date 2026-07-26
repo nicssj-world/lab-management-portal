@@ -59,8 +59,7 @@ assert.match(accessDecision, /normalizeRole\(actor\.role\) === 'Admin'/, 'all ch
 assert.doesNotMatch(accessDecision, /request\.action === 'view'\) return true/, 'ordinary staff cannot view chemical-safety data')
 assert.match(staffSidebar, /href: '\/staff\/lab-map\/chemicals'[\s\S]*?role: 'Admin'/, 'chemical room menu is admin-only')
 assert.match(staffSidebar, /href: '\/staff\/lab-map\/sds'[\s\S]*?role: 'Admin'/, 'SDS management menu is admin-only')
-assert.match(publicNav, /href: '\/sds'[\s\S]*?adminOnly: true/, 'public SDS navigation is hidden from non-admin users')
-assert.match(publicNav, /isAdminRole\(sessionUser\?\.role\)/, 'public navigation reveals SDS only to an admin session')
+assert.doesNotMatch(publicNav, /href: '\/sds'/, 'public navigation does not expose the SDS route')
 for (const source of [publicSdsPage, publicSdsApi, publicSdsFileApi]) {
   assert.match(source, /requireChemicalAdmin/, 'every former public SDS entry point enforces admin authorization')
 }
