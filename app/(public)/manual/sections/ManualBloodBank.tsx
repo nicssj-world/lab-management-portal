@@ -27,6 +27,8 @@ const CAT: Record<RejectionCategory, { color: string; bg: string; border: string
   'ลายเซ็น':      { color: '#5B21B6',        bg: 'rgba(109,40,217,.07)', border: 'rgba(109,40,217,.18)', accent: '#7C3AED'        },
 }
 
+const REJECTION_CATEGORY_ORDER: RejectionCategory[] = ['เอกสาร', 'ลายเซ็น', 'สิ่งตัวอย่าง']
+
 interface UrgentMethod { no: number; levelTh: string; descTh: string; time: string; timeBg: string; timeColor: string; headerBg: string; detailTh: string }
 const URGENT_METHODS: UrgentMethod[] = [
   {
@@ -157,38 +159,38 @@ export function ManualBloodBank({ lang }: Props) {
           {lang === 'th' ? 'การใช้บริการคลังเลือด' : 'Blood Bank Service'}
         </H2>
 
-        {/* Section title with count badge */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
           <H3>
-            {lang === 'th' ? 'เกณฑ์การปฏิเสธสิ่งตัวอย่างส่งตรวจ' : 'Specimen Rejection Criteria'}
+            {lang === 'th' ? 'เกณฑ์การปฏิเสธสิ่งตัวอย่างและเอกสารขอเลือด' : 'Blood Request and Specimen Rejection Criteria'}
           </H3>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {(Object.keys(CAT) as RejectionCategory[]).map(cat => {
-              const s = CAT[cat]
-              const n = REJECTION_CRITERIA.filter(c => c.category === cat).length
-              return (
-                <span key={cat} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 20, background: s.bg, border: `1px solid ${s.border}`, fontSize: 11.5, fontWeight: 700, color: s.color }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.accent }} />
-                  {cat} ({n})
-                </span>
-              )
-            })}
-          </div>
+          <span style={{ padding: '3px 9px', borderRadius: 20, background: 'rgba(220,38,38,.07)', border: '1px solid rgba(220,38,38,.2)', fontSize: 11.5, fontWeight: 700, color: 'var(--danger)' }}>
+            {REJECTION_CRITERIA.length} รายการที่ต้องตรวจสอบ
+          </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 7 }}>
-          {REJECTION_CRITERIA.map(c => {
-            const s = CAT[c.category]
+        <Callout tone="warning" icon="alert">
+          <strong>หากพบข้อใดข้อหนึ่งด้านล่าง คลังเลือดจะไม่รับสิ่งตัวอย่างหรือใบขอเลือด</strong> — กรุณาแก้ไขเอกสาร หรือเก็บสิ่งตัวอย่างใหม่ตามกรณี ก่อนนำส่งอีกครั้ง
+        </Callout>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 10, marginTop: 12 }}>
+          {REJECTION_CATEGORY_ORDER.map(category => {
+            const s = CAT[category]
+            const criteria = REJECTION_CRITERIA.filter(item => item.category === category)
             return (
-              <div key={c.id} style={{ display: 'flex', gap: 11, padding: '11px 13px', background: 'var(--card)', border: '1px solid var(--border)', borderLeft: `3px solid ${s.accent}`, borderRadius: 9 }}>
-                <div style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 11, color: s.color, background: s.bg, border: `1.5px solid ${s.border}`, marginTop: 1 }}>
-                  {c.id}
+              <section key={category} aria-label={`เกณฑ์การปฏิเสธ: ${category}`} style={{ overflow: 'hidden', border: `1px solid ${s.border}`, borderRadius: 10, background: 'var(--card)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 12px', background: s.bg, borderBottom: `1px solid ${s.border}` }}>
+                  <strong style={{ color: s.color, fontSize: 13 }}>{category}</strong>
+                  <span style={{ minWidth: 22, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'var(--card)', color: s.color, border: `1px solid ${s.border}`, fontSize: 11, fontWeight: 800 }}>{criteria.length}</span>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10.5, color: s.color, fontWeight: 700, marginBottom: 3, letterSpacing: '.02em', textTransform: 'uppercase' }}>{c.category}</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.6 }}>{c.text}</div>
-                </div>
-              </div>
+                <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                  {criteria.map((criterion, index) => (
+                    <li key={criterion.id} style={{ display: 'grid', gridTemplateColumns: '24px minmax(0, 1fr)', gap: 8, padding: '10px 12px', borderBottom: index === criteria.length - 1 ? 'none' : '1px solid var(--border)' }}>
+                      <span style={{ color: s.color, fontSize: 11.5, fontWeight: 800, lineHeight: 1.55 }}>{index + 1}</span>
+                      <span style={{ color: 'var(--ink)', fontSize: 13, lineHeight: 1.6 }}>{criterion.text}</span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
             )
           })}
         </div>

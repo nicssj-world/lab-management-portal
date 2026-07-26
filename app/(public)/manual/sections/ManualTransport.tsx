@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
+import { Icon } from '@/components/ui/Icon'
 import { H2, Callout, Section } from '../_primitives'
 import { type Lang } from '../data'
 
@@ -17,11 +19,55 @@ const REJECTION_RULES = [
   { th: 'นำส่งไม่ถูกวิธี',                        en: 'Improper transport',               bodyTh: 'เช่น ABG ที่ไม่ใช้ ice pack · Microbilirubin (เด็ก) ที่ไม่ห่อกระดาษทึบ',           bodyEn: 'e.g., ABG without ice pack, pediatric microbilirubin not light-protected.' },
 ]
 
-const TEMP_WINDOWS = [
-  { icon: '🌡', label: 'Room temp',       range: '20–25 °C', tests: 'CBC · BUN · Cr · LFT · Glucose (NaF)',  window: '≤ 2 hr',   color: '#D97706', bg: 'rgba(217,119,6,.08)',  border: 'rgba(217,119,6,.22)' },
-  { icon: '❄',  label: 'Refrigerated',    range: '2–8 °C',   tests: ' Alcohol (ethanol), Aldosterone (Blood), BRCA1/2',        window: '≤ 24 hr',  color: '#0891B2', bg: 'rgba(8,145,178,.08)', border: 'rgba(8,145,178,.22)' },
-  { icon: '🧊', label: 'Ice pack',        range: '0–4 °C',   tests: 'ABG · NH₃ · Lactate · Renin',           window: '≤ 30 min', color: 'var(--primary)', bg: 'var(--primary-soft)', border: 'rgba(30,95,173,.22)' },
-  { icon: '🔆', label: 'Light-protected', range: 'Room',     tests: 'Microbilirubin (เด็ก) — ห่อฟอยล์',     window: '≤ 2 hr',   color: '#7E22CE', bg: 'rgba(126,34,206,.07)', border: 'rgba(126,34,206,.2)' },
+const REJECTION_GROUPS = [
+  {
+    th: 'การชี้บ่งและข้อมูล', en: 'Identification and information',
+    descriptionTh: 'ตรวจสอบข้อมูลผู้ป่วยและความสอดคล้องระหว่างภาชนะกับใบนำส่ง', descriptionEn: 'Verify patient information and consistency between the container and request form.',
+    rules: REJECTION_RULES.slice(0, 2),
+  },
+  {
+    th: 'ภาชนะและคุณภาพสิ่งตัวอย่าง', en: 'Container and specimen quality',
+    descriptionTh: 'ตรวจสอบชนิดภาชนะ ปริมาตร และสภาพของสิ่งตัวอย่างก่อนรับตรวจ', descriptionEn: 'Verify the container, volume, and specimen condition before acceptance.',
+    rules: REJECTION_RULES.slice(2, 5),
+  },
+  {
+    th: 'การนำส่ง', en: 'Transport',
+    descriptionTh: 'ตรวจสอบวิธีการนำส่งและการควบคุมสภาวะของสิ่งตัวอย่าง', descriptionEn: 'Verify the transport method and required specimen conditions.',
+    rules: REJECTION_RULES.slice(5),
+  },
+]
+
+const SPECIMEN_STORAGE_OVERVIEW = [
+  {
+    specimenTh: 'สิ่งตัวอย่างส่งตรวจทั่วไป', specimenEn: 'General specimens',
+    storageTh: 'บรรจุในถุง biohazard ปิดสนิท และแยกใบส่งตรวจไว้ในช่องด้านนอกของถุง', storageEn: 'Seal in a biohazard bag and keep the request form in the outer pocket.',
+    transportTh: 'นำส่งห้องปฏิบัติการทันที หรือปฏิบัติตามข้อกำหนดเฉพาะของรายการตรวจ', transportEn: 'Deliver immediately, or follow the requirements for the individual test.',
+  },
+  {
+    specimenTh: 'Blood gas', specimenEn: 'Blood gas',
+    storageTh: 'ควบคุมอุณหภูมิตัวอย่างด้วย ice pack ตลอดระยะเวลาการนำส่ง', storageEn: 'Maintain specimen temperature with an ice pack throughout transport.',
+    transportTh: 'นำส่งห้องปฏิบัติการทันที', transportEn: 'Deliver to the laboratory immediately.',
+  },
+  {
+    specimenTh: 'ปัสสาวะทั่วไป / ปัสสาวะแรกตอนเช้า', specimenEn: 'Random / first-morning urine',
+    storageTh: 'เก็บในภาชนะที่สะอาด แห้ง และมีฝาปิดสนิท', storageEn: 'Collect in a clean, dry, tightly capped container.',
+    transportTh: 'นำส่งภายใน 2 ชั่วโมง', transportEn: 'Deliver within 2 hours.',
+  },
+  {
+    specimenTh: 'ปัสสาวะ 24 ชั่วโมง', specimenEn: '24-hour urine',
+    storageTh: 'เก็บในตู้เย็นที่อุณหภูมิ 4 °C หรือเก็บในกล่องโฟมที่แช่น้ำแข็งตลอดเวลา', storageEn: 'Keep refrigerated at 4 °C or in an ice-filled foam container throughout collection.',
+    transportTh: 'เมื่อเก็บครบแล้ว นำส่งทันที หรือภายใน 2 ชั่วโมง', transportEn: 'After collection is complete, deliver immediately or within 2 hours.',
+  },
+  {
+    specimenTh: 'น้ำอสุจิ', specimenEn: 'Semen',
+    storageTh: 'ห้ามแช่เย็น', storageEn: 'Do not refrigerate.',
+    transportTh: 'นำส่งภายใน 1 ชั่วโมง', transportEn: 'Deliver within 1 hour.',
+  },
+  {
+    specimenTh: 'Microbilirubin ในผู้ป่วยเด็ก', specimenEn: 'Pediatric microbilirubin',
+    storageTh: 'ป้องกันแสงโดยห่อภาชนะด้วยกระดาษทึบแสงหรือกระดาษฟอยล์', storageEn: 'Protect from light with opaque paper or aluminium foil.',
+    transportTh: 'นำส่งตามข้อกำหนดของรายการตรวจ', transportEn: 'Follow the requirements for the individual test.',
+  },
 ]
 
 const STAT_STEPS = [
@@ -131,6 +177,28 @@ export function ManualTransport({ lang }: Props) {
       <H2 eyebrow="03 · Transport & Rejection">
         {lang === 'th' ? 'การส่งตัวอย่างส่งตรวจ' : 'Specimen Transport'}
       </H2>
+      <style>{`
+        .manual-storage-cards { display: none; }
+        .manual-catalog-link {
+          min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+          padding: 8px 13px; border: 1px solid var(--primary); border-radius: 8px;
+          background: var(--primary); color: #fff; text-decoration: none;
+          font-size: 12.5px; font-weight: 700; transition: background .15s, box-shadow .15s;
+        }
+        .manual-catalog-link:hover, .manual-catalog-link:focus-visible {
+          background: var(--primary-hover, var(--primary)); box-shadow: 0 0 0 3px var(--primary-soft); outline: none;
+        }
+        @media (max-width: 640px) {
+          .manual-storage-table-wrap { display: none; }
+          .manual-storage-cards { display: grid; gap: 8px; margin-bottom: 10px; }
+          .manual-storage-card { padding: 12px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+          .manual-storage-card h4 { margin: 0 0 9px; color: var(--ink); font-size: 13px; line-height: 1.45; }
+          .manual-storage-card dl { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 7px 9px; margin: 0; }
+          .manual-storage-card dt { color: var(--muted); font-size: 11px; font-weight: 700; }
+          .manual-storage-card dd { margin: 0; color: var(--ink); font-size: 12px; line-height: 1.6; }
+          .manual-catalog-link { width: 100%; min-height: 44px; box-sizing: border-box; }
+        }
+      `}</style>
 
       {/* ── Pill tab switcher ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 120px), 1fr))', gap: 6, marginBottom: 22, padding: '4px', background: 'var(--surface-2)', borderRadius: 10, border: '1px solid var(--border)' }}>
@@ -161,7 +229,7 @@ export function ManualTransport({ lang }: Props) {
         <>
           {/* Biohazard notice */}
           <div style={{ display: 'flex', gap: 10, padding: '11px 14px', background: 'rgba(22,163,74,.05)', border: '1px solid rgba(22,163,74,.2)', borderRadius: 9, marginBottom: 20 }}>
-            <span style={{ fontSize: 18, flexShrink: 0, lineHeight: 1.3 }}>🧬</span>
+            <Icon name="biohazard" size={18} style={{ color: 'var(--success)', flexShrink: 0, marginTop: 2 }} />
             <p style={{ margin: 0, fontSize: 13, color: 'var(--ink)', lineHeight: 1.7 }}>
               {lang === 'th'
                 ? 'สิ่งตัวอย่างส่งตรวจทุกชนิดต้องบรรจุในถุง biohazard ปิดสนิท ใบส่งตรวจอยู่ในช่องด้านนอกของถุง ไม่ปะปนกับตัวอย่าง และจัดส่งห้องปฏิบัติการโดยเร็วที่สุดในสภาวะที่เหมาะสม'
@@ -169,45 +237,91 @@ export function ManualTransport({ lang }: Props) {
             </p>
           </div>
 
-          {/* Temperature windows */}
+          {/* Specimen storage overview */}
           <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-            {lang === 'th' ? 'อุณหภูมิและระยะเวลาส่งตรวจ' : 'Temperature & Time Windows'}
+            {lang === 'th' ? 'วิธีการเก็บรักษาตัวอย่างส่งตรวจก่อนนำส่งห้องปฏิบัติการ' : 'Specimen Storage Before Laboratory Transport'}
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 8, marginBottom: 22 }}>
-            {TEMP_WINDOWS.map(c => (
-              <div key={c.label} style={{ border: `1px solid ${c.border}`, borderRadius: 10, overflow: 'hidden', background: 'var(--card)' }}>
-                {/* Header strip */}
-                <div style={{ padding: '10px 14px', background: c.bg, borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <span style={{ fontSize: 18 }}>{c.icon}</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: c.color }}>{c.label}</span>
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, fontFamily: '"IBM Plex Mono",monospace', color: c.color, background: 'var(--card)', padding: '2px 8px', borderRadius: 5, border: `1px solid ${c.border}` }}>{c.range}</span>
-                </div>
-                {/* Body */}
-                <div style={{ padding: '10px 14px' }}>
-                  <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 8 }}>{c.tests}</div>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, background: c.bg, border: `1px solid ${c.border}`, fontSize: 11.5, fontWeight: 800, color: c.color }}>
-                    ⏱ {c.window}
-                  </div>
-                </div>
-              </div>
+          <div className="manual-storage-table-wrap" style={{ overflowX: 'auto', marginBottom: 10, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)' }}>
+            <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', fontSize: 12.5, color: 'var(--ink)' }}>
+              <thead>
+                <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
+                  <th scope="col" style={{ width: '24%', padding: '10px 14px', fontWeight: 700, borderBottom: '1px solid var(--border)' }}>{lang === 'th' ? 'สิ่งตัวอย่างส่งตรวจ' : 'Specimen'}</th>
+                  <th scope="col" style={{ width: '46%', padding: '10px 14px', fontWeight: 700, borderBottom: '1px solid var(--border)' }}>{lang === 'th' ? 'วิธีการเก็บรักษา' : 'Storage method'}</th>
+                  <th scope="col" style={{ width: '30%', padding: '10px 14px', fontWeight: 700, borderBottom: '1px solid var(--border)' }}>{lang === 'th' ? 'การนำส่ง' : 'Transport'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {SPECIMEN_STORAGE_OVERVIEW.map((row, index) => (
+                  <tr key={row.specimenEn} style={{ background: index % 2 === 0 ? 'var(--card)' : 'var(--bg)' }}>
+                    <th scope="row" style={{ padding: '11px 14px', verticalAlign: 'top', textAlign: 'left', fontWeight: 700, lineHeight: 1.6, borderBottom: index < SPECIMEN_STORAGE_OVERVIEW.length - 1 ? '1px solid var(--border)' : 'none' }}>{lang === 'th' ? row.specimenTh : row.specimenEn}</th>
+                    <td style={{ padding: '11px 14px', verticalAlign: 'top', color: 'var(--muted)', lineHeight: 1.6, borderBottom: index < SPECIMEN_STORAGE_OVERVIEW.length - 1 ? '1px solid var(--border)' : 'none' }}>{lang === 'th' ? row.storageTh : row.storageEn}</td>
+                    <td style={{ padding: '11px 14px', verticalAlign: 'top', color: 'var(--muted)', lineHeight: 1.6, borderBottom: index < SPECIMEN_STORAGE_OVERVIEW.length - 1 ? '1px solid var(--border)' : 'none' }}>{lang === 'th' ? row.transportTh : row.transportEn}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="manual-storage-cards">
+            {SPECIMEN_STORAGE_OVERVIEW.map(row => (
+              <article key={row.specimenEn} className="manual-storage-card">
+                <h4>{lang === 'th' ? row.specimenTh : row.specimenEn}</h4>
+                <dl>
+                  <dt>{lang === 'th' ? 'การเก็บรักษา' : 'Storage'}</dt>
+                  <dd>{lang === 'th' ? row.storageTh : row.storageEn}</dd>
+                  <dt>{lang === 'th' ? 'การนำส่ง' : 'Transport'}</dt>
+                  <dd>{lang === 'th' ? row.transportTh : row.transportEn}</dd>
+                </dl>
+              </article>
             ))}
+          </div>
+          <div style={{ marginBottom: 22 }}>
+            <Callout tone="info">
+              {lang === 'th'
+                ? <><strong>หมายเหตุ:</strong> ตารางนี้จัดทำขึ้นเพื่อแสดงแนวทางการเก็บรักษาตัวอย่างส่งตรวจในภาพรวมเท่านั้น ก่อนดำเนินการเก็บหรือขนส่ง โปรดตรวจสอบข้อกำหนดเฉพาะของรายการตรวจนั้นจากหน้ารายละเอียดรายการตรวจในระบบอีกครั้ง</>
+                : <><strong>Note:</strong> This table is an overview only. Before collection or transport, verify the requirements for the individual test on its test-detail page.</>}
+            </Callout>
+            <Link href="/catalog" className="manual-catalog-link">
+              <Icon name="search" size={14} style={{ color: '#fff' }} />
+              {lang === 'th' ? 'ค้นหาข้อกำหนดเฉพาะรายรายการตรวจ' : 'Find test-specific requirements'}
+              <Icon name="arrowRight" size={14} style={{ color: '#fff' }} />
+            </Link>
           </div>
 
           {/* Rejection criteria */}
           <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
             {lang === 'th' ? 'เกณฑ์การปฏิเสธสิ่งตัวอย่างส่งตรวจ' : 'Specimen Rejection Criteria'}
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 7, marginBottom: 22 }}>
-            {REJECTION_RULES.map((r, i) => (
-              <div key={i} style={{ padding: '12px 14px', background: 'var(--card)', border: '1px solid var(--border)', borderLeft: '3px solid var(--danger)', borderRadius: 9 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
-                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--danger)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 10.5, flexShrink: 0 }}>{i + 1}</div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{lang === 'th' ? r.th : r.en}</span>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--muted)', lineHeight: 1.65 }}>
+            {lang === 'th'
+              ? 'สิ่งตัวอย่างส่งตรวจจะไม่ได้รับการตรวจวิเคราะห์เมื่อไม่เป็นไปตามเกณฑ์ข้อใดข้อหนึ่งต่อไปนี้'
+              : 'A specimen will not be accepted for analysis when it fails any of the following criteria.'}
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))', gap: 10, marginBottom: 22 }}>
+            {REJECTION_GROUPS.map((group, groupIndex) => (
+              <section key={group.en} aria-labelledby={`rejection-group-${groupIndex}`} style={{ overflow: 'hidden', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                <div style={{ padding: '12px 14px', background: 'rgba(220,38,38,.06)', borderBottom: '1px solid rgba(220,38,38,.18)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: 'var(--danger)', color: '#fff', fontSize: 11, fontWeight: 800 }}>{groupIndex + 1}</span>
+                    <h4 id={`rejection-group-${groupIndex}`} style={{ margin: 0, fontSize: 13, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.35 }}>{lang === 'th' ? group.th : group.en}</h4>
+                  </div>
+                  <p style={{ margin: '7px 0 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.55 }}>{lang === 'th' ? group.descriptionTh : group.descriptionEn}</p>
                 </div>
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)', lineHeight: 1.6, paddingTop: 6, borderTop: '1px dashed var(--border)' }}>{lang === 'th' ? r.bodyTh : r.bodyEn}</p>
-              </div>
+                <div>
+                  {group.rules.map((rule, ruleIndex) => {
+                    const number = REJECTION_RULES.indexOf(rule) + 1
+                    const isLast = ruleIndex === group.rules.length - 1
+                    return (
+                      <article key={rule.en} style={{ display: 'flex', gap: 10, padding: '12px 14px', borderBottom: isLast ? 'none' : '1px solid var(--border)' }}>
+                        <span aria-hidden="true" style={{ width: 21, height: 21, borderRadius: 5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1, background: 'var(--surface-2)', color: 'var(--danger)', fontSize: 11, fontWeight: 800 }}>{number}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <h5 style={{ margin: 0, fontSize: 12.5, color: 'var(--ink)', fontWeight: 700, lineHeight: 1.55 }}>{lang === 'th' ? rule.th : rule.en}</h5>
+                          <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>{lang === 'th' ? rule.bodyTh : rule.bodyEn}</p>
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              </section>
             ))}
           </div>
 

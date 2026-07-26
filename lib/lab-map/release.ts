@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
 import {
-  LAB_ACCESS_POINTS, LAB_MAP_VERSION, LAB_ROUTE_PRESETS, LAB_SPACES, LAB_STATIONS, LAB_ZONES,
+  LAB_ACCESS_POINTS, LAB_LABELS, LAB_MAP_VERSION, LAB_ROUTE_PRESETS, LAB_SPACES,
+  LAB_STATIONS, LAB_STRUCTURES, LAB_ZONES,
 } from './manifest'
-import { PUBLIC_LAB_ACCESS_POINTS, PUBLIC_LAB_ROUTES, PUBLIC_LAB_SPACES, PUBLIC_LAB_ZONES } from './public-manifest'
+import { LAB_ASSEMBLY_POINTS, LAB_SAFETY_EQUIPMENT } from './safety-assets'
 import { validateLabMapManifest } from './validate'
 import type { MapReleaseDTO } from './types'
 
@@ -21,19 +22,18 @@ export function computeManifestHash(input: unknown) {
 }
 
 export function currentManifestHash() {
+  // ไม่มี manifest สาธารณะแยกอีกชุด — ผู้ใช้ทุกฝั่งอ่านจากชุดข้อมูลหลักนี้ชุดเดียว
   return computeManifestHash({
     version: LAB_MAP_VERSION,
+    structures: LAB_STRUCTURES,
     spaces: LAB_SPACES,
+    labels: LAB_LABELS,
     zones: LAB_ZONES,
     accessPoints: LAB_ACCESS_POINTS,
     stations: LAB_STATIONS,
     routes: LAB_ROUTE_PRESETS,
-    publicProjection: {
-      spaces: PUBLIC_LAB_SPACES,
-      zones: PUBLIC_LAB_ZONES,
-      accessPoints: PUBLIC_LAB_ACCESS_POINTS,
-      routes: PUBLIC_LAB_ROUTES,
-    },
+    safetyEquipment: LAB_SAFETY_EQUIPMENT,
+    assemblyPoints: LAB_ASSEMBLY_POINTS,
   })
 }
 
@@ -47,12 +47,23 @@ export function validatePublishableRelease(input: MapReleaseDTO): string[] {
   if (input.reviewedBy && input.reviewedBy === input.approvedBy) blockers.push('ผู้ทบทวนและผู้อนุมัติต้องเป็นคนละคน')
   if (input.manifestHash !== currentManifestHash()) blockers.push('ฉบับร่างไม่ตรงกับผังในระบบปัจจุบัน')
   for (const station of LAB_STATIONS) {
-    if (!LAB_ROUTE_PRESETS.some((route) => route.kind === 'evacuation' && route.fromStationCode === station.code)) {
-      blockers.push(`ไม่มีเส้นทางหนีไฟที่อนุมัติสำหรับ ${station.nameTh}`)
+    for (const variant of ['primary', 'alternate'] as const) {
+      const hasPreset = LAB_ROUTE_PRESETS.some(
+        (route) => route.kind === 'evacuation' && route.variant === variant && route.fromStationCode === station.code,
+      )
+      if (!hasPreset) blockers.push(`ไม่มีเส้นทางหนีไฟ (${variant}) ที่อนุมัติสำหรับ ${station.nameTh}`)
     }
   }
-  if (LAB_ROUTE_PRESETS.some((route) => route.pointCodes.includes('door-electrical-control'))) {
-    blockers.push('เส้นทางมีประตูห้องควบคุมไฟฟ้าที่ล็อคถาวร')
+  const lockedPointCodes = new Set(
+    LAB_ACCESS_POINTS.filter((point) => point.status === 'permanently_locked').map((point) => point.code),
+  )
+  if (LAB_ROUTE_PRESETS.some((route) => route.pointCodes.some((code) => lockedPointCodes.has(code)))) {
+    blockers.push('เส้นทางมีประตูที่ล็อคถาวร')
+  }
+  // ตำแหน่งถังดับเพลิงแปลงมาจากผังฉบับเก่าโดยประมาณ — ห้ามเผยแพร่เป็นฉบับใช้งานจริง
+  // จนกว่าเจ้าหน้าที่ความปลอดภัยจะเดินสำรวจยืนยันหน้างานครบทุกจุด
+  if (LAB_SAFETY_EQUIPMENT.some((item) => !item.verified)) {
+    blockers.push('ยังไม่ได้ยืนยันตำแหน่งถังดับเพลิงหน้างาน')
   }
   return [...new Set(blockers)]
 }

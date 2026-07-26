@@ -537,41 +537,6 @@ export default async function PublicHome() {
                   </span>
                 </span>
               </Link>
-              <Link
-                href="/lab-map/office"
-                className="map-card"
-                style={{
-                  textDecoration: 'none',
-                  minHeight: 100,
-                  minWidth: 214,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  background: 'rgba(255,255,255,.13)',
-                  color: '#fff',
-                  border: '1px solid rgba(255,255,255,.22)',
-                  borderRadius: 14,
-                  padding: '14px 18px',
-                  backdropFilter: 'blur(10px)',
-                }}
-              >
-                <span style={{
-                  width: 44, height: 44, borderRadius: 12,
-                  background: 'rgba(240,180,41,.25)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <Icon name="building" size={21} />
-                </span>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                  <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,.72)', fontWeight: 500 }}>
-                    ดูจุดสแกนนิ้วมือและทางออก
-                  </span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', lineHeight: 1.25 }}>
-                    แผนที่ห้องปฏิบัติการ
-                  </span>
-                </span>
-              </Link>
             </div>
           </div>
 

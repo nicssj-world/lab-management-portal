@@ -5,7 +5,8 @@ export type AccessPointStatus =
   | 'fingerprint_controlled'
   | 'permanently_locked'
 
-export type MapMode = 'overview' | 'infection' | 'safety' | 'personnel'
+/** โหมดแผนที่ — ไม่มี 'personnel' อีกต่อไป (ถอดออกตามการรื้อระบบรอบนี้) */
+export type MapMode = 'overview' | 'infection' | 'safety'
 
 export type RouteKind = 'visitor' | 'staff_orientation' | 'evacuation'
 
@@ -16,6 +17,41 @@ export type SvgShape =
   | { type: 'polygon'; points: ReadonlyArray<readonly [number, number]> }
   | { type: 'path'; d: string }
 
+/**
+ * ชั้นโครงสร้าง — ผนัง ประตู แนวกั้นจุดสแกน บันได ลิฟต์
+ * วาดครั้งเดียวและไม่ถูกสร้างขึ้นใหม่จากสี่เหลี่ยมของห้อง
+ * ทำให้ห้องซ้อนในห้อง และแนวกั้นที่ไม่ใช่ผนัง แสดงได้โดยไม่ต้องสร้างห้องปลอม
+ */
+export type LabStructureKind =
+  | 'exterior-wall'
+  | 'wall'
+  | 'partition'
+  | 'threshold'
+  | 'door-swing'
+  | 'door-leaf'
+  | 'scanner-barrier'
+
+export interface LabStructureDefinition {
+  code: string
+  kind: LabStructureKind
+  /** SVG path data ในระบบพิกัดเดียวกับ viewBox */
+  d: string
+}
+
+/** ป้ายชื่อกำหนดเอง — ไม่ได้เกิดจากการตัดคำอัตโนมัติของชื่อห้อง */
+export interface LabLabelDefinition {
+  code: string
+  /** ผูกกับห้องเพื่อไฮไลต์พร้อมกัน — ป้ายอิสระ (เช่น ป้ายทางหนีไฟ) ไม่ต้องมี */
+  spaceCode?: string
+  x: number
+  y: number
+  lines: readonly string[]
+  fontSize: number
+  /** องศาการหมุนรอบจุด (x, y) */
+  rotate?: number
+  emphasis?: boolean
+}
+
 export interface LabSpaceDefinition {
   code: string
   nameTh: string
@@ -24,6 +60,8 @@ export interface LabSpaceDefinition {
   infectionClass: InfectionClass
   workUnits: readonly string[]
   controlled: boolean
+  /** รหัสห้องแม่ เมื่อห้องนี้อยู่ซ้อนภายในอีกห้องหนึ่งจริงตามผัง */
+  nestedIn?: string
 }
 
 export interface LabZoneDefinition {
@@ -42,11 +80,42 @@ export interface LabAccessPointDefinition {
   y: number
 }
 
+/**
+ * 'installation' = จุดติดตั้งป้ายจริง (เข้าแคตตาล็อกงานพิมพ์)
+ * 'checkpoint' = จุดสแกนนิ้วมือที่ผู้มาติดต่อยืนรอ — ใช้เป็นจุดเริ่มต้นของแผนหนีไฟให้ตรงตำแหน่งจริง
+ * ไม่ใช่จุดติดตั้งป้าย จึงไม่เข้าแคตตาล็อกงานพิมพ์
+ */
+export type LabStationKind = 'installation' | 'checkpoint'
+
 export interface LabStationDefinition {
   code: string
   nameTh: string
+  kind: LabStationKind
   x: number
   y: number
+  /** จุดสแกนที่สถานีนี้ผูกอยู่ — ใช้เลือกสถานีเริ่มต้นให้ผู้มาติดต่อผ่าน stationForCheckpoint */
+  checkpointCode?: string
+}
+
+export type SafetyEquipmentKind = 'fire-extinguisher' | 'fire-hose' | 'manual-call-point'
+
+export interface LabSafetyEquipmentDefinition {
+  code: string
+  kind: SafetyEquipmentKind
+  nameTh: string
+  x: number
+  y: number
+  /** false = ตำแหน่งประมาณจากผังหนีไฟฉบับเก่า ยังไม่ได้ยืนยันหน้างาน */
+  verified: boolean
+  /** จุดอ้างอิงบนผังฉบับเก่า ใช้ตอนเดินตรวจยืนยัน */
+  sourceNoteTh?: string
+}
+
+export interface LabAssemblyPointDefinition {
+  code: string
+  nameTh: string
+  detailTh?: string
+  exitCodes: readonly string[]
 }
 
 export interface LabRoutePreset {
@@ -68,10 +137,15 @@ export interface LabMapDTO {
   version: string
   viewBox: string
   stationCode: string
+  structures: readonly LabStructureDefinition[]
   spaces: readonly LabMapSpaceDTO[]
+  labels: readonly LabLabelDefinition[]
   zones: readonly LabZoneDefinition[]
   accessPoints: readonly LabAccessPointDefinition[]
+  stations: readonly LabStationDefinition[]
   routes: readonly LabRoutePreset[]
+  safetyEquipment: readonly LabSafetyEquipmentDefinition[]
+  assemblyPoints: readonly LabAssemblyPointDefinition[]
 }
 
 export interface RoutePresetLookup {
@@ -81,23 +155,7 @@ export interface RoutePresetLookup {
   variant?: RouteVariant
 }
 
-export type MapPersonnelAssignmentType = 'primary' | 'responsible'
-
-export interface StaffMapPersonDTO {
-  assignmentId: string
-  profileId: string
-  name: string
-  department: string | null
-  assignmentType: MapPersonnelAssignmentType
-  spaceCode: string | null
-  zoneCode: string | null
-}
-
-export interface StaffLabMapDTO extends LabMapDTO {
-  canEditPersonnelAssignments: boolean
-  people?: readonly StaffMapPersonDTO[]
-  unassignedPeople?: readonly Pick<StaffMapPersonDTO, 'profileId' | 'name' | 'department'>[]
-}
+export type StaffLabMapDTO = LabMapDTO
 
 export type MapReleaseStatus = 'draft' | 'published' | 'retired'
 

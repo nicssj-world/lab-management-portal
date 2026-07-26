@@ -13,7 +13,6 @@ const NAV_ITEMS = [
   { href: '/',        th: 'หน้าแรก',              en: 'Home' },
   { href: '/catalog', th: 'รายการตรวจวิเคราะห์',   en: 'Test Catalog' },
   { href: '/manual',  th: 'คู่มือห้องปฏิบัติการ',  en: 'Lab Manual' },
-  { href: '/lab-map/office', th: 'แผนที่ห้องปฏิบัติการ', en: 'Lab Map' },
   { href: '/related-documents', th: 'เอกสารที่เกี่ยวข้อง', en: 'Related Documents' },
   { href: '/news',    th: 'ข่าวสาร',               en: 'News' },
   { href: '/contact', th: 'โครงสร้างองค์กร',      en: 'Organization' },

@@ -16,9 +16,20 @@ export function LabMapExportClient({ catalog }: { catalog: readonly MapPrintDTO[
   const candidates = useMemo(() => catalog.filter((item) => item.kind === kind && item.paperSize === paperSize && item.map.stationCode === stationCode), [catalog, kind, paperSize, stationCode])
   const dto = candidates.find((item) => !destinationCode || item.map.routes.some((route) => route.destinationCode === destinationCode)) ?? candidates[0] ?? catalog[0]
   if (!dto) return <p>ยังไม่มีข้อมูลฉบับแผนที่สำหรับพิมพ์</p>
+
+  // จุดติดตั้งแสดงชื่อไทยจาก installationPoint ของแคตตาล็อก แทนรหัสดิบ (เช่น 'office')
+  const stationOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const item of catalog.filter((entry) => entry.kind === kind)) {
+      if (!seen.has(item.map.stationCode)) seen.set(item.map.stationCode, item.installationPoint)
+    }
+    return [...seen.entries()]
+  }, [catalog, kind])
+
   const destinations = kind === 'visitor_navigation'
     ? [...new Map(candidates.flatMap((item) => item.map.routes).map((route) => [route.destinationCode, route])).values()]
     : []
+  const accessPointNameByCode = new Map(dto.map.accessPoints.map((point) => [point.code, point.nameTh]))
 
   async function run(type: 'pdf' | 'png') {
     const element = sheetRef.current?.querySelector<HTMLElement>('[data-map-print-sheet]')
@@ -37,9 +48,9 @@ export function LabMapExportClient({ catalog }: { catalog: readonly MapPrintDTO[
           <option value="evacuation">เส้นทางหนีไฟ</option><option value="infection_control">ควบคุมการติดเชื้อ</option><option value="visitor_navigation">นำทางผู้มาติดต่อ</option>
         </select></label>
         <label>จุดติดตั้ง<select value={stationCode} onChange={(event) => setStationCode(event.target.value)}>
-          {[...new Set(catalog.filter((item) => item.kind === kind).map((item) => item.map.stationCode))].map((code) => <option key={code} value={code}>{code}</option>)}
+          {stationOptions.map(([code, nameTh]) => <option key={code} value={code}>{nameTh}</option>)}
         </select></label>
-        {destinations.length ? <label>ปลายทาง<select value={destinationCode} onChange={(event) => setDestinationCode(event.target.value)}><option value="">ทุกปลายทาง</option>{destinations.map((route) => <option key={route.destinationCode} value={route.destinationCode}>{route.destinationCode}</option>)}</select></label> : null}
+        {destinations.length ? <label>ปลายทาง<select value={destinationCode} onChange={(event) => setDestinationCode(event.target.value)}><option value="">ทุกปลายทาง</option>{destinations.map((route) => <option key={route.destinationCode} value={route.destinationCode}>{accessPointNameByCode.get(route.destinationCode) ?? route.destinationCode}</option>)}</select></label> : null}
         <label>กระดาษ<select value={paperSize} onChange={(event) => setPaperSize(event.target.value as MapPaperSize)}><option value="A3">A3 แนวนอน</option><option value="A4">A4 แนวนอน</option></select></label>
         <div className="lab-map-export-status"><strong>{dto.official ? 'ฉบับใช้งานจริง' : 'ตัวอย่างฉบับร่าง'}</strong><span>{dto.official ? dto.release.versionCode : 'ร่าง — ห้ามใช้ติดตั้ง'}</span></div>
         <button type="button" onClick={() => run('pdf')} disabled={!dto.official || exporting}>ส่งออกฉบับใช้งานจริง PDF</button>

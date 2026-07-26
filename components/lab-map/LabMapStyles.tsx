@@ -16,47 +16,17 @@ export function LabMapStyles() {
         --map-infectious-soft: #f4d2d4;
         --map-risk: #b88700;
         --map-risk-soft: #fff1a8;
+        --map-route: #1d6f96;
+        --map-route-alt: #b8531f;
+        --map-exit: #168347;
+        --map-locked: #8b2730;
         color: var(--ink);
         font-family: "Noto Sans Thai", sans-serif;
       }
 
-      .lab-map-header {
-        display: flex;
-        align-items: flex-end;
-        justify-content: space-between;
-        gap: 24px;
-        margin-bottom: 22px;
-        padding: 4px 2px 0;
-      }
-      .lab-map-header h1 {
-        color: var(--map-navy);
-        font-size: clamp(1.65rem, 3vw, 2.65rem);
-        line-height: 1.12;
-        letter-spacing: -0.035em;
-        margin: 7px 0 7px;
-      }
-      .lab-map-header > div > p:last-child {
-        color: var(--map-muted);
-        margin: 0;
-      }
-      .lab-map-eyebrow {
-        align-items: center;
-        color: var(--map-blue) !important;
-        display: flex;
-        font-family: "DM Mono", monospace;
-        font-size: .7rem;
-        font-weight: 500;
-        gap: 9px;
-        letter-spacing: .12em;
-        margin: 0 !important;
-        text-transform: uppercase;
-      }
-      .lab-map-eyebrow span {
-        background: var(--map-safety);
-        display: inline-block;
-        height: 3px;
-        width: 28px;
-      }
+      /* หัวหน้าเพจใช้ PageHeader ของระบบ (components/ui/PageHeader) — ที่นี่คุมแค่ระยะห่างรอบ ๆ
+         และป้ายเวอร์ชันที่วางในสล็อต actions ให้เหมือนหน้าจออื่นที่มี badge/ปุ่มข้าง title */
+      .lab-map-header { margin-bottom: 18px; }
       .lab-map-version {
         border-left: 4px solid var(--map-safety);
         color: var(--map-navy);
@@ -81,26 +51,34 @@ export function LabMapStyles() {
         justify-content: space-between;
         padding: 12px 14px;
       }
-      .lab-map-mode-tabs { display: flex; gap: 4px; overflow-x: auto; }
+      /* แท็บโหมด — ทรงเดียวกับ ViewTabs ของระบบ (พิลล์ในกล่องพื้นผิว แท็บที่เลือกยกพื้นการ์ด+ขีดล่างสีหลัก)
+         ใช้ปุ่มควบคุมเองแทน ViewTabs จริง เพราะ ViewTabs ผูกกับ Link + query param ?view= ซึ่งจะพา
+         ป๊อปอัพของผู้มาติดต่อ (VisitorMapDialog) ไปเปลี่ยน URL โดยไม่ตั้งใจ ต้องคงพฤติกรรมเดิมไว้ */
+      .lab-map-mode-tabs { display: flex; gap: 4px; width: fit-content; max-width: 100%; padding: 4px; overflow-x: auto; border-radius: 12px; background: var(--surface-2); scrollbar-width: thin; }
       .lab-map-mode-tabs button {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
         background: transparent;
         border: 0;
         border-radius: 9px;
         color: var(--map-muted);
         cursor: pointer;
+        flex: 0 0 auto;
+        font: inherit;
+        font-size: .83rem;
+        font-weight: 600;
         min-height: 44px;
-        padding: 7px 13px;
-        text-align: left;
+        padding: 8px 16px;
         white-space: nowrap;
+        transition: color .18s ease, background .18s ease, box-shadow .18s ease;
       }
-      .lab-map-mode-tabs button span,
-      .lab-map-mode-tabs button small { display: block; }
-      .lab-map-mode-tabs button span { font-size: .83rem; font-weight: 700; }
-      .lab-map-mode-tabs button small { font-family: "DM Mono", monospace; font-size: .58rem; letter-spacing: .05em; margin-top: 1px; }
+      .lab-map-mode-tabs button:hover { color: var(--map-navy); background: color-mix(in srgb, var(--card) 72%, transparent); }
       .lab-map-mode-tabs button[aria-pressed="true"] {
-        background: var(--map-navy);
-        color: #fff;
-        box-shadow: 0 6px 18px rgba(18, 50, 74, .18);
+        background: var(--card);
+        color: var(--map-blue);
+        font-weight: 700;
+        box-shadow: inset 0 -2px 0 var(--map-blue), 0 1px 4px rgba(18, 50, 74, .1);
       }
 
       .lab-map-search-wrap { min-width: min(330px, 36vw); position: relative; }
@@ -115,15 +93,17 @@ export function LabMapStyles() {
       }
       .lab-map-search-field {
         align-items: center;
-        background: #f4f7f8;
-        border: 1px solid transparent;
-        border-radius: 9px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--map-muted);
         display: flex;
+        gap: 8px;
         min-height: 44px;
         padding: 0 12px;
       }
-      .lab-map-search-field:focus-within { background: #fff; border-color: var(--map-blue); box-shadow: 0 0 0 3px rgba(29, 111, 150, .12); }
-      .lab-map-search-field > span { color: var(--map-blue); font-size: 1.3rem; margin-right: 8px; }
+      .lab-map-search-field:focus-within { border-color: var(--map-blue); box-shadow: 0 0 0 3px rgba(29, 111, 150, .12); }
+      .lab-map-search-field svg { flex: 0 0 auto; }
       .lab-map-search-field input {
         background: transparent;
         border: 0;
@@ -214,22 +194,70 @@ export function LabMapStyles() {
       .lab-map-space[data-highlighted] > rect,
       .lab-map-space[data-highlighted] > polygon,
       .lab-map-space[data-highlighted] > path { filter: brightness(.94); stroke: var(--map-safety); stroke-width: 5; }
-      .lab-map-space-label {
+      /* ชั้นโครงสร้าง — ผนัง ประตู ธรณี และแนวกั้นจุดสแกน วาดทับห้องเสมอ */
+      .lab-map-structures { pointer-events: none; }
+      .lab-map-structure { fill: none; stroke: var(--map-line); stroke-linecap: square; stroke-linejoin: miter; vector-effect: non-scaling-stroke; }
+      .lab-map-structure--exterior-wall { stroke: var(--map-navy); stroke-width: 4.2; }
+      .lab-map-structure--wall { stroke-width: 2.6; }
+      .lab-map-structure--partition { stroke-width: 1.4; }
+      .lab-map-structure--threshold { stroke-dasharray: 7 5; stroke-width: 1.6; }
+      .lab-map-structure--door-swing { stroke-width: 1.8; }
+      .lab-map-structure--door-leaf { stroke-dasharray: 4 4; stroke-width: 1.6; }
+      .lab-map-structure--scanner-barrier { stroke: var(--map-locked); stroke-dasharray: 8 6; stroke-width: 2.4; }
+
+      .lab-map-label {
         fill: var(--map-navy);
         font-family: "Noto Sans Thai", sans-serif;
-        font-size: 12px;
-        font-weight: 600;
         pointer-events: none;
       }
 
       .lab-map-route { pointer-events: none; }
       .lab-map-route polyline { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-      .lab-map-route-halo { stroke: rgba(255,255,255,.9); stroke-width: 14; }
-      .lab-map-route-line { stroke: var(--map-blue); stroke-dasharray: 9 7; stroke-width: 7; }
+      .lab-map-route-halo { stroke: rgba(255,255,255,.92); stroke-width: 15; }
+      /* เส้นทางหลักเป็นเส้นทึบเด่น เส้นทางสำรองเป็นเส้นประคนละสีและบางกว่า อ่านออกโดยไม่ต้องใช้สี */
+      .lab-map-route[data-variant="primary"] .lab-map-route-line { stroke: var(--map-route); stroke-width: 8; }
+      .lab-map-route[data-variant="alternate"] .lab-map-route-line { stroke: var(--map-route-alt); stroke-dasharray: 14 9; stroke-width: 5.5; }
 
       .lab-map-point { color: var(--map-navy); fill: var(--map-safety); stroke: var(--map-navy); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
-      .lab-map-point--exit { fill: #fff; stroke: #168347; }
-      .lab-map-point[data-status="permanently_locked"] { fill: #d6dfe2; stroke: #8b2730; }
+      .lab-map-point--exit { fill: #fff; stroke: var(--map-exit); }
+      .lab-map-point--door[data-status="open"] { fill: var(--map-exit); }
+      .lab-map-point[data-status="permanently_locked"] { fill: #d6dfe2; stroke: var(--map-locked); }
+      .lab-map-point[data-destination] { stroke-width: 3.4; }
+      .lab-map-point-pulse { fill: rgba(240, 180, 41, .28); stroke: var(--map-safety); stroke-width: 2.5; }
+
+      .lab-map-station { pointer-events: none; }
+      .lab-map-station-halo { fill: rgba(29, 111, 150, .2); stroke: var(--map-route); stroke-width: 2; vector-effect: non-scaling-stroke; }
+      .lab-map-station-dot { fill: var(--map-route); stroke: #fff; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+      .lab-map-station-label { fill: var(--map-navy); font: 700 15px "Noto Sans Thai", sans-serif; paint-order: stroke; stroke: #fff; stroke-width: 4; }
+
+      /* ลิฟต์ที่ห้ามใช้ขณะเกิดเหตุ — กากบาททับตัวห้อง ไม่ใช้สีอย่างเดียว */
+      .lab-map-lift-restricted { pointer-events: none; }
+      .lab-map-lift-restricted-cross { stroke: var(--map-locked); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+
+      /* อุปกรณ์ความปลอดภัย — แยกรูปทรงต่อชนิด จุดที่ยังไม่ยืนยันหน้างานใช้เส้นขอบประ */
+      .lab-map-safety-equipment { pointer-events: none; }
+      .lab-map-equipment { fill: var(--map-exit); stroke: #12324a; stroke-linejoin: round; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+      .lab-map-equipment--fire-hose { fill: var(--map-route); }
+      .lab-map-equipment--manual-call-point { fill: var(--map-safety); }
+      .lab-map-equipment:not([data-verified]) { fill-opacity: .45; stroke-dasharray: 3 2; }
+
+      .lab-map-route-steps {
+        background: #fff;
+        border: 1px solid #dbe5e8;
+        border-top: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        list-style: none;
+        margin: 0;
+        padding: 12px 16px;
+      }
+      .lab-map-route-steps li { align-items: center; display: flex; font-size: .8rem; gap: 8px; }
+      .lab-map-route-steps b { align-items: center; background: var(--map-navy); border-radius: 50%; color: #fff; display: flex; flex: 0 0 auto; font: 700 .68rem "DM Mono", monospace; height: 22px; justify-content: center; width: 22px; }
+
+      .lab-map-safety-panel ol { margin: 7px 0 0; padding-left: 20px; }
+      .lab-map-safety-panel li { font-size: .82rem; margin: 4px 0; }
+      .lab-map-safety-missing { background: #fdecec; border-left: 3px solid var(--map-locked); color: #7a1f26; font-size: .8rem; margin: 20px 0 0; padding: 11px 12px; }
 
       .lab-map-zoom-controls {
         background: rgba(255,255,255,.95);
@@ -281,6 +309,26 @@ export function LabMapStyles() {
       .lab-map-legend i[data-class="infectious"] { background: repeating-linear-gradient(135deg, var(--map-infectious), var(--map-infectious) 5px, var(--map-infectious-soft) 5px, var(--map-infectious-soft) 10px); }
       .lab-map-legend i[data-class="clean"] { background: var(--map-clean); }
       .lab-map-legend i[data-class="risk"] { background-color: var(--map-risk-soft); background-image: radial-gradient(var(--map-risk) 2px, transparent 2px); background-size: 8px 8px; }
+      .lab-map-legend i[data-class="route-primary"] { background: linear-gradient(var(--map-route), var(--map-route)) center/100% 5px no-repeat; border-color: transparent; }
+      .lab-map-legend i[data-class="route-alternate"] { background: repeating-linear-gradient(90deg, var(--map-route-alt) 0 8px, transparent 8px 14px) center/100% 5px no-repeat; border-color: transparent; }
+      .lab-map-legend i[data-class="exit"] { background: #fff; border-color: var(--map-exit); box-shadow: inset 0 0 0 2px var(--map-exit); }
+      .lab-map-legend i[data-class="locked"] { background: #d6dfe2; border-color: var(--map-locked); box-shadow: inset 0 0 0 2px var(--map-locked); }
+      .lab-map-legend i[data-class="fingerprint"] { background: var(--map-safety); }
+      .lab-map-legend i[data-class="door"] { background: var(--map-exit); border-radius: 50%; width: 17px; }
+      .lab-map-legend i[data-class="controlled"] { background: var(--map-controlled); }
+      .lab-map-legend i[data-class="station"] { background: var(--map-route); border-radius: 50%; width: 17px; }
+      .lab-map-legend i[data-class="lift-restricted"] { background: linear-gradient(45deg, transparent 46%, var(--map-locked) 46%, var(--map-locked) 54%, transparent 54%), linear-gradient(-45deg, transparent 46%, var(--map-locked) 46%, var(--map-locked) 54%, transparent 54%); }
+      .lab-map-legend i[data-class="fire-extinguisher"] { background: var(--map-exit); }
+
+      .lab-map-station-picker { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; background: #fff; border: 1px solid #dbe5e8; border-top: 0; }
+      .lab-map-assembly-note { background: #eef6f8; border-left: 3px solid var(--map-route); color: #12324a; font-size: .78rem; margin: 22px 0 0; padding: 10px 12px; }
+
+      /* โหมดกะทัดรัด — ใช้ในป๊อปอัพของบัตรผู้มาติดต่อ */
+      .lab-map-shell[data-compact] .lab-map-header { display: none; }
+      .lab-map-shell[data-compact] .lab-map-toolbar { border-radius: 0; }
+      .lab-map-shell[data-compact] .lab-map-workspace { grid-template-columns: minmax(0, 1fr) 260px; min-height: 420px; }
+      .lab-map-shell[data-compact] .lab-map-svg-scroll,
+      .lab-map-shell[data-compact] .lab-map-svg { min-height: 390px; }
 
       .lab-map-shell button:focus-visible,
       .lab-map-shell input:focus-visible { outline: 3px solid var(--map-safety); outline-offset: 2px; }
@@ -292,8 +340,6 @@ export function LabMapStyles() {
       }
 
       @media (max-width: 767px) {
-        .lab-map-header { align-items: flex-start; flex-direction: column; }
-        .lab-map-version { align-self: stretch; }
         .lab-map-toolbar { border-radius: 10px 10px 0 0; }
         .lab-map-mode-tabs button { flex: 0 0 auto; }
         .lab-map-workspace { display: block; min-height: 490px; overflow: visible; }
@@ -318,6 +364,17 @@ export function LabMapStyles() {
         }
         .lab-map-detail-panel[data-open] { transform: translateY(0); }
         .lab-map-empty-detail { display: none; }
+        /* ในป๊อปอัพ แผงรายละเอียดต้องไหลอยู่ในกล่องเดิม ไม่ลอยทับทั้งจอ */
+        .lab-map-shell[data-compact] .lab-map-detail-panel {
+          border-radius: 0;
+          border-top: 1px solid #ccdadd;
+          box-shadow: none;
+          max-height: none;
+          padding: 20px 18px;
+          position: static;
+          transform: none;
+        }
+        .lab-map-shell[data-compact] .lab-map-workspace { grid-template-columns: minmax(0, 1fr); }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -339,7 +396,6 @@ export function LabMapStyles() {
       [data-theme="dark"] .lab-map-toolbar,
       [data-theme="dark"] .lab-map-detail-panel,
       [data-theme="dark"] .lab-map-search-results { background: #17242c; }
-      [data-theme="dark"] .lab-map-search-field { background: #22323b; }
       [data-theme="dark"] .lab-map-workspace { background: #111d24; }
     `}</style>
   )

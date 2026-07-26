@@ -31,5 +31,6 @@ CREATE POLICY "manual_auth_write"
 
 -- Seed one empty row per section (edit via staff portal)
 INSERT INTO manual_sections (id) VALUES
-  ('home'), ('collection'), ('transport'), ('addon'), ('report'), ('outlab')
+  ('home'), ('collection'), ('transport'), ('addon'), ('report'), ('outlab'),
+  ('micro'), ('bloodbank'), ('amendment')
 ON CONFLICT (id) DO NOTHING;

@@ -1,8 +1,10 @@
 import {
-  LAB_ACCESS_POINTS, LAB_MAP_VIEW_BOX, LAB_ROUTE_PRESETS, LAB_SPACES, LAB_STATIONS, LAB_ZONES,
+  LAB_ACCESS_POINTS, LAB_LABELS, LAB_MAP_VIEW_BOX, LAB_ROUTE_PRESETS, LAB_SPACES,
+  LAB_STATIONS, LAB_STRUCTURES, LAB_ZONES,
 } from './manifest'
-import { getPublicLabMapDTO } from './public'
+import { LAB_ASSEMBLY_POINTS, LAB_SAFETY_EQUIPMENT } from './safety-assets'
 import { isOfficialRelease } from './release'
+import { VISITOR_STATION_CODE, buildVisitorLabMapDTO } from './visitor'
 import type { LabMapDTO, MapMode, MapReleaseDTO } from './types'
 
 export type MapPrintKind = 'evacuation' | 'infection_control' | 'visitor_navigation'
@@ -23,7 +25,9 @@ export interface MapPrintDTO {
   activeRouteCodes: readonly string[]
 }
 
-export type MapPrintResult = { ok: true; value: MapPrintDTO } | { ok: false; error: 'missing_evacuation_preset' | 'unknown_station' | 'unknown_visitor_destination' }
+export type MapPrintResult =
+  | { ok: true; value: MapPrintDTO }
+  | { ok: false; error: 'missing_evacuation_preset' | 'unknown_station' | 'unknown_visitor_destination' }
 
 export function buildMapPrintDTO(input: {
   release: MapReleaseDTO
@@ -36,6 +40,10 @@ export function buildMapPrintDTO(input: {
 }): MapPrintResult {
   const station = LAB_STATIONS.find((item) => item.code === input.stationCode)
   if (!station) return { ok: false, error: input.kind === 'evacuation' ? 'missing_evacuation_preset' : 'unknown_station' }
+  // สถานีชนิด 'checkpoint' เป็นจุดที่ผู้มาติดต่อยืนจริง ไม่ใช่จุดติดตั้งป้าย จึงไม่พิมพ์เป็นแผ่นแยก
+  if (input.kind !== 'visitor_navigation' && station.kind !== 'installation') {
+    return { ok: false, error: 'unknown_station' }
+  }
   const official = isOfficialRelease(input.release)
   const common = {
     kind: input.kind, paperSize: input.paperSize, release: input.release,
@@ -45,14 +53,14 @@ export function buildMapPrintDTO(input: {
   }
 
   if (input.kind === 'visitor_navigation') {
-    const publicMap = getPublicLabMapDTO(input.stationCode)
-    if (!publicMap) return { ok: false, error: 'unknown_station' }
-    const routes = publicMap.routes.filter((route) => route.kind === 'visitor'
+    if (input.stationCode !== VISITOR_STATION_CODE) return { ok: false, error: 'unknown_station' }
+    const visitorMap = buildVisitorLabMapDTO()
+    const routes = visitorMap.routes.filter((route) => route.kind === 'visitor'
       && (!input.destinationCode || route.destinationCode === input.destinationCode))
     if (input.destinationCode && routes.length === 0) return { ok: false, error: 'unknown_visitor_destination' }
     return { ok: true, value: {
       ...common, titleTh: 'แผนที่นำทางสำหรับผู้มาติดต่อ', mode: 'overview',
-      map: { ...publicMap, routes }, activeRouteCodes: routes.map((route) => route.code),
+      map: { ...visitorMap, routes }, activeRouteCodes: routes.map((route) => route.code),
     } }
   }
 
@@ -64,12 +72,18 @@ export function buildMapPrintDTO(input: {
     version: input.release.versionCode,
     viewBox: LAB_MAP_VIEW_BOX,
     stationCode: input.stationCode,
+    structures: LAB_STRUCTURES,
     spaces: input.kind === 'infection_control' ? LAB_SPACES : LAB_SPACES.map(({ infectionClass: _class, ...space }) => space),
+    labels: LAB_LABELS,
     zones: LAB_ZONES,
     accessPoints: input.kind === 'evacuation'
-      ? LAB_ACCESS_POINTS.filter((point) => point.kind === 'exit' || point.status === 'permanently_locked' || point.code === 'fingerprint-office')
-      : LAB_ACCESS_POINTS.filter((point) => point.code === 'fingerprint-office' || point.code === 'door-electrical-control'),
+      ? LAB_ACCESS_POINTS.filter((point) => point.kind === 'exit' || point.status === 'permanently_locked')
+      : LAB_ACCESS_POINTS.filter((point) => point.status === 'permanently_locked'),
+    stations: LAB_STATIONS.filter((item) => item.code === input.stationCode),
     routes,
+    // ถังดับเพลิงและจุดรวมพลมีความหมายเฉพาะแผ่นเส้นทางหนีไฟ — แผ่นควบคุมการติดเชื้อไม่ต้องมี
+    safetyEquipment: input.kind === 'evacuation' ? LAB_SAFETY_EQUIPMENT : [],
+    assemblyPoints: input.kind === 'evacuation' ? LAB_ASSEMBLY_POINTS : [],
   }
   return { ok: true, value: {
     ...common,

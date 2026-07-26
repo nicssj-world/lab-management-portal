@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import type { TableSchema, TableColumn, EditableRow } from '@/app/(public)/manual/tables'
 import { sanitizeInlineHtml } from '@/lib/html-sanitize'
 
@@ -49,6 +49,20 @@ export function ManualTableEditor({
   const [draft, setDraft] = useState<EditableRow[]>(() => rows.length ? rows.map(r => ({ ...r })) : [emptyRow(schema)])
   const [saving, setSaving] = useState(false)
 
+  useEffect(() => {
+    let cancelled = false
+    void fetch(`/api/admin/manual/${schema.sectionId}`)
+      .then(async response => ({ ok: response.ok, json: await response.json() }))
+      .then(({ ok, json }) => {
+        const draftRows = json.draft?.table_data?.[schema.id]
+        if (!cancelled && ok && Array.isArray(draftRows)) {
+          setDraft(draftRows.map((row: EditableRow) => ({ ...row })))
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [schema.id, schema.sectionId])
+
   const visibleCols = (c: TableColumn) => !c.lang || c.lang === editLang
 
   function setCell(i: number, key: string, value: string | string[]) {
@@ -71,7 +85,7 @@ export function ManualTableEditor({
       })
       if (!res.ok) { alert((await res.json()).error ?? 'บันทึกไม่สำเร็จ'); return }
       const json = await res.json()
-      onSaved((json.table_data?.[schema.id] as EditableRow[]) ?? payloadRows)
+      onSaved((json.draft?.table_data?.[schema.id] as EditableRow[]) ?? payloadRows)
     } catch { alert('เกิดข้อผิดพลาด') }
     finally { setSaving(false) }
   }
@@ -146,7 +160,10 @@ export function ManualTableEditor({
       </div>
 
       <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', flexWrap: 'wrap' }}>
-        <button disabled={saving} onClick={() => persist(draft)} style={btn('var(--primary)', '#fff')}>บันทึก</button>
+        <div style={{ flex: '1 1 100%', color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.55 }}>
+          การบันทึกนี้เป็น<strong>ร่าง</strong> และจะไม่เปลี่ยนเวอร์ชันหัวข้อจนกว่าจะเผยแพร่การเปลี่ยนแปลง
+        </div>
+        <button disabled={saving} onClick={() => persist(draft)} style={btn('var(--primary)', '#fff')}>บันทึกร่าง</button>
         <button disabled={saving} onClick={onCancel} style={btn('var(--card)', 'var(--ink)', 'var(--border)')}>ยกเลิก</button>
         <button disabled={saving}
           onClick={() => { if (confirm('ล้างข้อมูลที่แก้ และกลับไปใช้ค่าต้นฉบับ?')) persist([]) }}

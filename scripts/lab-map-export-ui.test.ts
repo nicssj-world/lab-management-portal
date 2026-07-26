@@ -4,6 +4,8 @@ import { isProtectedPath } from '../lib/auth/session-guard'
 const read = (path: string) => existsSync(path) ? readFileSync(path, 'utf8') : ''
 const page = read('app/(protected)/staff/lab-map/print/page.tsx')
 const client = read('components/lab-map/LabMapExportClient.tsx')
+const sheet = read('components/lab-map/LabMapPrintSheet.tsx')
+const printStyles = read('components/lab-map/LabMapPrintStyles.tsx')
 const helper = read('lib/lab-map/export-client.ts')
 const staffPage = read('app/(protected)/staff/lab-map/page.tsx')
 
@@ -19,4 +21,23 @@ assert.ok(helper.includes("import('html2canvas')"))
 assert.ok(helper.includes("import('jspdf')"))
 assert.ok(helper.includes('A3.pdf') || helper.includes('paperSize'))
 assert.ok(staffPage.includes('/staff/lab-map/print'))
+
+// ── กันบั๊กแผ่นพิมพ์ดำสนิท: LabMapPrintSheet ต้องประกาศตัวแปรสี (LabMapStyles) ก่อนใช้ ──
+// ที่มา: fill: var(--map-floor) ฯลฯ ประกาศอยู่ใต้ .lab-map-shell เท่านั้น — ไม่มี wrapper นี้
+// ตัวแปรว่างเปล่า SVG fill จึงตกกลับไปเป็นสีดำของเบราว์เซอร์ทั้งพื้น ห้อง และเส้น
+assert.match(sheet, /import { LabMapStyles }/, 'the print sheet imports the shared style/token component')
+assert.match(sheet, /<LabMapStyles \/>/, 'the print sheet renders LabMapStyles so --map-* tokens resolve')
+assert.match(sheet, /className="lab-map-shell lab-map-print-sheet"/, 'the print sheet wraps its canvas in .lab-map-shell so tokens cascade to it')
+assert.match(printStyles, /\.lab-map-shell\.lab-map-print-sheet\s*\{[^}]*--map-floor/, 'print output pins light-mode token values regardless of the viewer\'s dark-mode setting')
+
+// จุดติดตั้ง/ปลายทางในหน้าส่งออกต้องแสดงชื่อไทย ไม่ใช่รหัสดิบ
+assert.match(client, /stationOptions/)
+assert.match(client, /installationPoint/)
+assert.match(client, /accessPointNameByCode/, 'destination options are labelled from access point Thai names, not raw codes')
+assert.doesNotMatch(client, /<option key=\{code\} value=\{code\}>\{code\}<\/option>/, 'no dropdown falls back to printing the raw station code')
+
+// สถานีชนิด checkpoint ต้องไม่เข้าแคตตาล็อกงานพิมพ์ — ไม่ใช่จุดติดตั้งป้ายจริง
+assert.match(page, /installationStations/)
+assert.match(page, /kind === 'installation'/)
+
 console.log('lab map export UI contract passed')

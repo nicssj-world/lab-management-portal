@@ -5,6 +5,7 @@ import {
   getActiveVisitorBySecret,
   getPublicVisitorFormState,
 } from '@/lib/it-visitor/public-server'
+import { buildVisitorLabMapDTO } from '@/lib/lab-map/visitor'
 import { consumeRateLimit } from '@/lib/security/rate-limit'
 import { getClientIp, privateRequestKey } from '@/lib/security/request-protection'
 
@@ -46,6 +47,7 @@ export default async function PublicVisitorPage({ params }: { params: Promise<{ 
             initialState={state}
             challenge={challenge}
             initialActiveVisit={initialActiveVisit}
+            visitorMap={buildVisitorLabMapDTO()}
           />
         ) : (
           <div role="alert" className="public-visitor-not-found">

@@ -80,7 +80,8 @@ export function PublicSurveyForm({ token, initialState, challenge }: { token: st
         @media(max-width:600px){.public-survey-progress-copy{align-items:flex-start;flex-direction:column;gap:3px}.public-survey-submit{bottom:8px;padding:8px}}
         @media(prefers-reduced-motion:reduce){.public-survey-progress-value{transition:none}}
       `}</style>
-      <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}><label htmlFor="survey-website">Website</label><input ref={honeypotRef} id="survey-website" name="website" type="text" tabIndex={-1} autoComplete="off" /></div>
+      {/* ตั้งใจไม่ตั้งชื่อ/label ว่า "website" — ผู้จัดการรหัสผ่านบางตัว autofill ช่องนี้แม้ถูกซ่อนด้วย position off-screen ทำให้ผู้ใช้จริงโดนปฏิเสธเหมือนเป็นบอท */}
+      <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}><label htmlFor="survey-hp-field">กรุณาปล่อยช่องนี้ว่างไว้</label><input ref={honeypotRef} id="survey-hp-field" name="vf_extra_note" type="text" tabIndex={-1} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-bwignore="true" data-form-type="other" /></div>
       <div className="public-survey-trust"><Icon name="shieldCheck" size={17} /><span>แบบสำรวจนี้ไม่เก็บชื่อ HN หรือข้อมูลระบุตัวบุคคล กรุณาตอบตามความรู้สึกจริง</span></div>
       <div className="public-survey-progress">
         <div className="public-survey-progress-copy"><span>ความคืบหน้าการตอบ</span><strong>{answeredCount} / {questionCount} ข้อ</strong></div>

@@ -3,6 +3,9 @@
 // ค่าทุกตัวต้องตรงกับ CHECK constraint ใน scripts/it-visitor-log.sql
 // (scripts/it-visitor-log.test.ts ยืนยันให้)
 
+// re-export จาก lab-map/visitor.ts — เป็นเจ้าของค่าจริงเพราะต้องผูกกับจุดสแกน/เส้นทางในผัง
+export { GROUP_HEAD_CONTACT_DEPT } from '@/lib/lab-map/visitor'
+
 export const VISIT_TYPES = ['individual', 'group'] as const
 export type VisitType = typeof VISIT_TYPES[number]
 export const VISIT_TYPE_LABEL: Record<VisitType, string> = {
@@ -53,7 +56,7 @@ export const SAFETY_LABEL: Record<SafetyAck, string> = {
   declined:     'ไม่สะดวกและไม่ยินยอมศึกษาข้อมูล',
 }
 
-/** ต่อท้าย DEPARTMENTS ใน dropdown "หน่วยงานที่ต้องการติดต่อ" */
+/** ต่อท้าย DEPARTMENTS + GROUP_HEAD_CONTACT_DEPT ใน dropdown "หน่วยงานที่ต้องการติดต่อ" เป็นตัวสุดท้ายเสมอ */
 export const CONTACT_DEPT_OTHER = 'อื่นๆ'
 
 export const SAFETY_POLICY_PROMPT =

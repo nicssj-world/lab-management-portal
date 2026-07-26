@@ -16,6 +16,13 @@ import { ManualMicrobiology } from './sections/ManualMicrobiology'
 import { ManualBloodBank } from './sections/ManualBloodBank'
 import { ManualAmendment } from './sections/ManualAmendment'
 import { ManualTablesProvider, type DbTables } from './ManualTablesContext'
+import { ManualDocumentControl, ManualSectionGovernance } from './ManualGovernance'
+import {
+  DEFAULT_MANUAL_PUBLICATION,
+  type ManualPublication,
+  type ManualPublicationRevision,
+  type ManualSectionControl,
+} from '@/lib/manual/control'
 
 // ─── Editor helpers ─────────────────────────────────────────────────────────────
 
@@ -83,12 +90,18 @@ function useToast() {
 interface Props {
   dbSections?: Record<string, { th: string; en: string }>
   dbTables?: DbTables
+  publication?: ManualPublication
+  publicationHistory?: ManualPublicationRevision[]
+  sectionControls?: Record<string, ManualSectionControl>
   canEdit?: boolean
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────────
 
-export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }: Props) {
+export function ManualShell({
+  dbSections = {}, dbTables = {}, publication = DEFAULT_MANUAL_PUBLICATION,
+  publicationHistory = [], sectionControls = {}, canEdit = false,
+}: Props) {
   const { lang } = useLang()
   const { toasts, add: toast } = useToast()
 
@@ -100,11 +113,13 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
   const [editMode, setEditMode] = useState(false)
   const [editLang, setEditLang] = useState<'th' | 'en'>('th')
   const [saving, setSaving] = useState(false)
+  const [loadingDraft, setLoadingDraft] = useState(false)
   const [imageUploading, setImageUploading] = useState(false)
   const [selectedColor, setSelectedColor] = useState('#0F172A')
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [fSize, setFSize] = useState('')
   const [fmtState, setFmtState] = useState({ bold: false, italic: false, underline: false })
+  const [changeSummary, setChangeSummary] = useState('')
 
   const bodyRef = useRef<HTMLDivElement>(null)
   const savedSel = useRef<Range | null>(null)
@@ -211,10 +226,43 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
       if (!res.ok) { toast((await res.json()).error ?? 'บันทึกไม่สำเร็จ', false); return }
       setLocalSections(prev => ({ ...prev, [activeSection]: clean }))
       if (bodyRef.current) bodyRef.current.innerHTML = editLang === 'th' ? clean.th : clean.en
-      toast('บันทึกเรียบร้อยแล้ว')
+      toast('บันทึกร่างแล้ว — กด “เผยแพร่การเปลี่ยนแปลง” เมื่อพร้อม')
+      setChangeSummary('')
       setEditMode(false)
     } catch { toast('เกิดข้อผิดพลาด', false) }
     finally { setSaving(false) }
+  }
+
+  async function beginEdit() {
+    setLoadingDraft(true)
+    try {
+      const response = await fetch(`/api/admin/manual/${activeSection}`)
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error ?? 'ไม่สามารถโหลดร่างการแก้ไขได้')
+      const draft = json.draft as { body_html_th?: string; body_html_en?: string } | null
+      const current = localSections[activeSection] ?? { th: '', en: '' }
+      const staticFallback = staticContentRef.current?.innerHTML ?? ''
+      if (draft) {
+        const next = { th: draft.body_html_th ?? '', en: draft.body_html_en ?? '' }
+        if (!next[lang].trim() && staticFallback) next[lang] = staticFallback
+        setLocalSections(prev => ({
+          ...prev,
+          [activeSection]: next,
+        }))
+      } else if (!current[lang].trim() && staticFallback) {
+        setLocalSections(prev => ({
+          ...prev,
+          [activeSection]: { ...current, [lang]: staticFallback },
+        }))
+      }
+      setEditLang(lang)
+      setChangeSummary('')
+      setEditMode(true)
+    } catch (caught) {
+      toast(caught instanceof Error ? caught.message : 'ไม่สามารถโหลดร่างการแก้ไขได้', false)
+    } finally {
+      setLoadingDraft(false)
+    }
   }
 
   const idx = MANUAL_SECTIONS.findIndex(s => s.id === activeSection)
@@ -252,8 +300,8 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
 
         /* ── Layout ── */
         .manual-header-wrap  { background: var(--card); border-bottom: 1px solid var(--border); box-shadow: 0 1px 0 var(--border); }
-        .manual-header-inner { max-width: 1280px; margin: 0 auto; padding: 24px 32px 22px; }
-        .manual-title        { font-size: 28px; font-weight: 800; color: var(--ink); letter-spacing: -.025em; margin: 0; line-height: 1.15; }
+        .manual-header-inner { position: relative; max-width: 1280px; margin: 0 auto; padding: 24px 32px 22px; }
+        .manual-title        { max-width: calc(100% - 470px); font-size: 28px; font-weight: 800; color: var(--ink); letter-spacing: -.025em; margin: 0; line-height: 1.15; }
         .manual-layout       { max-width: 1280px; margin: 0 auto; padding: 28px 32px 64px; display: grid; grid-template-columns: 250px 1fr; gap: 32px; align-items: start; }
         .manual-sidebar      { position: sticky; top: 80px; }
 
@@ -282,6 +330,10 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
         .manual-prevnext     { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
         .manual-mobile-topbar { display: none; }
 
+        @media (max-width: 1100px) {
+          .manual-title { max-width: none; }
+        }
+
         /* ── Prev/Next buttons ── */
         .manual-prevnext-btn {
           display: flex; align-items: center; gap: 12; padding: 14px 18px;
@@ -294,7 +346,7 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
         /* ── Mobile ── */
         @media (max-width: 768px) {
           .manual-header-inner { padding: 16px 16px 14px; }
-          .manual-title        { font-size: 19px; }
+          .manual-title        { max-width: none; font-size: 19px; }
           .manual-header-subtitle { font-size: 12.5px !important; }
           .manual-layout       { grid-template-columns: 1fr; padding: 0 0 48px; gap: 0; }
           .manual-sidebar      { display: none; }
@@ -317,12 +369,9 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
         {/* Top accent bar */}
         <div style={{ height: 3, background: 'var(--primary)' }} />
         <div className="manual-header-inner">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 6, background: 'var(--primary-soft)', border: '1px solid rgba(30,95,173,.2)' }}>
-              <Icon name="flask" size={12} style={{ color: 'var(--primary)' }} />
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--primary)', letterSpacing: '.07em', textTransform: 'uppercase' }}>MN-LAB-01</span>
-            </div>
-            <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 500 }}>พ.ศ. 2569 · Rev. 13</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, color: 'var(--primary)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase' }}>
+            <Icon name="globe" size={12} />
+            <span>{lang === 'th' ? 'คู่มือออนไลน์ฉบับควบคุม' : 'Controlled online manual'}</span>
           </div>
           <h1 className="manual-title">
             {lang === 'th' ? 'คู่มือการใช้บริการห้องปฏิบัติการ' : 'Laboratory Services Manual'}
@@ -332,6 +381,7 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
               ? 'กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี — แนวทางปฏิบัติสำหรับการเก็บสิ่งส่งตรวจ และรายงานผลตัวอย่างทางห้องปฏิบัติการ'
               : 'Medical Technology Department, Chonburi Hospital — procedures for collection, transport, testing, and reporting of laboratory specimens.'}
           </p>
+          <ManualDocumentControl initial={publication} history={publicationHistory} canEdit={canEdit} lang={lang} />
         </div>
       </div>
 
@@ -533,13 +583,17 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
 
               {/* Edit mode footer */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 100%', color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.55 }}>
+                  การบันทึกนี้เป็น<strong>ร่าง</strong> จึงยังไม่เปลี่ยนเวอร์ชันหัวข้อหรือปรากฏต่อผู้ใช้บริการ จนกว่าจะกด “เผยแพร่การเปลี่ยนแปลง”
+                </div>
                 <button onClick={handleSave} disabled={saving}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: saving ? 'default' : 'pointer', fontFamily: 'inherit', opacity: saving ? .7 : 1 }}>
                   <Icon name="check" size={14} style={{ color: '#fff' }} />
-                  {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+                  {saving ? 'กำลังบันทึก...' : 'บันทึกร่าง'}
                 </button>
                 <button onClick={() => {
                   setEditMode(false)
+                  setChangeSummary('')
                   // Reset to DB state so interactive sections (e.g. collection tabs) work correctly
                   setLocalSections(prev => ({
                     ...prev,
@@ -562,7 +616,7 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
                         if (!res.ok) { toast((await res.json()).error ?? 'ล้างไม่สำเร็จ', false); return }
                         setLocalSections(prev => ({ ...prev, [activeSection]: { th: '', en: '' } }))
                         if (bodyRef.current) bodyRef.current.innerHTML = ''
-                        toast('ล้างแล้ว — กลับไปใช้เนื้อหาต้นฉบับ')
+                        toast('บันทึกร่างที่ล้างแล้ว — กดเผยแพร่เมื่อพร้อม')
                         setEditMode(false)
                       } catch { toast('เกิดข้อผิดพลาด', false) }
                       finally { setSaving(false) }
@@ -586,24 +640,19 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
                   </div>
                 </div>
               )}
+              <ManualSectionGovernance
+                sectionId={activeSection}
+                sectionLabel={lang === 'th' ? (activeLabel?.th ?? activeSection) : (activeLabel?.en ?? activeSection)}
+                initial={sectionControls[activeSection]}
+                canEdit={canEdit}
+                lang={lang}
+              />
               {/* Edit button — hidden for sections whose layout lives in sub-component files, not DB HTML */}
               {canEdit && !usesStaticComponent && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
                   <button
-                    onClick={() => {
-                      setEditLang(lang)
-                      if (!localSections[activeSection]?.[lang]?.trim()) {
-                        const html = staticContentRef.current?.innerHTML ?? ''
-                        setLocalSections(prev => ({
-                          ...prev,
-                          [activeSection]: {
-                            th: lang === 'th' ? html : (prev[activeSection]?.th ?? ''),
-                            en: lang === 'en' ? html : (prev[activeSection]?.en ?? ''),
-                          },
-                        }))
-                      }
-                      setEditMode(true)
-                    }}
+                    onClick={() => { void beginEdit() }}
+                    disabled={loadingDraft}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6,
                       padding: '6px 14px', borderRadius: 8,
@@ -615,7 +664,7 @@ export function ManualShell({ dbSections = {}, dbTables = {}, canEdit = false }:
                     onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}
                   >
                     <Icon name="edit" size={12} />
-                    แก้ไขเนื้อหา
+                    {loadingDraft ? 'กำลังโหลดร่าง...' : 'แก้ไขเนื้อหา'}
                   </button>
                 </div>
               )}

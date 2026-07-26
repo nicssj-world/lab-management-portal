@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createPublicChallenge, verifyPublicChallenge } from '@/lib/security/public-challenge'
 import { createCheckoutSecret, hashCheckoutSecret } from './checkout'
-import { resolveVisitorDestination } from './destination'
+import { resolveVisitorDestination } from '@/lib/lab-map/visitor'
 import type {
   ActiveVisitorDTO,
   NormalizedVisitorLog,
@@ -57,9 +57,11 @@ function toActiveVisitorDTO(row: { entered_at: string; contact_dept: string }): 
   return {
     enteredAt: row.entered_at,
     contactDept: row.contact_dept,
-    destinationCode: destination?.destinationCode ?? null,
     checkpointCode: destination?.checkpointCode ?? null,
+    checkpointNameTh: destination?.checkpointNameTh ?? null,
+    routeCode: destination?.routeCode ?? null,
     directionsTh: destination?.directionsTh ?? [],
+    safetyStationCode: destination?.safetyStationCode ?? 'office',
   }
 }
 
