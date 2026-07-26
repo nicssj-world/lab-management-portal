@@ -1,26 +1,64 @@
 import { redirect } from 'next/navigation'
 import { LabMapExportClient } from '@/components/lab-map/LabMapExportClient'
+import { LabMapReleasePanel } from '@/components/lab-map/LabMapReleasePanel'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { getActor } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { LAB_MAP_VERSION, LAB_ROUTE_PRESETS, LAB_STATIONS } from '@/lib/lab-map/manifest'
 import { VISITOR_STATION_CODE } from '@/lib/lab-map/visitor'
 import { currentManifestHash } from '@/lib/lab-map/release'
-import { mapReleaseRow } from '@/lib/lab-map/release-server'
+import { canManageMapReleases, mapReleaseRow } from '@/lib/lab-map/release-server'
 import { buildMapPrintDTO, type MapPaperSize, type MapPrintDTO } from '@/lib/lab-map/print'
 import type { MapReleaseDTO } from '@/lib/lab-map/types'
 
 export const dynamic = 'force-dynamic'
 
-export default async function LabMapPrintPage() {
-  const actor = await getActor()
-  if (!actor) redirect('/login')
-  const { data: releaseRow } = await supabaseAdmin.from('lab_map_versions').select('*')
-    .in('status', ['published', 'draft']).order('status', { ascending: false }).order('created_at', { ascending: false }).limit(1).maybeSingle()
-  const release: MapReleaseDTO = releaseRow ? mapReleaseRow(releaseRow) : {
+function fallbackRelease(): MapReleaseDTO {
+  return {
     versionCode: LAB_MAP_VERSION, status: 'draft', manifestHash: currentManifestHash(),
     effectiveDate: null, reviewedBy: null, approvedBy: null, approvedAt: null,
   }
+}
+
+async function withReviewerNames(release: MapReleaseDTO): Promise<MapReleaseDTO> {
+  const ids = [release.reviewedBy, release.approvedBy].filter((id): id is string => Boolean(id))
+  if (ids.length === 0) return release
+  const { data: people } = await supabaseAdmin.from('profiles').select('id, name').in('id', ids)
+  const nameById = new Map((people ?? []).map((person) => [person.id as string, person.name as string | null]))
+  return {
+    ...release,
+    reviewerName: release.reviewedBy ? (nameById.get(release.reviewedBy) ?? null) : null,
+    approverName: release.approvedBy ? (nameById.get(release.approvedBy) ?? null) : null,
+  }
+}
+
+export default async function LabMapPrintPage() {
+  const actor = await getActor()
+  if (!actor) redirect('/login')
+  const canManage = canManageMapReleases(actor)
+
+  const { data: releaseRows } = await supabaseAdmin.from('lab_map_versions').select('*')
+    .in('status', ['published', 'draft']).order('created_at', { ascending: false }).limit(20)
+  const publishedRow = releaseRows?.find((row) => row.status === 'published') ?? null
+  const draftRow = releaseRows?.find((row) => row.status === 'draft') ?? null
+
+  // แผ่นพิมพ์ใช้ฉบับเผยแพร่จริงเสมอถ้ามี — ไม่งั้นฉบับร่างที่ยังไม่ผ่านการอนุมัติจะกลายเป็น "ฉบับใช้งานจริง"
+  const release: MapReleaseDTO = await withReviewerNames(
+    publishedRow ? mapReleaseRow(publishedRow) : draftRow ? mapReleaseRow(draftRow) : fallbackRelease(),
+  )
+  // แผงจัดการต้องเห็นฉบับร่างที่กำลังทำอยู่ก่อนเสมอ ไม่งั้นสร้างฉบับร่างใหม่ไปแล้วจะกลับมาแก้ไม่ได้อีก
+  // ตราบใดที่ยังมีฉบับเผยแพร่ค้างอยู่
+  const managedRelease: MapReleaseDTO = draftRow
+    ? await withReviewerNames(mapReleaseRow(draftRow))
+    : publishedRow
+      ? await withReviewerNames(mapReleaseRow(publishedRow))
+      : fallbackRelease()
+
+  const staffRows = canManage
+    ? await supabaseAdmin.from('profiles').select('id, name, role').order('name')
+    : { data: [] as { id: string; name: string | null; role: string }[] }
+  const staff = (staffRows.data ?? []).map((row) => ({ id: String(row.id), name: row.name as string | null, role: String(row.role) }))
+
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://lab.chonburihospital.go.th').replace(/\/$/, '')
   const catalog: MapPrintDTO[] = []
   const papers: MapPaperSize[] = ['A3', 'A4']
@@ -42,5 +80,10 @@ export default async function LabMapPrintPage() {
     const result = buildMapPrintDTO({ release, kind: 'visitor_navigation', paperSize, stationCode: VISITOR_STATION_CODE, destinationCode, webUrl: `${siteUrl}/staff/lab-map` })
     if (result.ok) catalog.push(result.value)
   }
-  return <><PageHeader title="ส่งออกแผนที่ควบคุม" subtitle="A3/A4 · PDF/PNG · แยกชั้นข้อมูลตามวัตถุประสงค์" /><LabMapExportClient catalog={catalog} /></>
+
+  return <>
+    <PageHeader title="ส่งออกแผนที่ควบคุม" subtitle="A3/A4 · PDF/PNG · แยกชั้นข้อมูลตามวัตถุประสงค์" />
+    {canManage ? <LabMapReleasePanel release={managedRelease} staff={staff} /> : null}
+    <LabMapExportClient catalog={catalog} />
+  </>
 }
