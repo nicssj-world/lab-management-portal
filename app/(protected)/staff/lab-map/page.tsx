@@ -16,12 +16,20 @@ export default async function StaffLabMapPage() {
     <LabMapStaffClient
       map={map}
       headerActions={(
-        <Link
-          href="/staff/lab-map/print"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}
-        >
-          <Icon name="download" size={15} /> ส่งออก A3/A4 PDF หรือ PNG
-        </Link>
+        <>
+          <Link
+            href="/staff/lab-map/safety-assets"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}
+          >
+            <Icon name="shieldCheck" size={15} /> ตรวจอุปกรณ์และจุดรวมพล
+          </Link>
+          <Link
+            href="/staff/lab-map/print"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}
+          >
+            <Icon name="download" size={15} /> ส่งออก A3/A4 PDF หรือ PNG
+          </Link>
+        </>
       )}
     />
   )

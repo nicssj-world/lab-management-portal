@@ -32,7 +32,10 @@ type IncidentRow = {
   reporter_name: string | null
 }
 
-const DEFAULTS = { q: '', year: '', month: '', status: '', severity: '', department: '', overdueRca: '', page: '1' }
+const DEFAULTS = {
+  q: '', year: '', month: '', status: '', severity: '', department: '', overdueRca: '',
+  spaceCode: '', fromDate: '', page: '1',
+}
 const PAGE_SIZE = 20
 const COLUMNS = ['เลขที่', 'วันที่', 'เหตุการณ์', 'หน่วยงาน', 'ระดับ', 'ผู้รายงาน', 'สถานะ']
 
@@ -82,7 +85,11 @@ export function IncidentClient({ canEdit, canReview, actorName }: {
     .filter(key => filters[key] !== DEFAULTS[key])
 
   // overdueRca ตั้งมาจากลิงก์บนหน้าภาพรวม และไม่มีช่องควบคุมบนหน้าจอให้ตั้งกลับ
-  const linkFilter = filters.overdueRca === '1' ? 'เฉพาะเรื่องที่ค้างการวิเคราะห์รากของปัญหา' : ''
+  const linkFilter = [
+    filters.overdueRca === '1' ? 'เฉพาะเรื่องที่ค้างการวิเคราะห์รากของปัญหา' : '',
+    filters.spaceCode ? `พื้นที่ ${filters.spaceCode}` : '',
+    filters.fromDate ? `ตั้งแต่ ${formatThaiDate(filters.fromDate)}` : '',
+  ].filter(Boolean).join(' · ')
 
   const chips = [
     { value: '', label: 'ทั้งหมด', count: Object.values(statusCounts).reduce((a, b) => a + b, 0) },

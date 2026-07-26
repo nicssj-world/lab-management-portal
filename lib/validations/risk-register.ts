@@ -12,6 +12,7 @@ export const riskRegisterSchema = z.object({
   risk_no: optionalText,
   assessed_date: isoDate,
   department: optionalText,
+  space_code: z.string().trim().max(80).nullish(),
   hazard_category: optionalText,
   process_step: optionalText,
   risk_statement: z.string().trim().min(1, 'ต้องกรอกเหตุการณ์ความเสี่ยง').max(4000),

@@ -50,7 +50,7 @@ export async function getOutlabOverview(today = bangkokToday()): Promise<OutlabO
   const currentCerts = laboratories.flatMap(lab => lab.certificates.filter(cert => cert.lifecycle === 'current'))
   const expiring = currentCerts.filter(cert => ['watch', 'urgent', 'critical'].includes(cert.urgency)).length
   const expired = currentCerts.filter(cert => cert.urgency === 'expired').length
-  const missingCurrentCertificate = laboratories.filter(lab => lab.active && !lab.certificates.some(cert => cert.lifecycle === 'current')).length
+  const missingCurrentCertificate = laboratories.filter(lab => lab.active && lab.sector !== 'gov' && !lab.certificates.some(cert => cert.lifecycle === 'current')).length
   return {
     laboratories, services, people, tests,
     summary: {

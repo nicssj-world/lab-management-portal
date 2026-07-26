@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getActor } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { currentManifestHash, validatePublishableRelease } from '@/lib/lab-map/release'
+import { manifestHashForSnapshots, validatePublishableRelease } from '@/lib/lab-map/release'
+import { assemblyPointSnapshot, safetyAssetSnapshot } from '@/lib/lab-map/safety-server'
 import { auditMapRelease, canManageMapReleases, mapReleaseRow } from '@/lib/lab-map/release-server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -15,7 +16,8 @@ export async function POST(_request: Request, { params }: Context) {
   if (loadError) return NextResponse.json({ error: loadError.message }, { status: 500 })
   if (!row) return NextResponse.json({ error: 'ไม่พบฉบับแผนที่' }, { status: 404 })
   if (row.status !== 'draft') return NextResponse.json({ error: 'เผยแพร่ได้เฉพาะฉบับร่าง' }, { status: 409 })
-  const hash = currentManifestHash()
+  const [assets, assemblyPoints] = await Promise.all([safetyAssetSnapshot(), assemblyPointSnapshot()])
+  const hash = manifestHashForSnapshots(assets, assemblyPoints)
   if (row.manifest_hash !== hash) return NextResponse.json({ error: 'ผังเปลี่ยนหลังสร้างฉบับร่าง กรุณาสร้างฉบับใหม่' }, { status: 409 })
   const candidate = mapReleaseRow({ ...row, approved_at: new Date().toISOString() })
   const blockers = validatePublishableRelease(candidate)

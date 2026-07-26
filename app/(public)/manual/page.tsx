@@ -17,10 +17,12 @@ export const metadata = {
 export default async function ManualPage() {
   const supabase = await createClient()
 
-  const [{ data: sectionsData }, { data: { user } }] = await Promise.all([
+  const [{ data: sectionsData }, { data: { user } }, { count: testCountData }] = await Promise.all([
     supabase.from('manual_sections').select('id, body_html_th, body_html_en, table_data, updated_at'),
     supabase.auth.getUser(),
+    supabase.from('tests').select('id', { count: 'exact', head: true }).eq('active', true),
   ])
+  const testCount = testCountData ?? 0
 
   const dbSections: Record<string, { th: string; en: string }> = {}
   const dbTables: Record<string, Record<string, unknown[]>> = {}
@@ -106,6 +108,7 @@ export default async function ManualPage() {
       publicationHistory={publicationHistory}
       sectionControls={sectionControls}
       canEdit={canEdit}
+      testCount={testCount}
     />
   )
 }

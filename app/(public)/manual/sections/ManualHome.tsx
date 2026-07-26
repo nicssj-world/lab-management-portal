@@ -9,6 +9,7 @@ import { TABLE_SCHEMAS, type EditableRow } from '../tables'
 interface Props {
   lang: Lang
   goto: (id: string) => void
+  testCount: number
 }
 
 const TEAM_TONE = {
@@ -23,7 +24,7 @@ const SECTION_TONE = {
   border: 'rgba(30,95,173,.16)',
 }
 
-export function ManualHome({ lang, goto }: Props) {
+export function ManualHome({ lang, goto, testCount }: Props) {
   const [editingTeam, setEditingTeam] = useState(false)
   const team = useManualTable<TeamMember>('team', 'home', TEAM)
   const [editingPhone, setEditingPhone] = useState(false)
@@ -286,8 +287,8 @@ export function ManualHome({ lang, goto }: Props) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: 10, marginBottom: 22 }}>
         {[
           { label: lang === 'th' ? 'งานบริการ' : 'Service desks',         value: '10',   sub: lang === 'th' ? 'แผนก' : 'sections', icon: 'flask',    color: 'var(--manual-accent)', bg: 'var(--manual-accent-soft)', border: 'var(--manual-accent-border)' },
-          { label: lang === 'th' ? 'ผู้ป่วยใน / ER' : 'Inpatient / ER', value: '24/7', sub: lang === 'th' ? 'ทุกวัน' : 'daily',  icon: 'clock',    color: '#0F766E', bg: 'rgba(15,118,110,.08)', border: 'rgba(15,118,110,.2)' },
-          { label: lang === 'th' ? 'คลินิกนอกเวลา' : 'After-hours',     value: '16–24',sub: lang === 'th' ? 'น.' : 'hr.',          icon: 'building', color: '#B08D57', bg: 'rgba(176,141,87,.10)', border: 'rgba(176,141,87,.24)' },
+          { label: lang === 'th' ? 'รายการตรวจวิเคราะห์ทั้งหมด' : 'Total tests', value: String(testCount), sub: lang === 'th' ? 'รายการ' : 'tests', icon: 'beaker', color: '#0F766E', bg: 'rgba(15,118,110,.08)', border: 'rgba(15,118,110,.2)' },
+          { label: lang === 'th' ? 'จำนวนหัวข้อในคู่มือ' : 'Manual topics',   value: String(MANUAL_SECTIONS.length), sub: lang === 'th' ? 'หัวข้อ' : 'topics', icon: 'book', color: '#B08D57', bg: 'rgba(176,141,87,.10)', border: 'rgba(176,141,87,.24)' },
         ].map((s) => (
           <div key={s.label} className="manual-stat-card" style={{ '--stat-tone-soft': s.bg, minWidth: 0, padding: '14px 16px', border: `1px solid ${s.border}`, borderLeft: `3px solid ${s.color}`, borderRadius: 10, color: s.color } as CSSProperties}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>

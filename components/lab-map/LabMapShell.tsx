@@ -4,15 +4,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { LabMapCanvas } from './LabMapCanvas'
 import { LabMapStyles } from './LabMapStyles'
+import { SafetyEquipmentDetailDialog } from './SafetyEquipmentDetailDialog'
 import { FilterChips } from '@/components/ui/FilterChips'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
-import type { LabMapDTO, MapMode } from '@/lib/lab-map/types'
+import type { LabMapDTO, MapMode, SafetyAssetDTO } from '@/lib/lab-map/types'
 
 const MODE_LABELS: Record<MapMode, { th: string; icon: string }> = {
   overview: { th: 'พื้นที่และหน่วยงาน', icon: 'building' },
   infection: { th: 'เขตควบคุมการติดเชื้อ', icon: 'biohazard' },
   safety: { th: 'แผนผังทางหนีไฟ', icon: 'shield' },
+  'safety-assets': { th: 'อุปกรณ์ความปลอดภัย', icon: 'shieldCheck' },
 }
 
 export interface LabMapShellProps {
@@ -35,6 +37,8 @@ export interface LabMapShellProps {
   highlightedCodesForSelection?: (selectedCode: string | null, map: LabMapDTO) => readonly string[]
   /** ปุ่ม/ลิงก์เพิ่มเติมในหัวเพจ วางไว้ข้าง badge เวอร์ชัน — ไม่ใช่ sibling แยกด้านบน (ทำให้หัวข้อไม่ชิดบน) */
   headerActions?: ReactNode
+  /** แผนที่เจ้าหน้าที่เท่านั้น: กดถังดับเพลิงเพื่อดูผลตรวจและรูปหลักฐานล่าสุด */
+  showSafetyInspectionDetails?: boolean
 }
 
 export function LabMapShell({
@@ -54,6 +58,7 @@ export function LabMapShell({
   searchItems = [],
   highlightedCodesForSelection,
   headerActions,
+  showSafetyInspectionDetails = false,
 }: LabMapShellProps) {
   const defaultMode = initialMode && allowedModes.includes(initialMode) ? initialMode : allowedModes[0] ?? 'overview'
   const [mode, setMode] = useState<MapMode>(defaultMode)
@@ -62,6 +67,9 @@ export function LabMapShell({
   const defaultSafetyStation = initialSafetyStationCode ?? map.stationCode
   const [safetyStationCode, setSafetyStationCode] = useState(defaultSafetyStation)
   const [query, setQuery] = useState('')
+  const [inspectionAsset, setInspectionAsset] = useState<SafetyAssetDTO | null>(null)
+  const [inspectionLoading, setInspectionLoading] = useState(false)
+  const [inspectionError, setInspectionError] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => setMode(defaultMode), [defaultMode])
@@ -120,6 +128,35 @@ export function LabMapShell({
   const highlightedSpaceCodes = highlightedCodesForSelection?.(selectedCode, map)
     ?? selectedZone?.spaceCodes
     ?? []
+  const selectedExtinguisher = mode === 'safety' && showSafetyInspectionDetails
+    ? map.safetyEquipment.find((item) => item.code === selectedCode && item.kind === 'fire-extinguisher') ?? null
+    : null
+
+  useEffect(() => {
+    if (!selectedExtinguisher) {
+      setInspectionAsset(null)
+      setInspectionLoading(false)
+      setInspectionError(null)
+      return undefined
+    }
+    const controller = new AbortController()
+    setInspectionAsset(null)
+    setInspectionLoading(true)
+    setInspectionError(null)
+    void fetch(`/api/admin/lab-map/safety-assets?code=${encodeURIComponent(selectedExtinguisher.code)}`, { signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({})) as { items?: SafetyAssetDTO[]; error?: string }
+        if (!response.ok) throw new Error(payload.error ?? 'ไม่สามารถโหลดรายละเอียดถังดับเพลิงได้')
+        if (!payload.items?.[0]) throw new Error('ไม่พบทะเบียนถังดับเพลิงนี้')
+        return payload.items[0]
+      })
+      .then((asset) => { if (!controller.signal.aborted) setInspectionAsset(asset) })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setInspectionError(error instanceof Error ? error.message : 'ไม่สามารถโหลดรายละเอียดถังดับเพลิงได้')
+      })
+      .finally(() => { if (!controller.signal.aborted) setInspectionLoading(false) })
+    return () => controller.abort()
+  }, [selectedExtinguisher])
 
   function selectResult(code: string) {
     setSelectedCode(code)
@@ -129,6 +166,19 @@ export function LabMapShell({
   function closeDetail() {
     setSelectedCode(null)
     searchRef.current?.focus()
+  }
+
+  function selectMapItem(code: string) {
+    setSelectedCode(code)
+  }
+
+  function changeMode(candidateMode: MapMode) {
+    setMode(candidateMode)
+    if (candidateMode !== 'safety') setSelectedCode(null)
+  }
+
+  async function copyAssemblyCoordinates(latitude: number, longitude: number) {
+    await navigator.clipboard.writeText(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`)
   }
 
   const defaultDetail = selectedSpace ? (
@@ -188,10 +238,34 @@ export function LabMapShell({
         </p>
       ) : null}
       {relevantAssemblyPoints.length > 0 ? (
-        <p className="lab-map-assembly-note">
-          <strong>จุดรวมพล:</strong>{' '}
-          {relevantAssemblyPoints.map((assembly) => assembly.detailTh ? `${assembly.nameTh} (${assembly.detailTh})` : assembly.nameTh).join(', ')}
-        </p>
+        <div className="lab-map-assembly-note lab-map-assembly-list">
+          <strong>จุดรวมพล</strong>
+          {relevantAssemblyPoints.map((assembly) => (
+            <section className="lab-map-assembly-card" key={assembly.code}>
+              <h3>{assembly.nameTh}</h3>
+              {assembly.detailTh ? <p>{assembly.detailTh}</p> : null}
+              {assembly.latitude != null && assembly.longitude != null ? (
+                <>
+                  <code>{assembly.latitude.toFixed(6)}, {assembly.longitude.toFixed(6)}</code>
+                  <div className="lab-map-assembly-actions">
+                    <button type="button" onClick={() => void copyAssemblyCoordinates(assembly.latitude!, assembly.longitude!)}>
+                      คัดลอกพิกัด
+                    </button>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${assembly.latitude},${assembly.longitude}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      เปิด Google Maps
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <p className="lab-map-safety-missing">ยังไม่มีพิกัด GPS ที่เผยแพร่ โปรดใช้ชื่อและจุดสังเกตในการปฏิบัติงาน</p>
+              )}
+            </section>
+          ))}
+        </div>
       ) : null}
     </div>
   )
@@ -211,6 +285,7 @@ export function LabMapShell({
               <div className="lab-map-version" aria-label={`เวอร์ชัน ${map.version}`}>
                 <span>MAP VERSION</span>
                 <strong>{map.version}</strong>
+                {map.releaseStatus === 'draft' ? <em>ฉบับร่าง</em> : null}
               </div>
             </>
           )}
@@ -224,7 +299,7 @@ export function LabMapShell({
               key={candidateMode}
               type="button"
               aria-pressed={mode === candidateMode}
-              onClick={() => setMode(candidateMode)}
+              onClick={() => changeMode(candidateMode)}
             >
               <Icon name={MODE_LABELS[candidateMode].icon} size={15} />
               <span>{MODE_LABELS[candidateMode].th}</span>
@@ -291,7 +366,7 @@ export function LabMapShell({
           destinationPointCode={mode === 'safety' ? null : destinationPointCode}
           activeStationCode={mode === 'safety' ? safetyStationCode : map.stationCode}
           highlightedSpaceCodes={highlightedSpaceCodes}
-          onSelect={(code) => setSelectedCode(code)}
+          onSelect={selectMapItem}
         />
 
         <aside
@@ -330,6 +405,19 @@ export function LabMapShell({
         </div>
       ) : null}
 
+      {mode === 'safety-assets' ? (
+        <div className="lab-map-legend" aria-label="คำอธิบายสัญลักษณ์อุปกรณ์ความปลอดภัย">
+          <span><i data-class="fire-hose" />สายฉีดน้ำดับเพลิง</span>
+          <span><i data-class="manual-call-point" />จุดกดแจ้งเหตุ</span>
+          <span><i data-class="aed" />เครื่อง AED</span>
+          <span><i data-class="first-aid-kit" />ชุดปฐมพยาบาล</span>
+          <span><i data-class="eyewash" />ที่ล้างตา</span>
+          <span><i data-class="emergency-shower" />ฝักบัวฉุกเฉิน</span>
+          <span><i data-class="spill-kit" />ชุดจัดการสารหกรั่วไหล</span>
+          <span><i data-class="emergency-shutoff" />จุดตัดระบบฉุกเฉิน</span>
+        </div>
+      ) : null}
+
       {mode === 'overview' ? (
         <div className="lab-map-legend" aria-label="คำอธิบายสัญลักษณ์แผนที่">
           <span><i data-class="fingerprint" />จุดสแกนนิ้วมือ</span>
@@ -338,6 +426,13 @@ export function LabMapShell({
           <span><i data-class="controlled" />พื้นที่ควบคุมการเข้าออก</span>
         </div>
       ) : null}
+      <SafetyEquipmentDetailDialog
+        equipment={selectedExtinguisher}
+        asset={inspectionAsset}
+        loading={inspectionLoading}
+        error={inspectionError}
+        onClose={closeDetail}
+      />
     </div>
   )
 }

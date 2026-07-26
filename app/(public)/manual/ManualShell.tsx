@@ -94,13 +94,14 @@ interface Props {
   publicationHistory?: ManualPublicationRevision[]
   sectionControls?: Record<string, ManualSectionControl>
   canEdit?: boolean
+  testCount?: number
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────────
 
 export function ManualShell({
   dbSections = {}, dbTables = {}, publication = DEFAULT_MANUAL_PUBLICATION,
-  publicationHistory = [], sectionControls = {}, canEdit = false,
+  publicationHistory = [], sectionControls = {}, canEdit = false, testCount = 0,
 }: Props) {
   const { lang } = useLang()
   const { toasts, add: toast } = useToast()
@@ -677,7 +678,7 @@ export function ManualShell({
                   className="manual-db-content" />
               ) : (
                 <div ref={staticContentRef}>
-                  {activeSection === 'home'       && <ManualHome lang={lang} goto={goSection} />}
+                  {activeSection === 'home'       && <ManualHome lang={lang} goto={goSection} testCount={testCount} />}
                   {activeSection === 'collection' && <ManualCollection lang={lang} />}
                   {activeSection === 'transport'  && <ManualTransport lang={lang} />}
                   {activeSection === 'addon'      && <ManualAddon lang={lang} />}

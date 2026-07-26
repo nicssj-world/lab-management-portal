@@ -4,16 +4,23 @@ import {
 } from './manifest'
 import { LAB_ASSEMBLY_POINTS, LAB_SAFETY_EQUIPMENT } from './safety-assets'
 import type { StaffLabMapDTO } from './types'
+import type { LabAssemblyPointDefinition, LabSafetyEquipmentDefinition } from './types'
 
 export interface StaffMapRepository {
   activeSpaceCodes(): Promise<readonly string[]>
   activeZoneCodes(): Promise<readonly string[]>
+  publishedSnapshots?(): Promise<{
+    safetyEquipment: readonly LabSafetyEquipmentDefinition[]
+    assemblyPoints: readonly LabAssemblyPointDefinition[]
+    versionCode?: string
+  } | null>
 }
 
 export async function buildStaffLabMapDTO(repository: StaffMapRepository): Promise<StaffLabMapDTO> {
-  const [spaceCodes, zoneCodes] = await Promise.all([
+  const [spaceCodes, zoneCodes, published] = await Promise.all([
     repository.activeSpaceCodes(),
     repository.activeZoneCodes(),
+    repository.publishedSnapshots?.() ?? Promise.resolve(null),
   ])
   const missingSpaces = REQUIRED_SPACE_CODES.filter((code) => !spaceCodes.includes(code))
   const missingZones = LAB_ZONES.map((zone) => zone.code).filter((code) => !zoneCodes.includes(code))
@@ -22,7 +29,8 @@ export async function buildStaffLabMapDTO(repository: StaffMapRepository): Promi
   }
 
   return {
-    version: LAB_MAP_VERSION,
+    version: published?.versionCode ?? LAB_MAP_VERSION,
+    releaseStatus: published ? 'published' : 'draft',
     viewBox: LAB_MAP_VIEW_BOX,
     stationCode: LAB_STATIONS.find((station) => station.kind === 'installation')?.code ?? 'office',
     structures: LAB_STRUCTURES,
@@ -32,7 +40,7 @@ export async function buildStaffLabMapDTO(repository: StaffMapRepository): Promi
     accessPoints: LAB_ACCESS_POINTS,
     stations: LAB_STATIONS,
     routes: LAB_ROUTE_PRESETS,
-    safetyEquipment: LAB_SAFETY_EQUIPMENT,
-    assemblyPoints: LAB_ASSEMBLY_POINTS,
+    safetyEquipment: published?.safetyEquipment ?? LAB_SAFETY_EQUIPMENT,
+    assemblyPoints: published?.assemblyPoints ?? LAB_ASSEMBLY_POINTS,
   }
 }

@@ -14,12 +14,14 @@ const valid = {
   approvedBy: '22222222-2222-4222-8222-222222222222',
   approvedAt: '2026-07-26T02:00:00.000Z',
 }
-// ถังดับเพลิงทั้ง 10 จุดยังไม่ยืนยันหน้างาน (แปลงพิกัดจากผังฉบับเก่าโดยประมาณ) — fail closed
-// จนกว่าจะเดินสำรวจยืนยันตาม docs/lab-map/floor-3-acceptance.md แล้วตั้ง verified: true ทีละจุด
+// อุปกรณ์และจุดรวมพล static fallback ยังไม่ยืนยันหน้างาน — legacy release ต้อง fail closed
 assert.deepEqual(
   validatePublishableRelease(valid),
-  ['ยังไม่ได้ยืนยันตำแหน่งถังดับเพลิงหน้างาน'],
-  'an otherwise-valid release is blocked only by unverified fire extinguisher positions',
+  [
+    'ยังไม่ได้ยืนยันตำแหน่งอุปกรณ์ความปลอดภัยหน้างาน',
+    'จุดรวมพลยังยืนยันไม่ครบ ต้องมี GPS รูปหลักฐาน และทางออกอย่างน้อยหนึ่งจุด',
+  ],
+  'an otherwise-valid legacy release is blocked by unverified safety locations',
 )
 assert.ok(validatePublishableRelease({ ...valid, effectiveDate: null }).length > 1)
 assert.ok(validatePublishableRelease({ ...valid, approvedBy: valid.reviewedBy }).length > 1)

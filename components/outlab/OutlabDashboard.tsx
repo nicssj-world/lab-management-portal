@@ -160,7 +160,7 @@ export function OutlabDashboard({ overview, canEdit, isAdmin, activeSection }: {
   }
   const certs = useMemo(() => overview.laboratories.flatMap(lab => lab.certificates), [overview.laboratories])
   const laboratoriesWithoutCurrentCertificate = useMemo(
-    () => overview.laboratories.filter(lab => lab.active && !lab.certificates.some(cert => cert.lifecycle === 'current')),
+    () => overview.laboratories.filter(lab => lab.active && lab.sector !== 'gov' && !lab.certificates.some(cert => cert.lifecycle === 'current')),
     [overview.laboratories],
   )
   const labName = useMemo(() => new Map(overview.laboratories.map(lab => [lab.id, lab.name])), [overview.laboratories])

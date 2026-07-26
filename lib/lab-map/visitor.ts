@@ -95,9 +95,14 @@ function toVisitorSpace(space: (typeof LAB_SPACES)[number]): LabMapSpaceDTO {
  * อื่นต้องเห็นแผนหนีไฟที่เริ่มจากตำแหน่งจริงที่ตนยืนอยู่ ไม่ใช่แผนของสำนักงานเสมอ
  * (เส้นทางนำทางไปจุดสแกน ยังคงจำกัดเฉพาะที่ออกจากสำนักงานเหมือนเดิม เพราะเป็นจุดลงทะเบียนเดียว)
  */
-export function buildVisitorLabMapDTO(): LabMapDTO {
+export function buildVisitorLabMapDTO(published?: {
+  versionCode: string
+  safetyEquipment: LabMapDTO['safetyEquipment']
+  assemblyPoints: LabMapDTO['assemblyPoints']
+} | null): LabMapDTO {
   return {
-    version: LAB_MAP_VERSION,
+    version: published?.versionCode ?? LAB_MAP_VERSION,
+    releaseStatus: published ? 'published' : 'draft',
     viewBox: LAB_MAP_VIEW_BOX,
     stationCode: VISITOR_STATION_CODE,
     structures: LAB_STRUCTURES,
@@ -111,7 +116,7 @@ export function buildVisitorLabMapDTO(): LabMapDTO {
         (preset.kind === 'visitor' && preset.fromStationCode === VISITOR_STATION_CODE) ||
         preset.kind === 'evacuation',
     ),
-    safetyEquipment: LAB_SAFETY_EQUIPMENT,
-    assemblyPoints: LAB_ASSEMBLY_POINTS,
+    safetyEquipment: published?.safetyEquipment ?? LAB_SAFETY_EQUIPMENT,
+    assemblyPoints: published?.assemblyPoints ?? LAB_ASSEMBLY_POINTS,
   }
 }

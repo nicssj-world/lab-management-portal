@@ -20,6 +20,10 @@ export function mapReleaseRow(row: Record<string, unknown>): MapReleaseDTO {
     approvedBy: row.approved_by as string | null,
     approvedAt: row.approved_at as string | null,
     notes: row.notes as string | null,
+    assetSnapshot: Array.isArray(row.asset_snapshot) && row.asset_snapshot.length > 0
+      ? row.asset_snapshot as MapReleaseDTO['assetSnapshot'] : undefined,
+    assemblyPointSnapshot: Array.isArray(row.assembly_point_snapshot) && row.assembly_point_snapshot.length > 0
+      ? row.assembly_point_snapshot as MapReleaseDTO['assemblyPointSnapshot'] : undefined,
   }
 }
 

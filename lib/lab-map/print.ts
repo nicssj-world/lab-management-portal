@@ -82,8 +82,8 @@ export function buildMapPrintDTO(input: {
     stations: LAB_STATIONS.filter((item) => item.code === input.stationCode),
     routes,
     // ถังดับเพลิงและจุดรวมพลมีความหมายเฉพาะแผ่นเส้นทางหนีไฟ — แผ่นควบคุมการติดเชื้อไม่ต้องมี
-    safetyEquipment: input.kind === 'evacuation' ? LAB_SAFETY_EQUIPMENT : [],
-    assemblyPoints: input.kind === 'evacuation' ? LAB_ASSEMBLY_POINTS : [],
+    safetyEquipment: input.kind === 'evacuation' ? (input.release.assetSnapshot ?? LAB_SAFETY_EQUIPMENT) : [],
+    assemblyPoints: input.kind === 'evacuation' ? (input.release.assemblyPointSnapshot ?? LAB_ASSEMBLY_POINTS) : [],
   }
   return { ok: true, value: {
     ...common,

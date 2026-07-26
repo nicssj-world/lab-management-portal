@@ -36,7 +36,8 @@ export const RISK_NAVIGATION = [
   // และเข้าถึงได้แม้ไม่มีสิทธิ์ในโมดูล จึงอยู่ใน sidebar ระดับบนแทน (ดู StaffSidebar)
   { id: 'dashboard', href: '/staff/risk', labelTh: 'ภาพรวมความเสี่ยง', labelEn: 'Risk Overview', icon: 'chart', exact: true },
   { id: 'ior', href: '/staff/risk/ior', labelTh: 'ทะเบียนอุบัติการณ์ (IOR)', labelEn: 'Incident Reports', icon: 'shield' },
-  { id: 'register', href: '/staff/risk/register', labelTh: 'ทะเบียนความเสี่ยง', labelEn: 'Risk Register', icon: 'clipboard' },
+    { id: 'register', href: '/staff/risk/register', labelTh: 'ทะเบียนความเสี่ยง', labelEn: 'Risk Register', icon: 'clipboard' },
+    { id: 'map', href: '/staff/risk/map', labelTh: 'แผนที่ความเสี่ยง', labelEn: 'Risk Map', icon: 'building' },
   { id: 'smart', href: '/staff/risk/smart-rm', labelTh: 'วิเคราะห์ Smart-RM', labelEn: 'Smart-RM Analytics', icon: 'trending' },
 ] as const satisfies readonly ModuleNavigationItem[]
 

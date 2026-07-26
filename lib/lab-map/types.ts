@@ -5,8 +5,8 @@ export type AccessPointStatus =
   | 'fingerprint_controlled'
   | 'permanently_locked'
 
-/** โหมดแผนที่ — ไม่มี 'personnel' อีกต่อไป (ถอดออกตามการรื้อระบบรอบนี้) */
-export type MapMode = 'overview' | 'infection' | 'safety'
+/** โหมดแผนที่ — ทางหนีไฟและอุปกรณ์ความปลอดภัยเป็นคนละชั้นข้อมูล */
+export type MapMode = 'overview' | 'infection' | 'safety' | 'safety-assets'
 
 export type RouteKind = 'visitor' | 'staff_orientation' | 'evacuation'
 
@@ -97,7 +97,16 @@ export interface LabStationDefinition {
   checkpointCode?: string
 }
 
-export type SafetyEquipmentKind = 'fire-extinguisher' | 'fire-hose' | 'manual-call-point'
+export type SafetyEquipmentKind =
+  | 'fire-extinguisher'
+  | 'fire-hose'
+  | 'manual-call-point'
+  | 'aed'
+  | 'first-aid-kit'
+  | 'eyewash'
+  | 'emergency-shower'
+  | 'spill-kit'
+  | 'emergency-shutoff'
 
 export interface LabSafetyEquipmentDefinition {
   code: string
@@ -109,6 +118,8 @@ export interface LabSafetyEquipmentDefinition {
   verified: boolean
   /** จุดอ้างอิงบนผังฉบับเก่า ใช้ตอนเดินตรวจยืนยัน */
   sourceNoteTh?: string
+  shutoffFor?: 'electricity' | 'gas' | null
+  operationalStatus?: 'unverified' | 'verified' | 'passed' | 'needs_attention' | 'failed' | 'overdue' | 'due_soon'
 }
 
 export interface LabAssemblyPointDefinition {
@@ -116,6 +127,59 @@ export interface LabAssemblyPointDefinition {
   nameTh: string
   detailTh?: string
   exitCodes: readonly string[]
+  latitude?: number | null
+  longitude?: number | null
+  verified?: boolean
+}
+
+export interface SafetyInspectionDTO {
+  id: string
+  assetId: string
+  result: 'passed' | 'needs_attention' | 'failed' | 'not_found'
+  inspectedOn: string
+  nextInspectionDate: string | null
+  expiresOn: string | null
+  note: string | null
+  photoUrl: string
+  inspectedBy: string
+  inspectorName: string | null
+  createdAt: string
+}
+
+export interface SafetyAssetDTO extends LabSafetyEquipmentDefinition {
+  id: string
+  spaceCode: string | null
+  positionStatus: 'unverified' | 'verified'
+  lifecycleStatus: 'active' | 'retired'
+  positionVerifiedBy: string | null
+  positionVerifiedAt: string | null
+  createdAt: string
+  updatedAt: string
+  latestInspection: SafetyInspectionDTO | null
+}
+
+export interface AssemblyPointVerificationDTO {
+  id: string
+  assemblyPointId: string
+  latitude: number
+  longitude: number
+  accuracyMeters: number | null
+  note: string | null
+  photoUrl: string
+  verifiedBy: string
+  verifierName: string | null
+  verifiedAt: string
+}
+
+export interface AssemblyPointDTO extends LabAssemblyPointDefinition {
+  id: string
+  positionStatus: 'unverified' | 'verified'
+  lifecycleStatus: 'active' | 'retired'
+  positionVerifiedBy: string | null
+  positionVerifiedAt: string | null
+  createdAt: string
+  updatedAt: string
+  latestVerification: AssemblyPointVerificationDTO | null
 }
 
 export interface LabRoutePreset {
@@ -135,6 +199,7 @@ export interface LabMapSpaceDTO extends Omit<LabSpaceDefinition, 'infectionClass
 
 export interface LabMapDTO {
   version: string
+  releaseStatus?: 'published' | 'draft'
   viewBox: string
   stationCode: string
   structures: readonly LabStructureDefinition[]
@@ -171,4 +236,6 @@ export interface MapReleaseDTO {
   reviewerName?: string | null
   approverName?: string | null
   notes?: string | null
+  assetSnapshot?: readonly LabSafetyEquipmentDefinition[]
+  assemblyPointSnapshot?: readonly LabAssemblyPointDefinition[]
 }

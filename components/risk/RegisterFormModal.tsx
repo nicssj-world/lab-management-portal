@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { ScalePicker, ScoreReadout } from './shared/ScalePicker'
 import { ErrorBanner, Field, Modal } from './shared/ui'
+import { LAB_MAP_SPACE_OPTIONS } from '@/lib/lab-map/space-options'
 import {
   IMPACT_SCALE, LAB_DEPARTMENTS, LEVEL_LABEL, LIKELIHOOD_SCALE, SPACE,
   inputStyle, riskLevel, riskScore, textareaStyle, todayIso,
@@ -19,6 +20,7 @@ const EMPTY = {
   risk_no: '',
   assessed_date: todayIso(),
   department: '',
+  space_code: '',
   hazard_category: '',
   process_step: '',
   risk_statement: '',
@@ -101,6 +103,12 @@ export function RegisterFormModal({ onClose, onSaved }: { onClose: () => void; o
             <select value={draft.department} onChange={e => set({ department: e.target.value })} style={inputStyle}>
               <option value="">— เลือกหน่วยงาน —</option>
               {LAB_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </Field>
+          <Field label="ห้องบนแผนที่" hint="ไม่บังคับ">
+            <select value={draft.space_code} onChange={e => set({ space_code: e.target.value })} style={inputStyle}>
+              <option value="">— ไม่ระบุ / นอกแผนที่ —</option>
+              {LAB_MAP_SPACE_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
             </select>
           </Field>
           <Field label="หมวดอันตราย" hint="เช่น ชีวภาพ เคมี กายภาพ">

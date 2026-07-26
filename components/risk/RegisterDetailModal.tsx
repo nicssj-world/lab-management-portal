@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
+import { LAB_MAP_SPACE_OPTIONS } from '@/lib/lab-map/space-options'
 import { AttachmentPanel, type RiskAttachment } from './shared/AttachmentPanel'
 import { RiskActionsPanel, type RiskAction } from './shared/RiskActionsPanel'
 import { ScalePicker, ScoreReadout } from './shared/ScalePicker'
@@ -19,6 +20,7 @@ export type RegisterEntry = {
   risk_no: string | null
   assessed_date: string
   department: string | null
+  space_code: string | null
   hazard_category: string | null
   process_step: string | null
   risk_statement: string
@@ -170,6 +172,7 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
                 <dd style={{ margin: '2px 0 0', fontSize: FONT.md, color: 'var(--ink)' }}>{value || '—'}</dd>
               </div>
             ))}
+            <LocationField entry={entry} canEdit={canEdit} busy={busy} onSave={body => send('', 'PATCH', body)} />
           </dl>
           {sourceIncidents.length > 0 && (
             <p style={{ margin: 0, fontSize: FONT.base, color: 'var(--muted)' }}>
@@ -227,6 +230,45 @@ export function ReviewBadge({ state, nextReview }: { state: string; nextReview?:
       <Icon name={state === 'overdue' ? 'alert' : 'clock'} size={12} />
       {state === 'overdue' ? 'เลยกำหนดทบทวน' : 'ใกล้ครบรอบทบทวน'} {formatThaiDate(nextReview)}
     </Badge>
+  )
+}
+
+function LocationField({ entry, canEdit, busy, onSave }: {
+  entry: RegisterEntry
+  canEdit: boolean
+  busy: boolean
+  onSave: (body: Record<string, unknown>) => Promise<boolean>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [spaceCode, setSpaceCode] = useState(entry.space_code ?? '')
+  const label = LAB_MAP_SPACE_OPTIONS.find(([code]) => code === entry.space_code)?.[1]
+
+  if (editing) {
+    return (
+      <div>
+        <dt style={{ fontSize: FONT.xs, fontWeight: 600, color: 'var(--muted)' }}>ห้องบนแผนที่</dt>
+        <dd style={{ margin: '2px 0 0', display: 'flex', alignItems: 'center', gap: SPACE.xs, flexWrap: 'wrap' }}>
+          <select value={spaceCode} onChange={e => setSpaceCode(e.target.value)} style={{ ...inputStyle, width: 'auto' }}>
+            <option value="">— ไม่ระบุ / นอกแผนที่ —</option>
+            {LAB_MAP_SPACE_OPTIONS.map(([code, optionLabel]) => <option key={code} value={code}>{optionLabel}</option>)}
+          </select>
+          <Button variant="secondary" size="sm" onClick={() => { setEditing(false); setSpaceCode(entry.space_code ?? '') }} disabled={busy}>ยกเลิก</Button>
+          <Button variant="primary" size="sm" icon="check" disabled={busy} onClick={async () => {
+            if (await onSave({ space_code: spaceCode || null })) setEditing(false)
+          }}>บันทึก</Button>
+        </dd>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <dt style={{ fontSize: FONT.xs, fontWeight: 600, color: 'var(--muted)' }}>ห้องบนแผนที่</dt>
+      <dd style={{ margin: '2px 0 0', display: 'flex', alignItems: 'center', gap: SPACE.xs, fontSize: FONT.md, color: 'var(--ink)' }}>
+        {label ?? 'ไม่ระบุ / นอกแผนที่'}
+        {canEdit && <Button variant="ghost" size="sm" icon="edit" onClick={() => setEditing(true)}>แก้ไข</Button>}
+      </dd>
+    </div>
   )
 }
 

@@ -23,6 +23,7 @@ import {
 const DEFAULTS = {
   q: '', status: '', level: '', residualLevel: '', department: '', reviewDue: '', page: '1',
   likelihood: '', impact: '', residualLikelihood: '', residualImpact: '', matrix: '',
+  spaceCode: '', active: '',
 }
 const PAGE_SIZE = 20
 const COLUMNS = ['รหัส', 'ความเสี่ยง', 'หน่วยงาน', 'ก่อนมาตรการ', 'หลังมาตรการ', 'ผู้รับผิดชอบ', 'ทบทวนครั้งถัดไป', 'สถานะ']
@@ -92,6 +93,8 @@ export function RegisterClient({ canEdit, canReview, actorName }: {
     filters.impact && `ผลกระทบ ${filters.impact}`,
     filters.residualLikelihood && `โอกาสเกิดหลังมาตรการ ${filters.residualLikelihood}`,
     filters.residualImpact && `ผลกระทบหลังมาตรการ ${filters.residualImpact}`,
+    filters.spaceCode && `พื้นที่ ${filters.spaceCode}`,
+    filters.active === '1' && 'เฉพาะรายการที่ยังไม่ปิด',
   ].filter(Boolean).join(' · ')
 
   const chips = [

@@ -6,6 +6,7 @@ import {
   getPublicVisitorFormState,
 } from '@/lib/it-visitor/public-server'
 import { buildVisitorLabMapDTO } from '@/lib/lab-map/visitor'
+import { getPublishedLabMapSnapshot } from '@/lib/lab-map/server'
 import { consumeRateLimit } from '@/lib/security/rate-limit'
 import { getClientIp, privateRequestKey } from '@/lib/security/request-protection'
 
@@ -32,6 +33,7 @@ export default async function PublicVisitorPage({ params }: { params: Promise<{ 
   const initialActiveVisit = state && checkoutSecret
     ? await getActiveVisitorBySecret(checkoutSecret)
     : null
+  const publishedMap = state ? await getPublishedLabMapSnapshot() : null
 
   return (
     <main className="public-visitor-page">
@@ -47,7 +49,7 @@ export default async function PublicVisitorPage({ params }: { params: Promise<{ 
             initialState={state}
             challenge={challenge}
             initialActiveVisit={initialActiveVisit}
-            visitorMap={buildVisitorLabMapDTO()}
+            visitorMap={buildVisitorLabMapDTO(publishedMap)}
           />
         ) : (
           <div role="alert" className="public-visitor-not-found">
