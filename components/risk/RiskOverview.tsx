@@ -141,7 +141,7 @@ export function RiskOverview() {
             />
 
             <WorkPanel
-              title="ต้องวิเคราะห์รากของปัญหา"
+              title="ต้องตรวจสอบสาเหตุ"
               icon="search"
               href="/staff/risk/ior?overdueRca=1"
               emptyText="ไม่มีเรื่องที่ค้างการวิเคราะห์"

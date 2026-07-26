@@ -1,6 +1,38 @@
 import assert from 'node:assert/strict'
 import { nextReviewDate, reviewState } from './register'
+import * as register from './register'
 import { riskLevel, riskScore } from '@/components/risk/shared/tokens'
+
+type OwnerAutofill = {
+  riskOwnerForDepartment: (department: string) => string
+  ownerAfterDepartmentChange: (currentOwner: string, previousDepartment: string, nextDepartment: string) => string
+}
+
+const ownerAutofill = register as typeof register & Partial<OwnerAutofill>
+
+// ── ผู้รับผิดชอบ: เติมตามหน่วยงานโดยไม่เขียนทับค่าที่ผู้ใช้แก้เอง ──
+assert.equal(typeof ownerAutofill.riskOwnerForDepartment, 'function')
+assert.equal(ownerAutofill.riskOwnerForDepartment?.('งานเคมีคลินิก'), 'หัวหน้างานเคมีคลินิก')
+assert.equal(ownerAutofill.riskOwnerForDepartment?.('ห้องปฏิบัติการศูนย์สุขภาพชุมชนเมืองชลบุรี'), 'หัวหน้าห้องปฏิบัติการศูนย์สุขภาพชุมชนเมืองชลบุรี')
+assert.equal(ownerAutofill.riskOwnerForDepartment?.(''), '')
+
+assert.equal(typeof ownerAutofill.ownerAfterDepartmentChange, 'function')
+assert.equal(
+  ownerAutofill.ownerAfterDepartmentChange?.('', '', 'งานเคมีคลินิก'),
+  'หัวหน้างานเคมีคลินิก',
+)
+assert.equal(
+  ownerAutofill.ownerAfterDepartmentChange?.('หัวหน้างานเคมีคลินิก', 'งานเคมีคลินิก', 'งานโลหิตวิทยา'),
+  'หัวหน้างานโลหิตวิทยา',
+)
+assert.equal(
+  ownerAutofill.ownerAfterDepartmentChange?.('นายสมชาย ใจดี', 'งานเคมีคลินิก', 'งานโลหิตวิทยา'),
+  'นายสมชาย ใจดี',
+)
+assert.equal(
+  ownerAutofill.ownerAfterDepartmentChange?.('หัวหน้างานเคมีคลินิก', 'งานเคมีคลินิก', ''),
+  '',
+)
 
 // ── riskLevel: ต้องตรงกับ generated column ใน scripts/risk-module-v2.sql เป๊ะ ──
 // ระบบเดิมบังคับ level='low' เมื่อไม่มี L×S ทำให้ dashboard นับ "Initial High" ได้เกือบศูนย์

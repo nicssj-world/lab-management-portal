@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { ownerAfterDepartmentChange } from '@/lib/risk/register'
 import { ScalePicker, ScoreReadout } from './shared/ScalePicker'
 import { ErrorBanner, Field, Modal } from './shared/ui'
 import { LAB_MAP_SPACE_OPTIONS } from '@/lib/lab-map/space-options'
@@ -45,6 +46,13 @@ export function RegisterFormModal({ onClose, onSaved }: { onClose: () => void; o
 
   const level = riskLevel(riskScore(likelihood, impact))
   const set = (patch: Partial<typeof EMPTY>) => setDraft({ ...draft, ...patch })
+  const changeDepartment = (department: string) => {
+    setDraft(current => ({
+      ...current,
+      department,
+      owner: ownerAfterDepartmentChange(current.owner, current.department, department),
+    }))
+  }
 
   async function save() {
     setTouched({ risk_statement: true })
@@ -100,7 +108,7 @@ export function RegisterFormModal({ onClose, onSaved }: { onClose: () => void; o
             <input type="date" value={draft.assessed_date} onChange={e => set({ assessed_date: e.target.value })} style={inputStyle} />
           </Field>
           <Field label="หน่วยงาน">
-            <select value={draft.department} onChange={e => set({ department: e.target.value })} style={inputStyle}>
+            <select value={draft.department} onChange={e => changeDepartment(e.target.value)} style={inputStyle}>
               <option value="">— เลือกหน่วยงาน —</option>
               {LAB_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
