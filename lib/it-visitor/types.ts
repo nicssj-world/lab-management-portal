@@ -62,9 +62,13 @@ export interface PublicVisitorFormState {
 export interface ActiveVisitorDTO {
   enteredAt: string
   contactDept: string
-  destinationCode: string | null
+  /** จุดสแกนนิ้วมือปลายทาง — null เมื่อหน่วยงานไม่มีการจับคู่ที่อนุมัติไว้ (fail closed) */
   checkpointCode: string | null
+  checkpointNameTh: string | null
+  routeCode: string | null
   directionsTh: readonly string[]
+  /** สถานีความปลอดภัยที่ตรงกับจุดสแกนนี้ — ใช้เป็นจุดเริ่มต้นของแผนหนีไฟให้ตรงตำแหน่งจริงที่ยืนอยู่ */
+  safetyStationCode: string
 }
 
 export interface VisitorCheckInResult {

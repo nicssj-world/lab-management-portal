@@ -102,8 +102,9 @@ assert.ok(publicServer.includes("checkout_method: 'self'"), 'marks self checkout
 assert.ok(publicServer.includes('checkout_secret_hash: null'), 'invalidates checkout secret after use')
 assert.ok(publicServer.includes("action: 'it_visitor.self_checkout'"), 'audits self checkout')
 
-assert.ok(activeVisitCard.includes('/lab-map/office?destination='), 'active card links to safe public map')
-assert.ok(activeVisitCard.includes('mode=safety'), 'active card links to safety view')
+assert.ok(activeVisitCard.includes("setMapDialog('navigation')"), 'active card opens the map popup in navigation mode')
+assert.ok(activeVisitCard.includes("setMapDialog('safety')"), 'active card opens the map popup in safety mode')
+assert.ok(!activeVisitCard.includes('/lab-map/office'), 'active card no longer navigates to a public map route')
 assert.ok(activeVisitCard.includes('บันทึกออก'), 'active card offers checkout')
 assert.ok(activeVisitCard.includes('disabled={submitting}'), 'checkout button prevents duplicate submits')
 

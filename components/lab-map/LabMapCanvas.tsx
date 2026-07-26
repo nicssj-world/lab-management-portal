@@ -3,20 +3,28 @@
 import { useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type {
+  LabAccessPointDefinition,
+  LabLabelDefinition,
   LabMapDTO,
   LabMapSpaceDTO,
+  LabSafetyEquipmentDefinition,
+  LabStructureDefinition,
   MapMode,
   SvgShape,
 } from '@/lib/lab-map/types'
+import { EVACUATION_RESTRICTED_SPACE_CODES } from '@/lib/lab-map/safety-assets'
 
 export interface LabMapCanvasProps {
   map: LabMapDTO
   mode: MapMode
   selectedCode: string | null
-  activeRouteCode: string | null
   activeRouteCodes?: readonly string[]
   onSelect: (code: string) => void
   highlightedSpaceCodes?: readonly string[]
+  /** จุดสแกนปลายทางของเส้นทางที่กำลังแสดง — ไฮไลต์และประกาศให้ผู้ใช้ทราบว่าเส้นทางจบที่นี่ */
+  destinationPointCode?: string | null
+  /** สถานีที่ใช้วางหมุด "คุณอยู่ที่นี่" — ไม่ระบุ = ใช้ map.stationCode ตามเดิม */
+  activeStationCode?: string | null
   interactive?: boolean
 }
 
@@ -25,6 +33,8 @@ interface ViewTransform {
   x: number
   y: number
 }
+
+const RESTRICTED_LIFT_CODES = new Set<string>(EVACUATION_RESTRICTED_SPACE_CODES)
 
 function renderShape(shape: SvgShape): ReactNode {
   switch (shape.type) {
@@ -41,35 +51,6 @@ function renderShape(shape: SvgShape): ReactNode {
   }
 }
 
-function shapeCenter(shape: SvgShape): readonly [number, number] | null {
-  if (shape.type === 'rect') return [shape.x + shape.width / 2, shape.y + shape.height / 2]
-  if (shape.type === 'polygon' && shape.points.length > 0) {
-    const sum = shape.points.reduce(([x, y], [nextX, nextY]) => [x + nextX, y + nextY] as const, [0, 0] as const)
-    return [sum[0] / shape.points.length, sum[1] / shape.points.length]
-  }
-  return null
-}
-
-function labelLines(space: LabMapSpaceDTO): string[] {
-  const label = space.nameTh.replace(/ — /g, '—')
-  if (label.length <= 24) return [label]
-
-  const words = label.split(/\s+/)
-  const lines: string[] = []
-  let current = ''
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word
-    if (candidate.length > 24 && current) {
-      lines.push(current)
-      current = word
-    } else {
-      current = candidate
-    }
-  }
-  if (current) lines.push(current)
-  return lines.slice(0, 3)
-}
-
 function fillForSpace(space: LabMapSpaceDTO, mode: MapMode, patternIds: Record<string, string>): string {
   if (mode !== 'infection') return space.controlled ? 'var(--map-controlled)' : 'var(--map-room)'
   if (space.infectionClass === 'infectious') return `url(#${patternIds.infectious})`
@@ -78,11 +59,11 @@ function fillForSpace(space: LabMapSpaceDTO, mode: MapMode, patternIds: Record<s
   return 'var(--map-room)'
 }
 
-function pointSymbol(point: LabMapDTO['accessPoints'][number]): ReactNode {
+function pointSymbol(point: LabAccessPointDefinition): ReactNode {
   if (point.kind === 'fingerprint') {
     return (
       <g>
-        <rect x={point.x - 9} y={point.y - 9} width={18} height={18} rx={5} />
+        <rect x={point.x - 9} y={point.y - 9} width={18} height={18} rx={4} />
         <path d={`M ${point.x - 3} ${point.y + 4} C ${point.x - 5} ${point.y - 4}, ${point.x + 5} ${point.y - 7}, ${point.x + 4} ${point.y + 3}`} />
       </g>
     )
@@ -101,14 +82,62 @@ function pointSymbol(point: LabMapDTO['accessPoints'][number]): ReactNode {
   return <circle cx={point.x} cy={point.y} r={7} />
 }
 
+/** สัญลักษณ์อุปกรณ์ความปลอดภัย — แยกรูปทรงต่อชนิด ไม่ใช่แยกด้วยสีอย่างเดียว */
+function safetyEquipmentSymbol(item: LabSafetyEquipmentDefinition): ReactNode {
+  if (item.kind === 'fire-extinguisher') {
+    return (
+      <g>
+        <rect x={item.x - 5} y={item.y - 9} width={10} height={18} rx={3} />
+        <rect x={item.x - 2} y={item.y - 13} width={4} height={5} rx={1} />
+      </g>
+    )
+  }
+  if (item.kind === 'fire-hose') {
+    return <polygon points={`${item.x},${item.y - 10} ${item.x + 10},${item.y} ${item.x},${item.y + 10} ${item.x - 10},${item.y}`} />
+  }
+  return <polygon points={`${item.x},${item.y - 10} ${item.x + 9},${item.y + 7} ${item.x - 9},${item.y + 7}`} />
+}
+
+function LabelText({ item }: { item: LabLabelDefinition }) {
+  const lineHeight = item.fontSize * 1.25
+  const firstY = item.y - ((item.lines.length - 1) * lineHeight) / 2
+  return (
+    <text
+      className="lab-map-label"
+      x={item.x}
+      y={firstY}
+      textAnchor="middle"
+      dominantBaseline="middle"
+      fontSize={item.fontSize}
+      fontWeight={item.emphasis ? 700 : 500}
+      transform={item.rotate ? `rotate(${item.rotate} ${item.x} ${item.y})` : undefined}
+    >
+      {item.lines.map((line, index) => (
+        <tspan key={`${item.code}-${index}`} x={item.x} dy={index === 0 ? 0 : lineHeight}>{line}</tspan>
+      ))}
+    </text>
+  )
+}
+
+function StructureLayer({ structures }: { structures: readonly LabStructureDefinition[] }) {
+  return (
+    <g className="lab-map-structures" aria-hidden="true">
+      {structures.map((item) => (
+        <path key={item.code} className={`lab-map-structure lab-map-structure--${item.kind}`} d={item.d} />
+      ))}
+    </g>
+  )
+}
+
 export function LabMapCanvas({
   map,
   mode,
   selectedCode,
-  activeRouteCode,
   activeRouteCodes = [],
   onSelect,
   highlightedSpaceCodes = [],
+  destinationPointCode = null,
+  activeStationCode = null,
   interactive = true,
 }: LabMapCanvasProps) {
   const rawId = useId()
@@ -120,8 +149,34 @@ export function LabMapCanvas({
   const [view, setView] = useState<ViewTransform>({ scale: 1, x: 0, y: 0 })
   const dragStart = useRef<{ pointerX: number; pointerY: number; viewX: number; viewY: number } | null>(null)
 
-  const activeRoutes = map.routes.filter((route) => route.code === activeRouteCode || activeRouteCodes.includes(route.code))
+  const activeRoutes = useMemo(
+    () => map.routes.filter((route) => activeRouteCodes.includes(route.code)),
+    [map.routes, activeRouteCodes],
+  )
   const highlighted = useMemo(() => new Set(highlightedSpaceCodes), [highlightedSpaceCodes])
+  const resolvedStationCode = activeStationCode ?? map.stationCode
+  // หมุด "คุณอยู่ที่นี่" มีความหมายเฉพาะตอนดูเส้นทางหนีไฟ — โหมดพื้นที่/หน่วยงานและเขตควบคุมการติดเชื้อ
+  // อ่านข้อมูลคนละแบบ หมุดตำแหน่งผู้ใช้ไม่เกี่ยวและรบกวนการอ่านผังเปล่า ๆ
+  const station = mode === 'safety'
+    ? map.stations.find((item) => item.code === resolvedStationCode) ?? null
+    : null
+
+  /**
+   * โหมดความปลอดภัยแสดงเฉพาะสิ่งที่ใช้อพยพจริง — ทางออก ประตูล็อคถาวร
+   * และจุดสแกนที่อยู่บนเส้นทางที่กำลังแสดงเท่านั้น จุดสแกนอื่นถูกซ่อนเพื่อไม่ให้อ่านผิด
+   */
+  const routePointCodes = useMemo(
+    () => new Set(activeRoutes.flatMap((route) => [...route.pointCodes, route.destinationCode])),
+    [activeRoutes],
+  )
+  const visiblePoints = map.accessPoints.filter((point) => {
+    if (mode !== 'safety') return true
+    if (point.kind === 'exit' || point.status === 'permanently_locked') return true
+    return routePointCodes.has(point.code)
+  })
+  const restrictedLiftSpaces = mode === 'safety'
+    ? map.spaces.filter((space) => RESTRICTED_LIFT_CODES.has(space.code) && space.shape.type === 'rect')
+    : []
 
   function resetView() {
     setView({ scale: 1, x: 0, y: 0 })
@@ -162,8 +217,6 @@ export function LabMapCanvas({
     }
   }
 
-  const showSafetyPoints = mode === 'safety' || mode === 'overview'
-
   return (
     <section className="lab-map-canvas-frame" aria-label="แผนผังห้องปฏิบัติการ">
       {interactive ? (
@@ -195,17 +248,20 @@ export function LabMapCanvas({
               <circle cx="5" cy="5" r="2.2" fill="var(--map-risk)" />
               <circle cx="14" cy="14" r="2.2" fill="var(--map-risk)" />
             </pattern>
-            <filter id={`${idPrefix}-shadow`} x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="3" stdDeviation="4" floodOpacity="0.16" />
-            </filter>
+            <marker id={`${idPrefix}-arrow-primary`} viewBox="0 0 12 12" refX="10" refY="6"
+              markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+              <path d="M 1 1 L 11 6 L 1 11 z" fill="var(--map-route)" />
+            </marker>
+            <marker id={`${idPrefix}-arrow-alternate`} viewBox="0 0 12 12" refX="10" refY="6"
+              markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+              <path d="M 1 1 L 11 6 L 1 11 z" fill="var(--map-route-alt)" />
+            </marker>
           </defs>
 
           <g transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
-            <rect className="lab-map-floor" x="4" y="5" width="1475" height="883" rx="10" />
+            <rect className="lab-map-floor" x="4" y="5" width="1469" height="882" rx="10" />
 
             {map.spaces.map((space) => {
-              const center = shapeCenter(space.shape)
-              const lines = labelLines(space)
               const isSelected = selectedCode === space.code
               const isHighlighted = highlighted.has(space.code)
               return (
@@ -223,35 +279,98 @@ export function LabMapCanvas({
                   style={{ '--space-fill': fillForSpace(space, mode, patternIds) } as React.CSSProperties}
                 >
                   {renderShape(space.shape)}
-                  {center ? (
-                    <text className="lab-map-space-label" x={center[0]} y={center[1] - ((lines.length - 1) * 8)} textAnchor="middle">
-                      {lines.map((line, index) => (
-                        <tspan key={`${space.code}-${index}`} x={center[0]} dy={index === 0 ? 0 : 17}>{line}</tspan>
-                      ))}
-                    </text>
-                  ) : null}
                 </g>
               )
             })}
 
-            {activeRoutes.map((activeRoute) => (
-              <g key={activeRoute.code} className="lab-map-route" aria-label={`เส้นทาง ${activeRoute.code}`} data-variant={activeRoute.variant}>
-                <polyline className="lab-map-route-halo" points={activeRoute.polyline.map(([x, y]) => `${x},${y}`).join(' ')} />
-                <polyline className="lab-map-route-line" points={activeRoute.polyline.map(([x, y]) => `${x},${y}`).join(' ')} />
-              </g>
-            ))}
+            <StructureLayer structures={map.structures} />
 
-            {showSafetyPoints ? map.accessPoints.map((point) => (
+            <g className="lab-map-labels" aria-hidden="true">
+              {map.labels.map((item) => <LabelText key={item.code} item={item} />)}
+            </g>
+
+            {activeRoutes.map((route) => {
+              const points = route.polyline.map(([x, y]) => `${x},${y}`).join(' ')
+              const marker = route.variant === 'alternate' ? `${idPrefix}-arrow-alternate` : `${idPrefix}-arrow-primary`
+              return (
+                <g
+                  key={route.code}
+                  className="lab-map-route"
+                  data-variant={route.variant}
+                  role="img"
+                  aria-label={`${route.variant === 'alternate' ? 'เส้นทางสำรอง' : 'เส้นทางหลัก'} ${route.directionsTh.join(' ')}`}
+                >
+                  <polyline className="lab-map-route-halo" points={points} />
+                  <polyline
+                    className="lab-map-route-line"
+                    points={points}
+                    markerMid={`url(#${marker})`}
+                    markerEnd={`url(#${marker})`}
+                  />
+                </g>
+              )
+            })}
+
+            {visiblePoints.map((point) => (
               <g
                 key={point.code}
                 className={`lab-map-point lab-map-point--${point.kind}`}
                 data-status={point.status}
+                data-destination={point.code === destinationPointCode || undefined}
                 aria-label={point.nameTh}
                 role="img"
               >
+                {point.code === destinationPointCode ? (
+                  <circle className="lab-map-point-pulse" cx={point.x} cy={point.y} r={19} />
+                ) : null}
                 {pointSymbol(point)}
               </g>
-            )) : null}
+            ))}
+
+            {restrictedLiftSpaces.length > 0 ? (
+              <g className="lab-map-lift-restricted">
+                {restrictedLiftSpaces.map((space) => {
+                  if (space.shape.type !== 'rect') return null
+                  const { x, y, width, height } = space.shape
+                  return (
+                    <g
+                      key={space.code}
+                      className="lab-map-lift-restricted-item"
+                      role="img"
+                      aria-label={`${space.nameTh} — ห้ามใช้ลิฟต์ขณะเกิดเหตุ`}
+                    >
+                      <path className="lab-map-lift-restricted-cross" d={`M ${x + 5} ${y + 5} L ${x + width - 5} ${y + height - 5} M ${x + width - 5} ${y + 5} L ${x + 5} ${y + height - 5}`} />
+                    </g>
+                  )
+                })}
+              </g>
+            ) : null}
+
+            {mode === 'safety' ? (
+              <g className="lab-map-safety-equipment">
+                {map.safetyEquipment.map((item) => (
+                  <g
+                    key={item.code}
+                    className={`lab-map-equipment lab-map-equipment--${item.kind}`}
+                    data-verified={item.verified || undefined}
+                    role="img"
+                    aria-label={`${item.nameTh}${item.verified ? '' : ' — รอยืนยันตำแหน่ง'}`}
+                  >
+                    {safetyEquipmentSymbol(item)}
+                  </g>
+                ))}
+              </g>
+            ) : null}
+
+            {station ? (
+              <g className="lab-map-station" role="img" aria-label={`คุณอยู่ที่นี่ — ${station.nameTh}`}>
+                <circle className="lab-map-station-halo" cx={station.x} cy={station.y} r={16} />
+                <circle className="lab-map-station-dot" cx={station.x} cy={station.y} r={7} />
+                <text className="lab-map-station-label" x={station.x} y={station.y - 24} textAnchor="middle">
+                  คุณอยู่ที่นี่
+                </text>
+              </g>
+            ) : null}
           </g>
         </svg>
       </div>

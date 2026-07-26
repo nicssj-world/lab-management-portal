@@ -87,7 +87,7 @@ export function ManualClient({ docs }: Props) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
-                  {['รหัสเอกสาร', 'ชื่อเอกสาร', 'ประเภท', 'Revision', 'วันที่มีผล', 'ขนาด', ''].map((h, i) => (
+                  {['รหัสเอกสาร', 'ชื่อเอกสาร', 'ประเภท', 'Revision', 'วันที่บังคับใช้', 'ขนาด', ''].map((h, i) => (
                     <th key={i} style={{ padding: '12px 16px', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', letterSpacing: '.04em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
                       {h}
                     </th>

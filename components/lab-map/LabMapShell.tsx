@@ -1,16 +1,18 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { LabMapCanvas } from './LabMapCanvas'
 import { LabMapStyles } from './LabMapStyles'
+import { FilterChips } from '@/components/ui/FilterChips'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { Icon } from '@/components/ui/Icon'
 import type { LabMapDTO, MapMode } from '@/lib/lab-map/types'
 
-const MODE_LABELS: Record<MapMode, { th: string; en: string }> = {
-  overview: { th: 'พื้นที่และหน่วยงาน', en: 'Overview' },
-  infection: { th: 'เขตควบคุมการติดเชื้อ', en: 'Infection control' },
-  safety: { th: 'ความปลอดภัย', en: 'Safety' },
-  personnel: { th: 'บุคลากร', en: 'Personnel' },
+const MODE_LABELS: Record<MapMode, { th: string; icon: string }> = {
+  overview: { th: 'พื้นที่และหน่วยงาน', icon: 'building' },
+  infection: { th: 'เขตควบคุมการติดเชื้อ', icon: 'biohazard' },
+  safety: { th: 'แผนผังทางหนีไฟ', icon: 'shield' },
 }
 
 export interface LabMapShellProps {
@@ -19,12 +21,20 @@ export interface LabMapShellProps {
   initialMode?: MapMode
   initialSelectedCode?: string | null
   initialRouteCode?: string | null
+  destinationPointCode?: string | null
+  /** สถานีความปลอดภัยเริ่มต้น — ไม่ระบุ = ใช้ map.stationCode (ค่าเริ่มต้นเดิม) */
+  initialSafetyStationCode?: string
+  /** จำกัดตัวเลือกสถานีความปลอดภัยที่แสดงให้สลับได้ — ไม่ระบุ = แสดงทุกสถานีในผัง */
+  safetyStationCodes?: readonly string[]
   heading?: string
   description?: string
   eyebrow?: string
+  compact?: boolean
   renderDetail?: (selectedCode: string | null, map: LabMapDTO) => ReactNode
   searchItems?: readonly { code: string; label: string; type: string; keywords?: string }[]
   highlightedCodesForSelection?: (selectedCode: string | null, map: LabMapDTO) => readonly string[]
+  /** ปุ่ม/ลิงก์เพิ่มเติมในหัวเพจ วางไว้ข้าง badge เวอร์ชัน — ไม่ใช่ sibling แยกด้านบน (ทำให้หัวข้อไม่ชิดบน) */
+  headerActions?: ReactNode
 }
 
 export function LabMapShell({
@@ -33,19 +43,62 @@ export function LabMapShell({
   initialMode,
   initialSelectedCode = null,
   initialRouteCode = null,
+  destinationPointCode = null,
+  initialSafetyStationCode,
+  safetyStationCodes,
   heading = 'แผนที่ห้องปฏิบัติการ',
   description = 'เลือกพื้นที่บนแผนที่หรือค้นหาจากชื่อห้องและหน่วยงาน',
   eyebrow = 'อาคารเฉลิมราชสมบัติ · ชั้น 3',
+  compact = false,
   renderDetail,
   searchItems = [],
   highlightedCodesForSelection,
+  headerActions,
 }: LabMapShellProps) {
   const defaultMode = initialMode && allowedModes.includes(initialMode) ? initialMode : allowedModes[0] ?? 'overview'
   const [mode, setMode] = useState<MapMode>(defaultMode)
   const [selectedCode, setSelectedCode] = useState<string | null>(initialSelectedCode)
   const [activeRouteCode, setActiveRouteCode] = useState<string | null>(initialRouteCode)
+  const defaultSafetyStation = initialSafetyStationCode ?? map.stationCode
+  const [safetyStationCode, setSafetyStationCode] = useState(defaultSafetyStation)
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => setMode(defaultMode), [defaultMode])
+  useEffect(() => setActiveRouteCode(initialRouteCode), [initialRouteCode])
+  useEffect(() => setSafetyStationCode(defaultSafetyStation), [defaultSafetyStation])
+
+  /**
+   * ผู้ใช้เลือก "จุดที่คุณอยู่" ได้เอง — ค่าเริ่มต้นตั้งตามตำแหน่งจริงที่ระบบทราบ
+   * (จุดสแกนปลายทางของผู้มาติดต่อ หรือสถานีปัจจุบันของแผนที่ฝั่งเจ้าหน้าที่)
+   * เพื่อให้เส้นทางหนีไฟที่แสดงตรงกับตำแหน่งที่ยืนอยู่จริง ไม่ใช่แผนของสำนักงานเสมอ
+   */
+  const stationPickerItems = useMemo(() => {
+    const codes = safetyStationCodes ?? map.stations.map((station) => station.code)
+    return codes
+      .map((code) => map.stations.find((station) => station.code === code))
+      .filter((station): station is NonNullable<typeof station> => station !== undefined)
+      .map((station) => ({ value: station.code, label: station.nameTh }))
+  }, [safetyStationCodes, map.stations])
+
+  const evacuationRoutes = useMemo(
+    () => map.routes.filter((route) => route.kind === 'evacuation' && route.fromStationCode === safetyStationCode),
+    [map.routes, safetyStationCode],
+  )
+  const primaryEvacuation = evacuationRoutes.find((route) => route.variant === 'primary') ?? null
+  const alternateEvacuation = evacuationRoutes.find((route) => route.variant === 'alternate') ?? null
+  const relevantAssemblyPoints = useMemo(() => {
+    const exitCodes = new Set([primaryEvacuation?.destinationCode, alternateEvacuation?.destinationCode].filter(Boolean))
+    return map.assemblyPoints.filter((assembly) => assembly.exitCodes.some((code) => exitCodes.has(code)))
+  }, [map.assemblyPoints, primaryEvacuation, alternateEvacuation])
+
+  const activeRouteCodes = mode === 'safety'
+    ? evacuationRoutes.map((route) => route.code)
+    : activeRouteCode ? [activeRouteCode] : []
+
+  const activeVisitorRoute = mode === 'safety'
+    ? null
+    : map.routes.find((route) => route.code === activeRouteCode) ?? null
 
   const normalizedQuery = query.trim().toLocaleLowerCase('th')
   const results = useMemo(() => {
@@ -71,13 +124,10 @@ export function LabMapShell({
   function selectResult(code: string) {
     setSelectedCode(code)
     setQuery('')
-    const visitorRoute = map.routes.find((route) => route.kind === 'visitor' && route.destinationCode === code)
-    if (visitorRoute) setActiveRouteCode(visitorRoute.code)
   }
 
   function closeDetail() {
     setSelectedCode(null)
-    setActiveRouteCode(null)
     searchRef.current?.focus()
   }
 
@@ -115,19 +165,56 @@ export function LabMapShell({
     </div>
   )
 
+  const safetyDetail = (
+    <div className="lab-map-safety-panel">
+      <p className="lab-map-detail-type">เส้นทางหนีไฟ</p>
+      <h2>{map.stations.find((station) => station.code === safetyStationCode)?.nameTh ?? 'จุดติดตั้งแผนที่'}</h2>
+      {primaryEvacuation ? (
+        <div className="lab-map-detail-block">
+          <span>เส้นทางหลัก</span>
+          <ol>{primaryEvacuation.directionsTh.map((step, index) => <li key={`p-${index}`}>{step}</li>)}</ol>
+        </div>
+      ) : null}
+      {alternateEvacuation ? (
+        <div className="lab-map-detail-block">
+          <span>เส้นทางสำรอง</span>
+          <ol>{alternateEvacuation.directionsTh.map((step, index) => <li key={`a-${index}`}>{step}</li>)}</ol>
+        </div>
+      ) : null}
+      {!primaryEvacuation && !alternateEvacuation ? (
+        <p className="lab-map-safety-missing" role="status">
+          ยังไม่มีเส้นทางหนีไฟที่อนุมัติสำหรับจุดนี้ — กรุณาเดินตามป้ายทางหนีไฟจริงภายในอาคาร
+          และแจ้งเจ้าหน้าที่ความปลอดภัยของกลุ่มงาน
+        </p>
+      ) : null}
+      {relevantAssemblyPoints.length > 0 ? (
+        <p className="lab-map-assembly-note">
+          <strong>จุดรวมพล:</strong>{' '}
+          {relevantAssemblyPoints.map((assembly) => assembly.detailTh ? `${assembly.nameTh} (${assembly.detailTh})` : assembly.nameTh).join(', ')}
+        </p>
+      ) : null}
+    </div>
+  )
+
   return (
-    <div className="lab-map-shell">
+    <div className="lab-map-shell" data-compact={compact || undefined}>
       <LabMapStyles />
       <header className="lab-map-header">
-        <div>
-          <p className="lab-map-eyebrow"><span aria-hidden="true" />{eyebrow}</p>
-          <h1>{heading}</h1>
-          <p>{description}</p>
-        </div>
-        <div className="lab-map-version" aria-label={`เวอร์ชัน ${map.version}`}>
-          <span>MAP VERSION</span>
-          <strong>{map.version}</strong>
-        </div>
+        <PageHeader
+          eyebrow={eyebrow}
+          title={heading}
+          subtitle={description}
+          marginBottom={0}
+          actions={(
+            <>
+              {headerActions}
+              <div className="lab-map-version" aria-label={`เวอร์ชัน ${map.version}`}>
+                <span>MAP VERSION</span>
+                <strong>{map.version}</strong>
+              </div>
+            </>
+          )}
+        />
       </header>
 
       <div className="lab-map-toolbar">
@@ -139,19 +226,19 @@ export function LabMapShell({
               aria-pressed={mode === candidateMode}
               onClick={() => setMode(candidateMode)}
             >
+              <Icon name={MODE_LABELS[candidateMode].icon} size={15} />
               <span>{MODE_LABELS[candidateMode].th}</span>
-              <small>{MODE_LABELS[candidateMode].en}</small>
             </button>
           ))}
         </div>
 
         <div className="lab-map-search-wrap">
-          <label htmlFor="lab-map-search">ค้นหา</label>
+          <label htmlFor={`lab-map-search-${map.stationCode}`}>ค้นหา</label>
           <div className="lab-map-search-field">
-            <span aria-hidden="true">⌕</span>
+            <Icon name="search" size={16} />
             <input
               ref={searchRef}
-              id="lab-map-search"
+              id={`lab-map-search-${map.stationCode}`}
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -175,28 +262,51 @@ export function LabMapShell({
         </div>
       </div>
 
+      {mode === 'safety' && stationPickerItems.length > 1 ? (
+        <div className="lab-map-station-picker">
+          <FilterChips
+            label="เลือกจุดที่คุณอยู่"
+            items={stationPickerItems}
+            value={safetyStationCode}
+            onChange={setSafetyStationCode}
+            compact
+          />
+        </div>
+      ) : null}
+
+      {activeVisitorRoute ? (
+        <ol className="lab-map-route-steps" aria-label="ขั้นตอนการเดินไปยังจุดสแกนนิ้วมือ">
+          {activeVisitorRoute.directionsTh.map((step, index) => (
+            <li key={`${index}-${step}`}><b>{index + 1}</b><span>{step}</span></li>
+          ))}
+        </ol>
+      ) : null}
+
       <div className="lab-map-workspace">
         <LabMapCanvas
           map={map}
           mode={mode}
           selectedCode={selectedCode}
-          activeRouteCode={activeRouteCode}
+          activeRouteCodes={activeRouteCodes}
+          destinationPointCode={mode === 'safety' ? null : destinationPointCode}
+          activeStationCode={mode === 'safety' ? safetyStationCode : map.stationCode}
           highlightedSpaceCodes={highlightedSpaceCodes}
-          onSelect={(code) => {
-            setSelectedCode(code)
-            setActiveRouteCode(null)
-          }}
+          onSelect={(code) => setSelectedCode(code)}
         />
 
         <aside
           className="lab-map-detail-panel"
-          data-open={selectedCode !== null || undefined}
-          role="dialog"
-          aria-modal={false}
-          aria-label="รายละเอียดพื้นที่"
+          data-open={(mode === 'safety' || selectedCode !== null) || undefined}
+          aria-label="รายละเอียดพื้นที่และเส้นทาง"
         >
-          {selectedCode ? <button className="lab-map-detail-close" type="button" onClick={closeDetail} aria-label="ปิดรายละเอียด">×</button> : null}
-          {renderDetail ? renderDetail(selectedCode, map) : defaultDetail}
+          {mode !== 'safety' && selectedCode ? (
+            <button className="lab-map-detail-close" type="button" onClick={closeDetail} aria-label="ปิดรายละเอียด">×</button>
+          ) : null}
+          {mode === 'safety'
+            ? safetyDetail
+            : renderDetail
+              ? renderDetail(selectedCode, map)
+              : defaultDetail}
         </aside>
       </div>
 
@@ -205,6 +315,27 @@ export function LabMapShell({
           <span><i data-class="infectious" />พื้นที่ติดเชื้อ</span>
           <span><i data-class="clean" />พื้นที่สะอาด</span>
           <span><i data-class="risk" />พื้นที่เสี่ยง</span>
+        </div>
+      ) : null}
+
+      {mode === 'safety' ? (
+        <div className="lab-map-legend" aria-label="คำอธิบายสัญลักษณ์ความปลอดภัย">
+          <span><i data-class="route-primary" />เส้นทางหลัก</span>
+          <span><i data-class="route-alternate" />เส้นทางสำรอง</span>
+          <span><i data-class="exit" />ทางออกหนีไฟ</span>
+          <span><i data-class="locked" />ประตูล็อคถาวร</span>
+          <span><i data-class="station" />คุณอยู่ที่นี่</span>
+          <span><i data-class="lift-restricted" />ห้ามใช้ลิฟต์ขณะเกิดเหตุ</span>
+          <span><i data-class="fire-extinguisher" />ถังดับเพลิง</span>
+        </div>
+      ) : null}
+
+      {mode === 'overview' ? (
+        <div className="lab-map-legend" aria-label="คำอธิบายสัญลักษณ์แผนที่">
+          <span><i data-class="fingerprint" />จุดสแกนนิ้วมือ</span>
+          <span><i data-class="door" />ประตูทั่วไป (ไม่มีจุดสแกน)</span>
+          <span><i data-class="locked" />ประตูล็อคถาวร</span>
+          <span><i data-class="controlled" />พื้นที่ควบคุมการเข้าออก</span>
         </div>
       ) : null}
     </div>

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { isProtectedPath } from '../lib/auth/session-guard'
 
 const page = readFileSync('app/(protected)/staff/lab-map/page.tsx', 'utf8')
@@ -8,13 +8,16 @@ const sidebar = readFileSync('components/layout/StaffSidebar.tsx', 'utf8')
 const topbar = readFileSync('components/layout/StaffTopbar.tsx', 'utf8')
 
 assert.ok(isProtectedPath('/staff/lab-map'))
-assert.ok(!isProtectedPath('/lab-map/office'))
+
+// เส้นทางสาธารณะเดิมถูกถอดออก — คำขอตรงต้องได้ 404
+assert.ok(!existsSync('app/(public)/lab-map'), 'the standalone public map route is removed')
+assert.ok(!existsSync('lib/lab-map/public-manifest.ts'), 'no second hand-maintained public manifest')
+assert.ok(!existsSync('lib/lab-map/public.ts'))
 
 assert.match(page, /await createClient\(\)/)
 assert.match(page, /auth\.getUser\(\)/)
 assert.match(page, /redirect\('\/login'\)/)
 assert.match(page, /getStaffLabMapDTO/)
-assert.match(page, /getRolePermissions/)
 assert.match(page, /<LabMapStaffClient/)
 
 assert.match(client, /^'use client'/)
@@ -22,7 +25,15 @@ assert.match(client, /LabMapShell/)
 assert.doesNotMatch(client, /supabase/)
 assert.doesNotMatch(client, /lab-map\/manifest/)
 
-assert.match(sidebar, /href: '\/staff\/lab-map'/)
+// ── กลุ่ม "ความปลอดภัย" ในแถบเมนูเจ้าหน้าที่ ──
+const safetyGroup = sidebar.match(/\{ href: '\/staff\/lab-map',[\s\S]*?\] \},/)?.[0] ?? ''
+assert.ok(safetyGroup, 'the lab map entry is a sidebar group')
+assert.match(safetyGroup, /th: 'ความปลอดภัย'/, 'the parent is named ความปลอดภัย')
+assert.match(safetyGroup, /children: \[/, 'the parent has children')
+assert.match(safetyGroup, /th: 'แผนที่ห้องปฏิบัติการ', en: 'Laboratory Map'/)
+// แม่ต้องไม่ถือ resource — รูปแบบเดียวกับกลุ่มความเสี่ยงและกลุ่ม IT
+assert.doesNotMatch(safetyGroup.split('\n')[0], /resource:/, 'the safety group parent must not carry a resource gate')
+
 assert.match(topbar, /'\/staff\/lab-map'/)
 
 console.log('lab map staff navigation passed')

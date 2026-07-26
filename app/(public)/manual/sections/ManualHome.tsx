@@ -273,7 +273,7 @@ export function ManualHome({ lang, goto }: Props) {
       <div className="manual-home-hero" style={{ marginBottom: 20 }}>
         <div className="manual-home-kicker" style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--manual-accent)', letterSpacing: '.1em', textTransform: 'uppercase', opacity: .95, marginBottom: 8 }}>01 · Overview</div>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--ink)', letterSpacing: '-.02em', lineHeight: 1.2 }}>
-          {lang === 'th' ? 'ยินดีต้อนรับ' : 'Welcome'}
+          {lang === 'th' ? 'ข้อมูลสำหรับผู้ใช้บริการ' : 'Service Information'}
         </h2>
         <p style={{ margin: '10px 0 0', fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.8, maxWidth: 640 }}>
           {lang === 'th'

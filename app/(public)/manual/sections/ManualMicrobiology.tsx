@@ -6,32 +6,29 @@ interface Props { lang: Lang }
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 const LABEL_ROWS = [
-  { container: 'หลอดใส่ swab',                                      icon: '🧪', placement: 'ยาวหลอด',    placementEn: 'Lengthwise'  },
-  { container: 'ขวดพลาสติกเก็บปัสสาวะ / เสมหะ',                     icon: '🧴', placement: 'ขวางบนฝา',   placementEn: 'Top wrap'    },
-  { container: 'สไลด์',                                              icon: '🔬', placement: 'ซ้ายกระจกฝ้า', placementEn: 'Frosted end' },
-  { container: 'ขวดแก้วมีฝาปิด',                                     icon: '🫙', placement: 'ขวางบนฝา',   placementEn: 'Top wrap'    },
-  { container: 'กระบอกฉีดยา (syringe)',                              icon: '💉', placement: 'ยาวหลอด',    placementEn: 'Lengthwise'  },
-  { container: 'ขวดเพาะเชื้อแบบอัตโนมัติ',                          icon: '🧫', placement: 'ยาว/ขวาง*',  placementEn: 'Any / no base' },
+  { container: 'หลอดใส่ swab',                                      icon: '🧪', placement: 'แนวยาวใต้ฝาปิด', placementEn: 'Lengthwise below cap' },
+  { container: 'ขวดพลาสติกเก็บปัสสาวะ / เสมหะ',                     icon: '🧴', placement: 'แนวขวางใต้ฝาปิด', placementEn: 'Crosswise below cap' },
+  { container: 'สไลด์',                                              icon: '🔬', placement: 'ด้านซ้ายกระจกฝ้า', placementEn: 'Left frosted end' },
+  { container: 'ขวดแก้วมีฝาปิด',                                     icon: '🫙', placement: 'แนวขวางใต้ฝาปิด', placementEn: 'Crosswise below cap' },
+  { container: 'กระบอกฉีดยา (syringe)',                              icon: '💉', placement: 'แนวยาวหรือชิดด้าม', placementEn: 'Lengthwise or by plunger' },
+  { container: 'ขวดเพาะเชื้อแบบอัตโนมัติ',                          icon: '🧫', placement: 'ห้ามทับบาร์โค้ด*', placementEn: 'Do not cover barcode*' },
 ]
 
 const LABEL_INSTRUCTIONS = [
-  'ติดตามยาวหลอด ต่ำกว่าฝาปิด ให้เหลือช่องว่างให้เห็นภายในหลอด',
-  'ติดตามขวางด้านบนต่ำกว่าฝาปิด ให้เหลือช่องว่างให้เห็นภายในขวด',
-  'ติดฝั่งซ้ายบริเวณกระจกฝ้า ด้านเดียวกับที่ป้ายสิ่งตัวอย่าง',
-  'ติดตามขวางด้านบนต่ำกว่าฝาปิด ให้เหลือช่องว่างให้เห็นภายในขวด',
-  'ติดตามยาวหลอด หรือตามขวางชิดด้าม ให้เหลือช่องว่างให้เห็นภายใน',
-  'ติดตามยาวหรือขวาง ระวังอย่าให้ทับ barcode ห้ามปิดทับก้นขวด',
+  'ติดฉลากตามแนวยาวของหลอด ใต้ฝาปิด และเว้นช่องให้มองเห็นสิ่งตัวอย่างภายในหลอด',
+  'ติดฉลากตามแนวขวางบริเวณส่วนบนของขวด ใต้ฝาปิด และเว้นช่องให้มองเห็นสิ่งตัวอย่างภายในขวด',
+  'ติดฉลากด้านซ้ายบริเวณกระจกฝ้าของสไลด์ โดยติดด้านเดียวกับที่ป้ายสิ่งตัวอย่าง',
+  'ติดฉลากตามแนวขวางบริเวณส่วนบนของขวด ใต้ฝาปิด และเว้นช่องให้มองเห็นสิ่งตัวอย่างภายในขวด',
+  'ติดฉลากตามแนวยาวของกระบอกฉีดยา หรือแนวขวางชิดด้าม โดยเว้นช่องให้มองเห็นสิ่งตัวอย่างภายใน',
+  'ติดฉลากได้ทั้งแนวยาวหรือแนวขวาง แต่ต้องไม่ทับบาร์โค้ด และห้ามปิดทับก้นขวด',
 ]
 
-// max 7 days — used for bar width calculation
 const STORAGE_ITEMS = [
   { label: 'สิ่งตัวอย่างส่งตรวจทุกชนิด',                          days: 4, temp: '2–8°C',        cold: true,  group: 0 },
   { label: 'สไลด์ย้อมทุกชนิด (ยกเว้น India ink / KOH)',            days: 3, temp: 'อุณหภูมิห้อง', cold: false, group: 0 },
   { label: 'น้ำไขสันหลัง',                                         days: 7, temp: 'อุณหภูมิห้อง', cold: false, group: 0 },
   { label: 'เชื้อแบคทีเรียที่แยกได้ (สิ่งตัวอย่างทุกชนิด)',        days: 5, temp: '2–8°C',        cold: true,  group: 1 },
 ]
-const MAX_DAYS = 7
-
 interface ReportRow {
   group?: string
   test?: string
@@ -226,26 +223,6 @@ const MICRO_STYLE = `
     font-size: 12px;
     line-height: 1.7;
   }
-  .micro-storage-head {
-    align-items: center;
-  }
-  .micro-day-ruler {
-    display: flex;
-    gap: 3px;
-    align-items: center;
-  }
-  .micro-day {
-    width: 22px;
-    height: 22px;
-    border-radius: 5px;
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    color: var(--muted);
-    font-size: 10px;
-    font-weight: 800;
-  }
   .micro-report-scroll {
     width: 100%;
     overflow-x: auto;
@@ -418,8 +395,8 @@ export function ManualMicrobiology({ lang }: Props) {
         {/* Section sub-header */}
         <div className="micro-section-head">
           <div>
-            <h3>{lang === 'th' ? 'การติดป้ายบนภาชนะเก็บสิ่งตัวอย่างส่งตรวจ' : 'Specimen Container Labelling'}</h3>
-            <p>{lang === 'th' ? 'เลือกตำแหน่งติดป้ายให้เห็น specimen และ barcode ชัดเจน' : 'Keep the specimen and barcode visible after labelling.'}</p>
+            <h3>{lang === 'th' ? 'แนวทางการติดป้ายบนภาชนะเก็บสิ่งตัวอย่างส่งตรวจ' : 'Specimen Container Labelling'}</h3>
+            <p>{lang === 'th' ? 'ติดป้ายตามตำแหน่งที่ระบุ เพื่อให้มองเห็นสิ่งตัวอย่างและบาร์โค้ดได้ชัดเจน' : 'Keep the specimen and barcode visible after labelling.'}</p>
           </div>
           <span className="micro-count-pill">
             {LABEL_ROWS.length} ประเภทภาชนะ
@@ -459,20 +436,13 @@ export function ManualMicrobiology({ lang }: Props) {
       </Section>
 
       {/* ══════════════════════════════════════════════════════════════════
-          2. STORAGE TIMES — visual duration bars
+          2. STORAGE TIMES
       ══════════════════════════════════════════════════════════════════ */}
       <Section>
-        <div className="micro-section-head micro-storage-head">
+        <div className="micro-section-head">
           <div>
-            <h3>{lang === 'th' ? 'ระยะเวลาที่เก็บสิ่งตัวอย่างส่งตรวจและเชื้อจุลชีพ' : 'Specimen & Organism Retention Times'}</h3>
-            <p>{lang === 'th' ? 'แถบสีเทียบจำนวนวันสูงสุดที่เก็บได้' : 'Bars compare maximum retention days.'}</p>
-          </div>
-          {/* Day ruler */}
-          <div className="micro-day-ruler">
-            {[1,2,3,4,5,6,7].map(d => (
-              <div key={d} className="micro-day">{d}</div>
-            ))}
-            <span style={{ fontSize: 10.5, color: 'var(--muted)', marginLeft: 4, fontWeight: 600 }}>วัน</span>
+            <h3>{lang === 'th' ? 'การเก็บรักษาสิ่งตัวอย่างส่งตรวจและเชื้อจุลชีพก่อนนำส่ง' : 'Specimen & Organism Retention Times'}</h3>
+            <p>{lang === 'th' ? 'ตรวจสอบให้ครบ 3 ข้อ: สิ่งที่เก็บ · อุณหภูมิที่เก็บ · ระยะเวลาสูงสุด' : 'Check the item, storage temperature, and maximum retention time.'}</p>
           </div>
         </div>
 
@@ -484,7 +454,7 @@ export function ManualMicrobiology({ lang }: Props) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 14 }}>
           {STORAGE_ITEMS.filter(s => s.group === 0).map((item, i) => (
-            <StorageBar key={i} item={item} maxDays={MAX_DAYS} lang={lang} />
+            <StorageBar key={i} item={item} lang={lang} />
           ))}
         </div>
 
@@ -496,7 +466,7 @@ export function ManualMicrobiology({ lang }: Props) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
           {STORAGE_ITEMS.filter(s => s.group === 1).map((item, i) => (
-            <StorageBar key={i} item={item} maxDays={MAX_DAYS} lang={lang} accent="#0891B2" />
+            <StorageBar key={i} item={item} lang={lang} />
           ))}
         </div>
       </Section>
@@ -728,13 +698,16 @@ export function ManualMicrobiology({ lang }: Props) {
 
 // ── Storage bar sub-component ─────────────────────────────────────────────────
 
-function StorageBar({ item, maxDays, lang, accent = 'var(--primary)' }: {
+function StorageBar({ item, lang }: {
   item: { label: string; days: number; temp: string; cold: boolean }
-  maxDays: number
   lang: Lang
-  accent?: string
 }) {
-  const pct = Math.round((item.days / maxDays) * 100)
+  const durationBadge = {
+    background: 'var(--primary-soft)',
+    color: 'var(--primary)',
+    border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)',
+  }
+
   return (
     <div style={{
       padding: '10px 14px', borderRadius: 9,
@@ -746,16 +719,12 @@ function StorageBar({ item, maxDays, lang, accent = 'var(--primary)' }: {
         <span style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 600, flex: 1, minWidth: 0, lineHeight: 1.45 }}>{item.label}</span>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 700, background: item.cold ? 'rgba(8,145,178,.09)' : 'rgba(217,119,6,.09)', color: item.cold ? '#0891B2' : '#92400E', border: `1px solid ${item.cold ? 'rgba(8,145,178,.2)' : 'rgba(217,119,6,.2)'}` }}>
-            {item.cold ? '❄' : '🌡'} {item.temp}
+            {lang === 'th' ? `เก็บที่ ${item.temp}` : `${item.cold ? 'Cold' : 'Room temperature'} · ${item.temp}`}
           </span>
-          <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 800, background: `${accent}12`, color: accent, border: `1px solid ${accent}25`, minWidth: 42, textAlign: 'center' }}>
-            {item.days} {lang === 'th' ? 'วัน' : 'd'}
+          <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 800, minWidth: 42, textAlign: 'center', ...durationBadge }}>
+            {lang === 'th' ? `สูงสุด ${item.days} วัน` : `Max. ${item.days} d`}
           </span>
         </div>
-      </div>
-      {/* Bar */}
-      <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-2)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, borderRadius: 3, background: accent, transition: 'width .4s ease' }} />
       </div>
     </div>
   )

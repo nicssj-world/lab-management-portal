@@ -7,7 +7,7 @@ import { ActiveVisitCard } from '@/components/it-visitor/ActiveVisitCard'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import {
   ACTIVITY_TYPES, ACTIVITY_LABEL, APPOINTMENTS, APPOINTMENT_LABEL,
-  BADGE_STATES, BADGE_LABEL, CONTACT_DEPT_OTHER, ORG_TYPES, ORG_TYPE_LABEL,
+  BADGE_STATES, BADGE_LABEL, CONTACT_DEPT_OTHER, GROUP_HEAD_CONTACT_DEPT, ORG_TYPES, ORG_TYPE_LABEL,
   SAFETY_ACKS, SAFETY_LABEL, SAFETY_POLICY_PROMPT,
 } from '@/lib/it-visitor/constants'
 import type {
@@ -19,6 +19,7 @@ import type {
   VisitorSubmissionInput,
 } from '@/lib/it-visitor/types'
 import { validateVisitorSubmission } from '@/lib/it-visitor/validation'
+import type { LabMapDTO } from '@/lib/lab-map/types'
 
 type FieldKey = keyof VisitorSubmissionInput
 
@@ -60,11 +61,13 @@ function emptyValues(): FormValues {
   }
 }
 
-export function PublicVisitorForm({ token, initialState, challenge, initialActiveVisit }: {
+export function PublicVisitorForm({ token, initialState, challenge, initialActiveVisit, visitorMap }: {
   token: string
   initialState: PublicVisitorFormState
   challenge: string
   initialActiveVisit?: ActiveVisitorDTO | null
+  /** เรขาคณิตชุดเดียวกับแผนที่เจ้าหน้าที่ ส่งมาจาก server ไม่ต้อง fetch หรือเปลี่ยนหน้า */
+  visitorMap: LabMapDTO
 }) {
   const [mode, setMode] = useState<VisitType | null>(null)
   const [values, setValues] = useState<FormValues>(emptyValues)
@@ -106,7 +109,7 @@ export function PublicVisitorForm({ token, initialState, challenge, initialActiv
     return <TerminalState title="ปิดรับแบบฟอร์มชั่วคราว" detail="ขณะนี้ยังไม่เปิดรับการบันทึกผ่านแบบฟอร์มนี้ กรุณาติดต่อเจ้าหน้าที่กลุ่มงานเทคนิคการแพทย์" />
   }
   if (activeVisit) {
-    return <ActiveVisitCard token={token} visit={activeVisit} />
+    return <ActiveVisitCard token={token} visit={activeVisit} map={visitorMap} />
   }
 
   // ── หน้าจอ 1: เลือกประเภทฟอร์ม ──
@@ -177,16 +180,30 @@ export function PublicVisitorForm({ token, initialState, challenge, initialActiv
     }
   }
 
-  const deptOptions = [...DEPARTMENTS, CONTACT_DEPT_OTHER]
+  const deptOptions = [...DEPARTMENTS, GROUP_HEAD_CONTACT_DEPT, CONTACT_DEPT_OTHER]
 
   return (
     <form className="pv-form" onSubmit={submit} noValidate>
       <style>{FORM_CSS}</style>
 
-      {/* honeypot — บอทกรอกช่องนี้ คนไม่เห็น */}
+      {/* honeypot — บอทกรอกช่องนี้ คนไม่เห็น
+          ตั้งใจไม่ตั้งชื่อ/label ว่า "website" หรือคำที่ผู้จัดการรหัสผ่าน (LastPass/1Password/Dashlane ฯลฯ)
+          จับคู่อัตโนมัติ เพราะเคยพบว่าช่องชื่อ "website" ถูก autofill แม้ถูกซ่อนด้วย position off-screen
+          ทำให้ผู้ใช้จริงโดนปฏิเสธเหมือนเป็นบอท — เพิ่ม data-*-ignore กันผู้จัดการรหัสผ่านหลักด้วย */}
       <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
-        <label htmlFor="visitor-website">Website</label>
-        <input ref={honeypotRef} id="visitor-website" name="website" type="text" tabIndex={-1} autoComplete="off" />
+        <label htmlFor="visitor-hp-field">กรุณาปล่อยช่องนี้ว่างไว้</label>
+        <input
+          ref={honeypotRef}
+          id="visitor-hp-field"
+          name="vf_extra_note"
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          data-lpignore="true"
+          data-1p-ignore=""
+          data-bwignore="true"
+          data-form-type="other"
+        />
       </div>
 
       <header className="pv-head">

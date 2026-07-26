@@ -9,6 +9,11 @@ export interface ManualSection {
   id: string
   body_html_th: string
   body_html_en: string
+  table_data?: Record<string, unknown[]> | null
+  owner_name_th?: string | null
+  owner_name_en?: string | null
+  revision_no?: number
+  last_change_summary?: string | null
   updated_at: string
   updated_by: string | null
 }

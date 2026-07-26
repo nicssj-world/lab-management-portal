@@ -1,27 +1,16 @@
 import {
-  LAB_ACCESS_POINTS, LAB_MAP_VERSION, LAB_MAP_VIEW_BOX, LAB_ROUTE_PRESETS,
-  LAB_SPACES, LAB_STATIONS, LAB_ZONES, REQUIRED_SPACE_CODES,
+  LAB_ACCESS_POINTS, LAB_LABELS, LAB_MAP_VERSION, LAB_MAP_VIEW_BOX, LAB_ROUTE_PRESETS,
+  LAB_SPACES, LAB_STATIONS, LAB_STRUCTURES, LAB_ZONES, REQUIRED_SPACE_CODES,
 } from './manifest'
-import type { Permissions } from '@/lib/permissions'
-import type { StaffLabMapDTO, StaffMapPersonDTO } from './types'
+import { LAB_ASSEMBLY_POINTS, LAB_SAFETY_EQUIPMENT } from './safety-assets'
+import type { StaffLabMapDTO } from './types'
 
-export interface MapAssignmentRecord extends StaffMapPersonDTO {}
-export interface MapProfileRecord { profileId: string; name: string; department: string | null }
 export interface StaffMapRepository {
   activeSpaceCodes(): Promise<readonly string[]>
   activeZoneCodes(): Promise<readonly string[]>
-  assignments(): Promise<readonly MapAssignmentRecord[]>
-  activeProfiles(): Promise<readonly MapProfileRecord[]>
 }
 
-export function canViewMapPersonnel(permissions: Permissions) {
-  return permissions['บุคลากร'] === 'view' || permissions['บุคลากร'] === 'edit'
-}
-
-export async function buildStaffLabMapDTO(
-  permissions: Permissions,
-  repository: StaffMapRepository,
-): Promise<StaffLabMapDTO> {
+export async function buildStaffLabMapDTO(repository: StaffMapRepository): Promise<StaffLabMapDTO> {
   const [spaceCodes, zoneCodes] = await Promise.all([
     repository.activeSpaceCodes(),
     repository.activeZoneCodes(),
@@ -32,26 +21,18 @@ export async function buildStaffLabMapDTO(
     throw new Error(`lab map seed drift: spaces=${missingSpaces.join(',')} zones=${missingZones.join(',')}`)
   }
 
-  const base: StaffLabMapDTO = {
+  return {
     version: LAB_MAP_VERSION,
     viewBox: LAB_MAP_VIEW_BOX,
-    stationCode: LAB_STATIONS[0]?.code ?? 'office',
+    stationCode: LAB_STATIONS.find((station) => station.kind === 'installation')?.code ?? 'office',
+    structures: LAB_STRUCTURES,
     spaces: LAB_SPACES,
+    labels: LAB_LABELS,
     zones: LAB_ZONES,
     accessPoints: LAB_ACCESS_POINTS,
+    stations: LAB_STATIONS,
     routes: LAB_ROUTE_PRESETS,
-    canEditPersonnelAssignments: permissions['บุคลากร'] === 'edit',
-  }
-  if (!canViewMapPersonnel(permissions)) return base
-
-  const [people, profiles] = await Promise.all([
-    repository.assignments(),
-    repository.activeProfiles(),
-  ])
-  const assignedIds = new Set(people.map((person) => person.profileId))
-  return {
-    ...base,
-    people: [...people],
-    unassignedPeople: profiles.filter((profile) => !assignedIds.has(profile.profileId)),
+    safetyEquipment: LAB_SAFETY_EQUIPMENT,
+    assemblyPoints: LAB_ASSEMBLY_POINTS,
   }
 }
