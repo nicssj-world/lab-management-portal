@@ -15,16 +15,10 @@ type GuardResult = { actor: Actor; response?: undefined } | { actor?: undefined;
 
 export function chemicalAccessDecision(
   actor: Pick<Actor, 'id' | 'role'>,
-  scopes: ChemicalScope[],
-  request: ChemicalAction,
+  _scopes: ChemicalScope[],
+  _request: ChemicalAction,
 ): boolean {
-  if (request.action === 'view') return true
-  if (request.action === 'manage_roles' || request.action === 'retire') {
-    return normalizeRole(actor.role) === 'Admin'
-  }
-  if (request.action !== 'edit' && request.action !== 'review') return false
-  const requiredRole = request.action === 'edit' ? 'custodian' : 'reviewer'
-  return scopes.some(scope => scope.unitId === request.unitId && scope.role === requiredRole)
+  return normalizeRole(actor.role) === 'Admin'
 }
 
 async function loadScopes(actorId: string): Promise<ChemicalScope[]> {

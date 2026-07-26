@@ -5,6 +5,12 @@ const sql = readFileSync('scripts/chemical-safety-module.sql', 'utf8')
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
   scripts?: Record<string, string>
 }
+const chemicalAccess = readFileSync('lib/chemical-safety/access.ts', 'utf8')
+const staffSidebar = readFileSync('components/layout/StaffSidebar.tsx', 'utf8')
+const publicNav = readFileSync('components/layout/PublicNav.tsx', 'utf8')
+const publicSdsPage = readFileSync('app/(public)/sds/page.tsx', 'utf8')
+const publicSdsApi = readFileSync('app/api/public/sds/route.ts', 'utf8')
+const publicSdsFileApi = readFileSync('app/api/public/sds/[publicId]/file/route.ts', 'utf8')
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -47,6 +53,17 @@ assert.equal(
   'tsx scripts/chemical-safety-schema.test.ts && tsx lib/chemical-safety/domain.test.ts && tsx lib/chemical-safety/materialize.test.ts && tsx lib/chemical-safety/import/masterlist-june-2026.test.ts && tsx lib/chemical-safety/import/sds-import.test.ts && tsx scripts/chemical-safety-import-cli.test.ts && tsx scripts/chemical-safety-import-runtime.test.ts',
   'Chemical safety package script runs the schema, domain, materialization, master-list, SDS import, CLI, and runtime contracts',
 )
+
+const accessDecision = chemicalAccess.match(/export function chemicalAccessDecision\([\s\S]*?\n\}/)?.[0] ?? ''
+assert.match(accessDecision, /normalizeRole\(actor\.role\) === 'Admin'/, 'all chemical-safety access is temporarily admin-only')
+assert.doesNotMatch(accessDecision, /request\.action === 'view'\) return true/, 'ordinary staff cannot view chemical-safety data')
+assert.match(staffSidebar, /href: '\/staff\/lab-map\/chemicals'[\s\S]*?role: 'Admin'/, 'chemical room menu is admin-only')
+assert.match(staffSidebar, /href: '\/staff\/lab-map\/sds'[\s\S]*?role: 'Admin'/, 'SDS management menu is admin-only')
+assert.match(publicNav, /href: '\/sds'[\s\S]*?adminOnly: true/, 'public SDS navigation is hidden from non-admin users')
+assert.match(publicNav, /isAdminRole\(sessionUser\?\.role\)/, 'public navigation reveals SDS only to an admin session')
+for (const source of [publicSdsPage, publicSdsApi, publicSdsFileApi]) {
+  assert.match(source, /requireChemicalAdmin/, 'every former public SDS entry point enforces admin authorization')
+}
 
 const tables = [
   'chemical_units', 'chemical_rooms', 'chemical_storage_locations',

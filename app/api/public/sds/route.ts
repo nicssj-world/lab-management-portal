@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
+import { requireChemicalAdmin } from '@/lib/chemical-safety/access'
 import { searchPublicSds } from '@/lib/chemical-safety/public'
 import { consumeClientRateLimit } from '@/lib/security/request-protection'
 
@@ -11,6 +12,8 @@ const querySchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const guard = await requireChemicalAdmin()
+  if (guard.response) return guard.response
   const rate = consumeClientRateLimit(request.headers, 'public-sds-search', 300, 10 * 60_000)
   if (!rate.allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': String(rate.retryAfterSeconds), 'Cache-Control': 'no-store' } })
   const parsed = querySchema.safeParse(Object.fromEntries(request.nextUrl.searchParams))
