@@ -246,6 +246,34 @@ Repository validation does not replace a physical walkthrough. Before publishing
 
 Controlled A3/A4 PDF and PNG previews are available at `/staff/lab-map/print`. Drafts always carry a “ร่าง — ห้ามใช้ติดตั้ง” watermark; official export is enabled only for a published release whose manifest hash and approval metadata still validate. Use [the floor-3 acceptance checklist](docs/lab-map/floor-3-acceptance.md) and [release runbook](docs/lab-map/release-runbook.md) before replacing any physical sign. Approved installed signs remain the operational fallback during power or network outages.
 
+## Chemical safety foundation import
+
+The chemical-room importer is dry-run by default. It verifies the exact June 2026 master-list PDF and storage-layout image, recursively indexes the SDS archive, and prints one JSON summary. Dry-run does not initialize Supabase or R2 clients and does not need their credentials.
+
+```powershell
+npx tsx scripts/import-chemical-safety.ts --masterlist 'C:\Users\User\Downloads\Unit Chemical Inventory List ห้องเก็บสารเคมี (1).pdf' --layout 'E:\ISO\ISO15190\safety\ห้องสาร\ผังสารเคมี.png' --sds-root 'C:\Users\User\Downloads\MSDS 2568'
+```
+
+Checked source hashes:
+
+- master list: `71d25b0e50b3056f97edb3238a1a7949584744f67fc0bfbfafcaa70273d83ddb`;
+- storage layout: `5195b2f1d00672c3f625e464abc743ab9ef0ee2de6215bf64222453f5f7a951d`;
+- current SDS archive manifest (`relativePath:sha256`, sorted): `1eb2b4ebf4b5f8fcf27eb41998887d3d2479b37e045acb9f7cdab5f4b8d34e6f`.
+
+The reviewed baseline is 25 master-list rows, 13 positions, 521 PDF, 18 DOCX, 16 DOC, 1 HTML, 13 candidates, 7 mismatches, 5 missing products, and 5 quantity conflicts. A different summary blocks application until the source or association evidence is investigated.
+
+Apply the schema only after confirming the configured Supabase project is the intended non-production environment:
+
+```powershell
+node scripts/run-migration.mjs scripts/chemical-safety-module.sql
+```
+
+After that environment is explicitly confirmed and the dry-run has been reviewed, append `--apply` to the same import command. Apply uses the existing Supabase service-role and private R2 configuration. It reuses import batches by source kind/hash, upserts source rows by batch/row key, consolidates PDF evidence by SHA-256, and uploads only missing private objects below `chemical-safety/sources/` and `chemical-safety/imports/`.
+
+Imports remain proposals or quarantined evidence: they do not create an approved SDS, public listing, QR token, product, or inventory holding. A custodian must verify the bottle label and exact SDS before a separate reviewer workflow can publish anything.
+
+If application fails, inspect the matching `chemical_import_batches` row and its `failed` summary/error evidence plus `chemical_import_rows`; do not delete provenance rows. Correct the underlying environment or source problem, rerun the same source-bound command, and let the unique batch/hash and row constraints resume idempotently. Audit details contain counts and hashes, not local filesystem paths.
+
 ## Getting Started
 
 First, run the development server:
