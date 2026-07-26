@@ -14,6 +14,7 @@
     "test:lab-map-navigation": "tsx scripts/lab-map-navigation.test.ts",
     "test:lab-map-schema": "tsx scripts/lab-map-schema.test.ts",
     "test:lab-map-safety": "tsx scripts/lab-map-safety-schema.test.ts && tsx scripts/lab-map-safety-domain.test.ts && tsx scripts/lab-map-safety-api.test.ts && tsx scripts/lab-map-assembly-points.test.ts && tsx scripts/lab-map-safety-ui.test.ts && tsx scripts/lab-map-snapshot.test.ts && tsx scripts/risk-map.test.ts && tsx scripts/risk-map-ui.test.ts",
+    "test:chemical-safety": "tsx scripts/chemical-safety-schema.test.ts",
     "test:security": "tsx scripts/rate-limit.test.ts && tsx scripts/security-hardening.test.ts && tsx scripts/satisfaction-public-flow.test.ts && tsx scripts/it-visitor-log.test.ts && tsx scripts/head-contact-module.test.ts",
     "tat:local": "node scripts/tat-local-analyze.mjs",
     "tat:clean-raw": "node scripts/tat-clean-raw.mjs"
