@@ -145,12 +145,13 @@ export function LabMapCanvas({
   }
 
   function movePan(event: ReactPointerEvent<SVGSVGElement>) {
-    if (!dragStart.current) return
+    const start = dragStart.current
+    if (!start) return
     const factor = 1 / view.scale
     setView((current) => ({
       ...current,
-      x: dragStart.current!.viewX + (event.clientX - dragStart.current!.pointerX) * factor,
-      y: dragStart.current!.viewY + (event.clientY - dragStart.current!.pointerY) * factor,
+      x: start.viewX + (event.clientX - start.pointerX) * factor,
+      y: start.viewY + (event.clientY - start.pointerY) * factor,
     }))
   }
 
