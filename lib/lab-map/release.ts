@@ -91,3 +91,22 @@ export function validatePublishableRelease(input: MapReleaseDTO): string[] {
 export function isOfficialRelease(input: MapReleaseDTO) {
   return input.status === 'published' && validatePublishableRelease(input).length === 0
 }
+
+export interface ReleaseRowLike {
+  status: string
+  created_at: string
+}
+
+/**
+ * แยกฉบับล่าสุดของแต่ละสถานะ — printRow ใช้กับแผ่นพิมพ์/ส่งออก (ฉบับเผยแพร่จริงมาก่อนเสมอถ้ามี
+ * ไม่งั้นฉบับร่างที่ยังไม่อนุมัติจะกลายเป็น "ฉบับใช้งานจริง"), managedRow ใช้กับแผงจัดการ (ฉบับร่างที่กำลัง
+ * ทำอยู่มาก่อนเสมอ ไม่งั้นสร้างฉบับร่างใหม่ไปแล้วจะกลับมาแก้ไม่ได้อีกตราบใดที่ยังมีฉบับเผยแพร่ค้างอยู่)
+ */
+export function pickReleaseRows<T extends ReleaseRowLike>(rows: readonly T[]): { printRow: T | null; managedRow: T | null } {
+  const publishedRow = rows.find((row) => row.status === 'published') ?? null
+  const draftRow = rows.find((row) => row.status === 'draft') ?? null
+  return {
+    printRow: publishedRow ?? draftRow ?? null,
+    managedRow: draftRow ?? publishedRow ?? null,
+  }
+}

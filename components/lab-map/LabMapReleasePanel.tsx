@@ -116,7 +116,7 @@ export function LabMapReleasePanel({ release, staff }: LabMapReleasePanelProps) 
       const response = await fetch(`/api/admin/lab-map/releases/${release.id}/publish`, { method: 'POST' })
       const body = await readJson(response)
       if (response.status === 422) {
-        setBlockers(body.blockers?.length ? body.blockers : [body.error ?? 'ยังเผยแพร่ไม่ได้'])
+        setBlockers(Array.isArray(body.blockers) && body.blockers.length > 0 ? body.blockers : [body.error ?? 'ยังเผยแพร่ไม่ได้'])
         return
       }
       if (!response.ok) throw new Error(body.error ?? 'เผยแพร่ไม่สำเร็จ')
