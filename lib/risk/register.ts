@@ -26,6 +26,22 @@ export function reviewDueThreshold() {
 
 export type ReviewState = 'ok' | 'due' | 'overdue' | 'unset'
 
+/** ชื่อตำแหน่งผู้รับผิดชอบเริ่มต้นของแต่ละหน่วยงาน */
+export function riskOwnerForDepartment(department: string) {
+  return department ? `หัวหน้า${department}` : ''
+}
+
+/** เปลี่ยนค่าอัตโนมัติเฉพาะเมื่อช่องยังว่างหรือยังเป็นค่าที่ระบบเคยเติมไว้ */
+export function ownerAfterDepartmentChange(
+  currentOwner: string,
+  previousDepartment: string,
+  nextDepartment: string,
+) {
+  const previousAutofill = riskOwnerForDepartment(previousDepartment)
+  const wasAutofilled = !currentOwner || currentOwner === previousAutofill
+  return wasAutofilled ? riskOwnerForDepartment(nextDepartment) : currentOwner
+}
+
 export function reviewState(nextReview?: string | null): ReviewState {
   if (!nextReview) return 'unset'
   const today = todayBangkok()
