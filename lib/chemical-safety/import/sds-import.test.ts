@@ -16,7 +16,7 @@ import {
   safeChemicalFilename,
   validateChemicalPdf,
 } from '../files'
-import { indexSdsArchive } from './sds-index'
+import { extractFirstTwoPdfPages, indexSdsArchive } from './sds-index'
 import { classifySdsCandidate, scoreSdsCandidate } from './sds-match'
 
 const pdfSignature = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])
@@ -82,6 +82,42 @@ assert.equal(classifySdsCandidate(independentMetadata), 'candidate')
 assert.ok(independentMetadata.positiveEvidence.includes('manufacturer confirmed: Merck'))
 assert.ok(independentMetadata.positiveEvidence.includes('supplier confirmed: Sigma'))
 assert.ok(independentMetadata.positiveEvidence.includes('product code confirmed: M-123'))
+
+const reversedIdentityFields = scoreSdsCandidate(
+  { name: 'Methanol', casNumber: null, concentration: null, manufacturer: 'Merck', supplier: 'Sigma' },
+  candidate('unlabelled.pdf', 'Manufacturer: Sigma\nSupplier: Merck', '2'),
+)
+assert.equal(reversedIdentityFields.positiveEvidence.includes('manufacturer confirmed: Merck'), false)
+assert.equal(reversedIdentityFields.positiveEvidence.includes('supplier confirmed: Sigma'), false)
+assert.ok(reversedIdentityFields.negativeEvidence.includes('manufacturer differs: Sigma (expected Merck)'))
+assert.ok(reversedIdentityFields.negativeEvidence.includes('supplier differs: Merck (expected Sigma)'))
+
+const slashSeparatedReversedFields = scoreSdsCandidate(
+  { name: 'Methanol', casNumber: null, concentration: null, manufacturer: 'Merck', supplier: 'Sigma' },
+  candidate('unlabelled.pdf', 'Manufacturer: Sigma / Supplier: Merck', '5'),
+)
+assert.equal(slashSeparatedReversedFields.positiveEvidence.includes('manufacturer confirmed: Merck'), false)
+assert.equal(slashSeparatedReversedFields.positiveEvidence.includes('supplier confirmed: Sigma'), false)
+assert.ok(slashSeparatedReversedFields.negativeEvidence.includes('manufacturer differs: Sigma (expected Merck)'))
+assert.ok(slashSeparatedReversedFields.negativeEvidence.includes('supplier differs: Merck (expected Sigma)'))
+
+const differingAndAbsentIdentityFields = scoreSdsCandidate(
+  { name: 'Methanol', casNumber: null, concentration: null, manufacturer: 'Merck', supplier: 'Sigma' },
+  candidate('unlabelled.pdf', 'Manufacturer: Acme Chemicals', '3'),
+)
+assert.ok(differingAndAbsentIdentityFields.negativeEvidence.includes('manufacturer differs: Acme Chemicals (expected Merck)'))
+assert.equal(
+  differingAndAbsentIdentityFields.negativeEvidence.some(evidence => evidence.startsWith('supplier differs:')),
+  false,
+  'an absent labeled supplier field stays neutral',
+)
+
+const unlabeledIdentityFields = scoreSdsCandidate(
+  { name: 'Methanol', casNumber: null, concentration: null, manufacturer: 'Merck', supplier: 'Sigma' },
+  candidate('unlabelled.pdf', 'Merck Sigma', '4'),
+)
+assert.equal(unlabeledIdentityFields.positiveEvidence.some(evidence => /manufacturer|supplier/.test(evidence)), false)
+assert.equal(unlabeledIdentityFields.negativeEvidence.some(evidence => /manufacturer|supplier/.test(evidence)), false)
 
 assert.deepEqual(validateChemicalPdf('สารเคมี-01.pdf', 'application/pdf', CHEMICAL_PDF_MIN_BYTES, pdfSignature), { ok: true })
 assert.deepEqual(validateChemicalPdf('สารเคมี-01.PDF', 'application/pdf', CHEMICAL_PDF_MAX_BYTES, pdfSignature), { ok: true })
@@ -211,6 +247,79 @@ async function testArchiveIndex() {
   }
 }
 
-void testArchiveIndex().then(() => {
+async function testAncestorJunctionRoot() {
+  const fixturePath = await mkdtemp(join(tmpdir(), 'chemical-sds-ancestor-link-'))
+  try {
+    const realParent = join(fixturePath, 'real-parent')
+    const realArchive = join(realParent, 'archive')
+    const linkedParent = join(fixturePath, 'linked-parent')
+    await mkdir(realArchive, { recursive: true })
+    await writeFile(join(realArchive, 'legacy.doc'), new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]))
+
+    try {
+      await symlink(realParent, linkedParent, process.platform === 'win32' ? 'junction' : 'dir')
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'EPERM' && code !== 'EACCES' && code !== 'ENOTSUP') throw error
+      console.log(`ancestor junction regression skipped: ${code}`)
+      return
+    }
+
+    await assert.rejects(
+      indexSdsArchive(join(linkedParent, 'archive')),
+      /symbolic link|junction|reparse/i,
+      'an archive root reached through a linked ancestor is rejected',
+    )
+    console.log('ancestor junction regression exercised')
+  } finally {
+    await rm(fixturePath, { recursive: true, force: true })
+  }
+}
+
+async function testPdfProxyCleanup() {
+  let successfulDestroyCalls = 0
+  const text = await extractFirstTwoPdfPages({
+    numPages: 1,
+    async getPage() {
+      return {
+        async getTextContent() {
+          return { items: [{ str: 'cleanup success', hasEOL: false }] }
+        },
+      }
+    },
+    async destroy() {
+      successfulDestroyCalls += 1
+    },
+  })
+  assert.equal(text, 'cleanup success')
+  assert.equal(successfulDestroyCalls, 1, 'a successfully extracted PDF proxy is destroyed once')
+
+  let failedDestroyCalls = 0
+  await assert.rejects(
+    extractFirstTwoPdfPages({
+      numPages: 2,
+      async getPage(pageNumber) {
+        if (pageNumber === 2) throw new Error('second page extraction failed')
+        return {
+          async getTextContent() {
+            return { items: [{ str: 'first page', hasEOL: false }] }
+          },
+        }
+      },
+      async destroy() {
+        failedDestroyCalls += 1
+      },
+    }),
+    /second page extraction failed/,
+  )
+  assert.equal(failedDestroyCalls, 1, 'a PDF proxy is destroyed when extraction fails')
+}
+
+async function main() {
+  await testPdfProxyCleanup()
+  await testArchiveIndex()
+  await testAncestorJunctionRoot()
   console.log('chemical safety SDS import tests passed')
-})
+}
+
+void main()
