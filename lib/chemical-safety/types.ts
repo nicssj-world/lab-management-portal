@@ -171,6 +171,7 @@ export interface ChemicalSdsDTO {
   productId: string
   fileId: string | null
   sourceUrl: string | null
+  fileUrl: string | null
   manufacturer: string | null
   supplier: string | null
   productCode: string | null
