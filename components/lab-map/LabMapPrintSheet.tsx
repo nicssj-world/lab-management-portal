@@ -19,10 +19,13 @@ export function LabMapPrintSheet({ dto }: { dto: MapPrintDTO }) {
         <div><h1>{dto.titleTh}</h1><p>กลุ่มงานเทคนิคการแพทย์ อาคารเฉลิมราชสมบัติ ชั้น 3 โรงพยาบาลชลบุรี</p></div>
         <div className="lab-map-print-badge"><strong>{dto.official ? 'ฉบับใช้งานจริง' : 'DRAFT PREVIEW'}</strong><br />{dto.release.versionCode}</div>
       </header>
-      <div className="lab-map-print-you-are-here">★ ท่านอยู่ที่นี่: {dto.installationPoint}</div>
+      {dto.kind !== 'infection_control' ? (
+        <div className="lab-map-print-you-are-here">★ ท่านอยู่ที่นี่: {dto.installationPoint}</div>
+      ) : null}
       <div className="lab-map-print-map">
         <LabMapCanvas map={dto.map} mode={dto.mode} selectedCode={null}
-          activeRouteCodes={dto.activeRouteCodes} onSelect={() => {}} interactive={false} />
+          activeRouteCodes={dto.activeRouteCodes} onSelect={() => {}} interactive={false}
+          stationFocused={dto.kind === 'visitor_navigation'} />
       </div>
       <footer className="lab-map-print-footer">
         <dl>

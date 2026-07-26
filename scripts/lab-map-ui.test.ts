@@ -35,16 +35,17 @@ assert.match(canvas, /markerEnd=/)
 assert.match(canvas, /arrow-alternate/)
 assert.match(canvas, /คุณอยู่ที่นี่/, 'the active station is labelled')
 // หมุด "คุณอยู่ที่นี่" ต้องไม่ขึ้นในโหมดเขตควบคุมการติดเชื้อ
-// หมุด "คุณอยู่ที่นี่" แสดงเฉพาะโหมดความปลอดภัย — ไม่โผล่ในโหมดพื้นที่/หน่วยงานหรือเขตควบคุมการติดเชื้อ
-assert.match(canvas, /mode === 'safety'\s*\n\s*\? map\.stations\.find/, 'the station marker only renders in safety mode')
+// หมุด "คุณอยู่ที่นี่" แสดงเฉพาะโหมดความปลอดภัย หรือเมื่อผู้เรียกขอ (stationFocused) อย่างแผ่นนำทางผู้มาติดต่อ —
+// ไม่โผล่ในโหมดพื้นที่/หน่วยงานหรือเขตควบคุมการติดเชื้อตามปกติ
+assert.match(canvas, /mode === 'safety' \|\| stationFocused\s*\n\s*\? map\.stations\.find/, 'the station marker only renders in safety mode or when explicitly focused')
 assert.match(canvas, /data-variant=\{route\.variant\}/)
 assert.match(canvas, /data-destination=/, 'the destination checkpoint is highlighted')
 assert.match(styles, /\.lab-map-route\[data-variant="primary"\]/)
 assert.match(styles, /\.lab-map-route\[data-variant="alternate"\][\s\S]*?stroke-dasharray/)
 assert.match(styles, /\.lab-map-structure--scanner-barrier/)
 
-// โหมดความปลอดภัยซ่อนจุดสแกนที่ไม่เกี่ยวกับเส้นทางที่กำลังแสดง
-assert.match(canvas, /mode !== 'safety'\) return true/)
+// โหมดความปลอดภัย (หรือ stationFocused) ซ่อนจุดสแกนที่ไม่เกี่ยวกับเส้นทางที่กำลังแสดง
+assert.match(canvas, /mode !== 'safety' && !stationFocused\) return true/)
 
 // ── ไม่มีโหมดบุคลากรเหลืออยู่ ──
 assert.doesNotMatch(types.match(/export type MapMode[^\n]+/)?.[0] ?? '', /personnel/)

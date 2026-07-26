@@ -27,6 +27,12 @@ export interface LabMapCanvasProps {
   destinationPointCode?: string | null
   /** สถานีที่ใช้วางหมุด "คุณอยู่ที่นี่" — ไม่ระบุ = ใช้ map.stationCode ตามเดิม */
   activeStationCode?: string | null
+  /**
+   * บังคับให้แสดงหมุด "คุณอยู่ที่นี่" และกรองจุดสแกน/ประตูเหลือเฉพาะที่เกี่ยวกับเส้นทางที่กำลังแสดง
+   * เหมือนโหมดเส้นทางหนีไฟ — ใช้กับแผ่นนำทางผู้มาติดต่อซึ่งโฟกัสเส้นทางเดียวแต่ไม่ใช่โหมด 'safety'
+   * (ไม่ดึงกากบาทห้ามใช้ลิฟต์มาด้วย นั่นเป็นความหมายเฉพาะเหตุฉุกเฉินเท่านั้น)
+   */
+  stationFocused?: boolean
   interactive?: boolean
 }
 
@@ -153,6 +159,7 @@ export function LabMapCanvas({
   highlightedSpaceCodes = [],
   destinationPointCode = null,
   activeStationCode = null,
+  stationFocused = false,
   interactive = true,
 }: LabMapCanvasProps) {
   const rawId = useId()
@@ -170,15 +177,15 @@ export function LabMapCanvas({
   )
   const highlighted = useMemo(() => new Set(highlightedSpaceCodes), [highlightedSpaceCodes])
   const resolvedStationCode = activeStationCode ?? map.stationCode
-  // หมุด "คุณอยู่ที่นี่" มีความหมายเฉพาะตอนดูเส้นทางหนีไฟ — โหมดพื้นที่/หน่วยงานและเขตควบคุมการติดเชื้อ
-  // อ่านข้อมูลคนละแบบ หมุดตำแหน่งผู้ใช้ไม่เกี่ยวและรบกวนการอ่านผังเปล่า ๆ
-  const station = mode === 'safety'
+  // หมุด "คุณอยู่ที่นี่" มีความหมายเฉพาะตอนดูเส้นทางหนีไฟหรือแผ่นนำทางผู้มาติดต่อ (stationFocused) —
+  // โหมดพื้นที่/หน่วยงานและเขตควบคุมการติดเชื้ออ่านข้อมูลคนละแบบ หมุดตำแหน่งผู้ใช้ไม่เกี่ยวและรบกวนการอ่านผังเปล่า ๆ
+  const station = mode === 'safety' || stationFocused
     ? map.stations.find((item) => item.code === resolvedStationCode) ?? null
     : null
 
   /**
-   * โหมดความปลอดภัยแสดงเฉพาะสิ่งที่ใช้อพยพจริง — ทางออก ประตูล็อคถาวร
-   * และจุดสแกนที่อยู่บนเส้นทางที่กำลังแสดงเท่านั้น จุดสแกนอื่นถูกซ่อนเพื่อไม่ให้อ่านผิด
+   * โหมดความปลอดภัยและแผ่นนำทางผู้มาติดต่อ (stationFocused) แสดงเฉพาะสิ่งที่เกี่ยวกับเส้นทางเดียวที่กำลังแสดง —
+   * ทางออก ประตูล็อคถาวร และจุดสแกนที่อยู่บนเส้นทางนั้นเท่านั้น จุดสแกนอื่นถูกซ่อนเพื่อไม่ให้อ่านผิด/รก
    */
   const routePointCodes = useMemo(
     () => new Set(activeRoutes.flatMap((route) => [...route.pointCodes, route.destinationCode])),
@@ -186,7 +193,7 @@ export function LabMapCanvas({
   )
   const visiblePoints = map.accessPoints.filter((point) => {
     if (mode === 'safety-assets') return false
-    if (mode !== 'safety') return true
+    if (mode !== 'safety' && !stationFocused) return true
     if (point.kind === 'exit' || point.status === 'permanently_locked') return true
     return routePointCodes.has(point.code)
   })

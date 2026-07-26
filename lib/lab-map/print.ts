@@ -76,9 +76,9 @@ export function buildMapPrintDTO(input: {
     spaces: input.kind === 'infection_control' ? LAB_SPACES : LAB_SPACES.map(({ infectionClass: _class, ...space }) => space),
     labels: LAB_LABELS,
     zones: LAB_ZONES,
-    accessPoints: input.kind === 'evacuation'
-      ? LAB_ACCESS_POINTS.filter((point) => point.kind === 'exit' || point.status === 'permanently_locked')
-      : LAB_ACCESS_POINTS.filter((point) => point.status === 'permanently_locked'),
+    // ป้ายเลข/ชื่อประตูหนีไฟ (LAB_LABELS) แสดงทุกชนิดแผ่นอยู่แล้ว — สัญลักษณ์ทางออกต้องมาคู่กันเสมอ
+    // ไม่งั้นแผ่นควบคุมการติดเชื้อจะเห็นแค่เลข "3A" ลอยๆ โดยไม่มีไอคอนประตู
+    accessPoints: LAB_ACCESS_POINTS.filter((point) => point.kind === 'exit' || point.status === 'permanently_locked'),
     stations: LAB_STATIONS.filter((item) => item.code === input.stationCode),
     routes,
     // ถังดับเพลิงและจุดรวมพลมีความหมายเฉพาะแผ่นเส้นทางหนีไฟ — แผ่นควบคุมการติดเชื้อไม่ต้องมี
