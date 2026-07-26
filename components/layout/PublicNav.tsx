@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: '/catalog', th: 'รายการตรวจวิเคราะห์',   en: 'Test Catalog' },
   { href: '/manual',  th: 'คู่มือห้องปฏิบัติการ',  en: 'Lab Manual' },
   { href: '/related-documents', th: 'เอกสารที่เกี่ยวข้อง', en: 'Related Documents' },
+  { href: '/sds',      th: 'SDS สารเคมี',          en: 'Chemical SDS' },
   { href: '/news',    th: 'ข่าวสาร',               en: 'News' },
   { href: '/contact', th: 'โครงสร้างองค์กร',      en: 'Organization' },
 ]

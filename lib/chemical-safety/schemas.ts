@@ -16,6 +16,7 @@ export const chemicalRegistryQuerySchema = z.object({
   ghs: pictogram.optional(),
   lifecycle: z.enum(['active', 'retired']).optional(),
 })
+export const chemicalRegistryFiltersSchema = chemicalRegistryQuerySchema
 
 export const chemicalImportReviewQuerySchema = z.object({
   batchId: uuid.optional(),
