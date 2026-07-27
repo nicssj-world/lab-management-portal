@@ -23,6 +23,9 @@ export default async function PublicSdsPage({
     searchPublicSds(),
     listPublicDepartmentSds(),
   ])
+  const searchHints = [...new Set(
+    items.flatMap(item => [item.canonicalName, ...item.aliases, item.manufacturer].filter((value): value is string => Boolean(value))),
+  )].sort((a, b) => a.localeCompare(b, 'th'))
 
   return (
     <main className="sds-public-page">
@@ -104,9 +107,20 @@ export default async function PublicSdsPage({
         </p>
         <form className="sds-hero-search" action="/sds#sds-chemicals-heading">
           <label className="sr-only-visually" htmlFor="sds-hero-search">ค้นหาเอกสาร SDS</label>
-          <input id="sds-hero-search" name="q" type="search" defaultValue={initialQuery} placeholder="ค้นหาชื่อสาร น้ำยา ชุดตรวจ CAS หรือผู้ผลิต" />
+          <input
+            id="sds-hero-search"
+            name="q"
+            type="search"
+            defaultValue={initialQuery}
+            placeholder="ค้นหาชื่อสาร น้ำยา ชุดตรวจ CAS หรือผู้ผลิต"
+            list="sds-hero-suggestions"
+            autoComplete="off"
+          />
           <button type="submit">ค้นหา SDS</button>
         </form>
+        <datalist id="sds-hero-suggestions">
+          {searchHints.map(hint => <option key={hint} value={hint} />)}
+        </datalist>
       </section>
 
       <aside className="manual-banner" id="sds-manual">

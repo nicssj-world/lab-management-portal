@@ -6,12 +6,12 @@ import { RETURN_PATH_PARAM, isAuthServiceUnavailable, isProtectedPath, safeRetur
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
 
 // หน้าที่ต้องล็อกอิน — ตรงกับ route group (protected)
-for (const path of ['/staff', '/staff/risk/ior', '/staff/lab-map', '/staff/lab-map/print', '/kpi/dashboard', '/lab-workload/dashboard', '/tat', '/sds']) {
+for (const path of ['/staff', '/staff/risk/ior', '/staff/lab-map', '/staff/lab-map/print', '/kpi/dashboard', '/lab-workload/dashboard', '/tat']) {
   assert.ok(isProtectedPath(path), `${path} ต้องล็อกอิน`)
 }
 
 // หน้า public — การไม่มี session เป็นเรื่องปกติ ห้ามเด้งไป /login
-for (const path of ['/', '/catalog', '/news', '/manual', '/contact', '/login', '/s/abc123', '/lab-map/office']) {
+for (const path of ['/', '/catalog', '/news', '/manual', '/contact', '/login', '/s/abc123', '/lab-map/office', '/sds']) {
   assert.ok(!isProtectedPath(path), `${path} เป็นหน้า public`)
 }
 
@@ -62,7 +62,6 @@ assert.ok(
 assert.equal(safeReturnPath('/staff/risk/report'), '/staff/risk/report')
 assert.equal(safeReturnPath('/staff/risk/ior?status=reported'), '/staff/risk/ior?status=reported')
 assert.equal(safeReturnPath('/tat/dashboard?view=overview'), '/tat/dashboard?view=overview')
-assert.equal(safeReturnPath('/sds'), '/sds')
 
 // พาออกนอกเว็บไม่ได้ — นี่คือเหตุผลทั้งหมดที่ฟังก์ชันนี้มีอยู่
 for (const attack of [
@@ -77,7 +76,7 @@ for (const attack of [
 }
 
 // หน้า public ไม่ใช่ปลายทางที่ proxy เด้งมา จึงไม่ต้องพากลับ
-for (const path of ['/login', '/', '/catalog', '/staffing']) {
+for (const path of ['/login', '/', '/catalog', '/staffing', '/sds']) {
   assert.equal(safeReturnPath(path), null, `${path} ไม่ใช่ปลายทางที่ต้องพากลับ`)
 }
 

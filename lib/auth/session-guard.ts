@@ -2,7 +2,7 @@
 // แยกออกมาเป็นโมดูลบริสุทธิ์ เพื่อให้ทดสอบได้โดยไม่ต้องพึ่ง next/server หรือ window
 
 /** เส้นทางที่ต้องล็อกอิน — นอกจากนี้คือหน้า public ที่การไม่มี session เป็นเรื่องปกติ */
-const PROTECTED_PATH_PATTERN = /^\/(staff|kpi|lab-workload|tat|sds)(?:\/|$)/
+const PROTECTED_PATH_PATTERN = /^\/(staff|kpi|lab-workload|tat)(?:\/|$)/
 
 export function isProtectedPath(path: string) {
   return PROTECTED_PATH_PATTERN.test(path)
