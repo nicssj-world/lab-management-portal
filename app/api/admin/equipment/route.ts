@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
+import { areaAndDescendantCodes } from '@/lib/equipment-map/manifest'
 import { NextRequest, NextResponse } from 'next/server'
 
 const DEFAULT_PAGE_SIZE = 50
@@ -97,6 +98,8 @@ function applyEquipmentFilters(query: any, searchParams: URLSearchParams) {
   const needs_calibration = searchParams.get('needs_calibration')
   const pending_reg = searchParams.get('pending_reg')
   const classification = searchParams.get('classification') ?? ''
+  const area = searchParams.get('area') ?? ''
+  const unpositioned = searchParams.get('unpositioned')
 
   if (search) {
     const pattern = `%${escapeLike(search)}%`
@@ -117,6 +120,9 @@ function applyEquipmentFilters(query: any, searchParams: URLSearchParams) {
   if (needs_calibration === 'false') query = query.eq('needs_calibration', false)
   if (pending_reg === 'true') query = query.or('cbh_code_pending.eq.true,hospital_asset_no_pending.eq.true')
   if (classification) query = query.eq('classification', classification)
+  // เลือกที่ห้อง ต้องรวมเครื่องมือของโซนลูกด้วย ไม่ใช่แค่เครื่องที่ area_code ตรงกับห้องเป๊ะ ๆ
+  if (area) query = query.in('area_code', areaAndDescendantCodes(area))
+  if (unpositioned === 'true' || unpositioned === '1') query = query.or('area_code.is.null,map_x.is.null,map_y.is.null')
 
   return query
 }
@@ -223,6 +229,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
+  // ตำแหน่งบนแผนที่ตั้งได้เฉพาะทาง /api/admin/equipment/[id]/position เท่านั้น (ดูเหตุผลเดียวกับ PATCH ด้านบน)
+  delete body.map_x
+  delete body.map_y
+  delete body.map_rotation
+  delete body.area_code
+  delete body.position_set_by
+  delete body.position_set_at
   normalizePendingRegistration(body)
   const responsibleError = await applyResponsibleUser(body)
   if (responsibleError) return NextResponse.json({ error: responsibleError }, { status: 422 })

@@ -32,24 +32,15 @@ const CAL_TONE: Record<CalTone, { bg: string; fg: string; border: string }> = {
   red: { bg: 'rgba(220,38,38,.10)', fg: '#B91C1C', border: 'rgba(220,38,38,.30)' },
 }
 
-// คำนวณสถานะสอบเทียบจากวันสอบเทียบล่าสุด (สมมติรอบ 1 ปีเป็นค่าเริ่มต้น)
-function calibrationStatus(eq: PublicEquipment): { tone: CalTone; label: string; sub: string | null } {
+// ใช้สถานะเดียวกับแผนผังและทะเบียน PM/CAL
+function getPublicPmCalStatus(eq: PublicEquipment): { tone: CalTone; label: string; sub: string | null } {
   if (!eq.needs_calibration) return { tone: 'gray', label: 'ไม่ต้องสอบเทียบ', sub: null }
-  const last = eq.cal.last_cal_date
-  if (!last) return { tone: 'amber', label: 'ยังไม่มีบันทึกการสอบเทียบ', sub: null }
-
-  const lastTime = new Date(last).getTime()
-  if (Number.isNaN(lastTime)) return { tone: 'gray', label: `สอบเทียบล่าสุด ${formatDate(last)}`, sub: null }
-
-  const due = new Date(lastTime)
-  due.setFullYear(due.getFullYear() + 1)
-  const days = Math.round((due.getTime() - Date.now()) / 86400000)
-  const dueLabel = formatDate(due.toISOString())
-  const lastSub = `สอบเทียบล่าสุด ${formatDate(last)}`
-
-  if (days < 0) return { tone: 'red', label: `เลยกำหนดสอบเทียบ (ครบ ${dueLabel})`, sub: lastSub }
-  if (days <= 60) return { tone: 'amber', label: `ใกล้ครบกำหนด ภายใน ${days} วัน (${dueLabel})`, sub: lastSub }
-  return { tone: 'green', label: `สอบเทียบปกติ (ครบกำหนด ${dueLabel})`, sub: lastSub }
+  const sub = eq.cal.last_cal_date ? `สอบเทียบล่าสุด ${formatDate(eq.cal.last_cal_date)}` : null
+  if (eq.pmCalState === 'unplanned') return { tone: 'amber', label: 'ยังไม่วางแผน PM/CAL', sub }
+  if (eq.pmCalState === 'failed') return { tone: 'red', label: 'ผลสอบเทียบไม่ผ่าน — ต้องดำเนินการซ้ำ', sub }
+  if (eq.pmCalState === 'overdue') return { tone: 'red', label: 'เกินกำหนด PM/CAL', sub }
+  if (eq.pmCalState === 'due_soon') return { tone: 'amber', label: 'ใกล้ครบกำหนด PM/CAL', sub }
+  return { tone: 'green', label: eq.pmCalState === 'completed' ? 'ดำเนินการตามแผนแล้ว' : 'PM/CAL อยู่ในแผน', sub }
 }
 
 function normalizeOwner(value: string | null): string {
@@ -139,7 +130,7 @@ export default async function PublicEquipmentPage({ params }: { params: Promise<
     )
   }
 
-  const cal = calibrationStatus(eq)
+  const cal = getPublicPmCalStatus(eq)
   const st = STATUS_COLOR[eq.status] ?? STATUS_COLOR.Inactive
   const rk = eq.risk_level ? RISK_COLOR[eq.risk_level] : null
   const person = (eq.responsible_person ?? '').trim()

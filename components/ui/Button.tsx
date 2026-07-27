@@ -17,6 +17,7 @@ interface ButtonProps {
   type?: 'button' | 'submit' | 'reset'
   style?: React.CSSProperties
   title?: string
+  'aria-pressed'?: React.AriaAttributes['aria-pressed']
 }
 
 const SIZES: Record<Size, { padding: string; fontSize: number; height: number; gap: number; iconSize: number }> = {
@@ -35,7 +36,7 @@ const VARIANTS: Record<Variant, React.CSSProperties> = {
 
 export function Button({
   children, variant = 'primary', size = 'md', icon, iconRight,
-  onClick, disabled, full, type = 'button', style, title,
+  onClick, disabled, full, type = 'button', style, title, 'aria-pressed': ariaPressed,
 }: ButtonProps) {
   const s = SIZES[size]
   const v = VARIANTS[variant]
@@ -45,6 +46,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-pressed={ariaPressed}
       style={{
         ...v, padding: s.padding, height: s.height, fontSize: s.fontSize,
         width: full ? '100%' : undefined, gap: s.gap,

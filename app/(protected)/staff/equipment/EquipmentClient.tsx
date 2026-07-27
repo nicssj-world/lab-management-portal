@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Link from 'next/link'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -12,6 +13,8 @@ import { Select } from '@/components/ui/Select'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { FilterChips } from '@/components/ui/FilterChips'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
+import { EquipmentDetailModal } from '@/components/equipment/EquipmentDetailModal'
+import { EquipmentPmCalModal } from '@/components/equipment/EquipmentPmCalModal'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
@@ -30,6 +33,13 @@ type ResponsibleUser = {
   name: string
   dept: string | null
   role: string | null
+}
+type EquipmentAreaOption = {
+  code: string
+  nameTh: string
+  kind: 'room' | 'zone'
+  parentCode: string | null
+  isActive: boolean
 }
 
 function openPdfOrNewTab(url: string, filePath: string | null | undefined, title: string, setViewer: (viewer: ViewerState) => void, pdfJsUrl?: string | null) {
@@ -86,26 +96,6 @@ function parseEquipmentPayload(payload: unknown): EquipmentListPayload {
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-
-function warrantyStatus(exp: string | null): 'ok' | 'warn' | 'danger' | null {
-  if (!exp) return null
-  const days = (new Date(exp).getTime() - Date.now()) / 86400000
-  if (days < 0) return 'danger'
-  if (days < 30) return 'danger'
-  if (days < 90) return 'warn'
-  return 'ok'
-}
-
-function formatDate(d: string | null) {
-  if (!d) return '—'
-  try { return new Date(d).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }) }
-  catch { return d }
-}
-
-function formatPrice(n: number | null) {
-  if (n == null) return '—'
-  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
 
 function normalizeOwner(value: unknown): string {
   const raw = String(value ?? '').trim()
@@ -257,16 +247,18 @@ function RiskHint() {
 // ─── Add/Edit Modal ───────────────────────────────────────────────────────────
 
 function EquipmentModal({
-  item, onClose, onSaved, departments, responsibleUsers,
+  item, onClose, onSaved, departments, responsibleUsers, areas,
 }: {
   item: Partial<Equipment> | null
   onClose: () => void
   onSaved: (eq: Equipment) => void
   departments: string[]
   responsibleUsers: ResponsibleUser[]
+  areas: EquipmentAreaOption[]
 }) {
   const isEdit = !!item?.id
   const [form, setForm] = useState<Partial<Equipment>>(item ? { ...item, owner: normalizeOwner(item.owner) } : BLANK)
+  const [areaCode, setAreaCode] = useState(item?.area_code ?? '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [photoFile, setPhotoFile] = useState<File | null>(null)
@@ -330,6 +322,21 @@ function EquipmentModal({
       )
       const json = await res.json()
       if (!res.ok) { setErr(json.error ?? 'เกิดข้อผิดพลาด'); return }
+
+      // เปลี่ยนห้อง/โซนที่นี่แยกจากฟิลด์อื่นเสมอ (ผ่าน /position เท่านั้น — ดู CLAUDE.md) และล้างพิกัดหมุดเดิม
+      // เพราะพิกัดเดิมอาจอยู่นอกขอบเขตพื้นที่ใหม่ ต้องไปปักหมุดใหม่ในแผนผังเครื่องมือ
+      if (areaCode !== (item?.area_code ?? '')) {
+        const posRes = await fetch(`/api/admin/equipment/${json.id}/position`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ areaCode: areaCode || null, x: null, y: null }),
+        })
+        const posJson = await posRes.json()
+        if (!posRes.ok) { setErr(posJson.error ?? 'บันทึกห้อง/โซนไม่สำเร็จ'); return }
+        json.area_code = posJson.area_code
+        json.map_x = posJson.map_x
+        json.map_y = posJson.map_y
+      }
 
       // Handle photo upload
       if (photoFile) {
@@ -442,6 +449,13 @@ function EquipmentModal({
                 <option value="">เลือกแผนก</option>
                 {departments.map(d => <option key={d} value={d}>{d}</option>)}
                 <option value="อื่นๆ">อื่นๆ</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>ห้อง/โซน (แผนผังเครื่องมือ)</label>
+              <select style={inputStyle} value={areaCode} onChange={e => setAreaCode(e.target.value)}>
+                <option value="">ยังไม่กำหนด</option>
+                {areas.filter(a => a.isActive).map(a => <option key={a.code} value={a.code}>{a.kind === 'zone' ? '— ' : ''}{a.nameTh}</option>)}
               </select>
             </div>
             <div>
@@ -1054,22 +1068,6 @@ function BulkDeleteConfirm({ ids, allItems, onClose, onDeleted }: {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 
-// ─── Detail Modal ─────────────────────────────────────────────────────────────
-
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
-  if (!value && value !== 0) return null
-  return (
-    <div style={{ display: 'flex', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-      <div style={{ width: 160, flexShrink: 0, fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{label}</div>
-      <div style={{ flex: 1, fontSize: 13, color: 'var(--ink)', wordBreak: 'break-word' }}>{value}</div>
-    </div>
-  )
-}
-
-function SectionTitle({ children }: { children: string }) {
-  return <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', letterSpacing: 1, textTransform: 'uppercase', margin: '18px 0 4px' }}>{children}</div>
-}
-
 function PhotoViewModal({ item, onClose }: { item: Equipment; onClose: () => void }) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1103,548 +1101,6 @@ function PhotoViewModal({ item, onClose }: { item: Equipment; onClose: () => voi
           ) : null}
         </div>
       </div>
-    </div>
-  )
-}
-
-function EquipmentDetailModal({ item, onClose, onEdit }: {
-  item: Equipment
-  onClose: () => void
-  onEdit?: (item: Equipment) => void
-}) {
-  const ws = warrantyStatus(item.warranty_exp)
-  const [signedPhotoUrl, setSignedPhotoUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!item.photo_url) return
-    fetch(`/api/admin/equipment/${item.id}/photo`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.url) setSignedPhotoUrl(d.url) })
-      .catch(() => {})
-  }, [item.id, item.photo_url])
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.25)', display: 'flex', flexDirection: 'column' }}>
-
-        {/* Header */}
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 4, lineHeight: 1.4 }}>{item.equipment_type}</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              {item.cbh_code && <span style={{ fontSize: 12, color: 'var(--primary)', fontFamily: 'monospace', background: 'var(--primary-soft)', padding: '2px 8px', borderRadius: 5 }}>{item.cbh_code}</span>}
-              <Badge color={STATUS_BADGE[item.status]}>{item.status}</Badge>
-              {item.risk_level && <Badge color={RISK_BADGE[item.risk_level as RiskLevel]}>{item.risk_level}</Badge>}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            {onEdit && (
-              <button onClick={() => onEdit(item)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: 'var(--ink)' }}>
-                <Icon name="edit" size={13} /> แก้ไข
-              </button>
-            )}
-            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}>
-              <Icon name="x" size={18} />
-            </button>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: '4px 24px 24px', overflow: 'auto', flex: 1 }}>
-          <SectionTitle>ข้อมูลทั่วไป</SectionTitle>
-          {item.photo_url && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16, marginTop: 4 }}>
-              {signedPhotoUrl
-                ? <img src={signedPhotoUrl} alt={item.equipment_type} style={{ maxWidth: '100%', maxHeight: 220, objectFit: 'contain', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-2)', padding: 8 }} />
-                : <div style={{ width: 160, height: 100, borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name="flask" size={24} style={{ color: 'var(--muted)', opacity: .4 }} />
-                  </div>
-              }
-            </div>
-          )}
-          <DetailRow label="แผนก" value={item.department} />
-          <DetailRow label="เลขทะเบียนสินทรัพย์" value={item.hospital_asset_no} />
-          <DetailRow label="LAB Code" value={item.cbh_code ? <span style={{ fontFamily: 'monospace' }}>{item.cbh_code}</span> : null} />
-          <DetailRow label="Classification" value={item.classification} />
-          <DetailRow label="ผู้รับผิดชอบ" value={item.responsible_person} />
-          <DetailRow label="เจ้าของ" value={item.owner} />
-          <DetailRow label="Owner Status" value={item.owner_status} />
-
-          <SectionTitle>ผู้ผลิต / จำหน่าย</SectionTitle>
-          <DetailRow label="Manufacturer" value={item.manufacturer} />
-          <DetailRow label="Model" value={item.model} />
-          <DetailRow label="Serial Number" value={item.serial_number ? <span style={{ fontFamily: 'monospace' }}>{item.serial_number}</span> : null} />
-          <DetailRow label="Vendor" value={item.vendor} />
-
-          <SectionTitle>การจัดซื้อ</SectionTitle>
-          <DetailRow label="วันที่ซื้อ" value={formatDate(item.purchase_date)} />
-          <DetailRow label="วันหมดประกัน" value={item.warranty_exp ? (
-            <span style={{ color: ws === 'danger' ? 'var(--danger)' : ws === 'warn' ? 'var(--warning)' : 'var(--ink)', fontWeight: ws !== 'ok' ? 600 : 400 }}>
-              {ws !== 'ok' && <Icon name="alert" size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />}
-              {formatDate(item.warranty_exp)}
-            </span>
-          ) : null} />
-          <DetailRow label="ราคาซื้อ (บาท)" value={item.purchase_price != null ? formatPrice(item.purchase_price) : null} />
-
-          <SectionTitle>การสอบเทียบ</SectionTitle>
-          <DetailRow label="ต้องการสอบเทียบ" value={item.needs_calibration ? <Badge color="blue" dot>ต้องการ</Badge> : <span style={{ color: 'var(--muted)', fontSize: 12 }}>ไม่ต้องการ</span>} />
-          <DetailRow label="จุดประสงค์การใช้งาน" value={item.purpose} />
-
-          {item.remark && (
-            <>
-              <SectionTitle>หมายเหตุ</SectionTitle>
-              <div style={{ fontSize: 13, color: 'var(--ink)', padding: '8px 0', lineHeight: 1.6 }}>{item.remark}</div>
-            </>
-          )}
-
-          {item.manual_url && (
-            <>
-              <SectionTitle>เอกสารประกอบ</SectionTitle>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {([
-                  { key: 'manual' as const, label: 'คู่มือการใช้งานเครื่องมือ', url: item.manual_url },
-                ]).filter(d => d.url).map(d => (
-                  <DocDownloadRow key={d.key} label={d.label} equipmentId={item.id} docType={d.key} filePath={d.url} />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function DocDownloadRow({ label, equipmentId, docType, filePath }: { label: string; equipmentId: string; docType: string; filePath: string }) {
-  const [loading, setLoading] = useState(false)
-  const [viewer, setViewer] = useState<ViewerState | null>(null)
-
-  async function handleDownload() {
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/admin/equipment/${equipmentId}/docs?doc_type=${docType}`)
-      if (!res.ok) return
-      const { url } = await res.json()
-      openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer, `/api/admin/equipment/${equipmentId}/docs?doc_type=${encodeURIComponent(docType)}&proxy=1`)
-    } finally { setLoading(false) }
-  }
-
-  return (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)' }}>
-        <Icon name="doc" size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-        <span style={{ fontSize: 13, color: 'var(--ink)', flex: 1 }}>{label}</span>
-        <button onClick={handleDownload} disabled={loading}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', color: 'var(--primary)', opacity: loading ? .6 : 1 }}>
-          <Icon name="download" size={12} />
-          {loading ? 'กำลังโหลด...' : isPdfLike({ fileName: filePath }) ? 'อ่าน' : 'ดาวน์โหลด'}
-        </button>
-      </div>
-      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
-    </>
-  )
-}
-
-// ─── PM/CAL Modal ─────────────────────────────────────────────────────────────
-
-const MONTH_EN  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const MONTH_TH  = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
-
-type PmCalData = NonNullable<Equipment['pm_cal_data']>
-
-function emptyPmCal(): PmCalData {
-  const plan: PmCalData['plan'] = {}
-  MONTH_EN.forEach(m => { plan[m] = { pm: false, cal: false } })
-  return { tech_group: null, times_pm: null, times_cal: null, plan, last_pm_date: null, last_cal_date: null, certificate_no: null, error_value: null, uncertainty: null, cal_result: null, remark: null, certificate_file_url: null }
-}
-
-function PmCalModal({ item, canEdit, onClose, onSaved }: {
-  item: Equipment
-  canEdit: boolean
-  onClose: () => void
-  onSaved: (updated: Equipment) => void
-}) {
-  const [editing, setEditing] = useState(!item.pm_cal_data && canEdit)
-  const [form, setForm] = useState<PmCalData>(item.pm_cal_data ?? emptyPmCal())
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
-  const [uploading, setUploading] = useState(false)
-  const [dragOver, setDragOver] = useState(false)
-  const [viewer, setViewer] = useState<ViewerState | null>(null)
-  const certFileRef = useRef<HTMLInputElement>(null)
-  const currentFiscalYear = getCurrentThaiFiscalYear()
-
-  async function handleCertUpload(file: File) {
-    if (file.size > 50 * 1024 * 1024) { setErr('ขนาดไฟล์เกิน 50 MB'); return }
-    setUploading(true); setErr('')
-    try {
-      // Step 1: ขอ presigned PUT URL จาก server (request เล็กมาก ไม่ติด Vercel limit)
-      const presignRes = await fetch(`/api/admin/equipment/${item.id}/cert`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: file.name, fileType: file.type || 'application/octet-stream', fileSize: file.size }),
-      })
-      const presignJson = await presignRes.json()
-      if (!presignRes.ok) { setErr(presignJson.error ?? 'ไม่สามารถสร้าง URL อัพโหลดได้'); return }
-
-      // Step 2: อัพโหลดไฟล์ตรงไปยัง R2 โดยไม่ผ่าน Vercel
-      const uploadRes = await fetch(presignJson.uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
-      })
-      if (!uploadRes.ok) { setErr('อัพโหลดไฟล์ไม่สำเร็จ กรุณาลองใหม่'); return }
-
-      // Step 3: แจ้ง server ให้บันทึก key ลง DB
-      const saveRes = await fetch(`/api/admin/equipment/${item.id}/cert`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: presignJson.key }),
-      })
-      const saveJson = await saveRes.json()
-      if (!saveRes.ok) { setErr(saveJson.error ?? 'บันทึกไม่สำเร็จ'); return }
-
-      const updated = { ...form, certificate_file_url: presignJson.key }
-      setForm(updated)
-      onSaved({ ...item, pm_cal_data: updated })
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  async function handleCertDelete() {
-    await fetch(`/api/admin/equipment/${item.id}/cert`, { method: 'DELETE' })
-    const updated = { ...form, certificate_file_url: null }
-    setForm(updated)
-    onSaved({ ...item, pm_cal_data: updated })
-  }
-
-  async function handleOpenCertificate(filePath: string) {
-    const res = await fetch(`/api/admin/equipment/${item.id}/cert`)
-    if (!res.ok) return
-    const { url } = await res.json()
-    if (url) openPdfOrNewTab(url, filePath, viewerFileNameFromPath(filePath), setViewer, `/api/admin/equipment/${item.id}/cert?proxy=1`)
-  }
-
-  const resultColor = (r: string | null) => {
-    if (!r) return 'var(--muted)'
-    if (r.toLowerCase() === 'pass') return 'var(--success)'
-    if (r.toLowerCase().includes('fail')) return 'var(--danger)'
-    return 'var(--muted)'
-  }
-
-  function togglePlan(month: string, type: 'pm' | 'cal') {
-    setForm(f => ({
-      ...f,
-      plan: { ...f.plan, [month]: { ...f.plan[month], [type]: !f.plan[month]?.[type] } },
-    }))
-  }
-
-  async function handleSave() {
-    setSaving(true); setErr('')
-    try {
-      const res = await fetch(`/api/admin/equipment/${item.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pm_cal_data: form }),
-      })
-      const json = await res.json()
-      if (!res.ok) { setErr(json.error ?? 'เกิดข้อผิดพลาด'); return }
-      onSaved({ ...item, pm_cal_data: form })
-      setEditing(false)
-    } finally { setSaving(false) }
-  }
-
-  const inp: React.CSSProperties = { width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', outline: 'none', boxSizing: 'border-box' }
-  const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4, display: 'block' }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 680, maxHeight: '92vh', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.3)', display: 'flex', flexDirection: 'column' }}>
-
-        {/* Header */}
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 2 }}>{item.equipment_type}</div>
-            <div style={{ fontSize: 12, color: 'var(--primary)', fontFamily: 'monospace' }}>{item.cbh_code ?? '—'} · {item.department}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-            {canEdit && !editing && (
-              <button onClick={() => setEditing(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: 'var(--ink)' }}>
-                <Icon name="edit" size={13} /> แก้ไข
-              </button>
-            )}
-            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}>
-              <Icon name="x" size={18} />
-            </button>
-          </div>
-        </div>
-
-        <div style={{ padding: 24, overflow: 'auto', flex: 1 }}>
-          {err && <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(220,38,38,.08)', color: 'var(--danger)', fontSize: 13, marginBottom: 16 }}>{err}</div>}
-
-          {/* PM/CAL by info */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>PM/CAL By</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
-            <div>
-              {editing ? (
-                <>
-                  <label style={lbl}>PM/CAL By</label>
-                  <input style={inp} value={form.tech_group ?? ''} onChange={e => setForm(f => ({ ...f, tech_group: e.target.value || null }))} placeholder="เช่น Out source (ISO 17025), In house" />
-                </>
-              ) : (
-                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px', height: '100%' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>PM/CAL By</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>{form.tech_group || '—'}</div>
-                </div>
-              )}
-            </div>
-            <div>
-              {editing ? (
-                <>
-                  <label style={lbl}>PM / ปี (ครั้ง)</label>
-                  <input type="number" style={inp} value={form.times_pm ?? ''} onChange={e => setForm(f => ({ ...f, times_pm: e.target.value ? Number(e.target.value) : null }))} min={0} max={52} />
-                </>
-              ) : (
-                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>PM / ปี</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>{form.times_pm ?? '—'} ครั้ง</div>
-                </div>
-              )}
-            </div>
-            <div>
-              {editing ? (
-                <>
-                  <label style={lbl}>CAL / ปี (ครั้ง)</label>
-                  <input type="number" style={inp} value={form.times_cal ?? ''} onChange={e => setForm(f => ({ ...f, times_cal: e.target.value ? Number(e.target.value) : null }))} min={0} max={52} />
-                </>
-              ) : (
-                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>CAL / ปี</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>{form.times_cal ?? '—'} ครั้ง</div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Monthly plan */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>แผน PM / CAL รายเดือน ปีงบประมาณ {currentFiscalYear}</div>
-          <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'var(--surface-2)' }}>
-                  <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>เดือน</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>PM</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>CAL (สอบเทียบ)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {MONTH_EN.map((en, i) => {
-                  const p = form.plan?.[en] ?? { pm: false, cal: false }
-                  return (
-                    <tr key={en} style={{ borderTop: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : 'rgba(241,244,249,.35)' }}>
-                      <td style={{ padding: '8px 14px', fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>{MONTH_TH[i]}</td>
-                      <td style={{ padding: '6px 10px', textAlign: 'center' }}>
-                        {editing ? (
-                          <button onClick={() => togglePlan(en, 'pm')} style={{ padding: '4px 18px', borderRadius: 6, border: `1.5px solid ${p.pm ? 'var(--primary)' : 'var(--border)'}`, background: p.pm ? 'var(--primary)' : 'transparent', color: p.pm ? '#fff' : 'var(--muted)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
-                            {p.pm ? '✓ วางแผน' : '—'}
-                          </button>
-                        ) : p.pm ? (
-                          <span style={{ display: 'inline-block', padding: '3px 14px', borderRadius: 6, background: 'var(--primary)', color: '#fff', fontSize: 12, fontWeight: 700 }}>✓ วางแผน</span>
-                        ) : <span style={{ color: 'var(--border)', fontSize: 16 }}>—</span>}
-                      </td>
-                      <td style={{ padding: '6px 10px', textAlign: 'center' }}>
-                        {editing ? (
-                          <button onClick={() => togglePlan(en, 'cal')} style={{ padding: '4px 18px', borderRadius: 6, border: `1.5px solid ${p.cal ? 'var(--success)' : 'var(--border)'}`, background: p.cal ? 'var(--success)' : 'transparent', color: p.cal ? '#fff' : 'var(--muted)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
-                            {p.cal ? '✓ วางแผน' : '—'}
-                          </button>
-                        ) : p.cal ? (
-                          <span style={{ display: 'inline-block', padding: '3px 14px', borderRadius: 6, background: 'var(--success)', color: '#fff', fontSize: 12, fontWeight: 700 }}>✓ วางแผน</span>
-                        ) : <span style={{ color: 'var(--border)', fontSize: 16 }}>—</span>}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Result section */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>ผลการดำเนินการล่าสุด</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              {editing ? (
-                <><label style={lbl}>วันที่ PM ล่าสุด</label><DateInput style={inp} value={form.last_pm_date} onChange={v => setForm(f => ({ ...f, last_pm_date: v }))} /></>
-              ) : (
-                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>วันที่ PM ล่าสุด</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink)' }}>{form.last_pm_date ? formatDate(form.last_pm_date) : '—'}</div>
-                </div>
-              )}
-            </div>
-            <div>
-              {editing ? (
-                <><label style={lbl}>วันที่ CAL ล่าสุด</label><DateInput style={inp} value={form.last_cal_date} onChange={v => setForm(f => ({ ...f, last_cal_date: v }))} /></>
-              ) : (
-                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>วันที่ CAL ล่าสุด</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink)' }}>{form.last_cal_date ? formatDate(form.last_cal_date) : '—'}</div>
-                </div>
-              )}
-            </div>
-            <div>
-              {editing ? (
-                <><label style={lbl}>Certificate No.</label><input style={inp} value={form.certificate_no ?? ''} onChange={e => setForm(f => ({ ...f, certificate_no: e.target.value || null }))} placeholder="DC_01/24/1531" /></>
-              ) : (
-                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>Certificate No.</div>
-                  <div style={{ fontSize: 12, color: 'var(--ink)', fontFamily: 'monospace' }}>{form.certificate_no || '—'}</div>
-                </div>
-              )}
-            </div>
-            <div>
-              {editing ? (
-                <><label style={lbl}>ผลสอบเทียบ</label>
-                <select style={inp} value={form.cal_result ?? ''} onChange={e => setForm(f => ({ ...f, cal_result: e.target.value || null }))}>
-                  <option value="">— เลือก —</option>
-                  <option value="PASS">PASS</option>
-                  <option value="FAIL">FAIL</option>
-                  <option value="No cal">No cal</option>
-                </select></>
-              ) : (
-                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>ผลสอบเทียบ</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: resultColor(form.cal_result) }}>{form.cal_result || '—'}</div>
-                </div>
-              )}
-            </div>
-            <div>
-              {editing ? (
-                <><label style={lbl}>ค่า Error</label><input style={inp} value={form.error_value ?? ''} onChange={e => setForm(f => ({ ...f, error_value: e.target.value || null }))} /></>
-              ) : form.error_value ? (
-                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>ค่า Error</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink)' }}>{form.error_value}</div>
-                </div>
-              ) : null}
-            </div>
-            <div>
-              {editing ? (
-                <><label style={lbl}>ค่า Uncertainty</label><input style={inp} value={form.uncertainty ?? ''} onChange={e => setForm(f => ({ ...f, uncertainty: e.target.value || null }))} /></>
-              ) : form.uncertainty ? (
-                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>ค่า Uncertainty</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink)' }}>{form.uncertainty}</div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          {/* Certificate file */}
-          <input ref={certFileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleCertUpload(f); e.target.value = '' }} />
-          <div
-            style={{
-              marginTop: 16, borderRadius: 10,
-              border: `2px dashed ${dragOver ? 'var(--primary)' : canEdit ? 'var(--border)' : 'transparent'}`,
-              background: dragOver ? 'var(--primary-soft)' : form.certificate_file_url || !canEdit ? 'var(--surface-2)' : 'transparent',
-              transition: 'background .15s, border-color .15s',
-            }}
-            onDragOver={canEdit ? (e) => { e.preventDefault(); setDragOver(true) } : undefined}
-            onDragLeave={canEdit ? () => setDragOver(false) : undefined}
-            onDrop={canEdit ? (e) => {
-              e.preventDefault(); setDragOver(false)
-              const f = e.dataTransfer.files?.[0]
-              if (f) handleCertUpload(f)
-            } : undefined}
-          >
-            {!form.certificate_file_url && canEdit ? (
-              /* Empty state — full drop zone */
-              <div
-                onClick={() => !uploading && certFileRef.current?.click()}
-                style={{ padding: '22px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: uploading ? 'not-allowed' : 'pointer', userSelect: 'none' }}
-              >
-                <div style={{
-                  width: 44, height: 44, borderRadius: 10,
-                  background: dragOver ? 'rgba(30,95,173,.18)' : 'var(--surface-2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'background .15s',
-                }}>
-                  <Icon name="upload" size={22} style={{ color: dragOver ? 'var(--primary)' : 'var(--muted)' }} />
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: dragOver ? 'var(--primary)' : 'var(--ink)' }}>
-                    {uploading ? 'กำลังอัพโหลด...' : dragOver ? 'วางไฟล์ที่นี่' : 'ลากไฟล์มาวาง หรือคลิกเพื่อเลือก'}
-                  </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>PDF, JPG, PNG, WEBP · ไม่เกิน 50 MB</div>
-                </div>
-              </div>
-            ) : (
-              /* Has file — compact row */
-              <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Icon name="doc" size={18} style={{ color: dragOver ? 'var(--primary)' : 'var(--primary)', flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 2 }}>ใบ Certificate</div>
-                  {dragOver ? (
-                    <div style={{ fontSize: 12.5, color: 'var(--primary)', fontWeight: 600 }}>วางไฟล์เพื่อเปลี่ยน...</div>
-                  ) : form.certificate_file_url ? (
-                    <>
-                      <div style={{ fontSize: 12.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {form.certificate_file_url.split('/').pop()?.replace(/^\d+-/, '') ?? 'ไฟล์แนบ'}
-                      </div>
-                      {canEdit && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>ลากไฟล์มาวางเพื่อเปลี่ยน · ไม่เกิน 50 MB</div>}
-                    </>
-                  ) : (
-                    <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>ยังไม่มีไฟล์</div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                  {form.certificate_file_url && (
-                    <button
-                      onClick={() => form.certificate_file_url && handleOpenCertificate(form.certificate_file_url)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: 'var(--ink)' }}
-                    >
-                      <Icon name="download" size={13} /> {isPdfLike({ fileName: form.certificate_file_url }) ? 'อ่าน' : 'ดาวน์โหลด'}
-                    </button>
-                  )}
-                  {canEdit && (
-                    <>
-                      <button
-                        onClick={() => certFileRef.current?.click()}
-                        disabled={uploading}
-                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: uploading ? 'not-allowed' : 'pointer', fontSize: 12, fontFamily: 'inherit', color: uploading ? 'var(--muted)' : 'var(--primary)', opacity: uploading ? 0.6 : 1 }}
-                      >
-                        <Icon name="upload" size={13} /> {uploading ? 'กำลังอัพโหลด...' : 'เปลี่ยนไฟล์'}
-                      </button>
-                      {form.certificate_file_url && (
-                        <button onClick={handleCertDelete} style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)' }}>
-                          <Icon name="trash" size={13} />
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
-          {editing ? (
-            <>
-              <button onClick={() => { setEditing(false); setForm(item.pm_cal_data ?? emptyPmCal()) }} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)' }}>ยกเลิก</button>
-              <button onClick={handleSave} disabled={saving} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
-                {saving ? 'กำลังบันทึก...' : 'บันทึก'}
-              </button>
-            </>
-          ) : (
-            <button onClick={onClose} style={{ padding: '8px 24px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)' }}>ปิด</button>
-          )}
-        </div>
-      </div>
-      {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
     </div>
   )
 }
@@ -2025,7 +1481,77 @@ function escapeHtmlQr(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]!))
 }
 
-function CalibrationPlanTab({ canEdit }: { canEdit: boolean }) {
+type CurrentPmCalReport = {
+  summary: { plan: number; done: number; failed: number; dueSoon: number; overdue: number; plannedCost: number; actualCost: number }
+  rows: Array<{ department: string; classification: string; equipmentType: string; plan: number; done: number; failed: number; dueSoon: number; overdue: number; plannedCost: number; actualCost: number }>
+}
+
+function CalibrationPlanTab({ canEdit: _canEdit }: { canEdit: boolean }) {
+  const currentYear = getCurrentThaiFiscalYear()
+  const [mode, setMode] = useState<'current' | 'legacy'>('current')
+  const [fiscalYear, setFiscalYear] = useState(currentYear)
+  const [department, setDepartment] = useState('')
+  const [classification, setClassification] = useState('')
+  const [report, setReport] = useState<CurrentPmCalReport | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [options, setOptions] = useState<{ departments: string[]; classifications: string[] }>({ departments: [], classifications: [] })
+
+  useEffect(() => {
+    if (mode !== 'current') return
+    const controller = new AbortController()
+    setLoading(true); setError('')
+    const params = new URLSearchParams({ fiscalYear: String(fiscalYear) })
+    if (department) params.set('department', department)
+    if (classification) params.set('classification', classification)
+    fetch(`/api/admin/equipment/pm-cal/report?${params}`, { signal: controller.signal })
+      .then(async response => {
+        const json = await response.json()
+        if (!response.ok) throw new Error(json.error ?? 'โหลดรายงานไม่สำเร็จ')
+        setReport(json)
+        if (!department && !classification) setOptions({
+          departments: [...new Set<string>(json.rows.map((row: CurrentPmCalReport['rows'][number]) => row.department))].sort((a, b) => a.localeCompare(b, 'th')),
+          classifications: [...new Set<string>(json.rows.map((row: CurrentPmCalReport['rows'][number]) => row.classification))].sort((a, b) => a.localeCompare(b, 'th')),
+        })
+      })
+      .catch(cause => { if (cause.name !== 'AbortError') setError(cause instanceof Error ? cause.message : 'โหลดรายงานไม่สำเร็จ') })
+      .finally(() => setLoading(false))
+    return () => controller.abort()
+  }, [mode, fiscalYear, department, classification])
+
+  const tabButton = (active: boolean): React.CSSProperties => ({ padding: '8px 15px', borderRadius: 8, border: '1px solid var(--border)', background: active ? 'var(--primary)' : 'var(--card)', color: active ? '#fff' : 'var(--ink)', cursor: 'pointer', fontFamily: 'inherit' })
+  if (mode === 'legacy') return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', gap: 8 }}><button style={tabButton(false)} onClick={() => setMode('current')}>รายงานปัจจุบัน</button><button style={tabButton(true)}>Legacy ปี 2566</button></div>
+    <div style={{ padding: 10, borderRadius: 8, background: '#FFF7ED', color: '#9A3412', fontSize: 12 }}>ข้อมูล Legacy ไม่ผูกกับรหัสเครื่องมือและเปิดให้อ่านอย่างเดียว</div>
+    <LegacyCalibrationPlanTab canEdit={false} />
+  </div>
+
+  const summary = report?.summary
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', gap: 8 }}><button style={tabButton(true)}>รายงานปัจจุบัน</button><button style={tabButton(false)} onClick={() => setMode('legacy')}>Legacy ปี 2566</button></div>
+    <div className="eq-filter-panel" style={{ flexWrap: 'wrap' }}>
+      <select value={fiscalYear} onChange={event => setFiscalYear(Number(event.target.value))} className="eq-filter-select"><option value={currentYear - 1}>ปีงบ {currentYear - 1}</option><option value={currentYear}>ปีงบ {currentYear}</option><option value={currentYear + 1}>ปีงบ {currentYear + 1}</option></select>
+      <select value={department} onChange={event => setDepartment(event.target.value)} className="eq-filter-select"><option value="">ทุกแผนก</option>{options.departments.map(value => <option key={value}>{value}</option>)}</select>
+      <select value={classification} onChange={event => setClassification(event.target.value)} className="eq-filter-select"><option value="">ทุก Classification</option>{options.classifications.map(value => <option key={value}>{value}</option>)}</select>
+      {(department || classification) && <button onClick={() => { setDepartment(''); setClassification('') }} style={tabButton(false)}>ล้างตัวกรอง</button>}
+    </div>
+    {error && <div style={{ color: '#B91C1C' }}>{error}</div>}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
+      {[
+        ['แผนทั้งหมด', summary?.plan ?? 0, '#1E5FAD'], ['ทำสำเร็จ', summary?.done ?? 0, '#15803D'], ['Fail', summary?.failed ?? 0, '#B91C1C'],
+        ['ใกล้กำหนด', summary?.dueSoon ?? 0, '#B45309'], ['เกินกำหนด', summary?.overdue ?? 0, '#B91C1C'], ['งบแผน', `฿${(summary?.plannedCost ?? 0).toLocaleString()}`, '#7C3AED'],
+        ['ใช้จริง', `฿${(summary?.actualCost ?? 0).toLocaleString()}`, '#0F766E'],
+      ].map(([label, value, color]) => <div key={String(label)} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 13 }}><div style={{ fontSize: 20, fontWeight: 800, color: String(color) }}>{value}</div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</div></div>)}
+    </div>
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}><thead><tr style={{ background: 'var(--surface-2)' }}>{['แผนก', 'Classification', 'ประเภทเครื่องมือ', 'แผน', 'สำเร็จ', 'Fail', 'ใกล้กำหนด', 'เกินกำหนด', 'งบแผน', 'ใช้จริง'].map(label => <th key={label} style={{ padding: 9, textAlign: 'left', fontSize: 11 }}>{label}</th>)}</tr></thead>
+        <tbody>{loading ? <tr><td colSpan={10} style={{ padding: 30, textAlign: 'center' }}>กำลังโหลด…</td></tr> : (report?.rows ?? []).map(row => <tr key={`${row.department}-${row.classification}-${row.equipmentType}`} style={{ borderTop: '1px solid var(--border)' }}><td style={{ padding: 9 }}>{row.department}</td><td style={{ padding: 9 }}>{row.classification}</td><td style={{ padding: 9 }}>{row.equipmentType}</td><td style={{ padding: 9 }}>{row.plan}</td><td style={{ padding: 9, color: '#15803D' }}>{row.done}</td><td style={{ padding: 9, color: '#B91C1C' }}>{row.failed}</td><td style={{ padding: 9, color: '#B45309' }}>{row.dueSoon}</td><td style={{ padding: 9, color: '#B91C1C' }}>{row.overdue}</td><td style={{ padding: 9 }}>฿{row.plannedCost.toLocaleString()}</td><td style={{ padding: 9 }}>฿{row.actualCost.toLocaleString()}</td></tr>)}</tbody>
+      </table>
+    </div>
+  </div>
+}
+
+function LegacyCalibrationPlanTab({ canEdit }: { canEdit: boolean }) {
   const [rows, setRows] = useState<CalRow[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -2228,6 +1754,10 @@ export default function EquipmentClient({
   canEdit,
   lastUpdated,
   initialCreate = false,
+  initialArea = '',
+  initialUnpositioned = false,
+  initialOpenId = null,
+  initialPanel = null,
 }: {
   initialData: Equipment[]
   initialTotal: number
@@ -2239,6 +1769,10 @@ export default function EquipmentClient({
   canEdit: boolean
   lastUpdated: string | null
   initialCreate?: boolean
+  initialArea?: string
+  initialUnpositioned?: boolean
+  initialOpenId?: string | null
+  initialPanel?: string | null
 }) {
   const [items, setItems] = useState<Equipment[]>(initialData)
   const [total, setTotal] = useState(initialTotal)
@@ -2256,6 +1790,9 @@ export default function EquipmentClient({
   const [needsCal, setNeedsCal] = useState('')
   const [pendingReg, setPendingReg] = useState(false)
   const [duplicateSN, setDuplicateSN] = useState(false)
+  const [area, setArea] = useState(initialArea)
+  const [unpositioned, setUnpositioned] = useState(initialUnpositioned)
+  const [areas, setAreas] = useState<EquipmentAreaOption[]>([])
   const [loading, setLoading] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({ '': initialTotal, ...statusCounts })
@@ -2306,8 +1843,10 @@ export default function EquipmentClient({
     if (needsCal) params.set('needs_calibration', needsCal)
     if (pendingReg) params.set('pending_reg', 'true')
     if (duplicateSN) params.set('duplicate_sn', 'true')
+    if (area) params.set('area', area)
+    if (unpositioned) params.set('unpositioned', 'true')
     return params
-  }, [classification, debouncedSearch, department, duplicateSN, nameSort, needsCal, page, pageSize, pendingReg, riskLevel, sortKey, statusTab])
+  }, [area, classification, debouncedSearch, department, duplicateSN, nameSort, needsCal, page, pageSize, pendingReg, riskLevel, sortKey, statusTab, unpositioned])
 
   const loadEquipmentList = useCallback(async () => {
     setLoading(true)
@@ -2332,7 +1871,7 @@ export default function EquipmentClient({
   useEffect(() => {
     setPage(1)
     setNewItemId(null)
-  }, [debouncedSearch, statusTab, department, classification, riskLevel, needsCal, pendingReg, duplicateSN, sortKey, nameSort])
+  }, [debouncedSearch, statusTab, department, classification, riskLevel, needsCal, pendingReg, duplicateSN, area, unpositioned, sortKey, nameSort])
 
   useEffect(() => {
     void loadEquipmentList()
@@ -2346,6 +1885,36 @@ export default function EquipmentClient({
         setResponsibleUsers(Array.isArray(json.users) ? json.users : [])
       })
       .catch(() => setResponsibleUsers([]))
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/admin/equipment/areas')
+      .then(async res => {
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error ?? 'โหลดรายการห้อง/โซนไม่สำเร็จ')
+        const rows = Array.isArray(json) ? json : []
+        setAreas(rows.map((row: Record<string, unknown>) => ({
+          code: row.code as string,
+          nameTh: row.name_th as string,
+          kind: row.kind as 'room' | 'zone',
+          parentCode: (row.parent_code as string | null) ?? null,
+          isActive: row.is_active as boolean,
+        })))
+      })
+      .catch(() => setAreas([]))
+  }, [])
+
+  // เปิดจาก ?open=<id>&panel=pmcal (ลิงก์ "ดู PM/CAL" ในแผนผังเครื่องมือ) — เปิด PmCalModal ตรง ๆ โดยไม่ขึ้นกับตัวกรอง/หน้าปัจจุบัน
+  useEffect(() => {
+    if (!initialOpenId || initialPanel !== 'pmcal') return
+    fetch(`/api/admin/equipment/${initialOpenId}`)
+      .then(async res => {
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error ?? 'ไม่พบเครื่องมือนี้')
+        setPmCalItem(json as Equipment)
+      })
+      .catch(() => addToast('ไม่พบเครื่องมือที่ต้องการเปิด', false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -2371,6 +1940,8 @@ export default function EquipmentClient({
     ...departments,
     ...initialData.map(i => i.department),
   ])).sort()
+
+  const areaNameByCode = new Map(areas.map(a => [a.code, a.nameTh]))
 
   function toggleSort(key: EquipmentSortKey) {
     if (sortKey === key) {
@@ -2444,6 +2015,8 @@ export default function EquipmentClient({
       if (needsCal) filterParts.push(`สอบเทียบ: ${needsCal === 'true' ? 'ต้องการ' : 'ไม่ต้องการ'}`)
       if (pendingReg) filterParts.push('รอขึ้นทะเบียน')
       if (duplicateSN) filterParts.push('S/N · Asset No. ซ้ำ')
+      if (area) filterParts.push(`พื้นที่: ${areas.find(a => a.code === area)?.nameTh ?? area}`)
+      if (unpositioned) filterParts.push('ยังไม่กำหนดตำแหน่ง')
       if (debouncedSearch) filterParts.push(`ค้นหา: "${debouncedSearch}"`)
     } else if (department) {
       filterParts.push(`แผนก: ${department}`)
@@ -2465,6 +2038,8 @@ export default function EquipmentClient({
         if (needsCal) params.set('needs_calibration', needsCal)
         if (pendingReg) params.set('pending_reg', 'true')
         if (duplicateSN) params.set('duplicate_sn', 'true')
+        if (area) params.set('area', area)
+        if (unpositioned) params.set('unpositioned', 'true')
       }
       const data = await fetch(`/api/admin/equipment?${params}`).then(r => r.json())
       const rows = parseEquipmentPayload(data).items ?? []
@@ -2670,7 +2245,7 @@ export default function EquipmentClient({
         .eq-status-tab { display: flex; align-items: center; gap: 7px; padding: 8px 13px; border: none; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; transition: all .15s; white-space: nowrap; }
         .eq-status-tab:hover { color: var(--primary); background: rgba(30,95,173,.06); }
         .eq-status-tab.is-active { background: var(--surface-2); color: var(--primary); box-shadow: 0 2px 10px rgba(15,23,42,.08); }
-        .eq-filter-panel { display: flex; gap: 8px; flex-wrap: wrap; margin: -1px 0 14px; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; align-items: center; box-shadow: 0 14px 30px rgba(15,23,42,.045); }
+        .eq-filter-panel { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 14px; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; align-items: center; box-shadow: 0 14px 30px rgba(15,23,42,.045); }
         .eq-search-box { flex: 1 1 240px; min-width: 180px; }
         .eq-filter-select { padding: 9px 12px; border-radius: 9px; border: 1px solid var(--border); font-size: 13px; font-family: inherit; color: var(--ink); background: var(--card); cursor: pointer; outline: none; transition: border-color .14s, box-shadow .14s, transform .14s; }
         .eq-filter-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(30,95,173,.10); outline: none; }
@@ -2716,6 +2291,9 @@ export default function EquipmentClient({
         marginBottom={16}
         actions={
           <div className="eq-header-actions">
+            <Link href="/staff/equipment/map">
+              <Button variant="secondary" icon="microscope">แผนผังเครื่องมือ</Button>
+            </Link>
             {/* Export Excel split button */}
             <div ref={xlsxMenuRef} style={{ position: 'relative' }}>
               <div style={{ display: 'flex', border: '1.5px solid rgba(22,163,74,.35)', borderRadius: 8, overflow: 'hidden', background: 'rgba(22,163,74,.07)' }}>
@@ -2888,12 +2466,23 @@ export default function EquipmentClient({
           <option value="true">ต้องการสอบเทียบ</option>
           <option value="false">ไม่ต้องการ</option>
         </select>
+        <select value={area} onChange={e => setArea(e.target.value)} className="eq-filter-select" style={{ minWidth: 160 }}>
+          <option value="">ทุกห้อง/โซน</option>
+          {areas.filter(a => a.isActive).map(a => <option key={a.code} value={a.code}>{a.kind === 'zone' ? '— ' : ''}{a.nameTh}</option>)}
+        </select>
         <button
           onClick={() => setPendingReg(v => !v)}
           className={`eq-pending-toggle ${pendingReg ? 'is-active' : ''}`}
         >
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: pendingReg ? 'var(--warning)' : 'var(--border)', flexShrink: 0, display: 'inline-block' }} />
           รอขึ้นทะเบียน
+        </button>
+        <button
+          onClick={() => setUnpositioned(v => !v)}
+          className={`eq-pending-toggle ${unpositioned ? 'is-active' : ''}`}
+        >
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: unpositioned ? 'var(--warning)' : 'var(--border)', flexShrink: 0, display: 'inline-block' }} />
+          ยังไม่กำหนดตำแหน่ง
         </button>
         <button
           onClick={() => setDuplicateSN(v => !v)}
@@ -2984,7 +2573,7 @@ export default function EquipmentClient({
                   >
                     ชื่อเครื่องมือ {sortKey === 'name' ? (nameSort === 'asc' ? '↑' : '↓') : ''}
                   </th>
-                  {['แผนก', 'Manufacturer / Model', 'Serial No.', 'Risk', 'ผู้รับผิดชอบ', 'PM/CAL', 'สถานะ', ''].map(h => (
+                  {['แผนก', 'ห้อง/โซน', 'Manufacturer / Model', 'Serial No.', 'Risk', 'ผู้รับผิดชอบ', 'PM/CAL', 'สถานะ', ''].map(h => (
                     <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap', letterSpacing: .6, textTransform: 'uppercase' }}>{h}</th>
                   ))}
                 </tr>
@@ -3042,6 +2631,10 @@ export default function EquipmentClient({
                       </td>
                       {/* Department */}
                       <td style={{ padding: '11px 14px', fontSize: 12.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{item.department}</td>
+                      {/* ห้อง/โซน (แผนผังเครื่องมือ) */}
+                      <td style={{ padding: '11px 14px', fontSize: 12.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                        {item.area_code ? (areaNameByCode.get(item.area_code) ?? item.area_code) : <span style={{ color: 'var(--border)' }}>—</span>}
+                      </td>
                       {/* Manufacturer / Model */}
                       <td style={{ padding: '11px 14px', minWidth: 140 }}>
                         <div style={{ fontSize: 12.5, color: 'var(--ink)', fontWeight: 500 }}>{item.manufacturer ?? <span style={{ color: 'var(--border)' }}>—</span>}</div>
@@ -3135,6 +2728,7 @@ export default function EquipmentClient({
           onSaved={handleSaved}
           departments={allDepts}
           responsibleUsers={responsibleUsers}
+          areas={areas}
         />
       )}
       {deleteItem && <DeleteConfirm item={deleteItem} onClose={() => setDeleteItem(null)} onDeleted={handleDeleted} />}
@@ -3144,7 +2738,7 @@ export default function EquipmentClient({
       {photoViewItem && <PhotoViewModal item={photoViewItem} onClose={() => setPhotoViewItem(null)} />}
       {viewer && <PdfViewerModal url={viewer.url} pdfJsUrl={viewer.pdfJsUrl} title={viewer.title} onClose={() => setViewer(null)} />}
       {pmCalItem && (
-        <PmCalModal
+        <EquipmentPmCalModal
           item={pmCalItem}
           canEdit={canEdit}
           onClose={() => setPmCalItem(null)}

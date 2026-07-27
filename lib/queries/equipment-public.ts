@@ -5,6 +5,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import type { Equipment } from '@/lib/queries/equipment'
+import { computeEquipmentPmCalState, fiscalYearForDate, type EquipmentPmCalState, type PmCalPlanRecord, type PmCalResultRecord } from '@/lib/equipment/pm-cal-domain'
 
 // คอลัมน์ที่ยอมให้ปรากฏบนหน้า public — แหล่งความจริงเดียวของ "อะไรเปิดเผยได้"
 const PUBLIC_COLUMNS = [
@@ -43,6 +44,7 @@ export interface PublicEquipment {
     certificate_no: string | null
     cal_result: string | null
   }
+  pmCalState: EquipmentPmCalState
   photoSignedUrl: string | null
   manualSignedUrl: string | null
 }
@@ -66,10 +68,16 @@ export async function getPublicEquipment(id: string): Promise<PublicEquipment | 
   if (error || !data) return null
   const row = data as unknown as Equipment
 
-  const [photoSignedUrl, manualSignedUrl] = await Promise.all([
+  const fiscalYear = fiscalYearForDate(new Date())
+  const [{ data: plans }, { data: results }, photoSignedUrl, manualSignedUrl] = await Promise.all([
+    supabaseAdmin.from('equipment_pm_cal_plans').select('id, equipment_id, fiscal_year, calendar_month, cal_type, due_date, record_status, version').eq('equipment_id', id).eq('fiscal_year', fiscalYear).eq('record_status', 'active'),
+    supabaseAdmin.from('equipment_calibrations').select('id, plan_id, equipment_id, cal_type, completed_date, result, certificate_no, created_at').eq('equipment_id', id).order('completed_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }),
     signR2(row.photo_url),
     signR2(row.manual_url),
   ])
+  const history = (results ?? []) as Array<PmCalResultRecord & { certificate_no?: string | null }>
+  const latestPm = history.find(entry => entry.cal_type === 'PM')
+  const latestCal = history.find(entry => entry.cal_type === 'CAL')
 
   return {
     id: row.id,
@@ -93,11 +101,12 @@ export async function getPublicEquipment(id: string): Promise<PublicEquipment | 
     purpose: row.purpose,
     remark: row.remark,
     cal: {
-      last_pm_date: row.pm_cal_data?.last_pm_date ?? null,
-      last_cal_date: row.pm_cal_data?.last_cal_date ?? null,
-      certificate_no: row.pm_cal_data?.certificate_no ?? null,
-      cal_result: row.pm_cal_data?.cal_result ?? null,
+      last_pm_date: latestPm?.completed_date ?? row.pm_cal_data?.last_pm_date ?? null,
+      last_cal_date: latestCal?.completed_date ?? row.pm_cal_data?.last_cal_date ?? null,
+      certificate_no: latestCal?.certificate_no ?? row.pm_cal_data?.certificate_no ?? null,
+      cal_result: latestCal?.result ?? row.pm_cal_data?.cal_result ?? null,
     },
+    pmCalState: computeEquipmentPmCalState(row.needs_calibration, (plans ?? []) as PmCalPlanRecord[], history),
     photoSignedUrl,
     manualSignedUrl,
   }

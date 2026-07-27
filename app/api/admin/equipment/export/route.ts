@@ -1,18 +1,19 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
+import { areaAndDescendantCodes } from '@/lib/equipment-map/manifest'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 
 const EXPORT_HEADERS = [
-  'LAB Code', 'Hospital Asset No.', 'Department', 'Equipment Type',
+  'LAB Code', 'Hospital Asset No.', 'Department', 'ห้อง/โซน', 'Equipment Type',
   'Manufacturer', 'Model', 'Serial Number', 'Equipment Vendor',
   'Owner', 'Owner Status', 'Risk', 'Classification',
   'Purchase Date', 'Warranty Exp.', 'Purchase Price',
   'Status', 'ต้องการสอบเทียบ', 'ผู้รับผิดชอบ', 'Remark',
 ]
 
-const COL_WIDTHS = [12, 22, 18, 30, 16, 14, 18, 28, 10, 12, 8, 14, 14, 14, 14, 10, 16, 20, 24]
+const COL_WIDTHS = [12, 22, 18, 18, 30, 16, 14, 18, 28, 10, 12, 8, 14, 14, 14, 14, 10, 16, 20, 24]
 
 function escapeLike(value: string) {
   return value.replace(/[\\%_]/g, match => `\\${match}`)
@@ -46,6 +47,10 @@ function applyFilters(query: any, searchParams: URLSearchParams) {
   if (pending_reg === 'true') query = query.or('cbh_code_pending.eq.true,hospital_asset_no_pending.eq.true')
   const classification = searchParams.get('classification') ?? ''
   if (classification) query = query.eq('classification', classification)
+  const area = searchParams.get('area') ?? ''
+  if (area) query = query.in('area_code', areaAndDescendantCodes(area))
+  const unpositioned = searchParams.get('unpositioned')
+  if (unpositioned === 'true') query = query.or('area_code.is.null,map_x.is.null,map_y.is.null')
 
   return query
 }
@@ -102,7 +107,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseAdmin
     .from('equipment')
-    .select('cbh_code, cbh_code_pending, hospital_asset_no, hospital_asset_no_pending, department, equipment_type, manufacturer, model, serial_number, vendor, owner, owner_status, risk_level, classification, purchase_date, warranty_exp, purchase_price, status, needs_calibration, responsible_person, remark')
+    .select('cbh_code, cbh_code_pending, hospital_asset_no, hospital_asset_no_pending, department, area_code, equipment_type, manufacturer, model, serial_number, vendor, owner, owner_status, risk_level, classification, purchase_date, warranty_exp, purchase_price, status, needs_calibration, responsible_person, remark')
     .order(sortBy, { ascending: sortDir === 'asc', nullsFirst: false })
     .order(sortBy === 'cbh_code' ? 'equipment_type' : 'cbh_code', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false })
@@ -113,10 +118,14 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  const { data: areaRows } = await supabaseAdmin.from('equipment_areas').select('code, name_th')
+  const areaNameByCode = new Map((areaRows ?? []).map(row => [row.code as string, row.name_th as string]))
+
   const rows = (data ?? []).map(eq => [
     eq.cbh_code_pending ? 'รอขึ้นทะเบียน' : (eq.cbh_code ?? ''),
     eq.hospital_asset_no_pending ? 'รอขึ้นทะเบียน' : (eq.hospital_asset_no ?? ''),
     eq.department ?? '',
+    eq.area_code ? (areaNameByCode.get(eq.area_code) ?? eq.area_code) : '',
     eq.equipment_type ?? '',
     eq.manufacturer ?? '',
     eq.model ?? '',
