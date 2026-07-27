@@ -58,9 +58,43 @@ export const chemicalHoldingProposalSchema = z.object({
   effectiveOn: nullableDate,
 }).strict()
 
+const chemicalGhsHazardClassProposalSchema = z.object({
+  classTh: z.string().trim().min(1).max(250),
+  classEn: z.string().trim().min(1).max(250),
+}).strict()
+
+// สร้างสารเคมีใหม่ทั้งชุด (product + holding) ในคำขอเดียว — ไม่มี productId เพราะยังไม่มีจริง
+// รับ GHS ตรง ๆ ได้ (ต่างจากการแก้ไขสารเดิมที่ไม่รับผ่านช่องทางนี้) เพราะสารที่เพิ่มเองไม่มี
+// master list ให้แปลงอัตโนมัติเหมือนสาร 25 ตัวของห้องเก็บสารเคมี
+export const chemicalNewChemicalProposalSchema = z.object({
+  canonicalName: z.string().trim().min(1).max(300),
+  aliases: z.array(z.string().trim().min(1).max(300)).max(50).default([]),
+  casNumber: z.string().trim().regex(/^\d{2,7}-\d{2}-\d$/).nullable().optional(),
+  manufacturer: optionalText(300),
+  supplier: optionalText(300),
+  productCode: optionalText(150),
+  concentration: optionalText(100),
+  physicalState: z.enum(['solid', 'liquid', 'gas', 'mixture', 'unknown']).nullable().optional(),
+  locationId: uuid,
+  lotNumber: optionalText(150),
+  packageValue: z.number().finite().nonnegative(),
+  packageUnit: quantityUnit,
+  currentContainerCount: z.number().int().nonnegative(),
+  minimumStock: z.number().int().nonnegative(),
+  reportedTotalRaw: optionalText(200),
+  receivedOn: nullableDate,
+  openedOn: nullableDate,
+  expiresOn: nullableDate,
+  effectiveOn: nullableDate,
+  ghsSourceText: optionalText(2000),
+  ghsPictogramCodes: z.array(pictogram).max(9).default([]),
+  ghsHazardClasses: z.array(chemicalGhsHazardClassProposalSchema).max(20).default([]),
+}).strict()
+
 export const chemicalChangeRequestSchema = z.discriminatedUnion('entityType', [
   z.object({ entityType: z.literal('product'), entityId: uuid, unitId: uuid, proposedData: chemicalProductProposalSchema }).strict(),
   z.object({ entityType: z.literal('holding'), entityId: uuid, unitId: uuid, proposedData: chemicalHoldingProposalSchema }).strict(),
+  z.object({ entityType: z.literal('new_chemical'), unitId: uuid, proposedData: chemicalNewChemicalProposalSchema }).strict(),
 ])
 
 export const chemicalChangeDraftPatchSchema = z.object({
@@ -118,6 +152,24 @@ function requireHazardRows(value: {
 }
 
 export const chemicalSdsMetadataSchema = z.object(chemicalSdsMetadataShape).strict().superRefine(requireHazardRows)
+
+// สร้างฉบับร่างเปล่า — รายละเอียด GHS มากรอกทีหลังผ่าน PATCH
+export const chemicalSdsCreateSchema = z.object({
+  productId: uuid,
+  unitId: uuid,
+  language: z.string().trim().min(2).max(30).default('th'),
+  revisionLabel: optionalText(100),
+}).strict()
+
+// แก้ฉบับร่าง — productId/unitId ไม่ต้องส่ง เพราะ route หาเองจาก id ของฉบับร่าง
+// updatedAt คือ optimistic lock ที่ RPC ใช้ตรวจว่าไม่มีใครแก้แทรกระหว่างที่เปิดฟอร์มค้างไว้
+const { productId: _productId, unitId: _unitId, ...chemicalSdsEditableShape } = chemicalSdsMetadataShape
+
+export const chemicalSdsDraftPatchSchema = z.object({
+  ...chemicalSdsEditableShape,
+  updatedAt: z.string().datetime({ offset: true }),
+  fileId: uuid.nullable().optional(),
+}).strict().superRefine(requireHazardRows)
 
 export const chemicalRoleScopeSchema = z.object({
   userId: uuid,

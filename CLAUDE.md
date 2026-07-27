@@ -683,6 +683,44 @@ Releases: rebuilt geometry means a new `LAB_MAP_VERSION` and a new manifest hash
 
 Tests: `scripts/lab-map-domain.test.ts` (geometry invariants + route rules), `scripts/lab-map-visitor-flow.test.ts` (checkpoint table, DTO exclusions, dialog contract, removed public links), `scripts/lab-map-ui.test.ts`, `scripts/lab-map-navigation.test.ts`, `scripts/lab-map-export-ui.test.ts`, `lib/lab-map/{server,print,release}.test.ts`.
 
+### Chemical Safety (ห้องเก็บสารเคมี + SDS)
+
+Schema: `scripts/chemical-safety-module.sql`, then `scripts/chemical-safety-ghs-and-departments.sql`. Apply both manually, in order.
+
+**There are two SDS worlds and they must never be merged.** Conflating them is the single easiest way to wreck this module:
+
+| | ทะเบียนสารเคมีห้องเก็บสารเคมี | คลังเอกสาร SDS แยกตามงาน |
+|---|---|---|
+| What | 25 pure chemicals from the Unit Chemical Inventory List | ~500 SDS PDFs for commercial reagents/kits, 10 departments |
+| Tables | `chemical_products` + holdings + `chemical_sds_versions` | `chemical_sds_departments` + `chemical_department_sds` |
+| Has | storage position, stock quantity, GHS classification, per-document review workflow | filename-derived display name only |
+| Published by | approving one SDS version at a time (`review_chemical_sds_version`) | หัวหน้างาน publishing the whole department at once |
+
+The reagent SDS are not inventory items — putting them in `chemical_products` would bury the 25 real chemicals under hundreds of reagent files.
+
+**Access is currently Admin-only for the whole staff side.** `chemicalAccessDecision` in `lib/chemical-safety/access.ts` ignores its `scopes`/`request` arguments and returns `role === 'Admin'` — a deliberate lockdown (commit `96d2e70`), asserted by `chemical-safety-schema.test.ts`. `chemical_role_scopes` and the custodian/reviewer split still exist and the SDS workflow routes are written against them, so restoring scoped access is a one-function change — but do it deliberately, not as a side effect.
+
+**The public side is deliberately open.** `/sds`, `/api/public/sds/*` and `/api/public/department-sds/*` have **no guard** — only rate limits. Everything they expose is filtered inside `lib/chemical-safety/public.ts`. The lockdown above had also closed these (the page called `requireChemicalAdmin()` and 404'd anonymous visitors); that was reversed on the public side only. `chemical-safety-ui.test.ts` fails if a guard is reintroduced there.
+
+GHS classification has **two sources with a fixed precedence**:
+- `lib/chemical-safety/ghs.ts` parses the Thai hazard text from the master list into GHS01–09. It matches whole known phrases rather than splitting on `และ`/`,` (the source punctuation is inconsistent) and repairs the PDF-extraction damage that is actually present (`พิษต ่า`→`พิษต่ำ`, `ความ เป็นอันตราย` line-wrap, …). Unrecognized text goes into `unmatched`; `parseThaiGhsTextOrThrow` makes the materializer **fail loudly** rather than silently drop a classification.
+- Stored on `chemical_products.ghs_*` by the materializer. **An approved `chemical_sds_versions` row always wins**; the master-list values are the fallback. Both the registry and the public page carry a `ghsSource` field so the UI can say where the symbols came from — never present master-list-derived symbols as if they came from the SDS document.
+- `ของแข็งไม่กำหนดประเภท` classifies to **no pictogram**. Render it as text, never as an empty cell, or it becomes indistinguishable from "never classified".
+
+**Storage positions come from the layout drawing, not the master list.** The master list writes `"B3, B4"` for 6 chemicals; the ผังการจัดเก็บ image (ฉบับ 2 กุมภาพันธ์ 2569) assigns each to a single cabinet. `INITIAL_POSITION_ASSIGNMENTS` follows the drawing. `CHEMICAL_ZONE_META` / `CHEMICAL_GROUP_SUMMARY` / `CHEMICAL_LAYOUT_UPDATED_LABEL` in `storage-manifest.ts` carry the rest of the drawing (zone titles, the segregation-rationale table, revision date).
+
+Department mapping is **explicit and fail-closed** (`DEPARTMENT_BY_ARCHIVE_FOLDER` in `lib/chemical-safety/departments.ts`). Three archive folders do not match `DEPARTMENTS`: `งานจุลทรรศนศาสตร์`→`…คลินิก`, `งานภูมิคุ้มกันวิทยา`→`…คลินิก`, `ศูนย์สุขภาพชุมชนเมืองชลบุรี`→`ห้องปฏิบัติการ…`. `ห้องสารเคมี` maps to nothing **on purpose** — it goes through the product model.
+
+Other things that bite:
+- `update_chemical_sds_draft` only lets `created_by`/`submitted_by` edit a draft, but materialized drafts have both null. `claimOrphanDraft` in `sds-workflow.ts` assigns ownership to the first custodian who edits — without it those drafts are permanently uneditable. It must not touch `updated_at` or it breaks the caller's optimistic lock.
+- `parseJson` infers `output<S>`, not `ZodType<T>`. Inferring from `ZodType<T>` picks zod's *input* type, which makes `.default()` fields optional and `z.preprocess` fields `unknown`.
+- SQL and zod must agree on H/P code shapes. They didn't: SQL demanded `^P[0-9]{3}$` while zod accepted `P301+P310`, so any real combination P-statement failed on insert. Fixed in the GHS migration — keep them in step.
+- `components/chemical-safety/shared/tokens.ts` is the only place meaning→visual is mapped. `chemical-safety-ui.test.ts` fails the build if a component hardcodes a hex colour, re-declares the zone colour map, or drops a `components/ui/` import — the module previously used none of the house components and broke dark mode entirely.
+
+Backfill: `npx tsx scripts/backfill-department-sds.ts` (dry-run; `--apply` to write) reads `chemical_sds_files.source_paths` already in the DB. The importer uploaded every archive PDF to R2 long ago — this script only creates the department links, and never touches R2.
+
+Tests: `npm run test:chemical-safety` runs schema, domain, GHS parsing, department mapping, materialization, master-list, SDS import, CLI, runtime, and UI contracts.
+
 ## Module Reference
 
 | Module | Resource Key (lib/permission-resources.ts) | Staff Route | API Routes |
@@ -706,3 +744,4 @@ Tests: `scripts/lab-map-domain.test.ts` (geometry invariants + route rules), `sc
 | งาน IT | `ระบบสารสนเทศ (IT)` | `/staff/it/access`, `/staff/it/downtime`, `/staff/it/backup` | `/api/admin/it-access/*`, `/api/admin/it-downtime/*`, `/api/admin/it-backup/*` |
 | บันทึกการเข้า-ออก | `บันทึกการเข้า-ออก` (ทุก role ยกเว้น Assistant; ลบได้เฉพาะ Admin) | `/staff/it/visitors`, public `/v/[token]` | `/api/admin/it-visitors/*`, public `/api/it-visitors/[token]` |
 | ความปลอดภัย → แผนที่ห้องปฏิบัติการ | — (ทุกคนที่ล็อกอิน; ไม่มี resource gate) | `/staff/lab-map`, `/staff/lab-map/print`; visitor popup inside `/v/[token]` | `/api/admin/lab-map/releases/*` |
+| ความปลอดภัย → ห้องสารเคมี / SDS | — (ไม่ใช้ permission matrix; `chemicalAccessDecision` = Admin เท่านั้น) | `/staff/lab-map/chemicals?view=overview\|layout\|registry\|imports`, `/staff/lab-map/sds?view=chemicals\|departments`; public `/sds` (ไม่ต้องล็อกอิน) | `/api/admin/chemical-safety/*`, public `/api/public/sds/*`, `/api/public/department-sds/*`, `/api/public/safety-manual/MN-LAB-02` |

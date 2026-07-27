@@ -1,6 +1,7 @@
+import { parseThaiGhsTextOrThrow, type ThaiGhsHazardClass } from './ghs'
 import type { MasterlistNormalizedProposal, MasterlistRawRow } from './import/masterlist-june-2026'
-import { CHEMICAL_PREP_LOCATIONS } from './storage-manifest'
-import type { QuantityUnit, SdsMatchStatus } from './types'
+import { CHEMICAL_PREP_LOCATIONS, CHEMICAL_ROOM_NAME_TH } from './storage-manifest'
+import type { GhsPictogramCode, QuantityUnit, SdsMatchStatus } from './types'
 
 const UNIT_BY_SOURCE: Record<string, { code: string; nameTh: string }> = {
   'กลุ่มงานเทคนิคฯ': { code: 'TECHMED', nameTh: 'กลุ่มงานเทคนิคการแพทย์' },
@@ -25,6 +26,10 @@ export interface ChemicalMaterializationProduct {
   calculatedTotalUnit: QuantityUnit
   quantityConflict: boolean
   publicEligible: boolean
+  /** ข้อความจำแนกภาษาไทยจาก master list เก็บไว้เพื่อสอบกลับได้ว่าสัญลักษณ์มาจากไหน */
+  ghsSourceText: string
+  ghsPictogramCodes: GhsPictogramCode[]
+  ghsHazardClasses: ThaiGhsHazardClass[]
 }
 
 export interface ChemicalMasterlistMaterializationPlan {
@@ -83,6 +88,10 @@ export function buildChemicalMasterlistMaterializationPlan(
     if (!Number.isFinite(minimumStock) || minimumStock < 0) throw new Error(`Invalid minimum stock for row ${row.no}`)
     units.set(unit.code, unit)
 
+    // ล้มทั้งงานถ้าแปลข้อความ GHS ไม่ออก — ข้อมูลนี้ถูกใช้เป็นข้อมูลจริงบนหน้าสาธารณะ
+    // จึงยอมให้ขาดหายแบบเงียบ ๆ ไม่ได้
+    const ghs = parseThaiGhsTextOrThrow(row.rawGhsText, `masterlist row ${row.no} (${row.chemicalName})`)
+
     return {
       rowNo: row.no,
       canonicalName: proposal.chemicalName,
@@ -98,11 +107,14 @@ export function buildChemicalMasterlistMaterializationPlan(
       calculatedTotalUnit: proposal.calculatedTotal.unit,
       quantityConflict: proposal.quantityConflict,
       publicEligible: true,
+      ghsSourceText: row.rawGhsText,
+      ghsPictogramCodes: ghs.pictogramCodes,
+      ghsHazardClasses: ghs.hazardClasses,
     }
   })
 
   return {
-    room: { code: 'chemical-prep', nameTh: 'ห้องเก็บสารเคมี' },
+    room: { code: 'chemical-prep', nameTh: CHEMICAL_ROOM_NAME_TH },
     locations: CHEMICAL_PREP_LOCATIONS.map(location => ({ ...location })),
     units: [...units.values()],
     products,

@@ -7,7 +7,7 @@ export type ChemicalStorageZoneCode = 'A' | 'B' | 'C' | 'T'
 export type ChemicalStorageLocationKind = 'cabinet' | 'shelf' | 'table'
 export type ChemicalPhysicalState = 'solid' | 'liquid' | 'gas' | 'mixture' | 'unknown'
 export type ChemicalRole = 'custodian' | 'reviewer'
-export type ChemicalChangeEntityType = 'product' | 'holding'
+export type ChemicalChangeEntityType = 'product' | 'holding' | 'new_chemical'
 export type ChemicalSdsState = 'approved' | 'review_due' | 'draft' | 'mismatch' | 'missing'
 
 export type JsonPrimitive = boolean | number | string | null
@@ -25,18 +25,26 @@ export interface ChemicalRegistryFilters {
 
 export interface ChemicalRegistryRow {
   productId: string
+  /** ต้องมีเพื่อสร้างคำขอแก้ไขคลัง (holding change request) ซึ่งอ้าง entityId เป็น holding.id */
+  holdingId: string
   publicId: string
   canonicalName: string
   aliases: string[]
   casNumber: string | null
   concentration: string | null
+  locationId: string | null
   packageValue: number | null
   packageUnit: QuantityUnit | null
   currentContainerCount: number | null
   minimumStock: number | null
+  lotNumber: string | null
   reportedTotalRaw: string | null
   calculatedTotalValue: number | null
   calculatedTotalUnit: QuantityUnit | null
+  receivedOn: string | null
+  openedOn: string | null
+  expiresOn: string | null
+  effectiveOn: string | null
   quantityConflict: boolean
   positionCode: string | null
   unitId: string
@@ -215,7 +223,8 @@ export interface ChemicalReviewDecisionDTO {
 export interface ChemicalChangeRequestDTO {
   id: string
   entityType: ChemicalChangeEntityType
-  entityId: string
+  /** null เฉพาะตอน entityType เป็น 'new_chemical' ซึ่งยังไม่มี entity อยู่จริง */
+  entityId: string | null
   unitId: string
   proposedData: Record<string, JsonValue>
   status: Exclude<ChemicalWorkflowStatus, 'superseded'>
@@ -227,6 +236,12 @@ export interface ChemicalChangeRequestDTO {
   createdBy: string | null
   createdAt: string
   updatedAt: string
+}
+
+/** ใช้แสดงในแผงรอทบทวนของหน้าทะเบียนสารเคมี — เติมชื่อสาร/หน่วยงานให้พร้อมแสดงผล */
+export interface ChemicalChangeRequestListItemDTO extends ChemicalChangeRequestDTO {
+  productName: string | null
+  unitName: string
 }
 
 export interface ChemicalImportBatchDTO {

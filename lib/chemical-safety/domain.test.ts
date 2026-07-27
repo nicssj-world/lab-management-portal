@@ -6,7 +6,15 @@ import {
   normalizeCasNumber,
   normalizeChemicalName,
 } from './domain'
-import { CHEMICAL_PREP_LOCATIONS, INITIAL_POSITION_ASSIGNMENTS, LOCATION_GROUP_COLORS } from './storage-manifest'
+import {
+  CHEMICAL_GROUP_SUMMARY,
+  CHEMICAL_LAYOUT_UPDATED_LABEL,
+  CHEMICAL_PREP_LOCATIONS,
+  CHEMICAL_ROOM_NAME_TH,
+  CHEMICAL_ZONE_META,
+  INITIAL_POSITION_ASSIGNMENTS,
+  LOCATION_GROUP_COLORS,
+} from './storage-manifest'
 
 assert.equal(CHEMICAL_PREP_LOCATIONS.length, 13)
 assert.deepEqual(CHEMICAL_PREP_LOCATIONS.map(location => location.code), [
@@ -60,5 +68,26 @@ assert.equal(currentSdsState({ status: 'approved', reviewDueOn: '2026-07-26' }, 
 assert.equal(currentSdsState({ status: 'draft', reviewDueOn: null }, '2026-07-26'), 'draft')
 assert.equal(currentSdsState({ status: null, reviewDueOn: null, matchStatus: 'mismatch' }, '2026-07-26'), 'mismatch')
 assert.equal(currentSdsState({ status: null, reviewDueOn: null, matchStatus: 'missing' }, '2026-07-26'), 'missing')
+
+// ── ผังการจัดเก็บ (อ้างอิงรูป "ผังการจัดเก็บสารเคมี" ฉบับ 2 กุมภาพันธ์ 2569) ──
+assert.equal(CHEMICAL_ZONE_META.length, 4)
+assert.deepEqual(CHEMICAL_ZONE_META.map(zone => zone.code), ['A', 'T', 'B', 'C'])
+assert.equal(CHEMICAL_ZONE_META.find(zone => zone.code === 'C')?.titleTh, 'ตำแหน่ง C ตู้เหล็กข้างประตู')
+assert.equal(CHEMICAL_ZONE_META.find(zone => zone.code === 'T')?.titleTh, 'ตำแหน่ง T โต๊ะ')
+// ทุกโซนต้องมี meta และสีต้องตรงกับ LOCATION_GROUP_COLORS แหล่งเดียว
+for (const location of CHEMICAL_PREP_LOCATIONS) {
+  const zone = CHEMICAL_ZONE_META.find(item => item.code === location.zoneCode)
+  assert.ok(zone, `missing zone meta for ${location.code}`)
+  assert.equal(zone.color, LOCATION_GROUP_COLORS[location.zoneCode])
+}
+
+// ตารางสรุปกลุ่มต้องอ้างเฉพาะตู้ที่มีจริง และครอบคลุมตู้ทุกใบ
+assert.equal(CHEMICAL_GROUP_SUMMARY.length, 7)
+const knownCodes = new Set<string>(CHEMICAL_PREP_LOCATIONS.map(location => location.code))
+const summarised = new Set(CHEMICAL_GROUP_SUMMARY.flatMap(row => row.locationCodes))
+for (const code of summarised) assert.ok(knownCodes.has(code), `group summary references unknown cabinet ${code}`)
+for (const code of knownCodes) assert.ok(summarised.has(code), `cabinet ${code} is missing from the group summary`)
+assert.equal(CHEMICAL_LAYOUT_UPDATED_LABEL, '2 กุมภาพันธ์ 2569')
+assert.equal(CHEMICAL_ROOM_NAME_TH, 'ห้องเก็บสารเคมี')
 
 console.log('chemical safety domain tests passed')

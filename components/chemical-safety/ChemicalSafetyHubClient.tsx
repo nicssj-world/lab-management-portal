@@ -1,35 +1,403 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import type { ChemicalImportRowDTO, ChemicalRegistryRow, ChemicalStorageLocationDTO } from '@/lib/chemical-safety/types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { FilterChips, type FilterChipItem } from '@/components/ui/FilterChips'
+import { Icon } from '@/components/ui/Icon'
+import { Input } from '@/components/ui/Input'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { ViewTabs } from '@/components/ui/ViewTabs'
+import { CHEMICAL_HUB_VIEWS, type ChemicalHubView } from '@/lib/navigation'
+import type {
+  ChemicalChangeRequestListItemDTO,
+  ChemicalProductDTO,
+  ChemicalRegistryRow,
+  ChemicalStorageLocationDTO,
+  ChemicalUnitDTO,
+} from '@/lib/chemical-safety/types'
+import { ChangeRequestPanel } from './ChangeRequestPanel'
+import { RegistryChangeModal, type RegistryChangeMode } from './RegistryChangeModal'
+import { FONT, SPACE, ZONE_META, tabularNums } from './shared/tokens'
+import {
+  GhsRow,
+  PositionChip,
+  QuantityConflictNote,
+  SdsStateBadge,
+  ZoneCabinetCard,
+} from './shared/ui'
 
-type Dashboard = { products:number; positions:number; plausibleCandidates:number; mismatches:number; missing:number; quantityConflicts:number; pendingReview:number }
-const GROUP_COLORS: Record<string,string> = { A:'#1557C0', B:'#137333', C:'#F04B00', T:'#642A91' }
+interface Props {
+  view: ChemicalHubView
+  locations: ChemicalStorageLocationDTO[]
+  registry: ChemicalRegistryRow[]
+  products: ChemicalProductDTO[]
+  changeRequests: ChemicalChangeRequestListItemDTO[]
+  units: ChemicalUnitDTO[]
+  actorId: string
+  /** สิทธิ์จริงตอนนี้คือ Admin เท่านั้น (chemicalAccessDecision ไม่ดู chemical_role_scopes เลย) */
+  isAdmin: boolean
+  canProposeUnitIds: string[]
+  canReviewUnitIds: string[]
+}
 
-export function ChemicalSafetyHubClient({ dashboard, locations, registry, imports, canEditUnitIds, canReviewUnitIds }: {
-  dashboard: Dashboard; locations: ChemicalStorageLocationDTO[]; registry: ChemicalRegistryRow[]; imports: ChemicalImportRowDTO[];
-  canEditUnitIds: string[]; canReviewUnitIds: string[]
-}) {
-  const [tab, setTab] = useState<'overview'|'layout'|'registry'|'imports'>('overview')
+function useToast() {
+  const [toasts, setToasts] = useState<{ id: number; msg: string; ok: boolean }[]>([])
+  const counter = useRef(0)
+  const add = useCallback((msg: string, ok = true) => {
+    const id = ++counter.current
+    setToasts((t) => [...t, { id, msg, ok }])
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500)
+  }, [])
+  return { toasts, add }
+}
+
+interface ModalState {
+  mode: RegistryChangeMode
+  product?: ChemicalProductDTO
+  registryRow?: ChemicalRegistryRow
+}
+
+export function ChemicalSafetyHubClient({
+  view, locations, registry, products, changeRequests, units, actorId, isAdmin,
+  canProposeUnitIds, canReviewUnitIds,
+}: Props) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const { toasts, add } = useToast()
   const [position, setPosition] = useState('')
-  const [q, setQ] = useState('')
-  const [exporting,setExporting]=useState(false)
-  const visible = useMemo(() => registry.filter(row => (!position || row.positionCode === position) && (!q || JSON.stringify([row.canonicalName,row.aliases,row.casNumber]).toLocaleLowerCase('th').includes(q.toLocaleLowerCase('th')))), [registry, position, q])
-  const atPosition = (code:string) => registry.filter(row => row.positionCode === code)
-  const cards = [
-    ['สารเคมี', dashboard.products, 'registry'], ['ตำแหน่งจัดเก็บ', dashboard.positions, 'layout'], ['รอตรวจสอบ', dashboard.pendingReview, 'imports'],
-    ['ปริมาณขัดแย้ง', dashboard.quantityConflicts, 'registry'], ['SDS ไม่ตรง', dashboard.mismatches, 'imports'], ['SDS ไม่พบ', dashboard.missing, 'imports'],
-  ] as const
-  return <main className="chem-hub">
-    <style>{`
-      .chem-hub{padding:24px;max-width:1600px;margin:0 auto;color:var(--ink)}.chem-hero{padding:28px;border-radius:20px;background:linear-gradient(120deg,#062d52,#0b6380);color:white;box-shadow:0 18px 48px rgba(6,45,82,.2)}.chem-hero small{letter-spacing:.15em;color:#8ff0e9;font-weight:900}.chem-hero h1{margin:7px 0 8px;font-size:34px}.chem-hero p{margin:0;color:#d8edf5}.chem-tabs{display:flex;gap:8px;overflow:auto;margin:18px 0}.chem-tabs button{min-height:44px;padding:0 17px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-weight:800;cursor:pointer;white-space:nowrap}.chem-tabs button[aria-selected=true]{background:#0b6380;color:white;border-color:#0b6380}.chem-tabs button:focus-visible,.chem-position:focus-visible,input:focus-visible{outline:3px solid #39bdb4;outline-offset:2px}.chem-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.chem-metric{min-height:126px;text-align:left;padding:18px;border:1px solid var(--border);border-radius:15px;background:var(--card);cursor:pointer}.chem-metric b{display:block;font-size:34px;color:#0b6380}.chem-layout{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.chem-position{min-height:150px;padding:0;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--card);text-align:left;cursor:pointer}.chem-position header{padding:10px 14px;color:white;font-weight:900}.chem-position div{padding:13px}.chem-position ul{margin:0;padding-left:18px;line-height:1.55}.chem-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:14px;background:var(--card)}.chem-table{width:100%;border-collapse:collapse;min-width:980px}.chem-table th,.chem-table td{padding:12px 14px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}.chem-table th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--surface-2)}.chem-conflict{color:#b42318;font-weight:800}.chem-chip{display:inline-flex;padding:3px 8px;border-radius:999px;background:var(--surface-2);font-size:11px;font-weight:800}.chem-filter{display:flex;gap:10px;margin-bottom:12px}.chem-filter input,.chem-filter select{min-height:44px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);padding:0 12px}.chem-import-grid{display:grid;gap:12px}.chem-import{border:1px solid var(--border);border-left:5px solid #0b6380;border-radius:12px;background:var(--card);padding:14px}.chem-import pre{white-space:pre-wrap;word-break:break-word;background:var(--surface-2);padding:10px;border-radius:8px;font-size:11px}.chem-note{padding:12px 14px;border-radius:10px;background:#fff8e7;color:#5c3b00;border:1px solid #f0cf7b}.chem-perm{font-size:12px;color:var(--muted);margin-top:12px}
-      @media(max-width:1000px){.chem-layout{grid-template-columns:repeat(2,1fr)}}@media(max-width:650px){.chem-hub{padding:14px}.chem-metrics,.chem-layout{grid-template-columns:1fr}.chem-filter{flex-direction:column}}@media(prefers-reduced-motion:reduce){*{transition:none!important}}
-    `}</style>
-    <section className="chem-hero"><small>CHEMICAL SAFETY CONTROL ROOM</small><h1>ห้องสารเคมีและทะเบียน SDS</h1><p>ข้อมูลนำเข้าแยกจากข้อมูลอนุมัติ · ใช้ระบบ GHS · ทุกการแก้ไขผ่านผู้ดูแลและผู้ทบทวนคนละคน</p></section>
-    <nav className="chem-tabs" aria-label="ส่วนงานห้องสารเคมี">{([['overview','ภาพรวม'],['layout','ผังการจัดเก็บ'],['registry','ทะเบียนสารเคมี'],['imports','ตรวจสอบการนำเข้า']] as const).map(([id,label]) => <button key={id} aria-selected={tab===id} onClick={() => setTab(id)}>{label}</button>)}</nav>
-    {tab==='overview' && <><div className="chem-metrics">{cards.map(([label,value,target]) => <button className="chem-metric" key={label} onClick={() => setTab(target)}><span>{label}</span><b>{value}</b></button>)}</div><p className="chem-perm">สิทธิ์ผู้ดูแล {canEditUnitIds.length} หน่วย · สิทธิ์ผู้ทบทวน {canReviewUnitIds.length} หน่วย</p></>}
-    {tab==='layout' && <div className="chem-layout">{locations.map(item => <button key={item.id} className="chem-position" onClick={() => {setPosition(item.code);setTab('registry')}}><header style={{background:GROUP_COLORS[item.zoneCode]}}>{item.code}</header><div>{atPosition(item.code).length ? <ul>{atPosition(item.code).map(row => <li key={`${row.productId}-${row.unitId}`}>{row.canonicalName}{row.quantityConflict && ' ⚠'}</li>)}</ul> : <span>ยังไม่มีรายการอนุมัติ</span>}</div></button>)}</div>}
-    {tab==='registry' && <><div className="chem-filter"><input aria-label="ค้นหาทะเบียนสารเคมี" value={q} onChange={e=>setQ(e.target.value)} placeholder="ชื่อสาร / alias / CAS"/><select aria-label="ตำแหน่ง" value={position} onChange={e=>setPosition(e.target.value)}><option value="">ทุกตำแหน่ง</option>{locations.map(item=><option key={item.id}>{item.code}</option>)}</select><button disabled={exporting} onClick={()=>{setExporting(true);const p=new URLSearchParams();if(q)p.set('q',q);if(position)p.set('positionCode',position);location.href=`/api/admin/chemical-safety/registry/export?${p}`;setTimeout(()=>setExporting(false),1000)}} style={{minHeight:44,padding:'0 16px',border:0,borderRadius:10,background:'#0b6380',color:'white',fontWeight:800,cursor:'pointer'}}>{exporting?'กำลังสร้าง…':'Export PDF'}</button></div><div className="chem-table-wrap"><table className="chem-table"><thead><tr><th>สารเคมี</th><th>หน่วยงาน / ตำแหน่ง</th><th>ปริมาณ</th><th>SDS</th><th>GHS</th></tr></thead><tbody>{visible.map(row=><tr key={`${row.productId}-${row.unitId}-${row.positionCode}`}><td><b>{row.canonicalName}</b><br/><small>{row.casNumber ? `CAS ${row.casNumber}` : 'ไม่ระบุ CAS'}</small></td><td>{row.unitName}<br/><span className="chem-chip">{row.positionCode||'—'}</span></td><td className={row.quantityConflict?'chem-conflict':''}>{row.reportedTotalRaw||'—'}{row.calculatedTotalValue!=null&&<><br/><small>คำนวณ: {row.calculatedTotalValue} {row.calculatedTotalUnit}</small></>}{row.quantityConflict&&<><br/>⚠ ต้องตรวจสอบ</>}</td><td><span className="chem-chip">{row.sdsStatus}</span></td><td>{row.pictogramCodes.join(', ')||'—'}</td></tr>)}</tbody></table></div></>}
-    {tab==='imports' && <><p className="chem-note">รายการ candidate/mismatch/missing ยังไม่ใช่ SDS ที่อนุมัติ ห้ามอนุมัติจากชื่อไฟล์เพียงอย่างเดียว</p><div className="chem-import-grid">{imports.map(row=><article className="chem-import" key={row.id}><b>แถว {row.rowKey} · {row.matchStatus}</b>{row.conflictCodes.length>0&&<p className="chem-conflict">{row.conflictCodes.join(', ')}</p>}<pre>{JSON.stringify({raw:row.rawData,proposal:row.normalizedData},null,2)}</pre></article>)}</div></>}
-  </main>
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [modal, setModal] = useState<ModalState | null>(null)
+  const [busyProductId, setBusyProductId] = useState<string | null>(null)
+
+  const canPropose = isAdmin || canProposeUnitIds.length > 0
+  const canReview = isAdmin || canReviewUnitIds.length > 0
+  const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products])
+
+  function notify(message: string, ok = true) {
+    add(message, ok)
+    if (ok) router.refresh()
+  }
+
+  // กดตู้บนผังแล้วกระโดดไปทะเบียนที่กรองตู้นั้นไว้ — เปลี่ยน view ผ่าน URL
+  // เพื่อให้กดย้อนกลับได้เหมือนการกดแท็บ
+  function openCabinet(code: string) {
+    setPosition(code)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('view', 'registry')
+    router.push(`${pathname}?${params.toString()}`, { scroll: false })
+  }
+
+  // ล้างคำค้นแล้วต้องกลับมาเห็นรายการเต็มทันที ไม่ต้องรอ debounce
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), search ? 350 : 0)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const visible = useMemo(() => {
+    const needle = debouncedSearch.toLocaleLowerCase('th')
+    return registry.filter(row => {
+      if (position && row.positionCode !== position) return false
+      if (!needle) return true
+      return [row.canonicalName, row.casNumber, ...row.aliases]
+        .filter(Boolean).join(' ').toLocaleLowerCase('th').includes(needle)
+    })
+  }, [registry, position, debouncedSearch])
+
+  const atPosition = useMemo(() => {
+    const map = new Map<string, ChemicalRegistryRow[]>()
+    for (const row of registry) {
+      if (!row.positionCode) continue
+      map.set(row.positionCode, [...(map.get(row.positionCode) ?? []), row])
+    }
+    return map
+  }, [registry])
+
+  const positionChips: FilterChipItem<string>[] = [
+    { value: '', label: 'ทุกตำแหน่ง', count: registry.length },
+    ...locations.map(location => ({
+      value: location.code,
+      label: location.code,
+      count: atPosition.get(location.code)?.length ?? 0,
+      color: ZONE_META.find(zone => zone.code === location.zoneCode)?.color,
+    })),
+  ]
+
+  function exportPdf() {
+    setExporting(true)
+    const params = new URLSearchParams()
+    if (debouncedSearch) params.set('q', debouncedSearch)
+    if (position) params.set('positionCode', position)
+    window.location.href = `/api/admin/chemical-safety/registry/export?${params}`
+    setTimeout(() => setExporting(false), 1200)
+  }
+
+  async function toggleLifecycle(row: ChemicalRegistryRow) {
+    const product = productById.get(row.productId)
+    if (!product) { notify('ไม่พบข้อมูลสาร กรุณารีเฟรชหน้า', false); return }
+    const nextStatus = product.lifecycleStatus === 'active' ? 'retired' : 'active'
+    const actionLabel = nextStatus === 'retired' ? 'เลิกใช้งาน' : 'เปิดใช้งานอีกครั้ง'
+    if (!window.confirm(`ยืนยัน${actionLabel} "${row.canonicalName}"? คำขอจะถูกส่งให้ผู้ทบทวนอนุมัติก่อนมีผลจริง`)) return
+
+    setBusyProductId(row.productId)
+    try {
+      const created = await fetch('/api/admin/chemical-safety/change-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: 'product',
+          entityId: product.id,
+          unitId: row.unitId,
+          proposedData: {
+            canonicalName: product.canonicalName,
+            aliases: row.aliases,
+            casNumber: product.casNumber,
+            manufacturer: product.manufacturer,
+            supplier: product.supplier,
+            productCode: product.productCode,
+            concentration: product.concentration,
+            physicalState: product.physicalState,
+            lifecycleStatus: nextStatus,
+          },
+        }),
+      })
+      const createdPayload = await created.json().catch(() => ({}))
+      if (!created.ok) throw new Error(createdPayload.error || 'สร้างคำขอไม่สำเร็จ')
+
+      const submitted = await fetch(`/api/admin/chemical-safety/change-requests/${createdPayload.data.id}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const submittedPayload = await submitted.json().catch(() => ({}))
+      if (!submitted.ok) throw new Error(submittedPayload.error || 'ส่งทบทวนไม่สำเร็จ')
+
+      notify(`ส่งคำขอ${actionLabel}เข้าสู่การทบทวนแล้ว`)
+    } catch (caught) {
+      notify(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ', false)
+    } finally {
+      setBusyProductId(null)
+    }
+  }
+
+  return (
+    <main style={{ padding: SPACE.lg, maxWidth: 1600, margin: '0 auto' }}>
+      <PageHeader
+        eyebrow="ความปลอดภัยสารเคมี"
+        title="ห้องเก็บสารเคมีและทะเบียน SDS"
+        subtitle="ข้อมูลนำเข้าแยกจากข้อมูลที่อนุมัติ · จำแนกอันตรายตามระบบ GHS · ผู้บันทึกและผู้ทบทวนต้องเป็นคนละคน"
+        marginBottom={SPACE.md}
+      />
+
+      <div style={{ marginBottom: SPACE.md }}>
+        <ViewTabs items={CHEMICAL_HUB_VIEWS} value={view} label="มุมมองห้องสารเคมี" />
+      </div>
+
+      {view === 'layout' && (
+        <div style={{ display: 'grid', gap: SPACE.md }}>
+          {ZONE_META.map(zone => {
+            const zoneLocations = locations.filter(location => location.zoneCode === zone.code)
+            if (zoneLocations.length === 0) return null
+            return (
+              <section key={zone.code}>
+                <h2 style={{ fontSize: FONT.lg, fontWeight: 800, margin: `0 0 ${SPACE.xs}px`, color: 'var(--ink)' }}>
+                  <span aria-hidden="true" style={{
+                    display: 'inline-block', width: 10, height: 10, borderRadius: 3,
+                    background: zone.color, marginRight: 8,
+                  }} />
+                  {zone.titleTh}
+                </h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: SPACE.sm }}>
+                  {zoneLocations.map(location => (
+                    <ZoneCabinetCard
+                      key={location.id}
+                      code={location.code}
+                      zoneCode={location.zoneCode}
+                      onSelect={() => openCabinet(location.code)}
+                      chemicals={(atPosition.get(location.code) ?? []).map(row => ({
+                        key: `${row.productId}-${row.unitId}`,
+                        name: row.canonicalName,
+                        note: row.quantityConflict
+                          ? <> <Icon name="alert" size={11} style={{ color: 'var(--danger)' }} /></>
+                          : undefined,
+                      }))}
+                    />
+                  ))}
+                </div>
+              </section>
+            )
+          })}
+        </div>
+      )}
+
+      {view === 'registry' && (
+        <>
+          {canReview && (
+            <ChangeRequestPanel
+              items={changeRequests}
+              actorId={actorId}
+              canPropose={canPropose}
+              canReview={canReview}
+              onDone={notify}
+            />
+          )}
+
+          <div style={{ display: 'flex', gap: SPACE.sm, flexWrap: 'wrap', alignItems: 'center', marginBottom: SPACE.sm }}>
+            <Input
+              icon="search"
+              size="lg"
+              value={search}
+              onChange={setSearch}
+              placeholder="ค้นหาชื่อสาร ชื่อพ้อง หรือเลข CAS"
+              style={{ flex: '1 1 280px', minWidth: 240 }}
+            />
+            {canPropose && (
+              <Button icon="plus" size="lg" onClick={() => setModal({ mode: 'create' })}>
+                เพิ่มสารเคมีใหม่
+              </Button>
+            )}
+            <Button icon="download" variant="secondary" size="lg" disabled={exporting} onClick={exportPdf}>
+              {exporting ? 'กำลังสร้าง…' : 'Export PDF'}
+            </Button>
+          </div>
+
+          <div style={{ marginBottom: SPACE.sm }}>
+            <FilterChips items={positionChips} value={position} onChange={setPosition} label="กรองตามตำแหน่งจัดเก็บ" compact />
+          </div>
+
+          {visible.length === 0 ? (
+            <Card padding={0}><EmptyState icon="flask" title="ไม่พบสารเคมีที่ตรงกับเงื่อนไข" hint="ลองล้างคำค้นหรือเลือกตำแหน่งอื่น" /></Card>
+          ) : (
+            <Card padding={0}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
+                  <thead>
+                    <tr>
+                      {['สารเคมี', 'หน่วยงาน / ตำแหน่ง', 'ปริมาณ', 'สถานะ SDS', 'GHS', ...(canPropose ? ['จัดการ'] : [])].map(heading => (
+                        <th key={heading} style={{
+                          padding: '11px 14px', textAlign: 'left', fontSize: FONT.xs, fontWeight: 700,
+                          letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)',
+                          background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
+                        }}>{heading}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map(row => {
+                      const product = productById.get(row.productId)
+                      const isRetired = product?.lifecycleStatus === 'retired'
+                      const busy = busyProductId === row.productId
+                      return (
+                        <tr
+                          key={`${row.productId}-${row.unitId}-${row.positionCode}`}
+                          style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s', opacity: isRetired ? 0.55 : 1 }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <td style={cellStyle}>
+                            <b style={{ fontSize: FONT.md }}>{row.canonicalName}</b>
+                            {isRetired && <span style={{ marginLeft: 6, fontSize: FONT.xs, fontWeight: 700, color: 'var(--muted)' }}>(เลิกใช้งาน)</span>}
+                            <div style={{ fontSize: FONT.sm, color: 'var(--muted)' }}>
+                              {row.casNumber ? `CAS ${row.casNumber}` : 'ไม่ระบุ CAS'}
+                              {row.concentration ? ` · ${row.concentration}` : ''}
+                            </div>
+                          </td>
+                          <td style={cellStyle}>
+                            <div style={{ fontSize: FONT.base }}>{row.unitName}</div>
+                            <div style={{ marginTop: 4 }}>
+                              <PositionChip code={row.positionCode} zoneCode={zoneOf(row.positionCode, locations)} />
+                            </div>
+                          </td>
+                          <td style={cellStyle}>
+                            <span style={tabularNums}>{row.reportedTotalRaw || '—'}</span>
+                            {row.calculatedTotalValue != null && (
+                              <div style={{ fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
+                                คำนวณได้ {row.calculatedTotalValue} {row.calculatedTotalUnit}
+                              </div>
+                            )}
+                            {row.quantityConflict && <div style={{ marginTop: 4 }}><QuantityConflictNote compact /></div>}
+                          </td>
+                          <td style={cellStyle}><SdsStateBadge state={row.sdsStatus} /></td>
+                          <td style={cellStyle}>
+                            <GhsRow codes={row.pictogramCodes} hazardClassesTh={row.hazards.map(h => h.className)} size={32} />
+                          </td>
+                          {canPropose && (
+                            <td style={cellStyle}>
+                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                <Button
+                                  variant="ghost" size="sm" icon="edit" title="แก้ไขคลัง (ตำแหน่ง/ปริมาณ)"
+                                  onClick={() => setModal({ mode: 'edit-holding', registryRow: row })}
+                                />
+                                <Button
+                                  variant="ghost" size="sm" icon="doc" title="แก้ไขข้อมูลสาร"
+                                  disabled={!product}
+                                  onClick={() => product && setModal({ mode: 'edit-product', product, registryRow: row })}
+                                />
+                                <Button
+                                  variant="ghost" size="sm" icon={isRetired ? 'check' : 'trash'}
+                                  title={isRetired ? 'เปิดใช้งานอีกครั้ง' : 'เลิกใช้งาน'}
+                                  disabled={busy || !product}
+                                  onClick={() => void toggleLifecycle(row)}
+                                />
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+
+      {modal && (
+        <RegistryChangeModal
+          mode={modal.mode}
+          locations={locations}
+          units={units}
+          product={modal.product}
+          registryRow={modal.registryRow}
+          onClose={() => setModal(null)}
+          onSaved={notify}
+        />
+      )}
+
+      <div style={{ position: 'fixed', right: 16, bottom: 16, display: 'grid', gap: 8, zIndex: 1100 }}>
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            role="status"
+            style={{
+              padding: '10px 14px', borderRadius: 10, fontSize: FONT.md, fontWeight: 600,
+              color: '#fff', background: toast.ok ? 'var(--success)' : 'var(--danger)',
+              boxShadow: '0 10px 30px rgba(0,0,0,.2)', maxWidth: 360,
+            }}
+          >
+            {toast.msg}
+          </div>
+        ))}
+      </div>
+    </main>
+  )
+}
+
+const cellStyle = {
+  padding: '12px 14px',
+  textAlign: 'left' as const,
+  verticalAlign: 'top' as const,
+  fontSize: FONT.base,
+  color: 'var(--ink)',
+}
+
+function zoneOf(positionCode: string | null, locations: ChemicalStorageLocationDTO[]): string | null {
+  if (!positionCode) return null
+  return locations.find(location => location.code === positionCode)?.zoneCode ?? null
 }

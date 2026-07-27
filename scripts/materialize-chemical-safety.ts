@@ -56,10 +56,24 @@ function createDatabase(client: SupabaseClient): ChemicalMaterializationDatabase
       return result.data!.id
     },
     async ensureProduct(input) {
+      // GHS มาจาก master list จึงเขียนทับได้ทุกรอบ — master list คือแหล่งอ้างอิงของค่านี้
+      // (ค่าที่ผู้ทบทวนกรอกเองอยู่บน chemical_sds_versions คนละที่กัน จึงไม่ถูกแตะ)
+      const ghs = {
+        ghs_source_text: input.ghsSourceText,
+        ghs_pictogram_codes: input.ghsPictogramCodes,
+        ghs_hazard_classes: input.ghsHazardClasses.map(hazard => ({
+          class_th: hazard.classTh,
+          class_en: hazard.classEn,
+        })),
+      }
       const existing = await client.from('chemical_products').select('id').eq('canonical_name', input.canonicalName).eq('lifecycle_status', 'active').limit(1).maybeSingle()
       assertResult(existing, `find product ${input.canonicalName}`)
-      if (existing.data) return existing.data.id
-      const inserted = await client.from('chemical_products').insert({ canonical_name: input.canonicalName, lifecycle_status: 'active' }).select('id').single()
+      if (existing.data) {
+        const updated = await client.from('chemical_products').update({ ...ghs, updated_at: new Date().toISOString() }).eq('id', existing.data.id)
+        assertResult(updated, `update product ghs ${input.canonicalName}`)
+        return existing.data.id
+      }
+      const inserted = await client.from('chemical_products').insert({ canonical_name: input.canonicalName, lifecycle_status: 'active', ...ghs }).select('id').single()
       assertResult(inserted, `create product ${input.canonicalName}`)
       return inserted.data!.id
     },

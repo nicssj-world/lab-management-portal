@@ -41,6 +41,12 @@ assert.deepEqual(
     calculatedTotalUnit: 'L',
     quantityConflict: false,
     publicEligible: true,
+    ghsSourceText: JUNE_2026_MASTERLIST_ROWS[0].rawGhsText,
+    ghsPictogramCodes: ['GHS02', 'GHS07'],
+    ghsHazardClasses: [
+      { classTh: 'พิษเฉียบพลัน (มีความเป็นพิษต่ำ)', classEn: 'Acute toxicity — low' },
+      { classTh: 'ก๊าซไวไฟ', classEn: 'Flammable' },
+    ],
   },
 )
 assert.deepEqual(
@@ -60,8 +66,22 @@ assert.deepEqual(
     calculatedTotalUnit: 'L',
     quantityConflict: true,
     publicEligible: true,
+    ghsSourceText: JUNE_2026_MASTERLIST_ROWS[12].rawGhsText,
+    ghsPictogramCodes: ['GHS02', 'GHS05', 'GHS06'],
+    ghsHazardClasses: [
+      { classTh: 'พิษเฉียบพลัน (มีความเป็นพิษสูง)', classEn: 'Acute toxicity — high' },
+      { classTh: 'สารที่กัดกร่อนโลหะ', classEn: 'Corrosive to metals' },
+      { classTh: 'ก๊าซไวไฟ', classEn: 'Flammable' },
+    ],
   },
 )
+
+// ทุกสารต้องได้การจำแนก GHS จาก master list — ถ้าแปลไม่ออกต้องล้มตั้งแต่สร้างแผน
+assert.ok(plan.products.every(item => item.ghsHazardClasses.length > 0))
+// Sodium acetate จำแนกเป็น "ของแข็งไม่กำหนดประเภท" จึงไม่มีสัญลักษณ์ แต่ต้องมีการจำแนก
+const sodiumAcetate = plan.products.find(item => item.rowNo === 21)
+assert.deepEqual(sodiumAcetate?.ghsPictogramCodes, [])
+assert.deepEqual(sodiumAcetate?.ghsHazardClasses.map(item => item.classTh), ['ของแข็งไม่กำหนดประเภท'])
 
 assert.throws(
   () => buildChemicalMasterlistMaterializationPlan(JUNE_2026_MASTERLIST_ROWS.slice(0, 24), proposals),
