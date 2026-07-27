@@ -7,9 +7,10 @@ const report = buildPmCalReport({
     { id: 'e2', equipment_type: 'BSC', department: 'จุลชีววิทยา', classification: 'BSC' },
   ],
   plans: [
-    { id: 'p1', equipment_id: 'e1', fiscal_year: 2569, calendar_month: 7, cal_type: 'CAL', due_date: '2026-07-31', record_status: 'active', version: 1, planned_cost: 1000 },
-    { id: 'p2', equipment_id: 'e2', fiscal_year: 2569, calendar_month: 6, cal_type: 'CAL', due_date: '2026-06-30', record_status: 'active', version: 1, planned_cost: 2000 },
+    { id: 'p1', equipment_id: 'e1', fiscal_year: 2569, calendar_month: 7, cal_type: 'CAL', due_date: '2026-07-31', record_status: 'active', version: 1, planned_cost: 1000, plan_group_id: null },
+    { id: 'p2', equipment_id: 'e2', fiscal_year: 2569, calendar_month: 6, cal_type: 'CAL', due_date: '2026-06-30', record_status: 'active', version: 1, planned_cost: null, plan_group_id: 'g1' },
   ],
+  groups: [{ id: 'g1', planned_amount: 2000, actual_amount: 1800, record_status: 'active' }],
   results: [
     { id: 'r1', plan_id: 'p1', equipment_id: 'e1', cal_type: 'CAL', completed_date: '2026-07-20', result: 'PASS', actual_cost: 900 },
     { id: 'r2', plan_id: 'p2', equipment_id: 'e2', cal_type: 'CAL', completed_date: '2026-06-25', result: 'FAIL', actual_cost: 1800 },

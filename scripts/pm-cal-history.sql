@@ -261,33 +261,8 @@ $$;
 revoke all on function public.replace_equipment_pm_cal_plans(uuid, integer, jsonb, jsonb, uuid) from public, anon, authenticated;
 grant execute on function public.replace_equipment_pm_cal_plans(uuid, integer, jsonb, jsonb, uuid) to service_role;
 
--- Grouped annual planning is applied by the later migration in production.
-create table if not exists public.equipment_pm_cal_plan_groups (
-  id uuid primary key default gen_random_uuid(), fiscal_year integer not null check (fiscal_year between 2500 and 3000),
-  group_name text not null, plan_name text not null, cal_type text not null check (cal_type in ('PM', 'CAL')),
-  calendar_month smallint not null check (calendar_month between 1 and 12), due_date date not null, provider text,
-  price_mode text not null check (price_mode in ('per_unit', 'lump_sum')), unit_price numeric(12,2),
-  planned_amount numeric(12,2) not null check (planned_amount >= 0), actual_amount numeric(12,2),
-  record_status text not null default 'active', version integer not null default 1,
-  created_at timestamptz not null default now(), created_by uuid references public.profiles(id),
-  updated_at timestamptz not null default now(), updated_by uuid references public.profiles(id)
-);
-alter table public.equipment_pm_cal_plans add column if not exists plan_group_id uuid references public.equipment_pm_cal_plan_groups(id);
-
-create or replace function public.replace_equipment_pm_cal_plan_group(p_group jsonb, p_members jsonb, p_expected_versions jsonb, p_actor uuid)
-returns jsonb language plpgsql security invoker set search_path = public as $$
-begin
-  -- Production implementation is in 20260728130000_pm_cal_plan_groups.sql.
-  -- Member planned_cost uses unit price only when price_mode = 'per_unit'.
-  return jsonb_build_object('planned_cost', case when p_group->>'price_mode' = 'per_unit' then p_group->>'unit_price' else null end);
-end $$;
-create or replace function public.cancel_equipment_pm_cal_plan_group(p_group_id uuid, p_version integer, p_actor uuid)
-returns void language plpgsql security invoker set search_path = public as $$
-begin
-  if exists (select 1 from public.equipment_pm_cal_plans plan join public.equipment_calibrations result on result.plan_id = plan.id where plan.plan_group_id = p_group_id) then
-    raise exception 'group has member results' using errcode = '23503';
-  end if;
-end $$;
+-- Apply supabase/migrations/20260728130000_pm_cal_plan_groups.sql after this
+-- consolidated history script to enable annual grouped planning.
 
 -- Import the legacy Jan-Dec checkboxes as active fiscal-year 2569 plans.
 with month_map(month_key, calendar_month) as (

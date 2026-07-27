@@ -274,6 +274,12 @@ Imports remain proposals or quarantined evidence: they do not create an approved
 
 If application fails, inspect the matching `chemical_import_batches` row and its `failed` summary/error evidence plus `chemical_import_rows`; do not delete provenance rows. Correct the underlying environment or source problem, rerun the same source-bound command, and let the unique batch/hash and row constraints resume idempotently. Audit details contain counts and hashes, not local filesystem paths.
 
+## Grouped PM/CAL planning
+
+The equipment calibration workspace supports grouped plans and individual exceptions for any Thai fiscal year. A new year can start from the read-only 2566 template or from a selected prior year; both options create drafts and do not affect operational totals until staff select registered equipment and save.
+
+Apply `supabase/migrations/20260728130000_pm_cal_plan_groups.sql` after the existing PM/CAL history migrations before deploying this UI. Per-unit groups calculate budget from selected equipment count; lump-sum planned and actual costs are stored once on the group. Legacy `calibration_plans` rows remain read-only and are excluded from current reports.
+
 ## Getting Started
 
 First, run the development server:

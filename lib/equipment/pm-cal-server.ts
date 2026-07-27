@@ -24,3 +24,20 @@ export async function writePmCalAudit(actorId: string, action: string, target: s
   const { error } = await supabaseAdmin.from('audit_log').insert({ action, user_id: actorId, target, detail })
   if (error) console.error('PM/CAL audit log:', error.message)
 }
+
+export async function findPmCalGroupConflicts(input: {
+  equipmentIds: string[]; fiscalYear: number; calendarMonth: number; calType: 'PM' | 'CAL'; excludeGroupId?: string
+}) {
+  if (input.equipmentIds.length === 0) return []
+  let query = supabaseAdmin.from('equipment_pm_cal_plans').select('equipment_id, plan_group_id')
+    .in('equipment_id', input.equipmentIds).eq('fiscal_year', input.fiscalYear)
+    .eq('calendar_month', input.calendarMonth).eq('cal_type', input.calType).eq('record_status', 'active')
+  const { data: plans, error } = await query
+  if (error) throw new Error(error.message)
+  const ids = [...new Set((plans ?? []).filter(plan => plan.plan_group_id !== input.excludeGroupId).map(plan => plan.equipment_id))]
+  if (ids.length === 0) return []
+  const { data: equipment, error: equipmentError } = await supabaseAdmin.from('equipment')
+    .select('id, cbh_code, equipment_type').in('id', ids)
+  if (equipmentError) throw new Error(equipmentError.message)
+  return equipment ?? []
+}

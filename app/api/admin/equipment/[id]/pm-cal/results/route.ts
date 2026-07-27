@@ -13,10 +13,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   const parsed = pmCalResultCreateSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'ข้อมูลผล PM/CAL ไม่ถูกต้อง', issues: parsed.error.flatten() }, { status: 422 })
 
-  const { data: plan, error: planError } = await supabaseAdmin.from('equipment_pm_cal_plans').select('id, equipment_id, cal_type').eq('id', parsed.data.plan_id).eq('equipment_id', id).eq('record_status', 'active').maybeSingle()
+  const { data: plan, error: planError } = await supabaseAdmin.from('equipment_pm_cal_plans').select('id, equipment_id, cal_type, plan_group_id').eq('id', parsed.data.plan_id).eq('equipment_id', id).eq('record_status', 'active').maybeSingle()
   if (planError) return NextResponse.json({ error: planError.message }, { status: 500 })
   if (!plan) return NextResponse.json({ error: 'ไม่พบแผน PM/CAL ของเครื่องมือนี้' }, { status: 404 })
   if (plan.cal_type !== parsed.data.cal_type) return NextResponse.json({ error: 'ประเภทผลไม่ตรงกับแผน' }, { status: 422 })
+  if (plan.plan_group_id && parsed.data.actual_cost != null) return NextResponse.json({ error: 'ค่าใช้จ่ายจริงของแผนกลุ่มต้องบันทึกเป็นยอดเดียวที่หัวข้อกลุ่ม' }, { status: 422 })
 
   const completed = new Date(`${parsed.data.completed_date}T00:00:00`)
   const { remark, ...input } = parsed.data

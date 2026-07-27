@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const sql = readFileSync('scripts/pm-cal-history.sql', 'utf8')
+const sql = [
+  readFileSync('scripts/pm-cal-history.sql', 'utf8'),
+  readFileSync('supabase/migrations/20260728130000_pm_cal_plan_groups.sql', 'utf8'),
+].join('\n')
 
 assert.match(sql, /create table if not exists public\.equipment_pm_cal_plans/i)
 assert.match(sql, /alter table public\.equipment_calibrations/i)

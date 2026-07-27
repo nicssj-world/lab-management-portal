@@ -99,3 +99,7 @@ The migration does not mutate `calibration_plans` or import guessed equipment ma
 6. Conflicting active schedules are rejected with the affected instruments identified.
 7. The legacy 2566 table remains viewable, uneditable, and excluded from current-year operational totals.
 8. A user can select any valid fiscal year and either start with unsaved legacy-template drafts or copy a chosen previous year's groups; neither action changes the source year or creates active budget totals before saving.
+
+## Implemented rollout
+
+Implementation uses migration `20260728130000_pm_cal_plan_groups.sql`. Apply it after the existing PM/CAL history migrations before deploying the grouped workspace. The legacy table remains a read-only template/history source and is never migrated by guessed equipment mappings.
