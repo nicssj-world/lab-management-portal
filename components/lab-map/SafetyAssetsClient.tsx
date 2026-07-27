@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, type BadgeColor } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -22,7 +22,7 @@ type Tab = 'assets' | 'assembly' | 'editors'
 const KIND_LABELS: Record<string, string> = {
   'fire-extinguisher': 'ถังดับเพลิง', 'fire-hose': 'สายฉีดน้ำดับเพลิง',
   'manual-call-point': 'จุดกดแจ้งเหตุ', aed: 'AED', 'first-aid-kit': 'ชุดปฐมพยาบาล',
-  eyewash: 'อ่างล้างตา', 'emergency-shower': 'ฝักบัวฉุกเฉิน', 'spill-kit': 'ชุดรับมือสารหก',
+  eyewash: 'อ่างล้างตา', 'emergency-shower': 'ฝักบัวฉุกเฉิน', 'spill-kit': 'Spill Kit',
   'emergency-shutoff': 'จุดตัดฉุกเฉิน',
 }
 const STATUS_LABELS: Record<string, string> = {
@@ -118,7 +118,6 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   function selectAssetFromList(code: string | null) {
     setAssetDraft(null)
     setSelectedCode(code)
-    if (code) setMobileView('map')
   }
 
   function updateAssetFilter(setter: (v: string) => void) {
@@ -194,7 +193,7 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
               {tab === 'assets' ? (
                 <AssetsPanel assets={filteredAssets} selected={selectedAsset} query={query} status={status} kind={kind} spaceCode={spaceCode} canEdit={canEdit} canManage={canManage}
                   busy={busy} draft={assetDraft} map={map} onQuery={updateAssetFilter(setQuery)} onStatus={updateAssetFilter(setStatus)} onKind={updateAssetFilter(setKind)} onSpaceCode={updateAssetFilter(setSpaceCode)} onSelect={selectAssetFromList}
-                  onDraft={setAssetDraft} onRun={run} onReload={reload} />
+                  onDraft={setAssetDraft} onShowMap={() => setMobileView('map')} onRun={run} onReload={reload} />
               ) : (
                 <AssemblyPanel points={points} selected={selectedPoint} canEdit={canEdit} canManage={canManage} busy={busy}
                   draft={pointDraft} onSelect={code => { setPointDraft(null); setSelectedCode(code) }} onDraft={setPointDraft} onRun={run} onReload={reload} />
@@ -207,12 +206,22 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   )
 }
 
-function AssetsPanel({ assets, selected, query, status, kind, spaceCode, canEdit, canManage, busy, draft, map, onQuery, onStatus, onKind, onSpaceCode, onSelect, onDraft, onRun, onReload }: {
+function AssetsPanel({ assets, selected, query, status, kind, spaceCode, canEdit, canManage, busy, draft, map, onQuery, onStatus, onKind, onSpaceCode, onSelect, onDraft, onShowMap, onRun, onReload }: {
   assets: SafetyAssetDTO[]; selected: SafetyAssetDTO | null; query: string; status: string; kind: string; spaceCode: string; canEdit: boolean; canManage: boolean; busy: boolean
   draft: Partial<SafetyAssetDTO> | null; map: LabMapDTO; onQuery: (v: string) => void; onStatus: (v: string) => void
   onKind: (v: string) => void; onSpaceCode: (v: string) => void
-  onSelect: (v: string | null) => void; onDraft: (v: Partial<SafetyAssetDTO> | null) => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void>
+  onSelect: (v: string | null) => void; onDraft: (v: Partial<SafetyAssetDTO> | null) => void; onShowMap: () => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void>
 }) {
+  const editorRef = useRef<HTMLDivElement>(null)
+  const spaceNameByCode = useMemo(() => new Map(map.spaces.map(space => [space.code, space.nameTh])), [map.spaces])
+
+  useEffect(() => {
+    if (!draft && !selected) return
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [draft, selected])
+
   return <>
     <div className="safety-toolbar"><input type="search" value={query} onChange={e => onQuery(e.target.value)} placeholder="ค้นหาอุปกรณ์" aria-label="ค้นหาอุปกรณ์" />
       {canEdit ? <Button size="lg" icon="plus" onClick={() => onDraft({ kind: 'fire-extinguisher', x: 0, y: 0, shutoffFor: null })}>เพิ่ม</Button> : null}</div>
@@ -221,19 +230,21 @@ function AssetsPanel({ assets, selected, query, status, kind, spaceCode, canEdit
       <select value={kind} onChange={e => onKind(e.target.value)} aria-label="กรองประเภท"><option value="">ทุกประเภท</option>{Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       <select value={spaceCode} onChange={e => onSpaceCode(e.target.value)} aria-label="กรองห้อง"><option value="">ทุกห้อง</option>{map.spaces.map(space => <option key={space.code} value={space.code}>{space.nameTh}</option>)}</select>
     </div>
+    <div className="safety-editor-focus" ref={editorRef}>
+      {draft ? <AssetEditor key={`${draft.id ?? 'new'}-${draft.x}-${draft.y}`} draft={draft} spaces={map.spaces} busy={busy} onCancel={() => onDraft(null)} onSave={value => onRun(async () => {
+        const editing = Boolean(value.id)
+        await jsonRequest(editing ? `/api/admin/lab-map/safety-assets/${value.id}` : '/api/admin/lab-map/safety-assets', {
+          method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editing ? { ...value, code: undefined, updatedAt: value.updatedAt } : value),
+        }); await onReload(); onDraft(null)
+      })} /> : selected ? <AssetDetail key={selected.id} item={selected} locationLabel={spaceNameByCode.get(selected.spaceCode ?? '') ?? selected.spaceCode ?? 'ไม่ระบุห้อง'} canEdit={canEdit} canManage={canManage} busy={busy}
+        onEdit={() => onDraft(selected)} onShowMap={onShowMap} onRun={onRun} onReload={onReload} /> : null}
+    </div>
     <div className="safety-list">{assets.map(item => <button key={item.id} className="safety-card" data-selected={selected?.id === item.id} aria-pressed={selected?.id === item.id} onClick={() => onSelect(item.code)}>
       <span className="safety-card-head"><strong>{item.nameTh}</strong><Badge color={STATUS_COLORS[item.operationalStatus ?? 'unverified']}>{STATUS_LABELS[item.operationalStatus ?? 'unverified']}</Badge></span>
-      <small>{KIND_LABELS[item.kind]} · {item.code} · ({item.x}, {item.y})</small>
+      <small>{KIND_LABELS[item.kind]} · {spaceNameByCode.get(item.spaceCode ?? '') ?? item.spaceCode ?? 'ไม่ระบุห้อง'} · {item.code}</small>
     </button>)}</div>
     {assets.length === 0 ? <EmptyState title="ไม่พบอุปกรณ์" /> : null}
-    {draft ? <AssetEditor key={`${draft.id ?? 'new'}-${draft.x}-${draft.y}`} draft={draft} spaces={map.spaces} busy={busy} onCancel={() => onDraft(null)} onSave={value => onRun(async () => {
-      const editing = Boolean(value.id)
-      await jsonRequest(editing ? `/api/admin/lab-map/safety-assets/${value.id}` : '/api/admin/lab-map/safety-assets', {
-        method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editing ? { ...value, code: undefined, updatedAt: value.updatedAt } : value),
-      }); await onReload(); onDraft(null)
-    })} /> : selected ? <AssetDetail key={selected.id} item={selected} canEdit={canEdit} canManage={canManage} busy={busy}
-      onEdit={() => onDraft(selected)} onRun={onRun} onReload={onReload} /> : null}
   </>
 }
 
@@ -286,7 +297,7 @@ function SafetyPhotoPicker({ label, file, disabled, onChange }: { label: string;
   </label>
 }
 
-function AssetDetail({ item, canEdit, canManage, busy, onEdit, onRun, onReload }: { item: SafetyAssetDTO; canEdit: boolean; canManage: boolean; busy: boolean; onEdit: () => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void> }) {
+function AssetDetail({ item, locationLabel, canEdit, canManage, busy, onEdit, onShowMap, onRun, onReload }: { item: SafetyAssetDTO; locationLabel: string; canEdit: boolean; canManage: boolean; busy: boolean; onEdit: () => void; onShowMap: () => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void> }) {
   const [file, setFile] = useState<File | null>(null); const [result, setResult] = useState('passed'); const [note, setNote] = useState('')
   const [nextDate, setNextDate] = useState(''); const [expires, setExpires] = useState('')
   async function inspect() {
@@ -297,7 +308,8 @@ function AssetDetail({ item, canEdit, canManage, busy, onEdit, onRun, onReload }
     setFile(null); setNote(''); await onReload()
   }
   return <section className="safety-form"><span className="safety-card-head"><h2 style={{ margin: 0, fontSize: 17 }}>{item.nameTh}</h2><Badge color={STATUS_COLORS[item.operationalStatus ?? 'unverified']}>{STATUS_LABELS[item.operationalStatus ?? 'unverified']}</Badge></span>
-    <p className="safety-muted" style={{ margin: 0 }}>{KIND_LABELS[item.kind]} · {item.code}<br />พิกัด {item.x}, {item.y}</p>
+    <p className="safety-muted" style={{ margin: 0 }}>{KIND_LABELS[item.kind]} · {item.code}<br />ตำแหน่ง: {locationLabel}<br />พิกัด {item.x}, {item.y}</p>
+    <div className="safety-actions"><Button variant="secondary" size="lg" onClick={onShowMap}>ดูตำแหน่งบนผัง</Button></div>
     {item.latestInspection ? <><p style={{ margin: 0 }}>ตรวจล่าสุด {item.latestInspection.inspectedOn} · {STATUS_LABELS[item.latestInspection.result]}</p><img className="safety-photo" src={item.latestInspection.photoUrl} alt={`หลักฐานการตรวจ ${item.nameTh}`} /></> : <p className="safety-muted">ยังไม่มีประวัติการตรวจ</p>}
     <AssetHistory assetId={item.id} />
     {canEdit ? <><h3 style={{ margin: '6px 0 0', fontSize: 14 }}>บันทึกผลตรวจ</h3><div className="safety-form-grid">

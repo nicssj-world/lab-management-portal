@@ -18,6 +18,7 @@ export function SafetyAssetsStyles() {
     .safety-card-head,.safety-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
     .safety-card small{display:block;color:var(--muted);font-size:12px;line-height:1.45;margin-top:5px;overflow-wrap:anywhere}.safety-muted{color:var(--muted);font-size:12px}
     .safety-form{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+    .safety-editor-focus{display:grid;gap:10px;scroll-margin-top:16px}
     .safety-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     .safety-form label{display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:12px;font-weight:600}
     .safety-photo{display:block;width:100%;max-height:220px;object-fit:cover;border-radius:9px;border:1px solid var(--border)}
