@@ -69,7 +69,16 @@ export function createClient() {
   if (!browserClient) {
     browserClient = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          // Supabase logs a non-retryable refresh failure during client startup
+          // before consumers can handle it. Server-side auth checks refresh valid
+          // sessions; client calls handle an invalid stale session and send the
+          // user back to login without emitting that console error.
+          autoRefreshToken: false,
+        },
+      }
     )
     browserClient.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') redirectToLoginIfProtected()

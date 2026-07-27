@@ -9,13 +9,12 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { FilterChips, type FilterChipItem } from '@/components/ui/FilterChips'
 import { Icon } from '@/components/ui/Icon'
 import { Input } from '@/components/ui/Input'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { Stat } from '@/components/ui/Stat'
-import { ViewTabs } from '@/components/ui/ViewTabs'
-import { CHEMICAL_SDS_VIEWS, type ChemicalSdsView } from '@/lib/navigation'
+import type { ChemicalSdsView } from '@/lib/navigation'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
 import type { ChemicalSdsDTO, GhsPictogramCode } from '@/lib/chemical-safety/types'
 import { SdsEditorModal } from './SdsEditorModal'
+import { SdsDropzone } from './shared/SdsDropzone'
 import { FONT, SPACE, tabularNums } from './shared/tokens'
 import { DepartmentPublishBadge, GhsRow, SdsStatusBadge } from './shared/ui'
 
@@ -32,10 +31,7 @@ interface Props {
   products: SdsProductInfo[]
   departments: DepartmentSdsGroupDTO[]
   actorId: string
-  /** สิทธิ์จริงตอนนี้คือ Admin เท่านั้น (chemicalAccessDecision ไม่ดู chemical_role_scopes เลย)
-   *  ต้องรวมกับ canEditUnitIds/canReviewUnitIds ด้วย OR ไม่งั้น Admin จะเข้า API ได้แต่ไม่เห็นปุ่มเลย
-   *  เมื่อตาราง scope ยังว่างอยู่ */
-  isAdmin: boolean
+  canManage: boolean
   canEditUnitIds: string[]
   canReviewUnitIds: string[]
   publishableDepartmentCodes: string[]
@@ -53,13 +49,13 @@ function useToast() {
 }
 
 export function SdsManagementClient({
-  view, items, products, departments, actorId, isAdmin,
+  view, items, products, departments, actorId, canManage,
   canEditUnitIds, canReviewUnitIds, publishableDepartmentCodes,
 }: Props) {
   const router = useRouter()
   const { toasts, add } = useToast()
-  const canEdit = isAdmin || canEditUnitIds.length > 0
-  const canReview = isAdmin || canReviewUnitIds.length > 0
+  const canEdit = canManage || canEditUnitIds.length > 0
+  const canReview = canManage || canReviewUnitIds.length > 0
 
   const notify = useCallback((message: string, ok = true) => {
     add(message, ok)
@@ -67,19 +63,8 @@ export function SdsManagementClient({
   }, [add, router])
 
   return (
-    <main style={{ padding: SPACE.lg, maxWidth: 1500, margin: '0 auto' }}>
-      <PageHeader
-        eyebrow="ความปลอดภัยสารเคมี"
-        title="จัดการเอกสาร SDS"
-        subtitle="ฉบับร่าง → ส่งทบทวน → อนุมัติโดยบุคคลอื่น · เอกสารจะขึ้นหน้าสาธารณะเมื่อผ่านการทบทวนแล้วเท่านั้น"
-        marginBottom={SPACE.md}
-      />
-
-      <div style={{ marginBottom: SPACE.md }}>
-        <ViewTabs items={CHEMICAL_SDS_VIEWS} value={view} label="มุมมองการจัดการ SDS" />
-      </div>
-
-      {view === 'chemicals' ? (
+    <>
+      {view === 'sds-chemicals' ? (
         <ChemicalSdsPanel
           items={items}
           products={products}
@@ -111,11 +96,36 @@ export function SdsManagementClient({
           </div>
         ))}
       </div>
-    </main>
+    </>
   )
 }
 
 // ── SDS ของสารเคมีในห้องเก็บสารเคมี ─────────────────────────────────────────
+
+function SdsPanelIntro({
+  icon,
+  title,
+  description,
+  note,
+}: {
+  icon: string
+  title: string
+  description: string
+  note: string
+}) {
+  return (
+    <section className="chemical-sds-intro" aria-label={title}>
+      <div className="chemical-sds-intro-main">
+        <span className="chemical-sds-intro-icon" aria-hidden="true"><Icon name={icon} size={18} /></span>
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+      </div>
+      <span className="chemical-sds-intro-note"><Icon name="shieldCheck" size={14} /> {note}</span>
+    </section>
+  )
+}
 
 function ChemicalSdsPanel({
   items, products, actorId, canEdit, canReview, onDone,
@@ -199,6 +209,12 @@ function ChemicalSdsPanel({
 
   return (
     <>
+      <SdsPanelIntro
+        icon="doc"
+        title="SDS ห้องสารเคมี"
+        description="จัดการเอกสารของสารในทะเบียน ตั้งแต่แนบไฟล์ แก้ไขข้อมูล จนถึงส่งทบทวน"
+        note="แยกผู้ส่งและผู้ทบทวน"
+      />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>
         <Stat label="ฉบับร่าง" value={counts.get('draft') ?? 0} icon="edit" color="blue" />
         <Stat label="รอทบทวน" value={counts.get('in_review') ?? 0} icon="clock" color="amber" />
@@ -338,6 +354,7 @@ function DepartmentSdsPanel({
 }) {
   const [openCode, setOpenCode] = useState<string | null>(null)
   const [busyCode, setBusyCode] = useState<string | null>(null)
+  const [uploading, setUploading] = useState<{ code: string; department: string } | null>(null)
 
   const totals = useMemo(() => ({
     files: groups.reduce((sum, group) => sum + group.fileCount, 0),
@@ -381,6 +398,12 @@ function DepartmentSdsPanel({
 
   return (
     <>
+      <SdsPanelIntro
+        icon="users"
+        title="SDS แยกตามงาน"
+        description="รวมเอกสาร SDS ของแต่ละงานให้ตรวจสอบ แก้ไขชื่อ และเผยแพร่เป็นชุดได้จากพื้นที่เดียว"
+        note="เผยแพร่ทั้งงานพร้อมกัน"
+      />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>
         <Stat label="งานทั้งหมด" value={groups.length} icon="users" color="blue" />
         <Stat label="เผยแพร่แล้ว" value={totals.published} icon="globe" color="green" />
@@ -425,27 +448,32 @@ function DepartmentSdsPanel({
                     {open ? 'ซ่อนรายการ' : 'ดูรายการ'}
                   </Button>
                   {canPublish && (
-                    group.status === 'published' ? (
-                      <Button variant="danger" icon="lock" disabled={busy} onClick={() => void setStatus(group.code, 'draft')}>
-                        ยกเลิกเผยแพร่
+                    <>
+                      <Button variant="secondary" icon="plus" disabled={busy} onClick={() => setUploading({ code: group.code, department: group.department })}>
+                        เพิ่ม SDS
                       </Button>
-                    ) : (
-                      <Button
-                        icon="globe"
-                        disabled={busy || group.fileCount === 0}
-                        title={group.fileCount === 0 ? 'งานนี้ยังไม่มีเอกสารให้เผยแพร่' : undefined}
-                        onClick={() => void setStatus(group.code, 'published')}
-                      >
-                        เผยแพร่ทั้งงาน
-                      </Button>
-                    )
+                      {group.status === 'published' ? (
+                        <Button variant="danger" icon="lock" disabled={busy} onClick={() => void setStatus(group.code, 'draft')}>
+                          ยกเลิกเผยแพร่
+                        </Button>
+                      ) : (
+                        <Button
+                          icon="globe"
+                          disabled={busy || group.fileCount === 0}
+                          title={group.fileCount === 0 ? 'งานนี้ยังไม่มีเอกสารให้เผยแพร่' : undefined}
+                          onClick={() => void setStatus(group.code, 'published')}
+                        >
+                          เผยแพร่ทั้งงาน
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
 
               {group.fileCount === 0 && (
                 <p style={{ margin: `${SPACE.xs}px 0 0`, fontSize: FONT.sm, color: 'var(--warning)' }}>
-                  <Icon name="alert" size={12} /> ยังไม่มีเอกสารในระบบ — ต้องรันสคริปต์นำเข้าคลัง SDS ก่อน
+                  <Icon name="alert" size={12} /> ยังไม่มีเอกสารในระบบ — อัปโหลดไฟล์ SDS ใหม่สำหรับงานนี้ได้
                 </p>
               )}
 
@@ -475,9 +503,12 @@ function DepartmentSdsPanel({
                             <Button
                               variant="ghost"
                               icon="edit"
+                              size="sm"
                               title="แก้ชื่อที่แสดง"
                               onClick={() => void rename(file.id, file.displayName)}
-                            />
+                            >
+                              แก้ไขชื่อ
+                            </Button>
                           )}
                         </span>
                       </div>
@@ -489,6 +520,102 @@ function DepartmentSdsPanel({
           )
         })}
       </div>
+      {uploading && (
+        <DepartmentSdsUploadModal
+          departmentCode={uploading.code}
+          departmentName={uploading.department}
+          onClose={() => setUploading(null)}
+          onSaved={(message) => {
+            setUploading(null)
+            onDone(message)
+          }}
+        />
+      )}
     </>
+  )
+}
+
+function DepartmentSdsUploadModal({
+  departmentCode, departmentName, onClose, onSaved,
+}: {
+  departmentCode: string
+  departmentName: string
+  onClose: () => void
+  onSaved: (message: string) => void
+}) {
+  const [file, setFile] = useState<File | null>(null)
+  const [displayName, setDisplayName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function selectFile(nextFile: File) {
+    setFile(nextFile)
+    setError(null)
+    if (!displayName.trim()) setDisplayName(nextFile.name.replace(/\.pdf$/i, ''))
+  }
+
+  async function upload() {
+    if (!file) { setError('กรุณาเลือกไฟล์ PDF'); return }
+    if (!displayName.trim()) { setError('กรุณาระบุชื่อเอกสารที่แสดง'); return }
+
+    setBusy(true)
+    setError(null)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      body.append('displayName', displayName.trim())
+      const response = await fetch(`/api/admin/chemical-safety/department-sds/${departmentCode}/upload`, { method: 'POST', body })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'อัปโหลดไฟล์ SDS ไม่สำเร็จ')
+      onSaved(payload.republishRequired
+        ? 'อัปโหลดไฟล์แล้ว กรุณาเผยแพร่งานนี้อีกครั้งก่อนแสดงต่อสาธารณะ'
+        : 'อัปโหลดไฟล์ SDS แล้ว')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'อัปโหลดไฟล์ SDS ไม่สำเร็จ')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label={`อัปโหลด SDS สำหรับ ${departmentName}`} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 620, boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden' }}>
+        <header style={{ padding: SPACE.md, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: SPACE.sm }}>
+          <div>
+            <div style={{ fontSize: FONT.xs, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--primary)' }}>SDS แยกตามงาน</div>
+            <h2 style={{ margin: '4px 0 0', fontSize: FONT.xl, color: 'var(--ink)' }}>อัปโหลด SDS · {departmentName}</h2>
+          </div>
+          <Button variant="ghost" icon="x" title="ปิด" onClick={onClose} disabled={busy} />
+        </header>
+
+        <div style={{ padding: SPACE.md, display: 'grid', gap: SPACE.sm }}>
+          <SdsDropzone onFile={selectFile} disabled={busy} hint="รับเฉพาะ PDF ขนาดไม่เกิน 50 MB" />
+          {file && <p style={{ margin: 0, fontSize: FONT.sm, color: 'var(--success)' }}><Icon name="check" size={13} /> เลือกไฟล์: {file.name}</p>}
+          <label style={{ display: 'block' }}>
+            <span style={{ display: 'block', marginBottom: 4, fontSize: FONT.sm, fontWeight: 600, color: 'var(--muted)' }}>ชื่อเอกสารที่แสดง *</span>
+            <input
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              maxLength={300}
+              disabled={busy}
+              style={{ width: '100%', minHeight: 44, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', boxSizing: 'border-box', font: 'inherit', color: 'var(--ink)', background: 'var(--card)' }}
+              placeholder="เช่น SDS น้ำยาตรวจ..."
+            />
+          </label>
+          <p style={{ margin: 0, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>
+            หากงานนี้เผยแพร่อยู่ ระบบจะยกเลิกการเผยแพร่ชั่วคราว เพื่อให้ตรวจรายการใหม่ก่อนกดเผยแพร่อีกครั้ง
+          </p>
+          {error && <p role="alert" style={{ margin: 0, padding: SPACE.xs, borderRadius: 8, fontSize: FONT.sm, color: 'var(--danger)', background: 'rgba(220,38,38,.10)' }}>{error}</p>}
+        </div>
+
+        <footer style={{ padding: SPACE.md, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: SPACE.xs }}>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>ยกเลิก</Button>
+          <Button icon="upload" onClick={() => void upload()} disabled={busy}>{busy ? 'กำลังอัปโหลด…' : 'อัปโหลด SDS'}</Button>
+        </footer>
+      </div>
+    </div>
   )
 }

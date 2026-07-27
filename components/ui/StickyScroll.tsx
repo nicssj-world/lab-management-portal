@@ -58,16 +58,16 @@ export function StickyScroll({ children, style, contentWidth, bottom = 0 }: Stic
   return (
     <>
       <style>{`
-        .sticky-scroll-body {
+        .sticky-scroll-body--with-sticky-bar {
           -ms-overflow-style: none;
           scrollbar-width: none;
         }
-        .sticky-scroll-body::-webkit-scrollbar { display: none; }
+        .sticky-scroll-body--with-sticky-bar::-webkit-scrollbar { display: none; }
       `}</style>
       <div ref={wrapperRef}>
         <div
           ref={bodyRef}
-          className="sticky-scroll-body"
+          className={bar.visible ? 'sticky-scroll-body sticky-scroll-body--with-sticky-bar' : 'sticky-scroll-body'}
           onScroll={() => sync('body')}
           style={{ ...style, overflowX: 'auto' }}
         >

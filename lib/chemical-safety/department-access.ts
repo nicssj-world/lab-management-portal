@@ -3,9 +3,10 @@ import 'server-only'
 import type { NextResponse } from 'next/server'
 import { getActor, jsonForbidden, jsonUnauthorized, type Actor } from '@/lib/auth/guards'
 import { normalizeRole } from '@/lib/roles'
+import { isSafetyEditor } from '@/lib/lab-map/safety-access'
 import { departmentByCode } from './departments'
 
-type PublisherActor = Pick<Actor, 'role' | 'dept' | 'dept_role'>
+type PublisherActor = Pick<Actor, 'id' | 'role' | 'dept' | 'dept_role'>
 type GuardResult =
   | { actor: Actor; response?: undefined }
   | { actor?: undefined; response: NextResponse }
@@ -31,8 +32,12 @@ export function canPublishDepartmentSds(actor: PublisherActor, departmentCode: s
   return role === 'Manager' && (actor.dept ?? '') === department.department
 }
 
+export async function canManageDepartmentSds(actor: PublisherActor, departmentCode: string): Promise<boolean> {
+  return canPublishDepartmentSds(actor, departmentCode) || await isSafetyEditor(actor)
+}
+
 export async function requireDepartmentSdsPublisher(departmentCode: string): Promise<GuardResult> {
   const actor = await getActor()
   if (!actor) return { response: jsonUnauthorized() }
-  return canPublishDepartmentSds(actor, departmentCode) ? { actor } : { response: jsonForbidden() }
+  return await canManageDepartmentSds(actor, departmentCode) ? { actor } : { response: jsonForbidden() }
 }

@@ -13,6 +13,7 @@ const publicSdsApi = readFileSync('app/api/public/sds/route.ts', 'utf8')
 const publicSdsFileApi = readFileSync('app/api/public/sds/[publicId]/file/route.ts', 'utf8')
 const publicDepartmentSdsApi = readFileSync('app/api/public/department-sds/route.ts', 'utf8')
 const publicDepartmentSdsFileApi = readFileSync('app/api/public/department-sds/[publicId]/file/route.ts', 'utf8')
+const departmentSdsUploadApi = readFileSync('app/api/admin/chemical-safety/department-sds/[code]/upload/route.ts', 'utf8')
 const publicModule = readFileSync('lib/chemical-safety/public.ts', 'utf8')
 const ghsSql = readFileSync('scripts/chemical-safety-ghs-and-departments.sql', 'utf8')
 const registryCrudSql = readFileSync('scripts/chemical-safety-registry-crud.sql', 'utf8')
@@ -102,11 +103,12 @@ assert.match(
 )
 
 // ฝั่งเจ้าหน้าที่ยังคงจำกัดเฉพาะผู้ดูแลระบบตามการตัดสินใจเดิม
-const accessDecision = chemicalAccess.match(/export function chemicalAccessDecision\([\s\S]*?\n\}/)?.[0] ?? ''
-assert.match(accessDecision, /normalizeRole\(actor\.role\) === 'Admin'/, 'all chemical-safety access is temporarily admin-only')
+const accessDecision = chemicalAccess.match(/export async function chemicalAccessDecision\([\s\S]*?\n\}/)?.[0] ?? ''
+assert.match(accessDecision, /isSafetyEditor\(actor\)/, 'lab-map safety editors can access chemical-safety work')
+assert.match(accessDecision, /request\.action === 'manage_roles'\) return false/, 'only Admin can manage chemical role scopes')
 assert.doesNotMatch(accessDecision, /request\.action === 'view'\) return true/, 'ordinary staff cannot view chemical-safety data')
-assert.match(staffSidebar, /href: '\/staff\/lab-map\/chemicals'[\s\S]*?role: 'Admin'/, 'chemical room menu is admin-only')
-assert.match(staffSidebar, /href: '\/staff\/lab-map\/sds'[\s\S]*?role: 'Admin'/, 'SDS management menu is admin-only')
+assert.match(staffSidebar, /href: '\/staff\/lab-map\/chemicals'[\s\S]*?safetyEditor: true/, 'chemical room menu is available to lab-map safety editors')
+assert.doesNotMatch(staffSidebar, /href: '\/staff\/lab-map\/sds'/, 'SDS is accessed through the chemical room menu')
 
 // ฝั่งสาธารณะเปิดให้ทุกคนตามที่ผู้ใช้ระบุ: ผังการจัดเก็บ การจำแนก GHS และ SDS ของทุกงาน
 // ข้อมูลถูกคัดกรองในชั้น lib/chemical-safety/public.ts ไม่ใช่ด้วย guard ที่ route
@@ -124,6 +126,9 @@ assert.match(
   /getPublicDepartmentSdsFile[\s\S]*?status !== 'published'[\s\S]*?return null/,
   'department SDS files are only served for published departments',
 )
+assert.match(departmentSdsUploadApi, /requireDepartmentSdsPublisher/, 'อัปโหลด SDS แยกตามงานต้องตรวจสิทธิ์ผู้จัดการงาน')
+assert.match(departmentSdsUploadApi, /validateChemicalPdf/, 'อัปโหลด SDS แยกตามงานต้องตรวจชนิดและลายเซ็น PDF')
+assert.match(departmentSdsUploadApi, /status: 'draft', published_by: null, published_at: null/, 'เพิ่มไฟล์ในงานที่เผยแพร่แล้วต้องกลับสู่ฉบับร่างเพื่อทบทวนใหม่')
 // สารที่ SDS ยังไม่อนุมัติต้องไม่มี URL ไฟล์ แม้จะแสดงการจำแนก GHS บนหน้าสาธารณะ
 assert.match(publicModule, /viewUrl: approved \?/, 'pending chemicals expose no file URL')
 assert.match(

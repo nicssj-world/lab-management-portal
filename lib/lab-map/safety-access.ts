@@ -5,11 +5,11 @@ import { getActor, jsonForbidden, jsonUnauthorized, type Actor } from '@/lib/aut
 import { normalizeRole } from '@/lib/roles'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
-export function isSafetyManager(actor: Actor) {
+export function isSafetyManager(actor: Pick<Actor, 'role'>) {
   return ['Admin', 'Manager'].includes(normalizeRole(actor.role))
 }
 
-export async function isSafetyEditor(actor: Actor) {
+export async function isSafetyEditor(actor: Pick<Actor, 'id' | 'role'>) {
   if (isSafetyManager(actor)) return true
   const { data } = await supabaseAdmin
     .from('lab_map_safety_editors')

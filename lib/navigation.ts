@@ -51,20 +51,16 @@ export const SATISFACTION_NAVIGATION = [
 
 // มุมมองของข้อมูลชุดเดียวกันในหน้าห้องสารเคมี — เก็บใน ?view= เพื่อให้แชร์ลิงก์และกดย้อนกลับได้
 export const CHEMICAL_HUB_VIEWS = [
-  { id: 'layout', label: 'ผังการจัดเก็บ', icon: 'building' },
   { id: 'registry', label: 'ทะเบียนสารเคมี', icon: 'flask' },
+  { id: 'layout', label: 'ผังการจัดเก็บ', icon: 'building' },
+  { id: 'sds-chemicals', label: 'SDS ห้องสารเคมี', icon: 'doc' },
+  { id: 'sds-departments', label: 'SDS แยกตามงาน', icon: 'users' },
 ] as const satisfies readonly ViewNavigationItem[]
 
 export type ChemicalHubView = (typeof CHEMICAL_HUB_VIEWS)[number]['id']
 export const CHEMICAL_HUB_VIEW_IDS = CHEMICAL_HUB_VIEWS.map(view => view.id)
 
-export const CHEMICAL_SDS_VIEWS = [
-  { id: 'chemicals', label: 'SDS ห้องสารเคมี', icon: 'flask' },
-  { id: 'departments', label: 'SDS แยกตามงาน', icon: 'users' },
-] as const satisfies readonly ViewNavigationItem[]
-
-export type ChemicalSdsView = (typeof CHEMICAL_SDS_VIEWS)[number]['id']
-export const CHEMICAL_SDS_VIEW_IDS = CHEMICAL_SDS_VIEWS.map(view => view.id)
+export type ChemicalSdsView = Extract<ChemicalHubView, 'sds-chemicals' | 'sds-departments'>
 
 export const ROUTE_LABELS: Record<string, { th: string; en: string }> = {
   staff: { th: 'ระบบบุคลากร', en: 'Staff Portal' },

@@ -10,6 +10,7 @@ import { normalizeRole } from '@/lib/roles'
 import { ensureOwnProfile, isProfileNotProvisionedError } from '@/lib/auth/profile'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAssignedDeptIds } from '@/lib/queries/kpi'
+import { isSafetyEditor } from '@/lib/lab-map/safety-access'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -31,6 +32,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     admin: 'Admin', staff: 'Manager', editor: 'Medical Technologist', viewer: 'Assistant',
   }
   const role = profile.role ? (LEGACY_ROLES[profile.role] ?? profile.role) : undefined
+  const isChemicalSafetyEditor = await isSafetyEditor({ id: user.id, role: role ?? '' })
   const permissions = role ? await getPermissionsWithEquipmentOverride(role, user.id) : {}
   // คณะทำงาน IT override: admin-equivalent edit on the งาน IT module regardless of role.
   if (role && normalizeRole(role) !== 'Admin') {
@@ -102,6 +104,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           userDocRole={profile.doc_role ?? undefined}
           userDeptRole={profile.dept_role ?? undefined}
           userPermissions={permissions}
+          isChemicalSafetyEditor={isChemicalSafetyEditor}
         />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <StaffTopbar />

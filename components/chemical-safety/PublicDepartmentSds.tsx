@@ -7,8 +7,17 @@ import type { PublicDepartmentSdsGroup } from '@/lib/chemical-safety/public-type
  * คลังเอกสาร SDS แยกตามงาน
  * แสดงเฉพาะงานที่หัวหน้างานกดเผยแพร่แล้ว งานที่ยังไม่เผยแพร่จะไม่ถูกส่งมาถึงที่นี่เลย
  */
-export function PublicDepartmentSds({ groups }: { groups: PublicDepartmentSdsGroup[] }) {
-  const [active, setActive] = useState(groups[0]?.code ?? '')
+export function PublicDepartmentSds({
+  groups,
+  initialDepartment = '',
+}: {
+  groups: PublicDepartmentSdsGroup[]
+  initialDepartment?: string
+}) {
+  const initialActive = groups.some(item => item.code === initialDepartment)
+    ? initialDepartment
+    : groups[0]?.code ?? ''
+  const [active, setActive] = useState(initialActive)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
@@ -16,6 +25,12 @@ export function PublicDepartmentSds({ groups }: { groups: PublicDepartmentSdsGro
     const timer = setTimeout(() => setDebouncedSearch(search), search ? 300 : 0)
     return () => clearTimeout(timer)
   }, [search])
+
+  useEffect(() => {
+    if (!groups.some(item => item.code === initialDepartment)) return
+    setActive(initialDepartment)
+    setSearch('')
+  }, [groups, initialDepartment])
 
   const group = useMemo(
     () => groups.find(item => item.code === active) ?? groups[0] ?? null,
@@ -29,9 +44,22 @@ export function PublicDepartmentSds({ groups }: { groups: PublicDepartmentSdsGro
     return group.items.filter(item => item.displayName.toLocaleLowerCase('th').includes(needle))
   }, [group, debouncedSearch])
 
+  function selectDepartment(code: string) {
+    setActive(code)
+    setSearch('')
+    const params = new URLSearchParams(location.search)
+    params.set('department', code)
+    history.replaceState(null, '', `${location.pathname}?${params}${location.hash}`)
+  }
+
   if (groups.length === 0) {
     return (
-      <section className="sds-dept" aria-labelledby="sds-dept-heading">
+      <section className="sds-dept sds-dept-empty-state" aria-labelledby="sds-dept-heading">
+        <style>{`
+          .sds-dept-empty-state{margin:0 0 30px;padding:18px 20px;border:1px dashed var(--border);border-radius:14px;background:var(--card)}
+          .sds-dept-empty-state h2{margin:0;font-size:20px;color:var(--ink);letter-spacing:-.02em}
+          .sds-dept-empty-state .sds-dept-empty{margin:6px 0 0;color:var(--muted);font-size:13px}
+        `}</style>
         <h2 id="sds-dept-heading">SDS แยกตามงาน</h2>
         <p className="sds-dept-empty">ยังไม่มีงานใดเผยแพร่คลังเอกสาร SDS</p>
       </section>
@@ -75,7 +103,7 @@ export function PublicDepartmentSds({ groups }: { groups: PublicDepartmentSdsGro
             type="button"
             className="sds-dept-tab"
             aria-pressed={group?.code === item.code}
-            onClick={() => { setActive(item.code); setSearch('') }}
+            onClick={() => selectDepartment(item.code)}
           >
             <span>{item.department}</span>
             <span className="sds-dept-count">{item.items.length}</span>

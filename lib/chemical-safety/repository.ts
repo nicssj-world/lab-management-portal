@@ -337,6 +337,13 @@ export async function listChemicalProductRecords(): Promise<ChemicalProductDTO[]
       concentration: text(row.concentration),
       physicalState: (text(row.physical_state) as ChemicalPhysicalState | null),
       lifecycleStatus: (row.lifecycle_status === 'retired' ? 'retired' : 'active') as 'active' | 'retired',
+      ghsSourceText: text(row.ghs_source_text),
+      ghsPictogramCodes: stringArray(row.ghs_pictogram_codes) as GhsPictogramCode[],
+      ghsHazardClasses: Array.isArray(row.ghs_hazard_classes)
+        ? (row.ghs_hazard_classes as Array<Record<string, unknown>>)
+          .filter(item => item && typeof item.class_th === 'string' && typeof item.class_en === 'string')
+          .map(item => ({ classTh: String(item.class_th), classEn: String(item.class_en) }))
+        : [],
       createdBy: text(row.created_by),
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),

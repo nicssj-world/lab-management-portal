@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         status: 'draft',
         created_by: guard.actor.id,
       })
-      .select('id')
+      .select('id, created_at, updated_at')
       .single()
     if (inserted.error) throw inserted.error
 
@@ -56,7 +56,11 @@ export async function POST(request: NextRequest) {
       detail: JSON.stringify({ productId: input.data.productId, unitId: input.data.unitId }),
     }).then(undefined, () => {})
 
-    return NextResponse.json({ id: inserted.data.id }, { status: 201 })
+    return NextResponse.json({
+      id: inserted.data.id,
+      createdAt: inserted.data.created_at,
+      updatedAt: inserted.data.updated_at,
+    }, { status: 201 })
   } catch (error) {
     return unexpectedError(error)
   }

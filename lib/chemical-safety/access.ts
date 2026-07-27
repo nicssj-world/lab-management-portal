@@ -3,6 +3,7 @@ import 'server-only'
 import type { NextResponse } from 'next/server'
 import { getActor, jsonForbidden, jsonUnauthorized, type Actor } from '@/lib/auth/guards'
 import { normalizeRole } from '@/lib/roles'
+import { isSafetyEditor } from '@/lib/lab-map/safety-access'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export type ChemicalScope = { unitId: string; role: 'custodian' | 'reviewer' }
@@ -13,12 +14,14 @@ export type ChemicalAction =
 
 type GuardResult = { actor: Actor; response?: undefined } | { actor?: undefined; response: NextResponse }
 
-export function chemicalAccessDecision(
+export async function chemicalAccessDecision(
   actor: Pick<Actor, 'id' | 'role'>,
   _scopes: ChemicalScope[],
-  _request: ChemicalAction,
-): boolean {
-  return normalizeRole(actor.role) === 'Admin'
+  request: ChemicalAction,
+): Promise<boolean> {
+  if (normalizeRole(actor.role) === 'Admin') return true
+  if (request.action === 'manage_roles') return false
+  return isSafetyEditor(actor)
 }
 
 async function loadScopes(actorId: string): Promise<ChemicalScope[]> {
@@ -39,7 +42,7 @@ async function requireAction(action: ChemicalAction): Promise<GuardResult> {
   const scopes = action.action === 'view' || action.action === 'manage_roles' || action.action === 'retire'
     ? []
     : await loadScopes(actor.id)
-  return chemicalAccessDecision(actor, scopes, action) ? { actor } : { response: jsonForbidden() }
+  return await chemicalAccessDecision(actor, scopes, action) ? { actor } : { response: jsonForbidden() }
 }
 
 export function requireChemicalViewer() {

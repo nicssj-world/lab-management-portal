@@ -1,4 +1,6 @@
-export const CHEMICAL_PDF_MIN_BYTES = 1 * 1024 * 1024
+// SDS บางผู้ผลิตเป็น PDF แบบข้อความซึ่งมีขนาดเพียงไม่กี่สิบ KB
+// ตรวจนามสกุล MIME และลายเซ็น PDF แล้ว จึงไม่ควรบังคับขนาดขั้นต่ำ 1 MB
+export const CHEMICAL_PDF_MIN_BYTES = 1
 export const CHEMICAL_PDF_MAX_BYTES = 50 * 1024 * 1024
 
 export type ChemicalPdfValidationResult =
@@ -42,7 +44,7 @@ export function validateChemicalPdf(
     return { ok: false, error: 'Only PDF files with application/pdf MIME type are accepted' }
   }
   if (!Number.isInteger(input.sizeBytes) || input.sizeBytes < CHEMICAL_PDF_MIN_BYTES) {
-    return { ok: false, error: 'PDF files must be at least 1 MB' }
+    return { ok: false, error: 'PDF files must not be empty' }
   }
   if (input.sizeBytes > CHEMICAL_PDF_MAX_BYTES) {
     return { ok: false, error: 'PDF files must not exceed 50 MB' }

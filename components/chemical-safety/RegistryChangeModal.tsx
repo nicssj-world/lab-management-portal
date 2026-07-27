@@ -63,6 +63,7 @@ export function RegistryChangeModal({
   const [concentration, setConcentration] = useState(product?.concentration ?? registryRow?.concentration ?? '')
   const [physicalState, setPhysicalState] = useState(product?.physicalState ?? '')
   const [lifecycleStatus, setLifecycleStatus] = useState(product?.lifecycleStatus ?? 'active')
+  const [ghsSourceText, setGhsSourceText] = useState(product?.ghsSourceText ?? '')
 
   const [unitId, setUnitId] = useState(registryRow?.unitId ?? units[0]?.id ?? '')
   const [locationId, setLocationId] = useState(registryRow?.locationId ?? '')
@@ -77,8 +78,8 @@ export function RegistryChangeModal({
   const [expiresOn, setExpiresOn] = useState(registryRow?.expiresOn ?? '')
   const [effectiveOn, setEffectiveOn] = useState(registryRow?.effectiveOn ?? '')
 
-  const [pictograms, setPictograms] = useState<GhsPictogramCode[]>([])
-  const [hazards, setHazards] = useState<HazardDraft[]>([])
+  const [pictograms, setPictograms] = useState<GhsPictogramCode[]>(product?.ghsPictogramCodes ?? [])
+  const [hazards, setHazards] = useState<HazardDraft[]>(product?.ghsHazardClasses ?? [])
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -90,7 +91,6 @@ export function RegistryChangeModal({
   function buildProductProposal() {
     return {
       canonicalName: canonicalName.trim(),
-      aliases: aliasesText.split(',').map(item => item.trim()).filter(Boolean),
       casNumber: casNumber.trim() || null,
       manufacturer: manufacturer.trim() || null,
       supplier: supplier.trim() || null,
@@ -98,6 +98,9 @@ export function RegistryChangeModal({
       concentration: concentration.trim() || null,
       physicalState: physicalState || null,
       lifecycleStatus,
+      ghsSourceText: ghsSourceText.trim() || null,
+      ghsPictogramCodes: pictograms,
+      ghsHazardClasses: hazards.filter(item => item.classTh.trim() && item.classEn.trim()),
     }
   }
 
@@ -122,6 +125,7 @@ export function RegistryChangeModal({
   function buildNewChemicalProposal() {
     return {
       ...buildProductProposal(),
+      aliases: aliasesText.split(',').map(item => item.trim()).filter(Boolean),
       locationId,
       lotNumber: lotNumber.trim() || null,
       packageValue: Number(packageValue),
@@ -133,7 +137,7 @@ export function RegistryChangeModal({
       openedOn: openedOn || null,
       expiresOn: expiresOn || null,
       effectiveOn: effectiveOn || null,
-      ghsSourceText: null,
+      ghsSourceText: ghsSourceText.trim() || null,
       ghsPictogramCodes: pictograms,
       ghsHazardClasses: hazards.filter(item => item.classTh.trim() && item.classEn.trim()),
     }
@@ -278,9 +282,16 @@ export function RegistryChangeModal({
             )}
           </section>
 
-          {isCreate && (
+          {!isHolding && (
             <section>
-              <h3 style={sectionStyle}>การจำแนกตามระบบ GHS (ถ้าทราบ)</h3>
+              <h3 style={sectionStyle}>GHS เบื้องต้นสำหรับทะเบียน (ถ้าทราบ)</h3>
+              <p style={{ margin: `0 0 ${SPACE.sm}px`, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>
+                ใช้แสดงและค้นหาสารระหว่างที่ยังไม่มี SDS ที่อนุมัติแล้ว หากมี SDS ให้ยืนยันรายละเอียดจาก SDS หมวด 2 ในปุ่ม SDS
+              </p>
+              <label style={{ display: 'block', marginBottom: SPACE.sm }}>
+                <span style={labelStyle}>แหล่งข้อมูลเบื้องต้น</span>
+                <textarea value={ghsSourceText} onChange={(e) => setGhsSourceText(e.target.value)} rows={2} style={{ ...inputStyle, resize: 'vertical' }} placeholder="เช่น ข้อมูลบนฉลาก หรือ SDS ฉบับ/วันที่" />
+              </label>
               <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
                 <legend style={labelStyle}>สัญลักษณ์</legend>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(96px,1fr))', gap: SPACE.xs }}>

@@ -45,6 +45,7 @@ assert.match(client, /accept="image\/\*"/, 'mobile camera and photo library are 
 assert.match(canvas, /data-selected=\{selectedCode === item\.code \|\| undefined\}/, 'selected safety equipment is exposed to the SVG')
 assert.match(canvas, /lab-map-equipment-selection-label/, 'the selected asset is named beside its map marker')
 assert.match(canvas, /target\.closest\('\[data-space-code\], \[data-equipment-code\]'\)/, 'pressing a safety marker does not start map panning and swallow its click')
+assert.match(canvas, /if \(onCoordinateSelect\) \{\s*event\.stopPropagation\(\)\s*selectCoordinate\(event\)/, 'choosing a room while adding an asset sets its coordinates instead of selecting the room')
 assert.match(canvas, /item\.kind === 'fire-extinguisher'/, 'the evacuation map keeps only fire extinguishers')
 assert.match(canvas, /item\.kind !== 'fire-extinguisher'/, 'non-extinguisher equipment is isolated to the safety equipment map')
 assert.match(mapStyles, /\.lab-map-equipment\[data-selected\]/, 'selected safety equipment receives a visual focus treatment')

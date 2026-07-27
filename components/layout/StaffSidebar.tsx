@@ -20,6 +20,7 @@ interface NavChild {
   docRole?: string | string[]
   deptRole?: string | string[]
   resource?: string
+  safetyEditor?: boolean
 }
 
 interface NavItem {
@@ -90,8 +91,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/lab-map', th: 'ความปลอดภัย', en: 'Safety', icon: 'shield', color: '#0E7490',
     children: [
       { href: '/staff/lab-map', th: 'แผนที่ห้องปฏิบัติการ', en: 'Laboratory Map', icon: 'building', color: '#0E7490' },
-      { href: '/staff/lab-map/chemicals', th: 'ห้องสารเคมี', en: 'Chemical Room', icon: 'flask', color: '#0E7490', role: 'Admin' },
-      { href: '/staff/lab-map/sds', th: 'จัดการ SDS', en: 'SDS Management', icon: 'doc', color: '#0E7490', role: 'Admin' },
+      { href: '/staff/lab-map/chemicals', th: 'สารเคมีและ SDS', en: 'Chemicals & SDS', icon: 'flask', color: '#0E7490', safetyEditor: true },
     ] },
   { section: 'งาน IT' },
   // ตัวแม่ของกลุ่มนี้ **ต้องไม่ถือ `resource`** — isEntryVisible เช็ค resource ของแม่แล้ว
@@ -137,9 +137,10 @@ interface StaffSidebarProps {
   userDocRole?: string
   userDeptRole?: string
   userPermissions?: Record<string, string>
+  isChemicalSafetyEditor?: boolean
 }
 
-export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, userDeptRole, userPermissions }: StaffSidebarProps) {
+export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, userDeptRole, userPermissions, isChemicalSafetyEditor = false }: StaffSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { lang } = useLang()
@@ -178,6 +179,7 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
   // A child is visible when its resource permission allows it, OR (for role/docRole
   // gated items) when either the user's role or doc_role matches.
   const childVisible = (child: NavChild) => {
+    if (child.safetyEditor && !isChemicalSafetyEditor) return false
     if (child.role || child.docRole || child.deptRole) {
       const roles = child.role ? (Array.isArray(child.role) ? child.role : [child.role]) : []
       const docRoles = child.docRole ? (Array.isArray(child.docRole) ? child.docRole : [child.docRole]) : []
