@@ -15,6 +15,7 @@ import { FilterChips } from '@/components/ui/FilterChips'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { EquipmentDetailModal } from '@/components/equipment/EquipmentDetailModal'
 import { EquipmentPmCalModal } from '@/components/equipment/EquipmentPmCalModal'
+import { PmCalPlanWorkspace } from '@/components/equipment/PmCalPlanWorkspace'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
@@ -1486,7 +1487,11 @@ type CurrentPmCalReport = {
   rows: Array<{ department: string; classification: string; equipmentType: string; plan: number; done: number; failed: number; dueSoon: number; overdue: number; plannedCost: number; actualCost: number }>
 }
 
-function CalibrationPlanTab({ canEdit: _canEdit }: { canEdit: boolean }) {
+function CalibrationPlanTab({ canEdit }: { canEdit: boolean }) {
+  return <PmCalPlanWorkspace canEdit={canEdit} />
+}
+
+function OldCalibrationPlanTab({ canEdit: _canEdit }: { canEdit: boolean }) {
   const currentYear = getCurrentThaiFiscalYear()
   const [mode, setMode] = useState<'current' | 'legacy'>('current')
   const [fiscalYear, setFiscalYear] = useState(currentYear)

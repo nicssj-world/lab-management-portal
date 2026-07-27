@@ -23,7 +23,11 @@ export async function GET(req: NextRequest, { params }: Params) {
     supabaseAdmin.from('equipment_calibrations').select('*').eq('equipment_id', id).order('completed_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }),
   ])
   if (plansError || resultsError) return NextResponse.json({ error: plansError?.message ?? resultsError?.message }, { status: 500 })
-  return NextResponse.json({ equipment, fiscal_year: fiscalYear, plans: plans ?? [], results: results ?? [], legacy: equipment.pm_cal_data })
+  const groupIds = [...new Set((plans ?? []).map(plan => plan.plan_group_id).filter(Boolean))]
+  const { data: groups } = groupIds.length
+    ? await supabaseAdmin.from('equipment_pm_cal_plan_groups').select('*').in('id', groupIds)
+    : { data: [] }
+  return NextResponse.json({ equipment, fiscal_year: fiscalYear, plans: plans ?? [], results: results ?? [], groups: groups ?? [], legacy: equipment.pm_cal_data })
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
@@ -35,6 +39,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   const { data: equipment } = await supabaseAdmin.from('equipment').select('id, cbh_code').eq('id', id).maybeSingle()
   if (!equipment) return NextResponse.json({ error: 'ไม่พบเครื่องมือ' }, { status: 404 })
+  const { data: grouped } = await supabaseAdmin.from('equipment_pm_cal_plans').select('id').eq('equipment_id', id)
+    .eq('fiscal_year', parsed.data.fiscal_year).eq('record_status', 'active').not('plan_group_id', 'is', null).limit(1)
+  if (grouped?.length) return NextResponse.json({ error: 'เครื่องมือนี้อยู่ในแผนกลุ่ม กรุณาแก้ไขจากแผนกลุ่ม' }, { status: 409 })
   const { data, error } = await supabaseAdmin.rpc('replace_equipment_pm_cal_plans', {
     p_equipment_id: id,
     p_fiscal_year: parsed.data.fiscal_year,

@@ -44,6 +44,37 @@ export const pmCalPlanReplaceSchema = z.object({
   })
 })
 
+export const pmCalPlanGroupReplaceSchema = z.object({
+  id: z.string().uuid().nullable().optional(),
+  fiscal_year: z.number().int().min(2500).max(3000),
+  group_name: z.string().trim().min(1).max(200),
+  plan_name: z.string().trim().min(1).max(500),
+  cal_type: z.enum(['PM', 'CAL']),
+  calendar_month: z.number().int().min(1).max(12),
+  due_date: strictDate,
+  provider: z.string().trim().max(500).nullable().optional(),
+  price_mode: z.enum(['per_unit', 'lump_sum']),
+  unit_price: z.number().nonnegative().max(999_999_999.99).nullable(),
+  planned_amount: z.number().nonnegative().max(999_999_999.99),
+  actual_amount: z.number().nonnegative().max(999_999_999.99).nullable().optional(),
+  equipment_ids: z.array(z.string().uuid()).min(1).max(1000),
+  version: z.number().int().positive().nullable().optional(),
+}).superRefine((value, ctx) => {
+  if (new Set(value.equipment_ids).size !== value.equipment_ids.length) {
+    ctx.addIssue({ code: 'custom', path: ['equipment_ids'], message: 'มีเครื่องมือซ้ำในแผน' })
+  }
+  if (value.price_mode === 'per_unit' && value.unit_price == null) {
+    ctx.addIssue({ code: 'custom', path: ['unit_price'], message: 'กรุณาระบุราคาต่อหน่วย' })
+  }
+  if (value.price_mode === 'lump_sum' && value.unit_price != null) {
+    ctx.addIssue({ code: 'custom', path: ['unit_price'], message: 'ราคาเหมารวมต้องไม่มีราคาต่อหน่วย' })
+  }
+  const [year, month] = value.due_date.split('-').map(Number)
+  if (year !== fiscalYearMonthToCalendarYear(value.fiscal_year, value.calendar_month) || month !== value.calendar_month) {
+    ctx.addIssue({ code: 'custom', path: ['due_date'], message: 'วันครบกำหนดไม่ตรงกับปีงบประมาณและเดือน' })
+  }
+})
+
 export const pmCalResultCreateSchema = z.object({
   plan_id: z.string().uuid(),
   cal_type: z.enum(['PM', 'CAL']),
@@ -75,4 +106,5 @@ export const pmCalResultCreateSchema = z.object({
 })
 
 export type PmCalPlanReplaceInput = z.infer<typeof pmCalPlanReplaceSchema>
+export type PmCalPlanGroupReplaceInput = z.infer<typeof pmCalPlanGroupReplaceSchema>
 export type PmCalResultCreateInput = z.infer<typeof pmCalResultCreateSchema>

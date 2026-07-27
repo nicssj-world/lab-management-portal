@@ -21,7 +21,10 @@ interface Plan extends PmCalPlanRecord {
   provider: string | null
   planned_cost: number | null
   source: 'manual' | 'legacy_import'
+  plan_group_id: string | null
 }
+
+interface PlanGroup { id: string; plan_name: string; group_name: string; price_mode: 'per_unit' | 'lump_sum' }
 
 interface Result extends PmCalResultRecord {
   fiscal_year: number
@@ -40,6 +43,7 @@ interface ApiPayload {
   fiscal_year: number
   plans: Plan[]
   results: Result[]
+  groups: PlanGroup[]
   legacy: Equipment['pm_cal_data']
 }
 
@@ -121,6 +125,8 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
 
   const resultRecords = useMemo(() => (payload?.results ?? []) as PmCalResultRecord[], [payload])
   const planById = useMemo(() => new Map(plans.map(plan => [plan.id, plan])), [plans])
+  const groupById = useMemo(() => new Map((payload?.groups ?? []).map(group => [group.id, group])), [payload])
+  const hasGroupedPlan = plans.some(plan => plan.plan_group_id)
 
   function togglePlan(month: number, calType: PmCalType) {
     const existing = plans.find(plan => plan.calendar_month === month && plan.cal_type === calType)
@@ -139,6 +145,7 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
       planned_cost: null,
       record_status: 'active',
       source: 'manual',
+      plan_group_id: null,
       version: 1,
     }])
   }
@@ -273,8 +280,10 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
             <label style={{ fontSize: 12, flex: 1, minWidth: 220 }}>ผู้ดำเนินการ/บริษัทเริ่มต้น
               <input value={provider} onChange={event => setProvider(event.target.value)} style={{ ...input, marginTop: 4 }} disabled={!canEdit} />
             </label>
-            {canEdit && <button onClick={savePlans} disabled={saving || loading} style={{ padding: '9px 16px', border: 0, borderRadius: 8, color: '#fff', background: 'var(--primary)', cursor: 'pointer' }}>{saving ? 'กำลังบันทึก…' : 'บันทึกแผน'}</button>}
+            {canEdit && !hasGroupedPlan && <button onClick={savePlans} disabled={saving || loading} style={{ padding: '9px 16px', border: 0, borderRadius: 8, color: '#fff', background: 'var(--primary)', cursor: 'pointer' }}>{saving ? 'กำลังบันทึก…' : 'บันทึกแผน'}</button>}
           </div>
+
+          {hasGroupedPlan && <div style={{ padding: 10, borderRadius: 8, background: '#EFF6FF', color: '#1E40AF', fontSize: 12 }}>แผนกลุ่มกำหนดวัน ผู้ให้บริการ และราคาไว้จากหน้าแผนสอบเทียบ การบันทึกผลและ Certificate ของเครื่องนี้ยังทำได้ตามปกติ</div>}
 
           <section style={card}>
             <div style={{ fontWeight: 700, marginBottom: 12 }}>แผนรายเดือน ปีงบประมาณ {fiscalYear}</div>
@@ -287,7 +296,7 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
                     const plan = plans.find(value => value.calendar_month === month && value.cal_type === calType)
                     const state = plan ? computePmCalPlanState(plan, resultRecords) : null
                     return <td key={month} style={{ textAlign: 'center', padding: 5 }}>
-                      <input type="checkbox" checked={!!plan} disabled={!canEdit} onChange={() => togglePlan(month, calType)} title={plan ? `${STATE_LABEL[state!]} · ครบ ${formatDate(plan.due_date)}` : 'ยังไม่มีแผน'} />
+                      <input type="checkbox" checked={!!plan} disabled={!canEdit || !!plan?.plan_group_id || hasGroupedPlan} onChange={() => togglePlan(month, calType)} title={plan ? `${STATE_LABEL[state!]} · ครบ ${formatDate(plan.due_date)}` : 'ยังไม่มีแผน'} />
                       {plan && <div style={{ fontSize: 9, color: STATE_COLOR[state!], marginTop: 2 }}>{STATE_LABEL[state!]}</div>}
                     </td>
                   })}</tr>
@@ -302,7 +311,7 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
               {plans.map(plan => {
                 const state = computePmCalPlanState(plan, resultRecords)
                 return <div key={plan.id} style={{ border: '1px solid var(--border)', borderRadius: 9, padding: 10, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <div><strong>{plan.cal_type} · {MONTHS[plan.calendar_month - 1]}</strong><div style={{ fontSize: 11, color: STATE_COLOR[state] }}>{STATE_LABEL[state]} · {formatDate(plan.due_date)}</div></div>
+                  <div><strong>{plan.cal_type} · {MONTHS[plan.calendar_month - 1]}</strong>{plan.plan_group_id && groupById.get(plan.plan_group_id) ? <div style={{ fontSize: 11, color: 'var(--primary)' }}>แผนกลุ่ม: {groupById.get(plan.plan_group_id)?.plan_name}</div> : null}<div style={{ fontSize: 11, color: STATE_COLOR[state] }}>{STATE_LABEL[state]} · {formatDate(plan.due_date)}</div></div>
                   {canEdit && state !== 'completed' && <button onClick={() => { setResultPlan(plan); setResultForm(emptyResultForm(plan)); setCertificate(null) }} style={{ border: '1px solid var(--primary)', borderRadius: 7, background: 'transparent', color: 'var(--primary)', cursor: 'pointer' }}>บันทึกผล</button>}
                 </div>
               })}
@@ -348,7 +357,7 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
               </select></label>
               <label style={{ gridColumn: '1/-1' }}>ผู้ดำเนินการ/บริษัท<input value={resultForm.tech_group} onChange={event => setResultForm({ ...resultForm, tech_group: event.target.value })} style={input} /></label>
               <label>Certificate No.<input value={resultForm.certificate_no} onChange={event => setResultForm({ ...resultForm, certificate_no: event.target.value })} style={input} /></label>
-              <label>ค่าใช้จ่ายจริง<input type="number" min="0" value={resultForm.actual_cost} onChange={event => setResultForm({ ...resultForm, actual_cost: event.target.value })} style={input} /></label>
+              {resultPlan.plan_group_id ? <div style={{ fontSize: 12, color: 'var(--muted)', alignSelf: 'end', paddingBottom: 8 }}>ค่าใช้จ่ายจริงบันทึกเป็นยอดเดียวที่แผนกลุ่ม</div> : <label>ค่าใช้จ่ายจริง<input type="number" min="0" value={resultForm.actual_cost} onChange={event => setResultForm({ ...resultForm, actual_cost: event.target.value })} style={input} /></label>}
               <label>Error<input value={resultForm.error_value} onChange={event => setResultForm({ ...resultForm, error_value: event.target.value })} style={input} /></label>
               <label>Uncertainty<input value={resultForm.uncertainty} onChange={event => setResultForm({ ...resultForm, uncertainty: event.target.value })} style={input} /></label>
               <label style={{ gridColumn: '1/-1' }}>หมายเหตุ{resultForm.result === 'NOT_PERFORMED' ? ' (จำเป็น)' : ''}<textarea value={resultForm.remark} onChange={event => setResultForm({ ...resultForm, remark: event.target.value })} style={{ ...input, minHeight: 70 }} /></label>

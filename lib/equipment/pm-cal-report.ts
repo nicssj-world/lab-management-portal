@@ -7,8 +7,9 @@ export interface PmCalReportEquipment {
   classification: string | null
 }
 
-export interface PmCalReportPlan extends PmCalPlanRecord { planned_cost?: number | null }
+export interface PmCalReportPlan extends PmCalPlanRecord { planned_cost?: number | null; plan_group_id?: string | null }
 export interface PmCalReportResult extends PmCalResultRecord { actual_cost?: number | null }
+export interface PmCalReportGroup { id: string; planned_amount: number; actual_amount: number | null; record_status: 'active' | 'cancelled' }
 
 export interface PmCalReportRow {
   department: string
@@ -23,10 +24,11 @@ export interface PmCalReportRow {
   actualCost: number
 }
 
-export function buildPmCalReport({ equipment, plans, results, today = new Date() }: {
+export function buildPmCalReport({ equipment, plans, results, groups = [], today = new Date() }: {
   equipment: PmCalReportEquipment[]
   plans: PmCalReportPlan[]
   results: PmCalReportResult[]
+  groups?: PmCalReportGroup[]
   today?: Date
 }) {
   const equipmentById = new Map(equipment.map(item => [item.id, item]))
@@ -42,8 +44,10 @@ export function buildPmCalReport({ equipment, plans, results, today = new Date()
     }
     const state = computePmCalPlanState(plan, results, today)
     row.plan += 1
-    row.plannedCost += Number(plan.planned_cost ?? 0)
-    row.actualCost += results.filter(result => result.plan_id === plan.id).reduce((sum, result) => sum + Number(result.actual_cost ?? 0), 0)
+    if (!plan.plan_group_id) {
+      row.plannedCost += Number(plan.planned_cost ?? 0)
+      row.actualCost += results.filter(result => result.plan_id === plan.id).reduce((sum, result) => sum + Number(result.actual_cost ?? 0), 0)
+    }
     if (state === 'completed') row.done += 1
     if (state === 'failed') row.failed += 1
     if (state === 'due_soon') row.dueSoon += 1
@@ -51,8 +55,7 @@ export function buildPmCalReport({ equipment, plans, results, today = new Date()
     rowsByKey.set(key, row)
   }
   const rows = [...rowsByKey.values()].sort((a, b) => a.department.localeCompare(b.department, 'th') || a.classification.localeCompare(b.classification, 'th') || a.equipmentType.localeCompare(b.equipmentType, 'th'))
-  return {
-    summary: rows.reduce((sum, row) => ({
+  const rowSummary = rows.reduce((sum, row) => ({
       plan: sum.plan + row.plan,
       done: sum.done + row.done,
       failed: sum.failed + row.failed,
@@ -60,7 +63,13 @@ export function buildPmCalReport({ equipment, plans, results, today = new Date()
       overdue: sum.overdue + row.overdue,
       plannedCost: sum.plannedCost + row.plannedCost,
       actualCost: sum.actualCost + row.actualCost,
-    }), { plan: 0, done: 0, failed: 0, dueSoon: 0, overdue: 0, plannedCost: 0, actualCost: 0 }),
+    }), { plan: 0, done: 0, failed: 0, dueSoon: 0, overdue: 0, plannedCost: 0, actualCost: 0 })
+  const groupMoney = groups.filter(group => group.record_status === 'active').reduce((sum, group) => ({
+    plannedCost: sum.plannedCost + Number(group.planned_amount ?? 0),
+    actualCost: sum.actualCost + Number(group.actual_amount ?? 0),
+  }), { plannedCost: 0, actualCost: 0 })
+  return {
+    summary: { ...rowSummary, plannedCost: rowSummary.plannedCost + groupMoney.plannedCost, actualCost: rowSummary.actualCost + groupMoney.actualCost },
     rows,
   }
 }

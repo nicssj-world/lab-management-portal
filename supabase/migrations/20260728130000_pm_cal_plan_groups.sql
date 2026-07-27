@@ -117,13 +117,14 @@ begin
       and record_status = 'active' and plan_group_id is distinct from group_id) then
       raise exception 'Equipment already has an active PM/CAL plan' using errcode = '23505';
     end if;
-    update public.equipment_pm_cal_plans set due_date = (p_group->>'due_date')::date,
+    update public.equipment_pm_cal_plans set
+      fiscal_year = (p_group->>'fiscal_year')::integer,
+      calendar_month = (p_group->>'calendar_month')::integer,
+      cal_type = p_group->>'cal_type', due_date = (p_group->>'due_date')::date,
       provider = nullif(btrim(p_group->>'provider'), ''),
       planned_cost = case when price_mode_value = 'per_unit' then unit_price_value else null end,
       version = version + 1, updated_at = now(), updated_by = p_actor
-    where equipment_id = member_id and fiscal_year = (p_group->>'fiscal_year')::integer
-      and calendar_month = (p_group->>'calendar_month')::integer and cal_type = p_group->>'cal_type'
-      and record_status = 'active' and plan_group_id = group_id;
+    where equipment_id = member_id and record_status = 'active' and plan_group_id = group_id;
     if not found then
       insert into public.equipment_pm_cal_plans (
         equipment_id, fiscal_year, calendar_month, cal_type, due_date, provider, planned_cost,
