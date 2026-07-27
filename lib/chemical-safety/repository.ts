@@ -2,7 +2,10 @@ import 'server-only'
 
 import { detectQuantityConflict, currentSdsState } from './domain'
 import type {
+  ChemicalChangeRequestListItemDTO,
   ChemicalImportRowDTO,
+  ChemicalPhysicalState,
+  ChemicalProductDTO,
   ChemicalRegistryFilters,
   ChemicalRegistryRow,
   ChemicalSdsDTO,
@@ -159,26 +162,44 @@ export async function listChemicalRegistryWithSource(
       reviewDueOn: approved ? text(approved.review_due_on) : null,
       matchStatus: approved || draft ? null : importEvidence?.match_status ?? 'missing',
     }, today)
-    const pictograms = approved ? stringArray(approved.pictogram_codes) as GhsPictogramCode[] : []
-    const hazards = approved ? snapshot.sdsHazards.filter(item => item.sds_version_id === approved.id).map(item => ({
+    // GHS จากเอกสาร SDS ที่ผ่านการทบทวนแล้วชนะเสมอ ถ้ายังไม่มีจึงใช้ค่าที่แปลงจาก master list
+    // ก่อนหน้านี้อ่านจากฉบับที่อนุมัติอย่างเดียว คอลัมน์ GHS จึงว่างทุกแถวจนกว่าจะมีคนอนุมัติ
+    const sdsPictograms = approved ? stringArray(approved.pictogram_codes) as GhsPictogramCode[] : []
+    const masterlistPictograms = stringArray(product.ghs_pictogram_codes) as GhsPictogramCode[]
+    const useSdsGhs = sdsPictograms.length > 0
+    const pictograms = useSdsGhs ? sdsPictograms : masterlistPictograms
+    const sdsHazards = approved ? snapshot.sdsHazards.filter(item => item.sds_version_id === approved.id).map(item => ({
       className: String(item.hazard_class), category: String(item.hazard_category),
     })) : []
+    const masterlistHazards = Array.isArray(product.ghs_hazard_classes)
+      ? (product.ghs_hazard_classes as Array<Record<string, unknown>>)
+        .filter(item => item && typeof item.class_th === 'string')
+        .map(item => ({ className: String(item.class_th), category: 'Masterlist' }))
+      : []
+    const hazards = sdsHazards.length > 0 ? sdsHazards : masterlistHazards
     const calculatedValue = numberOrNull(holding.calculated_total_value)
     const calculatedUnit = text(holding.calculated_total_unit) as QuantityUnit | null
     const row: ChemicalRegistryRow = {
       productId: String(product.id),
+      holdingId: String(holding.id),
       publicId: String(product.public_id),
       canonicalName: String(unitProduct.preferred_name || product.canonical_name),
       aliases: aliasesByProduct.get(product.id) ?? [],
       casNumber: text(product.cas_number),
       concentration: text(product.concentration),
+      locationId: location ? String(location.id) : null,
       packageValue: numberOrNull(holding.package_value),
       packageUnit: text(holding.package_unit) as QuantityUnit | null,
       currentContainerCount: numberOrNull(holding.current_container_count),
       minimumStock: numberOrNull(holding.minimum_stock),
+      lotNumber: text(holding.lot_number),
       reportedTotalRaw: text(holding.reported_total_raw),
       calculatedTotalValue: calculatedValue,
       calculatedTotalUnit: calculatedUnit,
+      receivedOn: text(holding.received_on),
+      openedOn: text(holding.opened_on),
+      expiresOn: text(holding.expires_on),
+      effectiveOn: text(holding.effective_on),
       quantityConflict: calculatedValue != null && calculatedUnit != null
         ? detectQuantityConflict({ calculated: { value: calculatedValue, unit: calculatedUnit }, reportedRaw: text(holding.reported_total_raw) ?? '' })
         : Boolean(holding.reported_total_raw),
@@ -248,6 +269,79 @@ export async function listChemicalImportReview(filters: ImportReviewFilters = {}
     conflictCodes: stringArray(row.conflict_codes), targetProductId: text(row.target_product_id), decisionNote: text(row.decision_note),
     decidedBy: text(row.decided_by), decidedAt: text(row.decided_at), createdAt: String(row.created_at),
   }))
+}
+
+function camelProposal(value: Record<string, unknown>): Record<string, JsonValue> {
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key.replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase()), item as JsonValue]),
+  )
+}
+
+/** รายการคำขอแก้ไข/เพิ่ม/เลิกใช้งานสารเคมี สำหรับแผงรอทบทวนของหน้าทะเบียนสารเคมี */
+export async function listChemicalChangeRequests(): Promise<ChemicalChangeRequestListItemDTO[]> {
+  const snapshot = await databaseSource.loadSnapshot()
+  const productById = new Map(snapshot.products.map(row => [row.id, row]))
+  const holdingById = new Map(snapshot.holdings.map(row => [row.id, row]))
+  const unitById = new Map(snapshot.units.map(row => [row.id, row]))
+
+  return snapshot.pendingChanges
+    .filter(row => row.status !== 'approved' && row.status !== 'rejected')
+    .map(row => {
+      const unit = unitById.get(row.unit_id)
+      let productName: string | null = null
+      if (row.entity_type === 'product') {
+        productName = productById.get(row.entity_id)?.canonical_name ?? null
+      } else if (row.entity_type === 'holding') {
+        const holding = holdingById.get(row.entity_id)
+        productName = holding ? productById.get(holding.product_id)?.canonical_name ?? null : null
+      } else {
+        productName = typeof row.proposed_data?.canonical_name === 'string' ? row.proposed_data.canonical_name : null
+      }
+      return {
+        id: String(row.id),
+        entityType: row.entity_type,
+        entityId: row.entity_id ? String(row.entity_id) : null,
+        unitId: String(row.unit_id),
+        proposedData: camelProposal(jsonObject(row.proposed_data)),
+        status: row.status,
+        submittedBy: text(row.submitted_by),
+        submittedAt: text(row.submitted_at),
+        reviewedBy: text(row.reviewed_by),
+        reviewedAt: text(row.reviewed_at),
+        reviewReason: text(row.review_reason),
+        createdBy: text(row.created_by),
+        createdAt: String(row.created_at),
+        updatedAt: String(row.updated_at),
+        productName,
+        unitName: unit ? String(unit.name_th) : 'ไม่ทราบหน่วยงาน',
+      } satisfies ChemicalChangeRequestListItemDTO
+    })
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+/**
+ * สารเคมีทั้งหมดแบบดิบ (รวมที่เลิกใช้งานแล้ว) — ใช้เติมฟอร์มแก้ไขข้อมูลสาร/สลับสถานะใช้งาน
+ * ต้องรวม retired ด้วย ไม่งั้นสารที่เพิ่งเลิกใช้งานจะกดแก้ไข/เปิดใช้งานคืนไม่ได้อีกเลย
+ */
+export async function listChemicalProductRecords(): Promise<ChemicalProductDTO[]> {
+  const products = await selectAll('chemical_products')
+  return products
+    .map(row => ({
+      id: String(row.id),
+      publicId: String(row.public_id),
+      canonicalName: String(row.canonical_name),
+      casNumber: text(row.cas_number),
+      manufacturer: text(row.manufacturer),
+      supplier: text(row.supplier),
+      productCode: text(row.product_code),
+      concentration: text(row.concentration),
+      physicalState: (text(row.physical_state) as ChemicalPhysicalState | null),
+      lifecycleStatus: (row.lifecycle_status === 'retired' ? 'retired' : 'active') as 'active' | 'retired',
+      createdBy: text(row.created_by),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    }))
+    .sort((a, b) => a.canonicalName.localeCompare(b.canonicalName, 'th'))
 }
 
 export async function listInternalSds(filters: InternalSdsFilters = {}): Promise<ChemicalSdsDTO[]> {

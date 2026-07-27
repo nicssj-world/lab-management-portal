@@ -1,0 +1,79 @@
+import 'server-only'
+
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { CHEMICAL_SDS_DEPARTMENTS } from './departments'
+
+export interface DepartmentSdsFileDTO {
+  id: string
+  publicId: string
+  displayName: string
+  displayNameEdited: boolean
+  sourcePath: string
+  fileUrl: string
+}
+
+export interface DepartmentSdsGroupDTO {
+  code: string
+  department: string
+  archiveFolder: string
+  status: 'draft' | 'published'
+  publishedAt: string | null
+  publishedByName: string | null
+  fileCount: number
+  files: DepartmentSdsFileDTO[]
+}
+
+/**
+ * รายการคลังเอกสาร SDS ของทุกงานสำหรับหน้าเจ้าหน้าที่
+ * คืนทุกงานเสมอแม้ยังไม่มีไฟล์ เพื่อให้เห็นว่างานไหนยังไม่ได้นำเข้า
+ */
+export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
+  const [departments, entries] = await Promise.all([
+    supabaseAdmin.from('chemical_sds_departments').select('*').order('display_order'),
+    supabaseAdmin.from('chemical_department_sds').select('*'),
+  ])
+  if (departments.error) throw new Error(`chemical_sds_departments: ${departments.error.message}`)
+  if (entries.error) throw new Error(`chemical_department_sds: ${entries.error.message}`)
+
+  const publisherIds = [...new Set(
+    (departments.data ?? []).map(row => row.published_by).filter((value): value is string => Boolean(value)),
+  )]
+  const publishers = new Map<string, string>()
+  if (publisherIds.length > 0) {
+    const profiles = await supabaseAdmin.from('profiles').select('id, name').in('id', publisherIds)
+    for (const profile of profiles.data ?? []) publishers.set(String(profile.id), String(profile.name ?? ''))
+  }
+
+  const byDepartment = new Map<string, DepartmentSdsFileDTO[]>()
+  for (const entry of entries.data ?? []) {
+    const list = byDepartment.get(String(entry.department_code)) ?? []
+    list.push({
+      id: String(entry.id),
+      publicId: String(entry.public_id),
+      displayName: String(entry.display_name),
+      displayNameEdited: Boolean(entry.display_name_edited),
+      sourcePath: String(entry.source_path),
+      fileUrl: `/api/public/department-sds/${entry.public_id}/file?disposition=inline`,
+    })
+    byDepartment.set(String(entry.department_code), list)
+  }
+
+  const seeded = new Map((departments.data ?? []).map(row => [String(row.code), row]))
+
+  // ไล่จาก CHEMICAL_SDS_DEPARTMENTS เพื่อให้ลำดับคงที่และเห็นงานที่ยังไม่ได้ seed ลงฐานข้อมูล
+  return CHEMICAL_SDS_DEPARTMENTS.map(definition => {
+    const row = seeded.get(definition.code)
+    const files = (byDepartment.get(definition.code) ?? [])
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, 'th', { numeric: true }))
+    return {
+      code: definition.code,
+      department: definition.department,
+      archiveFolder: definition.archiveFolder,
+      status: row?.status === 'published' ? 'published' : 'draft',
+      publishedAt: row?.published_at ? String(row.published_at) : null,
+      publishedByName: row?.published_by ? publishers.get(String(row.published_by)) ?? null : null,
+      fileCount: files.length,
+      files,
+    }
+  })
+}

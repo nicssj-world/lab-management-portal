@@ -1,6 +1,5 @@
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { NextResponse, type NextRequest } from 'next/server'
-import { requireChemicalAdmin } from '@/lib/chemical-safety/access'
 import { getPublicSdsFile } from '@/lib/chemical-safety/public'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { r2ObjectResponse } from '@/lib/r2/stream-response'
@@ -9,8 +8,8 @@ import { consumeClientRateLimit } from '@/lib/security/request-protection'
 function safeName(value: string) { return value.replace(/[^\p{L}\p{N}._-]+/gu, '_').slice(0, 180) || 'SDS.pdf' }
 
 export async function GET(request: NextRequest, ctx: RouteContext<'/api/public/sds/[publicId]/file'>) {
-  const guard = await requireChemicalAdmin()
-  if (guard.response) return guard.response
+  // เปิดสาธารณะโดยตั้งใจ — getPublicSdsFile บังคับว่าต้องเป็นสารที่เผยแพร่ได้
+  // และมี SDS ฉบับที่อนุมัติแล้วเท่านั้น การเดา publicId จึงไม่ได้อะไรเพิ่ม
   const { publicId } = await ctx.params
   const rate = consumeClientRateLimit(request.headers, `public-sds-file:${publicId}`, 120, 10 * 60_000)
   if (!rate.allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': String(rate.retryAfterSeconds), 'Cache-Control': 'no-store' } })

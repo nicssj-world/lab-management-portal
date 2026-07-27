@@ -11,6 +11,14 @@ const publicNav = readFileSync('components/layout/PublicNav.tsx', 'utf8')
 const publicSdsPage = readFileSync('app/(public)/sds/page.tsx', 'utf8')
 const publicSdsApi = readFileSync('app/api/public/sds/route.ts', 'utf8')
 const publicSdsFileApi = readFileSync('app/api/public/sds/[publicId]/file/route.ts', 'utf8')
+const publicDepartmentSdsApi = readFileSync('app/api/public/department-sds/route.ts', 'utf8')
+const publicDepartmentSdsFileApi = readFileSync('app/api/public/department-sds/[publicId]/file/route.ts', 'utf8')
+const publicModule = readFileSync('lib/chemical-safety/public.ts', 'utf8')
+const ghsSql = readFileSync('scripts/chemical-safety-ghs-and-departments.sql', 'utf8')
+const registryCrudSql = readFileSync('scripts/chemical-safety-registry-crud.sql', 'utf8')
+const chemicalSchemas = readFileSync('lib/chemical-safety/schemas.ts', 'utf8')
+const changeRequestsRoute = readFileSync('app/api/admin/chemical-safety/change-requests/route.ts', 'utf8')
+const changeRequestsSubmitRoute = readFileSync('app/api/admin/chemical-safety/change-requests/[id]/submit/route.ts', 'utf8')
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -48,21 +56,81 @@ function constraintDefinition(tableSql: string, name: string) {
 const normalized = sql.trim()
 assert.match(normalized, /^--[\s\S]*\bBEGIN;/i, 'migration starts a transaction')
 assert.match(normalized, /NOTIFY pgrst, 'reload schema';\s*COMMIT;$/i, 'migration commits after schema reload')
-assert.equal(
-  packageJson.scripts?.['test:chemical-safety'],
-  'tsx scripts/chemical-safety-schema.test.ts && tsx lib/chemical-safety/domain.test.ts && tsx lib/chemical-safety/materialize.test.ts && tsx lib/chemical-safety/import/masterlist-june-2026.test.ts && tsx lib/chemical-safety/import/sds-import.test.ts && tsx scripts/chemical-safety-import-cli.test.ts && tsx scripts/chemical-safety-import-runtime.test.ts',
-  'Chemical safety package script runs the schema, domain, materialization, master-list, SDS import, CLI, and runtime contracts',
+for (const required of [
+  'scripts/chemical-safety-schema.test.ts',
+  'lib/chemical-safety/domain.test.ts',
+  'lib/chemical-safety/ghs.test.ts',
+  'lib/chemical-safety/departments.test.ts',
+  'lib/chemical-safety/materialize.test.ts',
+  'lib/chemical-safety/import/masterlist-june-2026.test.ts',
+  'lib/chemical-safety/import/sds-import.test.ts',
+  'scripts/chemical-safety-import-cli.test.ts',
+  'scripts/chemical-safety-import-runtime.test.ts',
+  'scripts/chemical-safety-ui.test.ts',
+]) {
+  assert.ok(
+    packageJson.scripts?.['test:chemical-safety']?.includes(`tsx ${required}`),
+    `test:chemical-safety must run ${required}`,
+  )
+}
+
+// ── การย้ายฐานข้อมูลรอบ GHS + คลังเอกสารตามงาน ─────────────────────────────
+assert.match(ghsSql.trim(), /^--[\s\S]*\bBEGIN;/i, 'the GHS migration starts a transaction')
+assert.match(ghsSql.trim(), /NOTIFY pgrst, 'reload schema';\s*COMMIT;$/i, 'the GHS migration commits after schema reload')
+for (const column of ['ghs_source_text', 'ghs_pictogram_codes', 'ghs_hazard_classes']) {
+  assert.match(ghsSql, new RegExp(`add column if not exists ${column}`, 'i'), `chemical_products gains ${column}`)
+}
+// สัญลักษณ์ต้องจำกัดอยู่ใน GHS01–GHS09 เท่านั้น ไม่ปล่อยให้เขียนค่าอะไรก็ได้
+assert.match(ghsSql, /ghs_pictogram_codes <@ ARRAY\[[\s\S]*?'GHS09'/i, 'product pictograms are constrained to the GHS set')
+// รหัส H/P แบบผสมและแบบมีตัวอักษรต่อท้ายต้องบันทึกได้ ไม่งั้นการกรอก SDS จริงจะล้ม
+assert.match(ghsSql, /\^H\[0-9\]\{3\}\[A-Za-z\]\{0,2\}\$/, 'H-codes accept a trailing suffix such as H350i')
+assert.match(ghsSql, /\^P\[0-9\]\{3\}\(\\\+P\?\[0-9\]\{3\}\)\*\$/, 'P-codes accept combinations such as P301+P310')
+for (const table of ['chemical_sds_departments', 'chemical_department_sds']) {
+  assert.match(ghsSql, new RegExp(`create table if not exists public\\.${table}`, 'i'), `migration creates ${table}`)
+  assert.match(ghsSql, new RegExp(`alter table public\\.${table}[\\s\\S]{0,80}enable row level security`, 'i'), `${table} enables RLS`)
+}
+assert.match(
+  ghsSql,
+  /REVOKE ALL ON public\.chemical_sds_departments, public\.chemical_department_sds\s+FROM anon, authenticated/i,
+  'department SDS tables are never readable by anon or authenticated roles directly',
+)
+// การเผยแพร่ต้องบันทึกเสมอว่าใครกดและเมื่อไร
+assert.match(
+  ghsSql,
+  /status = 'published' AND published_by IS NOT NULL AND published_at IS NOT NULL/i,
+  'publishing a department always records who and when',
 )
 
+// ฝั่งเจ้าหน้าที่ยังคงจำกัดเฉพาะผู้ดูแลระบบตามการตัดสินใจเดิม
 const accessDecision = chemicalAccess.match(/export function chemicalAccessDecision\([\s\S]*?\n\}/)?.[0] ?? ''
 assert.match(accessDecision, /normalizeRole\(actor\.role\) === 'Admin'/, 'all chemical-safety access is temporarily admin-only')
 assert.doesNotMatch(accessDecision, /request\.action === 'view'\) return true/, 'ordinary staff cannot view chemical-safety data')
 assert.match(staffSidebar, /href: '\/staff\/lab-map\/chemicals'[\s\S]*?role: 'Admin'/, 'chemical room menu is admin-only')
 assert.match(staffSidebar, /href: '\/staff\/lab-map\/sds'[\s\S]*?role: 'Admin'/, 'SDS management menu is admin-only')
-assert.doesNotMatch(publicNav, /href: '\/sds'/, 'public navigation does not expose the SDS route')
-for (const source of [publicSdsPage, publicSdsApi, publicSdsFileApi]) {
-  assert.match(source, /requireChemicalAdmin/, 'every former public SDS entry point enforces admin authorization')
+
+// ฝั่งสาธารณะเปิดให้ทุกคนตามที่ผู้ใช้ระบุ: ผังการจัดเก็บ การจำแนก GHS และ SDS ของทุกงาน
+// ข้อมูลถูกคัดกรองในชั้น lib/chemical-safety/public.ts ไม่ใช่ด้วย guard ที่ route
+// หน้ายังเปิดสาธารณะอยู่ (เข้าตรง /sds ได้) แต่ผู้ใช้ขอให้เอาออกจากเมนูบนสุดของ public nav
+assert.doesNotMatch(publicNav, /href: '\/sds'/, 'public navigation no longer surfaces the SDS link in the top menu')
+for (const source of [publicSdsPage, publicSdsApi, publicSdsFileApi, publicDepartmentSdsApi, publicDepartmentSdsFileApi]) {
+  assert.doesNotMatch(source, /requireChemical/, 'public SDS entry points must not require a login')
 }
+for (const source of [publicSdsApi, publicSdsFileApi, publicDepartmentSdsApi, publicDepartmentSdsFileApi]) {
+  assert.match(source, /consumeClientRateLimit/, 'every public SDS route is rate limited')
+}
+// ไฟล์ของงานต้องตรวจสถานะเผยแพร่ซ้ำที่ชั้นข้อมูล ไม่ใช่พึ่งว่า UI จะไม่แสดงลิงก์
+assert.match(
+  publicModule,
+  /getPublicDepartmentSdsFile[\s\S]*?status !== 'published'[\s\S]*?return null/,
+  'department SDS files are only served for published departments',
+)
+// สารที่ SDS ยังไม่อนุมัติต้องไม่มี URL ไฟล์ แม้จะแสดงการจำแนก GHS บนหน้าสาธารณะ
+assert.match(publicModule, /viewUrl: approved \?/, 'pending chemicals expose no file URL')
+assert.match(
+  publicModule,
+  /getPublicSdsFile[\s\S]*?\.eq\('status', 'approved'\)/,
+  'the public file route still requires an approved SDS version',
+)
 
 const tables = [
   'chemical_units', 'chemical_rooms', 'chemical_storage_locations',
@@ -339,5 +407,61 @@ assert.doesNotMatch(sql, /chemical_import[\s\S]{0,80}set\s+status\s*=\s*'approve
 assert.doesNotMatch(sql, /legacy[\s\S]{0,80}status\s*=\s*'approved'/i, 'legacy documents never auto-approve')
 assert.match(sdsTable, /status text not null default 'draft'/i, 'new/imported SDS remains draft until review')
 assert.doesNotMatch(batchGuard + rowGuard, /chemical_sds_versions/i, 'import provenance guards never publish SDS')
+
+// ─────────────────────────────────────────────────────────────────────────────
+// เพิ่ม/แก้ไข/เลิกใช้งานสารเคมีในทะเบียน — ผ่าน workflow เสนอ→ทบทวน→อนุมัติเดิม
+// ก่อนหน้านี้ไม่มีทางเพิ่มสารเคมีใหม่เข้าทะเบียนได้เลย (entity_id บังคับอ้างของที่มีอยู่แล้วเสมอ)
+// ─────────────────────────────────────────────────────────────────────────────
+assert.match(registryCrudSql.trim(), /^--[\s\S]*\bBEGIN;/i, 'the registry CRUD migration starts a transaction')
+assert.match(registryCrudSql.trim(), /NOTIFY pgrst, 'reload schema';\s*COMMIT;$/i, 'the registry CRUD migration commits after schema reload')
+
+assert.match(registryCrudSql, /ALTER TABLE public\.chemical_change_requests ALTER COLUMN entity_id DROP NOT NULL/i, 'entity_id becomes nullable for new-chemical requests')
+assert.match(registryCrudSql, /CHECK \(entity_type IN \('product', 'holding', 'new_chemical'\)\)/, 'entity_type accepts new_chemical')
+assert.match(
+  registryCrudSql,
+  /entity_type = 'new_chemical' AND entity_id IS NULL[\s\S]{0,80}entity_type IN \('product', 'holding'\) AND entity_id IS NOT NULL/,
+  'entity_id is required for edits and forbidden for new-chemical requests — the two must not both be allowed',
+)
+
+// สาขา 'product' และ 'holding' เดิมต้องอยู่ครบ ไม่ถูกเขียนทับหายไปตอนแทนที่ทั้งฟังก์ชัน
+for (const marker of [
+  "current_row.entity_type = 'product'",
+  "current_row.entity_type = 'holding'",
+  "current_row.entity_type = 'new_chemical'",
+  'self_approval_forbidden',
+  'invalid_new_chemical_snapshot',
+  'chemical_location_not_found',
+]) {
+  assert.ok(registryCrudSql.includes(marker), `review_chemical_change_request must still handle: ${marker}`)
+}
+// การสร้างสารใหม่ต้องแทรกทั้งสามตาราง (สาร → หน่วยงานที่เชื่อมโยง → คลัง) ในธุรกรรมเดียว
+assert.match(registryCrudSql, /INSERT INTO public\.chemical_products/i)
+assert.match(registryCrudSql, /INSERT INTO public\.chemical_unit_products/i)
+assert.match(registryCrudSql, /INSERT INTO public\.chemical_inventory_holdings/i)
+// รหัส GHS ตอนสร้างใหม่ต้องเช็คว่าอยู่ในเซ็ต GHS01–09 เท่านั้น เหมือนคอลัมน์ระดับ product
+assert.match(registryCrudSql, /GHS01','GHS02','GHS03','GHS04','GHS05','GHS06','GHS07','GHS08','GHS09/)
+// หมวดความเป็นอันตรายต้องใช้ฟังก์ชันตรวจรูปร่างเดียวกับที่ chemical_products ใช้ ไม่ประกาศซ้ำ
+assert.match(registryCrudSql, /public\.chemical_ghs_hazard_classes_valid\(current_row\.proposed_data->'ghs_hazard_classes'\)/)
+
+// zod: schema ใหม่ต้องมีอยู่จริงและ union ต้องรับ new_chemical โดยไม่บังคับ entityId
+assert.match(chemicalSchemas, /export const chemicalNewChemicalProposalSchema/, 'chemicalNewChemicalProposalSchema exists')
+assert.match(
+  chemicalSchemas,
+  /entityType: z\.literal\('new_chemical'\), unitId: uuid, proposedData: chemicalNewChemicalProposalSchema/,
+  'the new_chemical branch of the discriminated union has no entityId field',
+)
+
+// API: เส้นทางเดิมต้องรองรับ entity_id เป็น null สำหรับ new_chemical และมี GET ให้แผงรอทบทวนใช้
+assert.match(changeRequestsRoute, /export async function GET/, 'change-requests route exposes a GET for the pending-review panel')
+assert.match(
+  changeRequestsRoute,
+  /entityType === 'new_chemical' \? null : input\.data\.entityId/,
+  'creating a new-chemical request stores a null entity_id instead of a bogus one',
+)
+assert.match(
+  changeRequestsSubmitRoute,
+  /entityType === 'new_chemical'\)\s*return chemicalNewChemicalProposalSchema/,
+  'draft edit/submit validate new_chemical proposals with their own schema',
+)
 
 console.log('chemical safety schema contract passed')
