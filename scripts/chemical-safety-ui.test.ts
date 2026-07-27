@@ -38,7 +38,9 @@ for (const file of files) {
 // ── ต้องใช้ไลบรารีคอมโพเนนต์ของโปรเจค ───────────────────────────────────────
 // หมายเหตุ: ไม่มี Stat ในหน้านี้อีกต่อไป — แท็บ "ภาพรวม" ถูกถอดออกตามที่ผู้ใช้ขอ
 const hubSource = readFileSync(join(COMPONENT_DIR, 'ChemicalSafetyHubClient.tsx'), 'utf8')
-for (const required of ['@/components/ui/Card', '@/components/ui/PageHeader', '@/components/ui/ViewTabs', '@/components/ui/FilterChips', '@/components/ui/EmptyState']) {
+assert.ok(hubSource.includes('chemical-position-select'), 'ChemicalSafetyHubClient must provide a position filter select')
+assert.ok(hubSource.includes('<select value={position}'), 'position filter must remain a select control')
+for (const required of ['@/components/ui/Card', '@/components/ui/PageHeader', '@/components/ui/ViewTabs', '@/components/ui/EmptyState']) {
   assert.ok(hubSource.includes(required), `ChemicalSafetyHubClient ต้อง import ${required}`)
 }
 // เพิ่ม/แก้ไข/เลิกใช้งานสารเคมีต้องผ่าน workflow เสนอ→ทบทวน→อนุมัติเดิม ไม่ใช่แก้ตรงทันที
@@ -46,11 +48,24 @@ assert.ok(hubSource.includes('RegistryChangeModal'), 'ทะเบียนส�
 assert.ok(hubSource.includes('ChangeRequestPanel'), 'ทะเบียนสารเคมีต้องมีแผงรอทบทวนคำขอ')
 // แท็บต้องผูกกับ URL ไม่ใช่ useState ไม่งั้นแชร์ลิงก์และกดย้อนกลับไม่ได้
 assert.ok(hubSource.includes('ViewTabs'), 'แท็บของหน้าห้องสารเคมีต้องใช้ ViewTabs ที่ผูกกับ ?view=')
+assert.ok(hubSource.includes('openSdsEditor'), 'ทะเบียนสารเคมีต้องเปิดฟอร์มอัปโหลด SDS ได้จากแต่ละรายการ')
+assert.ok(hubSource.includes("icon=\"upload\""), 'ทะเบียนสารเคมีต้องมีปุ่มอัปโหลดไฟล์ SDS')
+
+const registryModalSource = readFileSync(join(COMPONENT_DIR, 'RegistryChangeModal.tsx'), 'utf8')
+assert.ok(registryModalSource.includes('{!isHolding && ('), 'ฟอร์มแก้ไขสารต้องแสดงส่วน GHS')
+assert.ok(registryModalSource.includes('ghsPictogramCodes: pictograms'), 'ฟอร์มแก้ไขสารต้องส่งสัญลักษณ์ GHS ผ่าน workflow')
+assert.ok(registryModalSource.includes('ghsHazardClasses: hazards'), 'ฟอร์มแก้ไขสารต้องส่งหมวดความเป็นอันตรายผ่าน workflow')
+assert.ok(registryModalSource.includes('GHS เบื้องต้นสำหรับทะเบียน'), 'ฟอร์มทะเบียนต้องระบุว่า GHS เป็นข้อมูลเบื้องต้น')
 
 const sdsSource = readFileSync(join(COMPONENT_DIR, 'SdsManagementClient.tsx'), 'utf8')
-for (const required of ['@/components/ui/Card', '@/components/ui/Button', '@/components/ui/ViewTabs', '@/components/ui/Stat']) {
+assert.ok(sdsSource.includes('เพิ่ม SDS'), 'SDS แยกตามงานต้องมีปุ่มเพิ่มเอกสารใหม่')
+assert.ok(sdsSource.includes('แก้ไขชื่อ'), 'SDS แยกตามงานต้องมีปุ่มแก้ไขชื่อเอกสาร')
+for (const required of ['@/components/ui/Card', '@/components/ui/Button', '@/components/ui/Stat']) {
   assert.ok(sdsSource.includes(required), `SdsManagementClient ต้อง import ${required}`)
 }
+assert.ok(hubSource.includes('SdsManagementClient'), 'แท็บ SDS ต้องแสดงภายในหน้าสารเคมีและ SDS')
+assert.ok(hubSource.includes("view === 'sds-chemicals'"), 'แท็บ SDS ห้องสารเคมีต้องอยู่ในหน้าสารเคมีและ SDS')
+assert.ok(hubSource.includes("view === 'sds-departments'"), 'แท็บ SDS แยกตามงานต้องอยู่ในหน้าสารเคมีและ SDS')
 
 // ── แหล่งเดียวของการแมปความหมาย → ภาพ ──────────────────────────────────────
 // ห้ามประกาศแผนที่สีของโซนซ้ำในไฟล์ client (เคยมี GROUP_COLORS ซ้ำใน hub)
@@ -67,6 +82,7 @@ for (const file of files) {
 const modalSource = readFileSync(join(COMPONENT_DIR, 'SdsEditorModal.tsx'), 'utf8')
 assert.ok(modalSource.includes('role="dialog"'), 'SdsEditorModal ต้องประกาศ role="dialog"')
 assert.ok(modalSource.includes('aria-modal="true"'), 'SdsEditorModal ต้องประกาศ aria-modal')
+assert.ok(modalSource.includes('GHS ที่ยืนยันจาก SDS หมวด 2'), 'ฟอร์ม SDS ต้องระบุว่า GHS มาจาก SDS หมวด 2')
 assert.ok(
   !/inset:\s*0[^}]*}\s*}\s*onClick/.test(modalSource),
   'SdsEditorModal ต้องไม่ปิดเมื่อคลิกพื้นหลัง (ข้อตกลงของโปรเจค: ปิดด้วยปุ่ม X เท่านั้น)',

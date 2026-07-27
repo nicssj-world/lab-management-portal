@@ -109,6 +109,9 @@ export interface ChemicalProductDTO {
   concentration: string | null
   physicalState: ChemicalPhysicalState | null
   lifecycleStatus: ChemicalLifecycleStatus
+  ghsSourceText: string | null
+  ghsPictogramCodes: GhsPictogramCode[]
+  ghsHazardClasses: Array<{ classTh: string; classEn: string }>
   createdBy: string | null
   createdAt: string
   updatedAt: string

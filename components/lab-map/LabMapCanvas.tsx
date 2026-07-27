@@ -1,7 +1,7 @@
 'use client'
 
 import { useId, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type {
   LabAccessPointDefinition,
   LabLabelDefinition,
@@ -240,12 +240,16 @@ export function LabMapCanvas({
     }
   }
 
-  function selectCoordinate(event: React.MouseEvent<SVGSVGElement>) {
-    if (!onCoordinateSelect || (event.target as Element).closest('[data-space-code], [data-equipment-code]')) return
-    const point = event.currentTarget.createSVGPoint()
+  function selectCoordinate(event: ReactMouseEvent<SVGSVGElement | SVGGElement>) {
+    if (!onCoordinateSelect) return
+    const svg = event.currentTarget instanceof SVGSVGElement
+      ? event.currentTarget
+      : event.currentTarget.ownerSVGElement
+    if (!svg) return
+    const point = svg.createSVGPoint()
     point.x = event.clientX
     point.y = event.clientY
-    const matrix = event.currentTarget.getScreenCTM()?.inverse()
+    const matrix = svg.getScreenCTM()?.inverse()
     if (!matrix) return
     const svgPoint = point.matrixTransform(matrix)
     onCoordinateSelect(
@@ -313,7 +317,14 @@ export function LabMapCanvas({
                   role={interactive ? 'button' : undefined}
                   tabIndex={interactive ? 0 : -1}
                   aria-label={`${space.nameTh}${space.controlled ? ' พื้นที่ควบคุม' : ''}`}
-                  onClick={() => interactive && onSelect(space.code)}
+                  onClick={(event) => {
+                    if (onCoordinateSelect) {
+                      event.stopPropagation()
+                      selectCoordinate(event)
+                      return
+                    }
+                    if (interactive) onSelect(space.code)
+                  }}
                   onKeyDown={(event) => handleSpaceKeyDown(event, space.code)}
                   style={{ '--space-fill': fillForSpace(space, mode, patternIds, spaceTones?.[space.code]) } as React.CSSProperties}
                 >

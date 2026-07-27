@@ -31,9 +31,13 @@ export const internalSdsQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
 })
 
+const chemicalGhsHazardClassProposalSchema = z.object({
+  classTh: z.string().trim().min(1).max(250),
+  classEn: z.string().trim().min(1).max(250),
+}).strict()
+
 export const chemicalProductProposalSchema = z.object({
   canonicalName: z.string().trim().min(1).max(300),
-  aliases: z.array(z.string().trim().min(1).max(300)).max(50).default([]),
   casNumber: z.string().trim().regex(/^\d{2,7}-\d{2}-\d$/).nullable().optional(),
   manufacturer: optionalText(300),
   supplier: optionalText(300),
@@ -41,6 +45,9 @@ export const chemicalProductProposalSchema = z.object({
   concentration: optionalText(100),
   physicalState: z.enum(['solid', 'liquid', 'gas', 'mixture', 'unknown']).nullable().optional(),
   lifecycleStatus: z.enum(['active', 'retired']).default('active'),
+  ghsSourceText: optionalText(2000),
+  ghsPictogramCodes: z.array(pictogram).max(9).default([]),
+  ghsHazardClasses: z.array(chemicalGhsHazardClassProposalSchema).max(20).default([]),
 }).strict()
 
 export const chemicalHoldingProposalSchema = z.object({
@@ -58,14 +65,7 @@ export const chemicalHoldingProposalSchema = z.object({
   effectiveOn: nullableDate,
 }).strict()
 
-const chemicalGhsHazardClassProposalSchema = z.object({
-  classTh: z.string().trim().min(1).max(250),
-  classEn: z.string().trim().min(1).max(250),
-}).strict()
-
 // สร้างสารเคมีใหม่ทั้งชุด (product + holding) ในคำขอเดียว — ไม่มี productId เพราะยังไม่มีจริง
-// รับ GHS ตรง ๆ ได้ (ต่างจากการแก้ไขสารเดิมที่ไม่รับผ่านช่องทางนี้) เพราะสารที่เพิ่มเองไม่มี
-// master list ให้แปลงอัตโนมัติเหมือนสาร 25 ตัวของห้องเก็บสารเคมี
 export const chemicalNewChemicalProposalSchema = z.object({
   canonicalName: z.string().trim().min(1).max(300),
   aliases: z.array(z.string().trim().min(1).max(300)).max(50).default([]),

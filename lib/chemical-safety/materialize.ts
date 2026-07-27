@@ -4,11 +4,11 @@ import { CHEMICAL_PREP_LOCATIONS, CHEMICAL_ROOM_NAME_TH } from './storage-manife
 import type { GhsPictogramCode, QuantityUnit, SdsMatchStatus } from './types'
 
 const UNIT_BY_SOURCE: Record<string, { code: string; nameTh: string }> = {
-  'กลุ่มงานเทคนิคฯ': { code: 'TECHMED', nameTh: 'กลุ่มงานเทคนิคการแพทย์' },
+  'กลุ่มงานเทคนิคฯ': { code: 'OFFICE', nameTh: 'สำนักงานกลุ่มงานเทคนิคการแพทย์' },
   'โลหิตวิทยา/ภูมิคุ้มกันวิทยา': { code: 'HEMA-IMMUNO', nameTh: 'โลหิตวิทยา/ภูมิคุ้มกันวิทยา' },
-  'จุลชีววิทยา': { code: 'MICRO', nameTh: 'จุลชีววิทยา' },
-  'ภูมิคุ้มกันวิทยา': { code: 'IMMUNO', nameTh: 'ภูมิคุ้มกันวิทยา' },
-  'โลหิตวิทยา': { code: 'HEMA', nameTh: 'โลหิตวิทยา' },
+  'จุลชีววิทยา': { code: 'MICROBIOLOGY', nameTh: 'งานจุลชีววิทยา' },
+  'ภูมิคุ้มกันวิทยา': { code: 'IMMUNOLOGY', nameTh: 'งานภูมิคุ้มกันวิทยาคลินิก' },
+  'โลหิตวิทยา': { code: 'HEMATOLOGY', nameTh: 'งานโลหิตวิทยาคลินิก' },
 }
 
 export interface ChemicalMaterializationProduct {

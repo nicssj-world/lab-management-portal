@@ -13,9 +13,15 @@ const ZONES = [
   { code: 'T', label: 'ตำแหน่ง T (โต๊ะ)' },
 ]
 
-export function PublicSdsLibrary({ initialItems }: { initialItems: PublicSdsResult[] }) {
+export function PublicSdsLibrary({
+  initialItems,
+  initialQuery = '',
+}: {
+  initialItems: PublicSdsResult[]
+  initialQuery?: string
+}) {
   const [items, setItems] = useState(initialItems)
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(initialQuery)
   const [unit, setUnit] = useState('')
   const [ghs, setGhs] = useState('')
   const [zone, setZone] = useState('')
@@ -27,14 +33,22 @@ export function PublicSdsLibrary({ initialItems }: { initialItems: PublicSdsResu
   )
 
   useEffect(() => {
+    setQ(initialQuery)
+  }, [initialQuery])
+
+  useEffect(() => {
     const controller = new AbortController()
     const timer = setTimeout(async () => {
       setState('loading')
-      const params = new URLSearchParams()
+      const params = new URLSearchParams(location.search)
       if (q) params.set('q', q)
+      else params.delete('q')
       if (unit) params.set('unit', unit)
+      else params.delete('unit')
       if (ghs) params.set('ghs', ghs)
+      else params.delete('ghs')
       if (zone) params.set('zone', zone)
+      else params.delete('zone')
       history.replaceState(null, '', `${location.pathname}${params.size ? `?${params}` : ''}${location.hash}`)
       try {
         const response = await fetch(`/api/public/sds?${params}`, { signal: controller.signal })

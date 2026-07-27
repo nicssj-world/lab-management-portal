@@ -49,9 +49,8 @@ ALTER TABLE public.chemical_change_requests
 -- สาขา 'product' และ 'holding' คัดลอกมาจากต้นฉบับทุกตัวอักษร ไม่มีการเปลี่ยนแปลง
 -- เพิ่มเฉพาะสาขาใหม่สำหรับสร้างสารเคมีใหม่ทั้งชุด (product + unit_product + holding)
 --
--- จงใจไม่รับคีย์ GHS (ghs_pictogram_codes ฯลฯ) ในการ "แก้ไข" ผ่านเส้นทางนี้ เพราะ GHS
--- ของสารที่มีอยู่แล้วมาจาก master list/SDS อยู่แล้ว แต่ตอน "สร้างใหม่" ยอมให้กรอกได้
--- เนื่องจากสารที่เพิ่มเองไม่มี master list ให้แปลงอัตโนมัติ
+-- การแก้ไขข้อมูลสารรองรับ GHS ผ่าน workflow เดียวกัน เพื่อให้ผู้ทบทวนยืนยันข้อมูล
+-- จากฉลากหรือ SDS ก่อนมีผลกับทะเบียนสารเคมี
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.review_chemical_change_request(
   p_request_id uuid, p_actor_id uuid, p_decision text, p_reason text
@@ -65,7 +64,8 @@ DECLARE
   new_product_id uuid;
   product_keys constant text[] := ARRAY[
     'canonical_name', 'cas_number', 'manufacturer', 'supplier', 'product_code',
-    'concentration', 'physical_state', 'lifecycle_status'
+    'concentration', 'physical_state', 'lifecycle_status', 'ghs_source_text',
+    'ghs_pictogram_codes', 'ghs_hazard_classes'
   ];
   holding_keys constant text[] := ARRAY[
     'product_id', 'unit_id', 'location_id', 'lot_number', 'package_value',
@@ -119,7 +119,7 @@ BEGIN
         FROM jsonb_each(current_row.proposed_data) AS proposed_value(key, value)
         WHERE key = ANY(ARRAY[
           'cas_number', 'manufacturer', 'supplier', 'product_code',
-          'concentration', 'physical_state'
+          'concentration', 'physical_state', 'ghs_source_text'
         ])
           AND jsonb_typeof(value) NOT IN ('string','null')
       )
@@ -130,6 +130,14 @@ BEGIN
         current_row.proposed_data->>'physical_state' IS NOT NULL
         AND current_row.proposed_data->>'physical_state' NOT IN ('solid','liquid','gas','mixture','unknown')
       )
+      OR (
+        jsonb_typeof(current_row.proposed_data->'ghs_pictogram_codes') <> 'array'
+        OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(current_row.proposed_data->'ghs_pictogram_codes') AS code
+          WHERE code NOT IN ('GHS01','GHS02','GHS03','GHS04','GHS05','GHS06','GHS07','GHS08','GHS09')
+        )
+      )
+      OR NOT public.chemical_ghs_hazard_classes_valid(current_row.proposed_data->'ghs_hazard_classes')
     THEN RAISE EXCEPTION 'invalid_product_snapshot'; END IF;
 
     UPDATE public.chemical_products AS product
@@ -141,6 +149,12 @@ BEGIN
       concentration = current_row.proposed_data->>'concentration',
       physical_state = current_row.proposed_data->>'physical_state',
       lifecycle_status = current_row.proposed_data->>'lifecycle_status',
+      ghs_source_text = current_row.proposed_data->>'ghs_source_text',
+      ghs_pictogram_codes = COALESCE(
+        (SELECT array_agg(value) FROM jsonb_array_elements_text(current_row.proposed_data->'ghs_pictogram_codes') AS value),
+        ARRAY[]::text[]
+      ),
+      ghs_hazard_classes = current_row.proposed_data->'ghs_hazard_classes',
       updated_at = now()
     WHERE product.id = current_row.entity_id
     RETURNING to_jsonb(product) INTO target_after;

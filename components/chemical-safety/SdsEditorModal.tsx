@@ -189,7 +189,7 @@ export function SdsEditorModal({
             <SdsDropzone
               onFile={upload}
               disabled={busy !== null}
-              hint="รับเฉพาะ PDF ขนาด 1–50 MB · อัปโหลดใหม่จะแทนที่ไฟล์เดิมของฉบับร่างนี้"
+              hint="รับเฉพาะ PDF ขนาดไม่เกิน 50 MB · อัปโหลดใหม่จะแทนที่ไฟล์เดิมของฉบับร่างนี้"
             />
           </section>
 
@@ -208,7 +208,10 @@ export function SdsEditorModal({
           </section>
 
           <section>
-            <h3 style={sectionStyle}>การจำแนกตามระบบ GHS</h3>
+            <h3 style={sectionStyle}>GHS ที่ยืนยันจาก SDS หมวด 2</h3>
+            <p style={{ margin: `0 0 ${SPACE.sm}px`, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>
+              ข้อมูลนี้ผูกกับ SDS ฉบับนี้โดยตรง ค่าจากทะเบียนอาจถูกเติมไว้ให้เพื่อช่วยเริ่มต้น แต่ต้องตรวจสอบและแก้ตาม SDS หมวด 2 ก่อนบันทึก
+            </p>
             <label style={labelStyle} htmlFor="sds-signal-word">คำสัญญาณ</label>
             <select
               id="sds-signal-word"

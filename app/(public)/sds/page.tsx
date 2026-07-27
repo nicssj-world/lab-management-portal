@@ -1,21 +1,26 @@
 import type { Metadata } from 'next'
 import { PublicDepartmentSds } from '@/components/chemical-safety/PublicDepartmentSds'
 import { PublicSdsLibrary } from '@/components/chemical-safety/PublicSdsLibrary'
-import { PublicStorageLayout } from '@/components/chemical-safety/PublicStorageLayout'
-import { getPublicStorageLayout, listPublicDepartmentSds, searchPublicSds } from '@/lib/chemical-safety/public'
+import { listPublicDepartmentSds, searchPublicSds } from '@/lib/chemical-safety/public'
 
 // หน้านี้เปิดสาธารณะโดยตั้งใจ — ไม่มี guard ใด ๆ
 // ข้อมูลที่ส่งออกถูกคัดกรองในชั้น lib/chemical-safety/public.ts แล้ว
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = {
-  title: 'SDS | ข้อมูลความปลอดภัยสารเคมี',
-  description: 'ผังการจัดเก็บสารเคมี เอกสารข้อมูลความปลอดภัย (SDS) แยกตามงาน และคู่มือความปลอดภัย MN-LAB-02',
+  title: 'SDS | ข้อมูลด้านความปลอดภัยสารเคมี',
+  description: 'ค้นหาเอกสารข้อมูลความปลอดภัย (SDS) แยกตามงานและตามชื่อสาร พร้อมคู่มือความปลอดภัย MN-LAB-02',
 }
 
-export default async function PublicSdsPage() {
-  const [items, layout, departments] = await Promise.all([
+export default async function PublicSdsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string | string[]; department?: string | string[] }>
+}) {
+  const { q, department } = await searchParams
+  const initialQuery = typeof q === 'string' ? q.trim().slice(0, 200) : ''
+  const initialDepartment = typeof department === 'string' ? department : ''
+  const [items, departments] = await Promise.all([
     searchPublicSds(),
-    getPublicStorageLayout(),
     listPublicDepartmentSds(),
   ])
 
@@ -30,22 +35,24 @@ export default async function PublicSdsPage() {
         .sds-hero h1{font-size:clamp(30px,5vw,54px);line-height:1.06;margin:8px 0 14px;letter-spacing:-.03em;color:#fff}
         .sds-hero p{max-width:74ch;line-height:1.7;color:rgba(255,255,255,.86);margin:0}
         .sds-kicker{font-weight:800;letter-spacing:.16em;font-size:12px;color:#8ff0e9!important;margin:0!important}
+        .sds-hero-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;max-width:760px;margin-top:24px}
+        .sds-hero-search > label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+        .sds-hero-search input{min-width:0;min-height:52px;flex:1;border:1px solid rgba(255,255,255,.45);border-radius:12px;background:#fff;color:var(--ink);padding:0 16px;font:inherit}
+        .sds-hero-search button{min-height:52px;border:0;border-radius:12px;background:#8ff0e9;color:#063b58;padding:0 22px;font:inherit;font-weight:900;cursor:pointer}
+        .sds-hero-search input:focus-visible,.sds-hero-search button:focus-visible{outline:3px solid #fff;outline-offset:3px}
 
-        .sds-nav{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 34px}
-        .sds-nav a{display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--ink);text-decoration:none;font-size:13px;font-weight:700;transition:border-color .18s ease,background .18s ease}
-        .sds-nav a:hover{border-color:var(--primary);background:var(--primary-soft)}
-        .sds-nav a:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
-
-        .manual-banner{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:0 0 40px;padding:20px 22px;border:1px solid var(--border);border-left:8px solid var(--warning);border-radius:16px;background:var(--card)}
+        .manual-banner{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:20px 0 38px;padding:22px;border:1px solid color-mix(in srgb,var(--warning) 52%,var(--border));border-left:8px solid var(--warning);border-radius:16px;background:var(--card);box-shadow:0 10px 34px rgba(8,43,79,.07)}
         .manual-banner strong{display:block;font-size:17px;color:var(--ink)}
         .manual-banner span{font-size:13px;color:var(--muted)}
-        .manual-banner a{min-height:44px;display:inline-flex;align-items:center;padding:0 18px;border-radius:10px;background:var(--primary);color:#fff;text-decoration:none;font-weight:800;white-space:nowrap;transition:filter .18s ease}
+        .manual-actions{display:flex;gap:10px;flex-wrap:wrap}
+        .manual-banner a{min-height:46px;display:inline-flex;align-items:center;justify-content:center;padding:0 18px;border:1px solid var(--primary);border-radius:10px;color:var(--primary);text-decoration:none;font-weight:800;white-space:nowrap;transition:filter .18s ease,background .18s ease}
         .manual-banner a:hover{filter:brightness(.94)}
+        .manual-banner .manual-download{background:var(--primary);color:#fff}
         .manual-banner a:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
 
         .sds-section-head{margin:0 0 18px}
         .sds-section-head h2{margin:0;font-size:clamp(20px,3vw,28px);letter-spacing:-.02em}
-        .sds-section-head p{margin:6px 0 0;color:var(--muted);font-size:13px;max-width:74ch;line-height:1.65}
+        .sds-section-head p{margin:6px 0 0;color:var(--muted);font-size:13px;max-width:100ch;line-height:1.65}
 
         .sds-filter-panel{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:14px;margin:0 0 20px;padding:18px;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:0 10px 34px rgba(8,43,79,.07)}
         .sds-filter-panel label{display:grid;gap:7px;font-size:12px;font-weight:800;color:var(--muted)}
@@ -85,50 +92,45 @@ export default async function PublicSdsPage() {
         .sds-skel{border-radius:6px;background:var(--surface-2)}
 
         @media(max-width:980px){.sds-filter-panel{grid-template-columns:1fr 1fr}}
-        @media(max-width:850px){.sds-card-grid{grid-template-columns:1fr}.sds-filter-panel{grid-template-columns:1fr}.manual-banner{align-items:flex-start;flex-direction:column}.sds-card dl{grid-template-columns:1fr}.sds-public-page{padding:20px 14px 48px}.sds-hero{padding:28px 22px}}
+        @media(max-width:850px){.sds-card-grid{grid-template-columns:1fr}.sds-filter-panel{grid-template-columns:1fr}.sds-hero-search{grid-template-columns:1fr}.sds-hero-search button{width:100%}.manual-banner{align-items:flex-start;flex-direction:column}.manual-actions{width:100%}.manual-actions a{flex:1}.sds-card dl{grid-template-columns:1fr}.sds-public-page{padding:20px 14px 48px}.sds-hero{padding:28px 22px}}
         @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
       `}</style>
 
       <section className="sds-hero">
-        <p className="sds-kicker">CHEMICAL SAFETY · ALL DEPARTMENTS</p>
-        <h1>ข้อมูลความปลอดภัยสารเคมี<br />เข้าถึงได้โดยไม่ต้องล็อกอิน</h1>
+        <p className="sds-kicker">SDS · POINT-OF-USE ACCESS</p>
+        <h1>เอกสาร SDS สำหรับการปฏิบัติงาน</h1>
         <p>
-          ผังการจัดเก็บสารเคมีในห้องเก็บสารเคมี การจำแนกความเป็นอันตรายตามระบบ GHS
-          และเอกสารข้อมูลความปลอดภัย (SDS) ของทุกงาน โดยไม่เปิดเผยปริมาณคงคลังหรือข้อมูลภายใน
+          ค้นหาและเปิดเอกสารข้อมูลความปลอดภัยของน้ำยา ชุดตรวจ และสารเคมีที่ใช้ในงานได้ทันที
         </p>
+        <form className="sds-hero-search" action="/sds#sds-chemicals-heading">
+          <label className="sr-only-visually" htmlFor="sds-hero-search">ค้นหาเอกสาร SDS</label>
+          <input id="sds-hero-search" name="q" type="search" defaultValue={initialQuery} placeholder="ค้นหาชื่อสาร น้ำยา ชุดตรวจ CAS หรือผู้ผลิต" />
+          <button type="submit">ค้นหา SDS</button>
+        </form>
       </section>
-
-      <nav className="sds-nav" aria-label="ทางลัดไปยังแต่ละส่วน">
-        <a href="#sds-layout-heading">ผังการจัดเก็บ</a>
-        <a href="#sds-chemicals-heading">สารเคมีในห้องเก็บสารเคมี</a>
-        <a href="#sds-dept-heading">SDS แยกตามงาน</a>
-        <a href="#sds-manual">คู่มือความปลอดภัย</a>
-      </nav>
-
-      <PublicStorageLayout layout={layout} />
-
-      <section aria-labelledby="sds-chemicals-heading" style={{ margin: '0 0 40px' }}>
-        <div className="sds-section-head">
-          <h2 id="sds-chemicals-heading">สารเคมีในห้องเก็บสารเคมี</h2>
-          <p>
-            สารเคมีทุกตัวในบัญชีรายการพร้อมการจำแนกอันตรายตามระบบ GHS
-            สารที่เอกสาร SDS ยังอยู่ระหว่างการทบทวนจะแสดงข้อมูลการจำแนกไว้ แต่ยังไม่เปิดให้ดาวน์โหลดไฟล์
-          </p>
-        </div>
-        <PublicSdsLibrary initialItems={items} />
-      </section>
-
-      <PublicDepartmentSds groups={departments} />
 
       <aside className="manual-banner" id="sds-manual">
         <div>
           <strong>MN-LAB-02 คู่มือความปลอดภัยทางห้องปฏิบัติการ</strong>
-          <span>ฉบับประกาศใช้ปัจจุบัน · เปิดอ่านได้โดยไม่ต้องล็อกอิน</span>
+          <span>คู่มือปฏิบัติด้านความปลอดภัยฉบับปัจจุบัน</span>
         </div>
-        <a href="/api/public/safety-manual/MN-LAB-02?disposition=inline" target="_blank" rel="noopener noreferrer">
-          เปิดคู่มือความปลอดภัย
-        </a>
+        <div className="manual-actions">
+          <a className="manual-download" href="/api/public/safety-manual/MN-LAB-02?disposition=attachment">ดาวน์โหลด MN-LAB-02 (PDF)</a>
+          <a href="/api/public/safety-manual/MN-LAB-02?disposition=inline" target="_blank" rel="noopener noreferrer">เปิดอ่าน</a>
+        </div>
       </aside>
+
+      <PublicDepartmentSds groups={departments} initialDepartment={initialDepartment} />
+
+      <section aria-labelledby="sds-chemicals-heading" style={{ margin: '0 0 40px' }}>
+        <div className="sds-section-head">
+          <h2 id="sds-chemicals-heading">ค้นหา SDS ตามชื่อสาร</h2>
+          <p>
+            ค้นหาตามชื่อสาร น้ำยา ชุดตรวจ CAS หรือผู้ผลิต แล้วเลือกเปิดหรือดาวน์โหลดเอกสาร SDS ฉบับที่ผ่านการอนุมัติ
+          </p>
+        </div>
+        <PublicSdsLibrary initialItems={items} initialQuery={initialQuery} />
+      </section>
     </main>
   )
 }
