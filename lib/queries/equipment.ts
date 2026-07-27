@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { areaAndDescendantCodes } from '@/lib/equipment-map/manifest'
 
 export interface Equipment {
   id: string
@@ -44,6 +45,10 @@ export interface Equipment {
     remark: string | null
     certificate_file_url: string | null
   } | null
+  area_code?: string | null
+  map_x?: number | null
+  map_y?: number | null
+  map_rotation?: number | null
   created_at: string
   updated_at: string
   created_by: string | null
@@ -56,6 +61,10 @@ export interface EquipmentFilters {
   risk_level?: string
   needs_calibration?: boolean
   pending_reg?: boolean
+  /** area_code ของห้อง/โซน — เลือกห้องจะรวมเครื่องมือของโซนลูกด้วย (ดู areaAndDescendantCodes) */
+  area?: string
+  /** ยังไม่กำหนดพื้นที่ หรือกำหนดพื้นที่แล้วแต่ยังไม่ได้ปักหมุด (map_x/map_y ว่าง) */
+  unpositioned?: boolean
 }
 
 export interface EquipmentPageOptions extends EquipmentFilters {
@@ -108,6 +117,8 @@ function applyEquipmentFilters(query: any, filters: EquipmentFilters) {
   if (filters.needs_calibration !== undefined)
     query = query.eq('needs_calibration', filters.needs_calibration)
   if (filters.pending_reg) query = query.or('cbh_code_pending.eq.true,hospital_asset_no_pending.eq.true')
+  if (filters.area) query = query.in('area_code', areaAndDescendantCodes(filters.area))
+  if (filters.unpositioned) query = query.or('area_code.is.null,map_x.is.null,map_y.is.null')
 
   return query
 }

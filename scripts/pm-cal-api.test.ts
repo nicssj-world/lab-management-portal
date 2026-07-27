@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+const read = (path: string) => readFileSync(path, 'utf8')
+const overview = read('app/api/admin/equipment/[id]/pm-cal/route.ts')
+const results = read('app/api/admin/equipment/[id]/pm-cal/results/route.ts')
+const result = read('app/api/admin/equipment/[id]/pm-cal/results/[resultId]/route.ts')
+const cert = read('app/api/admin/equipment/[id]/pm-cal/results/[resultId]/certificate/route.ts')
+const report = read('app/api/admin/equipment/pm-cal/report/route.ts')
+const migration = read('scripts/pm-cal-history.sql')
+const genericEquipment = read('app/api/admin/equipment/[id]/route.ts')
+
+for (const source of [overview, results, result, cert, report]) {
+  assert.match(source, /getPmCalActor/)
+  assert.match(source, /Forbidden|permission/i)
+}
+for (const source of [overview, results, result, cert]) assert.match(source, /await writePmCalAudit/)
+assert.match(overview, /pmCalPlanReplaceSchema\.safeParse/)
+assert.match(overview, /replace_equipment_pm_cal_plans/)
+assert.match(overview, /p_expected_versions/)
+assert.match(overview, /23505/)
+assert.match(results, /pmCalResultCreateSchema\.safeParse/)
+assert.match(results, /\.eq\('equipment_id', id\)/)
+assert.match(result, /equipment\.pm_cal\.result\.update/)
+assert.match(result, /equipment_pm_cal_plans/)
+assert.match(result, /plan\.cal_type !== parsed\.data\.cal_type/)
+assert.match(cert, /equipment\/\$\{id\}\/pm-cal\/\$\{resultId\}\//)
+assert.match(cert, /HeadObjectCommand/)
+assert.match(cert, /ContentLength/)
+assert.match(cert, /ContentType/)
+assert.match(cert, /50 \* 1024 \* 1024/)
+assert.match(cert, /source/)
+assert.match(cert, /legacy_import/)
+assert.match(cert, /req\.json\(\)\.catch\(\(\) => null\)/)
+assert.doesNotMatch(cert, /DeleteObjectCommand[\s\S]*oldKey/)
+assert.match(report, /buildPmCalReport/)
+assert.match(report, /fiscalYear/)
+assert.match(report, /department/)
+assert.match(report, /classification/)
+assert.match(genericEquipment, /delete body\.pm_cal_data/)
+
+assert.match(migration, /create or replace function public\.replace_equipment_pm_cal_plans/i)
+assert.match(migration, /security invoker/i)
+assert.match(migration, /revoke all on function public\.replace_equipment_pm_cal_plans/i)
+
+console.log('pm-cal API contract passed')

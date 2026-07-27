@@ -50,6 +50,23 @@ async function applyResponsibleUser(body: Record<string, any>) {
   return null
 }
 
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const actor = await getActor()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const perms = await getPermissionsWithEquipmentOverride(actor.role, actor.id)
+  if ((perms['ทะเบียนเครื่องมือ'] ?? 'none') === 'none')
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { id } = await params
+  const { data, error } = await supabaseAdmin.from('equipment').select('*').eq('id', id).maybeSingle()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'ไม่พบเครื่องมือนี้' }, { status: 404 })
+  return NextResponse.json(data)
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -62,6 +79,16 @@ export async function PATCH(
 
   const { id } = await params
   const body = await req.json()
+  // ตำแหน่งบนแผนที่แก้ได้เฉพาะทาง /api/admin/equipment/[id]/position เท่านั้น (มี audit log ของตัวเอง
+  // และ validate ว่าพิกัดอยู่ในขอบเขตพื้นที่จริง) — กันไม่ให้แก้หลุดผ่านช่อง update(body) ที่ไม่มี whitelist นี้
+  delete body.map_x
+  delete body.map_y
+  delete body.map_rotation
+  delete body.area_code
+  delete body.position_set_by
+  delete body.position_set_at
+  // PM/CAL มี API, validation และ audit แยกแล้ว ห้ามเขียนทับประวัติผ่าน generic update
+  delete body.pm_cal_data
   normalizePendingRegistration(body)
   const responsibleError = await applyResponsibleUser(body)
   if (responsibleError) return NextResponse.json({ error: responsibleError }, { status: 422 })

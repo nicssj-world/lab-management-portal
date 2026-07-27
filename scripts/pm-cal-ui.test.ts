@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+const modal = readFileSync('components/equipment/EquipmentPmCalModal.tsx', 'utf8')
+const publicPage = readFileSync('app/e/[id]/page.tsx', 'utf8')
+const publicQuery = readFileSync('lib/queries/equipment-public.ts', 'utf8')
+const registry = readFileSync('app/(protected)/staff/equipment/EquipmentClient.tsx', 'utf8')
+
+assert.match(modal, /ปีงบประมาณ/)
+assert.match(modal, /fiscalYear/)
+assert.match(modal, /บันทึกผล PM\/CAL/)
+assert.match(modal, /ประวัติการดำเนินงาน/)
+assert.match(modal, /FAIL/)
+assert.match(modal, /PASS/)
+assert.match(modal, /NOT_PERFORMED/)
+assert.match(modal, /resultPlan\.cal_type === 'CAL' && <>/)
+assert.match(modal, /results\/\$\{created\.id\}\/certificate/)
+assert.match(modal, /computePmCalPlanState/)
+assert.match(modal, /expected_versions/)
+assert.match(modal, /แนบ Certificate/)
+assert.match(modal, /บันทึกผลแล้ว แต่อัปโหลด Certificate ไม่สำเร็จ/)
+assert.doesNotMatch(modal, /JSON\.stringify\(\{ pm_cal_data: form \}\)/)
+assert.match(publicPage, /getPublicPmCalStatus/)
+assert.match(publicQuery, /nullsFirst: false/)
+assert.match(registry, /\/api\/admin\/equipment\/pm-cal\/report/)
+assert.match(registry, /รายงานปัจจุบัน/)
+assert.match(registry, /Legacy/)
+assert.match(registry, /Fail/)
+assert.match(registry, /เกินกำหนด/)
+
+console.log('pm-cal UI contract passed')

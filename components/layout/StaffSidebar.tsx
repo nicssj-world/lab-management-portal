@@ -62,7 +62,13 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/tests',      th: 'รายการตรวจ',         en: 'Tests',          icon: 'flask',  color: '#1E5FAD', resource: 'รายการตรวจ' },
   { href: '/staff/eqa', th: 'การควบคุมคุณภาพภายนอก', en: 'EQA / PT', icon: 'shieldCheck', color: '#0F766E', resource: 'EQA / PT' },
   { href: '/staff/news',       th: 'จัดการข่าวสาร',        en: 'News',           icon: 'bell',       color: '#D97706', resource: 'ข่าวสาร' },
-  { href: '/staff/equipment',  th: 'ทะเบียนเครื่องมือ',   en: 'Equipment',      icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
+  // กลุ่มเครื่องมือ — ลูกทั้งสองถือ resource เดียวกัน ('ทะเบียนเครื่องมือ') ไม่ใช่กรณีที่สิทธิ์ต่างกันแบบกลุ่มความเสี่ยง/IT
+  // แต่คงรูปแบบ "แม่ไม่ถือ resource" ไว้เหมือนกันทั้งไฟล์เพื่อไม่ให้พฤติกรรม isEntryVisible ต่างกันโดยไม่จำเป็น
+  { href: '/staff/equipment', th: 'ทะเบียนเครื่องมือ', en: 'Equipment', icon: 'microscope', color: '#EA580C',
+    children: [
+      { href: '/staff/equipment',     th: 'ทะเบียนเครื่องมือ', en: 'Registry', icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
+      { href: '/staff/equipment/map', th: 'แผนผังเครื่องมือ',   en: 'Equipment Map', icon: 'building',    color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
+    ] },
   { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
   { href: '/staff/outlab', th: 'ห้องปฏิบัติการภายนอก', en: 'OUTLAB Registry', icon: 'building', color: '#C2410C', resource: 'OUTLAB' },
   { href: '/staff/personnel/workforce', th: 'บุคลากร',       en: 'MT-CBH Staff',   icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร',
