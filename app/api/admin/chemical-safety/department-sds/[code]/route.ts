@@ -54,3 +54,53 @@ export async function PATCH(
     return unexpectedError(error)
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  ctx: RouteContext<'/api/admin/chemical-safety/department-sds/[code]'>,
+) {
+  const { code: id } = await ctx.params
+
+  try {
+    const entry = await supabaseAdmin
+      .from('chemical_department_sds')
+      .select('id, department_code, display_name')
+      .eq('id', id)
+      .maybeSingle()
+    if (entry.error) throw entry.error
+    if (!entry.data) return NextResponse.json({ error: 'ไม่พบรายการ' }, { status: 404 })
+
+    const guard = await requireDepartmentSdsPublisher(String(entry.data.department_code))
+    if (guard.response) return guard.response
+
+    const deleted = await supabaseAdmin.from('chemical_department_sds').delete().eq('id', id)
+    if (deleted.error) throw deleted.error
+
+    // เอกสารในงานเปลี่ยนไป ถ้ากำลังเผยแพร่อยู่ต้องให้ตรวจรายการใหม่ก่อนเผยแพร่ซ้ำ เหมือนตอนอัปโหลด
+    const departmentRow = await supabaseAdmin
+      .from('chemical_sds_departments')
+      .select('status')
+      .eq('code', entry.data.department_code)
+      .maybeSingle()
+    if (departmentRow.error) throw departmentRow.error
+
+    const republishRequired = departmentRow.data?.status === 'published'
+    if (republishRequired) {
+      const unpublished = await supabaseAdmin.from('chemical_sds_departments').update({
+        status: 'draft', published_by: null, published_at: null, updated_at: new Date().toISOString(),
+      }).eq('code', entry.data.department_code)
+      if (unpublished.error) throw unpublished.error
+    }
+
+    supabaseAdmin.from('audit_log').insert({
+      action: 'chemical_safety.department_sds.delete',
+      user_id: guard.actor.id,
+      target: id,
+      detail: JSON.stringify({ department: entry.data.department_code, displayName: entry.data.display_name, republishRequired }),
+    }).then(undefined, () => {})
+
+    return NextResponse.json({ ok: true, republishRequired })
+  } catch (error) {
+    return unexpectedError(error)
+  }
+}
