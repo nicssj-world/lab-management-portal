@@ -19,6 +19,15 @@ The legacy `calibration_plans` table and its UI are a flat annual budget table:
 
 The 2566 legacy records remain available as a read-only historical view. They are not converted automatically because they are not reliably linked to equipment IDs.
 
+## Annual starting options
+
+Selecting a fiscal year that has no group plans presents two explicit, non-destructive starting options:
+
+1. **Start from the legacy template.** The old plan's group/title/price/budget structure is shown as editable draft rows for the selected year. Draft rows have no linked equipment and are excluded from all operational counts and financial totals until the user selects equipment and saves each group.
+2. **Copy the previous fiscal year.** The user chooses a source fiscal year. The system copies that year's group headers, schedule, provider, price mode, and amounts into unsaved drafts for the selected year. It does not copy results, certificates, actual amounts, or member-plan IDs. The user reviews the equipment selection before saving, so removed or changed equipment cannot become an accidental active plan.
+
+The year picker supports any valid Thai fiscal year, not only previous/current/next. Neither option mutates the source plan, the legacy records, or another year's saved plan. If the target year already has saved groups, the options remain available as “add from template” and “copy groups” and must identify title/schedule conflicts before creating duplicates.
+
 ## Chosen approach
 
 Introduce a group header as a first-class record and keep the existing `equipment_pm_cal_plans` rows as the per-equipment schedule/result anchor.
@@ -50,6 +59,7 @@ Deleting a group is a status cancellation: cancel the group and its active membe
 
 The current “รายงานปัจจุบัน” becomes a plan workspace for a selected fiscal year:
 
+- The fiscal-year selector accepts any valid year. An empty year offers `เริ่มจากแม่แบบเดิม` and `คัดลอกจากแผนปีก่อน`; both create reviewable drafts rather than immediately saving records.
 - `สร้างแผนแบบกลุ่ม` opens a form with plan group, title, PM/CAL, schedule, provider, price mode, and an equipment picker sourced from the registry.
 - The picker supports searching by code/name and shows selected count. Only instruments eligible for the chosen plan type are selectable; conflicting instruments are marked and explained.
 - `ราคาต่อหน่วย` calculates the planned count and budget live. `ราคาเหมารวม` accepts one planned amount and one actual amount at the group level.
@@ -75,6 +85,7 @@ Read operations use the existing equipment `view` permission; create/update/canc
 - Domain/report tests cover per-unit arithmetic, lump-sum counted once, member completion/failure totals, and individual-plan coexistence.
 - API tests cover permissions, validation, conflict responses, and group create/edit/cancel behavior.
 - UI tests cover both entry points, calculated/disabled price fields, equipment selection, and legacy read-only behavior.
+- UI/API tests cover starting an empty year from the legacy template, copying a selected prior year without results or actual costs, arbitrary fiscal-year selection, and target-year conflict reporting.
 
 The migration does not mutate `calibration_plans` or import guessed equipment mappings. It is additive and reversible by removing the new group feature only; production rollout requires applying the new Supabase migration before deploying the UI.
 
@@ -87,3 +98,4 @@ The migration does not mutate `calibration_plans` or import guessed equipment ma
 5. A user can add or edit an ungrouped individual plan without affecting any group.
 6. Conflicting active schedules are rejected with the affected instruments identified.
 7. The legacy 2566 table remains viewable, uneditable, and excluded from current-year operational totals.
+8. A user can select any valid fiscal year and either start with unsaved legacy-template drafts or copy a chosen previous year's groups; neither action changes the source year or creates active budget totals before saving.
