@@ -246,6 +246,25 @@ Repository validation does not replace a physical walkthrough. Before publishing
 
 Controlled A3/A4 PDF and PNG previews are available at `/staff/lab-map/print`. Drafts always carry a “ร่าง — ห้ามใช้ติดตั้ง” watermark; official export is enabled only for a published release whose manifest hash and approval metadata still validate. Use [the floor-3 acceptance checklist](docs/lab-map/floor-3-acceptance.md) and [release runbook](docs/lab-map/release-runbook.md) before replacing any physical sign. Approved installed signs remain the operational fallback during power or network outages.
 
+### Mobile safety-equipment inspection
+
+After the base safety-map schema, apply `supabase/migrations/20260728230000_safety_inspection_rounds_checklists.sql` through the Supabase SQL Editor. Application builds do not apply this migration automatically.
+
+The protected safety-equipment registry supports a one-handed field workflow:
+
+- Apply status, equipment-type, room, and search filters before starting a round. The round snapshots those filters and orders equipment by room, map Y/X coordinates, and code. A round can close only after no pending equipment remains.
+- Mobile navigation is separated into **List**, **Map**, and **Inspect**. Filters, selected equipment, progress, map viewport, inspection draft, and list scroll position are retained while switching views.
+- Inspect displays a checklist specific to the equipment type, `ตรวจแล้ว X/Y · เหลือ Z`, evidence controls, and a sticky `ยืนยันและไปเครื่องถัดไป` action. The final item shows totals for passed, follow-up, failed, and not-found results before closing the round.
+- Evidence provides separate **ถ่ายรูป** and **เลือกจากคลัง** actions. The browser re-encodes to JPEG to remove EXIF metadata, limits the longest side to 2048 px, targets 2.5 MB, shows a preview, and reports upload progress.
+- Inspection drafts are stored only in that browser's IndexedDB, including the compressed photo. They do not sync between phones, do not store presigned upload URLs, and are not uploaded automatically. After reconnection the operator must explicitly confirm again.
+- QR/Code 128 scanning requests the rear camera only after `สแกนรหัส` is pressed. If `BarcodeDetector` is unavailable or camera access is denied, exact case-insensitive lookup through `กรอกรหัสอุปกรณ์` remains available.
+- A quick marker tap opens Inspect. Holding for at least 250 ms arms free dragging across the full map. Dropping over a room changes `spaceCode`; dropping in a corridor clears it. Pinch-to-zoom and map panning continue to work when a gesture starts away from a marker.
+- Position writes use Safety Editor permission, optimistic concurrency, audit data, immediate preview, and visual rollback/retry on failure. Moving a marker resets position verification to `unverified`.
+- New equipment begins with a draggable draft marker at the map center. Confirm its position before completing registry fields; numeric X/Y remain under `พิกัดขั้นสูง` for desktop recovery.
+- Marker edits affect the working copy only. The published safety-map snapshot remains unchanged until the existing release workflow publishes a new version.
+
+All inspection controls have a minimum 44 px touch target, and the mobile action bar accounts for the device safe-area inset. Run `npm run test:lab-map-safety` plus the workflow, checklist, position API, and mobile-flow scripts before release. Physical acceptance is still required on iPhone/Safari and Android/Chrome.
+
 ## Chemical safety foundation import
 
 The chemical-room importer is dry-run by default. It verifies the exact June 2026 master-list PDF and storage-layout image, recursively indexes the SDS archive, and prints one JSON summary. Dry-run does not initialize Supabase or R2 clients and does not need their credentials.

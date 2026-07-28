@@ -8,6 +8,7 @@ const sheet = read('components/lab-map/LabMapPrintSheet.tsx')
 const printStyles = read('components/lab-map/LabMapPrintStyles.tsx')
 const helper = read('lib/lab-map/export-client.ts')
 const staffPage = read('app/(protected)/staff/lab-map/page.tsx')
+const publicPage = read('app/(public)/lab-map/[stationCode]/page.tsx')
 
 assert.equal(isProtectedPath('/staff/lab-map/print'), true)
 assert.ok(page.includes('getActor'))
@@ -21,6 +22,10 @@ assert.ok(helper.includes("import('html2canvas')"))
 assert.ok(helper.includes("import('jspdf')"))
 assert.ok(helper.includes('A3.pdf') || helper.includes('paperSize'))
 assert.ok(staffPage.includes('/staff/lab-map/print'))
+assert.match(helper, /data-qr-state/, 'export waits until the QR has finished rendering before capture')
+assert.match(helper, /pdf\.addImage\(canvas\.toDataURL\('image\/png'\)/, 'PDF export preserves QR modules without JPEG artifacts')
+assert.match(sheet, /data-qr-state=\{qrState\}/, 'the print sheet exposes its QR render state to the exporter')
+assert.match(sheet, /errorCorrectionLevel:\s*'H'/, 'QR exports use high error correction for physical signs')
 
 // ── กันบั๊กแผ่นพิมพ์ดำสนิท: LabMapPrintSheet ต้องประกาศตัวแปรสี (LabMapStyles) ก่อนใช้ ──
 // ที่มา: fill: var(--map-floor) ฯลฯ ประกาศอยู่ใต้ .lab-map-shell เท่านั้น — ไม่มี wrapper นี้
@@ -29,6 +34,11 @@ assert.match(sheet, /import { LabMapStyles }/, 'the print sheet imports the shar
 assert.match(sheet, /<LabMapStyles \/>/, 'the print sheet renders LabMapStyles so --map-* tokens resolve')
 assert.match(sheet, /className="lab-map-shell lab-map-print-sheet"/, 'the print sheet wraps its canvas in .lab-map-shell so tokens cascade to it')
 assert.match(printStyles, /\.lab-map-shell\.lab-map-print-sheet\s*\{[^}]*--map-floor/, 'print output pins light-mode token values regardless of the viewer\'s dark-mode setting')
+
+// ข้อความ "ท่านอยู่ที่นี่" ต้องมีแถวของตัวเองเสมอ มิฉะนั้นแผนที่จะชิดทับข้อความ
+// ระหว่างการ capture เป็น PDF/PNG (พบจริงกับแผ่น A3 เส้นทางหนีไฟ)
+assert.match(printStyles, /\.lab-map-print-sheet\s*\{[^}]*grid-template-rows:\s*auto auto minmax\(0,1fr\) auto/, 'the print sheet reserves a dedicated row for the station banner')
+assert.match(printStyles, /\.lab-map-print-you-are-here\s*\{[^}]*margin-bottom:/, 'the station banner has a visible separation from the map viewport')
 
 // จุดติดตั้ง/ปลายทางในหน้าส่งออกต้องแสดงชื่อไทย ไม่ใช่รหัสดิบ
 assert.match(client, /stationOptions/)
@@ -39,5 +49,14 @@ assert.doesNotMatch(client, /<option key=\{code\} value=\{code\}>\{code\}<\/opti
 // สถานีชนิด checkpoint ต้องไม่เข้าแคตตาล็อกงานพิมพ์ — ไม่ใช่จุดติดตั้งป้ายจริง
 assert.match(page, /installationStations/)
 assert.match(page, /kind === 'installation'/)
+
+// QR ของป้ายต้องเปิดได้โดยไม่ต้องมี session และต้องผูกกับจุดติดตั้งของป้ายนั้น
+assert.ok(publicPage.includes('buildPublicSafetyMap'), 'the QR destination renders a constrained public safety map')
+assert.ok(publicPage.includes('getPublishedLabMapSnapshot'), 'the QR destination resolves the currently published release')
+assert.ok(publicPage.includes("allowedModes={['safety']}"), 'the public QR destination exposes only evacuation information')
+assert.match(publicPage, /ยังไม่มีฉบับเผยแพร่/, 'QR scans show a clear public message while no approved online map exists')
+assert.doesNotMatch(publicPage, /if \(!published\) notFound\(\)/, 'a QR scan never fails as an unexplained 404 solely because publication is pending')
+assert.match(page, /publicSafetyMapPath/, 'export QR URLs are unique to each sign installation point')
+assert.doesNotMatch(page, /webUrl: `\$\{siteUrl\}\/staff\/lab-map`/, 'exported QR codes never point at the protected staff page')
 
 console.log('lab map export UI contract passed')

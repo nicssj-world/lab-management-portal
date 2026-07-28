@@ -44,6 +44,7 @@ export async function PUT(req: NextRequest, { params }: Context) {
       p_next_inspection_date: parsed.data.nextInspectionDate ?? null, p_expires_on: parsed.data.expiresOn ?? null,
       p_note: parsed.data.note ?? null, p_photo_r2_key: parsed.data.key, p_photo_file_name: parsed.data.fileName,
       p_photo_content_type: photo.contentType, p_photo_size_bytes: photo.sizeBytes, p_actor_id: guard.actor.id,
+      p_round_item_id: parsed.data.roundItemId ?? null, p_checklist_snapshot: parsed.data.checklist,
     })
     if (error) throw new Error(error.message)
     inspectionId = data
@@ -53,7 +54,10 @@ export async function PUT(req: NextRequest, { params }: Context) {
   }
   // เมื่อ RPC สำเร็จ รูปถูกอ้างอิงโดย immutable inspection แล้ว ห้ามลบแม้ audit ชั่วคราวล้มเหลว
   try {
-    await auditSafety('lab_map.safety_inspection.create', guard.actor.id, String(inspectionId), { assetId: id, result: parsed.data.result, position_status: parsed.data.result === 'not_found' ? 'unverified' : 'verified' })
+    await auditSafety('lab_map.safety_inspection.create', guard.actor.id, String(inspectionId), {
+      assetId: id, roundItemId: parsed.data.roundItemId ?? null, result: parsed.data.result,
+      checklist: parsed.data.checklist, position_status: parsed.data.result === 'not_found' ? 'unverified' : 'verified',
+    })
   } catch (error) {
     console.error('lab map safety inspection audit failed', error)
     return NextResponse.json({ id: inspectionId, auditWarning: true }, { status: 201 })

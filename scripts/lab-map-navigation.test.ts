@@ -9,10 +9,11 @@ const topbar = readFileSync('components/layout/StaffTopbar.tsx', 'utf8')
 
 assert.ok(isProtectedPath('/staff/lab-map'))
 
-// เส้นทางสาธารณะเดิมถูกถอดออก — คำขอตรงต้องได้ 404
-assert.ok(!existsSync('app/(public)/lab-map'), 'the standalone public map route is removed')
+// QR ของป้ายเปิดแผนที่ความปลอดภัยสาธารณะได้ แต่ projection ต้องสร้างจากข้อมูลกลาง
+// ไม่ใช้ public manifest ชุดที่สองซึ่งเสี่ยงพิกัดไม่ตรงกับป้ายจริง
+assert.ok(existsSync('app/(public)/lab-map/[stationCode]/page.tsx'), 'the QR safety map route exists')
+assert.ok(existsSync('lib/lab-map/public-safety.ts'), 'the QR route uses a constrained safety projection')
 assert.ok(!existsSync('lib/lab-map/public-manifest.ts'), 'no second hand-maintained public manifest')
-assert.ok(!existsSync('lib/lab-map/public.ts'))
 
 assert.match(page, /await createClient\(\)/)
 assert.match(page, /auth\.getUser\(\)/)

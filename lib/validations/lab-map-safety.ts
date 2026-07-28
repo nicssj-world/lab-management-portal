@@ -35,6 +35,34 @@ export const safetyAssetPatchSchema = safetyAssetBaseSchema.omit({ code: true })
   retire: z.boolean().optional(),
 }).superRefine(validateShutoff)
 
+export const safetyAssetPositionSchema = z.object({
+  x: z.number().min(0).max(1477),
+  y: z.number().min(0).max(892),
+  spaceCode: z.string().trim().min(1).max(80).nullable(),
+  updatedAt: z.string().datetime({ offset: true }),
+})
+
+export const safetyInspectionFiltersSchema = z.object({
+  query: z.string().max(200),
+  status: z.string().max(40),
+  kind: z.string().max(40),
+  spaceCode: z.string().max(80),
+})
+
+export const safetyInspectionRoundInputSchema = z.object({
+  nameTh: z.string().trim().min(1).max(200),
+  filters: safetyInspectionFiltersSchema,
+  orderedAssetIds: z.array(z.string().uuid()).min(1).max(1000)
+    .refine(ids => new Set(ids).size === ids.length, 'อุปกรณ์ในรอบตรวจต้องไม่ซ้ำ'),
+})
+
+export const safetyChecklistAnswerSchema = z.object({
+  key: z.string().min(1).max(80),
+  labelTh: z.string().min(1).max(200),
+  answer: z.enum(['pass', 'fail', 'na']),
+  note: z.string().max(1000).nullish(),
+})
+
 export const inspectionFinalizeSchema = z.object({
   key: z.string().min(1),
   fileName: z.string().min(1).max(255),
@@ -43,6 +71,8 @@ export const inspectionFinalizeSchema = z.object({
   nextInspectionDate: isoDate.nullish(),
   expiresOn: isoDate.nullish(),
   note: optionalText,
+  roundItemId: z.string().uuid().nullish(),
+  checklist: z.array(safetyChecklistAnswerSchema).max(50).default([]),
 })
 
 const assemblyPointBaseSchema = z.object({

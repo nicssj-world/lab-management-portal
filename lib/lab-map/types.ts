@@ -158,6 +158,54 @@ export interface SafetyAssetDTO extends LabSafetyEquipmentDefinition {
   latestInspection: SafetyInspectionDTO | null
 }
 
+export interface SafetyInspectionFilters {
+  query: string
+  status: string
+  kind: string
+  spaceCode: string
+}
+
+export interface SafetyInspectionQueueItem {
+  asset: SafetyAssetDTO
+  completed: boolean
+  sequence: number
+}
+
+export interface SafetyInspectionQueue {
+  items: readonly SafetyInspectionQueueItem[]
+  progress: { completed: number; total: number; remaining: number }
+}
+
+export interface SafetyInspectionRoundItemDTO {
+  id: string
+  assetId: string
+  sequence: number
+  status: 'pending' | 'completed' | 'skipped'
+  inspectionId: string | null
+}
+
+export interface SafetyInspectionRoundDTO {
+  id: string
+  nameTh: string
+  status: 'open' | 'closed'
+  filters: SafetyInspectionFilters
+  startedAt: string
+  items: readonly SafetyInspectionRoundItemDTO[]
+}
+
+export interface SafetyChecklistTemplateItem {
+  key: string
+  labelTh: string
+  required: boolean
+}
+
+export interface SafetyChecklistAnswer {
+  key: string
+  labelTh: string
+  answer: 'pass' | 'fail' | 'na'
+  note?: string | null
+}
+
 export interface AssemblyPointVerificationDTO {
   id: string
   assemblyPointId: string
