@@ -274,6 +274,28 @@ Imports remain proposals or quarantined evidence: they do not create an approved
 
 If application fails, inspect the matching `chemical_import_batches` row and its `failed` summary/error evidence plus `chemical_import_rows`; do not delete provenance rows. Correct the underlying environment or source problem, rerun the same source-bound command, and let the unique batch/hash and row constraints resume idempotently. Audit details contain counts and hashes, not local filesystem paths.
 
+## Equipment-map PM/CAL work groups
+
+This section applies only to `/staff/equipment/map` (the equipment map). It does not change the laboratory safety map, its geometry, routes, or safety data.
+
+The mobile “พื้นที่ที่กำลังตรวจ” picker groups areas for a PM/CAL walk-through as follows:
+
+| กลุ่มงาน | โซนย่อย/พื้นที่ |
+| --- | --- |
+| งานอณูชีววิทยา | อณูชีววิทยา, Extraction Room, Library Room, Sequence Room |
+| ห้องปฏิบัติการกลาง | เคมีคลินิก+ภูมิคุ้มกัน, จุลทรรศนศาสตร์, โลหิตวิทยา |
+| งาน OUTLAB | กรอบเดิม “ตรวจพิเศษและตรวจต่อ” ใช้ชื่อ “งาน OUTLAB” บนผัง; ตัวเลือกเดินตรวจคือ OUTLAB (โซน 1), OUTLAB (โซน 2) |
+| งานคลังเลือด | คลังเลือด, คลังเลือด (crossmatch), คลังเลือด (แยกส่วนประกอบ), ห้องตะวันออกเฉียงใต้ 1, ห้องตะวันออกเฉียงใต้ 2 |
+| งานจุลชีววิทยา | จุลชีววิทยา, มุมขวาบนจุลชีววิทยา, ห้องปฏิบัติการทิศเหนือ 1–3, โถง 1–3, ห้องน้ำ |
+
+The PM/CAL work-group taxonomy is maintained in `lib/equipment-map/walk-groups.ts` as `EQUIPMENT_WORK_GROUPS` and re-exported by the equipment manifest; it is intentionally separate from `parentCode`, which remains the geometric containment rule for drawing and validating rooms/zones. All other areas remain standalone choices. In particular, electrical areas and Server rooms must never be assigned to a medical-technology work group.
+
+Every work group has a “ทั้งงาน” choice. Molecular, central-lab, and microbiology use their real parent room as that summary. OUTLAB and blood bank use synthetic work-group summaries calculated from their declared inspection-area codes because neither has a safe geometric parent that represents only that work group. Selecting either synthetic summary shows the combined counts and equipment list without changing map geometry or saved equipment area codes.
+
+`zone-special-testing` is the map container for งาน OUTLAB and is not a standalone inspection choice: its geometric children also contain the blood-bank crossmatch/component zones, so selecting that container would produce an incorrect combined PM/CAL count. The walk-through picker therefore calculates “ทั้ง งาน OUTLAB” from OUTLAB zones 1–2 only, while the map itself labels the container งาน OUTLAB.
+
+For an existing Supabase environment, apply `scripts/equipment-map-areas-v7.sql` and then `scripts/equipment-map-areas-v8.sql` manually after the earlier equipment-map area scripts, then deploy the application. V8 corrects the OUTLAB/blood-bank code mapping and restores the standalone northwest/centre room names. These scripts only align saved display names; they do not alter area codes, geometry, parent relationships, pins, or the safety map. Application builds do not run SQL migrations automatically.
+
 ## Grouped PM/CAL planning
 
 The equipment calibration workspace supports grouped plans and individual exceptions for any Thai fiscal year. A new year can start from the read-only 2566 template or from a selected prior year; both options create drafts and do not affect operational totals until staff select registered equipment and save.

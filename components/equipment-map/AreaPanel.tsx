@@ -14,9 +14,11 @@ export interface AreaPanelProps {
   onClose: () => void
   onSelectPin: (id: string) => void
   onRename: (nameTh: string) => void
+  kindLabel?: string
+  showRegistryLink?: boolean
 }
 
-export function AreaPanel({ area, pins, canEdit, busy, onClose, onSelectPin, onRename }: AreaPanelProps) {
+export function AreaPanel({ area, pins, canEdit, busy, onClose, onSelectPin, onRename, kindLabel, showRegistryLink = true }: AreaPanelProps) {
   const [editing, setEditing] = useState(false)
   const [draftName, setDraftName] = useState(area.nameTh)
 
@@ -29,7 +31,7 @@ export function AreaPanel({ area, pins, canEdit, busy, onClose, onSelectPin, onR
         style={{ position: 'absolute', right: 12, top: 12, minWidth: 44, minHeight: 44, border: 0, borderRadius: '50%', background: 'var(--surface-2)', color: 'var(--ink)', fontSize: '1.2rem', cursor: 'pointer' }}
       >×</button>
 
-      <p className="equipment-area-kind">{area.kind === 'zone' ? 'โซน' : 'ห้อง'}</p>
+      <p className="equipment-area-kind">{kindLabel ?? (area.kind === 'zone' ? 'โซน' : 'ห้อง')}</p>
       {editing ? (
         <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
           <input
@@ -63,9 +65,11 @@ export function AreaPanel({ area, pins, canEdit, busy, onClose, onSelectPin, onR
         <div className="equipment-area-count-tile"><b>{area.counts.unsurveyed}</b><span>ยังไม่สำรวจ (รอบนี้)</span></div>
       </div>
 
-      <Button variant="secondary" full icon="arrowRight" onClick={() => window.open(`/staff/equipment?area=${area.code}`, '_blank', 'noopener')}>
-        เปิดทะเบียนกรองพื้นที่นี้
-      </Button>
+      {showRegistryLink ? (
+        <Button variant="secondary" full icon="arrowRight" onClick={() => window.open(`/staff/equipment?area=${area.code}`, '_blank', 'noopener')}>
+          เปิดทะเบียนกรองพื้นที่นี้
+        </Button>
+      ) : null}
 
       <div style={{ marginTop: 18 }}>
         <span style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--muted)' }}>รายการเครื่องมือ ({pins.length})</span>

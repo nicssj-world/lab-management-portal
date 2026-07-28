@@ -110,6 +110,12 @@ export interface EquipmentAreaDTO {
   nameTh: string
   kind: 'room' | 'zone'
   parentCode: string | null
+  /** กลุ่มงานสำหรับเลือกพื้นที่ใน workflow PM/CAL; แยกจาก parentCode ที่ใช้กำหนดรูปทรงบนผัง */
+  workGroupCode: string | null
+  workGroupNameTh: string | null
+  workGroupOrder: number | null
+  /** พื้นที่สรุปของกลุ่มงาน เช่น ห้องแม่ที่รวมผลของโซนย่อย */
+  isWorkGroupSummary: boolean
   /** null เฉพาะพื้นที่นอกผัง (hasGeometry: false) ที่สร้างเพิ่มเองผ่าน POST /api/admin/equipment/areas */
   rect: EquipmentRect | null
   polygon: readonly EquipmentPoint[] | null

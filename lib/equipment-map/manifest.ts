@@ -6,6 +6,12 @@ import type {
   EquipmentWallDefinition,
 } from './types'
 
+export {
+  EQUIPMENT_WORK_GROUPS,
+  equipmentWorkGroupForArea,
+  type EquipmentWorkGroupDefinition,
+} from './walk-groups'
+
 /**
  * ผังเครื่องมือชั้น 3 — พิกัดทุกค่าถอดมาจากไฟล์ต้นฉบับ `แผนผังกลุ่มงาน2569.pptx` โดยตรง
  * (อ่าน EMU จาก ppt/slides/slide1.xml แล้วแปลงเป็นหน่วยนิ้ว ไม่ได้กะจากภาพ)
@@ -142,19 +148,19 @@ export const EQUIPMENT_DOORS: readonly EquipmentDoorDefinition[] = [
 export const EQUIPMENT_AREAS: readonly EquipmentAreaDefinition[] = [
   // ── แถบทิศเหนือ ──
   {
-    code: 'room-nw-corner', nameTh: 'ห้องมุมตะวันตกเฉียงเหนือ', kind: 'room',
-    rect: rectIn(0.15, 1.60, 1.38, 1.51), label: labelIn(0.84, 2.35, ['ห้องมุม', 'ตะวันตกเฉียงเหนือ'], 12),
+    code: 'room-nw-corner', nameTh: 'โซนห้องน้ำ ห้องอาบน้ำ', kind: 'room',
+    rect: rectIn(0.15, 1.60, 1.38, 1.51), label: labelIn(0.84, 2.35, ['โซนห้องน้ำ', 'ห้องอาบน้ำ'], 12),
   },
   {
-    code: 'room-nw-store', nameTh: 'ห้องเก็บของทิศเหนือ', kind: 'room',
-    rect: rectIn(1.53, 1.60, 1.34, 1.51), label: labelIn(2.20, 2.35, ['ห้องเก็บของ', 'ทิศเหนือ'], 12),
+    code: 'room-nw-store', nameTh: 'ห้องนอนเจ้าหน้าที่', kind: 'room',
+    rect: rectIn(1.53, 1.60, 1.34, 1.51), label: labelIn(2.20, 2.35, ['ห้องนอน', 'เจ้าหน้าที่'], 12),
   },
   {
     code: 'room-central-lab', nameTh: 'ห้องปฏิบัติการกลาง', kind: 'room',
     rect: rectIn(2.87, 1.60, 6.65, 1.51),
   },
   {
-    code: 'zone-central-chem-immuno', nameTh: 'เคมีคลินิก + ภูมิคุ้มกัน', kind: 'zone',
+    code: 'zone-central-chem-immuno', nameTh: 'เคมีคลินิก+ภูมิคุ้มกัน', kind: 'zone',
     parentCode: 'room-central-lab',
     rect: rectIn(2.87, 1.60, 2.66, 1.51), label: labelIn(4.20, 2.45, ['เคมีคลินิก', '+ ภูมิคุ้มกัน'], 15),
   },
@@ -177,8 +183,8 @@ export const EQUIPMENT_AREAS: readonly EquipmentAreaDefinition[] = [
     rect: rectIn(11.25, 1.60, 0.87, 1.15), label: labelIn(11.68, 2.17, ['ห้องปฏิบัติการ', 'ทิศเหนือ 2'], 11),
   },
   {
-    code: 'room-north-small', nameTh: 'ห้องเล็กทิศเหนือ', kind: 'room',
-    rect: rectIn(12.12, 1.60, 0.64, 0.54), label: labelIn(12.44, 1.87, ['ห้องเล็ก'], 10),
+    code: 'room-north-small', nameTh: 'ห้องน้ำ', kind: 'room',
+    rect: rectIn(12.12, 1.60, 0.64, 0.54), label: labelIn(12.44, 1.87, ['ห้องน้ำ'], 10),
   },
   {
     code: 'room-north-lab-3', nameTh: 'ห้องปฏิบัติการทิศเหนือ 3', kind: 'room',
@@ -186,25 +192,25 @@ export const EQUIPMENT_AREAS: readonly EquipmentAreaDefinition[] = [
   },
   // โถงทิศเหนือเป็น 3 ห้องแยก (มีผนัง/รูปทรงคนละกล่องใน .pptx จริง ไม่ใช่ห้องเดียวยาว)
   {
-    code: 'room-north-corridor-1', nameTh: 'โถงทิศเหนือ 1', kind: 'room',
+    code: 'room-north-corridor-1', nameTh: 'โถง 1', kind: 'room',
     rect: rectIn(9.52, 2.57, 0.52, 0.54), label: labelIn(9.78, 2.84, ['โถง 1'], 10),
   },
   {
-    code: 'room-north-corridor-2', nameTh: 'โถงทิศเหนือ 2', kind: 'room',
+    code: 'room-north-corridor-2', nameTh: 'โถง 2', kind: 'room',
     rect: rectIn(10.04, 2.57, 0.64, 0.54), label: labelIn(10.36, 2.84, ['โถง 2'], 10),
   },
   {
-    code: 'room-north-corridor-3', nameTh: 'โถงทิศเหนือ 3', kind: 'room',
+    code: 'room-north-corridor-3', nameTh: 'โถง 3', kind: 'room',
     rect: rectIn(10.68, 2.57, 0.57, 0.54), label: labelIn(10.97, 2.84, ['โถง 3'], 10),
   },
   {
     // ห้องแยกมุมขวาบนตามภาพอ้างอิง — พื้นที่ด้านซ้ายของห้องนี้เป็นทางเดิน ไม่ใช่โซนจุลชีววิทยา
-    code: 'room-microbiology-ne', nameTh: 'ห้องมุมขวาบนจุลชีววิทยา', kind: 'room',
+    code: 'room-microbiology-ne', nameTh: 'มุมขวาบนจุลชีววิทยา', kind: 'room',
     rect: rectIn(12.12, 3.11, 1.73, 0.54), label: labelIn(12.99, 3.38, ['มุมขวาบน', 'จุลชีววิทยา'], 10),
   },
   {
     // กรอบรวมจุลชีววิทยาและคลังน้ำยาเริ่มใต้ทางเดิน; โซนลูกสองโซนเป็นรูปตัว L ประกบกัน
-    code: 'room-microbiology', nameTh: 'จุลชีววิทยา', kind: 'room',
+    code: 'room-microbiology', nameTh: 'งานจุลชีววิทยา', kind: 'room',
     rect: rectIn(9.51, 3.65, 4.34, 2.04),
   },
   {
@@ -226,29 +232,29 @@ export const EQUIPMENT_AREAS: readonly EquipmentAreaDefinition[] = [
   // ห้องอณูชีววิทยาเป็นห้องแม่ที่มี 4 โซนตามที่ผู้ใช้กำหนด (ไม่อิงผังต้นฉบับ) โซนขวาสุดกว้างที่สุด
   // คงรหัส 'zone-molecular-genomics' ไว้ที่ห้องแม่ เพราะเครื่องมือบางชิ้นผูก area_code กับรหัสนี้ไปแล้ว
   {
-    code: 'zone-molecular-genomics', nameTh: 'อณูชีววิทยา', kind: 'room',
+    code: 'zone-molecular-genomics', nameTh: 'งานอณูชีววิทยา', kind: 'room',
     rect: rectIn(0.15, 3.45, 2.83, 1.65),
   },
   {
-    code: 'zone-molecular-1', nameTh: 'อณูชีววิทยา (โซน 1)', kind: 'zone',
+    code: 'zone-molecular-1', nameTh: 'อณูชีววิทยา', kind: 'zone',
     parentCode: 'zone-molecular-genomics',
-    rect: rectIn(0.15, 3.45, 0.50, 1.65), label: labelIn(0.40, 4.27, ['โซน 1'], 11),
+    rect: rectIn(0.15, 3.45, 0.50, 1.65), label: labelIn(0.40, 4.27, ['อณูชีววิทยา'], 7),
   },
   {
-    code: 'zone-molecular-2', nameTh: 'อณูชีววิทยา (โซน 2)', kind: 'zone',
+    code: 'zone-molecular-2', nameTh: 'Extraction Room', kind: 'zone',
     parentCode: 'zone-molecular-genomics',
-    rect: rectIn(0.65, 3.45, 0.50, 1.65), label: labelIn(0.90, 4.27, ['โซน 2'], 11),
+    rect: rectIn(0.65, 3.45, 0.50, 1.65), label: labelIn(0.90, 4.27, ['Extraction', 'Room'], 7),
   },
   {
-    code: 'zone-molecular-3', nameTh: 'อณูชีววิทยา (โซน 3)', kind: 'zone',
+    code: 'zone-molecular-3', nameTh: 'Library Room', kind: 'zone',
     parentCode: 'zone-molecular-genomics',
-    rect: rectIn(1.15, 3.45, 0.50, 1.65), label: labelIn(1.40, 4.27, ['โซน 3'], 11),
+    rect: rectIn(1.15, 3.45, 0.50, 1.65), label: labelIn(1.40, 4.27, ['Library', 'Room'], 7),
   },
   {
     // โซนขวาสุด — กว้างที่สุดในสี่โซนตามที่ผู้ใช้ระบุ
-    code: 'zone-molecular-4', nameTh: 'อณูชีววิทยา (โซน 4)', kind: 'zone',
+    code: 'zone-molecular-4', nameTh: 'Sequence Room', kind: 'zone',
     parentCode: 'zone-molecular-genomics',
-    rect: rectIn(1.65, 3.45, 1.33, 1.65), label: labelIn(2.32, 4.27, ['โซน 4'], 13),
+    rect: rectIn(1.65, 3.45, 1.33, 1.65), label: labelIn(2.32, 4.27, ['Sequence', 'Room'], 8),
   },
   {
     // ห้องล้างรวมพื้นที่ด้านล่างซ้ายและด้านขวาใต้ห้องภูมิคุ้มกัน แต่ไม่ทับห้องดูดควันสองห้อง
@@ -305,28 +311,28 @@ export const EQUIPMENT_AREAS: readonly EquipmentAreaDefinition[] = [
 
   // ── แถบใต้ ──
   {
-    code: 'zone-special-testing', nameTh: 'ตรวจพิเศษและตรวจต่อ', kind: 'room',
-    rect: rectIn(7.30, 5.39, 1.64, 4.07), label: labelIn(8.12, 5.55, ['ตรวจพิเศษและตรวจต่อ'], 12),
+    code: 'zone-special-testing', nameTh: 'งาน OUTLAB', kind: 'room',
+    rect: rectIn(7.30, 5.39, 1.64, 4.07), label: labelIn(8.12, 5.55, ['งาน OUTLAB'], 12),
   },
   {
-    code: 'zone-special-testing-upper-1', nameTh: 'ตรวจพิเศษ (โซนบน 1)', kind: 'zone',
+    code: 'zone-special-testing-upper-1', nameTh: 'OUTLAB (โซน 1)', kind: 'zone',
     parentCode: 'zone-special-testing',
-    rect: rectIn(7.30, 5.39, 1.64, 0.76), label: labelIn(8.12, 5.77, ['โซนบน 1'], 11),
+    rect: rectIn(7.30, 5.39, 1.64, 0.76), label: labelIn(8.12, 5.77, ['OUTLAB', 'โซน 1'], 10),
   },
   {
-    code: 'zone-special-testing-upper-2', nameTh: 'ตรวจพิเศษ (โซนบน 2)', kind: 'zone',
+    code: 'zone-special-testing-upper-2', nameTh: 'OUTLAB (โซน 2)', kind: 'zone',
     parentCode: 'zone-special-testing',
-    rect: rectIn(7.30, 6.15, 1.64, 0.75), label: labelIn(8.12, 6.53, ['โซนบน 2'], 11),
+    rect: rectIn(7.30, 6.15, 1.64, 0.75), label: labelIn(8.12, 6.53, ['OUTLAB', 'โซน 2'], 10),
   },
   {
-    code: 'zone-special-testing-mid', nameTh: 'ตรวจพิเศษ (โซนกลาง)', kind: 'zone',
+    code: 'zone-special-testing-mid', nameTh: 'คลังเลือด (แยกส่วนประกอบ)', kind: 'zone',
     parentCode: 'zone-special-testing',
-    rect: rectIn(7.30, 6.90, 1.64, 0.72), label: labelIn(8.12, 7.26, ['โซนกลาง'], 12), fillTone: 'controlled',
+    rect: rectIn(7.30, 6.90, 1.64, 0.72), label: labelIn(8.12, 7.26, ['แยกส่วน', 'ประกอบ'], 9), fillTone: 'controlled',
   },
   {
-    code: 'zone-special-testing-lower', nameTh: 'ตรวจพิเศษ (โซนล่าง)', kind: 'zone',
+    code: 'zone-special-testing-lower', nameTh: 'คลังเลือด (crossmatch)', kind: 'zone',
     parentCode: 'zone-special-testing',
-    rect: rectIn(7.30, 7.62, 1.64, 1.84), label: labelIn(8.12, 8.54, ['โซนล่าง'], 12), fillTone: 'controlled',
+    rect: rectIn(7.30, 7.62, 1.64, 1.84), label: labelIn(8.12, 8.54, ['Crossmatch'], 10), fillTone: 'controlled',
   },
   {
     // x เริ่มที่ 8.94 (ไม่ใช่ 8.93 ตาม .pptx เป๊ะ ๆ) เพื่อไม่ให้ปัดเศษแล้วทับขอบขวาของห้องตรวจพิเศษ
@@ -358,11 +364,11 @@ export const EQUIPMENT_AREAS: readonly EquipmentAreaDefinition[] = [
     rect: rectIn(5.52, 8.80, 1.17, 0.66), label: labelIn(6.11, 9.13, ['ห้องว่าง 4'], 10),
   },
   {
-    code: 'room-se-1', nameTh: 'ห้องทิศตะวันออกเฉียงใต้ 1', kind: 'room',
+    code: 'room-se-1', nameTh: 'ห้องตะวันออกเฉียงใต้ 1', kind: 'room',
     rect: rectIn(9.99, 7.31, 0.79, 1.33), label: labelIn(10.39, 7.98, ['ห้อง', 'ตะวันออก', 'เฉียงใต้ 1'], 10), fillTone: 'controlled',
   },
   {
-    code: 'room-se-2', nameTh: 'ห้องทิศตะวันออกเฉียงใต้ 2', kind: 'room',
+    code: 'room-se-2', nameTh: 'ห้องตะวันออกเฉียงใต้ 2', kind: 'room',
     rect: rectIn(8.94, 8.65, 1.05, 0.82), label: labelIn(9.47, 9.06, ['ห้องตะวันออก', 'เฉียงใต้ 2'], 10),
   },
 ]

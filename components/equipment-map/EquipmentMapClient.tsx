@@ -17,6 +17,7 @@ import { PlacementPanel } from './PlacementPanel'
 import { SurveyRoundBar } from './SurveyRoundBar'
 import { useUrlFilters } from '@/components/risk/shared/useUrlFilters'
 import { filterPlacementItems } from '@/lib/equipment-map/placement-pagination'
+import { groupEquipmentWalkAreas } from '@/lib/equipment-map/walk-groups'
 import type { Equipment } from '@/lib/queries/equipment'
 import type { EquipmentAreaDTO, EquipmentMapDTO, EquipmentPinDTO } from '@/lib/equipment-map/types'
 
@@ -53,6 +54,18 @@ function pinsForArea(area: EquipmentAreaDTO, areas: readonly EquipmentAreaDTO[],
     return pins.filter((pin) => pin.areaCode === area.code || childZoneCodes.has(pin.areaCode))
   }
   return pins.filter((pin) => pin.areaCode === area.code)
+}
+
+function countsForPins(pins: readonly EquipmentPinDTO[]): EquipmentAreaDTO['counts'] {
+  return {
+    total: pins.length,
+    active: pins.filter((pin) => pin.status === 'Active').length,
+    broken: pins.filter((pin) => pin.status === 'ชำรุด').length,
+    dueSoon: pins.filter((pin) => pin.due === 'due_soon').length,
+    overdue: pins.filter((pin) => pin.due === 'overdue').length,
+    pendingReg: pins.filter((pin) => pin.pendingRegistration).length,
+    unsurveyed: pins.filter((pin) => !pin.surveyed).length,
+  }
 }
 
 async function callApi(url: string, method: string, body?: unknown) {
@@ -163,6 +176,56 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
     return { all: map.pins.length, due, broken, pending, unsurveyed }
   }, [map.pins])
 
+  const walkAreas = useMemo(() => map.areas
+    .filter((area) => area.isActive && area.hasGeometry)
+    .map((area) => {
+      const pins = pinsForArea(area, map.areas, mapPins)
+      const unsurveyed = pins.filter((pin) => !pin.surveyed).length
+      const overdue = pins.filter((pin) => pin.due === 'overdue').length
+      const dueSoon = pins.filter((pin) => pin.due === 'due_soon').length
+      return { area, total: pins.length, unsurveyed, overdue, dueSoon }
+    }), [map.areas, mapPins])
+  // ห้องแม่รวมเครื่องมือจากทุกโซนลูกไว้เพื่อให้เปิดดูภาพรวมได้ แต่การนับความคืบหน้า
+  // และปุ่มพื้นที่ถัดไปต้องใช้เฉพาะพื้นที่ปลายทาง เพื่อไม่ให้นับเครื่องมือซ้ำสองครั้ง.
+  const inspectionAreas = walkAreas.filter((item) => !walkAreas.some((candidate) => candidate.area.parentCode === item.area.code))
+  const groupedWalkAreas = useMemo(() => groupEquipmentWalkAreas(walkAreas), [walkAreas])
+  const selectedWorkGroup = groupedWalkAreas.groups.find((group) => group.summary?.selectionCode === filters.area) ?? null
+  const selectedWorkGroupPins = useMemo(() => {
+    if (!selectedWorkGroup) return []
+    const areaCodes = new Set(selectedWorkGroup.items.map((item) => item.area.code))
+    return mapPins.filter((pin) => areaCodes.has(pin.areaCode))
+  }, [selectedWorkGroup, mapPins])
+  const selectedWorkGroupArea = useMemo<EquipmentAreaDTO | null>(() => selectedWorkGroup ? ({
+    code: selectedWorkGroup.summary!.selectionCode,
+    nameTh: `ทั้ง ${selectedWorkGroup.nameTh}`,
+    kind: 'room',
+    parentCode: null,
+    workGroupCode: selectedWorkGroup.code,
+    workGroupNameTh: selectedWorkGroup.nameTh,
+    workGroupOrder: selectedWorkGroup.order,
+    isWorkGroupSummary: true,
+    rect: null,
+    polygon: null,
+    label: null,
+    fillTone: null,
+    hasGeometry: false,
+    isActive: true,
+    counts: countsForPins(selectedWorkGroupPins),
+  }) : null, [selectedWorkGroup, selectedWorkGroupPins])
+  const inspectionProgress = useMemo(() => {
+    const total = inspectionAreas.reduce((sum, item) => sum + item.total, 0)
+    const unsurveyed = inspectionAreas.reduce((sum, item) => sum + item.unsurveyed, 0)
+    return { total, surveyed: total - unsurveyed, unsurveyed }
+  }, [inspectionAreas])
+  const selectedWalkArea = selectedArea ? walkAreas.find((item) => item.area.code === selectedArea.code) ?? null : null
+  const selectedWalkSummary = selectedWorkGroup?.summary ?? (selectedWalkArea ? {
+    nameTh: selectedWalkArea.area.nameTh,
+    total: selectedWalkArea.total,
+    unsurveyed: selectedWalkArea.unsurveyed,
+    overdue: selectedWalkArea.overdue,
+    dueSoon: selectedWalkArea.dueSoon,
+  } : null)
+
   const searchResults = useMemo(() => {
     const text = query.trim().toLocaleLowerCase('th')
     if (!text) return []
@@ -183,6 +246,14 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
       if (pin) { setFilters({ area: pin.areaCode }); setSelectedPinId(pin.id) }
     }
     setQuery('')
+  }
+
+  function selectNextWalkArea() {
+    if (inspectionAreas.length === 0) return
+    const currentIndex = selectedWalkArea ? inspectionAreas.findIndex((item) => item.area.code === selectedWalkArea.area.code) : -1
+    const ordered = [...inspectionAreas.slice(currentIndex + 1), ...inspectionAreas.slice(0, currentIndex + 1)]
+    const next = ordered.find((item) => item.unsurveyed > 0 || item.overdue > 0 || item.dueSoon > 0) ?? ordered[0]
+    if (next) setFilters({ area: next.area.code })
   }
 
   async function run(action: () => Promise<void>, successMsg?: string, onError?: () => void) {
@@ -329,6 +400,51 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
         onCloseRound={handleCloseRound}
       />
 
+      <section className="equipment-mobile-walk-bar" aria-label="การเดินตรวจ PM/CAL บนมือถือ">
+        <div className="equipment-mobile-walk-status">
+          <span>{map.activeRound ? `รอบสำรวจ: ${map.activeRound.nameTh}` : 'ยังไม่ได้เปิดรอบสำรวจ'}</span>
+          <strong>{map.activeRound ? `สำรวจแล้ว ${inspectionProgress.surveyed}/${inspectionProgress.total}` : `งาน PM/CAL ที่ต้องติดตาม ${globalCounts.due}`}</strong>
+        </div>
+        <div className="equipment-mobile-walk-controls">
+          <label>
+            <span>พื้นที่ที่กำลังตรวจ</span>
+            <select value={selectedWalkArea || selectedWorkGroup ? filters.area : ''} onChange={(event) => setFilters({ area: event.target.value })}>
+              <option value="">เลือกพื้นที่…</option>
+              {groupedWalkAreas.groups.map((group) => (
+                <optgroup key={group.code} label={group.nameTh}>
+                  {group.summary ? (
+                    <option value={group.summary.selectionCode}>
+                      ทั้ง {group.summary.nameTh} · {group.summary.total} เครื่องมือ · เหลือ {group.summary.unsurveyed} · PM/CAL {group.summary.overdue + group.summary.dueSoon}
+                    </option>
+                  ) : null}
+                  {group.items.map(({ area, total, unsurveyed, overdue, dueSoon }) => (
+                      <option key={area.code} value={area.code}>
+                        {area.isWorkGroupSummary ? 'ทั้ง ' : '— '}{area.nameTh} · {total} เครื่องมือ · เหลือ {unsurveyed} · PM/CAL {overdue + dueSoon}
+                      </option>
+                  ))}
+                </optgroup>
+              ))}
+              {groupedWalkAreas.standalone.map(({ area, total, unsurveyed, overdue, dueSoon }) => (
+                <option key={area.code} value={area.code}>
+                  {area.nameTh} · {total} เครื่องมือ · เหลือ {unsurveyed} · PM/CAL {overdue + dueSoon}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button size="sm" variant="secondary" iconRight="arrowRight" onClick={selectNextWalkArea} disabled={inspectionAreas.length === 0}>
+            เลือกพื้นที่ถัดไป
+          </Button>
+        </div>
+        {selectedWalkSummary ? (
+          <p className="equipment-mobile-walk-summary">
+            <b>{selectedWalkSummary.nameTh}</b>
+            <span>เหลือสำรวจ {selectedWalkSummary.unsurveyed}/{selectedWalkSummary.total} · เกินกำหนด {selectedWalkSummary.overdue} · ใกล้ครบ {selectedWalkSummary.dueSoon}</span>
+          </p>
+        ) : (
+          <p className="equipment-mobile-walk-summary">เลือกห้องเพื่อดูรายการเครื่องมือและบันทึกการสำรวจของพื้นที่นั้น</p>
+        )}
+      </section>
+
       <div className="lab-map-toolbar equipment-map-toolbar">
         <FilterChips
           label="ตัวกรองแผนที่"
@@ -381,7 +497,7 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
           doors={map.doors}
           areas={map.areas}
           pins={mapPins}
-          selectedAreaCode={filters.area || null}
+          selectedAreaCode={selectedArea?.code ?? null}
           selectedPinId={selectedPinId}
           onSelectArea={(code) => setFilters({ area: code })}
           onSelectPin={(id) => setSelectedPinId(id)}
@@ -413,9 +529,22 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
             busy={busy}
             onClose={() => setFilters({ area: '' })}
             onSelectPin={(id) => setSelectedPinId(id)}
-            onRename={handleRenameArea}
-          />
-        ) : (
+              onRename={handleRenameArea}
+            />
+          ) : selectedWorkGroupArea ? (
+            <AreaPanel
+              key={selectedWorkGroupArea.code}
+              area={selectedWorkGroupArea}
+              pins={selectedWorkGroupPins}
+              canEdit={false}
+              busy={busy}
+              onClose={() => setFilters({ area: '' })}
+              onSelectPin={(id) => setSelectedPinId(id)}
+              onRename={() => undefined}
+              kindLabel="กลุ่มงาน"
+              showRegistryLink={false}
+            />
+          ) : (
           <div className="lab-map-detail-panel">
             <div className="lab-map-empty-detail">
               <span>?</span>

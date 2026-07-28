@@ -39,6 +39,9 @@ interface PinDragPreview { id: string; x: number; y: number }
 // from ever nudging the pin — pointermove is ignored entirely (draggedPinRef stays null) until the
 // hold clears this threshold, so an ordinary click can never shift the pin's position.
 const PIN_DRAG_HOLD_MS = 250
+// Mobile taps naturally wobble a few CSS pixels. Do not turn that wobble into a pan,
+// otherwise the following click is suppressed and the area panel never opens.
+const TAP_SLOP_PX = 12
 
 function matchesFocus(pin: EquipmentPinDTO, focus: EquipmentMapFocus): boolean {
   if (focus === 'all') return true
@@ -287,7 +290,8 @@ export function EquipmentMapCanvas({
     const start = dragStart.current
     if (!start || event.pointerId !== start.pointerId) return
     const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY)
-    if (distance > 4) didGesture.current = true
+    if (distance <= TAP_SLOP_PX) return
+    didGesture.current = true
     setView((current) => ({
       ...current,
       x: start.viewX + svgPoint.x - start.svgX,
@@ -389,7 +393,6 @@ export function EquipmentMapCanvas({
 
   function handleCanvasClick(event: ReactMouseEvent<SVGSVGElement>) {
     if (consumeGestureClick()) return
-    if (!onCoordinateSelect) return
     const target = event.target as Element
     if (target.closest('[data-pin-id]')) return
     const point = resolveSvgPoint(event)
@@ -399,10 +402,16 @@ export function EquipmentMapCanvas({
     const roomMatch = zoneMatch ? null : rooms.find((area) => inArea(area, point))
     const match = zoneMatch ?? roomMatch
     if (!match) {
-      onCoordinateSelect({ error: 'outside_area' })
+      onCoordinateSelect?.({ error: 'outside_area' })
       return
     }
-    onCoordinateSelect({ areaCode: match.code, x: Math.round(point.x), y: Math.round(point.y) })
+    if (onCoordinateSelect) {
+      onCoordinateSelect({ areaCode: match.code, x: Math.round(point.x), y: Math.round(point.y) })
+    } else {
+      // setPointerCapture() บน SVG ทำให้ click หลังแตะถูก retarget มาที่ canvas ได้
+      // จึงต้องเลือกพื้นที่จากพิกัดเป็น fallback แทนการพึ่ง onClick ของ <g> อย่างเดียว
+      onSelectArea(match.code)
+    }
   }
 
   const renderArea = (area: EquipmentAreaDTO) => {
