@@ -9,6 +9,7 @@ import { VISITOR_STATION_CODE } from '@/lib/lab-map/visitor'
 import { currentManifestHash, pickReleaseRows } from '@/lib/lab-map/release'
 import { canManageMapReleases, mapReleaseRow } from '@/lib/lab-map/release-server'
 import { buildMapPrintDTO, type MapPaperSize, type MapPrintDTO } from '@/lib/lab-map/print'
+import { publicSafetyMapPath } from '@/lib/lab-map/public-safety'
 import type { MapReleaseDTO } from '@/lib/lab-map/types'
 
 export const dynamic = 'force-dynamic'
@@ -57,19 +58,24 @@ export default async function LabMapPrintPage() {
   // สถานีชนิด 'checkpoint' คือจุดที่ผู้มาติดต่อยืนรอจริง ไม่ใช่จุดติดตั้งป้าย — ไม่เข้าแคตตาล็อกงานพิมพ์
   const installationStations = LAB_STATIONS.filter((station) => station.kind === 'installation')
   for (const paperSize of papers) for (const station of installationStations) {
+    const publicPath = publicSafetyMapPath(station.code)
+    if (!publicPath) continue
     for (const kind of ['evacuation', 'infection_control'] as const) {
-      const result = buildMapPrintDTO({ release, kind, paperSize, stationCode: station.code, webUrl: `${siteUrl}/staff/lab-map` })
+      const result = buildMapPrintDTO({ release, kind, paperSize, stationCode: station.code, webUrl: `${siteUrl}${publicPath}` })
       if (result.ok) catalog.push(result.value)
     }
   }
-  // ไม่มีเส้นทางสาธารณะแบบ URL อีกต่อไป — QR ชี้กลับไปที่แผนที่ฝั่งเจ้าหน้าที่
+  // QR ของป้ายทุกชนิดชี้ไปแผนที่ความปลอดภัย public ของจุดติดตั้งนั้น
+  // หน้านี้ไม่มีผังห้อง/ข้อมูลควบคุมการติดเชื้อ จึงสแกนได้โดยไม่ต้องล็อกอินอย่างปลอดภัย
   // ไม่รวมจุดสแกนของสำนักงานเอง (checkpoint ของ VISITOR_STATION_CODE) เป็นตัวเลือกปลายทางที่พิมพ์ได้ —
   // ผู้มาติดต่อยืนอยู่หน้าสำนักงานอยู่แล้ว เส้นทางไปจุดสแกนที่ติดกับประตูเดียวกันไม่จำเป็นต้องมีป้ายพิมพ์แยก
   // (เส้นทางนี้ยังคงอยู่ใน manifest เพื่อใช้กับการนำทางในแอปสำหรับผู้มาติดต่อของแผนกนี้)
   const ownCheckpointCode = LAB_STATIONS.find((station) => station.code === VISITOR_STATION_CODE)?.checkpointCode
   const destinations = [...new Set(LAB_ROUTE_PRESETS.filter((route) => route.kind === 'visitor' && route.fromStationCode === VISITOR_STATION_CODE && route.destinationCode !== ownCheckpointCode).map((route) => route.destinationCode))]
+  const visitorMapPath = publicSafetyMapPath(VISITOR_STATION_CODE)
   for (const paperSize of papers) for (const destinationCode of destinations) {
-    const result = buildMapPrintDTO({ release, kind: 'visitor_navigation', paperSize, stationCode: VISITOR_STATION_CODE, destinationCode, webUrl: `${siteUrl}/staff/lab-map` })
+    if (!visitorMapPath) continue
+    const result = buildMapPrintDTO({ release, kind: 'visitor_navigation', paperSize, stationCode: VISITOR_STATION_CODE, destinationCode, webUrl: `${siteUrl}${visitorMapPath}` })
     if (result.ok) catalog.push(result.value)
   }
 

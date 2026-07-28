@@ -21,6 +21,10 @@ export interface LabMapCanvasProps {
   activeRouteCodes?: readonly string[]
   onSelect: (code: string) => void
   onCoordinateSelect?: (x: number, y: number) => void
+  onMoveSafetyEquipment?: (input: { id: string; code: string; x: number; y: number; spaceCode: string | null }) => void
+  showAllSafetyEquipment?: boolean
+  draftSafetyEquipment?: Pick<LabSafetyEquipmentDefinition, 'code' | 'nameTh' | 'kind' | 'x' | 'y'> | null
+  onMoveDraftSafetyEquipment?: (input: { x: number; y: number; spaceCode: string | null }) => void
   spaceTones?: Readonly<Record<string, 'low' | 'medium' | 'high' | 'unassessed'>>
   highlightedSpaceCodes?: readonly string[]
   /** จุดสแกนปลายทางของเส้นทางที่กำลังแสดง — ไฮไลต์และประกาศให้ผู้ใช้ทราบว่าเส้นทางจบที่นี่ */
@@ -43,6 +47,22 @@ interface ViewTransform {
 }
 
 const RESTRICTED_LIFT_CODES = new Set<string>(EVACUATION_RESTRICTED_SPACE_CODES)
+const SAFETY_DRAG_HOLD_MS = 250
+
+interface SafetyDrag {
+  id: string
+  code: string
+  pointerId: number
+  x: number
+  y: number
+}
+
+interface SafetyDragPreview {
+  code: string
+  x: number
+  y: number
+  spaceCode: string | null
+}
 
 function renderShape(shape: SvgShape): ReactNode {
   switch (shape.type) {
@@ -155,6 +175,10 @@ export function LabMapCanvas({
   activeRouteCodes = [],
   onSelect,
   onCoordinateSelect,
+  onMoveSafetyEquipment,
+  showAllSafetyEquipment = false,
+  draftSafetyEquipment = null,
+  onMoveDraftSafetyEquipment,
   spaceTones,
   highlightedSpaceCodes = [],
   destinationPointCode = null,
@@ -178,6 +202,14 @@ export function LabMapCanvas({
     contentY: number
   } | null>(null)
   const didGesture = useRef(false)
+  const [pendingSafetyCode, setPendingSafetyCode] = useState<string | null>(null)
+  const [draggedSafetyCode, setDraggedSafetyCode] = useState<string | null>(null)
+  const [safetyDragPreview, setSafetyDragPreview] = useState<SafetyDragPreview | null>(null)
+  const pendingSafetyDragRef = useRef<SafetyDrag | null>(null)
+  const draggedSafetyRef = useRef<SafetyDrag | null>(null)
+  const safetyDragPreviewRef = useRef<SafetyDragPreview | null>(null)
+  const safetyDragArmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const suppressSafetyClickRef = useRef<string | null>(null)
 
   const activeRoutes = useMemo(
     () => map.routes.filter((route) => activeRouteCodes.includes(route.code)),
@@ -231,6 +263,80 @@ export function LabMapCanvas({
     return matrix ? point.matrixTransform(matrix) : null
   }
 
+  function resolveSafetyDragPoint(svg: SVGSVGElement, clientX: number, clientY: number) {
+    const svgPoint = resolveSvgViewportPoint(svg, clientX, clientY)
+    if (!svgPoint) return null
+    const spaceElement = document.elementsFromPoint(clientX, clientY)
+      .map(element => element.closest('[data-space-code]'))
+      .find((element): element is Element => Boolean(element))
+    return {
+      x: Math.max(0, Math.min(1477, (svgPoint.x - view.x) / view.scale)),
+      y: Math.max(0, Math.min(892, (svgPoint.y - view.y) / view.scale)),
+      spaceCode: spaceElement?.getAttribute('data-space-code') ?? null,
+    }
+  }
+
+  function clearSafetyDrag() {
+    if (safetyDragArmTimerRef.current) {
+      clearTimeout(safetyDragArmTimerRef.current)
+      safetyDragArmTimerRef.current = null
+    }
+    pendingSafetyDragRef.current = null
+    draggedSafetyRef.current = null
+    safetyDragPreviewRef.current = null
+    setPendingSafetyCode(null)
+    setDraggedSafetyCode(null)
+    setSafetyDragPreview(null)
+  }
+
+  function startSafetyDrag(event: ReactPointerEvent<SVGGElement>, item: LabSafetyEquipmentDefinition & { id?: string }) {
+    const isDraft = item.code === draftSafetyEquipment?.code && !item.id
+    if ((!isDraft && (!onMoveSafetyEquipment || !item.id)) || (isDraft && !onMoveDraftSafetyEquipment)) return
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const pending: SafetyDrag = { id: item.id ?? '__draft__', code: item.code, pointerId: event.pointerId, x: item.x, y: item.y }
+    pendingSafetyDragRef.current = pending
+    setPendingSafetyCode(item.code)
+    if (safetyDragArmTimerRef.current) clearTimeout(safetyDragArmTimerRef.current)
+    safetyDragArmTimerRef.current = setTimeout(() => {
+      safetyDragArmTimerRef.current = null
+      if (pendingSafetyDragRef.current?.pointerId !== pending.pointerId) return
+      const preview: SafetyDragPreview = { code: pending.code, x: pending.x, y: pending.y, spaceCode: null }
+      draggedSafetyRef.current = pending
+      safetyDragPreviewRef.current = preview
+      setDraggedSafetyCode(pending.code)
+      setSafetyDragPreview(preview)
+    }, SAFETY_DRAG_HOLD_MS)
+  }
+
+  function moveSafetyDrag(event: ReactPointerEvent<SVGGElement>) {
+    const dragged = draggedSafetyRef.current
+    if (!dragged || event.pointerId !== dragged.pointerId) return
+    const svg = event.currentTarget.ownerSVGElement
+    if (!svg) return
+    event.stopPropagation()
+    const point = resolveSafetyDragPoint(svg, event.clientX, event.clientY)
+    if (!point) return
+    const preview = { code: dragged.code, ...point }
+    safetyDragPreviewRef.current = preview
+    setSafetyDragPreview(preview)
+  }
+
+  function finishSafetyDrag(event: ReactPointerEvent<SVGGElement>) {
+    const pending = pendingSafetyDragRef.current
+    if (!pending || event.pointerId !== pending.pointerId) return
+    event.stopPropagation()
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    const dragged = draggedSafetyRef.current
+    const preview = safetyDragPreviewRef.current
+    clearSafetyDrag()
+    if (!dragged || !preview || (preview.x === dragged.x && preview.y === dragged.y)) return
+    suppressSafetyClickRef.current = dragged.code
+    const position = { x: Math.round(preview.x), y: Math.round(preview.y), spaceCode: preview.spaceCode }
+    if (dragged.id === '__draft__') onMoveDraftSafetyEquipment?.(position)
+    else onMoveSafetyEquipment?.({ id: dragged.id, code: dragged.code, ...position })
+  }
+
   function pointerPair() {
     const pointers = [...activePointers.current.values()]
     return pointers.length >= 2 ? [pointers[0], pointers[1]] as const : null
@@ -260,6 +366,8 @@ export function LabMapCanvas({
 
   function startPan(event: ReactPointerEvent<SVGSVGElement>) {
     if (!interactive) return
+    const target = event.target as Element
+    if (target.closest('[data-equipment-code]')) return
     const svgPoint = resolveSvgViewportPoint(event.currentTarget, event.clientX, event.clientY)
     if (!svgPoint) return
     activePointers.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY, svgX: svgPoint.x, svgY: svgPoint.y })
@@ -487,30 +595,55 @@ export function LabMapCanvas({
 
             {mode === 'safety' || mode === 'safety-assets' ? (
               <g className="lab-map-safety-equipment">
-                {map.safetyEquipment
-                  .filter((item) => mode === 'safety' ? item.kind === 'fire-extinguisher' : item.kind !== 'fire-extinguisher')
-                  .map((item) => (
+                {[...map.safetyEquipment, ...(draftSafetyEquipment ? [{ ...draftSafetyEquipment, verified: false }] : [])]
+                  .filter((item) => showAllSafetyEquipment || onMoveSafetyEquipment || draftSafetyEquipment
+                    ? true
+                    : mode === 'safety' ? item.kind === 'fire-extinguisher' : item.kind !== 'fire-extinguisher')
+                  .map((sourceItem) => {
+                  const item = safetyDragPreview?.code === sourceItem.code
+                    ? { ...sourceItem, x: safetyDragPreview.x, y: safetyDragPreview.y }
+                    : sourceItem
+                  const draggableItem = sourceItem as LabSafetyEquipmentDefinition & { id?: string }
+                  return (
                   <g
                     key={item.code}
                     className={`lab-map-equipment lab-map-equipment--${item.kind}`}
                     data-verified={item.verified || undefined}
                     data-operational-status={item.operationalStatus}
                     data-equipment-code={item.code}
+                    data-draft={item.code === draftSafetyEquipment?.code || undefined}
                     data-selected={selectedCode === item.code || undefined}
+                    data-drag-pending={pendingSafetyCode === item.code || undefined}
+                    data-dragging={draggedSafetyCode === item.code || undefined}
                     role={interactive ? 'button' : 'img'}
                     tabIndex={interactive ? 0 : -1}
                     aria-label={`${item.nameTh}${item.verified ? '' : ' — รอยืนยันตำแหน่ง'}${item.operationalStatus === 'failed' ? ' — ไม่พร้อมใช้' : ''}${selectedCode === item.code ? ' — กำลังเลือก' : ''}`}
-                    onClick={(event) => { event.stopPropagation(); if (interactive) onSelect(item.code) }}
+                    onPointerDown={(event) => startSafetyDrag(event, draggableItem)}
+                    onPointerMove={moveSafetyDrag}
+                    onPointerUp={finishSafetyDrag}
+                    onPointerCancel={clearSafetyDrag}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (suppressSafetyClickRef.current === item.code) {
+                        suppressSafetyClickRef.current = null
+                        return
+                      }
+                      if (interactive) onSelect(item.code)
+                    }}
                     onKeyDown={(event) => handleSpaceKeyDown(event, item.code)}
                   >
-                    {selectedCode === item.code ? <circle className="lab-map-equipment-selection-halo" cx={item.x} cy={item.y} r={19} /> : null}
+                    {selectedCode === item.code || item.code === draftSafetyEquipment?.code || pendingSafetyCode === item.code || draggedSafetyCode === item.code
+                      ? <circle className="lab-map-equipment-selection-halo" cx={item.x} cy={item.y} r={19} />
+                      : null}
                     <g className="lab-map-equipment-icon">{safetyEquipmentSymbol(item)}</g>
-                    {selectedCode === item.code ? <text className="lab-map-equipment-selection-label" x={item.x} y={item.y - 25} textAnchor="middle">{item.nameTh}</text> : null}
+                    {selectedCode === item.code || item.code === draftSafetyEquipment?.code
+                      ? <text className="lab-map-equipment-selection-label" x={item.x} y={item.y - 25} textAnchor="middle">{item.nameTh}</text>
+                      : null}
                     {item.operationalStatus === 'failed' ? (
                       <path className="lab-map-equipment-alert" d={`M ${item.x - 11} ${item.y - 11} L ${item.x + 11} ${item.y + 11} M ${item.x + 11} ${item.y - 11} L ${item.x - 11} ${item.y + 11}`} />
                     ) : null}
                   </g>
-                  ))}
+                  )})}
               </g>
             ) : null}
 
@@ -526,6 +659,9 @@ export function LabMapCanvas({
           </g>
         </svg>
       </div>
+      <p className="lab-map-safety-drag-status" aria-live="polite">
+        {draggedSafetyCode ? 'ลากเพื่อย้ายตำแหน่ง ปล่อยเพื่อบันทึก' : pendingSafetyCode ? 'กดค้างเพื่อเริ่มลาก…' : ''}
+      </p>
     </section>
   )
 }

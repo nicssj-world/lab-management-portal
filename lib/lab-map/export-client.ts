@@ -4,6 +4,19 @@ import type { MapPrintDTO } from './print'
 
 async function waitForAssets(element: HTMLElement) {
   await document.fonts.ready
+  const qr = element.querySelector<HTMLElement>('[data-qr-state]')
+  if (qr?.dataset.qrState === 'loading') {
+    await new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (qr.dataset.qrState !== 'loading') {
+          observer.disconnect()
+          resolve()
+        }
+      })
+      observer.observe(qr, { attributes: true, attributeFilter: ['data-qr-state'] })
+    })
+  }
+  if (qr?.dataset.qrState === 'failed') throw new Error('สร้าง QR Code ไม่สำเร็จ')
   await Promise.all([...element.querySelectorAll('img')].map((image) => image.complete
     ? Promise.resolve()
     : new Promise<void>((resolve) => {
@@ -41,6 +54,6 @@ export async function exportMapAsPdf(element: HTMLElement, dto: MapPrintDTO) {
   const canvas = await html2canvas(element, { scale: dto.paperSize === 'A3' ? 2.5 : 3, useCORS: true, backgroundColor: '#ffffff' })
   const dimensions = dto.paperSize === 'A3' ? [420, 297] as const : [297, 210] as const
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: dto.paperSize.toLowerCase() })
-  pdf.addImage(canvas.toDataURL('image/jpeg', .96), 'JPEG', 0, 0, dimensions[0], dimensions[1])
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, dimensions[0], dimensions[1])
   pdf.save(filename(dto, 'pdf'))
 }

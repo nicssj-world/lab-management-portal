@@ -1,23 +1,29 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Badge, type BadgeColor } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { uploadFileWithProgress } from '@/lib/documents/upload-with-progress'
 import { normalizeRole } from '@/lib/roles'
-import { compressSafetyPhoto } from '@/lib/lab-map/safety-photo-compression'
+import { buildSafetyInspectionQueue, nextSafetyAssetCode, previousSafetyAssetCode } from '@/lib/lab-map/safety-inspection-workflow'
 import type {
   AssemblyPointDTO, AssemblyPointVerificationDTO, LabMapDTO, SafetyAssetDTO, SafetyInspectionDTO,
+  SafetyInspectionRoundDTO,
 } from '@/lib/lab-map/types'
 import { LabMapCanvas } from './LabMapCanvas'
 import { LabMapStyles } from './LabMapStyles'
 import { SafetyAssetsStyles } from './SafetyAssetsStyles'
+import { SafetyPhotoPicker } from './SafetyPhotoPicker'
+import { SafetyInspectionMobile } from './SafetyInspectionMobile'
+import { SafetyInspectionProgress } from './SafetyInspectionProgress'
+import { SafetyAssetScanner } from './SafetyAssetScanner'
 
 type StaffOption = { id: string; name: string | null; role: string }
 type EditorOption = { user_id: string }
 type Tab = 'assets' | 'assembly' | 'editors'
+type SafetyMobileView = 'list' | 'map' | 'inspect'
 
 const KIND_LABELS: Record<string, string> = {
   'fire-extinguisher': 'ถังดับเพลิง', 'fire-hose': 'สายฉีดน้ำดับเพลิง',
@@ -63,23 +69,51 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   const [status, setStatus] = useState('')
   const [kind, setKind] = useState('')
   const [spaceCode, setSpaceCode] = useState('')
-  const [mobileView, setMobileView] = useState<'map' | 'list'>('list')
+  const [mobileView, setMobileView] = useState<SafetyMobileView>('list')
+  const [activeRound, setActiveRound] = useState<SafetyInspectionRoundDTO | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [assetDraft, setAssetDraft] = useState<Partial<SafetyAssetDTO> | null>(null)
   const [pointDraft, setPointDraft] = useState<Partial<AssemblyPointDTO> | null>(null)
   const [editorQuery, setEditorQuery] = useState('')
+  const [positionFailure, setPositionFailure] = useState<{
+    message: string
+    input: { id: string; code: string; x: number; y: number; spaceCode: string | null }
+  } | null>(null)
+  const listScrollTopRef = useRef(0)
+  const listContainerRef = useRef<HTMLDivElement>(null)
 
   const workingMap = useMemo<LabMapDTO>(() => ({ ...map, safetyEquipment: assets, assemblyPoints: points }), [map, assets, points])
   const selectedAsset = assets.find(item => item.code === selectedCode) ?? null
   const selectedPoint = points.find(item => item.code === selectedCode) ?? null
-  const filteredAssets = assets.filter(item => {
-    const matchesQuery = !query || `${item.code} ${item.nameTh} ${item.sourceNoteTh ?? ''}`.toLocaleLowerCase('th').includes(query.toLocaleLowerCase('th'))
-    return matchesQuery
-      && (!status || item.operationalStatus === status)
-      && (!kind || item.kind === kind)
-      && (!spaceCode || item.spaceCode === spaceCode)
-  })
+  const selectedLocationLabel = selectedAsset
+    ? map.spaces.find(space => space.code === selectedAsset.spaceCode)?.nameTh ?? selectedAsset.spaceCode ?? 'ไม่ระบุห้อง'
+    : 'ไม่ระบุห้อง'
+  const selectedRoundItem = selectedAsset
+    ? activeRound?.items.find(item => item.assetId === selectedAsset.id) ?? null
+    : null
+  const completedAssetIds = useMemo(() => new Set(
+    activeRound?.items.filter(item => item.status === 'completed').map(item => item.assetId) ?? [],
+  ), [activeRound])
+  const roundAssetIds = useMemo(() => activeRound
+    ? new Set(activeRound.items.map(item => item.assetId))
+    : null, [activeRound])
+  const queueAssets = roundAssetIds ? assets.filter(item => roundAssetIds.has(item.id)) : assets
+  const inspectionQueue = useMemo(() => buildSafetyInspectionQueue({
+    assets: queueAssets,
+    filters: { query, status, kind, spaceCode },
+    completedAssetIds,
+  }), [queueAssets, completedAssetIds, kind, query, spaceCode, status])
+  const filteredAssets = inspectionQueue.items.map(item => item.asset)
+  const inspectionResultCounts = useMemo(() => inspectionQueue.items.reduce((counts, queueItem) => {
+    if (!queueItem.completed) return counts
+    const result = queueItem.asset.latestInspection?.result
+    if (result === 'passed') counts.passed += 1
+    else if (result === 'needs_attention') counts.needsAttention += 1
+    else if (result === 'failed') counts.failed += 1
+    else if (result === 'not_found') counts.notFound += 1
+    return counts
+  }, { passed: 0, needsAttention: 0, failed: 0, notFound: 0 }), [inspectionQueue])
   const automaticEditors = useMemo(
     () => staff.filter(person => ['Admin', 'Manager'].includes(normalizeRole(person.role))),
     [staff],
@@ -94,6 +128,30 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
     return assignableStaff.filter(person => `${person.name ?? ''} ${person.role}`.toLocaleLowerCase('th').includes(normalized))
   }, [assignableStaff, editorQuery])
   const assignedEditorCount = assignableStaff.filter(person => editors.has(person.id)).length
+
+  useEffect(() => {
+    if (!canEdit) return
+    let active = true
+    void jsonRequest('/api/admin/lab-map/safety-inspection-rounds')
+      .then(result => {
+        if (!active || !result.data) return
+        setActiveRound(result.data)
+        setQuery(result.data.filters.query)
+        setStatus(result.data.filters.status)
+        setKind(result.data.filters.kind)
+        setSpaceCode(result.data.filters.spaceCode)
+      })
+      .catch(reason => { if (active) setError((reason as Error).message) })
+    return () => { active = false }
+  }, [canEdit])
+
+  useEffect(() => {
+    if (!selectedAsset) return
+    if (!inspectionQueue.items.some(item => item.asset.id === selectedAsset.id)) {
+      setSelectedCode(null)
+      setMobileView('list')
+    }
+  }, [inspectionQueue, selectedAsset])
 
   async function reload() {
     const [assetResult, pointResult] = await Promise.all([
@@ -112,19 +170,133 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   function selectMap(code: string) {
     setAssetDraft(null)
     setSelectedCode(code)
-    if (assets.some(item => item.code === code)) setTab('assets')
+    if (assets.some(item => item.code === code)) {
+      setTab('assets')
+      if (window.matchMedia('(max-width: 767px)').matches) setMobileView('inspect')
+    }
   }
 
   function selectAssetFromList(code: string | null) {
     setAssetDraft(null)
     setSelectedCode(code)
+    if (code && window.matchMedia('(max-width: 767px)').matches) {
+      listScrollTopRef.current = listContainerRef.current?.scrollTop ?? 0
+      setMobileView('inspect')
+    }
+  }
+
+  function beginAssetPlacement() {
+    setSelectedCode(null)
+    setAssetDraft({
+      code: '', nameTh: '', kind: 'fire-extinguisher', shutoffFor: null,
+      x: 739, y: 446, spaceCode: null,
+    })
+    setMobileView('map')
+  }
+
+  function openAssetByCode(code: string) {
+    const asset = assets.find(item => item.code.toLocaleLowerCase('en-US') === code.trim().toLocaleLowerCase('en-US'))
+    if (!asset) {
+      setError(`ไม่พบอุปกรณ์รหัส ${code}`)
+      return
+    }
+    setError('')
+    selectAssetFromList(asset.code)
   }
 
   function updateAssetFilter(setter: (v: string) => void) {
     return (value: string) => {
       setter(value)
-      setSelectedCode(null)
       setAssetDraft(null)
+    }
+  }
+
+  function backToList() {
+    setMobileView('list')
+    requestAnimationFrame(() => {
+      if (listContainerRef.current) listContainerRef.current.scrollTop = listScrollTopRef.current
+    })
+  }
+
+  function adjacentPendingCode(direction: 'next' | 'previous') {
+    if (!selectedCode || inspectionQueue.items.length < 2) return null
+    let candidate = selectedCode
+    for (let index = 0; index < inspectionQueue.items.length - 1; index += 1) {
+      candidate = direction === 'next'
+        ? nextSafetyAssetCode(inspectionQueue, candidate) ?? selectedCode
+        : previousSafetyAssetCode(inspectionQueue, candidate) ?? selectedCode
+      const queueItem = inspectionQueue.items.find(item => item.asset.code === candidate)
+      if (queueItem && !queueItem.completed && queueItem.asset.code !== selectedCode) return queueItem.asset.code
+    }
+    return null
+  }
+
+  async function startInspectionRound() {
+    const result = await jsonRequest('/api/admin/lab-map/safety-inspection-rounds', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nameTh: `รอบตรวจ ${todayIso()}`,
+        filters: { query, status, kind, spaceCode },
+        orderedAssetIds: inspectionQueue.items.map(item => item.asset.id),
+      }),
+    })
+    setActiveRound(result.data)
+  }
+
+  async function closeInspectionRound() {
+    if (!activeRound) return
+    await jsonRequest(`/api/admin/lab-map/safety-inspection-rounds/${activeRound.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ close: true }),
+    })
+    setActiveRound(null)
+    setSelectedCode(null)
+    setMobileView('list')
+  }
+
+  async function inspectionSaved(mode: 'stay' | 'next', result: string) {
+    if (!selectedAsset) return
+    if (activeRound) {
+      setActiveRound(current => current ? {
+        ...current,
+        items: current.items.map(item => item.assetId === selectedAsset.id
+          ? { ...item, status: 'completed' as const }
+          : item),
+      } : current)
+    }
+    await reload()
+    if (mode === 'next') {
+      const nextCode = adjacentPendingCode('next')
+      if (nextCode) setSelectedCode(nextCode)
+    }
+    void result
+  }
+
+  async function moveSafetyEquipment(input: { id: string; code: string; x: number; y: number; spaceCode: string | null }) {
+    const previous = assets.find(item => item.id === input.id)
+    if (!previous) return
+    setPositionFailure(null)
+    setAssets(current => current.map(item => item.id === input.id ? {
+      ...item, x: input.x, y: input.y, spaceCode: input.spaceCode,
+      verified: false, positionStatus: 'unverified' as const,
+    } : item))
+    try {
+      const result = await jsonRequest(`/api/admin/lab-map/safety-assets/${input.id}/position`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: input.x, y: input.y, spaceCode: input.spaceCode, updatedAt: previous.updatedAt }),
+      })
+      setAssets(current => current.map(item => item.id === input.id ? {
+        ...item,
+        x: result.data.x,
+        y: result.data.y,
+        spaceCode: result.data.spaceCode,
+        verified: false,
+        positionStatus: result.data.positionStatus,
+        updatedAt: result.data.updatedAt,
+      } : item))
+      void reload().catch(reason => setError((reason as Error).message))
+    } catch (reason) {
+      setAssets(current => current.map(item => item.id === input.id ? previous : item))
+      setPositionFailure({ message: (reason as Error).message, input })
     }
   }
 
@@ -186,14 +358,46 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
           <div className="safety-workspace" data-mobile-view={mobileView}>
             <div className="safety-map-pane">
               <LabMapCanvas map={workingMap} mode="safety" selectedCode={selectedCode} activeRouteCodes={[]}
-                onSelect={selectMap} onCoordinateSelect={assetDraft ? (x, y) => setAssetDraft(current => ({ ...current, x: Math.round(x), y: Math.round(y) })) : undefined} />
-              {assetDraft ? <p className="safety-coordinate-note">แตะพื้นที่ว่างบนผังเพื่อกำหนดพิกัดอุปกรณ์</p> : null}
+                showAllSafetyEquipment
+                onSelect={selectMap} onMoveSafetyEquipment={canEdit ? input => void moveSafetyEquipment(input) : undefined}
+                draftSafetyEquipment={assetDraft && !assetDraft.id ? {
+                  code: 'draft-safety-equipment', nameTh: assetDraft.nameTh || 'อุปกรณ์ใหม่',
+                  kind: assetDraft.kind ?? 'fire-extinguisher', x: assetDraft.x ?? 739, y: assetDraft.y ?? 446,
+                } : null}
+                onMoveDraftSafetyEquipment={assetDraft && !assetDraft.id ? position => setAssetDraft(current => ({ ...current, ...position })) : undefined} />
+              {assetDraft && !assetDraft.id ? <section className="safety-map-placement" aria-label="วางหมุดอุปกรณ์">
+                <strong>วางหมุดอุปกรณ์</strong>
+                <span>กดหมุดค้าง 250ms แล้วลากหมุดไปยังตำแหน่งจริง</span>
+                <small>{map.spaces.find(space => space.code === assetDraft.spaceCode)?.nameTh ?? 'ทางเดิน/ไม่ระบุห้อง'} · {Math.round(assetDraft.x ?? 739)}, {Math.round(assetDraft.y ?? 446)}</small>
+                <div>
+                  <button type="button" onClick={() => { setAssetDraft(null); setMobileView('list') }}>ยกเลิก</button>
+                  <button type="button" onClick={() => setMobileView('list')}>ยืนยันตำแหน่งนี้</button>
+                </div>
+              </section> : null}
+              {positionFailure ? <p className="safety-position-error" role="alert">
+                {positionFailure.message}
+                <button type="button" onClick={() => void moveSafetyEquipment(positionFailure.input)}>ลองบันทึกตำแหน่งอีกครั้ง</button>
+              </p> : null}
             </div>
             <aside className="safety-sidebar">
               {tab === 'assets' ? (
-                <AssetsPanel assets={filteredAssets} selected={selectedAsset} query={query} status={status} kind={kind} spaceCode={spaceCode} canEdit={canEdit} canManage={canManage}
-                  busy={busy} draft={assetDraft} map={map} onQuery={updateAssetFilter(setQuery)} onStatus={updateAssetFilter(setStatus)} onKind={updateAssetFilter(setKind)} onSpaceCode={updateAssetFilter(setSpaceCode)} onSelect={selectAssetFromList}
-                  onDraft={setAssetDraft} onShowMap={() => setMobileView('map')} onRun={run} onReload={reload} />
+                <>
+                  <div className="safety-registry-panel">
+                    <SafetyAssetScanner active={mobileView === 'list'} onCode={openAssetByCode} />
+                    <SafetyInspectionProgress queue={inspectionQueue} roundName={activeRound?.nameTh}
+                      canStart={canEdit && !activeRound} canClose={Boolean(activeRound && inspectionQueue.progress.remaining === 0)} busy={busy}
+                      onStart={() => void run(startInspectionRound)} onClose={() => void run(closeInspectionRound)} />
+                    <AssetsPanel assets={filteredAssets} selected={selectedAsset} query={query} status={status} kind={kind} spaceCode={spaceCode} canEdit={canEdit} canManage={canManage}
+                      busy={busy} draft={assetDraft} map={map} listRef={listContainerRef} onQuery={updateAssetFilter(setQuery)} onStatus={updateAssetFilter(setStatus)} onKind={updateAssetFilter(setKind)} onSpaceCode={updateAssetFilter(setSpaceCode)} onSelect={selectAssetFromList}
+                      onAdd={beginAssetPlacement} onDraft={setAssetDraft} onShowMap={() => setMobileView('map')} onRun={run} onReload={reload} />
+                  </div>
+                  {selectedAsset ? <SafetyInspectionMobile key={selectedAsset.id} item={selectedAsset} locationLabel={selectedLocationLabel}
+                    queue={inspectionQueue} roundName={activeRound?.nameTh} roundId={activeRound?.id} roundItemId={selectedRoundItem?.id}
+                    resultCounts={inspectionResultCounts} canEdit={canEdit}
+                    onBack={backToList} onPrevious={() => { const code = adjacentPendingCode('previous'); if (code) setSelectedCode(code) }}
+                    onShowMap={() => setMobileView('map')} onSaved={inspectionSaved}
+                    onCloseRound={() => run(closeInspectionRound)} /> : null}
+                </>
               ) : (
                 <AssemblyPanel points={points} selected={selectedPoint} canEdit={canEdit} canManage={canManage} busy={busy}
                   draft={pointDraft} onSelect={code => { setPointDraft(null); setSelectedCode(code) }} onDraft={setPointDraft} onRun={run} onReload={reload} />
@@ -206,25 +410,25 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   )
 }
 
-function AssetsPanel({ assets, selected, query, status, kind, spaceCode, canEdit, canManage, busy, draft, map, onQuery, onStatus, onKind, onSpaceCode, onSelect, onDraft, onShowMap, onRun, onReload }: {
+function AssetsPanel({ assets, selected, query, status, kind, spaceCode, canEdit, canManage, busy, draft, map, listRef, onQuery, onStatus, onKind, onSpaceCode, onSelect, onAdd, onDraft, onShowMap, onRun, onReload }: {
   assets: SafetyAssetDTO[]; selected: SafetyAssetDTO | null; query: string; status: string; kind: string; spaceCode: string; canEdit: boolean; canManage: boolean; busy: boolean
-  draft: Partial<SafetyAssetDTO> | null; map: LabMapDTO; onQuery: (v: string) => void; onStatus: (v: string) => void
+  draft: Partial<SafetyAssetDTO> | null; map: LabMapDTO; listRef: RefObject<HTMLDivElement | null>; onQuery: (v: string) => void; onStatus: (v: string) => void
   onKind: (v: string) => void; onSpaceCode: (v: string) => void
-  onSelect: (v: string | null) => void; onDraft: (v: Partial<SafetyAssetDTO> | null) => void; onShowMap: () => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void>
+  onSelect: (v: string | null) => void; onAdd: () => void; onDraft: (v: Partial<SafetyAssetDTO> | null) => void; onShowMap: () => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void>
 }) {
   const editorRef = useRef<HTMLDivElement>(null)
   const spaceNameByCode = useMemo(() => new Map(map.spaces.map(space => [space.code, space.nameTh])), [map.spaces])
 
   useEffect(() => {
     if (!draft && !selected) return
-    if (window.matchMedia('(max-width: 767px)').matches) {
+    if (window.matchMedia('(min-width: 768px)').matches) {
       editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }, [draft, selected])
 
   return <>
     <div className="safety-toolbar"><input type="search" value={query} onChange={e => onQuery(e.target.value)} placeholder="ค้นหาอุปกรณ์" aria-label="ค้นหาอุปกรณ์" />
-      {canEdit ? <Button size="lg" icon="plus" onClick={() => onDraft({ kind: 'fire-extinguisher', x: 0, y: 0, shutoffFor: null })}>เพิ่ม</Button> : null}</div>
+      {canEdit ? <Button size="lg" icon="plus" onClick={onAdd}>เพิ่ม</Button> : null}</div>
     <div className="safety-filter-grid">
       <select value={status} onChange={e => onStatus(e.target.value)} aria-label="กรองสถานะ"><option value="">ทุกสถานะ</option>{Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       <select value={kind} onChange={e => onKind(e.target.value)} aria-label="กรองประเภท"><option value="">ทุกประเภท</option>{Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -240,7 +444,7 @@ function AssetsPanel({ assets, selected, query, status, kind, spaceCode, canEdit
       })} /> : selected ? <AssetDetail key={selected.id} item={selected} locationLabel={spaceNameByCode.get(selected.spaceCode ?? '') ?? selected.spaceCode ?? 'ไม่ระบุห้อง'} canEdit={canEdit} canManage={canManage} busy={busy}
         onEdit={() => onDraft(selected)} onShowMap={onShowMap} onRun={onRun} onReload={onReload} /> : null}
     </div>
-    <div className="safety-list">{assets.map(item => <button key={item.id} className="safety-card" data-selected={selected?.id === item.id} aria-pressed={selected?.id === item.id} onClick={() => onSelect(item.code)}>
+    <div className="safety-list" ref={listRef}>{assets.map(item => <button key={item.id} className="safety-card" data-selected={selected?.id === item.id} aria-pressed={selected?.id === item.id} onClick={() => onSelect(item.code)}>
       <span className="safety-card-head"><strong>{item.nameTh}</strong><Badge color={STATUS_COLORS[item.operationalStatus ?? 'unverified']}>{STATUS_LABELS[item.operationalStatus ?? 'unverified']}</Badge></span>
       <small>{KIND_LABELS[item.kind]} · {spaceNameByCode.get(item.spaceCode ?? '') ?? item.spaceCode ?? 'ไม่ระบุห้อง'} · {item.code}</small>
     </button>)}</div>
@@ -256,45 +460,18 @@ function AssetEditor({ draft, spaces, busy, onCancel, onSave }: { draft: Partial
       <label>ชื่อ<input value={value.nameTh ?? ''} onChange={e => setValue({ ...value, nameTh: e.target.value })} /></label>
       <label>ประเภท<select value={value.kind ?? ''} onChange={e => setValue({ ...value, kind: e.target.value as SafetyAssetDTO['kind'] })}>{Object.entries(KIND_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
       <label>ห้อง<select value={value.spaceCode ?? ''} onChange={e => setValue({ ...value, spaceCode: e.target.value || null })}><option value="">ไม่ระบุ</option>{spaces.map(space => <option key={space.code} value={space.code}>{space.nameTh}</option>)}</select></label>
-      <label>พิกัด X<input type="number" min={0} max={1477} value={value.x ?? 0} onChange={e => setValue({ ...value, x: Number(e.target.value) })} /></label>
-      <label>พิกัด Y<input type="number" min={0} max={892} value={value.y ?? 0} onChange={e => setValue({ ...value, y: Number(e.target.value) })} /></label>
+      <details className="safety-advanced-coordinates">
+        <summary>พิกัดขั้นสูง</summary>
+        <div>
+          <label>พิกัด X<input type="number" min={0} max={1477} value={value.x ?? 0} onChange={e => setValue({ ...value, x: Number(e.target.value) })} /></label>
+          <label>พิกัด Y<input type="number" min={0} max={892} value={value.y ?? 0} onChange={e => setValue({ ...value, y: Number(e.target.value) })} /></label>
+        </div>
+      </details>
       {value.kind === 'emergency-shutoff' ? <label>ตัดระบบ<select value={value.shutoffFor ?? ''} onChange={e => setValue({ ...value, shutoffFor: e.target.value as 'electricity' | 'gas' })}><option value="">เลือก</option><option value="electricity">ไฟฟ้า</option><option value="gas">ก๊าซ</option></select></label> : null}
     </div>
     <label>จุดสังเกต<textarea value={value.sourceNoteTh ?? ''} onChange={e => setValue({ ...value, sourceNoteTh: e.target.value })} /></label>
     <div className="safety-actions"><Button variant="secondary" size="lg" onClick={onCancel}>ยกเลิก</Button><Button size="lg" icon="check" disabled={busy || !value.code || !value.nameTh} onClick={() => onSave(value)}>บันทึก</Button></div>
   </section>
-}
-
-function SafetyPhotoPicker({ label, file, disabled, onChange }: { label: string; file: File | null; disabled: boolean; onChange: (file: File | null) => void }) {
-  const [preparing, setPreparing] = useState(false)
-  const [message, setMessage] = useState('')
-
-  async function selectPhoto(source: File) {
-    setPreparing(true)
-    onChange(null)
-    setMessage('กำลังลดขนาดรูปก่อนอัปโหลด…')
-    try {
-      const compressed = await compressSafetyPhoto(source)
-      onChange(compressed.file)
-      const savedPercent = source.size > 0 ? Math.max(0, Math.round((1 - compressed.compressedBytes / source.size) * 100)) : 0
-      setMessage(`พร้อมอัปโหลด ${Math.round(compressed.compressedBytes / 1024)} KB${savedPercent > 0 ? ` · ลดขนาด ${savedPercent}%` : ''}`)
-    } catch (error) {
-      onChange(null)
-      setMessage((error as Error).message)
-    } finally {
-      setPreparing(false)
-    }
-  }
-
-  return <label className="safety-photo-picker">
-    <span>{label}</span>
-    <input type="file" accept="image/*" capture="environment" disabled={disabled || preparing} onChange={event => {
-      const source = event.target.files?.[0]
-      event.target.value = ''
-      if (source) void selectPhoto(source)
-    }} />
-    <small aria-live="polite">{preparing ? 'กำลังลดขนาดรูป…' : message || (file ? `พร้อมอัปโหลด ${Math.round(file.size / 1024)} KB` : 'แตะเพื่อถ่ายรูป หรือเลือกจากคลังรูป')}</small>
-  </label>
 }
 
 function AssetDetail({ item, locationLabel, canEdit, canManage, busy, onEdit, onShowMap, onRun, onReload }: { item: SafetyAssetDTO; locationLabel: string; canEdit: boolean; canManage: boolean; busy: boolean; onEdit: () => void; onShowMap: () => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void> }) {

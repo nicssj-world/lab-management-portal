@@ -147,8 +147,8 @@ const publicServer = readFileSync('lib/it-visitor/public-server.ts', 'utf8')
 assert.match(itVisitorTypes, /safetyStationCode: string/)
 assert.match(publicServer, /safetyStationCode: destination\?\.safetyStationCode/)
 
-// ── ลิงก์สาธารณะเดิมถูกถอดออกทั้งหมด ──
-assert.ok(!existsSync('app/(public)/lab-map'))
+// ── QR สาธารณะมีไว้เฉพาะป้ายความปลอดภัย ไม่ใช่ทางนำทางผู้มาติดต่อ ──
+assert.ok(existsSync('app/(public)/lab-map/[stationCode]/page.tsx'))
 assert.doesNotMatch(readFileSync('components/layout/PublicNav.tsx', 'utf8'), /lab-map/)
 assert.doesNotMatch(readFileSync('app/(public)/page.tsx', 'utf8'), /lab-map/)
 

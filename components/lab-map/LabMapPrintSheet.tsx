@@ -8,8 +8,17 @@ import { LabMapStyles } from './LabMapStyles'
 import type { MapPrintDTO } from '@/lib/lab-map/print'
 
 export function LabMapPrintSheet({ dto }: { dto: MapPrintDTO }) {
-  const [qr, setQr] = useState('')
-  useEffect(() => { QRCode.toDataURL(dto.webUrl, { width: 256, margin: 1 }).then(setQr).catch(() => setQr('')) }, [dto.webUrl])
+  const [qr, setQr] = useState({ webUrl: '', dataUrl: '', state: 'loading' as 'loading' | 'ready' | 'failed' })
+  const qrState = qr.webUrl === dto.webUrl ? qr.state : 'loading'
+
+  useEffect(() => {
+    let cancelled = false
+    setQr({ webUrl: dto.webUrl, dataUrl: '', state: 'loading' })
+    void QRCode.toDataURL(dto.webUrl, { width: 512, margin: 2, errorCorrectionLevel: 'H' })
+      .then((dataUrl) => { if (!cancelled) setQr({ webUrl: dto.webUrl, dataUrl, state: 'ready' }) })
+      .catch(() => { if (!cancelled) setQr({ webUrl: dto.webUrl, dataUrl: '', state: 'failed' }) })
+    return () => { cancelled = true }
+  }, [dto.webUrl])
   return (
     <article className="lab-map-shell lab-map-print-sheet" data-map-print-sheet data-paper-size={dto.paperSize}>
       <LabMapStyles />
@@ -34,7 +43,7 @@ export function LabMapPrintSheet({ dto }: { dto: MapPrintDTO }) {
           <dt>ผู้อนุมัติ</dt><dd>{dto.release.approverName ?? dto.release.approvedBy ?? 'ยังไม่กำหนด'}</dd>
           <dt>พิมพ์เมื่อ</dt><dd>{new Date(dto.printedAt).toLocaleString('th-TH')}</dd>
         </dl>
-        <div className="lab-map-print-qr">{qr ? <img src={qr} alt="QR เปิดแผนที่บนเว็บไซต์" /> : null}<span>เว็บไซต์เป็นข้อมูลเสริม โปรดปฏิบัติตามป้ายฉบับอนุมัติที่ติดตั้งในพื้นที่</span></div>
+        <div className="lab-map-print-qr" data-qr-state={qrState}>{qrState === 'ready' ? <img src={qr.dataUrl} alt="QR เปิดแผนที่ความปลอดภัยออนไลน์" /> : null}<span>เว็บไซต์เป็นข้อมูลเสริม โปรดปฏิบัติตามป้ายฉบับอนุมัติที่ติดตั้งในพื้นที่</span></div>
       </footer>
     </article>
   )

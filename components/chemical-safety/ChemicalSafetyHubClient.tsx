@@ -267,33 +267,33 @@ export function ChemicalSafetyHubClient({
         .chemical-hub .chemical-sds-intro p{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
         .chemical-hub .chemical-sds-intro-note{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--muted);font-size:12px;font-weight:700}
         .chemical-hub .chemical-storage{display:grid;gap:14px}
-        .chemical-hub .chemical-storage-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:18px 20px;border:1px solid var(--border);border-radius:16px;background:linear-gradient(135deg,var(--card),var(--surface-2));box-shadow:0 6px 22px rgba(15,23,42,.04)}
+        .chemical-hub .chemical-storage-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:18px 20px;border:1px solid color-mix(in srgb,var(--primary) 16%,var(--border));border-radius:16px;background:linear-gradient(135deg,var(--card),color-mix(in srgb,var(--primary) 5%,var(--surface-2)));box-shadow:0 8px 24px rgba(15,23,42,.06)}
         .chemical-hub .chemical-storage-title{display:flex;gap:12px;align-items:flex-start}
         .chemical-hub .chemical-storage-icon{display:grid;place-items:center;width:38px;height:38px;flex:0 0 auto;border-radius:11px;color:var(--primary);background:var(--primary-soft)}
         .chemical-hub .chemical-storage-title h2{margin:0;color:var(--ink);font-size:19px;letter-spacing:-.015em}
         .chemical-hub .chemical-storage-title p{margin:4px 0 0;max-width:660px;color:var(--muted);font-size:13px;line-height:1.55}
         .chemical-hub .chemical-storage-metrics{display:flex;gap:8px;flex-wrap:wrap}
-        .chemical-hub .chemical-storage-metric{min-width:82px;padding:7px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+        .chemical-hub .chemical-storage-metric{min-width:82px;padding:7px 10px;border:1px solid color-mix(in srgb,var(--primary) 14%,var(--border));border-radius:10px;background:color-mix(in srgb,var(--card) 92%,var(--primary-soft));box-shadow:0 1px 2px rgba(15,23,42,.03)}
         .chemical-hub .chemical-storage-metric b{display:block;color:var(--ink);font-size:15px;line-height:1.1;font-variant-numeric:tabular-nums}
         .chemical-hub .chemical-storage-metric span{display:block;margin-top:3px;color:var(--muted);font-size:11px;font-weight:600}
-        .chemical-hub .chemical-storage-zone{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:0 4px 16px rgba(15,23,42,.025)}
-        .chemical-hub .chemical-storage-zone::before{content:'';position:absolute;inset:0 auto 0 0;width:4px;background:var(--zone-color)}
-        .chemical-hub .chemical-storage-zone-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px 12px 20px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--zone-color) 6%,var(--card))}
+        .chemical-hub .chemical-storage-zone{position:relative;overflow:hidden;border:1px solid color-mix(in srgb,var(--zone-color) 26%,var(--border));border-radius:16px;background:var(--card);box-shadow:0 7px 20px rgba(15,23,42,.055)}
+        .chemical-hub .chemical-storage-zone::before{content:'';position:absolute;inset:0 auto 0 0;width:5px;background:var(--zone-color)}
+        .chemical-hub .chemical-storage-zone-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px 12px 20px;border-bottom:1px solid color-mix(in srgb,var(--zone-color) 20%,var(--border));background:color-mix(in srgb,var(--zone-color) 11%,var(--card))}
         .chemical-hub .chemical-storage-zone-heading{display:flex;align-items:center;gap:9px}
         .chemical-hub .chemical-storage-zone-code{display:grid;place-items:center;min-width:28px;height:28px;padding:0 7px;border-radius:8px;background:var(--zone-color);color:#fff;font-size:12px;font-weight:800}
         .chemical-hub .chemical-storage-zone-heading h3{margin:0;color:var(--ink);font-size:14px}
         .chemical-hub .chemical-cabinet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;padding:14px 16px 16px 20px}
-        .chemical-hub .chemical-cabinet{display:flex;flex-direction:column;min-height:164px;padding:0;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--bg);font:inherit;text-align:left;color:var(--ink);cursor:pointer;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+        .chemical-hub .chemical-cabinet{display:flex;flex-direction:column;min-height:164px;padding:0;overflow:hidden;border:1px solid color-mix(in srgb,var(--zone-color) 14%,var(--border));border-radius:12px;background:color-mix(in srgb,var(--zone-color) 4%,var(--surface-2));font:inherit;text-align:left;color:var(--ink);cursor:pointer;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
         .chemical-hub .chemical-cabinet:hover{border-color:var(--zone-color);box-shadow:0 9px 20px rgba(15,23,42,.08);transform:translateY(-1px)}
         .chemical-hub .chemical-cabinet:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
-        .chemical-hub .chemical-cabinet-top{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--card)}
+        .chemical-hub .chemical-cabinet-top{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid color-mix(in srgb,var(--zone-color) 14%,var(--border));background:var(--card)}
         .chemical-hub .chemical-cabinet-code{color:var(--ink);font-size:15px;font-weight:800;letter-spacing:.02em}
         .chemical-hub .chemical-cabinet-count{padding:3px 7px;border-radius:999px;background:color-mix(in srgb,var(--zone-color) 12%,var(--card));color:var(--ink);font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
         .chemical-hub .chemical-cabinet-list{display:grid;gap:5px;align-content:start;flex:1;padding:10px 12px}
         .chemical-hub .chemical-cabinet-item{overflow:hidden;color:var(--ink);font-size:12px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
         .chemical-hub .chemical-cabinet-item::before{content:'•';margin-right:6px;color:var(--zone-color);font-weight:800}
         .chemical-hub .chemical-cabinet-empty{color:var(--muted);font-size:12px}
-        .chemical-hub .chemical-cabinet-footer{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:auto;padding:9px 12px;border-top:1px solid var(--border);color:var(--muted);font-size:11px;font-weight:700}
+        .chemical-hub .chemical-cabinet-footer{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:auto;padding:9px 12px;border-top:1px solid color-mix(in srgb,var(--zone-color) 14%,var(--border));background:color-mix(in srgb,var(--zone-color) 5%,var(--card));color:var(--muted);font-size:11px;font-weight:700}
         .chemical-hub .chemical-cabinet-warning{display:inline-flex;align-items:center;gap:4px;color:var(--danger)}
         .chemical-hub .chemical-storage-summary{overflow:hidden;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:0 4px 16px rgba(15,23,42,.025)}
         .chemical-hub .chemical-storage-summary-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:15px 18px;border-bottom:1px solid var(--border);background:var(--surface-2)}
