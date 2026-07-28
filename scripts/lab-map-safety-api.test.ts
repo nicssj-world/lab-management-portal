@@ -39,6 +39,6 @@ assert.match(photo, /roundItemId/)
 assert.match(photo, /checklist/)
 assert.match(photo, /record_lab_map_safety_inspection/)
 assert.match(position, /safetyAssetPositionSchema/)
-assert.match(position, /lab_map\.safety_asset\.position/)
+assert.doesNotMatch(position, /auditSafety|lab_map\.safety_asset\.position|auditWarning/)
 
 console.log('lab map safety API contract passed')

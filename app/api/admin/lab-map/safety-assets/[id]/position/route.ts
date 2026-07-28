@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auditSafety, requireSafetyEditor } from '@/lib/lab-map/safety-access'
+import { requireSafetyEditor } from '@/lib/lab-map/safety-access'
 import { safetyAssetPositionSchema } from '@/lib/validations/lab-map-safety'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -48,16 +48,6 @@ export async function PATCH(req: NextRequest, { params }: Context) {
     spaceCode: data.space_code as string | null,
     positionStatus: data.position_status,
     updatedAt: String(data.updated_at),
-  }
-
-  try {
-    await auditSafety('lab_map.safety_asset.position', guard.actor.id, id, {
-      before: { x: Number(current.x), y: Number(current.y), spaceCode: current.space_code },
-      after: { x: Number(data.x), y: Number(data.y), spaceCode: data.space_code },
-    })
-  } catch (auditError) {
-    console.error('lab map safety position audit failed', auditError)
-    return NextResponse.json({ data: responseData, auditWarning: true })
   }
 
   return NextResponse.json({ data: responseData })
