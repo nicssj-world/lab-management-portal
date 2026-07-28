@@ -208,6 +208,15 @@ assert.match(dialog, /onRotate: \(rotation: number\) => void/, 'the pin dialog m
 assert.match(dialog, /หมุน 90°/, 'the pin dialog must give editors a clear rotate action')
 assert.match(client, /function handleRotatePin\(rotation: number\)/, 'the map page must persist icon rotation')
 
+// ── Mobile gestures ──
+// Areas cover almost the whole SVG, so panning must begin from an area; pins keep their own long-press drag.
+const equipmentMapStartPan = canvas.match(/function startPan[\s\S]*?\n  function movePan/)?.[0] ?? ''
+assert.doesNotMatch(equipmentMapStartPan, /target\.closest/, 'area taps must be eligible to begin a map pan')
+assert.match(canvas, /const activePointers = useRef\(new Map<number, \{ x: number; y: number \}>\(\)\)/, 'the map must track simultaneous pointers for touch gestures')
+assert.match(canvas, /activePointers\.current\.size >= 2/, 'two-finger input must enter a pinch gesture')
+assert.match(canvas, /initialDistance/, 'pinch zoom must calculate scale from the initial finger distance')
+assert.match(canvas, /didGesture/, 'a completed pan or pinch must not also select an area on click')
+
 // ── เปิด/ปิดรายงานแล้วต้องคืนมุมมองแผนที่ และ query ต้องไม่ถูกเพดาน PostgREST ตัดที่ 500 แถว ──
 assert.match(client, /key={showPlacement \? 'placement' : 'map'}/, 'opening the unplaced report must remount the canvas at its default view')
 assert.match(equipmentMapServer, /fetchAllPages/, 'equipment map data must be loaded through the paginated fetch helper')

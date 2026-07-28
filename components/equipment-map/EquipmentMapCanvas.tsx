@@ -175,6 +175,16 @@ export function EquipmentMapCanvas({
 }: EquipmentMapCanvasProps) {
   const [view, setView] = useState<ViewTransform>({ scale: 1, x: 0, y: 0 })
   const dragStart = useRef<{ pointerX: number; pointerY: number; viewX: number; viewY: number } | null>(null)
+  const activePointers = useRef(new Map<number, { x: number; y: number }>())
+  const pinchStart = useRef<{
+    initialDistance: number
+    initialScale: number
+    viewX: number
+    viewY: number
+    centerX: number
+    centerY: number
+  } | null>(null)
+  const didGesture = useRef(false)
   const [draggedPin, setDraggedPin] = useState<PinDrag | null>(null)
   const [dragPreview, setDragPreview] = useState<PinDragPreview | null>(null)
   const draggedPinRef = useRef<PinDrag | null>(null)
@@ -211,15 +221,69 @@ export function EquipmentMapCanvas({
     onSelectArea(code)
   }
 
+  function pointerPair() {
+    const pointers = [...activePointers.current.values()]
+    return pointers.length >= 2 ? [pointers[0], pointers[1]] as const : null
+  }
+
+  function beginPinch() {
+    const pair = pointerPair()
+    if (!pair) return
+    const [first, second] = pair
+    pinchStart.current = {
+      initialDistance: Math.hypot(second.x - first.x, second.y - first.y),
+      initialScale: view.scale,
+      viewX: view.x,
+      viewY: view.y,
+      centerX: (first.x + second.x) / 2,
+      centerY: (first.y + second.y) / 2,
+    }
+    dragStart.current = null
+    didGesture.current = true
+  }
+
+  function consumeGestureClick() {
+    if (!didGesture.current) return false
+    didGesture.current = false
+    return true
+  }
+
   function startPan(event: ReactPointerEvent<SVGSVGElement>) {
-    const target = event.target as Element
-    if (target.closest('[data-area-code], [data-pin-id]')) return
-    dragStart.current = { pointerX: event.clientX, pointerY: event.clientY, viewX: view.x, viewY: view.y }
+    activePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (activePointers.current.size >= 2) {
+      beginPinch()
+    } else {
+      dragStart.current = { pointerX: event.clientX, pointerY: event.clientY, viewX: view.x, viewY: view.y }
+    }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   function movePan(event: ReactPointerEvent<SVGSVGElement>) {
+    const pointer = activePointers.current.get(event.pointerId)
+    if (!pointer) return
+    pointer.x = event.clientX
+    pointer.y = event.clientY
+
+    const pinch = pinchStart.current
+    const pair = pointerPair()
+    if (pinch && pair) {
+      const [first, second] = pair
+      const distance = Math.hypot(second.x - first.x, second.y - first.y)
+      if (pinch.initialDistance === 0) return
+      const scale = Math.min(2.5, Math.max(0.75, pinch.initialScale * distance / pinch.initialDistance))
+      const centerX = (first.x + second.x) / 2
+      const centerY = (first.y + second.y) / 2
+      setView({
+        scale,
+        x: pinch.viewX + (centerX - pinch.centerX) / scale,
+        y: pinch.viewY + (centerY - pinch.centerY) / scale,
+      })
+      return
+    }
+
     const start = dragStart.current
-    if (!start) return
+    if (!start || event.pointerId !== [...activePointers.current.keys()][0]) return
+    const distance = Math.hypot(event.clientX - start.pointerX, event.clientY - start.pointerY)
+    if (distance > 4) didGesture.current = true
     const factor = 1 / view.scale
     setView((current) => ({
       ...current,
@@ -228,8 +292,17 @@ export function EquipmentMapCanvas({
     }))
   }
   function stopPan(event: ReactPointerEvent<SVGSVGElement>) {
-    dragStart.current = null
+    activePointers.current.delete(event.pointerId)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    if (activePointers.current.size >= 2) {
+      beginPinch()
+      return
+    }
+    pinchStart.current = null
+    const remaining = activePointers.current.entries().next().value as [number, { x: number; y: number }] | undefined
+    dragStart.current = remaining
+      ? { pointerX: remaining[1].x, pointerY: remaining[1].y, viewX: view.x, viewY: view.y }
+      : null
   }
 
   function resolveSvgClientPoint(svg: SVGSVGElement, clientX: number, clientY: number): { x: number; y: number } | null {
@@ -308,6 +381,7 @@ export function EquipmentMapCanvas({
   }
 
   function handleCanvasClick(event: ReactMouseEvent<SVGSVGElement>) {
+    if (consumeGestureClick()) return
     if (!onCoordinateSelect) return
     const target = event.target as Element
     if (target.closest('[data-pin-id]')) return
@@ -341,7 +415,13 @@ export function EquipmentMapCanvas({
         role="button"
         tabIndex={0}
         aria-label={`${area.nameTh}${area.kind === 'zone' ? ' (โซน)' : ' (ห้อง)'}`}
-        onClick={(event) => { if (!onCoordinateSelect) { event.stopPropagation(); onSelectArea(area.code) } }}
+        onClick={(event) => {
+          if (consumeGestureClick()) {
+            event.stopPropagation()
+            return
+          }
+          if (!onCoordinateSelect) { event.stopPropagation(); onSelectArea(area.code) }
+        }}
         onKeyDown={(event) => handleAreaKeyDown(event, area.code)}
         style={{ '--space-fill': 'var(--map-controlled)' } as React.CSSProperties}
       >
