@@ -31,9 +31,12 @@ export async function GET(req: NextRequest) {
       return data ?? []
     }),
     fetchAllPages(async (from, to) => {
+      // Legacy-imported results are intentionally unlinked (plan_id null) but computePmCalPlanState
+      // still matches them to a plan by equipment_id/fiscal_year/calendar_month/cal_type — excluding
+      // them here left completed legacy calibrations reporting as overdue.
       const { data, error } = await supabaseAdmin.from('equipment_calibrations')
         .select('id, plan_id, equipment_id, cal_type, completed_date, result, actual_cost')
-        .not('plan_id', 'is', null).range(from, to)
+        .range(from, to)
       if (error) throw new Error(error.message)
       return data ?? []
     }),
@@ -47,8 +50,9 @@ export async function GET(req: NextRequest) {
 
   const equipmentIds = new Set(equipment.map(item => item.id as string))
   const plans = (allPlans as unknown as PmCalReportPlan[]).filter(plan => equipmentIds.has(plan.equipment_id))
-  const planIds = new Set(plans.map(plan => plan.id))
-  const results = (allResults as unknown as PmCalReportResult[]).filter(result => result.plan_id && planIds.has(result.plan_id))
+  // Scoped by equipment_id, not plan_id: unlinked legacy results have no plan_id to match against,
+  // and computePmCalPlanState's own equipment_id guard is what keeps this from crossing equipment.
+  const results = (allResults as unknown as PmCalReportResult[]).filter(result => equipmentIds.has(result.equipment_id))
   const report = buildPmCalReport({ equipment: equipment as unknown as PmCalReportEquipment[], plans, results, groups: allGroups as unknown as PmCalReportGroup[] })
   return NextResponse.json({ fiscal_year: fiscalYear, filters: { department, classification }, ...report })
 }

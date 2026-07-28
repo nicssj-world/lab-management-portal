@@ -42,6 +42,17 @@ const placedRefrigeratorRow: EquipmentMapRow = {
 
 const rotatedRefrigeratorRow: EquipmentMapRow = { ...placedRefrigeratorRow, mapRotation: 90 }
 
+// Legacy-imported PM/CAL results are intentionally unlinked (plan_id null); the map must still
+// resolve them against a matching plan by fiscal_year/calendar_month/cal_type instead of leaving
+// the pin stuck "overdue" despite a completed, passing legacy result — see pm-cal-domain.ts.
+const legacyImportRow: EquipmentMapRow = {
+  ...placedRefrigeratorRow,
+  id: 'legacy-import-cal',
+  cbhCode: 'LAB-BM-07-003',
+  pmCalPlans: [{ id: 'plan-2', equipment_id: 'legacy-import-cal', fiscal_year: 2569, calendar_month: 7, cal_type: 'CAL', due_date: '2026-07-31', record_status: 'active', version: 1 }],
+  pmCalResults: [{ id: 'legacy-result-1', plan_id: null, equipment_id: 'legacy-import-cal', cal_type: 'CAL', completed_date: '2026-07-01', result: 'PASS' }],
+}
+
 const repository: EquipmentMapRepository = {
   async areaOverrides() {
     return [
@@ -51,7 +62,7 @@ const repository: EquipmentMapRepository = {
   },
   async activeSurveyRound() { return null },
   async surveyedEquipmentIds() { return new Set<string>() },
-  async equipmentRows() { return [unplacedCalibrationRow, rotatedRefrigeratorRow] },
+  async equipmentRows() { return [unplacedCalibrationRow, rotatedRefrigeratorRow, legacyImportRow] },
 }
 
 async function main() {
@@ -61,6 +72,7 @@ async function main() {
   assert.equal(map.pins.find((pin) => pin.id === placedRefrigeratorRow.id)?.classification, 'Refrigerator', 'placed pins must retain classification for their map symbol')
   assert.equal(map.pins.find((pin) => pin.id === placedRefrigeratorRow.id)?.rotation, 90, 'placed pins must retain their saved orientation')
   assert.equal(map.pins.find((pin) => pin.id === placedRefrigeratorRow.id)?.due, 'overdue', 'failed CAL must use the red/overdue map state')
+  assert.equal(map.pins.find((pin) => pin.id === legacyImportRow.id)?.due, 'ok', 'an unlinked legacy-imported PASS result must still clear the matching plan on the map')
 
   const renamedArea = map.areas.find((area) => area.code === 'room-sw-2')
   const renamedSource = EQUIPMENT_AREAS.find((area) => area.code === 'room-sw-2')

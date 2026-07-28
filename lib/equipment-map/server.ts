@@ -61,9 +61,12 @@ const repository: EquipmentMapRepository = {
       if (error) throw new Error(`equipment PM/CAL plans: ${error.message}`)
       return data ?? []
     }), fetchAllPages(async (from, to) => {
+      // Legacy-imported results are intentionally unlinked (plan_id null) but computePmCalPlanState
+      // still matches them to a plan by fiscal_year/calendar_month/cal_type — so they must not be
+      // filtered out here, or a completed legacy CAL/PM never clears the map pin's overdue state.
       const { data, error } = await supabaseAdmin.from('equipment_calibrations')
         .select('id, plan_id, equipment_id, cal_type, completed_date, result')
-        .not('plan_id', 'is', null).range(from, to)
+        .range(from, to)
       if (error) throw new Error(`equipment PM/CAL results: ${error.message}`)
       return data ?? []
     })])

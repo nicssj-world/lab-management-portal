@@ -36,3 +36,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   await writePmCalAudit(actor.id, 'equipment.pm_cal.result.update', id, `${parsed.data.cal_type} · ${parsed.data.completed_date} · ${parsed.data.result ?? 'COMPLETED'}`)
   return NextResponse.json(data)
 }
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const actor = await getPmCalActor('edit')
+  if (!actor) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const { id, resultId } = await params
+  const { data: existing, error: existingError } = await supabaseAdmin.from('equipment_calibrations')
+    .select('id, equipment_id, source, cal_type, completed_date, result').eq('id', resultId).eq('equipment_id', id).maybeSingle()
+  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 })
+  if (!existing) return NextResponse.json({ error: 'ไม่พบประวัติ PM/CAL' }, { status: 404 })
+  if (existing.source === 'legacy_import') return NextResponse.json({ error: 'ข้อมูล legacy ลบจากหน้านี้ไม่ได้' }, { status: 409 })
+  const { error } = await supabaseAdmin.from('equipment_calibrations').delete().eq('id', resultId).eq('equipment_id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await writePmCalAudit(actor.id, 'equipment.pm_cal.result.delete', id, `${existing.cal_type} · ${existing.completed_date} · ${existing.result ?? 'COMPLETED'}`)
+  return NextResponse.json({ ok: true })
+}
