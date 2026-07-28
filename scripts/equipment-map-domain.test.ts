@@ -12,6 +12,9 @@ assert.deepEqual(validateEquipmentMap(), [])
 assert.equal(new Set(EQUIPMENT_AREAS.map((area) => area.code)).size, EQUIPMENT_AREAS.length)
 
 const byCode = new Map(EQUIPMENT_AREAS.map((area) => [area.code, area]))
+const manifestRuntime = require('../lib/equipment-map/manifest') as { EQUIPMENT_WORK_GROUPS?: readonly { code: string; nameTh: string; areaCodes: readonly string[]; containerAreaCodes?: readonly string[]; summaryAreaCode?: string }[] }
+assert.ok(manifestRuntime.EQUIPMENT_WORK_GROUPS, 'the manifest must define work groups separately from geometric parentCode relationships')
+const workGroups = manifestRuntime.EQUIPMENT_WORK_GROUPS!
 const rect = (code: string) => {
   const area = byCode.get(code)
   assert.ok(area, `equipment area ${code} must exist`)
@@ -30,21 +33,69 @@ assert.match(manifestSource, /\.pptx/, 'the manifest must record which source dr
 
 // ── ทุกป้ายชื่องานในผังต้นฉบับต้องมีพื้นที่รองรับครบ ──
 const DRAWING_LABELS: ReadonlyArray<[string, string]> = [
-  ['zone-central-chem-immuno', 'เคมีคลินิก + ภูมิคุ้มกัน'],
+  ['zone-central-chem-immuno', 'เคมีคลินิก+ภูมิคุ้มกัน'],
   ['zone-central-microscopy', 'จุลทรรศนศาสตร์'],
   ['zone-central-hematology', 'โลหิตวิทยา'],
   ['zone-microbiology-main', 'จุลชีววิทยา'],
-  ['zone-molecular-genomics', 'อณูชีววิทยา'],
+  ['zone-molecular-genomics', 'งานอณูชีววิทยา'],
   ['zone-clinical-immunology', 'ภูมิคุ้มกัน'],
   ['zone-cold-storage', 'ตู้เย็น'],
   ['zone-material-reagent-store', 'คลังน้ำยา'],
   ['zone-equipment-wash', 'ห้องล้าง'],
-  ['zone-special-testing', 'ตรวจพิเศษและตรวจต่อ'],
+  ['zone-special-testing', 'งาน OUTLAB'],
   ['zone-blood-bank', 'คลังเลือด'],
 ]
 for (const [code, nameTh] of DRAWING_LABELS) {
   assert.equal(byCode.get(code)?.nameTh, nameTh, `${code} must keep the drawing's Thai label`)
 }
+
+// ── ชื่อพื้นที่และกลุ่มงานสำหรับการเดินตรวจ PM/CAL ──
+// กลุ่มงานเป็น taxonomy สำหรับผู้ใช้ ไม่ใช่ parentCode ทางเรขาคณิต: บางงานรวมโถง/ห้องที่ไม่ติดกันบนผัง.
+const WORK_AREA_NAMES: ReadonlyArray<[string, string]> = [
+  ['zone-molecular-1', 'อณูชีววิทยา'],
+  ['zone-molecular-2', 'Extraction Room'],
+  ['zone-molecular-3', 'Library Room'],
+  ['zone-molecular-4', 'Sequence Room'],
+  ['zone-special-testing', 'งาน OUTLAB'],
+  ['zone-special-testing-upper-1', 'OUTLAB (โซน 1)'],
+  ['zone-special-testing-upper-2', 'OUTLAB (โซน 2)'],
+  ['zone-special-testing-lower', 'คลังเลือด (crossmatch)'],
+  ['zone-special-testing-mid', 'คลังเลือด (แยกส่วนประกอบ)'],
+  ['room-nw-corner', 'โซนห้องน้ำ ห้องอาบน้ำ'],
+  ['room-nw-store', 'ห้องนอนเจ้าหน้าที่'],
+  ['room-centre-upper', 'ห้องกลางด้านบน 1'],
+  ['room-centre-upper-2', 'ห้องกลางด้านบน 2'],
+  ['room-se-1', 'ห้องตะวันออกเฉียงใต้ 1'],
+  ['room-se-2', 'ห้องตะวันออกเฉียงใต้ 2'],
+  ['room-microbiology', 'งานจุลชีววิทยา'],
+  ['room-microbiology-ne', 'มุมขวาบนจุลชีววิทยา'],
+  ['room-north-corridor-1', 'โถง 1'],
+  ['room-north-corridor-2', 'โถง 2'],
+  ['room-north-corridor-3', 'โถง 3'],
+  ['room-north-small', 'ห้องน้ำ'],
+]
+for (const [code, nameTh] of WORK_AREA_NAMES) {
+  assert.equal(byCode.get(code)?.nameTh, nameTh, `${code} must use the agreed PM/CAL work-area name`)
+}
+
+assert.deepEqual(
+  workGroups.map((group) => [group.code, group.nameTh, [...group.areaCodes], group.summaryAreaCode ?? null]),
+  [
+    ['molecular', 'งานอณูชีววิทยา', ['zone-molecular-genomics', 'zone-molecular-1', 'zone-molecular-2', 'zone-molecular-3', 'zone-molecular-4'], 'zone-molecular-genomics'],
+    ['central-lab', 'ห้องปฏิบัติการกลาง', ['room-central-lab', 'zone-central-chem-immuno', 'zone-central-microscopy', 'zone-central-hematology'], 'room-central-lab'],
+    ['outlab', 'งาน OUTLAB', ['zone-special-testing-upper-1', 'zone-special-testing-upper-2'], null],
+    ['blood-bank', 'งานคลังเลือด', ['zone-blood-bank', 'zone-special-testing-lower', 'zone-special-testing-mid', 'room-se-1', 'room-se-2'], null],
+    ['microbiology', 'งานจุลชีววิทยา', ['room-microbiology', 'zone-microbiology-main', 'room-microbiology-ne', 'room-north-lab-1', 'room-north-lab-2', 'room-north-lab-3', 'room-north-corridor-1', 'room-north-corridor-2', 'room-north-corridor-3', 'room-north-small'], 'room-microbiology'],
+  ],
+  'the agreed work groups and their inspection areas must be explicit and ordered',
+)
+assert.deepEqual(
+  workGroups.find((group) => group.code === 'outlab')?.containerAreaCodes,
+  ['zone-special-testing'],
+  'the former special-testing room is the OUTLAB map container, not a standalone inspection area',
+)
+assert.ok(!workGroups.some((group) => group.areaCodes.includes('room-fume-hood')), 'electrical/fume-hood utility spaces must not be assigned to a laboratory work group')
+assert.ok(!workGroups.some((group) => group.areaCodes.includes('room-server')), 'Server room must not be assigned to a laboratory work group')
 
 // ── viewBox ต้องครอบผังได้พอดี ──
 const [, , viewWidth, viewHeight] = EQUIPMENT_MAP_VIEW_BOX.split(' ').map(Number)

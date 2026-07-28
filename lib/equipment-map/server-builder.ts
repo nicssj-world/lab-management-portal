@@ -2,7 +2,7 @@ import { computeEquipmentPmCalState, type PmCalPlanRecord, type PmCalResultRecor
 import { computePmCalDue, type PmCalDueState } from '@/lib/equipment/pm-cal-due'
 import type { Equipment } from '@/lib/queries/equipment'
 import { labelForRenamedArea } from './label'
-import { EQUIPMENT_AREAS, EQUIPMENT_DOORS, EQUIPMENT_MAP_VERSION, EQUIPMENT_MAP_VIEW_BOX, EQUIPMENT_WALLS } from './manifest'
+import { equipmentWorkGroupForArea, EQUIPMENT_AREAS, EQUIPMENT_DOORS, EQUIPMENT_MAP_VERSION, EQUIPMENT_MAP_VIEW_BOX, EQUIPMENT_WALLS } from './manifest'
 import type {
   EquipmentActiveRoundDTO,
   EquipmentAreaCounts,
@@ -152,6 +152,7 @@ export async function buildEquipmentMapDTO(repository: EquipmentMapRepository): 
 
   const manifestAreas: EquipmentAreaDTO[] = EQUIPMENT_AREAS.map((definition) => {
     const override = overrideByCode.get(definition.code)
+    const workGroup = equipmentWorkGroupForArea(definition.code)
     const nameTh = override?.nameTh ?? definition.nameTh
     const label = definition.label && override && nameTh !== definition.nameTh
       ? labelForRenamedArea(nameTh, definition.rect, definition.label)
@@ -161,6 +162,10 @@ export async function buildEquipmentMapDTO(repository: EquipmentMapRepository): 
       nameTh,
       kind: definition.kind,
       parentCode: definition.parentCode ?? null,
+      workGroupCode: workGroup?.code ?? null,
+      workGroupNameTh: workGroup?.nameTh ?? null,
+      workGroupOrder: workGroup?.order ?? null,
+      isWorkGroupSummary: workGroup?.summaryAreaCode === definition.code,
       rect: definition.rect,
       polygon: definition.polygon ?? null,
       label,
@@ -178,6 +183,10 @@ export async function buildEquipmentMapDTO(repository: EquipmentMapRepository): 
       nameTh: row.nameTh,
       kind: row.kind,
       parentCode: row.parentCode,
+      workGroupCode: null,
+      workGroupNameTh: null,
+      workGroupOrder: null,
+      isWorkGroupSummary: false,
       rect: null,
       polygon: null,
       label: null,

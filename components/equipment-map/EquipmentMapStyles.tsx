@@ -7,6 +7,7 @@ export function EquipmentMapStyles() {
     <style>{`
       .equipment-map-shell { --map-floor: #edf2f3; --pin-ok: #16a34a; --pin-due-soon: #d97706; --pin-overdue: #dc2626; --pin-unplanned: #64748b; --pin-not-required: #b8c2c8; }
       .equipment-map-shell .lab-map-workspace { align-items: start; height: auto; overflow: visible; }
+      .equipment-mobile-walk-bar { display: none; }
 
       .equipment-map-toolbar { align-items: flex-end; background: #fff; border: 1px solid #dbe5e8; border-radius: 14px 14px 0 0; display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between; padding: 12px 14px; }
       .equipment-map-search { align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 8px; display: flex; gap: 8px; min-height: 44px; min-width: 220px; padding: 0 12px; }
@@ -109,6 +110,17 @@ export function EquipmentMapStyles() {
       .equipment-survey-bar-info { color: var(--map-navy); font-size: .82rem; }
 
       @media (max-width: 767px) {
+        .equipment-mobile-walk-bar { background: var(--card); border: 1px solid var(--border); border-radius: 12px; display: grid; gap: 10px; margin: 12px 0; padding: 12px; }
+        .equipment-mobile-walk-status { align-items: flex-start; display: flex; gap: 10px; justify-content: space-between; }
+        .equipment-mobile-walk-status span { color: var(--muted); font-size: .72rem; }
+        .equipment-mobile-walk-status strong { color: var(--map-navy); font-size: .78rem; text-align: right; }
+        .equipment-mobile-walk-controls { align-items: end; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; }
+        .equipment-mobile-walk-controls label { min-width: 0; }
+        .equipment-mobile-walk-controls label > span { color: var(--muted); display: block; font-size: .7rem; font-weight: 650; margin: 0 0 4px 2px; }
+        .equipment-mobile-walk-controls select { background: var(--card); border: 1px solid var(--border); border-radius: 8px; color: var(--ink); font: inherit; font-size: .8rem; min-height: 44px; padding: 0 10px; width: 100%; }
+        .equipment-mobile-walk-controls > button { min-height: 44px; white-space: nowrap; }
+        .equipment-mobile-walk-summary { border-top: 1px solid var(--border); color: var(--muted); display: grid; font-size: .74rem; gap: 2px; margin: 0; padding-top: 9px; }
+        .equipment-mobile-walk-summary b { color: var(--ink); font-size: .8rem; }
         .equipment-placement-toolbar { align-items: stretch; }
         .equipment-placement-toolbar-controls { align-items: stretch; flex-basis: 100%; flex-direction: column; }
         .equipment-placement-toolbar-controls label { max-width: none; }
