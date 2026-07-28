@@ -18,9 +18,16 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (equipmentError) return NextResponse.json({ error: equipmentError.message }, { status: 500 })
   if (!equipment) return NextResponse.json({ error: 'ไม่พบเครื่องมือ' }, { status: 404 })
 
+  const allHistory = req.nextUrl.searchParams.get('allHistory') === '1'
+  const fiscalYearStart = `${fiscalYear - 544}-10-01`
+  const fiscalYearEnd = `${fiscalYear - 543}-09-30`
+  let resultsQuery = supabaseAdmin.from('equipment_calibrations').select('*').eq('equipment_id', id)
+  if (!allHistory) resultsQuery = resultsQuery.gte('completed_date', fiscalYearStart).lte('completed_date', fiscalYearEnd)
+  resultsQuery = resultsQuery.order('completed_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+
   const [{ data: plans, error: plansError }, { data: results, error: resultsError }] = await Promise.all([
     supabaseAdmin.from('equipment_pm_cal_plans').select('*').eq('equipment_id', id).eq('fiscal_year', fiscalYear).eq('record_status', 'active').order('calendar_month').order('cal_type'),
-    supabaseAdmin.from('equipment_calibrations').select('*').eq('equipment_id', id).order('completed_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }),
+    resultsQuery,
   ])
   if (plansError || resultsError) return NextResponse.json({ error: plansError?.message ?? resultsError?.message }, { status: 500 })
   const groupIds = [...new Set((plans ?? []).map(plan => plan.plan_group_id).filter(Boolean))]

@@ -7,6 +7,7 @@ import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import {
   compareByFiscalMonth,
   computePmCalPlanState,
+  fiscalYearForDate,
   fiscalYearMonthToCalendarYear,
   FISCAL_MONTH_ORDER,
   bangkokIsoDate,
@@ -63,6 +64,7 @@ interface ResultForm {
 type ViewerState = { url: string; pdfJsUrl?: string | null; title: string }
 
 const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+const HISTORY_PAGE_SIZE = 10
 const STATE_LABEL: Record<PmCalPlanState, string> = { completed: 'เสร็จแล้ว', failed: 'FAIL', due_soon: 'ใกล้กำหนด', overdue: 'เกินกำหนด', ok: 'ตามแผน' }
 const STATE_COLOR: Record<PmCalPlanState, string> = { completed: '#15803D', failed: '#B91C1C', due_soon: '#B45309', overdue: '#B91C1C', ok: '#1E5FAD' }
 
@@ -110,6 +112,10 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
   const certificateInputRef = useRef<HTMLInputElement>(null)
   const [attachDragOverId, setAttachDragOverId] = useState<string | null>(null)
   const [viewer, setViewer] = useState<ViewerState | null>(null)
+  const [showAllHistory, setShowAllHistory] = useState(false)
+  const [allHistoryResults, setAllHistoryResults] = useState<Result[] | null>(null)
+  const [allHistoryLoading, setAllHistoryLoading] = useState(false)
+  const [visibleHistoryCount, setVisibleHistoryCount] = useState(HISTORY_PAGE_SIZE)
 
   async function load() {
     setLoading(true); setError('')
@@ -127,9 +133,26 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
     }
   }
 
+  async function loadAllHistory() {
+    setAllHistoryLoading(true); setError('')
+    try {
+      const response = await fetch(`/api/admin/equipment/${item.id}/pm-cal?fiscalYear=${fiscalYear}&allHistory=1`)
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error ?? 'โหลดประวัติทั้งหมดไม่สำเร็จ')
+      setAllHistoryResults(json.results)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'โหลดประวัติทั้งหมดไม่สำเร็จ')
+    } finally {
+      setAllHistoryLoading(false)
+    }
+  }
+
   useEffect(() => { void load() }, [item.id, fiscalYear]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (showAllHistory) void loadAllHistory() }, [showAllHistory, item.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setVisibleHistoryCount(HISTORY_PAGE_SIZE) }, [showAllHistory, item.id, fiscalYear])
 
   const resultRecords = useMemo(() => (payload?.results ?? []) as PmCalResultRecord[], [payload])
+  const displayedResults = showAllHistory ? (allHistoryResults ?? []) : (payload?.results ?? [])
   const planById = useMemo(() => new Map(plans.map(plan => [plan.id, plan])), [plans])
   const groupById = useMemo(() => new Map((payload?.groups ?? []).map(group => [group.id, group])), [payload])
   const hasGroupedPlan = plans.some(plan => plan.plan_group_id)
@@ -236,6 +259,7 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
           closeResultForm()
           onSaved(item)
           await load()
+          if (showAllHistory) await loadAllHistory()
           const detail = cause instanceof Error ? cause.message : 'ไม่ทราบสาเหตุ'
           throw new Error(`บันทึกผลแล้ว แต่อัปโหลด Certificate ไม่สำเร็จ: ${detail}`)
         }
@@ -243,6 +267,7 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
       closeResultForm()
       onSaved(item)
       await load()
+      if (showAllHistory) await loadAllHistory()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'บันทึกผลไม่สำเร็จ')
     } finally { setSaving(false) }
@@ -273,6 +298,7 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
       if (!response.ok) throw new Error(json.error ?? 'ลบประวัติไม่สำเร็จ')
       onSaved(item)
       await load()
+      if (showAllHistory) await loadAllHistory()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'ลบประวัติไม่สำเร็จ')
     } finally { setSaving(false) }
@@ -283,6 +309,7 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
     try {
       await uploadCertificate(result, file)
       await load()
+      if (showAllHistory) await loadAllHistory()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'แนบ Certificate ไม่สำเร็จ')
     } finally {
@@ -373,15 +400,25 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
           </section>
 
           <section style={card}>
-            <div style={{ ...sectionTitle, marginBottom: 10 }}>ประวัติการดำเนินงาน</div>
-            {(payload?.results ?? []).length === 0 ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>ยังไม่มีประวัติ PM/CAL</div> : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+              <div style={sectionTitle}>ประวัติการดำเนินงาน{showAllHistory ? ' (ทุกปีงบประมาณ)' : ` (ปีงบ ${fiscalYear})`}</div>
+              <button
+                onClick={() => setShowAllHistory(current => !current)}
+                disabled={allHistoryLoading}
+                style={{ ...btnGhost, cursor: allHistoryLoading ? 'wait' : 'pointer' }}
+              >
+                {allHistoryLoading ? 'กำลังโหลด…' : showAllHistory ? `แสดงเฉพาะปีงบ ${fiscalYear}` : 'ดูประวัติทั้งหมด'}
+              </button>
+            </div>
+            {(displayedResults.length === 0) ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>ยังไม่มีประวัติ PM/CAL</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {(payload?.results ?? []).map(result => {
+                {displayedResults.slice(0, visibleHistoryCount).map(result => {
                   const linked = result.plan_id ? planById.get(result.plan_id) : null
+                  const impliedYear = result.completed_date ? fiscalYearForDate(new Date(`${result.completed_date}T00:00:00`)) : null
                   const tone = result.result === 'FAIL' ? '#B91C1C' : result.result === 'PASS' ? '#15803D' : 'var(--muted)'
                   return <div key={result.id} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 8, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                     <div><strong style={{ fontSize: 13 }}>{result.cal_type} · {formatDate(result.completed_date)}</strong> <span style={{ color: tone, fontWeight: 700, fontSize: 12.5 }}>{result.result ?? 'ดำเนินการแล้ว'}</span>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{linked ? `แผน ${MONTHS[linked.calendar_month - 1]} ปีงบ ${linked.fiscal_year}` : result.source === 'legacy_import' ? 'ประวัตินำเข้า (ไม่ผูกแผน)' : 'ผลจากแผนปีงบประมาณอื่น'}{result.tech_group ? ` · ${result.tech_group}` : ''}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{linked ? `แผน ${MONTHS[linked.calendar_month - 1]} ปีงบ ${linked.fiscal_year}` : result.source === 'legacy_import' ? `ประวัตินำเข้า (ไม่ผูกแผน)${impliedYear ? ` · ปีงบ ${impliedYear}` : ''}` : `ผลจากแผนปีงบประมาณอื่น${impliedYear ? ` (ปีงบ ${impliedYear})` : ''}`}{result.tech_group ? ` · ${result.tech_group}` : ''}</div>
                       {result.notes && <div style={{ fontSize: 12 }}>{result.notes}</div>}
                     </div>
                     <div style={{ alignSelf: 'center', display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -403,6 +440,14 @@ export function EquipmentPmCalModal({ item, canEdit, onClose, onSaved }: {
                   </div>
                 })}
               </div>
+            )}
+            {displayedResults.length > visibleHistoryCount && (
+              <button
+                onClick={() => setVisibleHistoryCount(current => current + HISTORY_PAGE_SIZE)}
+                style={{ ...btnGhost, marginTop: 10, width: '100%' }}
+              >
+                แสดงเพิ่มเติม (เหลืออีก {displayedResults.length - visibleHistoryCount} รายการ)
+              </button>
             )}
           </section>
         </div>
