@@ -13,8 +13,8 @@ export default async function PublicLabMapPage({ params }: { params: Promise<{ s
       <main className="public-lab-map-page">
         <style>{`.public-lab-map-page{max-width:760px;margin:0 auto;padding:48px 24px 64px}.public-lab-map-notice{padding:28px;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--public-shadow-sm)}.public-lab-map-notice h1{margin:0;color:var(--ink);font-size:24px}.public-lab-map-notice p{margin:10px 0 0;color:var(--muted);line-height:1.7}`}</style>
         <section className="public-lab-map-notice" role="status">
-          <h1>ยังไม่มีฉบับเผยแพร่</h1>
-          <p>แผนที่ออนไลน์กำลังรอการอนุมัติเผยแพร่ โปรดปฏิบัติตามป้ายฉบับที่ติดตั้งในพื้นที่และคำสั่งเจ้าหน้าที่</p>
+          <h1>ขณะนี้ยังไม่มีแผนที่ออนไลน์ฉบับใช้งาน</h1>
+          <p>โปรดดูป้ายแผนที่ที่ติดตั้ง ณ จุดนี้ หรือสอบถามเจ้าหน้าที่</p>
         </section>
       </main>
     )

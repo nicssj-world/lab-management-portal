@@ -222,7 +222,7 @@ Staff/personnel rollout order:
 
 Personnel assignments describe work responsibility only; they are not live location or attendance tracking. The map module does not alter, relate to, or display the equipment registry. Geometry changes remain code-reviewed in Git—there is no drag-and-drop floor-plan editor.
 
-The phase-one floor map is available at `/lab-map/[stationCode]` for the coarse public projection and `/staff/lab-map` for the protected internal view. Geometry and approved route presets are maintained in `lib/lab-map/manifest.ts`; the public route reads only `lib/lab-map/public-manifest.ts` so internal room topology is not serialized to visitors.
+The production origin is **`https://lab-management-cbh.vercel.app`**. Set `NEXT_PUBLIC_SITE_URL` to this same origin for deployments that generate controlled-map QR codes; the in-code fallback uses it as well. Each printed QR links to `/lab-map/[stationCode]` on this origin, while `/staff/lab-map` remains the protected internal view. `lib/lab-map/public-safety.ts` derives the QR projection from the approved manifest but sends only the exterior boundary, current installation point, evacuation routes, exits, and assembly points—never room topology, labels, internal doors, infection classes, personnel, or safety-equipment positions.
 
 Reference drawings:
 
