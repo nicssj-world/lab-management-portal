@@ -1116,7 +1116,7 @@ const R_COLORS: Record<string, string> = {
   High: '#DC2626', Medium: '#D97706', Low: '#0D9488', 'ไม่ระบุ': '#CBD5E1',
 }
 
-function EquipmentDashboard({ data }: { data: Equipment[] }) {
+function EquipmentDashboard({ data, lastCalDates }: { data: Equipment[]; lastCalDates: Record<string, string> }) {
   const deptData = Object.entries(
     data.reduce<Record<string, number>>((acc, e) => ({ ...acc, [e.department]: (acc[e.department] ?? 0) + 1 }), {})
   ).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([dept, count]) => ({ dept, count }))
@@ -1130,7 +1130,10 @@ function EquipmentDashboard({ data }: { data: Equipment[] }) {
     value: data.filter(e => (e.risk_level ?? 'ไม่ระบุ') === k).length,
   })).filter(r => r.value > 0)
 
-  const calYes = data.filter(e => !!e.pm_cal_data?.last_cal_date).length
+  // pm_cal_data.last_cal_date is only written by the legacy flow; equipment calibrated purely
+  // through the new equipment_calibrations-based system needs lastCalDates checked too, or it
+  // shows as "ยังไม่มีข้อมูล" here despite the calibration plan page showing it as done.
+  const calYes = data.filter(e => !!e.pm_cal_data?.last_cal_date || !!lastCalDates[e.id]).length
   const calNo = data.length - calYes
   const calPct = data.length ? Math.round((calYes / data.length) * 100) : 0
   const calData = [
@@ -1805,6 +1808,7 @@ export default function EquipmentClient({
   const [dashboardItems, setDashboardItems] = useState<Equipment[] | null>(null)
   const [dashboardLoading, setDashboardLoading] = useState(false)
   const [dashboardError, setDashboardError] = useState('')
+  const [lastCalDates, setLastCalDates] = useState<Record<string, string>>({})
   const [responsibleUsers, setResponsibleUsers] = useState<ResponsibleUser[]>([])
 
   const [view, setView] = useState<'list' | 'dashboard' | 'calplan' | 'qr'>('list')
@@ -1926,11 +1930,17 @@ export default function EquipmentClient({
     if (view !== 'dashboard' || dashboardItems) return
     setDashboardLoading(true)
     setDashboardError('')
-    fetch('/api/admin/equipment?all=1&sortDir=asc')
-      .then(async r => {
+    Promise.all([
+      fetch('/api/admin/equipment?all=1&sortDir=asc').then(async r => {
         const json = await r.json()
         if (!r.ok) throw new Error(json.error ?? 'โหลด Dashboard ไม่สำเร็จ')
-        setDashboardItems(parseEquipmentPayload(json).items ?? [])
+        return json
+      }),
+      fetch('/api/admin/equipment/pm-cal/last-cal-dates').then(r => r.json()).catch(() => ({ last_cal_dates: {} })),
+    ])
+      .then(([equipmentJson, calJson]) => {
+        setDashboardItems(parseEquipmentPayload(equipmentJson).items ?? [])
+        setLastCalDates(calJson.last_cal_dates ?? {})
       })
       .catch(err => {
         setDashboardItems([])
@@ -2046,8 +2056,20 @@ export default function EquipmentClient({
         if (area) params.set('area', area)
         if (unpositioned) params.set('unpositioned', 'true')
       }
-      const data = await fetch(`/api/admin/equipment?${params}`).then(r => r.json())
+      const [data, calDatesJson] = await Promise.all([
+        fetch(`/api/admin/equipment?${params}`).then(r => r.json()),
+        fetch('/api/admin/equipment/pm-cal/last-cal-dates').then(r => r.json()).catch(() => ({ last_cal_dates: {} })),
+      ])
       const rows = parseEquipmentPayload(data).items ?? []
+      const lastCalDates = (calDatesJson.last_cal_dates ?? {}) as Record<string, string>
+      // pm_cal_data.last_cal_date is stale for anything calibrated through the new plan-based
+      // system — take whichever source is more recent (ISO date strings compare lexicographically).
+      const latestCalDate = (equipmentId: string, legacy: string | null) => {
+        const fromNewSystem = lastCalDates[equipmentId] ?? null
+        if (!legacy) return fromNewSystem
+        if (!fromNewSystem) return legacy
+        return fromNewSystem > legacy ? fromNewSystem : legacy
+      }
 
       const { jsPDF } = await import('jspdf')
       const autoTable = (await import('jspdf-autotable')).default
@@ -2075,7 +2097,7 @@ export default function EquipmentClient({
         eq.model ?? '—',
         eq.cbh_code_pending ? 'รอขึ้นทะเบียน' : (eq.cbh_code ?? '—'),
         eq.status ?? '—',
-        fmtD(eq.pm_cal_data?.last_cal_date ?? null),
+        fmtD(latestCalDate(eq.id, eq.pm_cal_data?.last_cal_date ?? null)),
         eq.responsible_person ?? '—',
       ])
 
@@ -2413,7 +2435,7 @@ export default function EquipmentClient({
         ) : dashboardError ? (
           <div style={{ padding: 16, borderRadius: 12, border: '1px solid #FCA5A5', color: '#B91C1C', background: '#FEF2F2' }}>{dashboardError}</div>
         ) : (
-          <EquipmentDashboard data={dashboardItems ?? []} />
+          <EquipmentDashboard data={dashboardItems ?? []} lastCalDates={lastCalDates} />
         )
       )}
 

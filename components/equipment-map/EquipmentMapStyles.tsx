@@ -32,12 +32,20 @@ export function EquipmentMapStyles() {
       .equipment-pin-detail { fill: none; stroke: var(--map-blue); stroke-linecap: round; stroke-width: 1.8; vector-effect: non-scaling-stroke; }
       .equipment-pin-rotor-dot { fill: var(--map-blue); }
       .equipment-pin-code { fill: var(--map-blue); font: 800 10px "DM Mono", monospace; pointer-events: none; text-anchor: middle; dominant-baseline: central; }
+      .equipment-pin-badge-layer { pointer-events: none; }
+      .equipment-pin-badge[data-dimmed] { opacity: .3; }
       .equipment-pin-status-badge circle { fill: #64748b; stroke: #fff; stroke-width: 1.8; vector-effect: non-scaling-stroke; }
-      .equipment-pin[data-due="due_soon"] .equipment-pin-status-badge circle { fill: var(--pin-due-soon); }
-      .equipment-pin[data-due="overdue"] .equipment-pin-status-badge circle { fill: var(--pin-overdue); }
-      .equipment-pin[data-due="unplanned"] .equipment-pin-status-badge circle { fill: var(--pin-unplanned); }
-      .equipment-pin[data-due="not_required"] .equipment-pin-status-badge circle { fill: var(--pin-not-required); }
+      .equipment-pin-badge[data-due="due_soon"] .equipment-pin-status-badge circle { fill: var(--pin-due-soon); }
+      .equipment-pin-badge[data-due="overdue"] .equipment-pin-status-badge circle { fill: var(--pin-overdue); }
+      .equipment-pin-badge[data-due="unplanned"] .equipment-pin-status-badge circle { fill: var(--pin-unplanned); }
+      .equipment-pin-badge[data-due="not_required"] .equipment-pin-status-badge circle { fill: var(--pin-not-required); }
       .equipment-pin-status-badge .equipment-pin-glyph { fill: #fff; font: 800 9px "Noto Sans Thai", sans-serif; pointer-events: none; text-anchor: middle; dominant-baseline: central; }
+      /* Traces a badge back to its own pin when pins sit close together in a cluster. */
+      .equipment-pin-status-leader { stroke: #64748b; stroke-width: 1.4; stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+      .equipment-pin-badge[data-due="due_soon"] .equipment-pin-status-leader { stroke: var(--pin-due-soon); }
+      .equipment-pin-badge[data-due="overdue"] .equipment-pin-status-leader { stroke: var(--pin-overdue); }
+      .equipment-pin-badge[data-due="unplanned"] .equipment-pin-status-leader { stroke: var(--pin-unplanned); }
+      .equipment-pin-badge[data-due="not_required"] .equipment-pin-status-leader { stroke: var(--pin-not-required); }
 
       .equipment-map-legend { align-items: center; background: var(--map-navy); color: #fff; display: flex; flex-wrap: wrap; gap: 16px; padding: 10px 16px; font-size: .74rem; }
       .equipment-map-legend span { align-items: center; display: flex; gap: 6px; }

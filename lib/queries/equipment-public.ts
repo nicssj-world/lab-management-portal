@@ -106,7 +106,9 @@ export async function getPublicEquipment(id: string): Promise<PublicEquipment | 
       certificate_no: latestCal?.certificate_no ?? row.pm_cal_data?.certificate_no ?? null,
       cal_result: latestCal?.result ?? row.pm_cal_data?.cal_result ?? null,
     },
-    pmCalState: computeEquipmentPmCalState(row.needs_calibration, (plans ?? []) as PmCalPlanRecord[], history),
+    // Matches the equipment map's rule (lib/equipment-map/server-builder.ts): retired equipment
+    // must never show as "เกินกำหนด" here while the map shows it grey "ไม่ต้องสอบเทียบ".
+    pmCalState: computeEquipmentPmCalState(row.status !== 'Inactive' && row.needs_calibration, (plans ?? []) as PmCalPlanRecord[], history),
     photoSignedUrl,
     manualSignedUrl,
   }

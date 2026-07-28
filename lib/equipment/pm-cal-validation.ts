@@ -59,9 +59,19 @@ export const pmCalPlanGroupReplaceSchema = z.object({
   actual_amount: z.number().nonnegative().max(999_999_999.99).nullable().optional(),
   equipment_ids: z.array(z.string().uuid()).min(1).max(1000),
   version: z.number().int().positive().nullable().optional(),
+  // Only honored on create (POST): additional months to spin off as sibling groups (same
+  // group/plan name, equipment, price) in one action, for equipment that's due PM/CAL more than
+  // once a year. Ignored on edit (PATCH), which always targets a single existing group/month.
+  extra_months: z.array(z.number().int().min(1).max(12)).max(11).optional(),
 }).superRefine((value, ctx) => {
   if (new Set(value.equipment_ids).size !== value.equipment_ids.length) {
     ctx.addIssue({ code: 'custom', path: ['equipment_ids'], message: 'มีเครื่องมือซ้ำในแผน' })
+  }
+  if (value.extra_months?.includes(value.calendar_month)) {
+    ctx.addIssue({ code: 'custom', path: ['extra_months'], message: 'เดือนซ้ำกับเดือนหลัก' })
+  }
+  if (value.extra_months && new Set(value.extra_months).size !== value.extra_months.length) {
+    ctx.addIssue({ code: 'custom', path: ['extra_months'], message: 'เดือนซ้ำกันในรายการ' })
   }
   if (value.price_mode === 'per_unit' && value.unit_price == null) {
     ctx.addIssue({ code: 'custom', path: ['unit_price'], message: 'กรุณาระบุราคาต่อหน่วย' })

@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ error: 'ข้อมูลแผนกลุ่มไม่ถูกต้อง', issues: parsed.error.flatten() }, { status: 422 })
   const { equipment_ids, ...group } = parsed.data
   const conflicts = await findPmCalGroupConflicts({ equipmentIds: equipment_ids, fiscalYear: group.fiscal_year, calendarMonth: group.calendar_month, calType: group.cal_type, excludeGroupId: groupId })
-  if (conflicts.length) return NextResponse.json({ error: 'เครื่องมือบางรายการมีแผน PM/CAL ซ้ำในเดือนนี้', conflicts }, { status: 409 })
+  if (conflicts.length) return NextResponse.json({ error: group.cal_type === 'CAL' ? 'เครื่องมือบางรายการมีแผน CAL ที่ยังไม่ปิดอยู่แล้วในปีงบนี้' : 'เครื่องมือบางรายการมีแผน PM/CAL ซ้ำในเดือนนี้', conflicts }, { status: 409 })
   const { data, error } = await supabaseAdmin.rpc('replace_equipment_pm_cal_plan_group', {
     p_group: group, p_members: equipment_ids, p_expected_versions: {}, p_actor: actor.id,
   })

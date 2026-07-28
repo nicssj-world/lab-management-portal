@@ -35,6 +35,11 @@ interface ViewTransform { scale: number; x: number; y: number }
 interface PinDrag { id: string; areaCode: string; pointerId: number; x: number; y: number }
 interface PinDragPreview { id: string; x: number; y: number }
 
+// Holding the pointer down for this long before a drag "arms" is what keeps a quick click-to-view
+// from ever nudging the pin — pointermove is ignored entirely (draggedPinRef stays null) until the
+// hold clears this threshold, so an ordinary click can never shift the pin's position.
+const PIN_DRAG_HOLD_MS = 250
+
 function matchesFocus(pin: EquipmentPinDTO, focus: EquipmentMapFocus): boolean {
   if (focus === 'all') return true
   if (focus === 'due') return pin.due === 'due_soon' || pin.due === 'overdue'
@@ -174,6 +179,8 @@ export function EquipmentMapCanvas({
   const [dragPreview, setDragPreview] = useState<PinDragPreview | null>(null)
   const draggedPinRef = useRef<PinDrag | null>(null)
   const dragPreviewRef = useRef<PinDragPreview | null>(null)
+  const pendingPinDragRef = useRef<PinDrag | null>(null)
+  const pinDragArmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suppressPinClickRef = useRef<string | null>(null)
 
   const [viewMinX, viewMinY, viewWidth, viewHeight] = useMemo(() => viewBox.split(' ').map(Number), [viewBox])
@@ -243,6 +250,8 @@ export function EquipmentMapCanvas({
   }
 
   function clearPinDrag() {
+    if (pinDragArmTimerRef.current) { clearTimeout(pinDragArmTimerRef.current); pinDragArmTimerRef.current = null }
+    pendingPinDragRef.current = null
     draggedPinRef.current = null
     dragPreviewRef.current = null
     setDraggedPin(null)
@@ -256,11 +265,19 @@ export function EquipmentMapCanvas({
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
     const nextDrag: PinDrag = { id: pin.id, areaCode: pin.areaCode, pointerId: event.pointerId, x: pin.x, y: pin.y }
-    const nextPreview: PinDragPreview = { id: pin.id, x: pin.x, y: pin.y }
-    draggedPinRef.current = nextDrag
-    dragPreviewRef.current = nextPreview
-    setDraggedPin(nextDrag)
-    setDragPreview(nextPreview)
+    pendingPinDragRef.current = nextDrag
+    if (pinDragArmTimerRef.current) clearTimeout(pinDragArmTimerRef.current)
+    // Nothing is armed yet — draggedPinRef/dragPreviewRef stay null, so movePinDrag ignores every
+    // pointermove until this timer fires, which is what makes a quick click never move the pin.
+    pinDragArmTimerRef.current = setTimeout(() => {
+      pinDragArmTimerRef.current = null
+      if (pendingPinDragRef.current?.pointerId !== nextDrag.pointerId) return
+      const nextPreview: PinDragPreview = { id: nextDrag.id, x: nextDrag.x, y: nextDrag.y }
+      draggedPinRef.current = nextDrag
+      dragPreviewRef.current = nextPreview
+      setDraggedPin(nextDrag)
+      setDragPreview(nextPreview)
+    }, PIN_DRAG_HOLD_MS)
   }
 
   function movePinDrag(event: ReactPointerEvent<SVGGElement>) {
@@ -278,13 +295,14 @@ export function EquipmentMapCanvas({
   }
 
   function finishPinDrag(event: ReactPointerEvent<SVGGElement>) {
-    const draggedPin = draggedPinRef.current
-    if (!draggedPin || event.pointerId !== draggedPin.pointerId) return
+    const pending = pendingPinDragRef.current
+    if (!pending || event.pointerId !== pending.pointerId) return
     event.stopPropagation()
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    const draggedPin = draggedPinRef.current
     const dragPreview = dragPreviewRef.current
     clearPinDrag()
-    if (!dragPreview || (dragPreview.x === draggedPin.x && dragPreview.y === draggedPin.y)) return
+    if (!draggedPin || !dragPreview || (dragPreview.x === draggedPin.x && dragPreview.y === draggedPin.y)) return
     suppressPinClickRef.current = draggedPin.id
     onMovePin?.({ id: draggedPin.id, areaCode: draggedPin.areaCode, x: Math.round(dragPreview.x), y: Math.round(dragPreview.y) })
   }
@@ -409,7 +427,6 @@ export function EquipmentMapCanvas({
               const pinY = preview?.y ?? pin.y
               const pinRotation = pin.rotation
               const isDimmed = !matchesFocus(pin, focus)
-              const flag = pinGlyph(pin)
               const symbol = getEquipmentPinSymbol(pin.classification, pin.name)
               return (
                 <g
@@ -441,16 +458,38 @@ export function EquipmentMapCanvas({
                 >
                   <g className="equipment-pin-scale" transform={`rotate(${pinRotation} ${pinX} ${pinY}) translate(${pinX} ${pinY}) scale(0.7) translate(${-pinX} ${-pinY})`}>
                     <PinShape x={pinX} y={pinY} symbol={symbol} />
-                    {flag ? (
-                      <g className="equipment-pin-status-badge" transform={`translate(${pinX + 20} ${pinY - 20})`}>
-                        <circle r={7} />
-                        <text className="equipment-pin-glyph" x={0} y={0}>{flag}</text>
-                      </g>
-                    ) : null}
                   </g>
                 </g>
               )
             })}
+
+            {/* Badges paint in their own pass, after every pin body, so a badge is never hidden
+                behind a neighboring pin — SVG paints in document order, and a fixed offset badge
+                can otherwise land underneath whichever pin happens to be drawn later. */}
+            <g className="equipment-pin-badge-layer" aria-hidden="true">
+              {pins.map((pin) => {
+                if (pin.x == null || pin.y == null) return null
+                const flag = pinGlyph(pin)
+                if (!flag) return null
+                const preview = dragPreview?.id === pin.id ? dragPreview : null
+                const pinX = preview?.x ?? pin.x
+                const pinY = preview?.y ?? pin.y
+                const pinRotation = pin.rotation
+                const isDimmed = !matchesFocus(pin, focus)
+                return (
+                  <g key={`badge-${pin.id}`} className="equipment-pin-badge" data-due={pin.due} data-dimmed={isDimmed || undefined}>
+                    <g transform={`rotate(${pinRotation} ${pinX} ${pinY}) translate(${pinX} ${pinY}) scale(0.7) translate(${-pinX} ${-pinY})`}>
+                      {/* Leader line ties the badge back to its own pin so a crowded cluster of pins doesn't leave it ambiguous which badge belongs to which pin. */}
+                      <line className="equipment-pin-status-leader" x1={pinX} y1={pinY} x2={pinX + 16} y2={pinY - 16} />
+                      <g className="equipment-pin-status-badge" transform={`translate(${pinX + 16} ${pinY - 16})`}>
+                        <circle r={7} />
+                        <text className="equipment-pin-glyph" x={0} y={0}>{flag}</text>
+                      </g>
+                    </g>
+                  </g>
+                )
+              })}
+            </g>
           </g>
         </svg>
       </div>
