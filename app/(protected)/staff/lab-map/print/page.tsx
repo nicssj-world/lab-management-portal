@@ -52,7 +52,7 @@ export default async function LabMapPrintPage() {
     : { data: [] as { id: string; name: string | null; role: string }[] }
   const staff = (staffRows.data ?? []).map((row) => ({ id: String(row.id), name: row.name as string | null, role: String(row.role) }))
 
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://lab.chonburihospital.go.th').replace(/\/$/, '')
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://lab-management-cbh.vercel.app').replace(/\/$/, '')
   const catalog: MapPrintDTO[] = []
   const papers: MapPaperSize[] = ['A3', 'A4']
   // สถานีชนิด 'checkpoint' คือจุดที่ผู้มาติดต่อยืนรอจริง ไม่ใช่จุดติดตั้งป้าย — ไม่เข้าแคตตาล็อกงานพิมพ์
