@@ -169,15 +169,13 @@ export function LabMapCanvas({
     [idPrefix],
   )
   const [view, setView] = useState<ViewTransform>({ scale: 1, x: 0, y: 0 })
-  const dragStart = useRef<{ pointerX: number; pointerY: number; viewX: number; viewY: number } | null>(null)
-  const activePointers = useRef(new Map<number, { x: number; y: number }>())
+  const dragStart = useRef<{ pointerId: number; clientX: number; clientY: number; svgX: number; svgY: number; viewX: number; viewY: number } | null>(null)
+  const activePointers = useRef(new Map<number, { clientX: number; clientY: number; svgX: number; svgY: number }>())
   const pinchStart = useRef<{
     initialDistance: number
     initialScale: number
-    viewX: number
-    viewY: number
-    centerX: number
-    centerY: number
+    contentX: number
+    contentY: number
   } | null>(null)
   const didGesture = useRef(false)
 
@@ -225,6 +223,14 @@ export function LabMapCanvas({
     onSelect(code)
   }
 
+  function resolveSvgViewportPoint(svg: SVGSVGElement, clientX: number, clientY: number) {
+    const point = svg.createSVGPoint()
+    point.x = clientX
+    point.y = clientY
+    const matrix = svg.getScreenCTM()?.inverse()
+    return matrix ? point.matrixTransform(matrix) : null
+  }
+
   function pointerPair() {
     const pointers = [...activePointers.current.values()]
     return pointers.length >= 2 ? [pointers[0], pointers[1]] as const : null
@@ -234,13 +240,13 @@ export function LabMapCanvas({
     const pair = pointerPair()
     if (!pair) return
     const [first, second] = pair
+    const centerX = (first.svgX + second.svgX) / 2
+    const centerY = (first.svgY + second.svgY) / 2
     pinchStart.current = {
-      initialDistance: Math.hypot(second.x - first.x, second.y - first.y),
+      initialDistance: Math.hypot(second.svgX - first.svgX, second.svgY - first.svgY),
       initialScale: view.scale,
-      viewX: view.x,
-      viewY: view.y,
-      centerX: (first.x + second.x) / 2,
-      centerY: (first.y + second.y) / 2,
+      contentX: (centerX - view.x) / view.scale,
+      contentY: (centerY - view.y) / view.scale,
     }
     dragStart.current = null
     didGesture.current = true
@@ -254,11 +260,13 @@ export function LabMapCanvas({
 
   function startPan(event: ReactPointerEvent<SVGSVGElement>) {
     if (!interactive) return
-    activePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    const svgPoint = resolveSvgViewportPoint(event.currentTarget, event.clientX, event.clientY)
+    if (!svgPoint) return
+    activePointers.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY, svgX: svgPoint.x, svgY: svgPoint.y })
     if (activePointers.current.size >= 2) {
       beginPinch()
     } else {
-      dragStart.current = { pointerX: event.clientX, pointerY: event.clientY, viewX: view.x, viewY: view.y }
+      dragStart.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, svgX: svgPoint.x, svgY: svgPoint.y, viewX: view.x, viewY: view.y }
     }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -266,36 +274,39 @@ export function LabMapCanvas({
   function movePan(event: ReactPointerEvent<SVGSVGElement>) {
     const pointer = activePointers.current.get(event.pointerId)
     if (!pointer) return
-    pointer.x = event.clientX
-    pointer.y = event.clientY
+    const svgPoint = resolveSvgViewportPoint(event.currentTarget, event.clientX, event.clientY)
+    if (!svgPoint) return
+    pointer.clientX = event.clientX
+    pointer.clientY = event.clientY
+    pointer.svgX = svgPoint.x
+    pointer.svgY = svgPoint.y
 
     const pinch = pinchStart.current
     const pair = pointerPair()
     if (pinch && pair) {
       const [first, second] = pair
-      const distance = Math.hypot(second.x - first.x, second.y - first.y)
+      const distance = Math.hypot(second.svgX - first.svgX, second.svgY - first.svgY)
       if (pinch.initialDistance === 0) return
       const scale = Math.min(2.5, Math.max(0.75, pinch.initialScale * distance / pinch.initialDistance))
-      const centerX = (first.x + second.x) / 2
-      const centerY = (first.y + second.y) / 2
+      const centerX = (first.svgX + second.svgX) / 2
+      const centerY = (first.svgY + second.svgY) / 2
       setView({
         scale,
-        x: pinch.viewX + (centerX - pinch.centerX) / scale,
-        y: pinch.viewY + (centerY - pinch.centerY) / scale,
+        x: centerX - pinch.contentX * scale,
+        y: centerY - pinch.contentY * scale,
       })
       return
     }
 
     const start = dragStart.current
     if (!start) return
-    if (event.pointerId !== [...activePointers.current.keys()][0]) return
-    const distance = Math.hypot(event.clientX - start.pointerX, event.clientY - start.pointerY)
+    if (event.pointerId !== start.pointerId) return
+    const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY)
     if (distance > 4) didGesture.current = true
-    const factor = 1 / view.scale
     setView((current) => ({
       ...current,
-      x: start.viewX + (event.clientX - start.pointerX) * factor,
-      y: start.viewY + (event.clientY - start.pointerY) * factor,
+      x: start.viewX + svgPoint.x - start.svgX,
+      y: start.viewY + svgPoint.y - start.svgY,
     }))
   }
 
@@ -309,9 +320,9 @@ export function LabMapCanvas({
       return
     }
     pinchStart.current = null
-    const remaining = activePointers.current.entries().next().value as [number, { x: number; y: number }] | undefined
+    const remaining = activePointers.current.entries().next().value as [number, { clientX: number; clientY: number; svgX: number; svgY: number }] | undefined
     dragStart.current = remaining
-      ? { pointerX: remaining[1].x, pointerY: remaining[1].y, viewX: view.x, viewY: view.y }
+      ? { pointerId: remaining[0], clientX: remaining[1].clientX, clientY: remaining[1].clientY, svgX: remaining[1].svgX, svgY: remaining[1].svgY, viewX: view.x, viewY: view.y }
       : null
   }
 
@@ -321,12 +332,8 @@ export function LabMapCanvas({
       ? event.currentTarget
       : event.currentTarget.ownerSVGElement
     if (!svg) return
-    const point = svg.createSVGPoint()
-    point.x = event.clientX
-    point.y = event.clientY
-    const matrix = svg.getScreenCTM()?.inverse()
-    if (!matrix) return
-    const svgPoint = point.matrixTransform(matrix)
+    const svgPoint = resolveSvgViewportPoint(svg, event.clientX, event.clientY)
+    if (!svgPoint) return
     onCoordinateSelect(
       Math.max(0, Math.min(1477, (svgPoint.x - view.x) / view.scale)),
       Math.max(0, Math.min(892, (svgPoint.y - view.y) / view.scale)),
