@@ -20,6 +20,7 @@ export interface EquipmentMapCanvasProps {
   areas: readonly EquipmentAreaDTO[]
   pins: readonly EquipmentPinDTO[]
   selectedAreaCode: string | null
+  highlightedAreaCodes: readonly string[]
   selectedPinId: string | null
   onSelectArea: (code: string) => void
   onSelectPin: (id: string) => void
@@ -168,6 +169,7 @@ export function EquipmentMapCanvas({
   areas,
   pins,
   selectedAreaCode,
+  highlightedAreaCodes,
   selectedPinId,
   onSelectArea,
   onSelectPin,
@@ -417,6 +419,7 @@ export function EquipmentMapCanvas({
   const renderArea = (area: EquipmentAreaDTO) => {
     if (!area.rect) return null
     const isSelected = selectedAreaCode === area.code
+    const isHighlighted = highlightedAreaCodes.includes(area.code)
     const isDimmed = areasWithMatches !== null && !areasWithMatches.has(area.code)
     // ห้องที่ถูกซอยเป็นโซนแล้ว ไม่ต้องระบายทับโซนลูก แค่วาดกรอบไว้
     const isSplitRoom = area.kind === 'room' && zoneParentCodes.has(area.code)
@@ -426,6 +429,7 @@ export function EquipmentMapCanvas({
         className="lab-map-space equipment-map-space"
         data-area-code={area.code}
         data-selected={isSelected || undefined}
+        data-highlighted={isHighlighted || undefined}
         data-dimmed={isDimmed || undefined}
         data-split-room={isSplitRoom || undefined}
         role="button"

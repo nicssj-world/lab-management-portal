@@ -5,6 +5,7 @@ import type {
   EquipmentRect,
   EquipmentWallDefinition,
 } from './types'
+import { equipmentAreaCodesForSelection } from './walk-groups'
 
 export {
   EQUIPMENT_WORK_GROUPS,
@@ -292,9 +293,7 @@ export const EQUIPMENT_AREAS: readonly EquipmentAreaDefinition[] = [
     rect: rectIn(7.30, 4.42, 1.64, 0.97), label: labelIn(8.12, 4.90, ['ตู้เย็น'], 15),
   },
   {
-    // เดิมเข้าใจผิดว่าเป็นห้องแยกต่างหาก ("คลังน้ำยา" รูปตัว L) — ผู้ใช้ยืนยันว่าคลังน้ำยาเป็นโซนของ
-    // จุลชีววิทยา จึงย้ายมาเป็นลูกของ room-microbiology และย่อขนาดให้เหลือเฉพาะส่วนที่มีครุภัณฑ์จริง
-    // (คงรหัสเดิมไว้ ไม่มีเครื่องมือผูก area_code กับรหัสนี้อยู่ก่อน จึงเปลี่ยน kind/parent/รูปทรงได้อิสระ)
+    // พื้นที่คลังน้ำยาอยู่ในกรอบเรขาคณิตเดียวกับจุลชีววิทยา แต่เป็นพื้นที่ตรวจแยกต่างหาก
     code: 'zone-material-reagent-store', nameTh: 'คลังน้ำยา', kind: 'zone',
     parentCode: 'room-microbiology',
     rect: rectIn(9.51, 4.38, 4.34, 1.31),
@@ -312,7 +311,7 @@ export const EQUIPMENT_AREAS: readonly EquipmentAreaDefinition[] = [
   // ── แถบใต้ ──
   {
     code: 'zone-special-testing', nameTh: 'งาน OUTLAB', kind: 'room',
-    rect: rectIn(7.30, 5.39, 1.64, 4.07), label: labelIn(8.12, 5.55, ['งาน OUTLAB'], 12),
+    rect: rectIn(7.30, 5.39, 1.64, 4.07),
   },
   {
     code: 'zone-special-testing-upper-1', nameTh: 'OUTLAB (โซน 1)', kind: 'zone',
@@ -378,6 +377,8 @@ export const EQUIPMENT_AREAS: readonly EquipmentAreaDefinition[] = [
  * ต้องครอบคลุมเครื่องมือของโซนลูกด้วย ไม่ใช่แค่เครื่องที่ area_code ตรงกับห้องเป๊ะ ๆ
  */
 export function areaAndDescendantCodes(code: string): string[] {
+  const workGroupCodes = equipmentAreaCodesForSelection(code)
+  if (workGroupCodes) return [...workGroupCodes]
   const children = EQUIPMENT_AREAS.filter((area) => area.parentCode === code).map((area) => area.code)
   return [code, ...children]
 }

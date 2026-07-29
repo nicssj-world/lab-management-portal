@@ -7,12 +7,30 @@ assert.ok(
   'the mobile picker needs one authoritative partition so grouped areas cannot also appear as standalone options',
 )
 
-const { groupEquipmentWalkAreas } = require(modulePath) as {
+const {
+  groupEquipmentWalkAreas,
+  equipmentAreaCodesForSelection,
+  equipmentSelectionForArea,
+  isEquipmentAreaSelectable,
+} = require(modulePath) as {
   groupEquipmentWalkAreas: <T extends { area: { code: string }; total: number; unsurveyed: number; overdue: number; dueSoon: number }>(items: readonly T[]) => {
     groups: readonly { code: string; items: readonly T[]; summary: null | { selectionCode: string; nameTh: string; total: number; unsurveyed: number; overdue: number; dueSoon: number } }[]
     standalone: readonly T[]
   }
+  equipmentAreaCodesForSelection?: (selection: string) => readonly string[] | null
+  equipmentSelectionForArea?: (areaCode: string) => string
+  isEquipmentAreaSelectable?: (areaCode: string) => boolean
 }
+
+// กรอบ OUTLAB เป็นเพียง container ทางเรขาคณิต: โซนคลังเลือดอยู่ในกรอบเดียวกัน
+// แต่ทุกจุดที่เลือก/ค้นหา/กรองทะเบียนต้องใช้ขอบเขตของกลุ่มงานที่ตกลงกันเท่านั้น.
+assert.equal(typeof equipmentSelectionForArea, 'function', 'area selection must resolve geometric containers to their work-group selection')
+assert.equal(typeof equipmentAreaCodesForSelection, 'function', 'registry filtering must resolve a work-group selection to its canonical area codes')
+assert.equal(typeof isEquipmentAreaSelectable, 'function', 'geometric containers must be excluded from room/zone dropdowns')
+assert.equal(equipmentSelectionForArea?.('zone-special-testing'), 'work-group:outlab')
+assert.deepEqual(equipmentAreaCodesForSelection?.('work-group:outlab'), ['zone-special-testing-upper-1', 'zone-special-testing-upper-2'])
+assert.equal(isEquipmentAreaSelectable?.('zone-special-testing'), false)
+assert.equal(isEquipmentAreaSelectable?.('zone-special-testing-upper-1'), true)
 
 const items = [
   { area: { code: 'zone-special-testing' }, marker: 'outlab-container', total: 9, unsurveyed: 7, overdue: 5, dueSoon: 4 },
@@ -67,6 +85,19 @@ assert.equal(
   result.groups.find((group) => group.code === 'outlab')?.items.some((item) => item.area.code === 'zone-special-testing'),
   false,
   'the OUTLAB map container must not be selectable because its geometric count also contains blood-bank zones',
+)
+
+const molecularResult = groupEquipmentWalkAreas([
+  { area: { code: 'zone-molecular-genomics' }, total: 1, unsurveyed: 1, overdue: 0, dueSoon: 0 },
+  { area: { code: 'zone-molecular-1' }, total: 2, unsurveyed: 0, overdue: 1, dueSoon: 0 },
+  { area: { code: 'zone-molecular-2' }, total: 3, unsurveyed: 1, overdue: 0, dueSoon: 1 },
+  { area: { code: 'zone-molecular-3' }, total: 4, unsurveyed: 1, overdue: 0, dueSoon: 0 },
+  { area: { code: 'zone-molecular-4' }, total: 5, unsurveyed: 0, overdue: 0, dueSoon: 0 },
+])
+assert.deepEqual(
+  molecularResult.groups.find((group) => group.code === 'molecular')?.summary,
+  { selectionCode: 'work-group:molecular', nameTh: 'งานอณูชีววิทยา', total: 15, unsurveyed: 3, overdue: 1, dueSoon: 1 },
+  'every work group, including molecular biology, must expose a whole-work selection for map highlighting and filtering',
 )
 
 console.log('equipment map work-group partition passed')
