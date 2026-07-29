@@ -17,7 +17,12 @@ import { PlacementPanel } from './PlacementPanel'
 import { SurveyRoundBar } from './SurveyRoundBar'
 import { useUrlFilters } from '@/components/risk/shared/useUrlFilters'
 import { filterPlacementItems } from '@/lib/equipment-map/placement-pagination'
-import { groupEquipmentWalkAreas } from '@/lib/equipment-map/walk-groups'
+import {
+  EQUIPMENT_WORK_GROUPS,
+  equipmentSelectionForArea,
+  groupEquipmentWalkAreas,
+  isEquipmentAreaSelectable,
+} from '@/lib/equipment-map/walk-groups'
 import type { Equipment } from '@/lib/queries/equipment'
 import type { EquipmentAreaDTO, EquipmentMapDTO, EquipmentPinDTO } from '@/lib/equipment-map/types'
 
@@ -152,7 +157,10 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
     })
   }, [map.pins])
 
-  const selectedArea = filters.area ? map.areas.find((area) => area.code === filters.area) ?? null : null
+  const selectedAreaCode = filters.area ? equipmentSelectionForArea(filters.area) : ''
+  const selectedArea = selectedAreaCode && isEquipmentAreaSelectable(selectedAreaCode)
+    ? map.areas.find((area) => area.code === selectedAreaCode) ?? null
+    : null
   const selectedPin = selectedPinId ? mapPins.find((pin) => pin.id === selectedPinId) ?? null : null
   const selectedPinAreaName = selectedPin ? map.areas.find((area) => area.code === selectedPin.areaCode)?.nameTh ?? selectedPin.areaCode : ''
   const filteredUnplaced = useMemo(
@@ -179,17 +187,19 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
   const walkAreas = useMemo(() => map.areas
     .filter((area) => area.isActive && area.hasGeometry)
     .map((area) => {
-      const pins = pinsForArea(area, map.areas, mapPins)
-      const unsurveyed = pins.filter((pin) => !pin.surveyed).length
-      const overdue = pins.filter((pin) => pin.due === 'overdue').length
-      const dueSoon = pins.filter((pin) => pin.due === 'due_soon').length
-      return { area, total: pins.length, unsurveyed, overdue, dueSoon }
+      // ห้องแม่เป็น roll-up ทางภาพ: ห้ามนำยอดที่รวมโซนลูกแล้วไปบวกกับโซนลูกอีกครั้ง.
+      const directPins = mapPins.filter((pin) => pin.areaCode === area.code)
+      const unsurveyed = directPins.filter((pin) => !pin.surveyed).length
+      const overdue = directPins.filter((pin) => pin.due === 'overdue').length
+      const dueSoon = directPins.filter((pin) => pin.due === 'due_soon').length
+      return { area, total: directPins.length, unsurveyed, overdue, dueSoon }
     }), [map.areas, mapPins])
   // ห้องแม่รวมเครื่องมือจากทุกโซนลูกไว้เพื่อให้เปิดดูภาพรวมได้ แต่การนับความคืบหน้า
   // และปุ่มพื้นที่ถัดไปต้องใช้เฉพาะพื้นที่ปลายทาง เพื่อไม่ให้นับเครื่องมือซ้ำสองครั้ง.
   const inspectionAreas = walkAreas.filter((item) => !walkAreas.some((candidate) => candidate.area.parentCode === item.area.code))
   const groupedWalkAreas = useMemo(() => groupEquipmentWalkAreas(walkAreas), [walkAreas])
-  const selectedWorkGroup = groupedWalkAreas.groups.find((group) => group.summary?.selectionCode === filters.area) ?? null
+  const selectedWorkGroup = groupedWalkAreas.groups.find((group) => group.summary?.selectionCode === selectedAreaCode) ?? null
+  const selectedWorkGroupAreaCodes = selectedWorkGroup?.items.map((item) => item.area.code) ?? []
   const selectedWorkGroupPins = useMemo(() => {
     if (!selectedWorkGroup) return []
     const areaCodes = new Set(selectedWorkGroup.items.map((item) => item.area.code))
@@ -229,17 +239,20 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
   const searchResults = useMemo(() => {
     const text = query.trim().toLocaleLowerCase('th')
     if (!text) return []
+    const workGroupMatches = EQUIPMENT_WORK_GROUPS
+      .filter((group) => group.nameTh.toLocaleLowerCase('th').includes(text))
+      .map((group) => ({ kind: 'work-group' as const, code: `work-group:${group.code}`, label: `ทั้ง ${group.nameTh}` }))
     const areaMatches = map.areas
-      .filter((area) => area.hasGeometry && area.nameTh.toLocaleLowerCase('th').includes(text))
+      .filter((area) => area.hasGeometry && isEquipmentAreaSelectable(area.code) && area.nameTh.toLocaleLowerCase('th').includes(text))
       .map((area) => ({ kind: 'area' as const, code: area.code, label: area.nameTh }))
     const pinMatches = map.pins
       .filter((pin) => pin.name.toLocaleLowerCase('th').includes(text) || (pin.code ?? '').toLocaleLowerCase('th').includes(text))
       .map((pin) => ({ kind: 'pin' as const, code: pin.id, label: `${pin.name}${pin.code ? ' · ' + pin.code : ''}` }))
-    return [...areaMatches, ...pinMatches].slice(0, 8)
+    return [...workGroupMatches, ...areaMatches, ...pinMatches].slice(0, 8)
   }, [query, map.areas, map.pins])
 
-  function selectSearchResult(result: { kind: 'area' | 'pin'; code: string }) {
-    if (result.kind === 'area') {
+  function selectSearchResult(result: { kind: 'area' | 'work-group' | 'pin'; code: string }) {
+    if (result.kind === 'area' || result.kind === 'work-group') {
       setFilters({ area: result.code })
     } else {
       const pin = map.pins.find((item) => item.id === result.code)
@@ -417,9 +430,9 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
                       ทั้ง {group.summary.nameTh} · {group.summary.total} เครื่องมือ · เหลือ {group.summary.unsurveyed} · PM/CAL {group.summary.overdue + group.summary.dueSoon}
                     </option>
                   ) : null}
-                  {group.items.map(({ area, total, unsurveyed, overdue, dueSoon }) => (
+                  {group.items.filter(({ area }) => !area.isWorkGroupSummary).map(({ area, total, unsurveyed, overdue, dueSoon }) => (
                       <option key={area.code} value={area.code}>
-                        {area.isWorkGroupSummary ? 'ทั้ง ' : '— '}{area.nameTh} · {total} เครื่องมือ · เหลือ {unsurveyed} · PM/CAL {overdue + dueSoon}
+                        — {area.nameTh} · {total} เครื่องมือ · เหลือ {unsurveyed} · PM/CAL {overdue + dueSoon}
                       </option>
                   ))}
                 </optgroup>
@@ -467,7 +480,7 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
                 <li key={`${result.kind}-${result.code}`}>
                   <button type="button" onClick={() => selectSearchResult(result)}>
                     <span>{result.label}</span>
-                    <small>{result.kind === 'area' ? 'พื้นที่' : 'เครื่องมือ'}</small>
+                    <small>{result.kind === 'pin' ? 'เครื่องมือ' : result.kind === 'work-group' ? 'กลุ่มงาน' : 'พื้นที่'}</small>
                   </button>
                 </li>
               ))}
@@ -498,8 +511,9 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
           areas={map.areas}
           pins={mapPins}
           selectedAreaCode={selectedArea?.code ?? null}
+          highlightedAreaCodes={selectedWorkGroupAreaCodes}
           selectedPinId={selectedPinId}
-          onSelectArea={(code) => setFilters({ area: code })}
+          onSelectArea={(code) => setFilters({ area: equipmentSelectionForArea(code) })}
           onSelectPin={(id) => setSelectedPinId(id)}
           onCoordinateSelect={placingId ? handleCoordinateSelect : undefined}
           onMovePin={canEdit ? handleMovePin : undefined}

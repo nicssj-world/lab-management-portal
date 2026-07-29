@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { isEquipmentAreaSelectable } from '@/lib/equipment-map/walk-groups'
 import { paginatePlacementItems } from '@/lib/equipment-map/placement-pagination'
 import type { EquipmentAreaDTO, EquipmentUnplacedDTO } from '@/lib/equipment-map/types'
 
@@ -20,7 +21,7 @@ export interface PlacementPanelProps {
 
 export function PlacementPanel({ items, areas, placingId, busy, onClose, onCategorize, onViewDetails, onStartPlacement, onCancelPlacement }: PlacementPanelProps) {
   const [requestedPage, setRequestedPage] = useState(1)
-  const selectableAreas = areas.filter((area) => area.isActive)
+  const selectableAreas = areas.filter((area) => area.isActive && isEquipmentAreaSelectable(area.code))
   const { items: pageItems, page, pageCount, from, to } = paginatePlacementItems(items, requestedPage)
 
   return (

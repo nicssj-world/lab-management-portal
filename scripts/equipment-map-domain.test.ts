@@ -85,7 +85,7 @@ assert.deepEqual(
     ['central-lab', 'ห้องปฏิบัติการกลาง', ['room-central-lab', 'zone-central-chem-immuno', 'zone-central-microscopy', 'zone-central-hematology'], 'room-central-lab'],
     ['outlab', 'งาน OUTLAB', ['zone-special-testing-upper-1', 'zone-special-testing-upper-2'], null],
     ['blood-bank', 'งานคลังเลือด', ['zone-blood-bank', 'zone-special-testing-lower', 'zone-special-testing-mid', 'room-se-1', 'room-se-2'], null],
-    ['microbiology', 'งานจุลชีววิทยา', ['room-microbiology', 'zone-microbiology-main', 'room-microbiology-ne', 'room-north-lab-1', 'room-north-lab-2', 'room-north-lab-3', 'room-north-corridor-1', 'room-north-corridor-2', 'room-north-corridor-3', 'room-north-small'], 'room-microbiology'],
+    ['microbiology', 'งานจุลชีววิทยา', ['zone-microbiology-main', 'room-microbiology-ne', 'room-north-lab-1', 'room-north-lab-2', 'room-north-lab-3', 'room-north-corridor-1', 'room-north-corridor-2', 'room-north-corridor-3', 'room-north-small'], 'room-microbiology'],
   ],
   'the agreed work groups and their inspection areas must be explicit and ordered',
 )
@@ -214,7 +214,8 @@ assert.deepEqual(
 )
 assert.deepEqual(
   areaAndDescendantCodes('room-microbiology').sort(),
-  ['room-microbiology', 'zone-microbiology-main', 'zone-material-reagent-store'].sort(),
+  ['zone-microbiology-main', 'room-microbiology-ne', 'room-north-lab-1', 'room-north-lab-2', 'room-north-lab-3', 'room-north-corridor-1', 'room-north-corridor-2', 'room-north-corridor-3', 'room-north-small'].sort(),
+  'selecting the microbiology work group must not include the separate reagent store',
 )
 assert.deepEqual(areaAndDescendantCodes('zone-blood-bank'), ['zone-blood-bank'])
 
@@ -232,6 +233,7 @@ for (const item of EQUIPMENT_WALLS) {
 // ── ป้ายและสีที่ผู้ใช้กำหนด ──
 assert.equal(byCode.get('zone-molecular-genomics')?.label, undefined, 'the molecular biology label must not be drawn')
 assert.equal(byCode.get('room-central-lab')?.label, undefined, 'the central-lab label must not be drawn')
+assert.equal(byCode.get('zone-special-testing')?.label, undefined, 'the duplicate OUTLAB work-group label must not be drawn')
 for (const code of ['zone-special-testing-mid', 'zone-special-testing-lower', 'room-se-1', 'zone-blood-bank']) {
   assert.equal(byCode.get(code)?.fillTone, 'controlled', `${code} must use the shared controlled-zone colour`)
 }

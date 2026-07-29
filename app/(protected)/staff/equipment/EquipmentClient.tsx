@@ -19,6 +19,7 @@ import { PmCalPlanWorkspace } from '@/components/equipment/PmCalPlanWorkspace'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
+import { EQUIPMENT_WORK_GROUPS, isEquipmentAreaSelectable } from '@/lib/equipment-map/walk-groups'
 import type { Equipment, EquipmentSummaryCounts } from '@/lib/queries/equipment'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 
@@ -456,7 +457,7 @@ function EquipmentModal({
               <label style={labelStyle}>ห้อง/โซน (แผนผังเครื่องมือ)</label>
               <select style={inputStyle} value={areaCode} onChange={e => setAreaCode(e.target.value)}>
                 <option value="">ยังไม่กำหนด</option>
-                {areas.filter(a => a.isActive).map(a => <option key={a.code} value={a.code}>{a.kind === 'zone' ? '— ' : ''}{a.nameTh}</option>)}
+                {areas.filter(a => a.isActive && isEquipmentAreaSelectable(a.code)).map(a => <option key={a.code} value={a.code}>{a.kind === 'zone' ? '— ' : ''}{a.nameTh}</option>)}
               </select>
             </div>
             <div>
@@ -2495,7 +2496,21 @@ export default function EquipmentClient({
         </select>
         <select value={area} onChange={e => setArea(e.target.value)} className="eq-filter-select" style={{ minWidth: 160 }}>
           <option value="">ทุกห้อง/โซน</option>
-          {areas.filter(a => a.isActive).map(a => <option key={a.code} value={a.code}>{a.kind === 'zone' ? '— ' : ''}{a.nameTh}</option>)}
+          {EQUIPMENT_WORK_GROUPS.map(group => {
+            const groupAreas = group.areaCodes
+              .map(code => areas.find(candidate => candidate.code === code))
+              .filter((candidate): candidate is EquipmentAreaOption => Boolean(candidate?.isActive))
+            if (groupAreas.length === 0) return null
+            return (
+              <optgroup key={group.code} label={group.nameTh}>
+                <option value={`work-group:${group.code}`}>ทั้ง {group.nameTh}</option>
+                {groupAreas.map(candidate => <option key={candidate.code} value={candidate.code}>{candidate.kind === 'zone' ? '— ' : ''}{candidate.nameTh}</option>)}
+              </optgroup>
+            )
+          })}
+          {areas
+            .filter(candidate => candidate.isActive && isEquipmentAreaSelectable(candidate.code) && !EQUIPMENT_WORK_GROUPS.some(group => group.areaCodes.includes(candidate.code)))
+            .map(candidate => <option key={candidate.code} value={candidate.code}>{candidate.kind === 'zone' ? '— ' : ''}{candidate.nameTh}</option>)}
         </select>
         <button
           onClick={() => setPendingReg(v => !v)}

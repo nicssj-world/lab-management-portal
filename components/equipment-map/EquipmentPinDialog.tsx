@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import type { EquipmentAreaDTO, EquipmentPinDTO } from '@/lib/equipment-map/types'
 import type { PmCalDueState } from '@/lib/equipment/pm-cal-due'
+import { isEquipmentAreaSelectable } from '@/lib/equipment-map/walk-groups'
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -139,7 +140,7 @@ export function EquipmentPinDialog({ pin, areas, areaNameTh, canEdit, hasActiveR
                   onChange={(event) => setSelectedAreaCode(event.target.value)}
                   style={{ flex: 1, minWidth: 0, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', color: 'var(--ink)', font: 'inherit', fontSize: '.78rem', padding: '0 8px' }}
                 >
-                  {areas.filter((area) => area.isActive).map((area) => (
+                  {areas.filter((area) => area.isActive && isEquipmentAreaSelectable(area.code)).map((area) => (
                     <option key={area.code} value={area.code}>{area.kind === 'zone' ? '— ' : ''}{area.nameTh}</option>
                   ))}
                 </select>

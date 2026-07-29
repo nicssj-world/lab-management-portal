@@ -27,6 +27,17 @@ const patchRoute = read('app/api/admin/equipment/[id]/route.ts')
 const postRoute = read('app/api/admin/equipment/route.ts')
 const manifest = read('lib/equipment-map/manifest.ts')
 
+// ── dropdown ห้อง/โซนต้องใช้ taxonomy กลุ่มงาน ไม่เสนอกรอบ OUTLAB ที่ครอบคลังเลือด ──
+assert.match(equipmentRegistry, /EQUIPMENT_WORK_GROUPS/, 'the registry area dropdown must render the canonical work-group taxonomy')
+assert.match(equipmentRegistry, /work-group:\$\{group\.code\}/, 'the registry must offer a whole-work-group filter with a namespaced selection value')
+assert.match(equipmentRegistry, /isEquipmentAreaSelectable/, 'the registry area dropdown must exclude geometric containers that span multiple work groups')
+
+// ── เลือก “ทั้งงาน” ต้องไฮไลต์ทุกพื้นที่ของกลุ่มงานบนผัง ไม่ใช่พยายามไฮไลต์รหัส synthetic ──
+assert.match(client, /selectedWorkGroupAreaCodes/, 'the map client must derive all area codes for a selected whole-work-group option')
+assert.match(client, /highlightedAreaCodes=\{selectedWorkGroupAreaCodes\}/, 'the map canvas must receive every area in the selected work group for highlighting')
+assert.match(canvas, /highlightedAreaCodes: readonly string\[\]/, 'the canvas must accept multiple highlighted area codes')
+assert.match(canvas, /data-highlighted=\{isHighlighted \|\| undefined\}/, 'each matching room or zone must receive the shared yellow-highlight state')
+
 // ── กันบั๊กแผ่นดำสนิท (เคยเกิดกับแผนที่ความปลอดภัย): ต้องห่อด้วย .lab-map-shell และ render LabMapStyles ──
 assert.match(client, /import { LabMapStyles }/, 'EquipmentMapClient must import the shared lab-map token component')
 assert.match(client, /<LabMapStyles \/>/, 'EquipmentMapClient must render <LabMapStyles /> so --map-* tokens resolve')
@@ -187,7 +198,7 @@ assert.match(client, /callApi\(`\/api\/admin\/equipment\/\$\{id\}\/position`, 'P
 // ── ย้ายห้อง/โซนจาก popup หมุดได้โดยตรง โดยเลือกได้เฉพาะพื้นที่ที่เปิดใช้งาน ──
 assert.match(dialog, /areas: readonly EquipmentAreaDTO\[\]/, 'the pin dialog must receive the available map areas')
 assert.match(dialog, /onMoveToArea: \(areaCode: string\) => void/, 'the pin dialog must expose direct area reassignment')
-assert.match(dialog, /areas\.filter\(\(area\) => area\.isActive\)/, 'the direct area picker must exclude inactive areas')
+assert.match(dialog, /areas\.filter\(\(area\) => area\.isActive && isEquipmentAreaSelectable\(area\.code\)\)/, 'the direct area picker must exclude inactive areas and geometric containers')
 assert.match(dialog, /onClick=\{\(\) => onMoveToArea\(selectedAreaCode\)\}/, 'the direct area picker must apply the selected area')
 assert.match(client, /callApi\(`\/api\/admin\/equipment\/\$\{id\}\/position`, 'PATCH', \{ areaCode, x: null, y: null \}\)/, 'direct area reassignment must clear the old pin coordinates through the position API')
 
@@ -225,14 +236,18 @@ const equipmentCanvasClick = canvas.match(/function handleCanvasClick[\s\S]*?\n 
 assert.doesNotMatch(equipmentCanvasClick, /if \(!onCoordinateSelect\) return/, 'a pointer-captured area tap reaches the SVG canvas and must not be discarded outside placement mode')
 assert.match(equipmentCanvasClick, /onSelectArea\(/, 'the SVG canvas click fallback must select the room or zone resolved at the tapped point')
 
-// ── Mobile PM/CAL walking workflow ──
-assert.match(client, /const walkAreas = useMemo/, 'the mobile map must derive a room-by-room inspection workflow')
-assert.match(client, /equipment-mobile-walk-bar/, 'the map must show a dedicated mobile inspection bar')
-assert.match(client, /พื้นที่ที่กำลังตรวจ/, 'mobile users must be able to choose their current inspection area without zooming')
-assert.match(client, /เลือกพื้นที่ถัดไป/, 'mobile users must be able to advance to the next area with outstanding work')
-assert.match(client, /inspectionProgress/, 'the mobile inspection bar must show round progress')
-assert.match(styles, /\.equipment-mobile-walk-bar \{/, 'the mobile inspection workflow must have a dedicated layout')
-assert.match(styles, /\.equipment-mobile-walk-bar \{ display: none; \}/, 'the walking workflow must be mobile-only and not disturb desktop planning')
+// ── PM/CAL walking workflow ──
+assert.match(client, /const walkAreas = useMemo/, 'the map must derive a room-by-room inspection workflow')
+assert.match(client, /equipment-mobile-walk-bar/, 'the map must show a dedicated inspection-area picker')
+assert.match(client, /พื้นที่ที่กำลังตรวจ/, 'users must be able to choose their current inspection area without zooming')
+assert.match(client, /เลือกพื้นที่ถัดไป/, 'users must be able to advance to the next area with outstanding work')
+assert.match(client, /inspectionProgress/, 'the inspection bar must show round progress')
+const desktopWalkStyles = styles.slice(0, styles.indexOf('@media (max-width: 767px)'))
+assert.match(desktopWalkStyles, /\.equipment-mobile-walk-bar \{[^}]*display: grid;/, 'the inspection-area picker must be visible on desktop')
+assert.doesNotMatch(desktopWalkStyles, /\.equipment-mobile-walk-bar \{ display: none; \}/, 'the inspection-area picker must not be hidden outside the mobile breakpoint')
+assert.match(client, /group\.items\.filter\(\(\{ area \}\) => !area\.isWorkGroupSummary\)/, 'the dropdown must not repeat a group summary area beneath its whole-work option')
+assert.match(client, /const directPins = mapPins\.filter\(\(pin\) => pin\.areaCode === area\.code\)/, 'whole-work totals must start from pins assigned directly to each area')
+assert.match(client, /total: directPins\.length/, 'whole-work totals must not add a room roll-up to its child zones again')
 assert.match(client, /const inspectionAreas = walkAreas\.filter/, 'inspection progress must use leaf areas so parent rooms do not double-count their zones')
 assert.match(client, /const groupedWalkAreas = useMemo/, 'the mobile area picker must group areas for PM/CAL workflow')
 assert.match(client, /groupEquipmentWalkAreas\(walkAreas\)/, 'the picker must use the canonical work-group partition')
