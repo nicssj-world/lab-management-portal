@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getContracts } from '@/lib/queries/contracts'
+import { isContractsCutoverActive } from '@/lib/contracts-cutover'
 import { getRolePermissions, type Permissions } from '@/lib/permissions'
 import { getPendingApprovalDocuments } from '@/lib/documents/pending'
 import { sortByOldestUpdated, sortContractsByUrgency, monthsLeftUntil, isContractExpiring } from '@/lib/dashboard/attention-queue'
@@ -377,6 +378,7 @@ export default async function StaffDashboardPage() {
             totalPendingDocs={pendingDocs.length}
             contracts={criticalContractsAll}
             totalContracts={criticalContractsAll.length}
+            contractsRetired={isContractsCutoverActive()}
             staffLicenseExpired={staffLicenseExpired}
             staffLicenseExpiring={staffLicenseExpiring}
             staffCompetencyOverdue={staffCompetencyOverdue}
@@ -570,6 +572,9 @@ function OperationalFocus({
 }
 
 function DashboardQuickActions({ permissions, userId }: { permissions: Permissions; userId?: string }) {
+  // "เพิ่มสัญญาใหม่" would redirect to the stock contract list, which has no
+  // create form on it, so it retires with the module rather than dead-ending.
+  const contractsRetired = isContractsCutoverActive()
   const actions = [
     ...(userId ? [{ href:`/staff/personnel/${userId}`, icon:'user', title:'โปรไฟล์ของฉัน', detail:'ดูข้อมูลส่วนตัว ใบรับรอง และสมรรถนะ', color:'#1E5FAD' }] : []),
     // ไม่มีเงื่อนไข permission — รายงานอุบัติการณ์เปิดให้ผู้ที่ล็อกอินทุกคนเสมอ (ISO 15189 8.7)
@@ -580,7 +585,7 @@ function DashboardQuickActions({ permissions, userId }: { permissions: Permissio
     ...((permissions['ข่าวสาร'] ?? 'none') === 'edit' ? [{ href:'/staff/news?create=1', icon:'bell', title:'สร้างข่าวใหม่', detail:'ประกาศข่าวสารภายในหน่วยงาน', color:'#4338CA' }] : []),
     ...((permissions['รายการตรวจ'] ?? 'none') === 'edit' ? [{ href:'/staff/tests/new', icon:'plus', title:'เพิ่มรายการตรวจ', detail:'สร้างรายการตรวจวิเคราะห์ใหม่', color:'#EA580C' }] : []),
     ...((permissions['ทะเบียนเครื่องมือ'] ?? 'none') === 'edit' ? [{ href:'/staff/equipment?create=1', icon:'microscope', title:'เพิ่มเครื่องมือ', detail:'ลงทะเบียนเครื่องมือใหม่', color:'#7C3AED' }] : []),
-    ...((permissions['สัญญา'] ?? 'none') === 'edit' ? [{ href:'/staff/contracts?create=1', icon:'building', title:'เพิ่มสัญญาใหม่', detail:'บันทึกข้อมูลสัญญาและงบประมาณ', color:'#7C3AED' }] : []),
+    ...(!contractsRetired && (permissions['สัญญา'] ?? 'none') === 'edit' ? [{ href:'/staff/contracts?create=1', icon:'building', title:'เพิ่มสัญญาใหม่', detail:'บันทึกข้อมูลสัญญาและงบประมาณ', color:'#7C3AED' }] : []),
   ]
   return <aside style={{ background:'var(--card)',border:'1px solid var(--border)',borderRadius:14,overflow:'hidden',display:'flex',flexDirection:'column' }} aria-label="ทางลัด">
     <div style={{ padding:'14px 16px 12px',borderBottom:'1px solid var(--border)',background:'var(--surface-2)',display:'flex',alignItems:'center',gap:10 }}>

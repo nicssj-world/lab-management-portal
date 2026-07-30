@@ -6,6 +6,7 @@ import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { r2ObjectResponse } from '@/lib/r2/stream-response'
+import { contractsCutoverTarget, contractsGoneResponse } from '@/lib/contracts-cutover'
 
 async function getActor() {
   const supabase = await createClient()
@@ -21,10 +22,19 @@ const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp
 
 // GET — presigned download URL (default) or presigned upload URL (?intent=upload)
 export async function GET(req: NextRequest, { params }: Params) {
+  const sp = new URL(req.url).searchParams
+
+  // A presigned PUT is a write, so it retires with the other mutations even
+  // though it is reached over GET. Checked before auth to match the other write
+  // endpoints. Plain downloads below stay available for reconciliation.
+  if (sp.get('intent') === 'upload') {
+    const movedTo = contractsCutoverTarget()
+    if (movedTo) return contractsGoneResponse(movedTo)
+  }
+
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const sp = new URL(req.url).searchParams
   const { id } = await params
 
   if (sp.get('intent') === 'upload') {
@@ -79,6 +89,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 // POST — save uploaded key to contracts.file_url (after client uploads directly to R2)
 export async function POST(req: NextRequest, { params }: Params) {
+  const movedTo = contractsCutoverTarget()
+  if (movedTo) return contractsGoneResponse(movedTo)
+
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const perms = await getRolePermissions(actor.role)
@@ -108,6 +121,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 
 // DELETE — remove from R2 and clear file_url
 export async function DELETE(_req: NextRequest, { params }: Params) {
+  const movedTo = contractsCutoverTarget()
+  if (movedTo) return contractsGoneResponse(movedTo)
+
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const perms = await getRolePermissions(actor.role)

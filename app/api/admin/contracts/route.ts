@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { contractsCutoverTarget, contractsGoneResponse } from '@/lib/contracts-cutover'
 
 async function getActor() {
   const supabase = await createClient()
@@ -29,6 +30,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const movedTo = contractsCutoverTarget()
+  if (movedTo) return contractsGoneResponse(movedTo)
+
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const perms = await getRolePermissions(actor.role)
