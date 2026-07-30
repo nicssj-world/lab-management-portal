@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   contractsCutoverTarget,
   isContractsCutoverActive,
@@ -30,6 +32,62 @@ assert.equal(
   'https://stock.example/contracts',
 )
 assert.equal(legacyContractRedirect({}), null)
+
+// The portal dashboard reads contracts through the service role, so it keeps
+// rendering after the migration regardless of RLS. That is the hazard: the
+// remaining-budget gauge is computed from contract_usage, but post-cutover
+// consumption is recorded in LABCBH Stock's contract_item_allocations instead.
+// Left alone the widget freezes and permanently overstates remaining budget,
+// which is worse than showing nothing. Both surfaces must retire with the module.
+const attentionQueue = readFileSync(join(process.cwd(), 'components/dashboard/AttentionQueue.tsx'), 'utf8')
+assert.match(
+  attentionQueue,
+  /contractsRetired/,
+  'AttentionQueue must accept a contractsRetired flag',
+)
+assert.match(
+  attentionQueue,
+  /const canSeeContracts = !contractsRetired/,
+  'the contracts group must be suppressed when the module is retired',
+)
+
+const dashboardPage = readFileSync(join(process.cwd(), 'app/(protected)/staff/dashboard/page.tsx'), 'utf8')
+assert.match(
+  dashboardPage,
+  /isContractsCutoverActive/,
+  'the dashboard must consult the cutover gate',
+)
+assert.match(
+  dashboardPage,
+  /contractsRetired=\{/,
+  'the dashboard must pass the retired flag into AttentionQueue',
+)
+assert.match(
+  dashboardPage,
+  /!contractsRetired && \(permissions\['สัญญา'\]/,
+  'the "add contract" quick action must retire too, or it lands users on a list with no create form',
+)
+
+// The redirect lives in the proxy as well as the page. In the proxy it runs
+// before the auth check, so a bookmarked link reaches the new system instead of
+// a login form for a module this portal no longer owns - and it is observable
+// without a session, which the page-level redirect is not. API routes are
+// deliberately excluded: they must answer 410 with a body, not a redirect.
+const proxySource = readFileSync(join(process.cwd(), 'proxy.ts'), 'utf8')
+// Assert against code, not prose: the comments here legitimately mention the
+// API paths that the code must not touch.
+const proxy = proxySource.replace(/^\s*\/\/.*$/gm, '')
+assert.match(proxy, /legacyContractRedirect/, 'proxy must consult the cutover gate')
+assert.match(proxy, /\/staff\/contracts/, 'proxy must match the retired page path')
+assert.ok(
+  !/\/api\/admin\/contracts/.test(proxy),
+  'proxy must not redirect the API routes; they answer 410',
+)
+// A permanent redirect would be cached by browsers and survive a rollback.
+assert.ok(
+  !/redirect\([^)]*,\s*308\)/.test(proxy),
+  'use a temporary redirect so the cutover stays reversible',
+)
 
 async function main() {
   // Writes must be refused with 410 Gone, not 404 or a silent success, so that a

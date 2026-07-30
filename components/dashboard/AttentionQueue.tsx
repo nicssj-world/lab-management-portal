@@ -12,6 +12,7 @@ interface AttentionQueueProps {
   totalPendingDocs: number
   contracts: ContractWithUsage[]
   totalContracts: number
+  contractsRetired?: boolean
   staffLicenseExpired: number
   staffLicenseExpiring: number
   staffCompetencyOverdue: number
@@ -150,10 +151,13 @@ function StaffLicenseStat({ expired, expiring, competencyOverdue, competencyDueS
 export function AttentionQueue({
   pendingDocs, totalPendingDocs, contracts, totalContracts,
   staffLicenseExpired, staffLicenseExpiring, staffCompetencyOverdue, staffCompetencyDueSoon,
-  permissions,
+  permissions, contractsRetired = false,
 }: AttentionQueueProps) {
   const canSeeDocs = (permissions['เอกสารคุณภาพ'] ?? 'none') !== 'none'
-  const canSeeContracts = (permissions['สัญญา'] ?? 'none') !== 'none'
+  // Remaining budget here is derived from contract_usage. Once LABCBH Stock owns
+  // consumption the figure stops moving, so the whole group retires rather than
+  // quietly telling people they have budget they have already spent.
+  const canSeeContracts = !contractsRetired && (permissions['สัญญา'] ?? 'none') !== 'none'
   const canSeeStaff = (permissions['บุคลากร'] ?? 'none') !== 'none'
   const staffLicenseTotal = staffLicenseExpired + staffLicenseExpiring + staffCompetencyOverdue + staffCompetencyDueSoon
 
