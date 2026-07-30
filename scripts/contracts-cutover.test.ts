@@ -26,6 +26,26 @@ assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: '/staff/contracts' }), n
 assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'javascript:alert(1)' }), null)
 assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'ftp://stock.example' }), null)
 
+// Embedded credentials are refused rather than forwarded to the browser.
+assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'https://user:pass@stock.example' }), null)
+
+// A query or fragment must be normalised away, not concatenated. Trimming the
+// raw string would yield "https://stock.example?a=1/contracts", which points
+// somewhere entirely different from the intended destination.
+assert.equal(
+  legacyContractRedirect({ LABCBH_STOCK_URL: 'https://stock.example?a=1' }),
+  'https://stock.example/contracts',
+)
+assert.equal(
+  legacyContractRedirect({ LABCBH_STOCK_URL: 'https://stock.example#frag' }),
+  'https://stock.example/contracts',
+)
+// A base path on the destination is preserved.
+assert.equal(
+  legacyContractRedirect({ LABCBH_STOCK_URL: 'https://example.test/stock/' }),
+  'https://example.test/stock/contracts',
+)
+
 // Deep links keep the contract list path on the destination.
 assert.equal(
   legacyContractRedirect({ LABCBH_STOCK_URL: 'https://stock.example' }),

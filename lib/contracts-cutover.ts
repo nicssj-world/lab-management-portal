@@ -23,7 +23,19 @@ export function contractsCutoverTarget(env: Env = process.env): string | null {
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
 
-  return raw.replace(/\/+$/, '')
+  // Credentials in the URL would be handed to the browser on redirect.
+  if (parsed.username || parsed.password) return null
+
+  // Normalise through the URL object rather than trimming the raw string: a
+  // configured query or fragment must be dropped, not left in the middle when
+  // callers append a path to it.
+  parsed.search = ''
+  parsed.hash = ''
+  parsed.pathname = parsed.pathname.replace(/\/+$/, '')
+
+  // URL.toString re-adds a trailing slash for an empty path; strip it so
+  // callers can append "/contracts" without doubling the separator.
+  return parsed.toString().replace(/\/+$/, '')
 }
 
 export function isContractsCutoverActive(env: Env = process.env): boolean {
