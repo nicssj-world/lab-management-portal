@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { RETURN_PATH_PARAM, isAuthServiceUnavailable, isProtectedPath, safeReturnPath } from '@/lib/auth/session-guard'
+import { legacyContractRedirect } from '@/lib/contracts-cutover'
 
 function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) {
   request.cookies
@@ -19,6 +20,16 @@ export async function proxy(request: NextRequest) {
       return NextResponse.rewrite(url)
     }
     return NextResponse.next()
+  }
+
+  // The contract module moved to LABCBH Stock. Redirecting here, ahead of the
+  // auth check, means a bookmarked link lands on the new system rather than a
+  // login form for a module this portal no longer owns. Temporary on purpose:
+  // a permanent redirect would be cached and outlive a rollback. The API routes
+  // under /api/admin/contracts are excluded — they answer 410 with a body.
+  if (path === '/staff/contracts' || path.startsWith('/staff/contracts/')) {
+    const movedTo = legacyContractRedirect()
+    if (movedTo) return NextResponse.redirect(movedTo, 307)
   }
 
   if (!isProtectedPath(path)) {
