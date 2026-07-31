@@ -73,6 +73,9 @@ const WORK_AREA_NAMES: ReadonlyArray<[string, string]> = [
   ['room-north-corridor-2', 'โถง 2'],
   ['room-north-corridor-3', 'โถง 3'],
   ['room-north-small', 'ห้องน้ำ'],
+  ['zone-equipment-wash', 'ห้องล้าง'],
+  ['room-fume-hood', 'ห้องสารเคมี'],
+  ['room-fume-hood-side', 'ไฟฟ้า'],
 ]
 for (const [code, nameTh] of WORK_AREA_NAMES) {
   assert.equal(byCode.get(code)?.nameTh, nameTh, `${code} must use the agreed PM/CAL work-area name`)
@@ -86,6 +89,7 @@ assert.deepEqual(
     ['outlab', 'งาน OUTLAB', ['zone-special-testing-upper-1', 'zone-special-testing-upper-2'], null],
     ['blood-bank', 'งานคลังเลือด', ['zone-blood-bank', 'zone-special-testing-lower', 'zone-special-testing-mid', 'room-se-1', 'room-se-2'], null],
     ['microbiology', 'งานจุลชีววิทยา', ['zone-microbiology-main', 'room-microbiology-ne', 'room-north-lab-1', 'room-north-lab-2', 'room-north-lab-3', 'room-north-corridor-1', 'room-north-corridor-2', 'room-north-corridor-3', 'room-north-small'], 'room-microbiology'],
+    ['office', 'สำนักงานกลุ่มงานฯ', ['zone-equipment-wash', 'room-fume-hood', 'zone-cold-storage', 'zone-material-reagent-store'], null],
   ],
   'the agreed work groups and their inspection areas must be explicit and ordered',
 )
@@ -94,7 +98,12 @@ assert.deepEqual(
   ['zone-special-testing'],
   'the former special-testing room is the OUTLAB map container, not a standalone inspection area',
 )
-assert.ok(!workGroups.some((group) => group.areaCodes.includes('room-fume-hood')), 'electrical/fume-hood utility spaces must not be assigned to a laboratory work group')
+assert.deepEqual(
+  workGroups.find((group) => group.code === 'office')?.areaCodes,
+  ['zone-equipment-wash', 'room-fume-hood', 'zone-cold-storage', 'zone-material-reagent-store'],
+  'the office work group must contain the equipment-wash, chemical, cold-storage and reagent-store rooms',
+)
+assert.ok(!workGroups.some((group) => group.areaCodes.includes('room-fume-hood-side')), 'the electrical room must remain outside the office work group')
 assert.ok(!workGroups.some((group) => group.areaCodes.includes('room-server')), 'Server room must not be assigned to a laboratory work group')
 
 // ── viewBox ต้องครอบผังได้พอดี ──
@@ -218,6 +227,11 @@ assert.deepEqual(
   'selecting the microbiology work group must not include the separate reagent store',
 )
 assert.deepEqual(areaAndDescendantCodes('zone-blood-bank'), ['zone-blood-bank'])
+assert.deepEqual(
+  areaAndDescendantCodes('work-group:office'),
+  ['zone-equipment-wash', 'room-fume-hood', 'zone-cold-storage', 'zone-material-reagent-store'],
+  'the office summary selection must filter all four of its rooms',
+)
 
 // ── ผนังเดี่ยวจากผังต้นฉบับต้องยังอยู่ครบ และเป็น path แบบ absolute ──
 assert.equal(EQUIPMENT_WALLS.length, 18, 'the marked corridor divider line must be removed completely')

@@ -21,7 +21,7 @@ export {
  * จึงไม่ import geometry จากที่นั่นอีกต่อไป การพยายามผูกสองผังเข้าด้วยกันคือสาเหตุที่ผังเครื่องมือ
  * เคยแสดงห้องผิดตำแหน่งทั้งหมด ถ้าต้องแก้พิกัด ให้แก้ที่ .pptx แล้วถอดค่าใหม่ อย่าแก้มือทีละตัว
  */
-export const EQUIPMENT_MAP_VERSION = 'EQ-F3-2569.07.28-18'
+export const EQUIPMENT_MAP_VERSION = 'EQ-F3-2569.07.31-19'
 export const EQUIPMENT_MAP_VIEW_BOX = '0 0 1380 796'
 
 /** จุดกำเนิดและสเกลที่ใช้แปลงนิ้วจาก .pptx → หน่วย SVG (1 นิ้ว = 100 หน่วย) */
@@ -339,12 +339,14 @@ export const EQUIPMENT_AREAS: readonly EquipmentAreaDefinition[] = [
     rect: rectIn(8.94, 5.69, 1.05, 2.96), label: labelIn(9.46, 7.17, ['คลังเลือด'], 14), fillTone: 'controlled',
   },
   {
-    code: 'room-fume-hood', nameTh: 'ห้องดูดควัน', kind: 'room',
-    rect: rectIn(4.86, 5.60, 0.83, 0.70), label: labelIn(5.27, 5.95, ['ห้องดูดควัน'], 11),
+    // คงรหัส legacy ไว้เพื่อไม่ให้ area_code/หมุดเดิมหลุด แต่ชื่อพื้นที่จริงคือห้องสารเคมี
+    code: 'room-fume-hood', nameTh: 'ห้องสารเคมี', kind: 'room',
+    rect: rectIn(4.86, 5.60, 0.83, 0.70), label: labelIn(5.27, 5.95, ['ห้องสารเคมี'], 11),
   },
   {
-    code: 'room-fume-hood-side', nameTh: 'ห้องข้างห้องดูดควัน', kind: 'room',
-    rect: rectIn(5.69, 5.60, 0.42, 0.70), label: labelIn(5.90, 5.95, ['ห้องข้าง'], 9),
+    // คงรหัส legacy เช่นเดียวกัน; ห้องข้างเคียงนี้คือพื้นที่ไฟฟ้า
+    code: 'room-fume-hood-side', nameTh: 'ไฟฟ้า', kind: 'room',
+    rect: rectIn(5.69, 5.60, 0.42, 0.70), label: labelIn(5.90, 5.95, ['ไฟฟ้า'], 9),
   },
   {
     code: 'room-sw-1', nameTh: 'ห้องว่างตะวันตกเฉียงใต้ 1', kind: 'room',

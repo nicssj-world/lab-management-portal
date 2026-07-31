@@ -11,6 +11,7 @@ export const LAB_CODE_DEPARTMENTS: Record<string, string> = {
   OP: 'ผู้ป่วยนอก',
   IM: 'ภูมิคุ้มกันวิทยา',
   LM: 'ศสม.',
+  MT: 'สำนักงานกลุ่มงานเทคนิคการแพทย์',
 }
 
 export const LAB_CODE_CLASSIFICATIONS: Record<string, string> = {
