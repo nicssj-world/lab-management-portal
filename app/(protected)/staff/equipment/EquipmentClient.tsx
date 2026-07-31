@@ -16,6 +16,7 @@ import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { EquipmentDetailModal } from '@/components/equipment/EquipmentDetailModal'
 import { EquipmentPmCalModal } from '@/components/equipment/EquipmentPmCalModal'
 import { PmCalPlanWorkspace } from '@/components/equipment/PmCalPlanWorkspace'
+import { mergeEquipmentDepartments } from '@/lib/equipment/departments'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
@@ -69,13 +70,6 @@ const RISK_BADGE: Record<RiskLevel, 'red' | 'amber' | 'teal'> = {
 const STATUS_BADGE: Record<EquipmentStatus, 'green' | 'gray' | 'red' | 'blue' | 'purple' | 'amber'> = {
   Active: 'green', Inactive: 'gray', ชำรุด: 'red', มาใหม่: 'blue', ย้าย: 'purple', สูญหาย: 'amber',
 }
-
-const DEPARTMENTS = [
-  'โลหิตวิทยา', 'เคมีคลินิก', 'จุลชีววิทยา', 'ภูมิคุ้มกันวิทยา',
-  'จุลทรรศน์', 'อณูชีววิทยา', 'คลังเลือด', 'ผู้ป่วยนอก',
-  'คลังน้ำยา', 'ศสม.', 'POCT', 'DRA',
-  'ตรวจพิเศษและปฏิบัติการตรวจต่อ', 'ไม่มีเจ้าของ',
-]
 
 const EQUIPMENT_PAGE_SIZE = 50
 
@@ -1950,12 +1944,11 @@ export default function EquipmentClient({
       .finally(() => setDashboardLoading(false))
   }, [dashboardItems, view])
 
-  // Departments for filter dropdown: merge hardcoded list + actual data (handles import name variants)
-  const allDepts = Array.from(new Set([
-    ...DEPARTMENTS,
+  // Keep canonical departments and imported/historical name variants available.
+  const allDepts = mergeEquipmentDepartments([
     ...departments,
     ...initialData.map(i => i.department),
-  ])).sort()
+  ])
 
   const areaNameByCode = new Map(areas.map(a => [a.code, a.nameTh]))
 

@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
+import { EQUIPMENT_DEPARTMENTS, mergeEquipmentDepartments } from '../lib/equipment/departments'
 
 const read = (path: string) => readFileSync(path, 'utf8')
 
@@ -13,6 +14,7 @@ const dialog = read('components/equipment-map/EquipmentPinDialog.tsx')
 const areaPanel = read('components/equipment-map/AreaPanel.tsx')
 const placementPanel = read('components/equipment-map/PlacementPanel.tsx')
 const equipmentRegistry = read('app/(protected)/staff/equipment/EquipmentClient.tsx')
+const equipmentDepartments = read('lib/equipment/departments.ts')
 const equipmentDetailModalPath = 'components/equipment/EquipmentDetailModal.tsx'
 const equipmentPmCalModalPath = 'components/equipment/EquipmentPmCalModal.tsx'
 const placementFiltersPath = 'components/equipment-map/PlacementFilters.tsx'
@@ -27,6 +29,16 @@ const equipmentMapModuleSql = read('scripts/equipment-map-module.sql')
 const patchRoute = read('app/api/admin/equipment/[id]/route.ts')
 const postRoute = read('app/api/admin/equipment/route.ts')
 const manifest = read('lib/equipment-map/manifest.ts')
+
+assert.ok(EQUIPMENT_DEPARTMENTS.includes('สำนักงานกลุ่มงานเทคนิคการแพทย์'), 'the canonical equipment departments must include the medical technology group office')
+assert.deepEqual(
+  mergeEquipmentDepartments(['แผนกจากข้อมูลจริง', 'สำนักงานกลุ่มงานเทคนิคการแพทย์', '']),
+  mergeEquipmentDepartments(['แผนกจากข้อมูลจริง']),
+  'department merging must retain live values while removing blanks and duplicates',
+)
+assert.match(equipmentDepartments, /export const EQUIPMENT_DEPARTMENTS/, 'equipment department defaults must have one canonical source')
+assert.match(equipmentRegistry, /mergeEquipmentDepartments/, 'the equipment registry must merge departments from the canonical source')
+assert.match(placementFilters, /mergeEquipmentDepartments\(dynamicOptions\.departments\)/, 'the map placement filter must include canonical departments as well as departments found in unplaced equipment')
 
 // ── dropdown ห้อง/โซนต้องใช้ taxonomy กลุ่มงาน ไม่เสนอกรอบ OUTLAB ที่ครอบคลังเลือด ──
 assert.match(equipmentRegistry, /EQUIPMENT_WORK_GROUPS/, 'the registry area dropdown must render the canonical work-group taxonomy')

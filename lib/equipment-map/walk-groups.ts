@@ -18,6 +18,7 @@ export const EQUIPMENT_WORK_GROUPS: readonly EquipmentWorkGroupDefinition[] = [
   { code: 'outlab', nameTh: 'งาน OUTLAB', order: 3, containerAreaCodes: ['zone-special-testing'], areaCodes: ['zone-special-testing-upper-1', 'zone-special-testing-upper-2'] },
   { code: 'blood-bank', nameTh: 'งานคลังเลือด', order: 4, areaCodes: ['zone-blood-bank', 'zone-special-testing-lower', 'zone-special-testing-mid', 'room-se-1', 'room-se-2'] },
   { code: 'microbiology', nameTh: 'งานจุลชีววิทยา', order: 5, summaryAreaCode: 'room-microbiology', areaCodes: ['zone-microbiology-main', 'room-microbiology-ne', 'room-north-lab-1', 'room-north-lab-2', 'room-north-lab-3', 'room-north-corridor-1', 'room-north-corridor-2', 'room-north-corridor-3', 'room-north-small'] },
+  { code: 'office', nameTh: 'สำนักงานกลุ่มงานฯ', order: 6, areaCodes: ['zone-equipment-wash', 'room-fume-hood', 'zone-cold-storage', 'zone-material-reagent-store'] },
 ]
 
 export const EQUIPMENT_WORK_GROUP_SELECTION_PREFIX = 'work-group:'

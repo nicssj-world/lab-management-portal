@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { Button } from '@/components/ui/Button'
+import { mergeEquipmentDepartments } from '@/lib/equipment/departments'
 import { placementFilterOptions, UNCLASSIFIED_FILTER } from '@/lib/equipment-map/placement-pagination'
 import type { EquipmentUnplacedDTO } from '@/lib/equipment-map/types'
 
@@ -26,7 +27,14 @@ export function PlacementFilters({
   onCalibrationOnlyChange,
   onClear,
 }: PlacementFiltersProps) {
-  const options = useMemo(() => placementFilterOptions(unplaced), [unplaced])
+  const options = useMemo(() => {
+    const dynamicOptions = placementFilterOptions(unplaced)
+
+    return {
+      ...dynamicOptions,
+      departments: mergeEquipmentDepartments(dynamicOptions.departments),
+    }
+  }, [unplaced])
   const hasActiveFilter = Boolean(department || classification || calibrationOnly)
 
   return (
