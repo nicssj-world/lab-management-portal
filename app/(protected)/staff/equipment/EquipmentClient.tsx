@@ -21,6 +21,7 @@ import { getLabCodeInfo } from '@/lib/equipment-lab-code'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
 import { EQUIPMENT_WORK_GROUPS, isEquipmentAreaSelectable } from '@/lib/equipment-map/walk-groups'
+import { compressEquipmentPhoto } from '@/lib/equipment/photo-compression'
 import type { Equipment, EquipmentSummaryCounts } from '@/lib/queries/equipment'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 
@@ -260,6 +261,9 @@ function EquipmentModal({
   const [err, setErr] = useState('')
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoPreparing, setPhotoPreparing] = useState(false)
+  const [photoProgress, setPhotoProgress] = useState(0)
+  const [photoMessage, setPhotoMessage] = useState('')
   const [removePhoto, setRemovePhoto] = useState(false)
   const [photoDragOver, setPhotoDragOver] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -299,13 +303,33 @@ function EquipmentModal({
     }))
   }
 
-  function handlePhotoSelect(file: File) {
-    if (file.size > 20 * 1024 * 1024) { setErr('ขนาดรูปเกิน 20 MB'); return }
-    setPhotoFile(file)
-    setRemovePhoto(false)
-    const reader = new FileReader()
-    reader.onload = e => setPhotoPreview(e.target?.result as string)
-    reader.readAsDataURL(file)
+  async function handlePhotoSelect(file: File) {
+    if (!file.type.startsWith('image/')) { setErr('รองรับเฉพาะไฟล์รูปภาพ'); return }
+    if (file.size > 50 * 1024 * 1024) { setErr('ขนาดรูปเกิน 50 MB กรุณาเลือกรูปที่เล็กลง'); return }
+
+    setPhotoPreparing(true)
+    setPhotoProgress(5)
+    setPhotoMessage('กำลังลดขนาดรูปก่อนอัปโหลด...')
+    setPhotoPreview(null)
+    setErr('')
+    try {
+      const compressed = await compressEquipmentPhoto(file, { onProgress: setPhotoProgress })
+      setPhotoFile(compressed.file)
+      setRemovePhoto(false)
+      const reader = new FileReader()
+      reader.onload = e => setPhotoPreview(e.target?.result as string)
+      reader.readAsDataURL(compressed.file)
+      const savedPercent = file.size > 0
+        ? Math.max(0, Math.round((1 - compressed.compressedBytes / file.size) * 100))
+        : 0
+      setPhotoMessage(`พร้อมอัปโหลด ${Math.round(compressed.compressedBytes / 1024)} KB${savedPercent > 0 ? ` · ลดขนาด ${savedPercent}%` : ''}`)
+    } catch (error) {
+      setPhotoMessage('')
+      setErr(error instanceof Error ? error.message : 'ไม่สามารถลดขนาดรูปได้ กรุณาลองใหม่')
+    } finally {
+      setPhotoPreparing(false)
+      setPhotoProgress(0)
+    }
   }
 
   async function handleSave() {
@@ -567,14 +591,14 @@ function EquipmentModal({
 
           {/* Section: รูปถ่ายเครื่องมือ */}
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>รูปถ่ายเครื่องมือ</div>
-          <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoSelect(f) }} />
+          <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void handlePhotoSelect(f) }} />
           <div
             onDragOver={e => { e.preventDefault(); setPhotoDragOver(true) }}
             onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setPhotoDragOver(false) }}
             onDrop={e => {
               e.preventDefault(); setPhotoDragOver(false)
               const f = e.dataTransfer.files?.[0]
-              if (f && f.type.startsWith('image/')) handlePhotoSelect(f)
+              if (f && f.type.startsWith('image/')) void handlePhotoSelect(f)
               else if (f) setErr('รองรับเฉพาะไฟล์รูปภาพ')
             }}
             style={{ borderRadius: 8, border: `2px dashed ${photoDragOver ? 'var(--primary)' : 'var(--border)'}`, background: photoDragOver ? 'var(--primary-soft)' : 'transparent', transition: 'border-color .15s, background .15s' }}
@@ -584,11 +608,20 @@ function EquipmentModal({
               <img src={photoPreview} alt="preview" style={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', flexShrink: 0 }} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>{photoFile?.name}</div>
+                {photoMessage && <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{photoMessage}</div>}
                 {photoDragOver && <div style={{ fontSize: 11.5, color: 'var(--primary)', fontWeight: 600 }}>วางเพื่อเปลี่ยนรูป</div>}
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" onClick={() => photoInputRef.current?.click()} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>เปลี่ยนรูป</button>
                   <button type="button" onClick={() => { setPhotoFile(null); setPhotoPreview(null) }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--danger)' }}>ยกเลิก</button>
                 </div>
+              </div>
+            </div>
+          ) : photoPreparing ? (
+            <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: 'var(--muted)' }}>
+              <Icon name="upload" size={20} />
+              <span style={{ fontSize: 13, fontWeight: 500 }}>กำลังลดขนาดรูปก่อนอัปโหลด {photoProgress}%</span>
+              <div role="progressbar" aria-label="ความคืบหน้าการลดขนาดรูป" aria-valuemin={0} aria-valuemax={100} aria-valuenow={photoProgress} style={{ width: 'min(260px, 100%)', height: 7, overflow: 'hidden', borderRadius: 999, background: 'var(--surface-2)' }}>
+                <div style={{ width: `${photoProgress}%`, height: '100%', borderRadius: 'inherit', background: 'var(--primary)', transition: 'width .18s ease-out' }} />
               </div>
             </div>
           ) : isEdit && item?.photo_url && !removePhoto ? (
@@ -618,7 +651,7 @@ function EquipmentModal({
             >
               <Icon name="upload" size={20} />
               <span style={{ fontSize: 13, fontWeight: 500 }}>{photoDragOver ? 'วางรูปที่นี่' : 'คลิกหรือลากรูปมาวาง'}</span>
-              <span style={{ fontSize: 11.5 }}>JPG, PNG, WEBP, HEIC · ไม่เกิน 20 MB</span>
+              <span style={{ fontSize: 11.5 }}>ลดเป็น JPEG อัตโนมัติ · ด้านยาวไม่เกิน 2,048 px</span>
             </button>
           )}
           </div>
@@ -690,8 +723,8 @@ function EquipmentModal({
         {/* Footer */}
         <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
           <button onClick={onClose} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)' }}>ยกเลิก</button>
-          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'กำลังบันทึก...' : isEdit ? 'บันทึก' : 'เพิ่มเครื่องมือ'}
+          <button onClick={handleSave} disabled={saving || photoPreparing} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', cursor: saving || photoPreparing ? 'not-allowed' : 'pointer', fontSize: 13, fontFamily: 'inherit', opacity: saving || photoPreparing ? 0.7 : 1 }}>
+            {photoPreparing ? 'กำลังเตรียมรูป...' : saving ? 'กำลังบันทึก...' : isEdit ? 'บันทึก' : 'เพิ่มเครื่องมือ'}
           </button>
         </div>
       </div>
