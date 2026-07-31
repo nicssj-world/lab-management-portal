@@ -15,6 +15,10 @@ export type EquipmentPhotoCompressionOptions = {
   onProgress?: (percent: number) => void
 }
 
+function yieldForPaint() {
+  return new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+}
+
 function loadImage(source: File) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const url = URL.createObjectURL(source)
@@ -56,8 +60,10 @@ export async function compressEquipmentPhoto(
   if (!source.type.startsWith('image/')) throw new Error('กรุณาเลือกรูปภาพ')
 
   onProgress?.(5)
+  await yieldForPaint()
   const image = await loadImage(source)
   onProgress?.(20)
+  await yieldForPaint()
   const sourceWidth = image.naturalWidth || image.width
   const sourceHeight = image.naturalHeight || image.height
   if (!sourceWidth || !sourceHeight) throw new Error('รูปนี้ไม่มีขนาดภาพที่ใช้งานได้')
@@ -72,6 +78,7 @@ export async function compressEquipmentPhoto(
   let encoded: Blob | null = null
   for (let attempt = 0; attempt < 6; attempt += 1) {
     onProgress?.(25 + attempt * 11)
+    await yieldForPaint()
     canvas.width = width
     canvas.height = height
     context.fillStyle = '#ffffff'
@@ -79,6 +86,7 @@ export async function compressEquipmentPhoto(
     context.drawImage(image, 0, 0, width, height)
     encoded = await encodeJpeg(canvas, Math.max(0.62, JPEG_QUALITY - attempt * 0.04))
     onProgress?.(Math.min(90, 40 + attempt * 11))
+    await yieldForPaint()
     if (encoded.size <= TARGET_EQUIPMENT_PHOTO_BYTES || Math.max(width, height) <= MIN_EQUIPMENT_PHOTO_DIMENSION) break
     width = Math.max(MIN_EQUIPMENT_PHOTO_DIMENSION, Math.round(width * 0.8))
     height = Math.max(1, Math.round(height * (width / canvas.width)))
