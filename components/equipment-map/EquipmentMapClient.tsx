@@ -135,6 +135,7 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
   const [placementClassification, setPlacementClassification] = useState('')
   const [placementCalibrationOnly, setPlacementCalibrationOnly] = useState(false)
   const [placementFilterRevision, setPlacementFilterRevision] = useState(0)
+  const [optimisticAreaCodes, setOptimisticAreaCodes] = useState<Record<string, string>>({})
   const [optimisticPinPositions, setOptimisticPinPositions] = useState<Record<string, PinPosition>>({})
 
   const mapPins = useMemo(
@@ -156,6 +157,21 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
       return changed ? next : current
     })
   }, [map.pins])
+
+  useEffect(() => {
+    setOptimisticAreaCodes((current) => {
+      const next = { ...current }
+      let changed = false
+      for (const [id, areaCode] of Object.entries(current)) {
+        const item = map.unplaced.find((candidate) => candidate.id === id)
+        if (!item || item.areaCode === areaCode) {
+          delete next[id]
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [map.unplaced])
 
   const selectedAreaCode = filters.area ? equipmentSelectionForArea(filters.area) : ''
   const selectedArea = selectedAreaCode && isEquipmentAreaSelectable(selectedAreaCode)
@@ -295,7 +311,21 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
   }
 
   function handleCategorize(id: string, areaCode: string) {
-    void run(() => callApi(`/api/admin/equipment/${id}/position`, 'PATCH', { areaCode, x: null, y: null }), 'กำหนดพื้นที่แล้ว — ปักหมุดได้เมื่อพร้อม')
+    const previousAreaCode = map.unplaced.find((item) => item.id === id)?.areaCode ?? ''
+    setOptimisticAreaCodes((current) => ({ ...current, [id]: areaCode }))
+    setFilters({ area: areaCode })
+    void run(
+      () => callApi(`/api/admin/equipment/${id}/position`, 'PATCH', { areaCode, x: null, y: null }),
+      'กำหนดพื้นที่แล้ว — ปักหมุดได้เมื่อพร้อม',
+      () => {
+        setOptimisticAreaCodes((current) => {
+          const next = { ...current }
+          delete next[id]
+          return next
+        })
+        setFilters({ area: previousAreaCode })
+      },
+    )
   }
 
   function handleToggleSurveyed(surveyed: boolean) {
@@ -526,6 +556,7 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
             key={placementFilterRevision}
             items={filteredUnplaced}
             areas={map.areas}
+            areaCodeByItem={optimisticAreaCodes}
             placingId={placingId}
             busy={busy}
             onClose={() => { setShowPlacement(false); setPlacingId(null) }}

@@ -3,13 +3,14 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { isEquipmentAreaSelectable } from '@/lib/equipment-map/walk-groups'
+import { groupEquipmentWalkAreas, isEquipmentAreaSelectable } from '@/lib/equipment-map/walk-groups'
 import { paginatePlacementItems } from '@/lib/equipment-map/placement-pagination'
 import type { EquipmentAreaDTO, EquipmentUnplacedDTO } from '@/lib/equipment-map/types'
 
 export interface PlacementPanelProps {
   items: readonly EquipmentUnplacedDTO[]
   areas: readonly EquipmentAreaDTO[]
+  areaCodeByItem: Readonly<Record<string, string>>
   placingId: string | null
   busy: boolean
   onClose: () => void
@@ -19,9 +20,16 @@ export interface PlacementPanelProps {
   onCancelPlacement: () => void
 }
 
-export function PlacementPanel({ items, areas, placingId, busy, onClose, onCategorize, onViewDetails, onStartPlacement, onCancelPlacement }: PlacementPanelProps) {
+export function PlacementPanel({ items, areas, areaCodeByItem, placingId, busy, onClose, onCategorize, onViewDetails, onStartPlacement, onCancelPlacement }: PlacementPanelProps) {
   const [requestedPage, setRequestedPage] = useState(1)
   const selectableAreas = areas.filter((area) => area.isActive && isEquipmentAreaSelectable(area.code))
+  const groupedAreas = groupEquipmentWalkAreas(selectableAreas.map((area) => ({
+    area,
+    total: 0,
+    unsurveyed: 0,
+    overdue: 0,
+    dueSoon: 0,
+  })))
   const { items: pageItems, page, pageCount, from, to } = paginatePlacementItems(items, requestedPage)
 
   return (
@@ -79,14 +87,25 @@ export function PlacementPanel({ items, areas, placingId, busy, onClose, onCateg
                 <div className="equipment-placement-actions">
                   <select
                     className="equipment-placement-select"
-                    defaultValue={item.areaCode ?? ''}
+                    value={areaCodeByItem[item.id] ?? item.areaCode ?? ''}
                     disabled={busy || placingId === item.id}
                     onChange={(event) => { if (event.target.value) onCategorize(item.id, event.target.value) }}
                   >
                     <option value="">เลือกห้อง/โซน…</option>
-                    {selectableAreas.map((area) => (
-                      <option key={area.code} value={area.code}>{area.kind === 'zone' ? '— ' : ''}{area.nameTh}</option>
+                    {groupedAreas.groups.map((group) => (
+                      <optgroup key={group.code} label={group.nameTh}>
+                        {group.items.map(({ area }) => (
+                          <option key={area.code} value={area.code}>— {area.nameTh}</option>
+                        ))}
+                      </optgroup>
                     ))}
+                    {groupedAreas.standalone.length > 0 ? (
+                      <optgroup label="พื้นที่อื่น ๆ">
+                        {groupedAreas.standalone.map(({ area }) => (
+                          <option key={area.code} value={area.code}>{area.nameTh}</option>
+                        ))}
+                      </optgroup>
+                    ) : null}
                   </select>
                   <Button
                     size="sm"
