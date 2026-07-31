@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
+import { resolveEquipmentAreaAssignment } from '@/lib/equipment-map/area-assignment'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getActor() {
@@ -79,8 +80,10 @@ export async function PATCH(
 
   const { id } = await params
   const body = await req.json()
-  // ตำแหน่งบนแผนที่แก้ได้เฉพาะทาง /api/admin/equipment/[id]/position เท่านั้น (มี audit log ของตัวเอง
-  // และ validate ว่าพิกัดอยู่ในขอบเขตพื้นที่จริง) — กันไม่ให้แก้หลุดผ่านช่อง update(body) ที่ไม่มี whitelist นี้
+  const hasAreaAssignment = Object.prototype.hasOwnProperty.call(body, 'areaCode')
+  const requestedAreaCode = body.areaCode
+  delete body.areaCode
+  // รับเฉพาะ areaCode ที่ validate แล้วจากฟอร์มทะเบียน ส่วนพิกัดยังแก้ได้เฉพาะทาง /position เท่านั้น
   delete body.map_x
   delete body.map_y
   delete body.map_rotation
@@ -92,6 +95,11 @@ export async function PATCH(
   normalizePendingRegistration(body)
   const responsibleError = await applyResponsibleUser(body)
   if (responsibleError) return NextResponse.json({ error: responsibleError }, { status: 422 })
+  if (hasAreaAssignment) {
+    const { assignment, error: areaError } = await resolveEquipmentAreaAssignment(requestedAreaCode, actor.id)
+    if (areaError || !assignment) return NextResponse.json({ error: areaError ?? 'กำหนดพื้นที่ไม่สำเร็จ' }, { status: 422 })
+    Object.assign(body, assignment)
+  }
   const { data: existing } = await supabaseAdmin
     .from('equipment')
     .select('cbh_code')

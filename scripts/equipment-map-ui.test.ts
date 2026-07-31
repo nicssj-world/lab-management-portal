@@ -28,6 +28,9 @@ const equipmentMapPage = read('app/(protected)/staff/equipment/map/page.tsx')
 const equipmentMapModuleSql = read('scripts/equipment-map-module.sql')
 const patchRoute = read('app/api/admin/equipment/[id]/route.ts')
 const postRoute = read('app/api/admin/equipment/route.ts')
+const importRoute = read('app/api/admin/equipment/import/route.ts')
+const exportRoute = read('app/api/admin/equipment/export/route.ts')
+const areaAssignment = read('lib/equipment-map/area-assignment.ts')
 const manifest = read('lib/equipment-map/manifest.ts')
 
 assert.ok(EQUIPMENT_DEPARTMENTS.includes('สำนักงานกลุ่มงานเทคนิคการแพทย์'), 'the canonical equipment departments must include the medical technology group office')
@@ -39,6 +42,16 @@ assert.deepEqual(
 assert.match(equipmentDepartments, /export const EQUIPMENT_DEPARTMENTS/, 'equipment department defaults must have one canonical source')
 assert.match(equipmentRegistry, /mergeEquipmentDepartments/, 'the equipment registry must merge departments from the canonical source')
 assert.match(placementFilters, /mergeEquipmentDepartments\(dynamicOptions\.departments\)/, 'the map placement filter must include canonical departments as well as departments found in unplaced equipment')
+assert.match(equipmentRegistry, /setAvailableDepartments\(parsed\.departments\)/, 'registry department options must refresh after an import or external change')
+
+// ── export/import ต้องรักษาพื้นที่ด้วย stable code และใช้กติกา LAB Code เหมือนหน้าเพิ่ม/แก้ไข ──
+assert.match(exportRoute, /'Area Code', 'ห้อง\/โซน'/, 'equipment export must include a stable area code next to the display name')
+assert.match(exportRoute, /eq\.area_code \?\? ''/, 'equipment export rows must carry their stable area code')
+assert.match(importRoute, /'area code': 'area_code'/, 'equipment import must recognize the stable Area Code column')
+assert.match(importRoute, /'ห้อง\/โซน': 'area_name'/, 'equipment import must remain backward-compatible with exported room names')
+assert.match(importRoute, /resolveImportArea\(/, 'equipment import must validate and resolve imported areas')
+assert.match(importRoute, /if \(labInfo\.department\) record\.department = labInfo\.department/, 'LAB Code must override a conflicting spreadsheet department during import')
+assert.match(importRoute, /record\.area_code !== existingAreaCode[\s\S]*cleaned\.map_x = null[\s\S]*cleaned\.map_y = null/, 'changing an imported area must clear stale map coordinates without clearing a pin when the area is unchanged')
 
 // ── dropdown ห้อง/โซนต้องใช้ taxonomy กลุ่มงาน ไม่เสนอกรอบ OUTLAB ที่ครอบคลังเลือด ──
 assert.match(equipmentRegistry, /EQUIPMENT_WORK_GROUPS/, 'the registry area dropdown must render the canonical work-group taxonomy')
@@ -125,6 +138,11 @@ for (const field of ['map_x', 'map_y', 'map_rotation', 'area_code', 'position_se
   assert.match(patchRoute, new RegExp(`delete body\\.${field}`), `PATCH /api/admin/equipment/[id] must strip ${field} from the request body`)
   assert.match(postRoute, new RegExp(`delete body\\.${field}`), `POST /api/admin/equipment must strip ${field} from the request body`)
 }
+assert.match(postRoute, /resolveEquipmentAreaAssignment\(requestedAreaCode, actor\.id\)/, 'create must validate and persist the selected area in the same equipment insert')
+assert.match(patchRoute, /resolveEquipmentAreaAssignment\(requestedAreaCode, actor\.id\)/, 'edit must validate and persist the selected area in the same equipment update')
+assert.match(areaAssignment, /map_x: null[\s\S]*map_y: null/, 'changing an area through the registry must clear coordinates that belonged to the previous room')
+assert.match(equipmentRegistry, /const payload = areaChanged \|\| !isEdit/, 'the registry must send areaCode only for a new item or an actual area change')
+assert.doesNotMatch(equipmentRegistry, /fetch\(`\/api\/admin\/equipment\/\$\{json\.id\}\/position`/, 'the registry save must not leave a partially-saved second position request')
 
 // ── ตำแหน่งบนแผนที่แก้ได้เฉพาะทาง /position เท่านั้น และต้อง validate ว่าอยู่ในขอบเขตพื้นที่จริง ──
 assert.match(positionRoute, /getPermissionsWithEquipmentOverride/, 'position route must reuse the same permission gate as the rest of the module')
@@ -179,6 +197,9 @@ assert.match(client, /const \[optimisticAreaCodes, setOptimisticAreaCodes\] = us
 assert.match(client, /setFilters\(\{ area: areaCode \}\)/, 'choosing an area from the placement report must select the same area on the main map')
 assert.match(client, /key={placementFilterRevision}/, 'changing any placement filter must reset report pagination to page 1')
 assert.match(client, /showPlacement && canEdit \? \(\s*<PlacementFilters/, 'placement filters must render only while an editor opens the unplaced report')
+assert.match(client, /window\.addEventListener\('focus', refreshAfterExternalChange\)/, 'the map must refresh when returning from registry changes in another tab')
+assert.match(equipmentRegistry, /Promise\.all\(\[loadEquipmentList\(\), loadEquipmentAreas\(\)\]\)/, 'the registry must refresh equipment and renamed areas when its tab regains focus')
+assert.doesNotMatch(client, /showRegistryLink=\{false\}/, 'whole-work-group panels must retain the link to the filtered equipment registry')
 assert.ok(client.indexOf('<PlacementFilters') < client.indexOf('<div className="lab-map-workspace">'), 'placement filters must render above the map workspace')
 assert.match(styles, /\.equipment-placement-toolbar \{/, 'the moved placement filters must have a dedicated horizontal toolbar')
 assert.match(placementPanel, /className="equipment-area-panel equipment-placement-panel"/, 'the placement report must have a dedicated layout hook')

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
+import { resolveEquipmentAreaAssignment } from '@/lib/equipment-map/area-assignment'
 import { areaAndDescendantCodes } from '@/lib/equipment-map/manifest'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -195,7 +196,7 @@ export async function GET(req: NextRequest) {
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const total = all ? (data?.length ?? 0) : (count ?? 0)
-  const { data: statusRows } = await supabaseAdmin.from('equipment').select('status')
+  const { data: statusRows } = await supabaseAdmin.from('equipment').select('status, department')
   let summaryQuery: any = supabaseAdmin
     .from('equipment')
     .select('status, risk_level, needs_calibration, warranty_exp')
@@ -208,6 +209,10 @@ export async function GET(req: NextRequest) {
     acc[statusValue] = (acc[statusValue] ?? 0) + 1
     return acc
   }, {})
+  const departments = [...new Set((statusRows ?? [])
+    .map((row) => String(row.department ?? '').trim())
+    .filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, 'th'))
   const summaryCounts = summarizeEquipmentRows(summaryRows ?? [])
 
   return NextResponse.json({
@@ -218,6 +223,7 @@ export async function GET(req: NextRequest) {
     totalPages: all ? 1 : Math.max(1, Math.ceil(total / pageSize)),
     statusCounts,
     summaryCounts,
+    departments,
   })
 }
 
@@ -229,7 +235,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  // ตำแหน่งบนแผนที่ตั้งได้เฉพาะทาง /api/admin/equipment/[id]/position เท่านั้น (ดูเหตุผลเดียวกับ PATCH ด้านบน)
+  const hasAreaAssignment = Object.prototype.hasOwnProperty.call(body, 'areaCode')
+  const requestedAreaCode = body.areaCode
+  delete body.areaCode
+  // รับเฉพาะ areaCode ที่ validate แล้วจากฟอร์มทะเบียน ส่วนพิกัดยังตั้งได้เฉพาะทาง /position เท่านั้น
   delete body.map_x
   delete body.map_y
   delete body.map_rotation
@@ -239,6 +248,11 @@ export async function POST(req: NextRequest) {
   normalizePendingRegistration(body)
   const responsibleError = await applyResponsibleUser(body)
   if (responsibleError) return NextResponse.json({ error: responsibleError }, { status: 422 })
+  if (hasAreaAssignment) {
+    const { assignment, error: areaError } = await resolveEquipmentAreaAssignment(requestedAreaCode, actor.id)
+    if (areaError || !assignment) return NextResponse.json({ error: areaError ?? 'กำหนดพื้นที่ไม่สำเร็จ' }, { status: 422 })
+    Object.assign(body, assignment)
+  }
   const labInfo = getLabCodeInfo(body.cbh_code)
   if (labInfo.department) body.department = labInfo.department
   if (labInfo.classification) body.classification = labInfo.classification
