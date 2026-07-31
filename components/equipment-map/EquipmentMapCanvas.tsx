@@ -345,7 +345,13 @@ export function EquipmentMapCanvas({
   }
 
   function startPinDrag(event: ReactPointerEvent<SVGGElement>, pin: EquipmentPinDTO) {
-    if (!onMovePin || pin.x == null || pin.y == null) return
+    // Read-only pins must still own their pointer event. Otherwise the canvas
+    // captures it for panning and retargets the later click to the SVG, so a
+    // view-only user opens the area instead of this equipment's details.
+    if (!onMovePin || pin.x == null || pin.y == null) {
+      event.stopPropagation()
+      return
+    }
     const svg = event.currentTarget.ownerSVGElement
     if (!svg) return
     event.stopPropagation()

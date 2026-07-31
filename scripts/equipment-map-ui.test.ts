@@ -22,6 +22,7 @@ const equipmentMapServer = read('lib/equipment-map/server.ts')
 const surveyBar = read('components/equipment-map/SurveyRoundBar.tsx')
 const sidebar = read('components/layout/StaffSidebar.tsx')
 const positionRoute = read('app/api/admin/equipment/[id]/position/route.ts')
+const equipmentMapPage = read('app/(protected)/staff/equipment/map/page.tsx')
 const equipmentMapModuleSql = read('scripts/equipment-map-module.sql')
 const patchRoute = read('app/api/admin/equipment/[id]/route.ts')
 const postRoute = read('app/api/admin/equipment/route.ts')
@@ -158,7 +159,7 @@ assert.match(client, /const \[placementClassification, setPlacementClassificatio
 assert.match(client, /const \[placementCalibrationOnly, setPlacementCalibrationOnly\] = useState\(false\)/, 'the map client must own the placement calibration toggle')
 assert.match(client, /filterPlacementItems\(\s*map\.unplaced,\s*placementDepartment,\s*placementClassification,\s*placementCalibrationOnly/, 'the unplaced report must combine all three filters')
 assert.match(client, /key={placementFilterRevision}/, 'changing any placement filter must reset report pagination to page 1')
-assert.match(client, /showPlacement \? \(\s*<PlacementFilters/, 'placement filters must render only while the unplaced report is open')
+assert.match(client, /showPlacement && canEdit \? \(\s*<PlacementFilters/, 'placement filters must render only while an editor opens the unplaced report')
 assert.ok(client.indexOf('<PlacementFilters') < client.indexOf('<div className="lab-map-workspace">'), 'placement filters must render above the map workspace')
 assert.match(styles, /\.equipment-placement-toolbar \{/, 'the moved placement filters must have a dedicated horizontal toolbar')
 assert.match(placementPanel, /className="equipment-area-panel equipment-placement-panel"/, 'the placement report must have a dedicated layout hook')
@@ -219,6 +220,15 @@ assert.match(client, /onError\?\.\(\)/, 'a failed position request must be able 
 assert.match(dialog, /onRotate: \(rotation: number\) => void/, 'the pin dialog must expose a quarter-turn control')
 assert.match(dialog, /หมุน 90°/, 'the pin dialog must give editors a clear rotate action')
 assert.match(client, /function handleRotatePin\(rotation: number\)/, 'the map page must persist icon rotation')
+
+// ── Equipment-map permissions follow the main registry role; read-only pins must still open their details ──
+assert.match(equipmentMapPage, /select\('role'\)/, 'the map page must determine map access from the main role')
+assert.doesNotMatch(equipmentMapPage, /doc_role/, 'the document workflow role must not alter equipment-map access')
+assert.match(positionRoute, /select\('id, role'\)/, 'the position API must determine access from the main role')
+assert.doesNotMatch(positionRoute, /doc_role/, 'the position API must not use the document workflow role')
+assert.match(client, /actions=\{canEdit \? \(/, 'only equipment-map editors may open the unplaced-equipment placement workflow')
+assert.match(client, /showPlacement && canEdit \? \(/, 'the placement workflow must stay hidden for read-only users')
+assert.match(canvas, /if \(!onMovePin \|\| pin\.x == null \|\| pin\.y == null\) \{\s*event\.stopPropagation\(\)/, 'read-only pin presses must not bubble to canvas panning and swallow the pin click')
 
 // ── Mobile gestures ──
 // Areas cover almost the whole SVG, so panning must begin from an area; pins keep their own long-press drag.
