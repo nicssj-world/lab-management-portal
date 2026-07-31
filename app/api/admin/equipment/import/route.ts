@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 
 const TEMPLATE_HEADERS = [
-  'LAB Code', 'Hospital Asset No.', 'Department', 'Equipment Type',
+  'LAB Code', 'Hospital Asset No.', 'Department', 'Area Code', 'ห้อง/โซน', 'Equipment Type',
   'Manufacturer', 'Model', 'Serial Number', 'Equipment Vendor',
   'Owner', 'Owner Status', 'Risk', 'Classification',
   'Purchase Date', 'Warranty Exp.', 'Purchase Price',
@@ -14,7 +14,7 @@ const TEMPLATE_HEADERS = [
 ]
 
 const TEMPLATE_EXAMPLE = [
-  'LAB-CC-02-001', '6515-047-0001/1/36', 'โลหิตวิทยา', 'BATH, WATER 24 ลิตร',
+  'LAB-CC-02-001', '6515-047-0001/1/36', 'เคมีคลินิก', 'zone-central-chem-immuno', 'เคมีคลินิก + ภูมิคุ้มกัน', 'BATH, WATER 24 ลิตร',
   'MEMMERT', 'W760', '92.0311', 'บ.ยูไนเต็ด อินทรูเมนท์ จำกัด',
   'Hospital', 'Hospital', 'Medium', 'Centrifuge',
   '1993-09-17', '2025-12-31', '23320',
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
   // Column widths
   ws['!cols'] = TEMPLATE_HEADERS.map((h, i) => ({
-    wch: [12, 22, 18, 30, 16, 14, 18, 28, 6, 12, 8, 14, 14, 14, 14, 10, 16, 16, 20][i] ?? 16,
+    wch: [12, 22, 18, 28, 24, 30, 16, 14, 18, 28, 6, 12, 8, 14, 14, 14, 14, 10, 16, 16, 20][i] ?? 16,
   }))
 
   const wb = XLSX.utils.book_new()
@@ -108,6 +108,10 @@ const COLUMN_MAP: Record<string, string> = {
   'รอขึ้นทะเบียนสินทรัพย์': 'hospital_asset_no_pending',
   'department': 'department',
   'แผนก': 'department',
+  'area code': 'area_code',
+  'รหัสพื้นที่': 'area_code',
+  'ห้อง/โซน': 'area_name',
+  'room/zone': 'area_name',
   'owner': 'owner',
   'เจ้าของ': 'owner',
   'owner status': 'owner_status',
@@ -150,12 +154,19 @@ type ExistingEquipment = {
   serial_number: string | null
   equipment_type: string
   department: string
+  area_code: string | null
 }
 
 type ResponsibleUser = {
   id: string
   ephis_id: string | null
   name: string
+}
+
+type ImportArea = {
+  code: string
+  name_th: string
+  is_active: boolean
 }
 
 type DuplicateIssue = {
@@ -236,7 +247,7 @@ async function getExistingEquipment(): Promise<ExistingEquipment[]> {
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabaseAdmin
       .from('equipment')
-      .select('id, cbh_code, hospital_asset_no, serial_number, equipment_type, department')
+      .select('id, cbh_code, hospital_asset_no, serial_number, equipment_type, department, area_code')
       .range(from, from + pageSize - 1)
     if (error) throw new Error(error.message)
     rows.push(...((data ?? []) as ExistingEquipment[]))
@@ -254,6 +265,37 @@ async function getResponsibleUsers(): Promise<ResponsibleUser[]> {
     .is('deleted_at', null)
   if (error) throw new Error(error.message)
   return (data ?? []) as ResponsibleUser[]
+}
+
+async function getImportAreas(): Promise<ImportArea[]> {
+  const { data, error } = await supabaseAdmin
+    .from('equipment_areas')
+    .select('code, name_th, is_active')
+    .order('sort_order')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as ImportArea[]
+}
+
+function resolveImportArea(
+  rawCode: unknown,
+  rawName: unknown,
+  areas: readonly ImportArea[],
+): { code: string | null; error: string | null } {
+  const code = String(rawCode ?? '').trim()
+  const name = String(rawName ?? '').trim()
+  if (!code && !name) return { code: null, error: null }
+
+  if (code) {
+    const match = areas.find((area) => area.code.toLocaleLowerCase('en') === code.toLocaleLowerCase('en'))
+    if (!match?.is_active) return { code: null, error: `ไม่พบรหัสพื้นที่ “${code}” หรือพื้นที่ถูกปิดใช้งาน` }
+    return { code: match.code, error: null }
+  }
+
+  const normalizedName = normalizeKey(name)
+  const matches = areas.filter((area) => area.is_active && normalizeKey(area.name_th) === normalizedName)
+  if (matches.length === 0) return { code: null, error: `ไม่พบห้อง/โซน “${name}”` }
+  if (matches.length > 1) return { code: null, error: `ชื่อห้อง/โซน “${name}” ซ้ำกัน กรุณาระบุคอลัมน์ Area Code` }
+  return { code: matches[0].code, error: null }
 }
 
 function findResponsibleUser(value: unknown, users: ResponsibleUser[]): ResponsibleUser | null {
@@ -514,7 +556,7 @@ function toInsertRecord(record: ImportRecord) {
   return insertable
 }
 
-function toUpdateRecord(record: ImportRecord) {
+function toUpdateRecord(record: ImportRecord, existingAreaCode: string | null | undefined) {
   const { __rowNumber, created_by, ...updateable } = record
   void __rowNumber
   void created_by
@@ -524,6 +566,18 @@ function toUpdateRecord(record: ImportRecord) {
   if (record.cbh_code_pending === true) cleaned.cbh_code = null
   else cleaned.cbh_code = String(record.cbh_code ?? '').trim() || null
   if (record.hospital_asset_no_pending === true) cleaned.hospital_asset_no = null
+  if (typeof record.area_code === 'string' && record.area_code) {
+    cleaned.area_code = record.area_code
+    if (record.area_code !== existingAreaCode) {
+      cleaned.map_x = null
+      cleaned.map_y = null
+      cleaned.position_set_by = record.position_set_by
+      cleaned.position_set_at = record.position_set_at
+    } else {
+      delete cleaned.position_set_by
+      delete cleaned.position_set_at
+    }
+  }
   return cleaned
 }
 
@@ -588,7 +642,7 @@ export async function POST(req: NextRequest) {
   const statusCols = headerRow.reduce<number[]>((acc, h, i) => h === 'status' ? [...acc, i] : acc, [])
   if (statusCols.length > 0) colIdx['status'] = statusCols[statusCols.length - 1]
 
-  const responsibleUsers = await getResponsibleUsers()
+  const [responsibleUsers, importAreas] = await Promise.all([getResponsibleUsers(), getImportAreas()])
   const records: ImportRecord[] = []
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i]
@@ -598,6 +652,14 @@ export async function POST(req: NextRequest) {
     const labCode = String(row[colIdx['cbh_code'] ?? -1] ?? '').trim()
     const dept = String(row[colIdx['department'] ?? -1] ?? '').trim()
     const labInfo = getLabCodeInfo(labCode)
+    const importedArea = resolveImportArea(
+      row[colIdx['area_code'] ?? -1],
+      row[colIdx['area_name'] ?? -1],
+      importAreas,
+    )
+    if (importedArea.error) {
+      return NextResponse.json({ error: `แถว ${headerRowIdx + i + 2}: ${importedArea.error}` }, { status: 422 })
+    }
     if (!dept && !eqType) continue
 
     const record: ImportRecord = {
@@ -607,6 +669,13 @@ export async function POST(req: NextRequest) {
       department: dept || labInfo.department || 'ไม่ระบุ',
       cbh_code_pending: false,
       hospital_asset_no_pending: false,
+    }
+    if (importedArea.code) {
+      record.area_code = importedArea.code
+      record.map_x = null
+      record.map_y = null
+      record.position_set_by = actor.id
+      record.position_set_at = new Date().toISOString()
     }
 
     const textFields = ['cbh_code', 'hospital_asset_no', 'owner', 'owner_status', 'risk_level',
@@ -636,6 +705,7 @@ export async function POST(req: NextRequest) {
       record['responsible_user_id'] = responsibleUser.id
       record['responsible_person'] = responsibleUser.name
     }
+    if (labInfo.department) record.department = labInfo.department
     if (labInfo.classification) record['classification'] = labInfo.classification
 
     if ('purchase_date' in colIdx) record['purchase_date'] = parseDate(row[colIdx['purchase_date']])
@@ -697,6 +767,7 @@ export async function POST(req: NextRequest) {
   let inserted = 0
   let updated = 0
   const planByRow = new Map(selectedPlans.map(plan => [plan.row, plan]))
+  const existingById = new Map(selectedExisting.map((item) => [item.id, item]))
   const insertRecords = selectedRecords.filter(record => planByRow.get(record.__rowNumber)?.action === 'insert')
   const updateRecords = selectedRecords.filter(record => planByRow.get(record.__rowNumber)?.action === 'update')
 
@@ -705,7 +776,7 @@ export async function POST(req: NextRequest) {
     if (!plan?.targetId) continue
     const { error } = await supabaseAdmin
       .from('equipment')
-      .update(toUpdateRecord(record))
+      .update(toUpdateRecord(record, existingById.get(plan.targetId)?.area_code))
       .eq('id', plan.targetId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     updated += 1

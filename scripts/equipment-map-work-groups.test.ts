@@ -66,8 +66,13 @@ assert.deepEqual(
 )
 assert.deepEqual(
   result.standalone.map((item) => item.area.code),
-  ['room-nw-corner', 'room-centre-upper', 'zone-equipment-wash'],
+  ['room-nw-corner', 'room-centre-upper'],
   'only areas outside every canonical work group may appear in the standalone section',
+)
+assert.deepEqual(
+  result.groups.find((group) => group.code === 'office')?.items.map((item) => item.area.code),
+  ['zone-equipment-wash'],
+  'office areas must remain in the office work group instead of falling back to standalone',
 )
 
 const groupedCodes = new Set(result.groups.flatMap((group) => group.items.map((item) => item.area.code)))

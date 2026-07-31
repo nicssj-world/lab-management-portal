@@ -6,14 +6,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 
 const EXPORT_HEADERS = [
-  'LAB Code', 'Hospital Asset No.', 'Department', 'ห้อง/โซน', 'Equipment Type',
+  'LAB Code', 'Hospital Asset No.', 'Department', 'Area Code', 'ห้อง/โซน', 'Equipment Type',
   'Manufacturer', 'Model', 'Serial Number', 'Equipment Vendor',
   'Owner', 'Owner Status', 'Risk', 'Classification',
   'Purchase Date', 'Warranty Exp.', 'Purchase Price',
   'Status', 'ต้องการสอบเทียบ', 'ผู้รับผิดชอบ', 'Remark',
 ]
 
-const COL_WIDTHS = [12, 22, 18, 18, 30, 16, 14, 18, 28, 10, 12, 8, 14, 14, 14, 14, 10, 16, 20, 24]
+const COL_WIDTHS = [12, 22, 18, 28, 18, 30, 16, 14, 18, 28, 10, 12, 8, 14, 14, 14, 14, 10, 16, 20, 24]
 
 function escapeLike(value: string) {
   return value.replace(/[\\%_]/g, match => `\\${match}`)
@@ -125,6 +125,7 @@ export async function GET(req: NextRequest) {
     eq.cbh_code_pending ? 'รอขึ้นทะเบียน' : (eq.cbh_code ?? ''),
     eq.hospital_asset_no_pending ? 'รอขึ้นทะเบียน' : (eq.hospital_asset_no ?? ''),
     eq.department ?? '',
+    eq.area_code ?? '',
     eq.area_code ? (areaNameByCode.get(eq.area_code) ?? eq.area_code) : '',
     eq.equipment_type ?? '',
     eq.manufacturer ?? '',

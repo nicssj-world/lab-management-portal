@@ -138,6 +138,21 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
   const [optimisticAreaCodes, setOptimisticAreaCodes] = useState<Record<string, string>>({})
   const [optimisticPinPositions, setOptimisticPinPositions] = useState<Record<string, PinPosition>>({})
 
+  useEffect(() => {
+    let lastRefreshAt = 0
+    const refreshAfterExternalChange = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastRefreshAt < 500) return
+      lastRefreshAt = Date.now()
+      router.refresh()
+    }
+    window.addEventListener('focus', refreshAfterExternalChange)
+    document.addEventListener('visibilitychange', refreshAfterExternalChange)
+    return () => {
+      window.removeEventListener('focus', refreshAfterExternalChange)
+      document.removeEventListener('visibilitychange', refreshAfterExternalChange)
+    }
+  }, [router])
+
   const mapPins = useMemo(
     () => map.pins.map((pin) => optimisticPinPositions[pin.id] ? { ...pin, ...optimisticPinPositions[pin.id] } : pin),
     [map.pins, optimisticPinPositions],
@@ -587,7 +602,6 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
               onSelectPin={(id) => setSelectedPinId(id)}
               onRename={() => undefined}
               kindLabel="กลุ่มงาน"
-              showRegistryLink={false}
             />
           ) : (
           <div className="lab-map-detail-panel">

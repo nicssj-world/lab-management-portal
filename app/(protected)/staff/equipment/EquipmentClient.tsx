@@ -81,6 +81,7 @@ type EquipmentListPayload = {
   totalPages?: number
   statusCounts?: Record<string, number>
   summaryCounts?: EquipmentSummaryCounts
+  departments?: string[]
 }
 
 function parseEquipmentPayload(payload: unknown): EquipmentListPayload {
@@ -312,27 +313,16 @@ function EquipmentModal({
     if (!form.department?.trim()) { setErr('กรุณาระบุแผนก'); return }
     setSaving(true); setErr('')
     try {
+      const areaChanged = areaCode !== (item?.area_code ?? '')
+      const payload = areaChanged || !isEdit
+        ? { ...form, areaCode: areaCode || null }
+        : form
       const res = await fetch(
         isEdit ? `/api/admin/equipment/${item!.id}` : '/api/admin/equipment',
-        { method: isEdit ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }
+        { method: isEdit ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
       )
       const json = await res.json()
       if (!res.ok) { setErr(json.error ?? 'เกิดข้อผิดพลาด'); return }
-
-      // เปลี่ยนห้อง/โซนที่นี่แยกจากฟิลด์อื่นเสมอ (ผ่าน /position เท่านั้น — ดู CLAUDE.md) และล้างพิกัดหมุดเดิม
-      // เพราะพิกัดเดิมอาจอยู่นอกขอบเขตพื้นที่ใหม่ ต้องไปปักหมุดใหม่ในแผนผังเครื่องมือ
-      if (areaCode !== (item?.area_code ?? '')) {
-        const posRes = await fetch(`/api/admin/equipment/${json.id}/position`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ areaCode: areaCode || null, x: null, y: null }),
-        })
-        const posJson = await posRes.json()
-        if (!posRes.ok) { setErr(posJson.error ?? 'บันทึกห้อง/โซนไม่สำเร็จ'); return }
-        json.area_code = posJson.area_code
-        json.map_x = posJson.map_x
-        json.map_y = posJson.map_y
-      }
 
       // Handle photo upload
       if (photoFile) {
@@ -1796,6 +1786,7 @@ export default function EquipmentClient({
   const [area, setArea] = useState(initialArea)
   const [unpositioned, setUnpositioned] = useState(initialUnpositioned)
   const [areas, setAreas] = useState<EquipmentAreaOption[]>([])
+  const [availableDepartments, setAvailableDepartments] = useState<string[]>(departments)
   const [loading, setLoading] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({ '': initialTotal, ...statusCounts })
@@ -1864,6 +1855,7 @@ export default function EquipmentClient({
       setPageSize(Number(parsed.pageSize ?? EQUIPMENT_PAGE_SIZE))
       if (parsed.statusCounts) setCounts({ '': Number(parsed.statusCounts[''] ?? 0), ...parsed.statusCounts })
       if (parsed.summaryCounts) setSummaryCounts(parsed.summaryCounts)
+      if (parsed.departments) setAvailableDepartments(parsed.departments)
     } catch {
       setItems([])
       setTotal(0)
@@ -1891,22 +1883,41 @@ export default function EquipmentClient({
       .catch(() => setResponsibleUsers([]))
   }, [])
 
-  useEffect(() => {
-    fetch('/api/admin/equipment/areas')
-      .then(async res => {
-        const json = await res.json()
-        if (!res.ok) throw new Error(json.error ?? 'โหลดรายการห้อง/โซนไม่สำเร็จ')
-        const rows = Array.isArray(json) ? json : []
-        setAreas(rows.map((row: Record<string, unknown>) => ({
-          code: row.code as string,
-          nameTh: row.name_th as string,
-          kind: row.kind as 'room' | 'zone',
-          parentCode: (row.parent_code as string | null) ?? null,
-          isActive: row.is_active as boolean,
-        })))
-      })
-      .catch(() => setAreas([]))
+  const loadEquipmentAreas = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/equipment/areas')
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'โหลดรายการห้อง/โซนไม่สำเร็จ')
+      const rows = Array.isArray(json) ? json : []
+      setAreas(rows.map((row: Record<string, unknown>) => ({
+        code: row.code as string,
+        nameTh: row.name_th as string,
+        kind: row.kind as 'room' | 'zone',
+        parentCode: (row.parent_code as string | null) ?? null,
+        isActive: row.is_active as boolean,
+      })))
+    } catch {
+      setAreas([])
+    }
   }, [])
+
+  useEffect(() => { void loadEquipmentAreas() }, [loadEquipmentAreas])
+
+  useEffect(() => {
+    let lastRefreshAt = 0
+    const refreshAfterExternalChange = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastRefreshAt < 500) return
+      lastRefreshAt = Date.now()
+      setDashboardItems(null)
+      void Promise.all([loadEquipmentList(), loadEquipmentAreas()])
+    }
+    window.addEventListener('focus', refreshAfterExternalChange)
+    document.addEventListener('visibilitychange', refreshAfterExternalChange)
+    return () => {
+      window.removeEventListener('focus', refreshAfterExternalChange)
+      document.removeEventListener('visibilitychange', refreshAfterExternalChange)
+    }
+  }, [loadEquipmentAreas, loadEquipmentList])
 
   // เปิดจาก ?open=<id>&panel=pmcal (ลิงก์ "ดู PM/CAL" ในแผนผังเครื่องมือ) — เปิด PmCalModal ตรง ๆ โดยไม่ขึ้นกับตัวกรอง/หน้าปัจจุบัน
   useEffect(() => {
@@ -1946,8 +1957,8 @@ export default function EquipmentClient({
 
   // Keep canonical departments and imported/historical name variants available.
   const allDepts = mergeEquipmentDepartments([
-    ...departments,
-    ...initialData.map(i => i.department),
+    ...availableDepartments,
+    ...items.map(i => i.department),
   ])
 
   const areaNameByCode = new Map(areas.map(a => [a.code, a.nameTh]))
