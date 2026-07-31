@@ -398,11 +398,11 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
         title="แผนผังเครื่องมือ"
         subtitle="วางแผน PM/CAL โดยเดินตรวจทีละพื้นที่ — ปักหมุด ติ๊กสำรวจ และดูสถานะเครื่องมือบนแผนที่"
         eyebrow="ทะเบียนเครื่องมือ"
-        actions={
+        actions={canEdit ? (
           <Button variant="secondary" icon="inbox" onClick={() => setShowPlacement(true)}>
             ยังไม่กำหนดตำแหน่ง ({map.unplaced.length})
           </Button>
-        }
+        ) : undefined}
       />
 
       <SurveyRoundBar
@@ -489,7 +489,7 @@ export function EquipmentMapClient({ map, canEdit }: EquipmentMapClientProps) {
         </div>
       </div>
 
-      {showPlacement ? (
+      {showPlacement && canEdit ? (
         <PlacementFilters
           unplaced={map.unplaced}
           department={placementDepartment}
