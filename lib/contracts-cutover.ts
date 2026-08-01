@@ -34,7 +34,7 @@ export function contractsCutoverTarget(env: Env = process.env): string | null {
   parsed.pathname = parsed.pathname.replace(/\/+$/, '')
 
   // URL.toString re-adds a trailing slash for an empty path; strip it so
-  // callers can append "/contracts" without doubling the separator.
+  // callers can append a destination path without doubling the separator.
   return parsed.toString().replace(/\/+$/, '')
 }
 
@@ -44,7 +44,7 @@ export function isContractsCutoverActive(env: Env = process.env): boolean {
 
 export function legacyContractRedirect(env: Env = process.env): string | null {
   const target = contractsCutoverTarget(env)
-  return target ? `${target}/contracts` : null
+  return target ? `${target}/dashboard` : null
 }
 
 export function contractsGoneResponse(target: string | null): NextResponse {
