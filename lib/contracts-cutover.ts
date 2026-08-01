@@ -1,17 +1,14 @@
 import { NextResponse } from 'next/server'
 
-// The contract-management module ("บริหารสัญญา") moves to LABCBH Stock. Setting
-// LABCBH_STOCK_URL is the single switch that retires it here: pages redirect,
-// writes return 410 Gone, and read endpoints stay up for reconciliation.
-//
-// Until the variable is set the portal behaves exactly as before, so deploying
-// this code is safe ahead of the database migration.
+// The contract-management module ("บริหารสัญญา") lives in LABCBH Stock. Keep a
+// safe production destination in source so a missing Vercel environment value
+// cannot accidentally reactivate the retired portal module.
 
 type Env = Record<string, string | undefined>
+const DEFAULT_LABCBH_STOCK_URL = 'https://labcbh-stock.vercel.app'
 
 export function contractsCutoverTarget(env: Env = process.env): string | null {
-  const raw = env.LABCBH_STOCK_URL?.trim()
-  if (!raw) return null
+  const raw = env.LABCBH_STOCK_URL?.trim() || DEFAULT_LABCBH_STOCK_URL
 
   // Only an absolute http(s) origin is usable. Anything else — a relative path,
   // a javascript: payload — would turn this into an open redirect.
@@ -19,12 +16,12 @@ export function contractsCutoverTarget(env: Env = process.env): string | null {
   try {
     parsed = new URL(raw)
   } catch {
-    return null
+    return DEFAULT_LABCBH_STOCK_URL
   }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return DEFAULT_LABCBH_STOCK_URL
 
   // Credentials in the URL would be handed to the browser on redirect.
-  if (parsed.username || parsed.password) return null
+  if (parsed.username || parsed.password) return DEFAULT_LABCBH_STOCK_URL
 
   // Normalise through the URL object rather than trimming the raw string: a
   // configured query or fragment must be dropped, not left in the middle when
