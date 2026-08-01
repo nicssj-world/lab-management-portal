@@ -28,8 +28,9 @@ export async function proxy(request: NextRequest) {
   // a permanent redirect would be cached and outlive a rollback. The API routes
   // under /api/admin/contracts are excluded — they answer 410 with a body.
   if (path === '/staff/contracts' || path.startsWith('/staff/contracts/')) {
-    const movedTo = legacyContractRedirect()
-    if (movedTo) return NextResponse.redirect(movedTo, 307)
+    if (legacyContractRedirect()) {
+      return NextResponse.redirect(new URL('/auth/stock', request.url), 307)
+    }
   }
 
   if (!isProtectedPath(path)) {
