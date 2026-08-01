@@ -1,0 +1,39 @@
+# Local credentials and repository metadata.
+.env*
+.git
+.github
+
+# Local agent state and duplicated worktrees.
+.agents
+.augment
+.claude
+.codebuddy
+.codex
+.continue
+.cursor
+.factory
+.gemini
+.impeccable
+.kilocode
+.kiro
+.opencode
+.qoder
+.roo
+.superpowers
+.trae
+.warp
+.windsurf
+.worktrees
+
+# Dependencies, generated output, and local test artifacts.
+node_modules
+.next
+.vercel
+tmp
+output
+artifacts
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+next-env.d.ts
