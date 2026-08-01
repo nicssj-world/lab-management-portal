@@ -30,26 +30,26 @@ assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'ftp://stock.example' })
 assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'https://user:pass@stock.example' }), null)
 
 // A query or fragment must be normalised away, not concatenated. Trimming the
-// raw string would yield "https://stock.example?a=1/contracts", which points
+// raw string would yield "https://stock.example?a=1/dashboard", which points
 // somewhere entirely different from the intended destination.
 assert.equal(
   legacyContractRedirect({ LABCBH_STOCK_URL: 'https://stock.example?a=1' }),
-  'https://stock.example/contracts',
+  'https://stock.example/dashboard',
 )
 assert.equal(
   legacyContractRedirect({ LABCBH_STOCK_URL: 'https://stock.example#frag' }),
-  'https://stock.example/contracts',
+  'https://stock.example/dashboard',
 )
 // A base path on the destination is preserved.
 assert.equal(
   legacyContractRedirect({ LABCBH_STOCK_URL: 'https://example.test/stock/' }),
-  'https://example.test/stock/contracts',
+  'https://example.test/stock/dashboard',
 )
 
-// Deep links keep the contract list path on the destination.
+// The legacy contract entry point should land on the stock overview.
 assert.equal(
   legacyContractRedirect({ LABCBH_STOCK_URL: 'https://stock.example' }),
-  'https://stock.example/contracts',
+  'https://stock.example/dashboard',
 )
 assert.equal(legacyContractRedirect({}), null)
 
