@@ -8,26 +8,27 @@ import {
   legacyContractRedirect,
 } from '../lib/contracts-cutover'
 
-// The gate is driven purely by LABCBH_STOCK_URL, so a portal that has not been
-// pointed at the stock system keeps behaving exactly as it does today.
-assert.equal(isContractsCutoverActive({}), false)
-assert.equal(isContractsCutoverActive({ LABCBH_STOCK_URL: '' }), false)
-assert.equal(isContractsCutoverActive({ LABCBH_STOCK_URL: '   ' }), false)
+// Contract management is permanently owned by LABCBH Stock. The known
+// production URL is used even when Vercel has no environment variable yet.
+assert.equal(isContractsCutoverActive({}), true)
+assert.equal(isContractsCutoverActive({ LABCBH_STOCK_URL: '' }), true)
+assert.equal(isContractsCutoverActive({ LABCBH_STOCK_URL: '   ' }), true)
+assert.equal(contractsCutoverTarget({}), 'https://labcbh-stock.vercel.app')
 assert.equal(isContractsCutoverActive({ LABCBH_STOCK_URL: 'https://stock.example' }), true)
 
 // Trailing slashes are trimmed so callers can join paths without doubling up.
 assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'https://stock.example/' }), 'https://stock.example')
 assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: ' https://stock.example ' }), 'https://stock.example')
-assert.equal(contractsCutoverTarget({}), null)
+assert.equal(contractsCutoverTarget({}), 'https://labcbh-stock.vercel.app')
 
-// Only absolute http(s) origins are accepted. A relative or javascript: value
-// would turn the redirect into an open-redirect or XSS vector.
-assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: '/staff/contracts' }), null)
-assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'javascript:alert(1)' }), null)
-assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'ftp://stock.example' }), null)
+// Only absolute http(s) origins are accepted as overrides. A relative or
+// javascript: value falls back to the known safe destination.
+assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: '/staff/contracts' }), 'https://labcbh-stock.vercel.app')
+assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'javascript:alert(1)' }), 'https://labcbh-stock.vercel.app')
+assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'ftp://stock.example' }), 'https://labcbh-stock.vercel.app')
 
 // Embedded credentials are refused rather than forwarded to the browser.
-assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'https://user:pass@stock.example' }), null)
+assert.equal(contractsCutoverTarget({ LABCBH_STOCK_URL: 'https://user:pass@stock.example' }), 'https://labcbh-stock.vercel.app')
 
 // A query or fragment must be normalised away, not concatenated. Trimming the
 // raw string would yield "https://stock.example?a=1/dashboard", which points
@@ -51,7 +52,7 @@ assert.equal(
   legacyContractRedirect({ LABCBH_STOCK_URL: 'https://stock.example' }),
   'https://stock.example/dashboard',
 )
-assert.equal(legacyContractRedirect({}), null)
+assert.equal(legacyContractRedirect({}), 'https://labcbh-stock.vercel.app/dashboard')
 
 // The portal dashboard reads contracts through the service role, so it keeps
 // rendering after the migration regardless of RLS. That is the hazard: the
