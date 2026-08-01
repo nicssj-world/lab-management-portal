@@ -104,6 +104,15 @@ assert.ok(
   !/\/api\/admin\/contracts/.test(proxy),
   'proxy must not redirect the API routes; they answer 410',
 )
+
+const stockSsoRoute = readFileSync(join(process.cwd(), 'app/auth/stock/route.ts'), 'utf8')
+assert.match(stockSsoRoute, /auth\.getUser\(\)/, 'the handoff must start from the portal session')
+assert.match(stockSsoRoute, /auth\.admin\.generateLink\(/, 'the handoff must mint a one-time Supabase link server-side')
+assert.match(stockSsoRoute, /type:\s*'magiclink'/, 'the handoff may only mint a magic link')
+assert.match(stockSsoRoute, /properties\.hashed_token/, 'the browser must receive only the one-time token hash')
+assert.match(stockSsoRoute, /new URL\('\/auth\/confirm'/, 'the one-time token must be consumed by LABCBH Stock')
+assert.match(stockSsoRoute, /Cache-Control.*no-store/, 'one-time credentials must not be cached')
+assert.match(stockSsoRoute, /Referrer-Policy.*no-referrer/, 'one-time credentials must not be forwarded as a referrer')
 // A permanent redirect would be cached by browsers and survive a rollback.
 assert.ok(
   !/redirect\([^)]*,\s*308\)/.test(proxy),

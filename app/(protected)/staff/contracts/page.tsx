@@ -9,8 +9,7 @@ import { ContractsClient } from './ContractsClient'
 export default async function ContractsPage({ searchParams }: { searchParams: Promise<{ create?: string }> }) {
   // Post-cutover this module lives in LABCBH Stock. Redirect before touching the
   // database: the migration revokes the authenticated read grant this page uses.
-  const movedTo = legacyContractRedirect()
-  if (movedTo) redirect(movedTo)
+  if (legacyContractRedirect()) redirect('/auth/stock')
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
