@@ -7,6 +7,15 @@ export interface SignInParticipant {
   wasUnlisted?: boolean
 }
 
+export interface SignInHeader {
+  /** หน่วยงาน — ของผู้รับผิดชอบกิจกรรม/การประชุมนี้ */
+  department: string
+  /** การประชุม — หมวดกิจกรรมคุณภาพ (categoryName ของ template) */
+  meetingCategory: string
+  /** เรื่อง — ชื่อกิจกรรม/การประชุม (title ของ template) */
+  subject: string
+}
+
 const ROWS_PER_PAGE = 20
 const DISPLAY_ROWS_PER_PAGE = 35
 
@@ -22,7 +31,7 @@ function formatCheckInDate(iso: string): string {
   return new Date(iso).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Bangkok' })
 }
 
-function buildPage(participants: SignInParticipant[], pageIndex: number, isLastPage: boolean): string {
+function buildPage(participants: SignInParticipant[], pageIndex: number, isLastPage: boolean, header: SignInHeader): string {
   const start = pageIndex * ROWS_PER_PAGE
   const rows = Array.from({ length: DISPLAY_ROWS_PER_PAGE }, (_, i) => {
     const rowNo = start + i
@@ -41,8 +50,8 @@ function buildPage(participants: SignInParticipant[], pageIndex: number, isLastP
 
   return `<div class="qt-sign-page">
     <div class="qt-sign-title">แบบบันทึกใบลงนามรับทราบการสื่อสารเพื่อการพัฒนา</div>
-    <div class="qt-sign-line">หน่วยงาน .............................................. กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี</div>
-    <div class="qt-sign-line">การประชุม .................................................................. เรื่อง ............................................</div>
+    <div class="qt-sign-line"><b>หน่วยงาน</b> ${escapeHtml(header.department)} กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี</div>
+    <div class="qt-sign-line"><b>การประชุม</b> ${escapeHtml(header.meetingCategory)} <b>เรื่อง</b> ${escapeHtml(header.subject)}</div>
     <table>
       <thead><tr><th>ลำดับที่</th><th>ชื่อ - สกุล</th><th>ตำแหน่ง</th><th>ลายเซ็นต์</th><th>วัน เดือน ปี</th><th>หมายเหตุ</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -59,16 +68,17 @@ function buildPage(participants: SignInParticipant[], pageIndex: number, isLastP
 }
 
 // Renders the FM-QP-LAB-25-01 sign-in sheet as a print-ready HTML document.
-// Only ลำดับที่/ชื่อ-สกุล/ตำแหน่ง are auto-filled from the personnel profile;
-// ลายเซ็นต์/วันเดือนปี/หมายเหตุ and the
-// หน่วยงาน/การประชุม/เรื่อง header lines stay blank for manual fill-in at print time.
+// ลำดับที่/ชื่อ-สกุล/ตำแหน่ง come from the personnel profile, and หน่วยงาน/การประชุม/เรื่อง
+// come from `header` (resolved by the caller from the occurrence's responsible person's
+// dept, template category, and template title) — none of the header line is left blank
+// for manual fill-in anymore. ลายเซ็นต์/วันเดือนปี/หมายเหตุ stay blank/QR-stamped per row.
 // Pages are fixed at 20 rows each — a resolved audience can realistically exceed 20
 // (e.g. an all-departments meeting), so every page repeats the header/watermark/footer
 // and only the LAST page pads with blank rows.
-export function buildParticipantSignInHtml(participants: SignInParticipant[]): string {
+export function buildParticipantSignInHtml(participants: SignInParticipant[], header: SignInHeader): string {
   const pageCount = Math.max(1, Math.ceil(participants.length / ROWS_PER_PAGE))
   const pagesHtml = Array.from({ length: pageCount }, (_, pageIndex) =>
-    buildPage(participants, pageIndex, pageIndex === pageCount - 1),
+    buildPage(participants, pageIndex, pageIndex === pageCount - 1, header),
   ).join('')
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ใบลงนามรับทราบการสื่อสาร</title><style>

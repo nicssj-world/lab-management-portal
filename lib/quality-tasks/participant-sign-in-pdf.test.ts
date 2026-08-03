@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict'
-import { buildParticipantSignInHtml } from './participant-sign-in-pdf'
+import { buildParticipantSignInHtml, type SignInHeader } from './participant-sign-in-pdf'
+
+const header: SignInHeader = {
+  department: 'สำนักงานกลุ่มงานเทคนิคการแพทย์',
+  meetingCategory: 'การประชุมและการสื่อสารภายใน',
+  subject: 'การประชุมคณะกรรมการบริหารกลุ่มงานเทคนิคการแพทย์',
+}
 
 function countOccurrences(haystack: string, needle: string) {
   return haystack.split(needle).length - 1
@@ -18,7 +24,7 @@ const small = buildParticipantSignInHtml([
   { name: 'A', positionTitle: null },
   { name: 'B', positionTitle: null },
   { name: 'C', positionTitle: null },
-])
+], header)
 assert.equal(countOccurrences(small, 'class="qt-sign-page"'), 1, 'small list fits on one page')
 assert.equal(countBodyRows(small), 35, 'one page extends the table to 35 data rows')
 assert.ok(small.includes('<td class="c">20</td>'), 'the twentieth participant slot is numbered')
@@ -32,39 +38,51 @@ assert.ok(small.includes('width: 182mm; height: 273mm;'), 'page content fits ins
 assert.ok(small.includes('color: #9DBFD5; opacity: .22;'), 'watermark uses the original light blue treatment')
 assert.ok(!small.includes('rotate('), 'watermark stays horizontal like the original form')
 
+// หัวฟอร์มเติมข้อมูลจริงแทนจุดไข่ปลา — หน่วยงาน/การประชุม/เรื่อง ต้องไม่เหลือช่องว่างให้กรอกเอง
+// และป้ายชื่อ (label) ทั้งสามคำต้องเป็นตัวหนา แยกจากค่าที่กรอกอัตโนมัติซึ่งเป็นตัวปกติ
+assert.ok(small.includes('<b>หน่วยงาน</b> สำนักงานกลุ่มงานเทคนิคการแพทย์ กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี'), 'department is auto-filled into the header line with a bold label')
+assert.ok(small.includes('<b>การประชุม</b> การประชุมและการสื่อสารภายใน <b>เรื่อง</b> การประชุมคณะกรรมการบริหารกลุ่มงานเทคนิคการแพทย์'), 'meeting category and subject are auto-filled into the header line with bold labels')
+assert.ok(!small.includes('..............'), 'no dotted placeholder remains in the header once auto-filled')
+
 // 25 participants -> two pages; page 1 fully filled (no blank name cells), page 2 has 5 filled + 15 blank
 const many = buildParticipantSignInHtml(
   Array.from({ length: 25 }, (_, i) => ({ name: `Person ${i + 1}`, positionTitle: null })),
+  header,
 )
 assert.equal(countOccurrences(many, 'class="qt-sign-page"'), 2, 'more than 20 participants paginates to a second page')
 assert.equal(countBodyRows(many), 70, 'two pages each extend to 35 data rows')
 assert.ok(many.includes('Person 1') && many.includes('Person 20') && many.includes('Person 21') && many.includes('Person 25'))
 
 // 0 participants -> still renders one usable blank page
-const empty = buildParticipantSignInHtml([])
+const empty = buildParticipantSignInHtml([], header)
 assert.equal(countOccurrences(empty, 'class="qt-sign-page"'), 1)
 assert.equal(countBodyRows(empty), 35)
 
 // Names must be HTML-escaped (defense in depth against a stray "<"/"&" in a profile name)
-const escaped = buildParticipantSignInHtml([{ name: '<script>alert(1)</script>', positionTitle: null }])
+const escaped = buildParticipantSignInHtml([{ name: '<script>alert(1)</script>', positionTitle: null }], header)
 assert.ok(!escaped.includes('<script>alert(1)</script>'), 'raw script tag must not appear unescaped')
 assert.ok(escaped.includes('&lt;script&gt;'), 'name is HTML-escaped')
+
+// Header values must also be HTML-escaped — a template title/category is free text
+const escapedHeader = buildParticipantSignInHtml([], { department: '<b>x</b>', meetingCategory: 'y', subject: 'z' })
+assert.ok(!escapedHeader.includes('<b>x</b>'), 'raw markup in a header value must not appear unescaped')
+assert.ok(escapedHeader.includes('&lt;b&gt;x&lt;/b&gt;'), 'department value is HTML-escaped')
 
 // QR check-in stamps the signature/date cells instead of leaving them blank for a pen signature
 const checkedIn = buildParticipantSignInHtml([
   { name: 'สมชาย ใจดี', positionTitle: null, checkedInAt: '2026-08-03T07:15:00Z' },
-])
+], header)
 assert.ok(checkedIn.includes('เช็คอิน QR'), 'checked-in row shows a QR check-in stamp instead of a blank signature cell')
 assert.ok(checkedIn.includes('03/08/2569'), 'checked-in row prints the check-in date in the date column')
 
 // A walk-in who was auto-added gets a remark so the row is explainable during an audit
 const walkIn = buildParticipantSignInHtml([
   { name: 'สมหญิง ขยัน', positionTitle: null, checkedInAt: '2026-08-03T07:20:00Z', wasUnlisted: true },
-])
+], header)
 assert.ok(walkIn.includes('เพิ่มหน้างาน'), 'auto-added walk-in participant is marked in the remark column')
 
 // A participant who has not checked in yet keeps the original blank cells for manual sign-in
-const notYetCheckedIn = buildParticipantSignInHtml([{ name: 'ยังไม่มา', positionTitle: null }])
+const notYetCheckedIn = buildParticipantSignInHtml([{ name: 'ยังไม่มา', positionTitle: null }], header)
 assert.ok(!notYetCheckedIn.includes('เช็คอิน QR'), 'participant with no check-in keeps a blank signature cell')
 
 console.log('lib/quality-tasks/participant-sign-in-pdf.test.ts: all assertions passed')

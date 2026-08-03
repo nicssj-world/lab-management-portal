@@ -77,6 +77,7 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   "quality_task.instance.delete": "ลบงานเฉพาะกิจ",
   "quality_task.attachment.upload": "แนบไฟล์หลักฐาน",
   "quality_task.attachment.delete": "ลบไฟล์หลักฐาน",
+  "quality_task.check_in": "เช็คอิน",
 };
 const MAX_VISIBLE_CALENDAR_EVENTS = 2;
 
@@ -119,6 +120,15 @@ function assigneeName(e: AssigneeEntry, people: Person[]) {
   return e.userId
     ? (people.find((p) => p.id === e.userId)?.name ?? e.manualName)
     : e.manualName;
+}
+// หน่วยงานสำหรับหัว PDF ใบลงนาม — เอาจากผู้รับผิดชอบคนแรกที่ผูกกับผู้ใช้ในระบบ (มี dept จริง)
+// ผู้รับผิดชอบที่เป็นชื่อพิมพ์เอง (manualName ล้วน) ไม่มี dept ให้อ้างอิง จึงข้ามไปหาคนถัดไป
+function assigneeDept(entries: AssigneeEntry[], people: Person[]) {
+  for (const e of entries) {
+    const dept = e.userId ? people.find((p) => p.id === e.userId)?.dept : null;
+    if (dept) return dept;
+  }
+  return "";
 }
 
 export function QualityTaskDashboard({
@@ -461,13 +471,34 @@ export function QualityTaskDashboard({
     const checkInByUserId = new Map(
       selected.checkIns.map((c) => [c.userId, c]),
     );
+    // ผู้ที่เพิ่มเข้ามาหน้างาน (wasUnlisted) ต้องต่อท้ายรายชื่อเดิมเสมอ ไม่ใช่แทรกตามลำดับตัวอักษร —
+    // resolveParticipants คืนรายชื่อเรียงตามชื่อ (จาก listTaskPeople ที่ .order('name')) โดยไม่แยกว่า
+    // ใครมาก่อน ใครถูกเพิ่มทีหลัง จึง sort ซ้ำตรงนี้เฉพาะตอนสร้างใบลงนาม
+    // กลุ่มที่มีรายชื่ออยู่แล้วคงลำดับเดิม (stable sort คืนค่า 0) ส่วนกลุ่ม walk-in เรียงตามเวลาเช็คอินจริง
+    // (มาก่อนอยู่บนกว่า) แทนลำดับตัวอักษร เพราะลำดับที่มาหน้างานคือสิ่งที่มีความหมายกว่าในกลุ่มนี้
+    const ordered = [...selected.participants].sort((a, b) => {
+      const aCheckIn = checkInByUserId.get(a.id);
+      const bCheckIn = checkInByUserId.get(b.id);
+      const aWalkIn = aCheckIn?.wasUnlisted ? 1 : 0;
+      const bWalkIn = bCheckIn?.wasUnlisted ? 1 : 0;
+      if (aWalkIn !== bWalkIn) return aWalkIn - bWalkIn;
+      if (!aWalkIn) return 0;
+      const aTime = aCheckIn?.checkedInAt ?? "";
+      const bTime = bCheckIn?.checkedInAt ?? "";
+      return aTime < bTime ? -1 : aTime > bTime ? 1 : 0;
+    });
     const html = buildParticipantSignInHtml(
-      selected.participants.map((p) => ({
+      ordered.map((p) => ({
         name: p.name,
         positionTitle: p.positionTitle,
         checkedInAt: checkInByUserId.get(p.id)?.checkedInAt ?? null,
         wasUnlisted: checkInByUserId.get(p.id)?.wasUnlisted ?? false,
       })),
+      {
+        department: assigneeDept(selected.assignees, people),
+        meetingCategory: selected.template.categoryName,
+        subject: selected.template.title,
+      },
     );
     const blobUrl = URL.createObjectURL(
       new Blob([html], { type: "text/html;charset=utf-8" }),
@@ -1096,13 +1127,22 @@ export function QualityTaskDashboard({
                 }
               />
               <Info label="วันครบกำหนด" value={fmt(selected.effectiveDueDate)} />
-              <Info
-                label="ผู้เข้าร่วมประชุม"
-                value={
-                  selected.participants.map((p) => p.name).join(", ") ||
-                  "ยังไม่กำหนด"
-                }
-              />
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  maxHeight: 130,
+                  overflowY: "auto",
+                  borderRadius: 9,
+                }}
+              >
+                <Info
+                  label="ผู้เข้าร่วมประชุม"
+                  value={
+                    selected.participants.map((p) => p.name).join(", ") ||
+                    "ยังไม่กำหนด"
+                  }
+                />
+              </div>
               {selected.completionNote && (
                 <div style={{ gridColumn: "1 / -1" }}>
                   <Info
@@ -1456,7 +1496,16 @@ export function QualityTaskDashboard({
             >
               <b style={{ fontSize: 12 }}>ประวัติกิจกรรม</b>
               {history.length ? (
-                <div style={{ display: "grid", gap: 7, marginTop: 7 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 7,
+                    marginTop: 7,
+                    maxHeight: 120,
+                    overflowY: "auto",
+                    paddingRight: 4,
+                  }}
+                >
                   {history.map((h) => (
                     <div
                       key={h.id}

@@ -49,11 +49,19 @@ function actionDotColor(action: string | null): string {
   if (a.startsWith('test.') || a.startsWith('category.'))         return '#1E5FAD' // blue — รายการตรวจ
   if (a.startsWith('equipment.'))                                  return '#EA580C' // orange — เครื่องมือ
   if (a.startsWith('contract.'))                                   return '#7C3AED' // purple — สัญญา
-  if (a.startsWith('risk.') || a.startsWith('rejection.'))        return '#DC2626' // red — ความเสี่ยง
+  if (a.startsWith('risk.') || a.startsWith('rejection.') ||
+      a.startsWith('register.') || a.startsWith('incident.') ||
+      a.startsWith('smart_rm.'))                                  return '#DC2626' // red — ความเสี่ยง
+  if (a.startsWith('lab_map.') || a.startsWith('chemical_safety.')) return '#059669' // emerald — ความปลอดภัย
   if (a.startsWith('kpi.'))                                        return '#16A34A' // green — KPI
+  if (a.startsWith('satisfaction.'))                               return '#0F766E'
   if (a.startsWith('eqa.'))                                        return '#0F766E'
   if (a.startsWith('outlab.'))                                     return '#C2410C'
+  if (a.startsWith('it_visitor.'))                                 return '#2563EB'
   if (a.startsWith('it_'))                                         return '#0369A1' // sky — งาน IT
+  if (a.startsWith('personnel.'))                                  return '#B45309'
+  if (a.startsWith('head_contact.'))                                return '#BE185D'
+  if (a.startsWith('quality_task.'))                               return '#9333EA'
   if (a.includes('news'))                                          return '#D97706' // amber — ข่าวสาร
   return '#64748B' // gray — อื่นๆ
 }
@@ -651,6 +659,8 @@ const ACTION_LABELS: Record<string, string> = {
   'outlab.certificate.create':                    'เพิ่ม/ต่ออายุใบรับรอง OUTLAB',
   'outlab.certificate.update':                    'แก้ไขใบรับรอง OUTLAB',
   'outlab.certificate.revoke':                    'เพิกถอนใบรับรอง OUTLAB',
+  'outlab.certificate.purge':                     'ลบถาวรใบรับรอง OUTLAB',
+  'outlab.service.bulk_import':                   'นำเข้าบริการส่งตรวจ OUTLAB (กลุ่ม)',
   'outlab.attachment.upload':                     'แนบไฟล์ใบรับรอง OUTLAB',
   'outlab.attachment.delete':                     'ลบไฟล์ใบรับรอง OUTLAB',
   'outlab.editor.update':                         'แก้ไขสิทธิ์ผู้ดูแล OUTLAB',
@@ -701,25 +711,68 @@ const ACTION_LABELS: Record<string, string> = {
   'document.obsolete_stamp':                      'ประทับตรา OBSOLETE บนเอกสาร',
   'document.footer_stamp':                        'ประทับ Metadata หน้าเอกสารใหม่',
   'document.read_audience_bulk':                  'ตั้งค่ากลุ่มผู้อ่านเอกสาร (กลุ่ม)',
+  'document.official_confirm':                    'ยืนยันไฟล์ทางการ',
+  'document.ephemeral_purge_retry':               'ลองล้างไฟล์ชั่วคราวใหม่',
+  'document.delete_set':                          'ลบชุดเอกสาร',
   // เครื่องมือ
   'equipment.create':                             'เพิ่มเครื่องมือ',
   'equipment.update':                             'แก้ไขเครื่องมือ',
   'equipment.delete':                             'ลบเครื่องมือ',
   'equipment.permission.update':                  'แก้ไขสิทธิ์ผู้แก้ไขเครื่องมือ',
+  'equipment.area.create':                        'เพิ่มพื้นที่แผนผังเครื่องมือ',
+  'equipment.area.update':                         'แก้ไขพื้นที่แผนผังเครื่องมือ',
+  'equipment.survey_round.open':                  'เปิดรอบสำรวจเครื่องมือ',
+  'equipment.survey_round.close':                 'ปิดรอบสำรวจเครื่องมือ',
   // สัญญา
   'contract.create':                              'เพิ่มสัญญา',
   'contract.update':                              'แก้ไขสัญญา',
   'contract.delete':                              'ลบสัญญา',
   'contract.usage_add':                           'บันทึกค่าใช้จ่ายสัญญา',
-  // ความเสี่ยง
+  // ความเสี่ยง — legacy
   'risk.create':                                  'บันทึกความเสี่ยง',
   'risk.update':                                  'แก้ไขความเสี่ยง',
   'risk.delete':                                  'ลบความเสี่ยง',
   'risk.close':                                   'ปิดประเด็นความเสี่ยง',
+  'risk.attachment.upload':                       'แนบไฟล์ความเสี่ยง',
+  'risk.attachment.delete':                       'ลบไฟล์แนบความเสี่ยง',
   'rejection.create':                             'บันทึก Rejection',
+  'smart_rm.import':                              'นำเข้าข้อมูล Smart RM',
+  // ความเสี่ยง — Risk Register (ISO 15189 8.5)
+  'register.create':                              'เปิดรายการความเสี่ยง (Register)',
+  'register.update':                              'แก้ไขรายการความเสี่ยง (Register)',
+  'register.delete':                              'ลบรายการความเสี่ยง (Register)',
+  'register.review':                              'ทบทวนความเสี่ยงประจำปี (Register)',
+  'register.residual':                            'ประเมินความเสี่ยงคงเหลือ (Register)',
+  'register.close':                               'ปิดรายการความเสี่ยง (Register)',
+  'register.action.create':                       'เพิ่มมาตรการจัดการความเสี่ยง (Register)',
+  // ความเสี่ยง — IOR (ISO 15189 8.7)
+  'incident.report':                              'บันทึกอุบัติการณ์ (IOR)',
+  'incident.review':                              'ทบทวนอุบัติการณ์ (IOR)',
+  'incident.update':                              'แก้ไขอุบัติการณ์ (IOR)',
+  'incident.delete':                              'ลบอุบัติการณ์ (IOR)',
+  'incident.close':                               'ปิดอุบัติการณ์ (IOR)',
+  'incident.escalate':                            'ยกระดับอุบัติการณ์เข้า Register',
+  'incident.action.create':                       'เพิ่มมาตรการจัดการอุบัติการณ์ (IOR)',
+  // ความปลอดภัย — แผนที่ห้องปฏิบัติการ / ห้องสารเคมี
+  'lab_map.safety_inspection_round.close':        'ปิดรอบตรวจอุปกรณ์ความปลอดภัย',
+  'chemical_safety.sds.create_draft':             'สร้างฉบับร่าง SDS',
+  'chemical_safety.sds.upload_file':              'อัปโหลดไฟล์ SDS',
+  'chemical_safety.sds.delete_draft':             'ลบฉบับร่าง SDS',
+  'chemical_safety.department_sds.upload':        'อัปโหลด SDS แยกตามงาน',
+  'chemical_safety.department_sds.rename':        'แก้ไขชื่อ SDS แยกตามงาน',
+  'chemical_safety.department_sds.delete':        'ลบ SDS แยกตามงาน',
+  'chemical_safety.department_sds.replace_file':  'แทนที่ไฟล์ SDS แยกตามงาน',
+  'chemical_safety.department_sds.publish':       'เผยแพร่ SDS แยกตามงาน',
+  'chemical_safety.registry.export_pdf':          'ส่งออกทะเบียนสารเคมี (PDF)',
+  'chemical_safety.role_scope.grant':             'มอบสิทธิ์ผู้ดูแลสารเคมี',
+  'chemical_safety.role_scope.revoke':            'ถอนสิทธิ์ผู้ดูแลสารเคมี',
+  'chemical_safety.import.prepared':              'เตรียมนำเข้าข้อมูลสารเคมี',
   // KPI
   'kpi.entry':                                    'บันทึก KPI',
   'kpi.settings':                                 'ตั้งค่ารายการ KPI',
+  'kpi.definition.create':                        'เพิ่มตัวชี้วัด KPI',
+  'kpi.definition.update':                        'แก้ไขตัวชี้วัด KPI',
+  'kpi.definition.delete':                        'ลบตัวชี้วัด KPI',
   // งานคุณภาพ
   'quality_task.attachment.upload':               'อัปโหลดไฟล์แนบงานคุณภาพ',
   'quality_task.attachment.delete':               'ลบไฟล์แนบงานคุณภาพ',
@@ -733,6 +786,7 @@ const ACTION_LABELS: Record<string, string> = {
   'quality_task.template.create':                 'เพิ่มกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   'quality_task.template.update':                 'แก้ไขกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   'quality_task.template.delete':                  'ลบกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
+  'quality_task.check_in':                        'เช็คอินกิจกรรมคุณภาพ',
   // งาน IT — ระบบสารสนเทศ
   'it_access.create':                             'เพิ่มสิทธิ์เข้าถึงระบบสารสนเทศ',
   'it_access.update':                             'แก้ไขสิทธิ์เข้าถึงระบบสารสนเทศ',
@@ -791,6 +845,8 @@ const ACTION_LABELS: Record<string, string> = {
   'personnel.staff_authorizations.create':         'เพิ่มการมอบหมายงาน (Authorization)',
   'personnel.staff_authorizations.update':         'แก้ไขการมอบหมายงาน (Authorization)',
   'personnel.staff_authorizations.delete':         'ลบการมอบหมายงาน (Authorization)',
+  'personnel.staff_authorizations.batch_create':   'มอบสิทธิทำการตรวจ (หลายรายการ)',
+  'personnel.training.his_import':                'นำเข้าประวัติการอบรมจาก HIS',
   'personnel.dept_role.set':                      'กำหนดบทบาทในผังกลุ่มงาน',
   'personnel.work_group.create':                  'รวมงานเป็นกลุ่มในผังองค์กร',
   'personnel.bulk.authorizations':                'มอบสิทธิทำการตรวจ (หลายคน)',
@@ -813,6 +869,19 @@ const ACTION_LABELS: Record<string, string> = {
   'settings.update':                              'แก้ไขการตั้งค่าระบบ',
   'phleb_upload_init':                            'อัปโหลดข้อมูล Phlebotomy',
   'delete':                                       'ล้างประวัติการอ่านเอกสาร',
+  'manual_publish':                               'เผยแพร่คู่มือ',
+  'satisfaction.report.export':                   'ส่งออกรายงานความพึงพอใจ',
+  'satisfaction.comments.export':                 'ส่งออกความคิดเห็นแบบสำรวจ',
+  'satisfaction.kpi.publish':                     'เผยแพร่ผลสำรวจไปยัง KPI',
+  'satisfaction.draft.discard':                    'ยกเลิกฉบับร่างแบบสำรวจ',
+  // เอกสารที่เกี่ยวข้อง (หน้าสาธารณะ)
+  'public_section_create':                        'เพิ่มหมวดเอกสารที่เกี่ยวข้อง',
+  'public_section_update':                        'แก้ไขหมวดเอกสารที่เกี่ยวข้อง',
+  'public_section_delete':                        'ลบหมวดเอกสารที่เกี่ยวข้อง',
+  'public_section_reorder':                       'จัดเรียงหมวดเอกสารที่เกี่ยวข้อง',
+  'public_section_items':                         'จัดการรายการในหมวดเอกสารที่เกี่ยวข้อง',
+  'public_section_upload':                        'อัปโหลดไฟล์เอกสารที่เกี่ยวข้อง',
+  'public_section_upload_delete':                 'ลบไฟล์เอกสารที่เกี่ยวข้อง',
 }
 
 const STATUS_TH: Record<string, string> = {
