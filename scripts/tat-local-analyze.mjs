@@ -528,6 +528,7 @@ function readWorkloadTestMap() {
     { section: 'อณูพันธุศาสตร์', test_name: 'NIPT (สปสช.)', code: null, price: null },
     { section: 'POCT2', test_name: 'POCT Blood gas', code: null, price: null },
     { section: 'POCT2', test_name: 'SARS-CoV-2(COVID-19) Rapid Antigen Test', code: null, price: null },
+    { section: 'POCT2', test_name: 'Ionized Calcium POCT', code: null, price: null },
     { section: 'เคมีคลินิก', test_name: 'Protein-random urine', code: null, price: null }
   )
 
@@ -655,6 +656,9 @@ function workloadRule(testName, preferredSection) {
   }
   if (normalized === 'direct antiglobulin test gel method') {
     return [{ section: 'ธนาคารเลือด', test_name: 'DAT(Gel method)' }]
+  }
+  if (normalized === 'igra interferon gamma releasing assay สคร6 ชลบุรี') {
+    return [{ section: 'ตรวจพิเศษและปฏิบัติการตรวจต่อ', test_name: 'IGRA (Interferon Gamma releasing assay) สคร6 ชลบุรี' }]
   }
   if (preferredSection === MOLECULAR_SECTION && normalized === 'cd34 stem cell enumeration pbsc') {
     return [{ section: MOLECULAR_SECTION, test_name: 'CD34 Stem cell enumeration(Peripheral blood)' }]

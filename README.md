@@ -29,6 +29,20 @@ Fiscal year 2569 example mapping:
 | `0469` | 2026-04 |
 | `0569` | 2026-05 |
 
+### Workload test-name map maintenance
+
+`tat:local` also matches every TAT test name against `data/workload-test-map-2569.xlsx` (`buildWorkloadSummary` in `scripts/tat-local-analyze.mjs`) to decide which งาน/section a test's workload counts against. A test name with no match in the map is **silently dropped from the Workload dashboard** — no warning, no error. After importing a new month, if Workload counts look low for a section, check for unmatched names (compare `test_name` values from the TAT export column `compute_0014` against the map).
+
+Most "new test" hits turn out to be one of these, not an actual missing test:
+
+- **Comma-split artifact** — `splitTatRows` splits `test_name` on `,`. A map entry like `HAV Ab., IgG (serum)` or `Anti B2 Glycoprotein 1, IgG (Quantitative)` gets sent through as two fragments (`HAV Ab.` + `IgG (serum)`) that match nothing. Not a new test — leave the map entry as-is.
+- **Name/spelling mismatch** — e.g. brand name from the LIS export (`Lanoxin`, `Theo-Dur (Aminophylline)`) vs. generic name in the map (`Digoxin`, `Theophylline`), or a typo in the map (`Allopurinal` vs `Allopurinol`). Fix by renaming the map's `Test (LN)` cell to match the TAT export text exactly (normalization only strips `()[]{}/_,;:|+-` and collapses whitespace — it does not fix spelling or word-order differences).
+- **Panel/result component** — CBC differential counts, urine/stool microscopy findings, blood-gas sub-results, malaria morphology stages, etc. are already intentionally excluded in `workloadRule()` (`eGFR (CKD-Epi)`, `FiO2*`, `TIBC` return `[]`) or simply have no map entry because they were never meant to be counted as a separate workload test.
+
+If a name really is new, add a row for it in the matching sheet of `data/workload-test-map-2569.xlsx` (Test name in column B; E-phis/รหัสกรม/Price can stay blank like many existing rows). **`POCT2` has no sheet in the workbook** — its rows are hardcoded in the `rows.push(...)` block at the end of `readWorkloadTestMap()`; add POCT2 tests there instead.
+
+If the test needs a specific section regardless of which lab_section/ward it arrived under (e.g. a test that's clinically routed to `ตรวจพิเศษและปฏิบัติการตรวจต่อ` but gets exported under a `ศสม.` ward), add an explicit case to `workloadRule()` rather than relying on `findWorkloadMatch`'s exact/fuzzy matching — see the `IGRA (Interferon Gamma releasing assay) สคร6 ชลบุรี` rule for the pattern.
+
 ## Quality Task List
 
 Run `scripts/quality-task-module.sql` in Supabase Dashboard → SQL Editor before opening `/staff/quality-tasks`. The script creates the task registry, recurring schedules, per-period work records, assignees, R2 attachment metadata, permission defaults, and the 44 ISO/QMS activities from `Quality_Task_List_CBH.xlsx`. Runtime reminders are calculated in the portal; v1 does not require cron, email, or LINE configuration.
