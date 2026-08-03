@@ -82,7 +82,7 @@ export function RiskActionsPanel({ actions, endpoint, canManage, actorName, onCh
       ))}
 
       {canManage && (adding
-        ? <NewActionForm onCancel={() => setAdding(false)} onSubmit={async draft => { if (await send('POST', draft)) setAdding(false) }} />
+        ? <NewActionForm actorName={actorName} onCancel={() => setAdding(false)} onSubmit={async draft => { if (await send('POST', draft)) setAdding(false) }} />
         : <Button variant="secondary" icon="plus" onClick={() => setAdding(true)}>เพิ่มมาตรการ</Button>
       )}
     </div>
@@ -230,11 +230,12 @@ function ActionCard({ action, canManage, actorName, onSave, onDelete }: {
   )
 }
 
-function NewActionForm({ onCancel, onSubmit }: {
+function NewActionForm({ actorName, onCancel, onSubmit }: {
+  actorName: string | null
   onCancel: () => void
   onSubmit: (draft: Record<string, unknown>) => Promise<void>
 }) {
-  const [draft, setDraft] = useState({ action_type: 'corrective', description: '', owner: '', due_date: '' })
+  const [draft, setDraft] = useState({ action_type: 'corrective', description: '', owner: actorName ?? '', due_date: '' })
   const [saving, setSaving] = useState(false)
   const [touched, setTouched] = useState(false)
   const descriptionError = touched && !draft.description.trim() ? 'ต้องกรอกรายละเอียดมาตรการ' : undefined

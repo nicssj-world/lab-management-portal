@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { AttachmentPanel, type RiskAttachment } from './shared/AttachmentPanel'
 import { RiskActionsPanel, type RiskAction } from './shared/RiskActionsPanel'
-import { ErrorBanner, Field, Modal, SeverityBadge, StatusBadge } from './shared/ui'
+import { ErrorBanner, Field, Modal, PdfDownloadLink, SeverityBadge, StatusBadge } from './shared/ui'
 import {
   FONT, INCIDENT_STATUSES, RCA_FACTORS, RCA_METHODS, SEVERITY_DESCRIPTIONS, SEVERITY_LETTERS, SPACE,
   formatThaiDate, inputStyle, requiresRca, tabularNums, textareaStyle,
@@ -163,6 +163,7 @@ export function IncidentDetailModal({ incidentId, canEdit, canReview, actorName,
       subtitle={`${formatThaiDate(incident.event_date)} · ${incident.department_found ?? 'ไม่ระบุหน่วยงาน'}`}
       onClose={onClose}
       width={880}
+      headerActions={<PdfDownloadLink href={`/api/admin/risk/incidents/${incidentId}/pdf`} label="ดาวน์โหลดสรุป PDF" />}
       footer={
         <>
           {canEdit && !closed

@@ -1,6 +1,10 @@
 export interface SignInParticipant {
   name: string
   positionTitle: string | null
+  /** เช็คอินด้วย QR เมื่อไหร่ — null/undefined = ยังไม่เช็คอิน (เว้นช่องไว้ให้เซ็นสด) */
+  checkedInAt?: string | null
+  /** ตอนเช็คอินยังไม่อยู่ในรายชื่อผู้เข้าร่วมเดิม ระบบเพิ่มให้อัตโนมัติ */
+  wasUnlisted?: boolean
 }
 
 const ROWS_PER_PAGE = 20
@@ -14,6 +18,10 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
+function formatCheckInDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Bangkok' })
+}
+
 function buildPage(participants: SignInParticipant[], pageIndex: number, isLastPage: boolean): string {
   const start = pageIndex * ROWS_PER_PAGE
   const rows = Array.from({ length: DISPLAY_ROWS_PER_PAGE }, (_, i) => {
@@ -23,7 +31,12 @@ function buildPage(participants: SignInParticipant[], pageIndex: number, isLastP
     const displayNumber = isParticipantRow ? String(rowNo + 1) : ''
     const name = person ? escapeHtml(person.name) : ''
     const position = person?.positionTitle ? escapeHtml(person.positionTitle) : ''
-    return `<tr><td class="c">${displayNumber}</td><td class="l">${name}</td><td class="l">${position}</td><td></td><td></td><td></td></tr>`
+    // เช็คอินด้วย QR แทนการเซ็นสด — พิมพ์ผลเช็คอินลงในช่องลายเซ็นต์/วันเดือนปีแทนการเว้นว่าง
+    // ผู้เข้าร่วมที่ระบบเพิ่มให้อัตโนมัติ (ไม่อยู่ในรายชื่อเดิม) มีหมายเหตุกำกับไว้ให้ตรวจสอบย้อนหลังได้
+    const signatureCell = person?.checkedInAt ? `<td class="c qt-checkin">${escapeHtml('✓ เช็คอิน QR')}</td>` : '<td></td>'
+    const dateCell = person?.checkedInAt ? `<td class="c qt-checkin">${escapeHtml(formatCheckInDate(person.checkedInAt))}</td>` : '<td></td>'
+    const remarkCell = person?.wasUnlisted ? `<td class="c qt-checkin">${escapeHtml('เพิ่มหน้างาน')}</td>` : '<td></td>'
+    return `<tr><td class="c">${displayNumber}</td><td class="l">${name}</td><td class="l">${position}</td>${signatureCell}${dateCell}${remarkCell}</tr>`
   }).join('')
 
   return `<div class="qt-sign-page">
@@ -71,6 +84,7 @@ export function buildParticipantSignInHtml(participants: SignInParticipant[]): s
     th { background: #f0f0f0; font-weight: bold; text-align: center; }
     .c { text-align: center; }
     .l { text-align: left; }
+    .qt-checkin { color: #1E5FAD; font-weight: bold; font-size: 10.5pt; }
     .qt-sign-watermark { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; pointer-events: none; z-index: -1; color: #9DBFD5; opacity: .22; font-size: 42pt; line-height: 1; font-weight: normal; white-space: nowrap; transform: scaleX(1.12); }
     .qt-sign-footer { display: flex; align-items: center; margin-top: auto; padding-top: 6px; font-size: 10pt; color: #333; }
     .qt-sign-footer-notice { flex: 1; text-align: center; }

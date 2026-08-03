@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
@@ -8,7 +8,7 @@ import { LAB_MAP_SPACE_OPTIONS } from '@/lib/lab-map/space-options'
 import { AttachmentPanel, type RiskAttachment } from './shared/AttachmentPanel'
 import { RiskActionsPanel, type RiskAction } from './shared/RiskActionsPanel'
 import { ScalePicker, ScoreReadout } from './shared/ScalePicker'
-import { ErrorBanner, Field, LevelBadge, Modal, StatusBadge } from './shared/ui'
+import { ErrorBanner, Field, LevelBadge, Modal, PdfDownloadLink, StatusBadge } from './shared/ui'
 import {
   FONT, IMPACT_SCALE, LEVEL_LABEL, LIKELIHOOD_SCALE, REGISTER_STATUSES, SPACE,
   formatThaiDate, inputStyle, riskLevel, riskScore, tabularNums, textareaStyle,
@@ -56,6 +56,18 @@ const LEVEL_TONE_VAR: Record<string, string> = {
   high: 'var(--danger)',
 }
 
+/** แจ้งผลสำเร็จของการกระทำที่ไม่มีการเปลี่ยนแปลงอื่นให้เห็นในหน้าจอ (เช่น ยืนยันทบทวน/ปิดรายการ) */
+function useToast() {
+  const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([])
+  const counter = useRef(0)
+  const add = useCallback((msg: string) => {
+    const id = ++counter.current
+    setToasts(t => [...t, { id, msg }])
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3500)
+  }, [])
+  return { toasts, add }
+}
+
 export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, onClose, onChanged }: {
   entryId: number
   canEdit: boolean
@@ -70,7 +82,9 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
   const [sourceIncidents, setSourceIncidents] = useState<SourceIncident[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [blockers, setBlockers] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
+  const toast = useToast()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -92,9 +106,10 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
 
   useEffect(() => { void load() }, [load])
 
-  async function send(path: string, method: string, body?: unknown) {
+  async function send(path: string, method: string, body?: unknown, successMessage?: string) {
     setBusy(true)
     setError('')
+    setBlockers([])
     try {
       const res = await fetch(`/api/admin/risk/register/${entryId}${path}`, {
         method,
@@ -102,9 +117,13 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
         body: body ? JSON.stringify(body) : undefined,
       })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error ?? 'ดำเนินการไม่สำเร็จ')
+      if (!res.ok) {
+        if (Array.isArray(json.blockers)) setBlockers(json.blockers)
+        throw new Error(json.error ?? 'ดำเนินการไม่สำเร็จ')
+      }
       await load()
       onChanged()
+      if (successMessage) toast.add(successMessage)
       return true
     } catch (err) {
       setError((err as Error).message)
@@ -133,25 +152,50 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
       subtitle={`ประเมินเมื่อ ${formatThaiDate(entry.assessed_date)} · ${entry.department ?? 'ไม่ระบุหน่วยงาน'}`}
       onClose={onClose}
       width={900}
+      headerActions={<PdfDownloadLink href={`/api/admin/risk/register/${entryId}/pdf`} label="ดาวน์โหลดสรุป PDF" />}
       footer={
         <>
-          {canEdit
+          {canEdit && entry.status !== 'closed'
             ? <Button variant="danger" icon="trash" onClick={async () => {
                 if (!window.confirm('ลบรายการนี้ออกจากทะเบียนหรือไม่')) return
                 const res = await fetch(`/api/admin/risk/register/${entryId}`, { method: 'DELETE' })
                 if (res.ok) { onChanged(); onClose() }
               }}>ลบรายการ</Button>
             : <span />}
-          {canReview && (
-            <Button variant="primary" icon="shieldCheck" disabled={busy} onClick={() => void send('/review', 'POST')}>
-              ยืนยันทบทวนแล้ว
-            </Button>
-          )}
+          <div style={{ display: 'flex', gap: SPACE.xs, flexWrap: 'wrap' }}>
+            {canReview && entry.status !== 'closed' && (
+              <Button
+                variant="secondary" icon="clock" disabled={busy}
+                onClick={() => void send('/review', 'POST', undefined, 'บันทึกการทบทวนแล้ว เลื่อนกำหนดครั้งถัดไปเรียบร้อย')}
+              >
+                ยืนยันทบทวนแล้ว
+              </Button>
+            )}
+            {canReview && entry.status !== 'closed' && (
+              <Button
+                variant="primary" icon="shieldCheck" disabled={busy}
+                onClick={() => void send('/close', 'POST', undefined, 'ปิดรายการเรียบร้อย')}
+              >
+                ปิดรายการ
+              </Button>
+            )}
+          </div>
         </>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.md }}>
         <ErrorBanner message={error} />
+
+        {blockers.length > 0 && (
+          <div role="alert" style={{ padding: SPACE.sm, borderRadius: 10, border: '1px solid color-mix(in srgb, var(--warning) 32%, transparent)', background: 'color-mix(in srgb, var(--warning) 8%, var(--card))' }}>
+            <p style={{ margin: `0 0 ${SPACE.xs}px`, fontWeight: 700, color: 'var(--warning)', fontSize: FONT.md }}>
+              ต้องทำสิ่งเหล่านี้ให้ครบก่อนปิดรายการ
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--warning)', fontSize: FONT.base, lineHeight: 1.7 }}>
+              {blockers.map((b, i) => <li key={i}>{b}</li>)}
+            </ul>
+          </div>
+        )}
 
         <section style={{ border: '1px solid var(--border)', borderRadius: 12, padding: SPACE.sm, display: 'flex', flexDirection: 'column', gap: SPACE.xs }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, flexWrap: 'wrap' }}>
@@ -218,6 +262,15 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
           </p>
         )}
       </div>
+      {toast.toasts.length > 0 && (
+        <div style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 1100, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {toast.toasts.map(t => (
+            <div key={t.id} style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--success)', color: '#fff', fontSize: FONT.md, boxShadow: '0 8px 24px rgba(0,0,0,.2)' }}>
+              {t.msg}
+            </div>
+          ))}
+        </div>
+      )}
     </Modal>
   )
 }

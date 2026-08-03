@@ -169,13 +169,14 @@ export function Field({ label, required, error, hint, htmlFor, children }: {
  * Modal ตาม pattern ของโปรเจกต์ — ปิดด้วยปุ่ม X เท่านั้น ไม่ปิดเมื่อคลิกฉากหลัง
  * ถ้ามีข้อมูลที่ยังไม่บันทึก (`dirty`) จะถามยืนยันก่อนปิด
  */
-export function Modal({ title, subtitle, onClose, width = 720, dirty = false, footer, children }: {
+export function Modal({ title, subtitle, onClose, width = 720, dirty = false, footer, headerActions, children }: {
   title: string
   subtitle?: string
   onClose: () => void
   width?: number
   dirty?: boolean
   footer?: ReactNode
+  headerActions?: ReactNode
   children: ReactNode
 }) {
   function requestClose() {
@@ -191,14 +192,17 @@ export function Modal({ title, subtitle, onClose, width = 720, dirty = false, fo
             <div style={{ fontSize: FONT.lg, fontWeight: 700, color: 'var(--ink)' }}>{title}</div>
             {subtitle && <div style={{ fontSize: FONT.base, color: 'var(--muted)', marginTop: 2 }}>{subtitle}</div>}
           </div>
-          <button
-            type="button"
-            onClick={requestClose}
-            aria-label="ปิดหน้าต่าง"
-            style={{ display: 'grid', placeItems: 'center', width: 44, height: 44, flex: '0 0 auto', border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}
-          >
-            <Icon name="x" size={18} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: '0 0 auto' }}>
+            {headerActions}
+            <button
+              type="button"
+              onClick={requestClose}
+              aria-label="ปิดหน้าต่าง"
+              style={{ display: 'grid', placeItems: 'center', width: 44, height: 44, flex: '0 0 auto', border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}
+            >
+              <Icon name="x" size={18} />
+            </button>
+          </div>
         </div>
         <div style={{ padding: SPACE.lg - 4, overflow: 'auto', flex: 1 }}>{children}</div>
         {footer && (
@@ -208,6 +212,26 @@ export function Modal({ title, subtitle, onClose, width = 720, dirty = false, fo
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * ลิงก์ดาวน์โหลด PDF สรุปรายการเดียว — วางในหัว Modal คู่กับปุ่มปิด
+ * เป็นลิงก์จริง (ไม่ใช่ onClick + fetch) เพื่อให้ Tab ถึงและเปิดแท็บใหม่ได้ตาม pattern ของ ExportMenu
+ */
+export function PdfDownloadLink({ href, label }: { href: string; label: string }) {
+  return (
+    <>
+      <style>{`
+        .risk-pdf-link{display:grid;place-items:center;width:44px;height:44px;flex:0 0 auto;border:none;border-radius:8px;background:transparent;color:var(--muted);text-decoration:none;transition:background-color .15s ease,color .15s ease}
+        .risk-pdf-link:hover{background:var(--surface-2);color:var(--ink)}
+        .risk-pdf-link:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
+        @media(prefers-reduced-motion:reduce){.risk-pdf-link{transition:none}}
+      `}</style>
+      <a className="risk-pdf-link" href={href} target="_blank" rel="noopener noreferrer" aria-label={label} title={label}>
+        <Icon name="download" size={18} />
+      </a>
+    </>
   )
 }
 

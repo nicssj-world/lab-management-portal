@@ -8,8 +8,8 @@ import type { PermLevel } from '@/lib/permissions'
 import { bangkokToday, canMutateOccurrence, completionBlockReason, deriveTaskState, generatePeriods, occurrenceKey, resolveAssigneeEntries } from './logic'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import type {
-  AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskAttachment, QualityTaskOccurrence,
-  QualityTaskSchedule, QualityTaskTemplate, TaskIntervalUnit, TaskKind,
+  AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskAttachment, QualityTaskCheckIn,
+  QualityTaskOccurrence, QualityTaskSchedule, QualityTaskTemplate, TaskIntervalUnit, TaskKind,
 } from './types'
 
 type Row = Record<string, any>
@@ -76,13 +76,14 @@ export async function getQualityTaskOccurrences(
   const { data: instanceRows, error } = await supabaseAdmin.from('quality_task_instances').select('*').lte('period_start', input.to).gte('period_end', input.from)
   fail(error)
   const instanceIds = ((instanceRows ?? []) as Row[]).map(r => str(r.id))
-  const [{ data: assigneeRows, error: assigneeError }, { data: attachmentRows, error: attachmentError }] = instanceIds.length
+  const [{ data: assigneeRows, error: assigneeError }, { data: attachmentRows, error: attachmentError }, { data: checkInRows, error: checkInError }] = instanceIds.length
     ? await Promise.all([
         supabaseAdmin.from('quality_task_instance_assignees').select('*').in('instance_id', instanceIds),
         supabaseAdmin.from('quality_task_attachments').select('*').in('instance_id', instanceIds).order('uploaded_at', { ascending: false }),
+        supabaseAdmin.from('quality_task_check_ins').select('*').in('instance_id', instanceIds).order('checked_in_at'),
       ])
-    : [{ data: [], error: null }, { data: [], error: null }]
-  fail(assigneeError); fail(attachmentError)
+    : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }]
+  fail(assigneeError); fail(attachmentError); fail(checkInError)
   const assignees = new Map<string, AssigneeEntry[]>()
   for (const row of (assigneeRows ?? []) as Row[]) assignees.set(str(row.instance_id), [...(assignees.get(str(row.instance_id)) ?? []), { userId: nullable(row.user_id), manualName: nullable(row.manual_name) }])
   const attachments = new Map<string, QualityTaskAttachment[]>()
@@ -91,6 +92,14 @@ export async function getQualityTaskOccurrences(
     attachments.set(instanceId, [...(attachments.get(instanceId) ?? []), {
       id: str(row.id), instanceId, fileName: str(row.file_name), contentType: str(row.content_type), sizeBytes: Number(row.size_bytes),
       uploadedBy: str(row.uploaded_by), uploadedAt: str(row.uploaded_at),
+    }])
+  }
+  const checkIns = new Map<string, QualityTaskCheckIn[]>()
+  for (const row of (checkInRows ?? []) as Row[]) {
+    const instanceId = str(row.instance_id)
+    checkIns.set(instanceId, [...(checkIns.get(instanceId) ?? []), {
+      userId: str(row.user_id), checkedInAt: str(row.checked_in_at),
+      method: str(row.method) === 'manual' ? 'manual' : 'qr', wasUnlisted: Boolean(row.was_unlisted),
     }])
   }
   const instanceByKey = new Map<string, Row>()
@@ -116,7 +125,8 @@ export async function getQualityTaskOccurrences(
           completedBy: nullable(row?.completed_by), completedAt: nullable(row?.completed_at), assignees: assigned,
           participantDepts: rowDepts, participantUserIds: rowUserIds,
           participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), positionTitle: nullable((p as Row).position_title) })),
-          attachments: instanceId ? attachments.get(instanceId) ?? [] : [], ...state })
+          attachments: instanceId ? attachments.get(instanceId) ?? [] : [],
+          checkInToken: nullable(row?.check_in_token), checkIns: instanceId ? checkIns.get(instanceId) ?? [] : [], ...state })
       }
     }
   }
@@ -138,7 +148,8 @@ export async function getQualityTaskOccurrences(
       completedBy: nullable(row.completed_by), completedAt: nullable(row.completed_at), assignees: assigned,
       participantDepts: rowDepts, participantUserIds: rowUserIds,
       participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), positionTitle: nullable((p as Row).position_title) })),
-      attachments: attachments.get(instanceId) ?? [], ...state })
+      attachments: attachments.get(instanceId) ?? [],
+      checkInToken: nullable(row.check_in_token), checkIns: checkIns.get(instanceId) ?? [], ...state })
   }
   const scoped = input.scope === 'mine' && input.level !== 'edit' ? result.filter(o => o.assignees.some(e => e.userId === input.actorId)) : result
   return scoped.sort((a, b) => a.effectiveDueDate.localeCompare(b.effectiveDueDate) || a.template.title.localeCompare(b.template.title, 'th'))

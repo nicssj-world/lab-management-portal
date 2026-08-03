@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import QRCode from "qrcode";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PermLevel } from "@/lib/permissions";
 import type {
@@ -161,6 +162,7 @@ export function QualityTaskDashboard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [qr, setQr] = useState<{ url: string; dataUrl: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [participantModalOpen, setParticipantModalOpen] = useState(false);
   const [completeNote, setCompleteNote] = useState("");
@@ -456,10 +458,15 @@ export function QualityTaskDashboard({
   }
   function downloadSignInSheet() {
     if (!selected || selected.participants.length === 0) return;
+    const checkInByUserId = new Map(
+      selected.checkIns.map((c) => [c.userId, c]),
+    );
     const html = buildParticipantSignInHtml(
       selected.participants.map((p) => ({
         name: p.name,
         positionTitle: p.positionTitle,
+        checkedInAt: checkInByUserId.get(p.id)?.checkedInAt ?? null,
+        wasUnlisted: checkInByUserId.get(p.id)?.wasUnlisted ?? false,
       })),
     );
     const blobUrl = URL.createObjectURL(
@@ -478,6 +485,34 @@ export function QualityTaskDashboard({
       },
       { once: true },
     );
+  }
+  // ออก QR check-in ของรอบนี้ — materialize รอบก่อนถ้ายังเป็นรอบเสมือน (ไม่มี instanceId)
+  // เพราะ check_in_token ผูกอยู่กับแถวใน quality_task_instances เท่านั้น
+  async function showCheckInQr(o: QualityTaskOccurrence) {
+    setBusy(true);
+    setError("");
+    try {
+      const id = await ensureInstance(o);
+      const res = await fetch(
+        `/api/admin/quality-tasks/occurrences/${id}/check-in-token`,
+        { method: "POST" },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      const url = `${window.location.origin}/staff/quality-tasks/check-in/${json.token}`;
+      const dataUrl = await QRCode.toDataURL(url, {
+        width: 480,
+        margin: 2,
+        errorCorrectionLevel: "M",
+        color: { dark: "#0F172A", light: "#FFFFFF" },
+      });
+      setQr({ url, dataUrl });
+      if (!o.instanceId) await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "สร้าง QR ไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -1082,7 +1117,15 @@ export function QualityTaskDashboard({
               )}
             </div>
             {selected.participants.length > 0 && (
-              <div style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  marginTop: 10,
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
                 <Button
                   variant="secondary"
                   size="sm"
@@ -1091,7 +1134,40 @@ export function QualityTaskDashboard({
                 >
                   ดาวน์โหลด PDF ใบลงนาม ({selected.participants.length} คน)
                 </Button>
+                {canAct && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="qr"
+                    disabled={busy}
+                    onClick={() => showCheckInQr(selected)}
+                  >
+                    QR เช็คอิน
+                  </Button>
+                )}
               </div>
+            )}
+            {selected.checkIns.length > 0 && (
+              <p
+                style={{
+                  marginTop: 8,
+                  fontSize: 11.5,
+                  color: "var(--muted)",
+                }}
+              >
+                เช็คอินแล้ว {selected.checkIns.length}/
+                {selected.participants.length} คน:{" "}
+                {selected.checkIns
+                  .map((c) => {
+                    const name =
+                      selected.participants.find((p) => p.id === c.userId)
+                        ?.name ??
+                      people.find((p) => p.id === c.userId)?.name ??
+                      "ไม่ทราบชื่อ";
+                    return c.wasUnlisted ? `${name} (เพิ่มหน้างาน)` : name;
+                  })
+                  .join(", ")}
+              </p>
             )}
             {selected.plannedDate &&
               (selected.plannedDate < selected.periodStart ||
@@ -1565,6 +1641,67 @@ export function QualityTaskDashboard({
                 </Button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {qr && (
+        <div style={overlay}>
+          <div style={{ ...modal, maxWidth: 380, textAlign: "center" }}>
+            <h2 style={{ margin: 0, fontSize: 16 }}>QR เช็คอินการประชุม</h2>
+            <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
+              ให้ผู้เข้าร่วมสแกนเพื่อเช็คอิน (ต้องล็อกอินอยู่)
+            </p>
+            <img
+              src={qr.dataUrl}
+              alt="QR เช็คอินการประชุม"
+              style={{
+                width: "min(280px, 100%)",
+                borderRadius: 14,
+                border: "1px solid var(--border)",
+                background: "#fff",
+                marginTop: 12,
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                justifyContent: "center",
+                marginTop: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <a
+                href={qr.dataUrl}
+                download="quality-task-check-in-qr.png"
+                style={{ textDecoration: "none" }}
+              >
+                <Button icon="download">ดาวน์โหลด PNG</Button>
+              </a>
+              <Button
+                variant="secondary"
+                onClick={() => navigator.clipboard.writeText(qr.url)}
+              >
+                คัดลอกลิงก์
+              </Button>
+              <Button variant="ghost" onClick={() => setQr(null)}>
+                ปิด
+              </Button>
+            </div>
+            <code
+              style={{
+                display: "block",
+                marginTop: 12,
+                padding: 8,
+                borderRadius: 7,
+                background: "var(--surface-2)",
+                color: "var(--muted)",
+                fontSize: 10,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {qr.url}
+            </code>
           </div>
         </div>
       )}

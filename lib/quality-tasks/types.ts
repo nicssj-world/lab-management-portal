@@ -53,6 +53,14 @@ export interface QualityTaskAttachment {
   uploadedAt: string
 }
 
+export interface QualityTaskCheckIn {
+  userId: string
+  checkedInAt: string
+  method: 'qr' | 'manual'
+  /** true = ตอนเช็คอินคนนี้ยังไม่อยู่ในรายชื่อผู้เข้าร่วม ระบบเพิ่มให้อัตโนมัติ */
+  wasUnlisted: boolean
+}
+
 export interface QualityTaskOccurrence {
   key: string
   instanceId: string | null
@@ -72,6 +80,8 @@ export interface QualityTaskOccurrence {
   participantUserIds: string[]
   participants: { id: string; name: string; positionTitle: string | null }[]
   attachments: QualityTaskAttachment[]
+  checkInToken: string | null
+  checkIns: QualityTaskCheckIn[]
   scheduling: TaskSchedulingState
   urgency: TaskUrgency
   effectiveDueDate: string

@@ -50,4 +50,21 @@ const escaped = buildParticipantSignInHtml([{ name: '<script>alert(1)</script>',
 assert.ok(!escaped.includes('<script>alert(1)</script>'), 'raw script tag must not appear unescaped')
 assert.ok(escaped.includes('&lt;script&gt;'), 'name is HTML-escaped')
 
+// QR check-in stamps the signature/date cells instead of leaving them blank for a pen signature
+const checkedIn = buildParticipantSignInHtml([
+  { name: 'สมชาย ใจดี', positionTitle: null, checkedInAt: '2026-08-03T07:15:00Z' },
+])
+assert.ok(checkedIn.includes('เช็คอิน QR'), 'checked-in row shows a QR check-in stamp instead of a blank signature cell')
+assert.ok(checkedIn.includes('03/08/2569'), 'checked-in row prints the check-in date in the date column')
+
+// A walk-in who was auto-added gets a remark so the row is explainable during an audit
+const walkIn = buildParticipantSignInHtml([
+  { name: 'สมหญิง ขยัน', positionTitle: null, checkedInAt: '2026-08-03T07:20:00Z', wasUnlisted: true },
+])
+assert.ok(walkIn.includes('เพิ่มหน้างาน'), 'auto-added walk-in participant is marked in the remark column')
+
+// A participant who has not checked in yet keeps the original blank cells for manual sign-in
+const notYetCheckedIn = buildParticipantSignInHtml([{ name: 'ยังไม่มา', positionTitle: null }])
+assert.ok(!notYetCheckedIn.includes('เช็คอิน QR'), 'participant with no check-in keeps a blank signature cell')
+
 console.log('lib/quality-tasks/participant-sign-in-pdf.test.ts: all assertions passed')
