@@ -82,6 +82,15 @@ const ACTION_LABELS: Record<string, string> = {
   'equipment.area.update':                         'แก้ไขพื้นที่แผนผังเครื่องมือ',
   'equipment.survey_round.open':                  'เปิดรอบสำรวจเครื่องมือ',
   'equipment.survey_round.close':                 'ปิดรอบสำรวจเครื่องมือ',
+  'equipment.pm_cal.plan.replace':                'บันทึกแผน PM/CAL',
+  'equipment.pm_cal.result.create':               'บันทึกผล PM/CAL',
+  'equipment.pm_cal.result.update':               'แก้ไขผล PM/CAL',
+  'equipment.pm_cal.result.delete':               'ลบผล PM/CAL',
+  'equipment.pm_cal.certificate.attach':          'แนบใบรับรอง PM/CAL',
+  'equipment.pm_cal.certificate.delete':          'ลบใบรับรอง PM/CAL',
+  'equipment.pm_cal.group.create':                'สร้างแผน PM/CAL แบบกลุ่ม',
+  'equipment.pm_cal.group.update':                'แก้ไขแผน PM/CAL แบบกลุ่ม',
+  'equipment.pm_cal.group.cancel':                'ยกเลิกแผน PM/CAL แบบกลุ่ม',
   // สัญญา
   'contract.create':                              'เพิ่มสัญญา',
   'contract.update':                              'แก้ไขสัญญา',
@@ -123,6 +132,8 @@ const ACTION_LABELS: Record<string, string> = {
   'satisfaction.comments.export':                 'ส่งออกความคิดเห็นแบบสำรวจ',
   'satisfaction.kpi.publish':                     'เผยแพร่ผลสำรวจไปยัง KPI',
   'satisfaction.draft.discard':                    'ยกเลิกฉบับร่างแบบสำรวจ',
+  'satisfaction_editors.grant':                    'เพิ่มผู้ดูแลแบบสำรวจความพึงพอใจ',
+  'satisfaction_editors.revoke':                   'ถอนผู้ดูแลแบบสำรวจความพึงพอใจ',
   // EQA
   'eqa.provider.create':                          'เพิ่มผู้ให้บริการ EQA',
   'eqa.provider.update':                          'แก้ไขผู้ให้บริการ EQA',
@@ -131,6 +142,7 @@ const ACTION_LABELS: Record<string, string> = {
   'eqa.program.update':                           'แก้ไขโครงการ EQA',
   'eqa.program.deactivate':                       'ปิดใช้งานโครงการ EQA',
   'eqa.program_test.create':                      'ผูกรายการตรวจกับ EQA',
+  'eqa.program_test.update':                      'แก้ไขการผูกรายการตรวจกับ EQA',
   'eqa.program_test.deactivate':                  'ยกเลิกผูกรายการตรวจกับ EQA',
   'eqa.coverage.upsert':                          'กำหนด EQA Coverage',
   'eqa.round.create':                             'เพิ่มรอบ EQA',
@@ -240,6 +252,18 @@ const ACTION_LABELS: Record<string, string> = {
   'personnel.staff_authorizations.delete':         'ลบการมอบหมายงาน (Authorization)',
   'personnel.staff_authorizations.batch_create':   'มอบสิทธิทำการตรวจ (หลายรายการ)',
   'personnel.training.his_import':                'นำเข้าประวัติการอบรมจาก HIS',
+  'personnel.staff_health_records.create':         'เพิ่มบันทึกสุขภาพ/วัคซีน',
+  'personnel.staff_health_records.update':         'แก้ไขบันทึกสุขภาพ/วัคซีน',
+  'personnel.staff_health_records.delete':         'ลบบันทึกสุขภาพ/วัคซีน',
+  'personnel.staff_confidentiality_agreements.create': 'เพิ่มข้อตกลงรักษาความลับ',
+  'personnel.staff_confidentiality_agreements.update': 'แก้ไขข้อตกลงรักษาความลับ',
+  'personnel.staff_confidentiality_agreements.delete': 'ลบข้อตกลงรักษาความลับ',
+  'personnel.agreements.campaign_create':          'เปิดรอบข้อตกลงประจำปี',
+  'personnel.agreements.campaign_delete':          'ลบรอบข้อตกลงประจำปี',
+  'personnel.agreements.campaign_auto_lock':       'ล็อกรอบข้อตกลงประจำปีอัตโนมัติ',
+  'personnel.agreements.submit':                  'ลงนามข้อตกลงประจำปี',
+  'personnel.agreements.exempt':                  'ยกเว้นข้อตกลงประจำปี (บุคลากร)',
+  'personnel.agreements.certify_batch':           'รับรองข้อตกลงประจำปี (หลายคน)',
   // บุคลากร — จัดการกลุ่มงาน / มอบหมายทีละหลายคน / ข้อสอบสมรรถนะ
   'personnel.dept_role.set':                      'กำหนดบทบาทในผังกลุ่มงาน',
   'personnel.work_group.create':                  'รวมงานเป็นกลุ่มในผังองค์กร',
@@ -314,7 +338,7 @@ function dotColor(action: string | null) {
       a.startsWith('smart_rm.'))                                                 return '#DC2626'
   if (a.startsWith('lab_map.') || a.startsWith('chemical_safety.'))              return '#059669'
   if (a.startsWith('kpi.'))                                                       return '#16A34A'
-  if (a.startsWith('satisfaction.'))                                             return '#0F766E'
+  if (a.startsWith('satisfaction'))                                              return '#0F766E'
   if (a.startsWith('eqa.'))                                                       return '#0369A1'
   if (a.startsWith('outlab.'))                                                    return '#C2410C'
   if (a.startsWith('it_visitor.'))                                                return '#2563EB'
