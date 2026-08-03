@@ -1,0 +1,187 @@
+import 'server-only'
+
+import { randomBytes } from 'node:crypto'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import type { Actor } from '@/lib/auth/guards'
+import type { PermLevel } from '@/lib/permissions'
+import { getOccurrenceAccess, listTaskPeople } from './server'
+import { addParticipantToSelection, resolveParticipantSelection, resolveParticipants } from './participants'
+import type { QualityTaskCheckIn } from './types'
+
+type Row = Record<string, any>
+
+const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/
+
+function str(value: unknown) { return typeof value === 'string' ? value : '' }
+function nullable(value: unknown) { return typeof value === 'string' ? value : null }
+
+export function createCheckInToken() {
+  return randomBytes(32).toString('base64url')
+}
+
+/**
+ * ออก QR token ให้รอบประชุม — ออกครั้งเดียวแล้วใช้ token เดิมตลอด
+ *
+ * เรียกซ้ำได้: ถ้ามี token แล้วคืนของเดิม ไม่ออกใหม่ ป้องกันไม่ให้ QR ที่พิมพ์
+ * แจกไปแล้วใช้ไม่ได้เพราะมีคนกดปุ่มซ้ำ
+ */
+export async function issueCheckInToken(instanceId: string, actor: Actor, level: PermLevel) {
+  const access = await getOccurrenceAccess(instanceId, actor, level)
+  const existing = nullable(access.instance.check_in_token)
+  if (existing) return existing
+
+  const token = createCheckInToken()
+  const { error } = await supabaseAdmin
+    .from('quality_task_instances')
+    .update({ check_in_token: token, updated_by: actor.id, updated_at: new Date().toISOString() })
+    .eq('id', instanceId)
+    .is('check_in_token', null)
+  if (error) throw new Error(error.message)
+
+  // แข่งกับ request คู่ขนานที่ออก token พร้อมกัน — อ่านกลับมาเพื่อให้ทุกคนได้ค่าเดียวกัน
+  const { data } = await supabaseAdmin
+    .from('quality_task_instances')
+    .select('check_in_token')
+    .eq('id', instanceId)
+    .single()
+  return str(data?.check_in_token) || token
+}
+
+export interface CheckInContext {
+  instanceId: string
+  title: string
+  periodLabel: string
+  plannedDate: string | null
+  /** ปิดรับเช็คอินเมื่อรอบถูกปิดงานแล้ว — ขอบเขตที่อธิบายได้ตอนตรวจประเมิน */
+  closed: boolean
+  alreadyCheckedIn: boolean
+  isListedParticipant: boolean
+}
+
+/** แปลง token เป็นข้อมูลรอบประชุมสำหรับหน้าเช็คอิน — คืน null เมื่อ token ไม่ถูกต้อง */
+export async function getCheckInContext(token: string, actorId: string): Promise<CheckInContext | null> {
+  if (!TOKEN_PATTERN.test(token)) return null
+
+  const { data: instance, error } = await supabaseAdmin
+    .from('quality_task_instances')
+    .select('*, quality_task_templates(title, task_kind, default_participant_depts, default_participant_user_ids)')
+    .eq('check_in_token', token)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!instance) return null
+
+  const template = (instance.quality_task_templates ?? {}) as Row
+  const people = await listTaskPeople()
+  const selection = resolveParticipantSelection(
+    (template.default_participant_depts ?? []) as string[],
+    (template.default_participant_user_ids ?? []) as string[],
+    (instance.participant_depts ?? []) as string[],
+    (instance.participant_user_ids ?? []) as string[],
+  )
+  const participants = resolveParticipants(people, selection.depts, selection.userIds)
+
+  const { data: existing } = await supabaseAdmin
+    .from('quality_task_check_ins')
+    .select('user_id')
+    .eq('instance_id', instance.id)
+    .eq('user_id', actorId)
+    .maybeSingle()
+
+  return {
+    instanceId: str(instance.id),
+    title: str(template.title) || str(instance.period_label),
+    periodLabel: str(instance.period_label),
+    plannedDate: nullable(instance.planned_date),
+    closed: instance.status === 'completed',
+    alreadyCheckedIn: Boolean(existing),
+    isListedParticipant: participants.some(p => str(p.id) === actorId),
+  }
+}
+
+export type CheckInResult =
+  | { status: 'recorded'; wasUnlisted: boolean }
+  | { status: 'already' }
+  | { status: 'closed' }
+  | { status: 'not_found' }
+
+/**
+ * บันทึกการเช็คอินของผู้ใช้ที่ล็อกอินอยู่
+ *
+ * ผู้ที่ไม่อยู่ในรายชื่อจะถูกเพิ่มเข้ารายชื่อผู้เข้าร่วมของรอบนั้นอัตโนมัติ
+ * (ผ่าน addParticipantToSelection ที่รักษารายชื่อเดิมไว้) จึงได้แถวใน PDF ใบลงนามเองโดยไม่ต้องมี logic แยกใน PDF
+ */
+export async function recordCheckIn(token: string, actor: Actor): Promise<CheckInResult> {
+  if (!TOKEN_PATTERN.test(token)) return { status: 'not_found' }
+
+  const { data: instance, error } = await supabaseAdmin
+    .from('quality_task_instances')
+    .select('*, quality_task_templates(default_participant_depts, default_participant_user_ids)')
+    .eq('check_in_token', token)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!instance) return { status: 'not_found' }
+  if (instance.status === 'completed') return { status: 'closed' }
+
+  const instanceId = str(instance.id)
+  const template = (instance.quality_task_templates ?? {}) as Row
+  const defaultDepts = (template.default_participant_depts ?? []) as string[]
+  const defaultUserIds = (template.default_participant_user_ids ?? []) as string[]
+  const overrideDepts = (instance.participant_depts ?? []) as string[]
+  const overrideUserIds = (instance.participant_user_ids ?? []) as string[]
+
+  const people = await listTaskPeople()
+  const selection = resolveParticipantSelection(defaultDepts, defaultUserIds, overrideDepts, overrideUserIds)
+  const participants = resolveParticipants(people, selection.depts, selection.userIds)
+  const wasUnlisted = !participants.some(p => str(p.id) === actor.id)
+
+  if (wasUnlisted) {
+    const next = addParticipantToSelection(defaultDepts, defaultUserIds, overrideDepts, overrideUserIds, actor.id)
+    const { error: updateError } = await supabaseAdmin
+      .from('quality_task_instances')
+      .update({ participant_depts: next.depts, participant_user_ids: next.userIds, updated_at: new Date().toISOString() })
+      .eq('id', instanceId)
+    if (updateError) throw new Error(updateError.message)
+  }
+
+  const { error: insertError } = await supabaseAdmin
+    .from('quality_task_check_ins')
+    .insert({ instance_id: instanceId, user_id: actor.id, was_unlisted: wasUnlisted, method: 'qr', recorded_by: actor.id })
+  if (insertError) {
+    // 23505 = เช็คอินไปแล้ว (PK ซ้ำ) — สแกนซ้ำถือว่าสำเร็จ ไม่ใช่ error
+    if ((insertError as { code?: string }).code === '23505') return { status: 'already' }
+    throw new Error(insertError.message)
+  }
+
+  supabaseAdmin.from('audit_log').insert({
+    action: 'quality_task.check_in',
+    user_id: actor.id,
+    target: instanceId,
+    detail: wasUnlisted ? 'เช็คอินและเพิ่มเข้ารายชื่อผู้เข้าร่วมอัตโนมัติ' : 'เช็คอิน',
+  }).then(undefined, () => {})
+
+  return { status: 'recorded', wasUnlisted }
+}
+
+/** เช็คอินของหลายรอบพร้อมกัน — ใช้ประกอบ DTO ของหน้าปฏิทิน */
+export async function listCheckIns(instanceIds: string[]): Promise<Map<string, QualityTaskCheckIn[]>> {
+  const result = new Map<string, QualityTaskCheckIn[]>()
+  if (!instanceIds.length) return result
+
+  const { data, error } = await supabaseAdmin
+    .from('quality_task_check_ins')
+    .select('*')
+    .in('instance_id', instanceIds)
+    .order('checked_in_at')
+  if (error) throw new Error(error.message)
+
+  for (const row of (data ?? []) as Row[]) {
+    const instanceId = str(row.instance_id)
+    result.set(instanceId, [...(result.get(instanceId) ?? []), {
+      userId: str(row.user_id),
+      checkedInAt: str(row.checked_in_at),
+      method: str(row.method) === 'manual' ? 'manual' : 'qr',
+      wasUnlisted: Boolean(row.was_unlisted),
+    }])
+  }
+  return result
+}

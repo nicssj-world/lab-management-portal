@@ -21,3 +21,21 @@ export function resolveParticipants<T extends { id: string; dept: string | null 
   if (depts.length === 0 && userIds.length === 0) return []
   return resolveReadAudience(people, depts, userIds)
 }
+
+// Adds a walk-in attendee to an instance's participant override.
+//
+// The trap this exists to avoid: a non-empty override REPLACES the default wholesale
+// (see resolveParticipantSelection). Appending the walk-in to a still-empty override
+// would therefore collapse the whole meeting's audience down to that one person.
+// So the currently-resolved selection is materialised into the override FIRST, and the
+// walk-in appended to that — the resulting override re-resolves to "everyone who was
+// already invited, plus this person".
+export function addParticipantToSelection(
+  defaultDepts: string[], defaultUserIds: string[],
+  overrideDepts: string[], overrideUserIds: string[],
+  userId: string,
+): { depts: string[]; userIds: string[] } {
+  const current = resolveParticipantSelection(defaultDepts, defaultUserIds, overrideDepts, overrideUserIds)
+  if (current.userIds.includes(userId)) return current
+  return { depts: current.depts, userIds: [...current.userIds, userId] }
+}
