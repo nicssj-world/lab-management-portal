@@ -29,6 +29,7 @@ npx tsx scripts/lab-map-visitor-flow.test.ts     # Department→checkpoint table
 npx tsx scripts/equipment-map-domain.test.ts     # Equipment map areas/zones vs LAB_SPACES geometry
 npx tsx lib/equipment/pm-cal-due.test.ts         # PM/CAL due-date calculation from monthly plan
 npx tsx scripts/equipment-map-ui.test.ts         # Equipment map UI contract + position-field lockdown
+npx tsx scripts/activity-log-labels.test.ts      # Every audit_log action has a label + category in all 4 places (see README)
 ```
 
 ## TAT Local Source Files
