@@ -183,6 +183,11 @@ export function QualityTaskDashboard({
     string | null
   >(null);
   const [rangeHoverKey, setRangeHoverKey] = useState<string | null>(null);
+  const [draggedMeetingKey, setDraggedMeetingKey] = useState<string | null>(
+    null,
+  );
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  const draggedOccurrenceRef = useRef<QualityTaskOccurrence | null>(null);
   const adHocDateLabel =
     adHoc &&
     templates.find((template) => template.id === adHoc.templateId)?.taskKind ===
@@ -315,6 +320,10 @@ export function QualityTaskDashboard({
     } finally {
       setBusy(false);
     }
+  }
+  async function rescheduleMeeting(o: QualityTaskOccurrence, date: string) {
+    if (busy || (o.plannedDate ?? o.periodStart) === date) return;
+    await mutate(o, { action: "schedule", plannedDate: date });
   }
   async function upload(file: File) {
     if (!selected) return;
@@ -551,6 +560,7 @@ export function QualityTaskDashboard({
       <style>{`.qt-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:0 8px 28px rgba(15,23,42,.05)}.qt-weekday{padding:9px 8px;text-align:center;font-size:11px;font-weight:800;color:var(--muted);background:var(--surface-2);border-bottom:1px solid var(--border)}.qt-day{position:relative;min-width:0;min-height:152px;padding:9px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--card);transition:background-color .18s ease}.qt-day:nth-child(7n){border-right:0}.qt-day:hover{background:color-mix(in srgb,var(--primary-soft) 35%,var(--card))}.qt-day-empty{background:var(--surface-2);opacity:.65}.qt-day-today{background:color-mix(in srgb,var(--primary-soft) 72%,var(--card))}.qt-date{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 6px;border-radius:999px;color:var(--ink);font-size:11px;font-weight:800;margin-bottom:7px}.qt-day-today .qt-date{background:var(--primary);color:#fff;box-shadow:0 2px 8px rgba(30,95,173,.25)}.qt-event-list{display:grid;gap:5px;min-width:0}.qt-card{width:100%;min-width:0;overflow:hidden;border:1px solid color-mix(in srgb,var(--border) 70%,transparent);border-left:3px solid var(--primary);border-radius:8px;background:color-mix(in srgb,var(--primary-soft) 78%,var(--card));padding:6px 7px;text-align:left;cursor:pointer;color:var(--ink);font-family:inherit;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:background-color .18s,border-color .18s,box-shadow .18s}.qt-card:hover{background:var(--primary-soft);border-color:color-mix(in srgb,var(--primary) 22%,var(--border));box-shadow:0 4px 12px rgba(15,23,42,.1)}.qt-card:focus-visible,.qt-more:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 40%,transparent);outline-offset:2px}.qt-event-title{display:flex;align-items:center;gap:5px;min-width:0;font-size:11.5px;font-weight:750;line-height:1.3}.qt-event-title span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.qt-event-owner{margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:10.5px;line-height:1.25}.qt-more{width:100%;border:1px dashed color-mix(in srgb,var(--primary) 30%,var(--border));border-radius:7px;background:transparent;padding:4px 7px;color:var(--primary);font-family:inherit;font-size:10.5px;font-weight:700;text-align:left;cursor:pointer;transition:background-color .18s,border-color .18s}.qt-more:hover{background:var(--primary-soft);border-style:solid}.qt-overflow-panel{position:absolute;z-index:20;left:8px;right:8px;top:calc(100% - 8px);display:grid;gap:5px;padding:8px;border:1px solid var(--border);border-radius:11px;background:var(--card);box-shadow:0 14px 36px rgba(15,23,42,.18)}.qt-mobile{display:none}@media(prefers-reduced-motion:reduce){.qt-day,.qt-card,.qt-more{transition:none}}@media(max-width:767px){.qt-calendar{grid-template-columns:repeat(7,112px);overflow:auto;border-radius:12px}.qt-day{min-height:132px;padding:6px}.qt-weekday{position:sticky;top:0;z-index:2}.qt-card{padding:5px}.qt-overflow-panel{left:4px;right:4px}.qt-desktop{display:none!important}.qt-mobile{display:grid;gap:9px}}`}</style>
       <style>{`.qt-card.qt-range{position:relative;z-index:1;min-height:44px;border-left-width:0;border-radius:0;box-shadow:none}.qt-card.qt-range:hover{z-index:3;box-shadow:0 4px 12px rgba(15,23,42,.1)}.qt-card.qt-range-start{width:calc(100% + 10px);border-left-width:3px;border-radius:8px 0 0 8px}.qt-card.qt-range-middle{width:calc(100% + 20px);margin-left:-10px}.qt-card.qt-range-end{width:calc(100% + 10px);margin-left:-10px;border-radius:0 8px 8px 0}.qt-card.qt-range-start.qt-range-end{width:100%;margin-left:0;border-radius:8px}.qt-range-continuation{height:29px;display:flex;align-items:center}.qt-range-continuation::after{content:"";width:100%;height:2px;border-radius:999px;background:color-mix(in srgb,var(--primary) 22%,transparent)}@media(max-width:767px){.qt-card.qt-range-start{width:calc(100% + 7px)}.qt-card.qt-range-middle{width:calc(100% + 14px);margin-left:-7px}.qt-card.qt-range-end{width:calc(100% + 7px);margin-left:-7px}.qt-card.qt-range-start.qt-range-end{width:100%;margin-left:0}}`}</style>
       <style>{`.qt-card.qt-range{overflow:visible}.qt-range-continuation::after{width:calc(100% + 36px);margin-left:-18px}.qt-event-list-range .qt-range-continuation::after{width:calc(100% + 36px);margin-left:-18px}.qt-card.qt-range-hover{background:var(--primary-soft);border-color:color-mix(in srgb,var(--primary) 22%,var(--border));box-shadow:0 4px 12px rgba(15,23,42,.1);z-index:3}.qt-card.qt-range-hover .qt-range-continuation::after{background:color-mix(in srgb,var(--primary) 45%,transparent)}@media(max-width:767px){.qt-range-continuation::after,.qt-event-list-range .qt-range-continuation::after{width:calc(100% + 24px);margin-left:-12px}}`}</style>
+      <style>{`.qt-card-draggable{cursor:grab}.qt-card-dragging{opacity:.45;cursor:grabbing}.qt-day-drag-over{background:var(--primary-soft);outline:2px dashed var(--primary);outline-offset:-2px}@media(prefers-reduced-motion:reduce){.qt-card-draggable{transition:none}}`}</style>
       <div
         style={{
           padding: 18,
@@ -819,13 +829,37 @@ export function QualityTaskDashboard({
             const rangeClass = isMultiDay
               ? ` qt-range${isVisibleStart ? " qt-range-start" : " qt-range-middle"}${isVisibleEnd ? " qt-range-end" : ""}`
               : "";
+            const canDragMeeting =
+              o.template.taskKind === "meeting" &&
+              !isMultiDay &&
+              (level === "edit" ||
+                o.assignees.some((e) => e.userId === actorId));
             return (
               <button
                 key={o.key}
                 type="button"
-                className={`qt-card${rangeClass}${rangeHoverKey === o.key ? " qt-range-hover" : ""}`}
+                className={`qt-card${rangeClass}${rangeHoverKey === o.key ? " qt-range-hover" : ""}${canDragMeeting ? " qt-card-draggable" : ""}${draggedMeetingKey === o.key ? " qt-card-dragging" : ""}`}
                 title={isVisibleStart ? `${o.template.title} · ${o.template.ownerText}` : undefined}
                 aria-label={isVisibleStart ? `${o.template.title} ${o.template.ownerText}` : undefined}
+                draggable={canDragMeeting}
+                onDragStart={
+                  canDragMeeting
+                    ? (e) => {
+                        draggedOccurrenceRef.current = o;
+                        setDraggedMeetingKey(o.key);
+                        e.dataTransfer.effectAllowed = "move";
+                      }
+                    : undefined
+                }
+                onDragEnd={
+                  canDragMeeting
+                    ? () => {
+                        draggedOccurrenceRef.current = null;
+                        setDraggedMeetingKey(null);
+                        setDragOverDate(null);
+                      }
+                    : undefined
+                }
                 onClick={() => {
                   setSelected(o);
                   setError("");
@@ -857,8 +891,37 @@ export function QualityTaskDashboard({
           };
           return (
             <div
-              className={`qt-day${isToday ? " qt-day-today" : ""}`}
+              className={`qt-day${isToday ? " qt-day-today" : ""}${dragOverDate === date ? " qt-day-drag-over" : ""}`}
               key={date}
+              onDragOver={
+                draggedMeetingKey
+                  ? (e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (dragOverDate !== date) setDragOverDate(date);
+                    }
+                  : undefined
+              }
+              onDragLeave={
+                draggedMeetingKey
+                  ? () =>
+                      setDragOverDate((current) =>
+                        current === date ? null : current,
+                      )
+                  : undefined
+              }
+              onDrop={
+                draggedMeetingKey
+                  ? (e) => {
+                      e.preventDefault();
+                      const dragged = draggedOccurrenceRef.current;
+                      draggedOccurrenceRef.current = null;
+                      setDraggedMeetingKey(null);
+                      setDragOverDate(null);
+                      if (dragged) rescheduleMeeting(dragged, date);
+                    }
+                  : undefined
+              }
             >
               <div className="qt-date">{day}</div>
               <div
