@@ -660,6 +660,9 @@ function workloadRule(testName, preferredSection) {
   if (normalized === 'igra interferon gamma releasing assay สคร6 ชลบุรี') {
     return [{ section: 'ตรวจพิเศษและปฏิบัติการตรวจต่อ', test_name: 'IGRA (Interferon Gamma releasing assay) สคร6 ชลบุรี' }]
   }
+  if (normalized === 'tsh') {
+    return [{ section: 'เคมีคลินิก', test_name: 'TSH (CMIA)' }]
+  }
   if (preferredSection === MOLECULAR_SECTION && normalized === 'cd34 stem cell enumeration pbsc') {
     return [{ section: MOLECULAR_SECTION, test_name: 'CD34 Stem cell enumeration(Peripheral blood)' }]
   }
