@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { PublicDepartmentSds } from '@/components/chemical-safety/PublicDepartmentSds'
 import { PublicSdsLibrary } from '@/components/chemical-safety/PublicSdsLibrary'
+import { SafetyManualActions } from '@/components/chemical-safety/SafetyManualActions'
 import { listPublicDepartmentSds, searchPublicSds } from '@/lib/chemical-safety/public'
 
 // หน้านี้เปิดสาธารณะโดยตั้งใจ — ไม่มี guard ใด ๆ
@@ -48,10 +49,10 @@ export default async function PublicSdsPage({
         .manual-banner strong{display:block;font-size:17px;color:var(--ink)}
         .manual-banner span{font-size:13px;color:var(--muted)}
         .manual-actions{display:flex;gap:10px;flex-wrap:wrap}
-        .manual-banner a{min-height:46px;display:inline-flex;align-items:center;justify-content:center;padding:0 18px;border:1px solid var(--primary);border-radius:10px;color:var(--primary);text-decoration:none;font-weight:800;white-space:nowrap;transition:filter .18s ease,background .18s ease}
-        .manual-banner a:hover{filter:brightness(.94)}
+        .manual-banner a,.manual-banner button{min-height:46px;display:inline-flex;align-items:center;justify-content:center;padding:0 18px;border:1px solid var(--primary);border-radius:10px;background:transparent;color:var(--primary);text-decoration:none;font:inherit;font-weight:800;white-space:nowrap;cursor:pointer;transition:filter .18s ease,background .18s ease}
+        .manual-banner a:hover,.manual-banner button:hover{filter:brightness(.94)}
         .manual-banner .manual-download{background:var(--primary);color:#fff}
-        .manual-banner a:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
+        .manual-banner a:focus-visible,.manual-banner button:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
 
         .sds-section-head{margin:0 0 18px}
         .sds-section-head h2{margin:0;font-size:clamp(20px,3vw,28px);letter-spacing:-.02em}
@@ -128,10 +129,7 @@ export default async function PublicSdsPage({
           <strong>MN-LAB-02 คู่มือความปลอดภัยทางห้องปฏิบัติการ</strong>
           <span>คู่มือปฏิบัติด้านความปลอดภัยฉบับปัจจุบัน</span>
         </div>
-        <div className="manual-actions">
-          <a className="manual-download" href="/api/public/safety-manual/MN-LAB-02?disposition=attachment">ดาวน์โหลด MN-LAB-02 (PDF)</a>
-          <a href="/api/public/safety-manual/MN-LAB-02?disposition=inline" target="_blank" rel="noopener noreferrer">เปิดอ่าน</a>
-        </div>
+        <SafetyManualActions code="MN-LAB-02" title="MN-LAB-02 คู่มือความปลอดภัยทางห้องปฏิบัติการ" />
       </aside>
 
       <PublicDepartmentSds groups={departments} initialDepartment={initialDepartment} />
