@@ -12,6 +12,7 @@ import { AttentionQueue } from '@/components/dashboard/AttentionQueue'
 import { AnalyticsTabs } from '@/components/dashboard/AnalyticsTabs'
 import Link from 'next/link'
 import { getQualityTaskOccurrences } from '@/lib/quality-tasks/server'
+import { occurrenceDisplayOwner, occurrenceDisplayTitle } from '@/lib/quality-tasks/logic'
 import type { QualityTaskOccurrence } from '@/lib/quality-tasks/types'
 import { getEntryStatus } from '@/lib/queries/kpi'
 import { getPreviousThaiFiscalMonth } from '@/lib/kpi-utils'
@@ -66,10 +67,7 @@ function actionDotColor(action: string | null): string {
   return '#64748B' // gray — อื่นๆ
 }
 
-function qualityScheduleTitle(task: QualityTaskOccurrence): string {
-  const occurrenceTitle = task.scheduleId === null ? task.periodLabel.trim() : ''
-  return occurrenceTitle || task.template.title.trim() || task.template.categoryName.trim()
-}
+const qualityScheduleTitle = occurrenceDisplayTitle
 
 export default async function StaffDashboardPage() {
   const supabase = await createClient()
@@ -141,7 +139,10 @@ export default async function StaffDashboardPage() {
   const qualityFiscalStart = `${qualityMonth >= 10 ? qualityYear : qualityYear - 1}-10-01`
   const qualityFiscalEnd = `${qualityMonth >= 10 ? qualityYear + 1 : qualityYear}-09-30`
   const qualityOccurrences = qualityLevel === 'none' || !user ? [] : await getQualityTaskOccurrences({ from: qualityFiscalStart, to: qualityFiscalEnd, actorId: user.id, level: qualityLevel, scope: 'all' })
-  const qualityTasks = qualityOccurrences.filter(t => t.urgency === 'due-soon' || t.urgency === 'overdue')
+  // A due-soon meeting whose date is today is already surfaced (highlighted) in the
+  // 7-day upcoming list below — showing it again as "ใกล้กำหนด" here is redundant.
+  // Overdue never lands on today (that requires effectiveDueDate < today), so this only trims due-soon.
+  const qualityTasks = qualityOccurrences.filter(t => (t.urgency === 'due-soon' && t.effectiveDueDate !== qualityToday) || t.urgency === 'overdue')
   const qualityHorizon = new Date(`${qualityToday}T00:00:00+07:00`)
   qualityHorizon.setDate(qualityHorizon.getDate() + 7)
   const qualityHorizonDate = qualityHorizon.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
@@ -377,6 +378,7 @@ export default async function StaffDashboardPage() {
           showQuality={qualityLevel !== 'none'}
           qualityUpcoming={qualityUpcoming}
           qualityUrgent={qualityTasks.slice(0, 3)}
+          qualityToday={qualityToday}
         />
 
         {/* ══ ATTENTION QUEUE ══ */}
@@ -453,7 +455,7 @@ export default async function StaffDashboardPage() {
 function OperationalFocus({
   showKpi, kpiPeriodLabel, kpiDeadlineLabel, kpiDaysRemaining, kpiCompletion,
   kpiFilled, kpiRequired, kpiCompleteDepartments, kpiDepartmentCount, kpiIncompleteDepartments,
-  showQuality, qualityUpcoming, qualityUrgent,
+  showQuality, qualityUpcoming, qualityUrgent, qualityToday,
 }: {
   showKpi: boolean
   kpiPeriodLabel: string
@@ -468,6 +470,7 @@ function OperationalFocus({
   showQuality: boolean
   qualityUpcoming: QualityTaskOccurrence[]
   qualityUrgent: QualityTaskOccurrence[]
+  qualityToday: string
 }) {
   if (!showKpi && !showQuality) return null
 
@@ -562,10 +565,11 @@ function OperationalFocus({
                   {qualityUpcoming.map(task => {
                     const taskDate = new Date(`${task.effectiveDueDate}T00:00:00+07:00`)
                     const scheduleTitle = qualityScheduleTitle(task)
-                    return <Link key={task.key} href="/staff/quality-tasks" className="schedule-row" style={{ display:'grid',gridTemplateColumns:'46px minmax(0,1fr) auto',alignItems:'center',gap:10,padding:'9px 10px',border:'1px solid var(--border)',borderRadius:10,background:'var(--card)',textDecoration:'none' }}>
-                      <span style={{ height:42,borderRadius:9,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'var(--primary-soft)',color:'#0E7490' }}><b className="dmono" style={{ fontSize:15,lineHeight:1 }}>{taskDate.toLocaleDateString('th-TH',{day:'numeric',timeZone:'Asia/Bangkok'})}</b><small style={{ fontSize:9.5,marginTop:3 }}>{taskDate.toLocaleDateString('th-TH',{month:'short',timeZone:'Asia/Bangkok'})}</small></span>
-                      <span style={{ minWidth:0 }}><span style={{ display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12.5,fontWeight:800,color:'var(--ink)' }}>{scheduleTitle}</span><span style={{ display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2,fontSize:10.5,color:'var(--muted)' }}>{task.template.ownerText}</span></span>
-                      <Icon name="chevRight" size={14} style={{ color:'var(--muted)' }}/>
+                    const isToday = task.effectiveDueDate === qualityToday
+                    return <Link key={task.key} href="/staff/quality-tasks" className="schedule-row" style={{ display:'grid',gridTemplateColumns:'46px minmax(0,1fr) auto',alignItems:'center',gap:10,padding:'9px 10px',border:`1px solid ${isToday?'#0891B2':'var(--border)'}`,borderRadius:10,background:isToday?'rgba(8,145,178,.08)':'var(--card)',textDecoration:'none' }}>
+                      <span style={{ height:42,borderRadius:9,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:isToday?'#0891B2':'var(--primary-soft)',color:isToday?'#fff':'#0E7490' }}><b className="dmono" style={{ fontSize:15,lineHeight:1 }}>{taskDate.toLocaleDateString('th-TH',{day:'numeric',timeZone:'Asia/Bangkok'})}</b><small style={{ fontSize:9.5,marginTop:3 }}>{taskDate.toLocaleDateString('th-TH',{month:'short',timeZone:'Asia/Bangkok'})}</small></span>
+                      <span style={{ minWidth:0 }}><span style={{ display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12.5,fontWeight:800,color:'var(--ink)' }}>{scheduleTitle}</span><span style={{ display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2,fontSize:10.5,color:isToday?'#0891B2':'var(--muted)',fontWeight:isToday?800:400 }}>{isToday?'วันนี้ · ':''}{occurrenceDisplayOwner(task)}</span></span>
+                      <Icon name="chevRight" size={14} style={{ color:isToday?'#0891B2':'var(--muted)' }}/>
                     </Link>
                   })}
                 </div>

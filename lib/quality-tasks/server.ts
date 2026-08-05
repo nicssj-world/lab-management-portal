@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
-import { bangkokToday, canMutateOccurrence, completionBlockReason, deriveTaskState, generatePeriods, occurrenceKey, resolveAssigneeEntries } from './logic'
+import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, completionBlockReason, deriveTaskState, generatePeriods, occurrenceKey, resolveAssigneeEntries } from './logic'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import type {
   AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskActionItem, QualityTaskAttachment, QualityTaskCheckIn,
@@ -105,10 +105,11 @@ export async function getQualityTaskOccurrences(
   const instanceByKey = new Map<string, Row>()
   for (const row of (instanceRows ?? []) as Row[]) instanceByKey.set(occurrenceKey(nullable(row.schedule_id), str(row.template_id), str(row.period_start)), row)
   const today = bangkokToday()
+  const scheduledFrom = input.from < QUALITY_TASK_TRACKING_START ? QUALITY_TASK_TRACKING_START : input.from
   const result: QualityTaskOccurrence[] = []
   for (const template of templates) {
     for (const schedule of template.schedules.filter(s => s.active)) {
-      for (const period of generatePeriods(schedule, input.from, input.to)) {
+      for (const period of generatePeriods(schedule, scheduledFrom, input.to)) {
         const key = occurrenceKey(schedule.id, template.id, period.start)
         const row = instanceByKey.get(key)
         if (nullable(row?.note) === CANCELLED_NOTE) continue
@@ -120,7 +121,7 @@ export async function getQualityTaskOccurrences(
         const resolvedParticipants = resolveParticipants(people, selection.depts, selection.userIds)
         const state = deriveTaskState({ status: row?.status === 'completed' ? 'completed' : 'open', plannedDate: nullable(row?.planned_date), periodEnd: period.end, reminderDays: template.reminderDays }, today)
         result.push({ key, instanceId, template, scheduleId: schedule.id, periodStart: period.start, periodEnd: period.end,
-          periodLabel: row ? str(row.period_label) : periodLabel(period.start, period.end), plannedDate: nullable(row?.planned_date),
+          periodLabel: row ? str(row.period_label) : periodLabel(period.start, period.end), ownerTextOverride: nullable(row?.owner_text_override), plannedDate: nullable(row?.planned_date),
           status: row?.status === 'completed' ? 'completed' : 'open', note: nullable(row?.note), completionNote: nullable(row?.completion_note),
           completedBy: nullable(row?.completed_by), completedAt: nullable(row?.completed_at), assignees: assigned,
           participantDepts: rowDepts, participantUserIds: rowUserIds,
@@ -143,7 +144,7 @@ export async function getQualityTaskOccurrences(
     const resolvedParticipants = resolveParticipants(people, selection.depts, selection.userIds)
     const state = deriveTaskState({ status: row.status === 'completed' ? 'completed' : 'open', plannedDate: nullable(row.planned_date), periodEnd: str(row.period_end), reminderDays: template.reminderDays }, today)
     result.push({ key: occurrenceKey(null, template.id, str(row.period_start)), instanceId, template, scheduleId: null,
-      periodStart: str(row.period_start), periodEnd: str(row.period_end), periodLabel: str(row.period_label), plannedDate: nullable(row.planned_date),
+      periodStart: str(row.period_start), periodEnd: str(row.period_end), periodLabel: str(row.period_label), ownerTextOverride: nullable(row.owner_text_override), plannedDate: nullable(row.planned_date),
       status: row.status === 'completed' ? 'completed' : 'open', note: nullable(row.note), completionNote: nullable(row.completion_note),
       completedBy: nullable(row.completed_by), completedAt: nullable(row.completed_at), assignees: assigned,
       participantDepts: rowDepts, participantUserIds: rowUserIds,
@@ -164,7 +165,7 @@ async function replaceAssignees(instanceId: string, entries: AssigneeEntry[]) {
 export async function materializeOccurrence(payload: OccurrenceCreatePayload, actor: Actor, level: PermLevel) {
   if (payload.mode === 'adHoc') {
     if (level !== 'edit') throw new Error('Forbidden')
-    const { data, error } = await supabaseAdmin.from('quality_task_instances').insert({ template_id: payload.templateId, period_start: payload.startDate, period_end: payload.endDate, period_label: payload.label.trim(), planned_date: payload.startDate, created_by: actor.id, updated_by: actor.id }).select('*').single()
+    const { data, error } = await supabaseAdmin.from('quality_task_instances').insert({ template_id: payload.templateId, period_start: payload.startDate, period_end: payload.endDate, period_label: payload.label.trim(), owner_text_override: payload.ownerText?.trim() || null, planned_date: payload.startDate, created_by: actor.id, updated_by: actor.id }).select('*').single()
     fail(error); await replaceAssignees(str(data.id), payload.assignees); audit(actor, 'quality_task.instance.create', str(data.id), payload); return data
   }
   const { data: scheduleRow, error } = await supabaseAdmin.from('quality_task_schedules').select('*').eq('id', payload.scheduleId).single()

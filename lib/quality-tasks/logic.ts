@@ -3,6 +3,12 @@ import type { AssigneeEntry, QualityTaskSchedule, TaskSchedulingState, TaskStatu
 
 const DAY_MS = 86_400_000
 
+// The lab started actually using this system in 2569-07 (Jul 2026). Schedules carry
+// startsOn dates from earlier fiscal years (for correct period math), but periods
+// ending before go-live were never worked in the system and must not haunt the
+// reminder queue forever just because nobody closed them.
+export const QUALITY_TASK_TRACKING_START = '2026-07-01'
+
 function parseIso(value: string) {
   return new Date(`${value}T00:00:00Z`)
 }
@@ -68,4 +74,18 @@ export function bangkokToday(date = new Date()) {
 
 export function occurrenceKey(scheduleId: string | null, templateId: string, periodStart: string) {
   return scheduleId ? `${scheduleId}:${periodStart}` : `${templateId}:adhoc:${periodStart}`
+}
+
+// Ad-hoc occurrences (scheduleId === null) store their user-typed subject in periodLabel —
+// there is no separate title column. Scheduled occurrences always use the template's title.
+export function occurrenceDisplayTitle(o: { scheduleId: string | null; periodLabel: string; template: { title: string; categoryName: string } }): string {
+  const adHocTitle = o.scheduleId === null ? o.periodLabel.trim() : ''
+  return adHocTitle || o.template.title.trim() || o.template.categoryName.trim()
+}
+
+// Same override pattern as occurrenceDisplayTitle: an ad-hoc occurrence made from a generic
+// template (e.g. "อื่นๆ/ประชุมทั่วไป") may belong to a team the template's fixed ownerText
+// doesn't name (e.g. งานโลหิตวิทยา). ownerTextOverride, when set, replaces it for that occurrence only.
+export function occurrenceDisplayOwner(o: { ownerTextOverride: string | null; template: { ownerText: string } }): string {
+  return o.ownerTextOverride?.trim() || o.template.ownerText
 }
