@@ -19,7 +19,9 @@ function summarize(item: ChemicalChangeRequestListItemDTO): string {
   if (item.entityType === 'new_chemical' || item.entityType === 'product') {
     const parts = [
       typeof data.casNumber === 'string' ? `CAS ${data.casNumber}` : null,
-      typeof data.lifecycleStatus === 'string' && data.lifecycleStatus === 'retired' ? 'เลิกใช้งาน' : null,
+      typeof data.lifecycleStatus === 'string'
+        ? data.lifecycleStatus === 'retired' ? 'Inactive' : 'Active'
+        : null,
     ].filter(Boolean)
     return parts.join(' · ')
   }

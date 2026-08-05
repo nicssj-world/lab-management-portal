@@ -32,7 +32,11 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     admin: 'Admin', staff: 'Manager', editor: 'Medical Technologist', viewer: 'Assistant',
   }
   const role = profile.role ? (LEGACY_ROLES[profile.role] ?? profile.role) : undefined
-  const isChemicalSafetyEditor = await isSafetyEditor({ id: user.id, role: role ?? '' })
+  const [isSafetyMapEditor, chemicalScope] = await Promise.all([
+    isSafetyEditor({ id: user.id, role: role ?? '' }),
+    supabaseAdmin.from('chemical_role_scopes').select('user_id').eq('user_id', user.id).limit(1).maybeSingle(),
+  ])
+  const isChemicalSafetyEditor = isSafetyMapEditor || Boolean(chemicalScope.data)
   const permissions = role ? await getPermissionsWithEquipmentOverride(role, user.id) : {}
   // คณะทำงาน IT override: admin-equivalent edit on the งาน IT module regardless of role.
   if (role && normalizeRole(role) !== 'Admin') {

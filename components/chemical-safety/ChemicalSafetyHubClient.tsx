@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -85,6 +86,7 @@ export function ChemicalSafetyHubClient({
   const searchParams = useSearchParams()
   const { toasts, add } = useToast()
   const [position, setPosition] = useState('')
+  const [lifecycleFilter, setLifecycleFilter] = useState<'all' | 'active' | 'retired'>('all')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [exporting, setExporting] = useState(false)
@@ -121,11 +123,12 @@ export function ChemicalSafetyHubClient({
     const needle = debouncedSearch.toLocaleLowerCase('th')
     return registry.filter(row => {
       if (position && row.positionCode !== position) return false
+      if (lifecycleFilter !== 'all' && productById.get(row.productId)?.lifecycleStatus !== lifecycleFilter) return false
       if (!needle) return true
       return [row.canonicalName, row.casNumber, ...row.aliases]
         .filter(Boolean).join(' ').toLocaleLowerCase('th').includes(needle)
     })
-  }, [registry, position, debouncedSearch])
+  }, [registry, position, lifecycleFilter, debouncedSearch, productById])
 
   const atPosition = useMemo(() => {
     const map = new Map<string, ChemicalRegistryRow[]>()
@@ -155,6 +158,7 @@ export function ChemicalSafetyHubClient({
     const params = new URLSearchParams()
     if (debouncedSearch) params.set('q', debouncedSearch)
     if (position) params.set('positionCode', position)
+    if (lifecycleFilter !== 'all') params.set('lifecycle', lifecycleFilter)
     window.location.href = `/api/admin/chemical-safety/registry/export?${params}`
     setTimeout(() => setExporting(false), 1200)
   }
@@ -199,8 +203,8 @@ export function ChemicalSafetyHubClient({
     const product = productById.get(row.productId)
     if (!product) { notify('ไม่พบข้อมูลสาร กรุณารีเฟรชหน้า', false); return }
     const nextStatus = product.lifecycleStatus === 'active' ? 'retired' : 'active'
-    const actionLabel = nextStatus === 'retired' ? 'เลิกใช้งาน' : 'เปิดใช้งานอีกครั้ง'
-    if (!window.confirm(`ยืนยัน${actionLabel} "${row.canonicalName}"? คำขอจะถูกส่งให้ผู้ทบทวนอนุมัติก่อนมีผลจริง`)) return
+    const actionLabel = nextStatus === 'retired' ? 'Inactive' : 'Active'
+    if (!window.confirm(`ยืนยันตั้งสถานะ ${actionLabel} ให้ "${row.canonicalName}"? คำขอจะถูกส่งให้ผู้ทบทวนอนุมัติก่อนมีผลจริง`)) return
 
     setBusyProductId(row.productId)
     try {
@@ -235,7 +239,7 @@ export function ChemicalSafetyHubClient({
       const submittedPayload = await submitted.json().catch(() => ({}))
       if (!submitted.ok) throw new Error(submittedPayload.error || 'ส่งทบทวนไม่สำเร็จ')
 
-      notify(`ส่งคำขอ${actionLabel}เข้าสู่การทบทวนแล้ว`)
+      notify(`ส่งคำขอตั้งสถานะ ${actionLabel} เข้าสู่การทบทวนแล้ว`)
     } catch (caught) {
       notify(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ', false)
     } finally {
@@ -384,6 +388,13 @@ export function ChemicalSafetyHubClient({
                 {positionOptions.map(option => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
               </select>
             </label>
+            <label className="chemical-position-select">
+              <select value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value as typeof lifecycleFilter)} aria-label="กรองตามสถานะการใช้งาน">
+                <option value="all">ทุกสถานะการใช้งาน</option>
+                <option value="active">Active</option>
+                <option value="retired">Inactive</option>
+              </select>
+            </label>
             <span className="chemical-filter-result">แสดง {visible.length.toLocaleString()} รายการ</span>
           </Card>
 
@@ -392,10 +403,10 @@ export function ChemicalSafetyHubClient({
           ) : (
             <Card padding={0}>
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1080 }}>
                   <thead>
                     <tr>
-                      {['สารเคมี', 'หน่วยงาน / ตำแหน่ง', 'ปริมาณ', 'สถานะ SDS', 'GHS', ...(canPropose ? ['จัดการ'] : [])].map(heading => (
+                      {['สารเคมี', 'หน่วยงาน / ตำแหน่ง', 'ปริมาณ', 'สถานะการใช้งาน', 'สถานะ SDS', 'GHS', ...(canPropose ? ['จัดการ'] : [])].map(heading => (
                         <th key={heading} style={{
                           padding: '11px 14px', textAlign: 'left', fontSize: FONT.xs, fontWeight: 700,
                           letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)',
@@ -414,19 +425,19 @@ export function ChemicalSafetyHubClient({
                       })
                       const canShowPackageFormula = packageCalculation?.value === row.calculatedTotalValue
                         && packageCalculation.unit === row.calculatedTotalUnit
-                      const isRetired = product?.lifecycleStatus === 'retired'
+                      const isInactive = product?.lifecycleStatus === 'retired'
                       const busy = busyProductId === row.productId
                       const creatingSds = creatingSdsProductId === row.productId
                       return (
                         <tr
                           key={`${row.productId}-${row.unitId}-${row.positionCode}`}
-                          style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s', opacity: isRetired ? 0.55 : 1 }}
+                          style={{ borderBottom: '1px solid var(--border)', transition: 'background .1s', opacity: isInactive ? 0.55 : 1 }}
                           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <td style={cellStyle}>
                             <b style={{ fontSize: FONT.md }}>{row.canonicalName}</b>
-                            {isRetired && <span style={{ marginLeft: 6, fontSize: FONT.xs, fontWeight: 700, color: 'var(--muted)' }}>(เลิกใช้งาน)</span>}
+                            {isInactive && <span style={{ marginLeft: 6, fontSize: FONT.xs, fontWeight: 700, color: 'var(--muted)' }}>(Inactive)</span>}
                             <div style={{ fontSize: FONT.sm, color: 'var(--muted)' }}>
                               {row.casNumber ? `CAS ${row.casNumber}` : 'ไม่ระบุ CAS'}
                               {row.concentration ? ` · ${row.concentration}` : ''}
@@ -454,6 +465,11 @@ export function ChemicalSafetyHubClient({
                               <span style={tabularNums}>—</span>
                             )}
                           </td>
+                          <td style={cellStyle}>
+                            {product ? (
+                              <Badge color={isInactive ? 'gray' : 'green'} dot>{isInactive ? 'Inactive' : 'Active'}</Badge>
+                            ) : <span style={tabularNums}>—</span>}
+                          </td>
                           <td style={cellStyle}><SdsStateBadge state={row.sdsStatus} /></td>
                           <td style={cellStyle}>
                             <GhsRow codes={row.pictogramCodes} hazardClassesTh={row.hazards.map(h => h.className)} size={32} />
@@ -478,8 +494,8 @@ export function ChemicalSafetyHubClient({
                                   SDS
                                 </Button>
                                 <Button
-                                  variant="ghost" size="sm" icon={isRetired ? 'check' : 'trash'}
-                                  title={isRetired ? 'เปิดใช้งานอีกครั้ง' : 'เลิกใช้งาน'}
+                                  variant="ghost" size="sm" icon={isInactive ? 'check' : 'trash'}
+                                  title={isInactive ? 'ตั้งเป็น Active' : 'ตั้งเป็น Inactive'}
                                   disabled={busy || !product}
                                   onClick={() => void toggleLifecycle(row)}
                                 />
