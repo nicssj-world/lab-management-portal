@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { PermLevel } from "@/lib/permissions";
 import type {
   AssigneeEntry,
+  QualityTaskActionItem,
   QualityTaskOccurrence,
   QualityTaskTemplate,
 } from "@/lib/quality-tasks/types";
@@ -78,6 +79,9 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   "quality_task.attachment.upload": "แนบไฟล์หลักฐาน",
   "quality_task.attachment.delete": "ลบไฟล์หลักฐาน",
   "quality_task.check_in": "เช็คอิน",
+  "quality_task.action_item.create": "เพิ่ม Action Item",
+  "quality_task.action_item.update": "แก้ไข Action Item",
+  "quality_task.action_item.delete": "ลบ Action Item",
 };
 const MAX_VISIBLE_CALENDAR_EVENTS = 2;
 
@@ -176,6 +180,13 @@ export function QualityTaskDashboard({
   const fileRef = useRef<HTMLInputElement>(null);
   const [participantModalOpen, setParticipantModalOpen] = useState(false);
   const [completeNote, setCompleteNote] = useState("");
+  const [actionItems, setActionItems] = useState<QualityTaskActionItem[]>([]);
+  const [newActionItem, setNewActionItem] = useState<{
+    userId: string | null;
+    manualName: string | null;
+    description: string;
+    dueDate: string;
+  }>({ userId: null, manualName: null, description: "", dueDate: "" });
   const [assigneeDraft, setAssigneeDraft] = useState<AssigneeEntry[] | null>(
     null,
   );
@@ -389,6 +400,106 @@ export function QualityTaskDashboard({
   useEffect(() => {
     setCompleteNote("");
   }, [selected?.key]);
+  async function refreshActionItems(instanceId: string) {
+    const res = await fetch(
+      `/api/admin/quality-tasks/occurrences/${instanceId}/action-items`,
+    );
+    const json = await res.json();
+    if (res.ok) setActionItems(json.items ?? []);
+  }
+  useEffect(() => {
+    if (!selected?.instanceId) {
+      setActionItems([]);
+      return;
+    }
+    refreshActionItems(selected.instanceId);
+  }, [selected?.instanceId]);
+  useEffect(() => {
+    setNewActionItem({
+      userId: null,
+      manualName: null,
+      description: "",
+      dueDate: "",
+    });
+  }, [selected?.key]);
+  async function addActionItem() {
+    if (!selected || !newActionItem.description.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      const instanceId = await ensureInstance(selected);
+      const res = await fetch(
+        `/api/admin/quality-tasks/occurrences/${instanceId}/action-items`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assignee: {
+              userId: newActionItem.userId,
+              manualName: newActionItem.manualName,
+            },
+            description: newActionItem.description.trim(),
+            dueDate: newActionItem.dueDate || null,
+          }),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      if (!selected.instanceId) await load();
+      await refreshActionItems(instanceId);
+      setNewActionItem({
+        userId: null,
+        manualName: null,
+        description: "",
+        dueDate: "",
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "เพิ่ม Action Item ไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function toggleActionItemDone(item: QualityTaskActionItem) {
+    if (!selected?.instanceId) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/admin/quality-tasks/occurrences/${selected.instanceId}/action-items/${item.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ done: !item.doneAt }),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      await refreshActionItems(selected.instanceId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "อัปเดต Action Item ไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeActionItem(item: QualityTaskActionItem) {
+    if (!selected?.instanceId) return;
+    if (!confirm("ลบ Action Item นี้?")) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/admin/quality-tasks/occurrences/${selected.instanceId}/action-items/${item.id}`,
+        { method: "DELETE" },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      await refreshActionItems(selected.instanceId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ลบ Action Item ไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
   async function removeAttachment(id: string) {
     if (!confirm("ลบ PDF นี้?")) return;
     setBusy(true);
@@ -1528,6 +1639,227 @@ export function QualityTaskDashboard({
                     </Button>
                   </div>
                 ) : null}
+              </div>
+            )}
+            {selected.template.taskKind === "meeting" && (
+              <div
+                style={{
+                  marginTop: 14,
+                  paddingTop: 14,
+                  borderTop: "1px solid var(--border)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <b style={{ fontSize: 12 }}>ACTION ITEMS</b>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                    เสร็จแล้ว {actionItems.filter((i) => i.doneAt).length}/
+                    {actionItems.length}
+                  </span>
+                </div>
+                {actionItems.length > 0 && (
+                  <div
+                    style={{ overflowX: "auto", marginTop: 8 }}
+                  >
+                    <table
+                      style={{
+                        width: "100%",
+                        tableLayout: "fixed",
+                        borderCollapse: "collapse",
+                        fontSize: 12,
+                      }}
+                    >
+                      <colgroup>
+                        <col style={{ width: 44 }} />
+                        <col style={{ width: "22%" }} />
+                        <col />
+                        <col style={{ width: "18%" }} />
+                        {canAct && <col style={{ width: 36 }} />}
+                      </colgroup>
+                      <thead>
+                        <tr style={{ color: "var(--muted)", fontSize: 11 }}>
+                          <th style={{ textAlign: "left", padding: "4px 6px" }}>
+                            เสร็จ
+                          </th>
+                          <th style={{ textAlign: "left", padding: "4px 6px" }}>
+                            ผู้รับผิดชอบ
+                          </th>
+                          <th style={{ textAlign: "left", padding: "4px 6px" }}>
+                            งาน
+                          </th>
+                          <th style={{ textAlign: "left", padding: "4px 6px" }}>
+                            กำหนดส่ง
+                          </th>
+                          {canAct && <th style={{ padding: "4px 6px" }} />}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {actionItems.map((item) => {
+                          const done = Boolean(item.doneAt);
+                          const overdue =
+                            !done &&
+                            Boolean(item.dueDate) &&
+                            (item.dueDate as string) < todayStr;
+                          return (
+                            <tr
+                              key={item.id}
+                              style={{
+                                borderTop: "1px solid var(--border)",
+                              }}
+                            >
+                              <td style={{ padding: "6px" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={done}
+                                  disabled={!canAct || busy}
+                                  onChange={() => toggleActionItemDone(item)}
+                                />
+                              </td>
+                              <td
+                                style={{
+                                  padding: "6px",
+                                  textDecoration: done ? "line-through" : "none",
+                                  color: done ? "var(--muted)" : "var(--ink)",
+                                  wordBreak: "break-word",
+                                  overflowWrap: "anywhere",
+                                }}
+                              >
+                                {assigneeName(item.assignee, people)}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "6px",
+                                  textDecoration: done ? "line-through" : "none",
+                                  color: done ? "var(--muted)" : "var(--ink)",
+                                  wordBreak: "break-word",
+                                  overflowWrap: "anywhere",
+                                }}
+                              >
+                                {item.description}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "6px",
+                                  color: overdue
+                                    ? urgencyColor.overdue
+                                    : done
+                                      ? "var(--muted)"
+                                      : "var(--ink)",
+                                  textDecoration: done ? "line-through" : "none",
+                                }}
+                              >
+                                {overdue ? "⚠ " : ""}
+                                {fmt(item.dueDate)}
+                              </td>
+                              {canAct && (
+                                <td style={{ padding: "6px" }}>
+                                  <button
+                                    onClick={() => removeActionItem(item)}
+                                    disabled={busy}
+                                    style={{
+                                      ...closeStyle,
+                                      width: 24,
+                                      height: 24,
+                                      fontSize: 12,
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {canAct && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(0,1fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,0.9fr) auto",
+                      gap: 6,
+                      marginTop: 10,
+                      minWidth: 0,
+                    }}
+                  >
+                    <select
+                      value={newActionItem.userId ?? ""}
+                      onChange={(e) => {
+                        const uid = e.target.value || null;
+                        const person = people.find((p) => p.id === uid);
+                        setNewActionItem((s) => ({
+                          ...s,
+                          userId: uid,
+                          manualName: person ? person.name : s.manualName,
+                        }));
+                      }}
+                      style={{ ...inputStyle, minWidth: 0, width: "100%" }}
+                    >
+                      <option value="">พิมพ์ชื่อเอง</option>
+                      {people.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} · {p.dept ?? p.role}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={newActionItem.manualName ?? ""}
+                      disabled={Boolean(newActionItem.userId)}
+                      onChange={(e) =>
+                        setNewActionItem((s) => ({
+                          ...s,
+                          userId: null,
+                          manualName: e.target.value || null,
+                        }))
+                      }
+                      placeholder="ชื่อผู้รับผิดชอบ"
+                      style={{
+                        ...inputStyle,
+                        minWidth: 0,
+                        width: "100%",
+                        opacity: newActionItem.userId ? 0.65 : 1,
+                      }}
+                    />
+                    <input
+                      value={newActionItem.description}
+                      onChange={(e) =>
+                        setNewActionItem((s) => ({
+                          ...s,
+                          description: e.target.value,
+                        }))
+                      }
+                      placeholder="งานที่ต้องทำ"
+                      style={{ ...inputStyle, minWidth: 0, width: "100%" }}
+                    />
+                    <input
+                      type="date"
+                      value={newActionItem.dueDate}
+                      onChange={(e) =>
+                        setNewActionItem((s) => ({
+                          ...s,
+                          dueDate: e.target.value,
+                        }))
+                      }
+                      style={{ ...inputStyle, minWidth: 0, width: "100%" }}
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={busy || !newActionItem.description.trim()}
+                      onClick={addActionItem}
+                    >
+                      + เพิ่ม
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
             {level === "edit" && (

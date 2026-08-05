@@ -101,7 +101,7 @@ export default async function PublicSdsPage({
 
       <section className="sds-hero">
         <p className="sds-kicker">SDS · POINT-OF-USE ACCESS</p>
-        <h1>เอกสาร SDS สำหรับการปฏิบัติงาน</h1>
+        <h1>คลังเอกสาร SDS</h1>
         <p>
           ค้นหาและเปิดเอกสารข้อมูลความปลอดภัยของน้ำยา ชุดตรวจ และสารเคมีที่ใช้ในงานได้ทันที
         </p>
