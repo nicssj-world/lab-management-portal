@@ -87,6 +87,16 @@ export interface QualityTaskOccurrence {
   effectiveDueDate: string
 }
 
+export interface QualityTaskActionItem {
+  id: string
+  instanceId: string
+  assignee: AssigneeEntry
+  description: string
+  dueDate: string | null
+  doneAt: string | null
+  doneBy: string | null
+}
+
 export type OccurrenceCreatePayload =
   | { mode: 'scheduled'; scheduleId: string; periodStart: string }
   | { mode: 'adHoc'; templateId: string; label: string; startDate: string; endDate: string; assignees: AssigneeEntry[] }

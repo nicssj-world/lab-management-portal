@@ -8,7 +8,7 @@ import type { PermLevel } from '@/lib/permissions'
 import { bangkokToday, canMutateOccurrence, completionBlockReason, deriveTaskState, generatePeriods, occurrenceKey, resolveAssigneeEntries } from './logic'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import type {
-  AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskAttachment, QualityTaskCheckIn,
+  AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskActionItem, QualityTaskAttachment, QualityTaskCheckIn,
   QualityTaskOccurrence, QualityTaskSchedule, QualityTaskTemplate, TaskIntervalUnit, TaskKind,
 } from './types'
 
@@ -283,4 +283,55 @@ export async function deleteTemplate(id: string, actor: Actor) {
 export async function listTaskPeople() {
   const { data, error } = await supabaseAdmin.from('profiles').select('id,name,dept,role,position_title').is('deleted_at', null).order('name')
   fail(error); return data ?? []
+}
+
+function rowToActionItem(row: Row): QualityTaskActionItem {
+  return {
+    id: str(row.id), instanceId: str(row.instance_id),
+    assignee: { userId: nullable(row.user_id), manualName: nullable(row.manual_name) },
+    description: str(row.description), dueDate: nullable(row.due_date),
+    doneAt: nullable(row.done_at), doneBy: nullable(row.done_by),
+  }
+}
+
+export async function listActionItems(instanceId: string, actor: Actor, level: PermLevel) {
+  await getOccurrenceAccess(instanceId, actor, level)
+  const { data, error } = await supabaseAdmin.from('quality_task_action_items').select('*').eq('instance_id', instanceId)
+    .order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true })
+  fail(error); return (data ?? []).map(rowToActionItem)
+}
+
+export async function createActionItem(instanceId: string, input: { assignee: AssigneeEntry; description: string; dueDate: string | null }, actor: Actor, level: PermLevel) {
+  await getOccurrenceAccess(instanceId, actor, level)
+  const { data, error } = await supabaseAdmin.from('quality_task_action_items').insert({
+    instance_id: instanceId, user_id: input.assignee.userId, manual_name: input.assignee.manualName,
+    description: input.description.trim(), due_date: input.dueDate || null, created_by: actor.id,
+  }).select('*').single()
+  fail(error)
+  audit(actor, 'quality_task.action_item.create', instanceId, { itemId: data.id, ...input })
+  return rowToActionItem(data)
+}
+
+export async function updateActionItem(instanceId: string, itemId: string, patch: { assignee?: AssigneeEntry; description?: string; dueDate?: string | null; done?: boolean }, actor: Actor, level: PermLevel) {
+  await getOccurrenceAccess(instanceId, actor, level)
+  const update: Row = { updated_at: new Date().toISOString() }
+  if (patch.assignee) { update.user_id = patch.assignee.userId; update.manual_name = patch.assignee.manualName }
+  if (patch.description !== undefined) update.description = patch.description.trim()
+  if (patch.dueDate !== undefined) update.due_date = patch.dueDate || null
+  if (patch.done !== undefined) {
+    update.done_at = patch.done ? new Date().toISOString() : null
+    update.done_by = patch.done ? actor.id : null
+  }
+  const { data, error } = await supabaseAdmin.from('quality_task_action_items').update(update)
+    .eq('id', itemId).eq('instance_id', instanceId).select('*').single()
+  fail(error); if (!data) throw new Error('Action item not found')
+  audit(actor, 'quality_task.action_item.update', instanceId, { itemId, ...patch })
+  return rowToActionItem(data)
+}
+
+export async function deleteActionItem(instanceId: string, itemId: string, actor: Actor, level: PermLevel) {
+  await getOccurrenceAccess(instanceId, actor, level)
+  const { error } = await supabaseAdmin.from('quality_task_action_items').delete().eq('id', itemId).eq('instance_id', instanceId)
+  fail(error)
+  audit(actor, 'quality_task.action_item.delete', instanceId, { itemId })
 }
