@@ -58,8 +58,13 @@ export interface CheckInContext {
   isListedParticipant: boolean
 }
 
-/** แปลง token เป็นข้อมูลรอบประชุมสำหรับหน้าเช็คอิน — คืน null เมื่อ token ไม่ถูกต้อง */
-export async function getCheckInContext(token: string, actorId: string): Promise<CheckInContext | null> {
+/**
+ * แปลง token เป็นข้อมูลรอบประชุมสำหรับหน้าเช็คอิน — คืน null เมื่อ token ไม่ถูกต้อง
+ *
+ * actorId เป็น null เมื่อเรียกจากหน้าสาธารณะก่อนรู้ว่าผู้สแกนมีบัญชีหรือไม่
+ * (alreadyCheckedIn/isListedParticipant จะเป็น false เสมอในกรณีนี้ — ยังไม่รู้ตัวตน)
+ */
+export async function getCheckInContext(token: string, actorId: string | null): Promise<CheckInContext | null> {
   if (!TOKEN_PATTERN.test(token)) return null
 
   const { data: instance, error } = await supabaseAdmin
@@ -80,12 +85,14 @@ export async function getCheckInContext(token: string, actorId: string): Promise
   )
   const participants = resolveParticipants(people, selection.depts, selection.userIds)
 
-  const { data: existing } = await supabaseAdmin
-    .from('quality_task_check_ins')
-    .select('user_id')
-    .eq('instance_id', instance.id)
-    .eq('user_id', actorId)
-    .maybeSingle()
+  const existing = actorId
+    ? (await supabaseAdmin
+        .from('quality_task_check_ins')
+        .select('user_id')
+        .eq('instance_id', instance.id)
+        .eq('user_id', actorId)
+        .maybeSingle()).data
+    : null
 
   return {
     instanceId: str(instance.id),
@@ -94,7 +101,7 @@ export async function getCheckInContext(token: string, actorId: string): Promise
     plannedDate: nullable(instance.planned_date),
     closed: instance.status === 'completed',
     alreadyCheckedIn: Boolean(existing),
-    isListedParticipant: participants.some(p => str(p.id) === actorId),
+    isListedParticipant: actorId ? participants.some(p => str(p.id) === actorId) : false,
   }
 }
 
@@ -162,6 +169,50 @@ export async function recordCheckIn(token: string, actor: Actor): Promise<CheckI
   return { status: 'recorded', wasUnlisted }
 }
 
+/**
+ * บันทึกการเช็คอินของผู้ที่ไม่มีบัญชีในระบบ (แขก/บุคลากรหน่วยงานอื่นที่ยังไม่มี profile)
+ *
+ * ไม่มี user_id ให้เพิ่มเข้ารายชื่อผู้เข้าร่วม (participant_user_ids อ้าง profiles เท่านั้น)
+ * จึงไม่ปรากฏใน selected.participants เหมือนผู้ใช้ระบบ — ใบลงนามต้องต่อแถวจาก check-in
+ * โดยตรงแทน (ดู downloadSignInSheet ใน QualityTaskDashboard.tsx)
+ */
+export async function recordGuestCheckIn(
+  token: string,
+  guest: { firstName: string; lastName: string; department: string },
+): Promise<CheckInResult> {
+  if (!TOKEN_PATTERN.test(token)) return { status: 'not_found' }
+
+  const { data: instance, error } = await supabaseAdmin
+    .from('quality_task_instances')
+    .select('id, status')
+    .eq('check_in_token', token)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!instance) return { status: 'not_found' }
+  if (instance.status === 'completed') return { status: 'closed' }
+
+  const instanceId = str(instance.id)
+  const { error: insertError } = await supabaseAdmin.from('quality_task_check_ins').insert({
+    instance_id: instanceId,
+    user_id: null,
+    guest_name: guest.firstName.trim(),
+    guest_surname: guest.lastName.trim(),
+    guest_department: guest.department.trim(),
+    was_unlisted: true,
+    method: 'guest',
+  })
+  if (insertError) throw new Error(insertError.message)
+
+  supabaseAdmin.from('audit_log').insert({
+    action: 'quality_task.check_in',
+    user_id: null,
+    target: instanceId,
+    detail: `เช็คอินโดยผู้ไม่มีบัญชี: ${guest.firstName.trim()} ${guest.lastName.trim()} (${guest.department.trim()})`,
+  }).then(undefined, () => {})
+
+  return { status: 'recorded', wasUnlisted: true }
+}
+
 /** เช็คอินของหลายรอบพร้อมกัน — ใช้ประกอบ DTO ของหน้าปฏิทิน */
 export async function listCheckIns(instanceIds: string[]): Promise<Map<string, QualityTaskCheckIn[]>> {
   const result = new Map<string, QualityTaskCheckIn[]>()
@@ -177,10 +228,13 @@ export async function listCheckIns(instanceIds: string[]): Promise<Map<string, Q
   for (const row of (data ?? []) as Row[]) {
     const instanceId = str(row.instance_id)
     result.set(instanceId, [...(result.get(instanceId) ?? []), {
-      userId: str(row.user_id),
+      userId: nullable(row.user_id),
       checkedInAt: str(row.checked_in_at),
-      method: str(row.method) === 'manual' ? 'manual' : 'qr',
+      method: str(row.method) === 'manual' ? 'manual' : str(row.method) === 'guest' ? 'guest' : 'qr',
       wasUnlisted: Boolean(row.was_unlisted),
+      guestName: nullable(row.guest_name),
+      guestSurname: nullable(row.guest_surname),
+      guestDepartment: nullable(row.guest_department),
     }])
   }
   return result

@@ -8,6 +8,11 @@ export function isProtectedPath(path: string) {
   return PROTECTED_PATH_PATTERN.test(path)
 }
 
+// /checkin/[token] เป็นหน้าสาธารณะโดยตั้งใจ (ผู้ไม่มีบัญชีในระบบต้องเข้าได้) แต่ผู้ที่
+// เลือก "มีบัญชี" ระหว่างเช็คอินต้องกลับมาที่ QR เดิมได้หลังล็อกอิน — เพิ่มเข้า allowlist
+// ของ safeReturnPath แคบๆ เฉพาะ path รูปแบบนี้ ไม่ใช่การเปิด isProtectedPath ให้กว้างขึ้น
+const SAFE_PUBLIC_RETURN_PATTERN = /^\/checkin\/[A-Za-z0-9_-]{32,128}$/
+
 /** ชื่อ query param ที่ proxy ใช้ฝากปลายทางไว้ให้หน้า login พากลับ */
 export const RETURN_PATH_PARAM = 'next'
 
@@ -28,9 +33,9 @@ export function safeReturnPath(value: string | null | undefined): string | null 
   // ขึ้นบรรทัดใหม่ใน Location header เปิดทาง header injection
   if (/[\r\n\t]/.test(value)) return null
 
-  // allowlist แคบที่สุด: เฉพาะหน้าที่ proxy เด้งมาจริง ๆ เท่านั้น
+  // allowlist แคบที่สุด: เฉพาะหน้าที่ proxy เด้งมาจริง ๆ เท่านั้น (บวก /checkin/[token] ที่เพิ่มเจาะจง)
   const [pathname] = value.split('?')
-  return isProtectedPath(pathname) ? value : null
+  return isProtectedPath(pathname) || SAFE_PUBLIC_RETURN_PATTERN.test(pathname) ? value : null
 }
 
 /**

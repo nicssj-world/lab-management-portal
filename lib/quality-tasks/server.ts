@@ -98,8 +98,9 @@ export async function getQualityTaskOccurrences(
   for (const row of (checkInRows ?? []) as Row[]) {
     const instanceId = str(row.instance_id)
     checkIns.set(instanceId, [...(checkIns.get(instanceId) ?? []), {
-      userId: str(row.user_id), checkedInAt: str(row.checked_in_at),
-      method: str(row.method) === 'manual' ? 'manual' : 'qr', wasUnlisted: Boolean(row.was_unlisted),
+      userId: nullable(row.user_id), checkedInAt: str(row.checked_in_at),
+      method: str(row.method) === 'manual' ? 'manual' : str(row.method) === 'guest' ? 'guest' : 'qr', wasUnlisted: Boolean(row.was_unlisted),
+      guestName: nullable(row.guest_name), guestSurname: nullable(row.guest_surname), guestDepartment: nullable(row.guest_department),
     }])
   }
   const instanceByKey = new Map<string, Row>()

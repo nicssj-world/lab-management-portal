@@ -591,9 +591,15 @@ export function QualityTaskDashboard({
     }
   }
   function downloadSignInSheet() {
-    if (!selected || selected.participants.length === 0) return;
+    if (!selected) return;
+    const guestCheckIns = selected.checkIns
+      .filter((c) => c.userId === null)
+      .sort((a, b) => (a.checkedInAt < b.checkedInAt ? -1 : a.checkedInAt > b.checkedInAt ? 1 : 0));
+    if (selected.participants.length === 0 && guestCheckIns.length === 0) return;
     const checkInByUserId = new Map(
-      selected.checkIns.map((c) => [c.userId, c]),
+      selected.checkIns
+        .filter((c): c is typeof c & { userId: string } => c.userId !== null)
+        .map((c) => [c.userId, c]),
     );
     // ผู้ที่เพิ่มเข้ามาหน้างาน (wasUnlisted) ต้องต่อท้ายรายชื่อเดิมเสมอ ไม่ใช่แทรกตามลำดับตัวอักษร —
     // resolveParticipants คืนรายชื่อเรียงตามชื่อ (จาก listTaskPeople ที่ .order('name')) โดยไม่แยกว่า
@@ -612,12 +618,22 @@ export function QualityTaskDashboard({
       return aTime < bTime ? -1 : aTime > bTime ? 1 : 0;
     });
     const html = buildParticipantSignInHtml(
-      ordered.map((p) => ({
-        name: p.name,
-        positionTitle: p.positionTitle,
-        checkedInAt: checkInByUserId.get(p.id)?.checkedInAt ?? null,
-        wasUnlisted: checkInByUserId.get(p.id)?.wasUnlisted ?? false,
-      })),
+      [
+        ...ordered.map((p) => ({
+          name: p.name,
+          positionTitle: p.positionTitle,
+          checkedInAt: checkInByUserId.get(p.id)?.checkedInAt ?? null,
+          wasUnlisted: checkInByUserId.get(p.id)?.wasUnlisted ?? false,
+        })),
+        // ผู้ไม่มีบัญชีในระบบไม่มี profile ให้ resolveParticipants จับคู่ได้ จึงไม่ปรากฏใน
+        // selected.participants เลย — ต่อท้ายรายชื่อจาก check-in โดยตรง หน่วยงานลงคอลัมน์ "ตำแหน่ง"
+        ...guestCheckIns.map((c) => ({
+          name: [c.guestName, c.guestSurname].filter(Boolean).join(" "),
+          positionTitle: c.guestDepartment,
+          checkedInAt: c.checkedInAt,
+          wasUnlisted: true,
+        })),
+      ],
       {
         department: assigneeDept(selected.assignees, people),
         meetingCategory: selected.template.categoryName,
@@ -654,7 +670,7 @@ export function QualityTaskDashboard({
       );
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
-      const url = `${window.location.origin}/staff/quality-tasks/check-in/${json.token}`;
+      const url = `${window.location.origin}/checkin/${json.token}`;
       const dataUrl = await QRCode.toDataURL(url, {
         width: 480,
         margin: 2,
@@ -1349,7 +1365,10 @@ export function QualityTaskDashboard({
                   icon="download"
                   onClick={downloadSignInSheet}
                 >
-                  ดาวน์โหลด PDF ใบลงนาม ({selected.participants.length} คน)
+                  ดาวน์โหลด PDF ใบลงนาม (
+                  {selected.participants.length +
+                    selected.checkIns.filter((c) => c.userId === null).length}{" "}
+                  คน)
                 </Button>
                 {canAct && (
                   <Button
@@ -1376,6 +1395,12 @@ export function QualityTaskDashboard({
                 {selected.participants.length} คน:{" "}
                 {selected.checkIns
                   .map((c) => {
+                    if (c.userId === null) {
+                      const guestName = [c.guestName, c.guestSurname]
+                        .filter(Boolean)
+                        .join(" ");
+                      return `${guestName} (${c.guestDepartment}, ไม่มีบัญชี)`;
+                    }
                     const name =
                       selected.participants.find((p) => p.id === c.userId)
                         ?.name ??

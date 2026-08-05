@@ -54,11 +54,15 @@ export interface QualityTaskAttachment {
 }
 
 export interface QualityTaskCheckIn {
-  userId: string
+  /** null = เช็คอินโดยผู้ไม่มีบัญชีในระบบ (ดู guestName/guestSurname/guestDepartment แทน) */
+  userId: string | null
   checkedInAt: string
-  method: 'qr' | 'manual'
+  method: 'qr' | 'manual' | 'guest'
   /** true = ตอนเช็คอินคนนี้ยังไม่อยู่ในรายชื่อผู้เข้าร่วม ระบบเพิ่มให้อัตโนมัติ */
   wasUnlisted: boolean
+  guestName: string | null
+  guestSurname: string | null
+  guestDepartment: string | null
 }
 
 export interface QualityTaskOccurrence {
