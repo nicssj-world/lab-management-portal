@@ -6,7 +6,7 @@ import { assigneeEntrySchema } from '../templates/route'
 
 const createSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('scheduled'), scheduleId: z.string().uuid(), periodStart: z.string().date() }),
-  z.object({ mode: z.literal('adHoc'), templateId: z.string().uuid(), label: z.string().trim().min(1), startDate: z.string().date(), endDate: z.string().date(), assignees: z.array(assigneeEntrySchema) }),
+  z.object({ mode: z.literal('adHoc'), templateId: z.string().uuid(), label: z.string().trim().min(1), ownerText: z.string().trim().max(200).optional(), startDate: z.string().date(), endDate: z.string().date(), assignees: z.array(assigneeEntrySchema) }),
 ])
 
 export async function GET(req: NextRequest) {

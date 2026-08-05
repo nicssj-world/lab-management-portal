@@ -20,6 +20,7 @@ import {
   buildReadAudiencePickerState,
 } from "@/lib/documents/read-audience";
 import { QUALITY_TASK_CATEGORIES } from "@/lib/quality-tasks/categories";
+import { occurrenceDisplayOwner, occurrenceDisplayTitle } from "@/lib/quality-tasks/logic";
 
 type Person = {
   id: string;
@@ -157,6 +158,7 @@ export function QualityTaskDashboard({
   const [adHoc, setAdHoc] = useState<{
     templateId: string;
     label: string;
+    ownerText: string;
     startDate: string;
     endDate: string;
     isMultiDay: boolean;
@@ -166,6 +168,7 @@ export function QualityTaskDashboard({
       ? {
           templateId: "",
           label: "",
+          ownerText: "",
           startDate: "",
           endDate: "",
           isMultiDay: false,
@@ -240,10 +243,10 @@ export function QualityTaskDashboard({
         (o) =>
           (!category || o.template.categoryCode === category) &&
           (!state || o.urgency === state) &&
-          (!owner || o.template.ownerText === owner) &&
+          (!owner || occurrenceDisplayOwner(o) === owner) &&
           (!assignee || o.assignees.some((e) => e.userId === assignee)) &&
           (!search ||
-            `${o.template.title} ${o.template.ownerText} ${o.completionNote ?? ""}`
+            `${occurrenceDisplayTitle(o)} ${occurrenceDisplayOwner(o)} ${o.completionNote ?? ""}`
               .toLowerCase()
               .includes(search.toLowerCase())),
       ),
@@ -251,7 +254,7 @@ export function QualityTaskDashboard({
   );
   const owners = useMemo(
     () =>
-      [...new Set(items.map((o) => o.template.ownerText).filter(Boolean))].sort(
+      [...new Set(items.map((o) => occurrenceDisplayOwner(o)).filter(Boolean))].sort(
         (a, b) => a.localeCompare(b, "th"),
       ),
     [items],
@@ -571,6 +574,7 @@ export function QualityTaskDashboard({
           mode: "adHoc",
           templateId: adHoc.templateId,
           label: adHoc.label,
+          ownerText: adHoc.ownerText.trim() || undefined,
           startDate: adHoc.startDate,
           endDate: adHoc.isMultiDay ? adHoc.endDate : adHoc.startDate,
           assignees: adHoc.assignees,
@@ -617,7 +621,7 @@ export function QualityTaskDashboard({
       {
         department: assigneeDept(selected.assignees, people),
         meetingCategory: selected.template.categoryName,
-        subject: selected.template.title,
+        subject: occurrenceDisplayTitle(selected),
       },
     );
     const blobUrl = URL.createObjectURL(
@@ -697,6 +701,7 @@ export function QualityTaskDashboard({
                     setAdHoc({
                       templateId: "",
                       label: "",
+                      ownerText: "",
                       startDate: todayStr,
                       endDate: todayStr,
                       isMultiDay: false,
@@ -950,8 +955,8 @@ export function QualityTaskDashboard({
                 key={o.key}
                 type="button"
                 className={`qt-card${rangeClass}${rangeHoverKey === o.key ? " qt-range-hover" : ""}${canDragMeeting ? " qt-card-draggable" : ""}${draggedMeetingKey === o.key ? " qt-card-dragging" : ""}`}
-                title={isVisibleStart ? `${o.template.title} · ${o.template.ownerText}` : undefined}
-                aria-label={isVisibleStart ? `${o.template.title} ${o.template.ownerText}` : undefined}
+                title={isVisibleStart ? `${occurrenceDisplayTitle(o)} · ${occurrenceDisplayOwner(o)}` : undefined}
+                aria-label={isVisibleStart ? `${occurrenceDisplayTitle(o)} ${occurrenceDisplayOwner(o)}` : undefined}
                 draggable={canDragMeeting}
                 onDragStart={
                   canDragMeeting
@@ -990,9 +995,9 @@ export function QualityTaskDashboard({
                           style={{ color: catColor, flexShrink: 0 }}
                         />
                       )}
-                      <span>{o.template.title}</span>
+                      <span>{occurrenceDisplayTitle(o)}</span>
                     </div>
-                    <div className="qt-event-owner">{o.template.ownerText}</div>
+                    <div className="qt-event-owner">{occurrenceDisplayOwner(o)}</div>
                   </>
                 ) : (
                   <div className="qt-range-continuation" aria-hidden="true" />
@@ -1141,7 +1146,7 @@ export function QualityTaskDashboard({
                             flexShrink: 0,
                           }}
                         />
-                        <b>{o.template.title}</b>
+                        <b>{occurrenceDisplayTitle(o)}</b>
                       </div>
                       <div
                         style={{
@@ -1150,7 +1155,7 @@ export function QualityTaskDashboard({
                           marginLeft: 15,
                         }}
                       >
-                        หมวด {o.template.categoryCode} · {o.template.ownerText}
+                        หมวด {o.template.categoryCode} · {occurrenceDisplayOwner(o)}
                       </div>
                     </td>
                     <td style={tdCenter}>{o.periodLabel}</td>
@@ -1207,7 +1212,7 @@ export function QualityTaskDashboard({
                       flexShrink: 0,
                     }}
                   />
-                  <b>{o.template.title}</b>
+                  <b>{occurrenceDisplayTitle(o)}</b>
                 </div>
                 <div
                   style={{
@@ -1259,9 +1264,7 @@ export function QualityTaskDashboard({
                     : selected.template.categoryName}
                 </div>
                 <h2 style={{ margin: "5px 0 0", fontSize: 20 }}>
-                  {selected.scheduleId === null
-                    ? selected.periodLabel
-                    : selected.template.title}
+                  {occurrenceDisplayTitle(selected)}
                 </h2>
               </div>
               <button onClick={() => setSelected(null)} style={closeStyle}>
@@ -1276,7 +1279,7 @@ export function QualityTaskDashboard({
                 marginTop: 14,
               }}
             >
-              <Info label="ทีม/บทบาท" value={selected.template.ownerText} />
+              <Info label="ทีม/บทบาท" value={occurrenceDisplayOwner(selected)} />
               <Info
                 label="ผู้รับผิดชอบ"
                 value={
@@ -1981,6 +1984,17 @@ export function QualityTaskDashboard({
                   onChange={(e) =>
                     setAdHoc({ ...adHoc, label: e.target.value })
                   }
+                  style={inputStyle}
+                />
+              </label>
+              <label style={labelStyle}>
+                ทีม/บทบาท (ถ้าไม่ตรงกับแม่แบบ)
+                <input
+                  value={adHoc.ownerText}
+                  onChange={(e) =>
+                    setAdHoc({ ...adHoc, ownerText: e.target.value })
+                  }
+                  placeholder="เว้นว่างเพื่อใช้ทีม/บทบาทของแม่แบบ"
                   style={inputStyle}
                 />
               </label>

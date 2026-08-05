@@ -69,6 +69,7 @@ export interface QualityTaskOccurrence {
   periodStart: string
   periodEnd: string
   periodLabel: string
+  ownerTextOverride: string | null
   plannedDate: string | null
   status: TaskStatus
   note: string | null
@@ -99,7 +100,7 @@ export interface QualityTaskActionItem {
 
 export type OccurrenceCreatePayload =
   | { mode: 'scheduled'; scheduleId: string; periodStart: string }
-  | { mode: 'adHoc'; templateId: string; label: string; startDate: string; endDate: string; assignees: AssigneeEntry[] }
+  | { mode: 'adHoc'; templateId: string; label: string; ownerText?: string; startDate: string; endDate: string; assignees: AssigneeEntry[] }
 
 export type OccurrenceActionPayload =
   | { action: 'schedule'; plannedDate: string | null; note?: string | null; assignees?: AssigneeEntry[]; participantDepts?: string[]; participantUserIds?: string[] }
