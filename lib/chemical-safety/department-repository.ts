@@ -53,7 +53,8 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
       displayName: String(entry.display_name),
       displayNameEdited: Boolean(entry.display_name_edited),
       sourcePath: String(entry.source_path),
-      fileUrl: `/api/public/department-sds/${entry.public_id}/file?disposition=inline`,
+      // เจ้าหน้าที่ต้องเปิดดูได้แม้งานยังเป็น draft; public route ต้องบล็อกไว้จนกว่าจะเผยแพร่
+      fileUrl: `/api/admin/chemical-safety/department-sds/${entry.id}/file`,
     })
     byDepartment.set(String(entry.department_code), list)
   }

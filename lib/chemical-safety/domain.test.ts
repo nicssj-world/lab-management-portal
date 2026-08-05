@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   calculateHoldingTotal,
+  calculateHoldingTotalFromFields,
   currentSdsState,
   detectQuantityConflict,
   normalizeCasNumber,
@@ -37,6 +38,9 @@ assert.equal(normalizeCasNumber(' 64 - 19 - 7 '), '64-19-7')
 assert.equal(normalizeCasNumber(''), null)
 
 assert.deepEqual(calculateHoldingTotal([{ value: 500, unit: 'mL', count: 7 }]), { value: 3.5, unit: 'L' })
+assert.deepEqual(calculateHoldingTotalFromFields({ packageValue: 500, packageUnit: 'mL', currentContainerCount: 7 }), { value: 3.5, unit: 'L' })
+assert.equal(calculateHoldingTotalFromFields({ packageValue: null, packageUnit: 'mL', currentContainerCount: 7 }), null)
+assert.equal(calculateHoldingTotalFromFields({ packageValue: 500, packageUnit: 'unknown', currentContainerCount: 7 }), null)
 assert.deepEqual(calculateHoldingTotal([{ value: 500, unit: 'mL', count: 1 }]), { value: 500, unit: 'mL' })
 assert.deepEqual(calculateHoldingTotal([{ value: 250, unit: 'g', count: 4 }]), { value: 1, unit: 'kg' })
 assert.deepEqual(calculateHoldingTotal([{ value: 2.5, unit: 'L', count: 1 }, { value: 1, unit: 'L', count: 1 }]), { value: 3.5, unit: 'L' })

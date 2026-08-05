@@ -13,6 +13,7 @@ const publicSdsApi = readFileSync('app/api/public/sds/route.ts', 'utf8')
 const publicSdsFileApi = readFileSync('app/api/public/sds/[publicId]/file/route.ts', 'utf8')
 const publicDepartmentSdsApi = readFileSync('app/api/public/department-sds/route.ts', 'utf8')
 const publicDepartmentSdsFileApi = readFileSync('app/api/public/department-sds/[publicId]/file/route.ts', 'utf8')
+const adminDepartmentSdsFileApi = readFileSync('app/api/admin/chemical-safety/department-sds/[code]/file/route.ts', 'utf8')
 const departmentSdsUploadApi = readFileSync('app/api/admin/chemical-safety/department-sds/[code]/upload/route.ts', 'utf8')
 const publicModule = readFileSync('lib/chemical-safety/public.ts', 'utf8')
 const ghsSql = readFileSync('scripts/chemical-safety-ghs-and-departments.sql', 'utf8')
@@ -129,6 +130,8 @@ assert.match(
 assert.match(departmentSdsUploadApi, /requireDepartmentSdsPublisher/, 'อัปโหลด SDS แยกตามงานต้องตรวจสิทธิ์ผู้จัดการงาน')
 assert.match(departmentSdsUploadApi, /validateChemicalPdf/, 'อัปโหลด SDS แยกตามงานต้องตรวจชนิดและลายเซ็น PDF')
 assert.match(departmentSdsUploadApi, /status: 'draft', published_by: null, published_at: null/, 'เพิ่มไฟล์ในงานที่เผยแพร่แล้วต้องกลับสู่ฉบับร่างเพื่อทบทวนใหม่')
+assert.match(adminDepartmentSdsFileApi, /requireChemicalViewer/, 'เจ้าหน้าที่ต้องเปิดดู SDS แยกตามงานได้แม้งานยังเป็นฉบับร่าง')
+assert.match(adminDepartmentSdsFileApi, /chemical_department_sds/, 'route เปิดไฟล์เจ้าหน้าที่ต้องค้นจากรายการ SDS แยกตามงาน')
 // สารที่ SDS ยังไม่อนุมัติต้องไม่มี URL ไฟล์ แม้จะแสดงการจำแนก GHS บนหน้าสาธารณะ
 assert.match(publicModule, /viewUrl: approved \?/, 'pending chemicals expose no file URL')
 assert.match(
