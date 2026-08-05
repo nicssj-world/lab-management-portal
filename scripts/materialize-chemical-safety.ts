@@ -138,7 +138,9 @@ async function ensureHolding(
     package_unit: input.packageUnit,
     current_container_count: input.currentContainerCount,
     minimum_stock: input.minimumStock,
-    reported_total_raw: input.reportedTotalRaw,
+    // The inventory total is calculated from package parts; the old free-text
+    // reported total is intentionally no longer materialized.
+    reported_total_raw: null,
     calculated_total_value: input.calculatedTotalValue,
     calculated_total_unit: input.calculatedTotalUnit,
     effective_on: '2026-06-01',

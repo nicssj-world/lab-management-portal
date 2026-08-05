@@ -3,10 +3,29 @@ import { requireChemicalCustodian, requireChemicalViewer } from '@/lib/chemical-
 import { parseJson, unexpectedError } from '@/lib/chemical-safety/api'
 import { chemicalChangeRequestSchema } from '@/lib/chemical-safety/schemas'
 import { listChemicalChangeRequests } from '@/lib/chemical-safety/repository'
+import { calculateHoldingTotalFromFields, isQuantityUnit } from '@/lib/chemical-safety/domain'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function snakeProposal(value: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`), item]))
+}
+
+function withCalculatedQuantity<T extends {
+  packageValue: number
+  packageUnit: string
+  currentContainerCount: number
+  calculatedTotalValue?: unknown
+  calculatedTotalUnit?: unknown
+}>(proposal: T) {
+  const calculated = typeof proposal.calculatedTotalValue === 'number' && isQuantityUnit(proposal.calculatedTotalUnit)
+    ? { value: proposal.calculatedTotalValue, unit: proposal.calculatedTotalUnit }
+    : calculateHoldingTotalFromFields(proposal)
+  return {
+    ...proposal,
+    reportedTotalRaw: null,
+    calculatedTotalValue: calculated?.value ?? null,
+    calculatedTotalUnit: calculated?.unit ?? null,
+  }
 }
 
 export async function GET() {
@@ -27,11 +46,14 @@ export async function POST(request: NextRequest) {
   try {
     // 'new_chemical' ยังไม่มี entity ให้อ้างอิง entity_id จึงต้องเป็น null (ตาราง/RPC บังคับคู่กันไว้แล้ว)
     const entityId = input.data.entityType === 'new_chemical' ? null : input.data.entityId
+    const proposedData = input.data.entityType === 'product'
+      ? input.data.proposedData
+      : withCalculatedQuantity(input.data.proposedData)
     const { data, error } = await supabaseAdmin.from('chemical_change_requests').insert({
       entity_type: input.data.entityType,
       entity_id: entityId,
       unit_id: input.data.unitId,
-      proposed_data: snakeProposal(input.data.proposedData),
+      proposed_data: snakeProposal(proposedData),
       status: 'draft',
       created_by: guard.actor.id,
     }).select('*').single()

@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Stat } from '@/components/ui/Stat'
 import { ViewTabs } from '@/components/ui/ViewTabs'
 import { CHEMICAL_HUB_VIEWS, type ChemicalHubView } from '@/lib/navigation'
+import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
 import { CHEMICAL_GROUP_SUMMARY } from '@/lib/chemical-safety/storage-manifest'
 import type {
   ChemicalChangeRequestListItemDTO,
@@ -29,7 +30,6 @@ import { FONT, SPACE, ZONE_META, tabularNums } from './shared/tokens'
 import {
   GhsRow,
   PositionChip,
-  QuantityConflictNote,
   SdsStateBadge,
 } from './shared/ui'
 
@@ -48,6 +48,10 @@ interface Props {
   sdsProducts: SdsProductInfo[]
   departmentSds: DepartmentSdsGroupDTO[]
   publishableDepartmentCodes: string[]
+}
+
+function formatQuantity(value: number): string {
+  return value.toLocaleString('th-TH', { maximumFractionDigits: 6 })
 }
 
 function useToast() {
@@ -144,7 +148,6 @@ export function ChemicalSafetyHubClient({
     products: new Set(registry.map(row => row.productId)).size,
     cabinets: locations.length,
     sdsAttention: registry.filter(row => ['missing', 'mismatch', 'review_due'].includes(row.sdsStatus)).length,
-    quantityConflicts: registry.filter(row => row.quantityConflict).length,
   }), [locations.length, registry])
 
   function exportPdf() {
@@ -404,6 +407,13 @@ export function ChemicalSafetyHubClient({
                   <tbody>
                     {visible.map(row => {
                       const product = productById.get(row.productId)
+                      const packageCalculation = calculateHoldingTotalFromFields({
+                        packageValue: row.packageValue,
+                        packageUnit: row.packageUnit,
+                        currentContainerCount: row.currentContainerCount,
+                      })
+                      const canShowPackageFormula = packageCalculation?.value === row.calculatedTotalValue
+                        && packageCalculation.unit === row.calculatedTotalUnit
                       const isRetired = product?.lifecycleStatus === 'retired'
                       const busy = busyProductId === row.productId
                       const creatingSds = creatingSdsProductId === row.productId
@@ -429,13 +439,20 @@ export function ChemicalSafetyHubClient({
                             </div>
                           </td>
                           <td style={cellStyle}>
-                            <span style={tabularNums}>{row.reportedTotalRaw || '—'}</span>
-                            {row.calculatedTotalValue != null && (
-                              <div style={{ fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
-                                คำนวณได้ {row.calculatedTotalValue} {row.calculatedTotalUnit}
-                              </div>
+                            {row.calculatedTotalValue != null && row.calculatedTotalUnit ? (
+                              <>
+                                <strong style={{ display: 'block', fontSize: FONT.base, ...tabularNums }}>
+                                  {formatQuantity(row.calculatedTotalValue)} {row.calculatedTotalUnit}
+                                </strong>
+                                {canShowPackageFormula && row.packageValue != null && row.packageUnit && row.currentContainerCount != null && (
+                                  <div style={{ marginTop: 2, fontSize: FONT.xs, color: 'var(--muted)', ...tabularNums }}>
+                                    {formatQuantity(row.packageValue)} {row.packageUnit} × {formatQuantity(row.currentContainerCount)} ภาชนะ
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <span style={tabularNums}>—</span>
                             )}
-                            {row.quantityConflict && <div style={{ marginTop: 4 }}><QuantityConflictNote compact /></div>}
                           </td>
                           <td style={cellStyle}><SdsStateBadge state={row.sdsStatus} /></td>
                           <td style={cellStyle}>
@@ -554,7 +571,7 @@ function StorageLayoutPanel({
 }: {
   locations: ChemicalStorageLocationDTO[]
   atPosition: Map<string, ChemicalRegistryRow[]>
-  summary: { products: number; cabinets: number; sdsAttention: number; quantityConflicts: number }
+  summary: { products: number; cabinets: number; sdsAttention: number }
   onOpenCabinet: (code: string) => void
 }) {
   return (
@@ -578,7 +595,6 @@ function StorageLayoutPanel({
         <Stat label="สารในทะเบียน" value={summary.products} icon="flask" color="blue" />
         <Stat label="ตู้จัดเก็บ" value={summary.cabinets} icon="building" color="purple" />
         <Stat label="ต้องตรวจสอบ SDS" value={summary.sdsAttention} icon="doc" color={summary.sdsAttention > 0 ? 'amber' : 'green'} />
-        <Stat label="ปริมาณไม่ตรง" value={summary.quantityConflicts} icon="alert" color={summary.quantityConflicts > 0 ? 'red' : 'green'} />
       </div>
 
       {ZONE_META.map(zone => {
@@ -600,7 +616,7 @@ function StorageLayoutPanel({
             <div className="chemical-cabinet-grid">
               {zoneLocations.map(location => {
                 const rows = atPosition.get(location.code) ?? []
-                const warningCount = rows.filter(row => row.quantityConflict || ['missing', 'mismatch', 'review_due'].includes(row.sdsStatus)).length
+                const warningCount = rows.filter(row => ['missing', 'mismatch', 'review_due'].includes(row.sdsStatus)).length
                 const shownRows = rows.slice(0, 3)
                 return (
                   <button

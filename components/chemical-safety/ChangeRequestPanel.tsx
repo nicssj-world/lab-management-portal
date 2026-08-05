@@ -27,7 +27,9 @@ function summarize(item: ChemicalChangeRequestListItemDTO): string {
     typeof data.packageValue === 'number' && typeof data.packageUnit === 'string'
       ? `${data.packageValue} ${data.packageUnit} × ${typeof data.currentContainerCount === 'number' ? data.currentContainerCount : '?'}`
       : null,
-    typeof data.reportedTotalRaw === 'string' && data.reportedTotalRaw ? data.reportedTotalRaw : null,
+    typeof data.calculatedTotalValue === 'number' && typeof data.calculatedTotalUnit === 'string'
+      ? `= ${data.calculatedTotalValue} ${data.calculatedTotalUnit}`
+      : null,
   ].filter(Boolean)
   return parts.join(' · ')
 }

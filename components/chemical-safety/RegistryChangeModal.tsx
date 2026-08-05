@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type CSSProperties } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import type {
@@ -10,6 +10,7 @@ import type {
   ChemicalUnitDTO,
   GhsPictogramCode,
 } from '@/lib/chemical-safety/types'
+import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
 import { GhsPictogram } from './GhsPictogram'
 import { FONT, SPACE } from './shared/tokens'
 
@@ -72,11 +73,32 @@ export function RegistryChangeModal({
   const [packageUnit, setPackageUnit] = useState(registryRow?.packageUnit ?? 'mL')
   const [currentContainerCount, setCurrentContainerCount] = useState(String(registryRow?.currentContainerCount ?? ''))
   const [minimumStock, setMinimumStock] = useState(String(registryRow?.minimumStock ?? ''))
-  const [reportedTotalRaw, setReportedTotalRaw] = useState(registryRow?.reportedTotalRaw ?? '')
   const [receivedOn, setReceivedOn] = useState(registryRow?.receivedOn ?? '')
   const [openedOn, setOpenedOn] = useState(registryRow?.openedOn ?? '')
   const [expiresOn, setExpiresOn] = useState(registryRow?.expiresOn ?? '')
   const [effectiveOn, setEffectiveOn] = useState(registryRow?.effectiveOn ?? '')
+
+  const calculatedTotal = useMemo(() => {
+    if (!packageValue.trim() || !currentContainerCount.trim()) return null
+    const derived = calculateHoldingTotalFromFields({
+      packageValue: Number(packageValue),
+      packageUnit,
+      currentContainerCount: Number(currentContainerCount),
+    })
+    const matchesExistingFields = registryRow
+      && registryRow.packageValue === Number(packageValue)
+      && registryRow.packageUnit === packageUnit
+      && registryRow.currentContainerCount === Number(currentContainerCount)
+    if (
+      matchesExistingFields
+      && registryRow.calculatedTotalValue != null
+      && registryRow.calculatedTotalUnit
+      && (!derived || derived.value !== registryRow.calculatedTotalValue || derived.unit !== registryRow.calculatedTotalUnit)
+    ) {
+      return { value: registryRow.calculatedTotalValue, unit: registryRow.calculatedTotalUnit }
+    }
+    return derived
+  }, [packageValue, packageUnit, currentContainerCount, registryRow])
 
   const [pictograms, setPictograms] = useState<GhsPictogramCode[]>(product?.ghsPictogramCodes ?? [])
   const [hazards, setHazards] = useState<HazardDraft[]>(product?.ghsHazardClasses ?? [])
@@ -114,7 +136,8 @@ export function RegistryChangeModal({
       packageUnit,
       currentContainerCount: Number(currentContainerCount),
       minimumStock: Number(minimumStock),
-      reportedTotalRaw: reportedTotalRaw.trim() || null,
+      calculatedTotalValue: calculatedTotal?.value ?? null,
+      calculatedTotalUnit: calculatedTotal?.unit ?? null,
       receivedOn: receivedOn || null,
       openedOn: openedOn || null,
       expiresOn: expiresOn || null,
@@ -132,7 +155,8 @@ export function RegistryChangeModal({
       packageUnit,
       currentContainerCount: Number(currentContainerCount),
       minimumStock: Number(minimumStock),
-      reportedTotalRaw: reportedTotalRaw.trim() || null,
+      calculatedTotalValue: calculatedTotal?.value ?? null,
+      calculatedTotalUnit: calculatedTotal?.unit ?? null,
       receivedOn: receivedOn || null,
       openedOn: openedOn || null,
       expiresOn: expiresOn || null,
@@ -273,7 +297,11 @@ export function RegistryChangeModal({
                 </label>
                 <Field label="จำนวนภาชนะปัจจุบัน *" value={currentContainerCount} onChange={setCurrentContainerCount} type="number" />
                 <Field label="จำนวนสต๊อกขั้นต่ำ *" value={minimumStock} onChange={setMinimumStock} type="number" />
-                <Field label="ปริมาณรวมที่รายงาน" value={reportedTotalRaw} onChange={setReportedTotalRaw} placeholder="เช่น 5 ลิตร" />
+                {calculatedTotal && (
+                  <div style={{ gridColumn: '1 / -1', padding: `${SPACE.xs}px ${SPACE.sm}px`, borderRadius: 8, background: 'var(--primary-soft)', color: 'var(--ink)', fontSize: FONT.sm }}>
+                    ปริมาณรวมที่คำนวณอัตโนมัติ: <strong>{calculatedTotal.value.toLocaleString('th-TH', { maximumFractionDigits: 6 })} {calculatedTotal.unit}</strong>
+                  </div>
+                )}
                 <Field label="วันที่รับเข้า" value={receivedOn} onChange={setReceivedOn} type="date" />
                 <Field label="วันที่เปิดใช้" value={openedOn} onChange={setOpenedOn} type="date" />
                 <Field label="วันหมดอายุ" value={expiresOn} onChange={setExpiresOn} type="date" />

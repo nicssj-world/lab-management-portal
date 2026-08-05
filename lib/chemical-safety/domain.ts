@@ -70,6 +70,43 @@ export function calculateHoldingTotal(parts: readonly QuantityPart[]): QuantityT
   }
 }
 
+/**
+ * Calculate a holding total from the fields stored on an inventory row.
+ *
+ * Older imports may already have a calculated total (and can contain mixed
+ * package sizes), so callers should use this as a fallback when that value is
+ * absent. Returning null keeps malformed legacy rows visible instead of
+ * making the registry query fail.
+ */
+export function calculateHoldingTotalFromFields(input: {
+  packageValue: number | null | undefined
+  packageUnit: unknown
+  currentContainerCount: number | null | undefined
+}): QuantityTotal | null {
+  if (
+    input.packageValue == null
+    || input.currentContainerCount == null
+    || !Number.isInteger(input.currentContainerCount)
+    || !isQuantityUnit(input.packageUnit)
+  ) {
+    return null
+  }
+
+  try {
+    return calculateHoldingTotal([{
+      value: input.packageValue,
+      unit: input.packageUnit,
+      count: input.currentContainerCount,
+    }])
+  } catch {
+    return null
+  }
+}
+
+export function isQuantityUnit(value: unknown): value is QuantityUnit {
+  return value === 'mL' || value === 'L' || value === 'g' || value === 'kg'
+}
+
 export function detectQuantityConflict({ calculated, reportedRaw }: QuantityConflictInput): boolean {
   const raw = reportedRaw?.trim()
   if (!raw) return false

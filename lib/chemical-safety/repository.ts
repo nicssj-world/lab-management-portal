@@ -1,6 +1,7 @@
 import 'server-only'
 
-import { detectQuantityConflict, currentSdsState } from './domain'
+import { calculateHoldingTotal, calculateHoldingTotalFromFields, currentSdsState, isQuantityUnit } from './domain'
+import type { QuantityPart, QuantityTotal } from './domain'
 import type {
   ChemicalChangeRequestListItemDTO,
   ChemicalImportRowDTO,
@@ -13,7 +14,6 @@ import type {
   ChemicalStorageLocationDTO,
   GhsPictogramCode,
   JsonValue,
-  QuantityUnit,
 } from './types'
 import type { ImportReviewFilters, InternalSdsFilters } from './schemas'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -81,6 +81,78 @@ function jsonObject(value: unknown): Record<string, JsonValue> {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter(item => typeof item === 'string') : []
+}
+
+function importedQuantityParts(value: unknown): QuantityPart[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null
+  const parts: QuantityPart[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+    const part = item as Record<string, unknown>
+    if (
+      typeof part.value !== 'number'
+      || !Number.isFinite(part.value)
+      || part.value < 0
+      || !isQuantityUnit(part.unit)
+      || typeof part.count !== 'number'
+      || !Number.isInteger(part.count)
+      || part.count < 0
+    ) return null
+    parts.push({ value: part.value, unit: part.unit, count: part.count })
+  }
+  return parts
+}
+
+function importedCalculatedTotal(importEvidence: Row | undefined): QuantityTotal | null {
+  const normalizedData = importEvidence?.normalized_data
+  if (!normalizedData || typeof normalizedData !== 'object' || Array.isArray(normalizedData)) return null
+  const parts = importedQuantityParts((normalizedData as Record<string, unknown>).packageParts)
+  if (!parts) return null
+  try {
+    return calculateHoldingTotal(parts)
+  } catch {
+    return null
+  }
+}
+
+function sameQuantityTotal(left: QuantityTotal | null, right: QuantityTotal | null): boolean {
+  return left?.unit === right?.unit && left?.value === right?.value
+}
+
+function calculateRegistryQuantity(input: {
+  packageValue: number | null
+  packageUnit: unknown
+  currentContainerCount: number | null
+  importEvidence?: Row
+  stored: QuantityTotal | null
+}): QuantityTotal | null {
+  const imported = importedCalculatedTotal(input.importEvidence)
+  const packageUnit = isQuantityUnit(input.packageUnit) ? input.packageUnit : null
+  const matchesImportedShape = imported
+    && input.packageValue != null
+    && packageUnit != null
+    && input.currentContainerCount != null
+    && Array.isArray(input.importEvidence?.normalized_data?.packageParts)
+    && (() => {
+      const parts = importedQuantityParts(input.importEvidence?.normalized_data?.packageParts)
+      const first = parts?.[0]
+      return Boolean(
+        first
+        && first.value === input.packageValue
+        && first.unit === packageUnit
+        && parts.reduce((sum, part) => sum + part.count, 0) === input.currentContainerCount,
+      )
+    })()
+
+  // Rebuild imported rows from their package parts so mixed sizes such as
+  // 2.5 L + 1 L remain 3.5 L instead of using the first size × total count.
+  if (matchesImportedShape && (!input.stored || sameQuantityTotal(input.stored, imported))) return imported
+
+  return calculateHoldingTotalFromFields({
+    packageValue: input.packageValue,
+    packageUnit: input.packageUnit,
+    currentContainerCount: input.currentContainerCount,
+  }) ?? imported ?? input.stored
 }
 
 function mapSds(row: Row, hazards: Row[]): ChemicalSdsDTO {
@@ -177,8 +249,24 @@ export async function listChemicalRegistryWithSource(
         .map(item => ({ className: String(item.class_th), category: 'Masterlist' }))
       : []
     const hazards = sdsHazards.length > 0 ? sdsHazards : masterlistHazards
-    const calculatedValue = numberOrNull(holding.calculated_total_value)
-    const calculatedUnit = text(holding.calculated_total_unit) as QuantityUnit | null
+    const packageValue = numberOrNull(holding.package_value)
+    const packageUnit = text(holding.package_unit)
+    const currentContainerCount = numberOrNull(holding.current_container_count)
+    const storedCalculatedValue = numberOrNull(holding.calculated_total_value)
+    const storedCalculatedUnit = text(holding.calculated_total_unit)
+    const storedCalculated = storedCalculatedValue != null && isQuantityUnit(storedCalculatedUnit)
+      ? { value: storedCalculatedValue, unit: storedCalculatedUnit }
+      : null
+    // Keep the imported total when it exists because a holding can contain
+    // mixed package sizes. Derive it for legacy/new rows that do not have a
+    // persisted total so the UI never needs a manually entered total.
+    const calculated = calculateRegistryQuantity({
+      packageValue,
+      packageUnit,
+      currentContainerCount,
+      importEvidence,
+      stored: storedCalculated,
+    })
     const row: ChemicalRegistryRow = {
       productId: String(product.id),
       holdingId: String(holding.id),
@@ -188,21 +276,19 @@ export async function listChemicalRegistryWithSource(
       casNumber: text(product.cas_number),
       concentration: text(product.concentration),
       locationId: location ? String(location.id) : null,
-      packageValue: numberOrNull(holding.package_value),
-      packageUnit: text(holding.package_unit) as QuantityUnit | null,
-      currentContainerCount: numberOrNull(holding.current_container_count),
+      packageValue,
+      packageUnit: isQuantityUnit(packageUnit) ? packageUnit : null,
+      currentContainerCount,
       minimumStock: numberOrNull(holding.minimum_stock),
       lotNumber: text(holding.lot_number),
-      reportedTotalRaw: text(holding.reported_total_raw),
-      calculatedTotalValue: calculatedValue,
-      calculatedTotalUnit: calculatedUnit,
+      reportedTotalRaw: null,
+      calculatedTotalValue: calculated?.value ?? null,
+      calculatedTotalUnit: calculated?.unit ?? null,
       receivedOn: text(holding.received_on),
       openedOn: text(holding.opened_on),
       expiresOn: text(holding.expires_on),
       effectiveOn: text(holding.effective_on),
-      quantityConflict: calculatedValue != null && calculatedUnit != null
-        ? detectQuantityConflict({ calculated: { value: calculatedValue, unit: calculatedUnit }, reportedRaw: text(holding.reported_total_raw) ?? '' })
-        : Boolean(holding.reported_total_raw),
+      quantityConflict: false,
       positionCode: location ? String(location.code) : null,
       unitId: String(unit.id),
       unitName: String(unit.name_th),
