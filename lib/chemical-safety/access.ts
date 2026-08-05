@@ -16,12 +16,16 @@ type GuardResult = { actor: Actor; response?: undefined } | { actor?: undefined;
 
 export async function chemicalAccessDecision(
   actor: Pick<Actor, 'id' | 'role'>,
-  _scopes: ChemicalScope[],
+  scopes: ChemicalScope[],
   request: ChemicalAction,
 ): Promise<boolean> {
   if (normalizeRole(actor.role) === 'Admin') return true
   if (request.action === 'manage_roles') return false
-  return isSafetyEditor(actor)
+  if (await isSafetyEditor(actor)) return true
+  if (request.action === 'view') return scopes.length > 0
+  if (request.action !== 'edit' && request.action !== 'review') return false
+  const requiredRole = request.action === 'edit' ? 'custodian' : 'reviewer'
+  return scopes.some(scope => scope.unitId === request.unitId && scope.role === requiredRole)
 }
 
 async function loadScopes(actorId: string): Promise<ChemicalScope[]> {
@@ -39,7 +43,7 @@ async function loadScopes(actorId: string): Promise<ChemicalScope[]> {
 async function requireAction(action: ChemicalAction): Promise<GuardResult> {
   const actor = await getActor()
   if (!actor) return { response: jsonUnauthorized() }
-  const scopes = action.action === 'view' || action.action === 'manage_roles' || action.action === 'retire'
+  const scopes = action.action === 'manage_roles' || action.action === 'retire'
     ? []
     : await loadScopes(actor.id)
   return await chemicalAccessDecision(actor, scopes, action) ? { actor } : { response: jsonForbidden() }

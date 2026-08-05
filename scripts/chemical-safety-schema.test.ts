@@ -6,6 +6,7 @@ const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
   scripts?: Record<string, string>
 }
 const chemicalAccess = readFileSync('lib/chemical-safety/access.ts', 'utf8')
+const safetyAccess = readFileSync('lib/lab-map/safety-access.ts', 'utf8')
 const staffSidebar = readFileSync('components/layout/StaffSidebar.tsx', 'utf8')
 const publicNav = readFileSync('components/layout/PublicNav.tsx', 'utf8')
 const publicSdsPage = readFileSync('app/(public)/sds/page.tsx', 'utf8')
@@ -103,11 +104,13 @@ assert.match(
   'publishing a department always records who and when',
 )
 
-// ฝั่งเจ้าหน้าที่ยังคงจำกัดเฉพาะผู้ดูแลระบบตามการตัดสินใจเดิม
+// ฝั่งเจ้าหน้าที่ใช้สิทธิ์ Admin/Manager, safety editor หรือ scope ที่ได้รับมอบหมาย
 const accessDecision = chemicalAccess.match(/export async function chemicalAccessDecision\([\s\S]*?\n\}/)?.[0] ?? ''
 assert.match(accessDecision, /isSafetyEditor\(actor\)/, 'lab-map safety editors can access chemical-safety work')
 assert.match(accessDecision, /request\.action === 'manage_roles'\) return false/, 'only Admin can manage chemical role scopes')
+assert.match(accessDecision, /scopes\.some/, 'assigned chemical scopes can access their assigned unit action')
 assert.doesNotMatch(accessDecision, /request\.action === 'view'\) return true/, 'ordinary staff cannot view chemical-safety data')
+assert.match(safetyAccess, /\['Admin', 'Manager'\]/, 'Admin and Manager are safety managers')
 assert.match(staffSidebar, /href: '\/staff\/lab-map\/chemicals'[\s\S]*?safetyEditor: true/, 'chemical room menu is available to lab-map safety editors')
 assert.doesNotMatch(staffSidebar, /href: '\/staff\/lab-map\/sds'/, 'SDS is accessed through the chemical room menu')
 

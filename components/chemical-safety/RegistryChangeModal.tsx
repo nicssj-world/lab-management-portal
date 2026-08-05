@@ -257,8 +257,8 @@ export function RegistryChangeModal({
                   <label>
                     <span style={labelStyle}>สถานะการใช้งาน</span>
                     <select value={lifecycleStatus} onChange={(e) => setLifecycleStatus(e.target.value as 'active' | 'retired')} style={inputStyle}>
-                      <option value="active">ใช้งานอยู่</option>
-                      <option value="retired">เลิกใช้งาน</option>
+                      <option value="active">Active</option>
+                      <option value="retired">Inactive</option>
                     </select>
                   </label>
                 )}

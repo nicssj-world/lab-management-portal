@@ -179,12 +179,37 @@ export function SdsEditorModal({
           <section>
             <h3 style={sectionStyle}>ไฟล์เอกสาร</h3>
             {hasFile && (
-              <p style={{ margin: `0 0 ${SPACE.xs}px`, fontSize: FONT.base }}>
-                <Badge color="green"><Icon name="check" size={11} />แนบไฟล์แล้ว</Badge>{' '}
-                <a href={`/api/admin/chemical-safety/sds/${sds.id}/file`} target="_blank" rel="noopener noreferrer">
-                  เปิดไฟล์ปัจจุบัน
-                </a>
-              </p>
+              <>
+                <style>{`
+                  .sds-current-file-card{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:${SPACE.sm}px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--primary) 28%,var(--border));border-radius:12px;background:var(--primary-soft)}
+                  .sds-current-file-action{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:0 0 auto;min-height:42px;padding:10px 14px;border-radius:9px;background:var(--primary);color:#fff;font-size:13px;font-weight:800;letter-spacing:.01em;text-decoration:none;box-shadow:0 6px 14px color-mix(in srgb,var(--primary) 22%,transparent);transition:transform .15s ease,filter .15s ease,box-shadow .15s ease}
+                  .sds-current-file-action:hover{filter:brightness(.95);transform:translateY(-1px);box-shadow:0 8px 18px color-mix(in srgb,var(--primary) 28%,transparent)}
+                  .sds-current-file-action:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 35%,transparent);outline-offset:2px}
+                  @media(max-width:560px){.sds-current-file-card{align-items:stretch;flex-direction:column}.sds-current-file-action{width:100%;box-sizing:border-box}}
+                  @media(prefers-reduced-motion:reduce){.sds-current-file-action{transition:none}}
+                `}</style>
+                <div className="sds-current-file-card">
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, flexWrap: 'wrap' }}>
+                      <Badge color="green"><Icon name="check" size={11} />แนบไฟล์แล้ว</Badge>
+                      <span style={{ fontSize: FONT.sm, color: 'var(--ink)', fontWeight: 700 }}>ไฟล์ปัจจุบันของฉบับร่าง</span>
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: FONT.xs, color: 'var(--muted)' }}>เปิดดูไฟล์ PDF ที่แนบอยู่ในระบบ</div>
+                  </div>
+                  <a
+                    className="sds-current-file-action"
+                    href={`/api/admin/chemical-safety/sds/${sds.id}/file`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="เปิดไฟล์ปัจจุบัน"
+                    aria-label={`เปิดไฟล์ปัจจุบันของ ${productName}`}
+                  >
+                    <Icon name="eye" size={17} />
+                    <span>เปิดไฟล์ปัจจุบัน</span>
+                    <Icon name="arrowRight" size={15} />
+                  </a>
+                </div>
+              </>
             )}
             <SdsDropzone
               onFile={upload}
