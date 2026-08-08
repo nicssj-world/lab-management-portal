@@ -1,10 +1,15 @@
 import { z } from 'zod'
 
 // ── Definition (stored in competency_exams.definition JSONB) ──
-export type ExamOption = { id: string; label: string; isCorrect: boolean }
-export type ExamQuestion = { id: string; prompt: string; type: 'single_choice' | 'yes_no'; options: ExamOption[] }
+export type ExamImage = { id: string; key: string; alt: string; width: number; height: number }
+export type ExamImageView = ExamImage & { url?: string }
+export type ExamOption = { id: string; label: string; isCorrect: boolean; images?: ExamImage[] }
+export type ExamQuestion = { id: string; prompt: string; type: 'single_choice' | 'yes_no'; options: ExamOption[]; images?: ExamImage[] }
 // authorizeCategory: when set, passing the exam auto-grants a performer authorization for that หมวด.
 export type ExamDefinition = { questions: ExamQuestion[]; authorizeCategory?: string | null }
+export type ExamOptionView = Omit<ExamOption, 'images'> & { images: ExamImageView[] }
+export type ExamQuestionView = Omit<ExamQuestion, 'images' | 'options'> & { images: ExamImageView[]; options: ExamOptionView[] }
+export type ExamDefinitionView = Omit<ExamDefinition, 'questions'> & { questions: ExamQuestionView[] }
 
 export type CompetencyExam = {
   id: string
@@ -33,17 +38,28 @@ export type ExamAssignment = {
 }
 
 // ── Validation ──
+const ExamImageSchema = z.object({
+  id: z.string().min(1).max(120),
+  key: z.string().min(1).max(500),
+  alt: z.string().max(300),
+  width: z.number().int().positive().max(1600),
+  height: z.number().int().positive().max(1600),
+})
+const ExamImagesSchema = z.array(ExamImageSchema).max(4, 'แนบรูปได้ไม่เกิน 4 รูป').default([])
 const ExamOptionSchema = z.object({
   id: z.string().min(1),
-  label: z.string().trim().min(1, 'กรุณากรอกตัวเลือก').max(500),
+  label: z.string().trim().max(500),
   isCorrect: z.boolean(),
-})
+  images: ExamImagesSchema,
+}).refine((o) => Boolean(o.label) || o.images.length > 0, { path: ['label'], message: 'กรุณากรอกตัวเลือกหรือแนบรูป' })
 const ExamQuestionSchema = z.object({
   id: z.string().min(1),
-  prompt: z.string().trim().min(1, 'กรุณากรอกคำถาม').max(1000),
+  prompt: z.string().trim().max(1000),
   type: z.enum(['single_choice', 'yes_no']),
   options: z.array(ExamOptionSchema).min(2, 'ต้องมีอย่างน้อย 2 ตัวเลือก').max(10),
-}).refine((q) => q.options.some((o) => o.isCorrect), { message: 'ต้องเลือกเฉลยอย่างน้อยหนึ่งข้อในแต่ละคำถาม' })
+  images: ExamImagesSchema,
+}).refine((q) => Boolean(q.prompt) || q.images.length > 0, { path: ['prompt'], message: 'กรุณากรอกคำถามหรือแนบรูป' })
+  .refine((q) => q.options.filter((o) => o.isCorrect).length === 1, { path: ['options'], message: 'ต้องเลือกเฉลยถูกต้องเพียงหนึ่งข้อในแต่ละคำถาม' })
 
 export const ExamDefinitionSchema = z.object({
   questions: z.array(ExamQuestionSchema).min(1, 'ต้องมีอย่างน้อยหนึ่งคำถาม'),
@@ -57,6 +73,31 @@ export const ExamUpsertSchema = z.object({
   passMark: z.number().min(0).max(100),
 })
 export type ExamUpsertInput = z.infer<typeof ExamUpsertSchema>
+
+export function normalizeExamDefinition(definition: ExamDefinition): ExamDefinition {
+  return {
+    ...definition,
+    questions: (definition.questions ?? []).map((q) => ({
+      ...q,
+      images: q.images ?? [],
+      options: (q.options ?? []).map((o) => ({ ...o, images: o.images ?? [] })),
+    })),
+  }
+}
+
+export function stripExamImageRuntimeUrls(definition: ExamDefinitionView): ExamDefinition {
+  return {
+    ...definition,
+    questions: definition.questions.map((q) => ({
+      ...q,
+      images: q.images.map(({ url: _url, ...image }) => image),
+      options: q.options.map((o) => ({
+        ...o,
+        images: o.images.map(({ url: _optionUrl, ...image }) => image),
+      })),
+    })),
+  }
+}
 
 export const ExamAssignSchema = z.object({
   profileIds: z.array(z.string().uuid()).min(1, 'เลือกบุคลากรอย่างน้อยหนึ่งคน'),
@@ -86,7 +127,8 @@ export function definitionForTaking(definition: ExamDefinition): ExamDefinition 
   return {
     questions: (definition.questions ?? []).map((q) => ({
       ...q,
-      options: q.options.map((o) => ({ id: o.id, label: o.label, isCorrect: false })),
+      images: q.images ?? [],
+      options: q.options.map((o) => ({ ...o, isCorrect: false, images: o.images ?? [] })),
     })),
   }
 }
