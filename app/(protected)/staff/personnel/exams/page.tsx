@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getStaffRoster } from '@/lib/queries/personnel'
 import { canManagePersonnel } from '@/lib/personnel/roles'
 import { normalizeRole } from '@/lib/roles'
+import { hydrateExamDefinitionImages } from '@/lib/personnel/exam-image-server'
 import { ExamsClient, type ExamRow, type MyAssignment, type RosterPerson } from './ExamsClient'
 import type { CompetencyExam } from '@/lib/personnel/exam'
 
@@ -42,7 +43,11 @@ export default async function ExamsPage() {
       counts.set(a.exam_id, (counts.get(a.exam_id) ?? 0) + 1)
       if (a.status === 'graded') graded.set(a.exam_id, (graded.get(a.exam_id) ?? 0) + 1)
     }
-    exams = ((examData ?? []) as CompetencyExam[]).map((e) => ({ ...e, assignedCount: counts.get(e.id) ?? 0, gradedCount: graded.get(e.id) ?? 0 }))
+    const hydratedExams = await Promise.all((examData ?? []).map(async (row) => {
+      const exam = row as CompetencyExam
+      return { ...exam, definition: await hydrateExamDefinitionImages(exam.definition) }
+    }))
+    exams = hydratedExams.map((e) => ({ ...e, assignedCount: counts.get(e.id) ?? 0, gradedCount: graded.get(e.id) ?? 0 }))
     roster = rosterData.map((p) => ({ id: p.id, name: p.name, dept: p.dept }))
     categories = (cats ?? []).map((c) => c.th as string)
   }
