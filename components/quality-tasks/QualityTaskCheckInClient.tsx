@@ -85,7 +85,7 @@ export function QualityTaskCheckInClient({ token }: { token: string }) {
 
             {state.context.closed ? (
               <p style={{ marginTop: 16, padding: '10px 12px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: 13 }}>
-                <Icon name="lock" size={14} /> การประชุมนี้ปิดงานแล้ว ไม่รับเช็คอินเพิ่ม
+                <Icon name="lock" size={14} /> การประชุมนี้ปิดรับเช็คอินแล้ว ไม่รับเช็คอินเพิ่ม
               </p>
             ) : state.context.alreadyCheckedIn ? (
               <p style={{ marginTop: 16, padding: '10px 12px', borderRadius: 10, background: 'color-mix(in srgb, var(--success) 10%, var(--card))', color: 'var(--success)', fontSize: 13.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>

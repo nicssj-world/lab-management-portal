@@ -19,6 +19,11 @@ ALTER TABLE public.quality_task_instances
   ADD COLUMN IF NOT EXISTS check_in_token text UNIQUE
     CHECK (check_in_token IS NULL OR length(check_in_token) >= 32);
 
+-- null = ยังเปิดรับเช็คอิน · timestamp = เจ้าหน้าที่กดปิดรับเช็คอินแล้ว
+-- (เมื่อ status เป็น completed ระบบจะปิดรับเช็คอินโดยอัตโนมัติใน application logic ด้วย)
+ALTER TABLE public.quality_task_instances
+  ADD COLUMN IF NOT EXISTS check_in_closed_at timestamptz;
+
 -- ── 2. บันทึกการเช็คอิน ──
 -- PK (instance_id, user_id) = idempotent โดยธรรมชาติ สแกนซ้ำไม่เกิดแถวซ้ำ
 CREATE TABLE IF NOT EXISTS public.quality_task_check_ins (

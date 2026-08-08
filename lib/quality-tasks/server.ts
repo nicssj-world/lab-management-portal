@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
-import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, completionBlockReason, deriveTaskState, generatePeriods, occurrenceKey, resolveAssigneeEntries } from './logic'
+import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, canViewOccurrence, completionBlockReason, deriveTaskState, generatePeriods, occurrenceKey, resolveAssigneeEntries } from './logic'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import type {
   AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskActionItem, QualityTaskAttachment, QualityTaskCheckIn,
@@ -128,7 +128,7 @@ export async function getQualityTaskOccurrences(
           participantDepts: rowDepts, participantUserIds: rowUserIds,
           participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), positionTitle: nullable((p as Row).position_title) })),
           attachments: instanceId ? attachments.get(instanceId) ?? [] : [],
-          checkInToken: nullable(row?.check_in_token), checkIns: instanceId ? checkIns.get(instanceId) ?? [] : [], ...state })
+          checkInToken: nullable(row?.check_in_token), checkInClosedAt: nullable(row?.check_in_closed_at), checkIns: instanceId ? checkIns.get(instanceId) ?? [] : [], ...state })
       }
     }
   }
@@ -151,7 +151,7 @@ export async function getQualityTaskOccurrences(
       participantDepts: rowDepts, participantUserIds: rowUserIds,
       participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), positionTitle: nullable((p as Row).position_title) })),
       attachments: attachments.get(instanceId) ?? [],
-      checkInToken: nullable(row.check_in_token), checkIns: checkIns.get(instanceId) ?? [], ...state })
+      checkInToken: nullable(row.check_in_token), checkInClosedAt: nullable(row.check_in_closed_at), checkIns: checkIns.get(instanceId) ?? [], ...state })
   }
   const scoped = input.scope === 'mine' && input.level !== 'edit' ? result.filter(o => o.assignees.some(e => e.userId === input.actorId)) : result
   return scoped.sort((a, b) => a.effectiveDueDate.localeCompare(b.effectiveDueDate) || a.template.title.localeCompare(b.template.title, 'th'))
@@ -194,6 +194,13 @@ export async function getOccurrenceAccess(instanceId: string, actor: Actor, leve
   const ids = entries.map(e => e.userId).filter((id): id is string => id != null)
   if (!canMutateOccurrence(level, ids.includes(actor.id), entries.length === 0)) throw new Error('Forbidden')
   return { instance, evidenceRequired: Boolean((instance.quality_task_templates as Row)?.evidence_required), assignees: entries }
+}
+
+export async function getOccurrenceReadAccess(instanceId: string, level: PermLevel) {
+  if (!canViewOccurrence(level)) throw new Error('Forbidden')
+  const { data: instance, error } = await supabaseAdmin.from('quality_task_instances').select('id').eq('id', instanceId).single()
+  fail(error)
+  return instance
 }
 
 export async function updateOccurrence(instanceId: string, payload: OccurrenceActionPayload, actor: Actor, level: PermLevel) {
@@ -296,8 +303,8 @@ function rowToActionItem(row: Row): QualityTaskActionItem {
   }
 }
 
-export async function listActionItems(instanceId: string, actor: Actor, level: PermLevel) {
-  await getOccurrenceAccess(instanceId, actor, level)
+export async function listActionItems(instanceId: string, level: PermLevel) {
+  await getOccurrenceReadAccess(instanceId, level)
   const { data, error } = await supabaseAdmin.from('quality_task_action_items').select('*').eq('instance_id', instanceId)
     .order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true })
   fail(error); return (data ?? []).map(rowToActionItem)

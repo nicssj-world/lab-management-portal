@@ -65,6 +65,15 @@ export interface QualityTaskCheckIn {
   guestDepartment: string | null
 }
 
+export type QualityTaskHolidayKind = 'public' | 'special'
+
+export interface QualityTaskHoliday {
+  id: string
+  holidayDate: string
+  name: string
+  kind: QualityTaskHolidayKind
+}
+
 export interface QualityTaskOccurrence {
   key: string
   instanceId: string | null
@@ -86,6 +95,7 @@ export interface QualityTaskOccurrence {
   participants: { id: string; name: string; positionTitle: string | null }[]
   attachments: QualityTaskAttachment[]
   checkInToken: string | null
+  checkInClosedAt: string | null
   checkIns: QualityTaskCheckIn[]
   scheduling: TaskSchedulingState
   urgency: TaskUrgency

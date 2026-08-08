@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict'
 import {
+  canViewOccurrence,
   canMutateOccurrence,
   completionBlockReason,
   deriveTaskState,
   generatePeriods,
+  isWeekendDate,
+  isCheckInClosed,
+  canManageQualityTaskHolidays,
+  supportsActionItems,
   resolveAssigneeEntries,
 } from './logic'
 import type { QualityTaskSchedule } from './types'
@@ -60,6 +65,22 @@ assert.equal(canMutateOccurrence('edit', false, false), true, 'edit permission c
 assert.equal(canMutateOccurrence('view', true, false), true, 'assigned viewer can perform work')
 assert.equal(canMutateOccurrence('view', false, false), false)
 assert.equal(canMutateOccurrence('none', true, false), false)
+assert.equal(canViewOccurrence('edit'), true, 'edit permission can view every occurrence')
+assert.equal(canViewOccurrence('view'), true, 'view permission can view every occurrence')
+assert.equal(canViewOccurrence('none'), false)
+assert.equal(supportsActionItems({ taskKind: 'meeting', participantCount: 0, checkInCount: 0 }), true)
+assert.equal(supportsActionItems({ taskKind: 'activity', participantCount: 1, checkInCount: 0 }), true, 'activity with meeting participants supports action items')
+assert.equal(supportsActionItems({ taskKind: 'activity', participantCount: 0, checkInCount: 1 }), true, 'checked-in activity supports action items')
+assert.equal(supportsActionItems({ taskKind: 'activity', participantCount: 0, checkInCount: 0 }), false)
+assert.equal(isCheckInClosed('open', null), false)
+assert.equal(isCheckInClosed('open', '2026-08-09T00:00:00.000Z'), true, 'manual close blocks an open occurrence')
+assert.equal(isCheckInClosed('completed', null), true, 'completed occurrence remains closed')
+assert.equal(isWeekendDate('2026-08-08'), true, 'Saturday is highlighted as a weekend')
+assert.equal(isWeekendDate('2026-08-09'), true, 'Sunday is highlighted as a weekend')
+assert.equal(isWeekendDate('2026-08-10'), false, 'Monday is not highlighted as a weekend')
+assert.equal(canManageQualityTaskHolidays('Admin'), true)
+assert.equal(canManageQualityTaskHolidays('admin'), true, 'legacy admin role is normalized')
+assert.equal(canManageQualityTaskHolidays('Manager'), false, 'holiday management is admin-only')
 assert.equal(completionBlockReason(true, 0), 'ต้องแนบ PDF หลักฐานก่อนปิดงาน')
 assert.equal(completionBlockReason(true, 1), null)
 assert.equal(completionBlockReason(false, 0), null)

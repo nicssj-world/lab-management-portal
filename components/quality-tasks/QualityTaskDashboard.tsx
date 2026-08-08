@@ -7,6 +7,8 @@ import type { PermLevel } from "@/lib/permissions";
 import type {
   AssigneeEntry,
   QualityTaskActionItem,
+  QualityTaskHoliday,
+  QualityTaskHolidayKind,
   QualityTaskOccurrence,
   QualityTaskTemplate,
 } from "@/lib/quality-tasks/types";
@@ -20,7 +22,12 @@ import {
   buildReadAudiencePickerState,
 } from "@/lib/documents/read-audience";
 import { QUALITY_TASK_CATEGORIES } from "@/lib/quality-tasks/categories";
-import { occurrenceDisplayOwner, occurrenceDisplayTitle } from "@/lib/quality-tasks/logic";
+import {
+  isWeekendDate,
+  occurrenceDisplayOwner,
+  occurrenceDisplayTitle,
+  supportsActionItems,
+} from "@/lib/quality-tasks/logic";
 
 type Person = {
   id: string;
@@ -39,11 +46,19 @@ type History = {
 type Props = {
   actorId: string;
   level: PermLevel;
+  isAdmin: boolean;
   initialMonth: string;
   initialOccurrences: QualityTaskOccurrence[];
+  initialHolidays: QualityTaskHoliday[];
   templates: QualityTaskTemplate[];
   people: Person[];
   initialAdHoc?: boolean;
+};
+type HolidayDraft = {
+  id: string | null;
+  holidayDate: string;
+  name: string;
+  kind: QualityTaskHolidayKind;
 };
 const DAY_NAMES = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 const urgencyColor = {
@@ -80,9 +95,13 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   "quality_task.attachment.upload": "แนบไฟล์หลักฐาน",
   "quality_task.attachment.delete": "ลบไฟล์หลักฐาน",
   "quality_task.check_in": "เช็คอิน",
+  "quality_task.check_in.close": "ปิดรับเช็คอิน",
   "quality_task.action_item.create": "เพิ่ม Action Item",
   "quality_task.action_item.update": "แก้ไข Action Item",
   "quality_task.action_item.delete": "ลบ Action Item",
+  "quality_task.holiday.create": "เพิ่มวันหยุด",
+  "quality_task.holiday.update": "แก้ไขวันหยุด",
+  "quality_task.holiday.delete": "ลบวันหยุด",
 };
 const MAX_VISIBLE_CALENDAR_EVENTS = 2;
 
@@ -139,14 +158,17 @@ function assigneeDept(entries: AssigneeEntry[], people: Person[]) {
 export function QualityTaskDashboard({
   actorId,
   level,
+  isAdmin,
   initialMonth,
   initialOccurrences,
+  initialHolidays,
   templates,
   people,
   initialAdHoc = false,
 }: Props) {
   const [month, setMonth] = useState(initialMonth);
   const [items, setItems] = useState(initialOccurrences);
+  const [holidays, setHolidays] = useState(initialHolidays);
   const [scope, setScope] = useState<"mine" | "all">("all");
   const [category, setCategory] = useState("");
   const [state, setState] = useState("");
@@ -179,7 +201,14 @@ export function QualityTaskDashboard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [qr, setQr] = useState<{ url: string; dataUrl: string } | null>(null);
+  const [holidayDraft, setHolidayDraft] = useState<HolidayDraft | null>(null);
+  const [holidayBusy, setHolidayBusy] = useState(false);
+  const [qr, setQr] = useState<{
+    instanceId: string;
+    url: string;
+    dataUrl: string;
+    closed: boolean;
+  } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [participantModalOpen, setParticipantModalOpen] = useState(false);
   const [completeNote, setCompleteNote] = useState("");
@@ -220,12 +249,16 @@ export function QualityTaskDashboard({
 
   async function load(nextMonth = month, nextScope = scope) {
     const { from, to } = monthRange(nextMonth);
-    const res = await fetch(
-      `/api/admin/quality-tasks/occurrences?from=${from}&to=${to}&scope=${nextScope}`,
-    );
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error);
-    setItems(json.occurrences);
+    const [occurrencesResponse, holidaysResponse] = await Promise.all([
+      fetch(`/api/admin/quality-tasks/occurrences?from=${from}&to=${to}&scope=${nextScope}`),
+      fetch(`/api/admin/quality-tasks/holidays?from=${from}&to=${to}`),
+    ]);
+    const occurrencesJson = await occurrencesResponse.json();
+    const holidaysJson = await holidaysResponse.json();
+    if (!occurrencesResponse.ok) throw new Error(occurrencesJson.error);
+    if (!holidaysResponse.ok) throw new Error(holidaysJson.error);
+    setItems(occurrencesJson.occurrences);
+    setHolidays(holidaysJson.holidays ?? []);
   }
   async function move(delta: number) {
     const next = shiftMonth(month, delta);
@@ -290,6 +323,10 @@ export function QualityTaskDashboard({
         day: "2-digit",
       }).format(new Date()),
     [],
+  );
+  const holidayByDate = useMemo(
+    () => new Map(holidays.map((holiday) => [holiday.holidayDate, holiday])),
+    [holidays],
   );
 
   async function ensureInstance(o: QualityTaskOccurrence) {
@@ -387,6 +424,13 @@ export function QualityTaskDashboard({
   const canAct =
     selected &&
     (level === "edit" || selected.assignees.some((e) => e.userId === actorId));
+  const showActionItems = selected
+    ? supportsActionItems({
+        taskKind: selected.template.taskKind,
+        participantCount: selected.participants.length,
+        checkInCount: selected.checkIns.length,
+      })
+    : false;
   useEffect(() => {
     setAssigneeDraft(selected?.assignees ?? null);
   }, [selected?.key]);
@@ -677,12 +721,136 @@ export function QualityTaskDashboard({
         errorCorrectionLevel: "M",
         color: { dark: "#0F172A", light: "#FFFFFF" },
       });
-      setQr({ url, dataUrl });
+      setQr({
+        instanceId: id,
+        url,
+        dataUrl,
+        closed: Boolean(o.checkInClosedAt) || o.status === "completed",
+      });
+      setSelected((current) =>
+        current?.key === o.key
+          ? { ...current, instanceId: id, checkInToken: json.token }
+          : current,
+      );
+      setItems((current) =>
+        current.map((item) =>
+          item.key === o.key
+            ? { ...item, instanceId: id, checkInToken: json.token }
+            : item,
+        ),
+      );
       if (!o.instanceId) await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "สร้าง QR ไม่สำเร็จ");
     } finally {
       setBusy(false);
+    }
+  }
+  async function closeCheckIn() {
+    if (!selected || !qr || !canAct) return;
+    if (
+      !confirm(
+        "ปิดรับ Check-in ของรอบนี้? ผู้ที่ยังไม่เช็คอินจะไม่สามารถใช้ QR นี้เช็คอินได้",
+      )
+    )
+      return;
+    const selectedKey = selected.key;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/admin/quality-tasks/occurrences/${qr.instanceId}/check-in-token`,
+        { method: "PATCH" },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      const closedAt = String(json.closedAt ?? new Date().toISOString());
+      setQr((current) => (current ? { ...current, closed: true } : current));
+      setSelected((current) =>
+        current?.key === selectedKey
+          ? { ...current, instanceId: qr.instanceId, checkInClosedAt: closedAt }
+          : current,
+      );
+      setItems((current) =>
+        current.map((item) =>
+          item.key === selectedKey
+            ? { ...item, instanceId: qr.instanceId, checkInClosedAt: closedAt }
+            : item,
+        ),
+      );
+      setNotice("ปิดรับ Check-in แล้ว");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ปิดรับ Check-in ไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+  function openHolidayEditor(holiday?: QualityTaskHoliday) {
+    if (!isAdmin) return;
+    setError("");
+    setHolidayDraft(
+      holiday
+        ? {
+            id: holiday.id,
+            holidayDate: holiday.holidayDate,
+            name: holiday.name,
+            kind: holiday.kind,
+          }
+        : {
+            id: null,
+            holidayDate: `${month}-01`,
+            name: "",
+            kind: "public",
+          },
+    );
+  }
+  async function saveHoliday() {
+    if (!isAdmin || !holidayDraft || !holidayDraft.name.trim()) return;
+    const draft = holidayDraft;
+    setHolidayBusy(true);
+    setError("");
+    try {
+      const res = await fetch(
+        draft.id
+          ? `/api/admin/quality-tasks/holidays/${draft.id}`
+          : "/api/admin/quality-tasks/holidays",
+        {
+          method: draft.id ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            holidayDate: draft.holidayDate,
+            name: draft.name,
+            kind: draft.kind,
+          }),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      setHolidayDraft(null);
+      setNotice(draft.id ? "แก้ไขวันหยุดแล้ว" : "เพิ่มวันหยุดแล้ว");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "บันทึกวันหยุดไม่สำเร็จ");
+    } finally {
+      setHolidayBusy(false);
+    }
+  }
+  async function removeHoliday(holiday: QualityTaskHoliday) {
+    if (!isAdmin || !confirm(`ลบวันหยุด "${holiday.name}"?`)) return;
+    setHolidayBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/quality-tasks/holidays/${holiday.id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      setNotice("ลบวันหยุดแล้ว");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ลบวันหยุดไม่สำเร็จ");
+    } finally {
+      setHolidayBusy(false);
     }
   }
 
@@ -692,6 +860,7 @@ export function QualityTaskDashboard({
       <style>{`.qt-card.qt-range{position:relative;z-index:1;min-height:44px;border-left-width:0;border-radius:0;box-shadow:none}.qt-card.qt-range:hover{z-index:3;box-shadow:0 4px 12px rgba(15,23,42,.1)}.qt-card.qt-range-start{width:calc(100% + 10px);border-left-width:3px;border-radius:8px 0 0 8px}.qt-card.qt-range-middle{width:calc(100% + 20px);margin-left:-10px}.qt-card.qt-range-end{width:calc(100% + 10px);margin-left:-10px;border-radius:0 8px 8px 0}.qt-card.qt-range-start.qt-range-end{width:100%;margin-left:0;border-radius:8px}.qt-range-continuation{height:29px;display:flex;align-items:center}.qt-range-continuation::after{content:"";width:100%;height:2px;border-radius:999px;background:color-mix(in srgb,var(--primary) 22%,transparent)}@media(max-width:767px){.qt-card.qt-range-start{width:calc(100% + 7px)}.qt-card.qt-range-middle{width:calc(100% + 14px);margin-left:-7px}.qt-card.qt-range-end{width:calc(100% + 7px);margin-left:-7px}.qt-card.qt-range-start.qt-range-end{width:100%;margin-left:0}}`}</style>
       <style>{`.qt-card.qt-range{overflow:visible}.qt-range-continuation::after{width:calc(100% + 36px);margin-left:-18px}.qt-event-list-range .qt-range-continuation::after{width:calc(100% + 36px);margin-left:-18px}.qt-card.qt-range-hover{background:var(--primary-soft);border-color:color-mix(in srgb,var(--primary) 22%,var(--border));box-shadow:0 4px 12px rgba(15,23,42,.1);z-index:3}.qt-card.qt-range-hover .qt-range-continuation::after{background:color-mix(in srgb,var(--primary) 45%,transparent)}@media(max-width:767px){.qt-range-continuation::after,.qt-event-list-range .qt-range-continuation::after{width:calc(100% + 24px);margin-left:-12px}}`}</style>
       <style>{`.qt-card-draggable{cursor:grab}.qt-card-dragging{opacity:.45;cursor:grabbing}.qt-day-drag-over{background:var(--primary-soft);outline:2px dashed var(--primary);outline-offset:-2px}@media(prefers-reduced-motion:reduce){.qt-card-draggable{transition:none}}`}</style>
+      <style>{`.qt-weekend-header{color:#B91C1C;background:#FEF2F2}.qt-day-weekend:not(.qt-day-today){background:#FFF7F7}.qt-day-weekend:not(.qt-day-today) .qt-date{color:#B91C1C}.qt-day-holiday{box-shadow:inset 0 3px 0 #F59E0B}.qt-holiday{display:flex;align-items:center;gap:4px;margin:-2px 0 6px;padding:4px 6px;border-radius:6px;background:#FFFBEB;color:#92400E;font-size:10px;line-height:1.25;overflow:hidden}.qt-holiday span{flex-shrink:0;font-weight:800}.qt-holiday b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}@media(max-width:767px){.qt-holiday{font-size:9px;padding:3px 4px}}`}</style>
       <div
         style={{
           padding: 18,
@@ -928,8 +1097,11 @@ export function QualityTaskDashboard({
         </div>
       </div>
       <div className="qt-calendar">
-        {DAY_NAMES.map((d) => (
-          <div key={d} className="qt-weekday">
+        {DAY_NAMES.map((d, index) => (
+          <div
+            key={d}
+            className={`qt-weekday${index === 0 || index === 6 ? " qt-weekend-header" : ""}`}
+          >
             {d}
           </div>
         ))}
@@ -939,6 +1111,8 @@ export function QualityTaskDashboard({
         {Array.from({ length: days }, (_, i) => i + 1).map((day) => {
           const date = `${month}-${String(day).padStart(2, "0")}`;
           const isToday = date === todayStr;
+          const isWeekend = isWeekendDate(date);
+          const holiday = holidayByDate.get(date);
           const events = byDate.get(date) ?? [];
           const visibleEvents = events.slice(0, MAX_VISIBLE_CALENDAR_EVENTS);
           const overflowEvents = events.slice(MAX_VISIBLE_CALENDAR_EVENTS);
@@ -1023,7 +1197,7 @@ export function QualityTaskDashboard({
           };
           return (
             <div
-              className={`qt-day${isToday ? " qt-day-today" : ""}${dragOverDate === date ? " qt-day-drag-over" : ""}`}
+              className={`qt-day${isToday ? " qt-day-today" : ""}${isWeekend ? " qt-day-weekend" : ""}${holiday ? " qt-day-holiday" : ""}${dragOverDate === date ? " qt-day-drag-over" : ""}`}
               key={date}
               onDragOver={
                 draggedMeetingKey
@@ -1056,6 +1230,12 @@ export function QualityTaskDashboard({
               }
             >
               <div className="qt-date">{day}</div>
+              {holiday && (
+                <div className="qt-holiday" title={holiday.name}>
+                  <span>วันหยุด</span>
+                  <b>{holiday.name}</b>
+                </div>
+              )}
               <div
                 className={`qt-event-list${events.some(
                   (event) =>
@@ -1091,6 +1271,88 @@ export function QualityTaskDashboard({
           );
         })}
       </div>
+      {(holidays.length > 0 || isAdmin) && (
+        <section
+          style={{
+            padding: 14,
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            background: "var(--card)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              marginBottom: 10,
+            }}
+          >
+            <div>
+              <h2 style={{ margin: 0, fontSize: 16 }}>วันหยุดเดือนนี้</h2>
+              <p style={{ margin: "3px 0 0", color: "var(--muted)", fontSize: 12 }}>
+                เสาร์–อาทิตย์ถูกไฮไลท์อัตโนมัติ
+              </p>
+            </div>
+            {isAdmin && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="plus"
+                onClick={() => openHolidayEditor()}
+              >
+                เพิ่มวันหยุด
+              </Button>
+            )}
+          </div>
+          {holidays.length === 0 ? (
+            <p style={{ margin: 0, color: "var(--muted)", fontSize: 12 }}>
+              ยังไม่มีวันหยุดที่กำหนดในเดือนนี้
+            </p>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {holidays.map((holiday) => (
+                <div
+                  key={holiday.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "9px 10px",
+                    border: "1px solid #FDE68A",
+                    borderRadius: 9,
+                    background: "#FFFBEB",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                      <b style={{ color: "#92400E", fontSize: 13 }}>{fmt(holiday.holidayDate)}</b>
+                      <span style={{ color: "#B45309", fontSize: 10, fontWeight: 700 }}>
+                        {holiday.kind === "public" ? "วันหยุดราชการ" : "วันหยุดพิเศษ"}
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 2, color: "#78350F", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {holiday.name}
+                    </div>
+                  </div>
+                  {isAdmin && (
+                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                      <Button variant="ghost" size="sm" onClick={() => openHolidayEditor(holiday)}>
+                        แก้ไข
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => void removeHoliday(holiday)}>
+                        ลบ
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
       <section>
         <h2 style={{ fontSize: 16, margin: "0 0 10px" }}>
           กิจกรรมทั้งหมด ({filtered.length})
@@ -1381,6 +1643,11 @@ export function QualityTaskDashboard({
                     QR เช็คอิน
                   </Button>
                 )}
+                {selected.checkInClosedAt && (
+                  <span style={{ color: "var(--muted)", fontSize: 11.5 }}>
+                    ปิดรับ Check-in แล้ว
+                  </span>
+                )}
               </div>
             )}
             {selected.checkIns.length > 0 && (
@@ -1669,7 +1936,7 @@ export function QualityTaskDashboard({
                 ) : null}
               </div>
             )}
-            {selected.template.taskKind === "meeting" && (
+            {showActionItems && (
               <div
                 style={{
                   marginTop: 14,
@@ -2132,7 +2399,9 @@ export function QualityTaskDashboard({
           <div style={{ ...modal, maxWidth: 380, textAlign: "center" }}>
             <h2 style={{ margin: 0, fontSize: 16 }}>QR เช็คอินการประชุม</h2>
             <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
-              ให้ผู้เข้าร่วมสแกนเพื่อเช็คอิน (ต้องล็อกอินอยู่)
+              {qr.closed
+                ? "ปิดรับ Check-in แล้ว QR นี้ไม่รับเช็คอินใหม่"
+                : "ให้ผู้เข้าร่วมสแกนเพื่อเช็คอิน (ต้องล็อกอินอยู่)"}
             </p>
             <img
               src={qr.dataUrl}
@@ -2167,6 +2436,26 @@ export function QualityTaskDashboard({
               >
                 คัดลอกลิงก์
               </Button>
+              {canAct && !qr.closed && (
+                <Button
+                  variant="danger"
+                  disabled={busy}
+                  onClick={() => void closeCheckIn()}
+                >
+                  ปิดรับ Check-in
+                </Button>
+              )}
+              {qr.closed && (
+                <span
+                  style={{
+                    alignSelf: "center",
+                    color: "var(--muted)",
+                    fontSize: 12,
+                  }}
+                >
+                  ปิดรับแล้ว
+                </span>
+              )}
               <Button variant="ghost" onClick={() => setQr(null)}>
                 ปิด
               </Button>
@@ -2185,6 +2474,112 @@ export function QualityTaskDashboard({
             >
               {qr.url}
             </code>
+          </div>
+        </div>
+      )}
+      {holidayDraft && (
+        <div
+          style={overlay}
+          onClick={() => !holidayBusy && setHolidayDraft(null)}
+        >
+          <div
+            style={{ ...modal, maxWidth: 480 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: 17 }}>
+                {holidayDraft.id ? "แก้ไขวันหยุด" : "เพิ่มวันหยุด"}
+              </h2>
+              <button
+                type="button"
+                aria-label="ปิดหน้าต่าง"
+                style={closeStyle}
+                disabled={holidayBusy}
+                onClick={() => setHolidayDraft(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+              <label style={labelStyle}>
+                วันที่
+                <input
+                  type="date"
+                  value={holidayDraft.holidayDate}
+                  disabled={holidayBusy}
+                  onChange={(event) =>
+                    setHolidayDraft({
+                      ...holidayDraft,
+                      holidayDate: event.target.value,
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </label>
+              <label style={labelStyle}>
+                ชื่อวันหยุด
+                <input
+                  value={holidayDraft.name}
+                  maxLength={160}
+                  disabled={holidayBusy}
+                  onChange={(event) =>
+                    setHolidayDraft({ ...holidayDraft, name: event.target.value })
+                  }
+                  placeholder="เช่น วันหยุดชดเชยวันสงกรานต์"
+                  style={inputStyle}
+                />
+              </label>
+              <label style={labelStyle}>
+                ประเภท
+                <select
+                  value={holidayDraft.kind}
+                  disabled={holidayBusy}
+                  onChange={(event) =>
+                    setHolidayDraft({
+                      ...holidayDraft,
+                      kind: event.target.value as QualityTaskHolidayKind,
+                    })
+                  }
+                  style={inputStyle}
+                >
+                  <option value="public">วันหยุดราชการ</option>
+                  <option value="special">วันหยุดพิเศษ</option>
+                </select>
+              </label>
+              {error && (
+                <div role="alert" style={{ color: "#DC2626", fontSize: 12 }}>
+                  {error}
+                </div>
+              )}
+              <div
+                style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}
+              >
+                <Button
+                  variant="secondary"
+                  disabled={holidayBusy}
+                  onClick={() => setHolidayDraft(null)}
+                >
+                  ยกเลิก
+                </Button>
+                <Button
+                  disabled={
+                    holidayBusy ||
+                    !holidayDraft.holidayDate ||
+                    !holidayDraft.name.trim()
+                  }
+                  onClick={() => void saveHoliday()}
+                >
+                  {holidayBusy ? "กำลังบันทึก…" : "บันทึกวันหยุด"}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}
