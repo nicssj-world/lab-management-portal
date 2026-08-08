@@ -15,6 +15,8 @@ assert.match(source, /data-event-category-trigger/)
 assert.match(source, /type="radio"/)
 assert.match(source, /name="event_category"/)
 assert.match(source, /setOpenGroups/)
+assert.match(source, /openGroupsForIncidentCategory/)
+assert.match(source, /setOpenGroups\(openGroupsForIncidentCategory\(/)
 assert.doesNotMatch(source, /<select[^>]*id="event_category"/)
 
 console.log('incident report category UI contract passed')
