@@ -30,18 +30,18 @@ function notFound() {
 /**
  * หา unit ของ SDS ฉบับหนึ่ง
  *
- * ตาราง chemical_sds_versions ผูกกับ product ไม่ได้ผูกกับ unit โดยตรง สิทธิ์ทั้งหมดของโมดูล
- * ผูกกับ unit จึงต้องย้อนผ่าน chemical_unit_products เหมือนที่ change-requests ทำ
- * สารหนึ่งตัวอาจอยู่หลาย unit — คืนทั้งหมดให้ผู้เรียกลองทีละอันจนกว่าจะผ่าน
+ * ตาราง chemical_sds_versions ผูกกับ product ไม่ได้ผูกกับ unit โดยตรง สิทธิ์ของ SDS
+ * ห้องสารเคมีจึงต้องย้อนผ่าน holding ที่มี storage_scope = room ไม่ใช่แค่ unit_products
+ * เพราะ product ที่มาจาก SDS แยกตามงานก็มี unit_products เช่นกัน
  */
 async function unitIdsForProduct(productId: string): Promise<string[]> {
   const { data, error } = await supabaseAdmin
-    .from('chemical_unit_products')
+    .from('chemical_inventory_holdings')
     .select('unit_id')
     .eq('product_id', productId)
-    .eq('active', true)
+    .eq('storage_scope', 'room')
   if (error) throw error
-  return (data ?? []).map(row => String(row.unit_id))
+  return [...new Set((data ?? []).map(row => String(row.unit_id)))]
 }
 
 async function loadVersion(id: string) {

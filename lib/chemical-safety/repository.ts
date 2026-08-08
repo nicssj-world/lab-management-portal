@@ -19,6 +19,7 @@ import type {
 import type { ImportReviewFilters, InternalSdsFilters } from './schemas'
 import { mapChemicalPlacement } from './registry-row'
 import { camelProposal } from './proposal-keys'
+import { roomChemicalProductIds } from './sds-visibility'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type Row = Record<string, any>
@@ -489,12 +490,10 @@ export async function listChemicalProductRecords(): Promise<ChemicalProductDTO[]
 
 export async function listInternalSds(filters: InternalSdsFilters = {}): Promise<ChemicalSdsDTO[]> {
   const snapshot = await databaseSource.loadSnapshot()
-  const productIdsForUnit = filters.unitId
-    ? new Set(snapshot.unitProducts.filter(row => row.unit_id === filters.unitId).map(row => row.product_id))
-    : null
+  const roomProductIds = roomChemicalProductIds(snapshot.holdings, filters.unitId)
   return snapshot.sdsVersions.filter(row => {
+    if (!roomProductIds.has(String(row.product_id))) return false
     if (filters.productId && row.product_id !== filters.productId) return false
-    if (productIdsForUnit && !productIdsForUnit.has(row.product_id)) return false
     if (filters.status && row.status !== filters.status) return false
     const product = snapshot.products.find(item => item.id === row.product_id)
     if (filters.q && !JSON.stringify([product?.canonical_name, row.manufacturer, row.supplier, row.product_code]).toLocaleLowerCase('th').includes(filters.q.toLocaleLowerCase('th'))) return false

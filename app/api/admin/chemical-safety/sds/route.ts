@@ -27,14 +27,15 @@ export async function POST(request: NextRequest) {
   try {
     // สารต้องอยู่ในหน่วยที่ผู้ใช้ดูแลจริง ไม่ใช่แค่ส่ง unitId ที่ตัวเองมีสิทธิ์มาคู่กับสารอะไรก็ได้
     const link = await supabaseAdmin
-      .from('chemical_unit_products')
-      .select('product_id')
+      .from('chemical_inventory_holdings')
+      .select('id')
       .eq('product_id', input.data.productId)
       .eq('unit_id', input.data.unitId)
-      .eq('active', true)
+      .eq('storage_scope', 'room')
+      .limit(1)
       .maybeSingle()
     if (link.error) throw link.error
-    if (!link.data) return NextResponse.json({ error: 'สารเคมีนี้ไม่ได้อยู่ในหน่วยงานที่เลือก' }, { status: 422 })
+    if (!link.data) return NextResponse.json({ error: 'สารเคมีนี้ไม่ได้อยู่ในห้องสารเคมีของหน่วยงานที่เลือก' }, { status: 422 })
 
     const inserted = await supabaseAdmin
       .from('chemical_sds_versions')
