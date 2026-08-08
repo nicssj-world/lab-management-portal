@@ -802,6 +802,7 @@ const ACTION_LABELS: Record<string, string> = {
   'chemical_safety.department_sds.replace_file':  'แทนที่ไฟล์ SDS แยกตามงาน',
   'chemical_safety.department_sds.publish':       'เผยแพร่ SDS แยกตามงาน',
   'chemical_safety.registry.export_pdf':          'ส่งออกทะเบียนสารเคมี (PDF)',
+  'chemical_safety.registry.export_excel':        'ส่งออกทะเบียนสารเคมี (Excel)',
   'chemical_safety.role_scope.grant':             'มอบสิทธิ์ผู้ดูแลสารเคมี',
   'chemical_safety.role_scope.revoke':            'ถอนสิทธิ์ผู้ดูแลสารเคมี',
   'chemical_safety.import.prepared':              'เตรียมนำเข้าข้อมูลสารเคมี',

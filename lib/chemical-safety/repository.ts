@@ -7,6 +7,7 @@ import type {
   ChemicalImportRowDTO,
   ChemicalPhysicalState,
   ChemicalProductDTO,
+  ChemicalRoomDTO,
   ChemicalRegistryFilters,
   ChemicalRegistryRow,
   ChemicalSdsDTO,
@@ -16,6 +17,8 @@ import type {
   JsonValue,
 } from './types'
 import type { ImportReviewFilters, InternalSdsFilters } from './schemas'
+import { mapChemicalPlacement } from './registry-row'
+import { camelProposal } from './proposal-keys'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type Row = Record<string, any>
@@ -117,6 +120,19 @@ function importedCalculatedTotal(importEvidence: Row | undefined): QuantityTotal
 
 function sameQuantityTotal(left: QuantityTotal | null, right: QuantityTotal | null): boolean {
   return left?.unit === right?.unit && left?.value === right?.value
+}
+
+function importedPackageRaw(importEvidence: Row | undefined): string | null {
+  const normalizedPackageRaw = text(jsonObject(importEvidence?.normalized_data).packageRaw)?.trim()
+  if (normalizedPackageRaw) return normalizedPackageRaw
+
+  const surveyPackageRaw = text(jsonObject(importEvidence?.raw_data).packageRaw)?.trim()
+  if (surveyPackageRaw) return surveyPackageRaw
+
+  const parts = importedQuantityParts(jsonObject(importEvidence?.normalized_data).packageParts)
+  if (!parts) return null
+  const sizes = [...new Set(parts.map(part => `${part.value} ${part.unit}`))]
+  return sizes.length > 0 ? sizes.join(', ') : null
 }
 
 function calculateRegistryQuantity(input: {
@@ -223,12 +239,17 @@ export async function listChemicalRegistryWithSource(
     const unitProduct = snapshot.unitProducts.find(item => item.product_id === holding.product_id && item.unit_id === holding.unit_id)
     const unit = unitById.get(holding.unit_id)
     const location = locationById.get(holding.location_id)
-    const room = location ? roomById.get(location.room_id) : null
+    const placement = mapChemicalPlacement(holding, location)
+    const room = placement.storageScope === 'room' && location ? roomById.get(location.room_id) : null
     if (!product || !unit || !unitProduct) continue
     const versions = sdsByProduct.get(product.id) ?? []
     const approved = versions.find(item => item.status === 'approved')
     const draft = versions.find(item => item.status === 'draft' || item.status === 'in_review')
-    const importEvidence = snapshot.importRows.find(item => item.target_product_id === product.id)
+    const holdingImportEvidence = snapshot.importRows.find(item => {
+      const normalized = jsonObject(item.normalized_data)
+      return typeof normalized.holdingId === 'string' && normalized.holdingId === String(holding.id)
+    })
+    const importEvidence = holdingImportEvidence ?? snapshot.importRows.find(item => item.target_product_id === product.id)
     const sdsStatus = currentSdsState({
       status: approved ? 'approved' : draft ? draft.status : null,
       reviewDueOn: approved ? text(approved.review_due_on) : null,
@@ -260,13 +281,16 @@ export async function listChemicalRegistryWithSource(
     // Keep the imported total when it exists because a holding can contain
     // mixed package sizes. Derive it for legacy/new rows that do not have a
     // persisted total so the UI never needs a manually entered total.
-    const calculated = calculateRegistryQuantity({
-      packageValue,
-      packageUnit,
-      currentContainerCount,
-      importEvidence,
-      stored: storedCalculated,
-    })
+    const importedQuantityStatus = jsonObject(importEvidence?.normalized_data).quantityStatus
+    const calculated = importedQuantityStatus === 'unsupported-unit'
+      ? null
+      : calculateRegistryQuantity({
+        packageValue,
+        packageUnit,
+        currentContainerCount,
+        importEvidence,
+        stored: storedCalculated,
+      })
     const row: ChemicalRegistryRow = {
       productId: String(product.id),
       holdingId: String(holding.id),
@@ -275,24 +299,30 @@ export async function listChemicalRegistryWithSource(
       aliases: aliasesByProduct.get(product.id) ?? [],
       casNumber: text(product.cas_number),
       concentration: text(product.concentration),
-      locationId: location ? String(location.id) : null,
+      storageScope: placement.storageScope,
+      roomId: room?.id == null ? null : String(room.id),
+      locationId: placement.locationId,
       packageValue,
       packageUnit: isQuantityUnit(packageUnit) ? packageUnit : null,
+      packageRaw: importedPackageRaw(importEvidence),
       currentContainerCount,
       minimumStock: numberOrNull(holding.minimum_stock),
       lotNumber: text(holding.lot_number),
-      reportedTotalRaw: null,
+      reportedTotalRaw: text(holding.reported_total_raw),
       calculatedTotalValue: calculated?.value ?? null,
       calculatedTotalUnit: calculated?.unit ?? null,
       receivedOn: text(holding.received_on),
       openedOn: text(holding.opened_on),
       expiresOn: text(holding.expires_on),
       effectiveOn: text(holding.effective_on),
-      quantityConflict: false,
-      positionCode: location ? String(location.code) : null,
+      quantityConflict: Array.isArray(importEvidence?.conflict_codes)
+        && importEvidence.conflict_codes.some((code: unknown) => ['quantity_unit_unsupported', 'container_count_unknown', 'minimum_stock_unknown'].includes(String(code))),
+      positionCode: placement.positionCode,
       unitId: String(unit.id),
       unitName: String(unit.name_th),
+      lifecycleStatus: product.lifecycle_status === 'retired' ? 'retired' : 'active',
       sdsStatus,
+      hasSdsFile: versions.some(item => item.file_id != null && String(item.file_id).trim() !== ''),
       pictogramCodes: pictograms,
       signalWord: approved ? text(approved.signal_word) : null,
       hazards,
@@ -309,7 +339,12 @@ export async function listChemicalRegistryWithSource(
     if (filters.lifecycle && product.lifecycle_status !== filters.lifecycle) continue
     rows.push(row)
   }
-  return rows.sort((a, b) => a.positionCode?.localeCompare(b.positionCode ?? '', 'en') || a.canonicalName.localeCompare(b.canonicalName, 'th'))
+  return rows.sort((a, b) => (
+    a.storageScope.localeCompare(b.storageScope)
+    || (a.positionCode ?? '').localeCompare(b.positionCode ?? '', 'en')
+    || a.canonicalName.localeCompare(b.canonicalName, 'th')
+    || a.holdingId.localeCompare(b.holdingId)
+  ))
 }
 
 export function listChemicalRegistry(filters: ChemicalRegistryFilters = {}) {
@@ -342,6 +377,24 @@ export async function getChemicalStorageLayout(roomCode: string): Promise<Chemic
   })).sort((a, b) => a.displayOrder - b.displayOrder)
 }
 
+export async function listChemicalRooms(): Promise<ChemicalRoomDTO[]> {
+  const { data, error } = await supabaseAdmin
+    .from('chemical_rooms')
+    .select('id, code, name_th, map_space_code, active, created_at, updated_at')
+    .eq('active', true)
+    .order('name_th')
+  if (error) throw new Error(`chemical_rooms: ${error.message}`)
+  return (data ?? []).map(row => ({
+    id: String(row.id),
+    code: String(row.code),
+    nameTh: String(row.name_th),
+    mapSpaceCode: row.map_space_code == null ? null : String(row.map_space_code),
+    active: Boolean(row.active),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }))
+}
+
 export async function listChemicalImportReview(filters: ImportReviewFilters = {}): Promise<ChemicalImportRowDTO[]> {
   const snapshot = await databaseSource.loadSnapshot()
   return snapshot.importRows.filter(row => {
@@ -355,12 +408,6 @@ export async function listChemicalImportReview(filters: ImportReviewFilters = {}
     conflictCodes: stringArray(row.conflict_codes), targetProductId: text(row.target_product_id), decisionNote: text(row.decision_note),
     decidedBy: text(row.decided_by), decidedAt: text(row.decided_at), createdAt: String(row.created_at),
   }))
-}
-
-function camelProposal(value: Record<string, unknown>): Record<string, JsonValue> {
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key.replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase()), item as JsonValue]),
-  )
 }
 
 /** รายการคำขอแก้ไข/เพิ่ม/เลิกใช้งานสารเคมี สำหรับแผงรอทบทวนของหน้าทะเบียนสารเคมี */
@@ -381,7 +428,10 @@ export async function listChemicalChangeRequests(): Promise<ChemicalChangeReques
         const holding = holdingById.get(row.entity_id)
         productName = holding ? productById.get(holding.product_id)?.canonical_name ?? null : null
       } else {
-        productName = typeof row.proposed_data?.canonical_name === 'string' ? row.proposed_data.canonical_name : null
+        const proposedProductId = typeof row.proposed_data?.product_id === 'string' ? row.proposed_data.product_id : null
+        productName = proposedProductId
+          ? productById.get(proposedProductId)?.canonical_name ?? null
+          : typeof row.proposed_data?.canonical_name === 'string' ? row.proposed_data.canonical_name : null
       }
       return {
         id: String(row.id),

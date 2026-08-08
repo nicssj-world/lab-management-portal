@@ -31,6 +31,14 @@ export async function POST(
     const guard = await requireDepartmentSdsPublisher(String(entry.data.department_code))
     if (guard.response) return guard.response
 
+    const registryLink = await supabaseAdmin
+      .from('chemical_department_chemical_links')
+      .select('id')
+      .eq('department_sds_id', id)
+      .maybeSingle()
+    if (registryLink.error) throw registryLink.error
+    if (registryLink.data) return NextResponse.json({ error: 'ไฟล์ SDS ที่อยู่ในทะเบียนแล้วห้ามแทนที่' }, { status: 409 })
+
     const form = await request.formData().catch(() => null)
     const file = form?.get('file')
     const rawDisplayName = form?.get('displayName')

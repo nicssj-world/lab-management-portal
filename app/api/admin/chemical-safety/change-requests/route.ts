@@ -4,11 +4,8 @@ import { parseJson, unexpectedError } from '@/lib/chemical-safety/api'
 import { chemicalChangeRequestSchema } from '@/lib/chemical-safety/schemas'
 import { listChemicalChangeRequests } from '@/lib/chemical-safety/repository'
 import { calculateHoldingTotalFromFields, isQuantityUnit } from '@/lib/chemical-safety/domain'
+import { snakeProposal } from '@/lib/chemical-safety/proposal-keys'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-
-function snakeProposal(value: Record<string, unknown>) {
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`), item]))
-}
 
 function withCalculatedQuantity<T extends {
   packageValue: number
@@ -28,6 +25,32 @@ function withCalculatedQuantity<T extends {
   }
 }
 
+function normalizeStoredProposal(
+  entityType: string,
+  proposal: Record<string, unknown> & {
+    packageValue: number
+    packageUnit: string
+    currentContainerCount: number
+    calculatedTotalValue?: unknown
+    calculatedTotalUnit?: unknown
+    storageScope?: 'room' | 'department'
+  },
+  unitId: string,
+) {
+  const normalized = withCalculatedQuantity(proposal)
+  if (entityType !== 'holding') return normalized
+
+  const withUnit = { ...normalized, unitId }
+  // The original room-holding RPC predates storage_scope and validates an
+  // exact snapshot. Keep that contract for room edits; department holdings
+  // are dispatched by the new scope-aware wrapper during review.
+  if (withUnit.storageScope === 'room') {
+    const { storageScope: _storageScope, ...legacy } = withUnit
+    return legacy
+  }
+  return withUnit
+}
+
 export async function GET() {
   const guard = await requireChemicalViewer()
   if (guard.response) return guard.response
@@ -45,10 +68,12 @@ export async function POST(request: NextRequest) {
   if (guard.response) return guard.response
   try {
     // 'new_chemical' ยังไม่มี entity ให้อ้างอิง entity_id จึงต้องเป็น null (ตาราง/RPC บังคับคู่กันไว้แล้ว)
-    const entityId = input.data.entityType === 'new_chemical' ? null : input.data.entityId
+    const entityId = input.data.entityType === 'product' || input.data.entityType === 'holding'
+      ? input.data.entityId
+      : null
     const proposedData = input.data.entityType === 'product'
       ? input.data.proposedData
-      : withCalculatedQuantity(input.data.proposedData)
+      : normalizeStoredProposal(input.data.entityType, input.data.proposedData, input.data.unitId)
     const { data, error } = await supabaseAdmin.from('chemical_change_requests').insert({
       entity_type: input.data.entityType,
       entity_id: entityId,

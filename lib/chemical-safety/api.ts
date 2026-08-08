@@ -31,6 +31,15 @@ export function unexpectedError(error: unknown) {
 export function transitionError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
   if (/not_found/i.test(message)) return NextResponse.json({ error: 'ไม่พบรายการ' }, { status: 404 })
+  if (/department_sds_wrong_unit|department_sds_unit_not_found|department_sds_file_not_found|chemical_product_(not_found|inactive)/i.test(message)) {
+    return NextResponse.json({ error: 'ข้อมูลสารจาก SDS งานไม่ถูกต้องหรือไม่ตรงกับหน่วยงาน' }, { status: 422 })
+  }
+  if (/department_product_duplicate/i.test(message)) {
+    return NextResponse.json({ error: 'พบสารชื่อหรือ CAS ซ้ำในทะเบียน กรุณาเลือกสารเดิม' }, { status: 409 })
+  }
+  if (/invalid_product_snapshot/i.test(message)) {
+    return NextResponse.json({ error: 'ข้อมูลสารในคำขอไม่ครบหรือไม่ถูกต้อง กรุณาสร้างคำขอใหม่' }, { status: 422 })
+  }
   if (/not_draft|not_in_review|stale|self_review|already/i.test(message)) {
     return NextResponse.json({ error: 'สถานะรายการเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่' }, { status: 409 })
   }

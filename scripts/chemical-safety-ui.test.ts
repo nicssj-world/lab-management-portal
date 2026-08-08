@@ -38,8 +38,14 @@ for (const file of files) {
 // ── ต้องใช้ไลบรารีคอมโพเนนต์ของโปรเจค ───────────────────────────────────────
 // หมายเหตุ: ไม่มี Stat ในหน้านี้อีกต่อไป — แท็บ "ภาพรวม" ถูกถอดออกตามที่ผู้ใช้ขอ
 const hubSource = readFileSync(join(COMPONENT_DIR, 'ChemicalSafetyHubClient.tsx'), 'utf8')
-assert.ok(hubSource.includes('chemical-position-select'), 'ChemicalSafetyHubClient must provide a position filter select')
-assert.ok(hubSource.includes('<select value={position}'), 'position filter must remain a select control')
+assert.ok(hubSource.includes('chemical-unit-select'), 'ChemicalSafetyHubClient must provide a department filter select')
+assert.ok(hubSource.includes('<select value={scopeFilter}'), 'department filter must remain a select control')
+assert.ok(hubSource.includes('กรองตามหน่วยงาน'), 'department filter must be labelled for screen readers')
+assert.ok(hubSource.includes('<select value={scopeFilter}'), 'department and chemical-room filters must share one select control')
+assert.ok(hubSource.includes('<optgroup label="ห้องสารเคมี">'), 'chemical-room choices must live inside the department filter')
+assert.ok(hubSource.includes('กรองตามหน่วยงาน'), 'combined owner filter must be labelled for screen readers')
+assert.ok(!hubSource.includes('chemical-position-select'), 'storage position filter must be removed from the registry')
+assert.ok(!hubSource.includes('กรองตามตำแหน่งจัดเก็บ'), 'storage position filter label must be removed from the registry')
 for (const required of ['@/components/ui/Card', '@/components/ui/PageHeader', '@/components/ui/ViewTabs', '@/components/ui/EmptyState']) {
   assert.ok(hubSource.includes(required), `ChemicalSafetyHubClient ต้อง import ${required}`)
 }
@@ -52,6 +58,12 @@ assert.ok(hubSource.includes('openSdsEditor'), 'ทะเบียนสาร�
 assert.ok(hubSource.includes("icon=\"upload\""), 'ทะเบียนสารเคมีต้องมีปุ่มอัปโหลดไฟล์ SDS')
 assert.ok(hubSource.includes('สถานะการใช้งาน'), 'ทะเบียนสารเคมีต้องมีตัวกรอง/คอลัมน์สถานะการใช้งาน')
 assert.ok(hubSource.includes('Active') && hubSource.includes('Inactive'), 'ทะเบียนสารเคมีต้องแสดงสถานะ Active/Inactive')
+assert.ok(hubSource.includes('row.reportedTotalRaw'), 'ทะเบียนสารเคมีต้องแสดงปริมาณดิบเมื่อหน่วยจากแบบสำรวจไม่ใช่หน่วยมาตรฐาน')
+assert.ok(hubSource.includes('Export Excel'), 'ทะเบียนสารเคมีต้องเลือก export เป็น Excel ได้')
+assert.ok(hubSource.includes('Export PDF'), 'ทะเบียนสารเคมีต้องเลือก export เป็น PDF ได้')
+assert.ok(hubSource.includes('สารเคมีนำเข้าใหม่'), 'ทะเบียนสารเคมีต้องมี checkbox ทำเครื่องหมายสารเคมีนำเข้าใหม่')
+assert.ok(hubSource.includes('newChemicalHoldingIds'), 'ทะเบียนสารเคมีต้องส่งรายการที่ทำเครื่องหมายไปยัง export')
+assert.ok(hubSource.includes('...(selectedRoomId ? { roomId: selectedRoomId } : {})'), 'export ต้องส่งตัวกรองห้องสารเคมีไปยัง API')
 
 const registryModalSource = readFileSync(join(COMPONENT_DIR, 'RegistryChangeModal.tsx'), 'utf8')
 assert.ok(registryModalSource.includes('{!isHolding && ('), 'ฟอร์มแก้ไขสารต้องแสดงส่วน GHS')

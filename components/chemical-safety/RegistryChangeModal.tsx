@@ -54,6 +54,7 @@ export function RegistryChangeModal({
   const isCreate = mode === 'create'
   const isProduct = mode === 'edit-product'
   const isHolding = mode === 'edit-holding'
+  const isDepartment = isHolding && registryRow?.storageScope === 'department'
 
   const [canonicalName, setCanonicalName] = useState(product?.canonicalName ?? registryRow?.canonicalName ?? '')
   const [aliasesText, setAliasesText] = useState(registryRow?.aliases.join(', ') ?? '')
@@ -129,8 +130,8 @@ export function RegistryChangeModal({
   function buildHoldingProposal() {
     return {
       productId: registryRow?.productId,
-      unitId,
-      locationId,
+      storageScope: isDepartment ? 'department' as const : 'room' as const,
+      locationId: isDepartment ? null : locationId,
       lotNumber: lotNumber.trim() || null,
       packageValue: Number(packageValue),
       packageUnit,
@@ -169,7 +170,7 @@ export function RegistryChangeModal({
 
   async function submit() {
     if (!canonicalName.trim()) { setError('กรุณาระบุชื่อสาร'); return }
-    if ((isCreate || isHolding) && !locationId) { setError('กรุณาเลือกตำแหน่งจัดเก็บ'); return }
+    if ((isCreate || isHolding) && !isDepartment && !locationId) { setError('กรุณาเลือกตำแหน่งจัดเก็บ'); return }
     if (!unitId) { setError('กรุณาเลือกหน่วยงานที่รับผิดชอบ'); return }
 
     setBusy(true)
@@ -206,7 +207,7 @@ export function RegistryChangeModal({
     }
   }
 
-  const title = isCreate ? 'เพิ่มสารเคมีใหม่' : isProduct ? 'แก้ไขข้อมูลสาร' : 'แก้ไขคลัง (ตำแหน่ง/ปริมาณ)'
+  const title = isCreate ? 'เพิ่มสารเคมีใหม่' : isProduct ? 'แก้ไขข้อมูลสาร' : isDepartment ? 'แก้ไขคลัง (ปริมาณ/วันที่)' : 'แก้ไขคลัง (ตำแหน่ง/ปริมาณ)'
 
   return (
     <div
@@ -267,7 +268,7 @@ export function RegistryChangeModal({
           )}
 
           <section>
-            <h3 style={sectionStyle}>{isProduct ? 'หน่วยงานที่รับผิดชอบ' : 'คลังและตำแหน่งจัดเก็บ'}</h3>
+            <h3 style={sectionStyle}>{isProduct ? 'หน่วยงานที่รับผิดชอบ' : isDepartment ? 'หน่วยงานที่รับผิดชอบ (ไม่มีผังจัดเก็บ)' : 'คลังและตำแหน่งจัดเก็บ'}</h3>
             <div style={gridStyle}>
               <label>
                 <span style={labelStyle}>หน่วยงานที่รับผิดชอบ *</span>
@@ -275,7 +276,7 @@ export function RegistryChangeModal({
                   {units.map(unit => <option key={unit.id} value={unit.id}>{unit.nameTh}</option>)}
                 </select>
               </label>
-              {!isProduct && (
+              {!isProduct && !isDepartment && (
                 <label>
                   <span style={labelStyle}>ตำแหน่งจัดเก็บ *</span>
                   <select value={locationId} onChange={(e) => setLocationId(e.target.value)} style={inputStyle}>

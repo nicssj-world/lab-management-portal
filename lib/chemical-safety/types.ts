@@ -5,9 +5,10 @@ export type QuantityUnit = 'mL' | 'L' | 'g' | 'kg'
 export type SdsMatchStatus = 'candidate' | 'mismatch' | 'missing' | 'unsupported' | 'duplicate'
 export type ChemicalStorageZoneCode = 'A' | 'B' | 'C' | 'T'
 export type ChemicalStorageLocationKind = 'cabinet' | 'shelf' | 'table'
+export type ChemicalStorageScope = 'room' | 'department'
 export type ChemicalPhysicalState = 'solid' | 'liquid' | 'gas' | 'mixture' | 'unknown'
 export type ChemicalRole = 'custodian' | 'reviewer'
-export type ChemicalChangeEntityType = 'product' | 'holding' | 'new_chemical'
+export type ChemicalChangeEntityType = 'product' | 'holding' | 'new_chemical' | 'department_chemical'
 export type ChemicalSdsState = 'approved' | 'review_due' | 'draft' | 'mismatch' | 'missing'
 
 export type JsonPrimitive = boolean | number | string | null
@@ -32,9 +33,12 @@ export interface ChemicalRegistryRow {
   aliases: string[]
   casNumber: string | null
   concentration: string | null
+  storageScope: ChemicalStorageScope
+  roomId: string | null
   locationId: string | null
   packageValue: number | null
   packageUnit: QuantityUnit | null
+  packageRaw: string | null
   currentContainerCount: number | null
   minimumStock: number | null
   lotNumber: string | null
@@ -49,7 +53,9 @@ export interface ChemicalRegistryRow {
   positionCode: string | null
   unitId: string
   unitName: string
+  lifecycleStatus: ChemicalLifecycleStatus
   sdsStatus: string
+  hasSdsFile: boolean
   pictogramCodes: GhsPictogramCode[]
   signalWord: string | null
   hazards: Array<{ className: string; category: string }>
@@ -136,7 +142,8 @@ export interface ChemicalHoldingDTO {
   id: string
   productId: string
   unitId: string
-  locationId: string
+  storageScope: ChemicalStorageScope
+  locationId: string | null
   lotNumber: string | null
   packageValue: number
   packageUnit: QuantityUnit
