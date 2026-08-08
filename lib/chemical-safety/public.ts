@@ -74,6 +74,7 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
   const locationById = new Map(data.locations.map(location => [location.id, location]))
   const positionByProduct = new Map<string, { code: string; zoneCode: string }>()
   for (const holding of data.holdings) {
+    if (holding.storage_scope === 'department') continue
     if (positionByProduct.has(holding.product_id)) continue
     const location = locationById.get(holding.location_id)
     if (!location) continue
@@ -179,6 +180,7 @@ export async function getPublicStorageLayout(): Promise<PublicStorageLayout> {
 
   const seen = new Set<string>()
   for (const holding of data.holdings) {
+    if (holding.storage_scope === 'department') continue
     const cabinet = cabinets.get(String(holding.location_id))
     const product = productById.get(holding.product_id)
     if (!cabinet || !product || !eligibleProductIds.has(product.id)) continue

@@ -50,7 +50,7 @@ const CATEGORY_ACTIONS: Record<string, string[]> = {
     'chemical_safety.sds.create_draft', 'chemical_safety.sds.upload_file', 'chemical_safety.sds.delete_draft',
     'chemical_safety.department_sds.upload', 'chemical_safety.department_sds.rename',
     'chemical_safety.department_sds.delete', 'chemical_safety.department_sds.replace_file',
-    'chemical_safety.department_sds.publish', 'chemical_safety.registry.export_pdf',
+    'chemical_safety.department_sds.publish', 'chemical_safety.registry.export_pdf', 'chemical_safety.registry.export_excel',
     'chemical_safety.role_scope.grant', 'chemical_safety.role_scope.revoke', 'chemical_safety.import.prepared',
   ],
   kpi:      ['kpi.entry', 'kpi.settings', 'kpi.definition.create', 'kpi.definition.update', 'kpi.definition.delete'],

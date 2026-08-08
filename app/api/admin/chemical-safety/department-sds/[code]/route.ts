@@ -73,6 +73,14 @@ export async function DELETE(
     const guard = await requireDepartmentSdsPublisher(String(entry.data.department_code))
     if (guard.response) return guard.response
 
+    const registryLink = await supabaseAdmin
+      .from('chemical_department_chemical_links')
+      .select('id')
+      .eq('department_sds_id', id)
+      .maybeSingle()
+    if (registryLink.error) throw registryLink.error
+    if (registryLink.data) return NextResponse.json({ error: 'ไฟล์ SDS ที่อยู่ในทะเบียนแล้วห้ามลบ' }, { status: 409 })
+
     const deleted = await supabaseAdmin.from('chemical_department_sds').delete().eq('id', id)
     if (deleted.error) throw deleted.error
 

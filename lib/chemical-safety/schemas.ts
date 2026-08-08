@@ -6,6 +6,7 @@ const nullableDate = isoDate.nullable().optional()
 const quantityUnit = z.enum(['mL', 'L', 'g', 'kg'])
 const pictogram = z.enum(['GHS01', 'GHS02', 'GHS03', 'GHS04', 'GHS05', 'GHS06', 'GHS07', 'GHS08', 'GHS09'])
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional()
+const chemicalStorageScope = z.enum(['room', 'department'])
 
 export const chemicalRegistryQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
@@ -17,6 +18,12 @@ export const chemicalRegistryQuerySchema = z.object({
   lifecycle: z.enum(['active', 'retired']).optional(),
 })
 export const chemicalRegistryFiltersSchema = chemicalRegistryQuerySchema
+
+export const chemicalRegistryExportRequestSchema = z.object({
+  format: z.enum(['pdf', 'xlsx']),
+  filters: chemicalRegistryFiltersSchema.default({}),
+  newChemicalHoldingIds: z.array(uuid).max(5000).default([]),
+}).strict()
 
 export const chemicalImportReviewQuerySchema = z.object({
   batchId: uuid.optional(),
@@ -52,7 +59,8 @@ export const chemicalProductProposalSchema = z.object({
 
 export const chemicalHoldingProposalSchema = z.object({
   productId: uuid,
-  locationId: uuid,
+  storageScope: chemicalStorageScope.default('room'),
+  locationId: uuid.nullable().optional(),
   lotNumber: optionalText(150),
   packageValue: z.number().finite().nonnegative(),
   packageUnit: quantityUnit,
@@ -65,7 +73,14 @@ export const chemicalHoldingProposalSchema = z.object({
   openedOn: nullableDate,
   expiresOn: nullableDate,
   effectiveOn: nullableDate,
-}).strict()
+}).strict().superRefine((value, ctx) => {
+  if (value.storageScope === 'room' && !value.locationId) {
+    ctx.addIssue({ code: 'custom', path: ['locationId'], message: 'กรุณาเลือกตำแหน่งจัดเก็บ' })
+  }
+  if (value.storageScope === 'department' && value.locationId) {
+    ctx.addIssue({ code: 'custom', path: ['locationId'], message: 'สารของงานห้ามระบุตำแหน่งจัดเก็บ' })
+  }
+})
 
 // สร้างสารเคมีใหม่ทั้งชุด (product + holding) ในคำขอเดียว — ไม่มี productId เพราะยังไม่มีจริง
 export const chemicalNewChemicalProposalSchema = z.object({
@@ -95,10 +110,41 @@ export const chemicalNewChemicalProposalSchema = z.object({
   ghsHazardClasses: z.array(chemicalGhsHazardClassProposalSchema).max(20).default([]),
 }).strict()
 
+export const chemicalDepartmentChemicalProposalSchema = z.object({
+  productId: uuid.nullable().optional(),
+  sourceDepartmentSdsId: uuid,
+  canonicalName: z.string().trim().min(1).max(300),
+  aliases: z.array(z.string().trim().min(1).max(300)).max(50).default([]),
+  casNumber: z.string().trim().regex(/^\d{2,7}-\d{2}-\d$/).nullable().optional(),
+  manufacturer: optionalText(300),
+  supplier: optionalText(300),
+  productCode: optionalText(150),
+  concentration: optionalText(100),
+  physicalState: z.enum(['solid', 'liquid', 'gas', 'mixture', 'unknown']).nullable().optional(),
+  storageScope: z.literal('department'),
+  locationId: z.null().optional(),
+  lotNumber: optionalText(150),
+  packageValue: z.number().finite().nonnegative(),
+  packageUnit: quantityUnit,
+  currentContainerCount: z.number().int().nonnegative(),
+  minimumStock: z.number().int().nonnegative(),
+  reportedTotalRaw: optionalText(200),
+  calculatedTotalValue: z.number().finite().nonnegative().nullable().optional(),
+  calculatedTotalUnit: quantityUnit.nullable().optional(),
+  receivedOn: nullableDate,
+  openedOn: nullableDate,
+  expiresOn: nullableDate,
+  effectiveOn: nullableDate,
+  ghsSourceText: optionalText(2000),
+  ghsPictogramCodes: z.array(pictogram).max(9).default([]),
+  ghsHazardClasses: z.array(chemicalGhsHazardClassProposalSchema).max(20).default([]),
+}).strict()
+
 export const chemicalChangeRequestSchema = z.discriminatedUnion('entityType', [
   z.object({ entityType: z.literal('product'), entityId: uuid, unitId: uuid, proposedData: chemicalProductProposalSchema }).strict(),
   z.object({ entityType: z.literal('holding'), entityId: uuid, unitId: uuid, proposedData: chemicalHoldingProposalSchema }).strict(),
   z.object({ entityType: z.literal('new_chemical'), unitId: uuid, proposedData: chemicalNewChemicalProposalSchema }).strict(),
+  z.object({ entityType: z.literal('department_chemical'), unitId: uuid, proposedData: chemicalDepartmentChemicalProposalSchema }).strict(),
 ])
 
 export const chemicalChangeDraftPatchSchema = z.object({

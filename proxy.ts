@@ -37,7 +37,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const response = NextResponse.next()
+  let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,20 +45,32 @@ export async function proxy(request: NextRequest) {
     {
       cookies: {
         getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) =>
+        setAll: (cookiesToSet, headers) => {
+          // Refresh-token rotation must update the request seen by the
+          // Server Components as well as the browser response. Otherwise the
+          // protected layout can try to refresh the already-rotated token.
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
-          ),
+          )
+          Object.entries(headers).forEach(([key, value]) => response.headers.set(key, value))
+        },
       },
     }
   )
 
-  const { data: { user }, error } = await supabase.auth.getUser().catch((error) => ({
-    data: { user: null },
-    error,
-  }))
+  let claims: unknown = null
+  let error: unknown = null
+  try {
+    const result = await supabase.auth.getClaims()
+    claims = result.data?.claims ?? null
+    error = result.error
+  } catch (caught) {
+    error = caught
+  }
 
-  if (error || !user) {
+  if (error || !claims) {
     // ติดต่อ auth server ไม่ได้ ≠ ไม่ได้ล็อกอิน — ปล่อยผ่านโดยคง cookie ไว้
     // layout ของ (protected) ยังตรวจ session ซ้ำฝั่ง server อยู่แล้ว
     if (isAuthServiceUnavailable(error)) {

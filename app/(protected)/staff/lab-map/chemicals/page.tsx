@@ -8,6 +8,7 @@ import { listDepartmentSds } from '@/lib/chemical-safety/department-repository'
 import { CHEMICAL_SDS_DEPARTMENTS } from '@/lib/chemical-safety/departments'
 import {
   getChemicalStorageLayout,
+  listChemicalRooms,
   listChemicalChangeRequests,
   listChemicalProductRecords,
   listChemicalRegistry,
@@ -16,7 +17,7 @@ import {
 import { CHEMICAL_HUB_VIEW_IDS, normalizeNavigationValue, type ChemicalHubView } from '@/lib/navigation'
 import { isSafetyEditor } from '@/lib/lab-map/safety-access'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import type { ChemicalUnitDTO, GhsPictogramCode } from '@/lib/chemical-safety/types'
+import type { ChemicalRoomDTO, ChemicalUnitDTO, GhsPictogramCode } from '@/lib/chemical-safety/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,8 +37,9 @@ export default async function ChemicalSafetyPage({
     'registry',
   )
 
-  const [locations, registry, products, changeRequests, unitRows, scopes, sdsItems, departmentSds, sdsProductRows] = await Promise.all([
+  const [locations, rooms, registry, products, changeRequests, unitRows, scopes, sdsItems, departmentSds, sdsProductRows] = await Promise.all([
     getChemicalStorageLayout('chemical-prep'),
+    listChemicalRooms(),
     listChemicalRegistry(),
     listChemicalProductRecords(),
     listChemicalChangeRequests(),
@@ -58,6 +60,7 @@ export default async function ChemicalSafetyPage({
     active: Boolean(row.active),
     createdAt: String(row.created_at),
   }))
+  const chemicalRooms: ChemicalRoomDTO[] = rooms
   const rows = scopes.data ?? []
 
   // Safety Editor ของแผนที่ห้องปฏิบัติการจัดการสารเคมีและ SDS ได้ทั้งโมดูล
@@ -86,6 +89,7 @@ export default async function ChemicalSafetyPage({
       <ChemicalSafetyHubClient
         view={activeView}
         locations={locations}
+        rooms={chemicalRooms}
         registry={registry}
         products={products}
         changeRequests={changeRequests}

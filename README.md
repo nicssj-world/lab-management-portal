@@ -308,6 +308,8 @@ Apply the schema only after confirming the configured Supabase project is the in
 node scripts/run-migration.mjs scripts/chemical-safety-module.sql
 ```
 
+For the existing chemical-safety module, apply the follow-up scripts in this order before deploying the corresponding UI: `scripts/chemical-safety-ghs-and-departments.sql`, `scripts/chemical-safety-registry-crud.sql`, then `scripts/chemical-safety-department-registry.sql`. The last script creates department-scoped registry holdings, links each department SDS file to at most one approved chemical, and keeps those holdings out of the room storage layout. The equivalent Supabase CLI migration is `supabase/migrations/20260808154713_chemical_safety_department_registry.sql`.
+
 After that environment is explicitly confirmed and the dry-run has been reviewed, append `--apply` to the same import command. Apply uses the existing Supabase service-role and private R2 configuration. It reuses import batches by source kind/hash, upserts source rows by batch/row key, consolidates PDF evidence by SHA-256, and uploads only missing private objects below `chemical-safety/sources/` and `chemical-safety/imports/`.
 
 Imports remain proposals or quarantined evidence: they do not create an approved SDS, public listing, QR token, product, or inventory holding. A custodian must verify the bottle label and exact SDS before a separate reviewer workflow can publish anything.

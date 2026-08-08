@@ -10,13 +10,14 @@ import { FONT, SPACE } from './shared/tokens'
 
 const ENTITY_LABEL: Record<string, string> = {
   new_chemical: 'เพิ่มสารเคมีใหม่',
+  department_chemical: 'เพิ่มสารจาก SDS งาน',
   product: 'แก้ไขข้อมูลสาร',
   holding: 'แก้ไขคลัง',
 }
 
 function summarize(item: ChemicalChangeRequestListItemDTO): string {
   const data = item.proposedData
-  if (item.entityType === 'new_chemical' || item.entityType === 'product') {
+  if (item.entityType === 'new_chemical' || item.entityType === 'department_chemical' || item.entityType === 'product') {
     const parts = [
       typeof data.casNumber === 'string' ? `CAS ${data.casNumber}` : null,
       typeof data.lifecycleStatus === 'string'
