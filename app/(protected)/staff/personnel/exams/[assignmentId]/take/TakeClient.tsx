@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
-import type { ExamQuestion } from '@/lib/personnel/exam'
+import type { ExamImageView, ExamQuestionView } from '@/lib/personnel/exam'
 
 const card: React.CSSProperties = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }
 const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44, padding: '0 22px', borderRadius: 10, border: 0, background: 'var(--primary)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }
@@ -21,8 +21,27 @@ const CSS = `
 @media(prefers-reduced-motion:reduce){.tk-rise{animation:none;opacity:1}.tk-submit:hover{transform:none}}
 `
 
+function ExamImageGallery({ images }: { images: ExamImageView[] }) {
+  if (images.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: '100%' }} aria-label="ภาพประกอบข้อสอบ">
+      {images.map((image) => image.url ? (
+        <img
+          key={image.id}
+          src={image.url}
+          alt={image.alt || 'ภาพประกอบข้อสอบ'}
+          width={image.width}
+          height={image.height}
+          loading="lazy"
+          style={{ display: 'block', maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)' }}
+        />
+      ) : null)}
+    </div>
+  )
+}
+
 export function TakeClient({ assignmentId, title, description, questions }: {
-  assignmentId: string; title: string; description: string | null; questions: ExamQuestion[]
+  assignmentId: string; title: string; description: string | null; questions: ExamQuestionView[]
 }) {
   const router = useRouter()
   const [answers, setAnswers] = useState<Record<string, string>>({})
@@ -81,8 +100,9 @@ export function TakeClient({ assignmentId, title, description, questions }: {
             <div key={q.id} className="tk-rise" style={{ ...card, animationDelay: `${i * 40}ms`, borderLeft: `3px solid ${gotIt ? 'var(--success)' : 'var(--danger)'}` }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
                 <span style={{ color: gotIt ? 'var(--success)' : 'var(--danger)', flexShrink: 0, marginTop: 1 }}><Icon name={gotIt ? 'check' : 'x'} size={17} /></span>
-                <span style={{ fontWeight: 700 }}>{i + 1}. {q.prompt}</span>
+                <span style={{ fontWeight: 700 }}>{i + 1}.{q.prompt ? ` ${q.prompt}` : ''}</span>
               </div>
+              <ExamImageGallery images={q.images} />
               <div style={{ display: 'grid', gap: 6 }}>
                 {q.options.map((o) => {
                   const isCorrect = o.id === correctId
@@ -90,7 +110,10 @@ export function TakeClient({ assignmentId, title, description, questions }: {
                   const bg = isCorrect ? 'rgba(22,163,74,.12)' : isChosen ? 'rgba(220,38,38,.12)' : 'transparent'
                   return (
                     <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: bg, fontSize: 13.5 }}>
-                      <span style={{ flex: 1 }}>{o.label}</span>
+                      <span style={{ flex: 1, minWidth: 0, display: 'grid', gap: 6 }}>
+                        <ExamImageGallery images={o.images} />
+                        <span>{o.label}</span>
+                      </span>
                       {isCorrect && <span style={{ color: 'var(--success)', fontWeight: 700, fontSize: 12 }}>เฉลย</span>}
                       {isChosen && !isCorrect && <span style={{ color: 'var(--danger)', fontWeight: 700, fontSize: 12 }}>คำตอบของคุณ</span>}
                     </div>
@@ -123,8 +146,9 @@ export function TakeClient({ assignmentId, title, description, questions }: {
         <div key={q.id} className="tk-rise" style={{ ...card, animationDelay: `${i * 45}ms` }}>
           <div style={{ fontWeight: 700, marginBottom: 12, display: 'flex', gap: 8 }}>
             <span style={{ color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>{i + 1}.</span>
-            <span>{q.prompt}</span>
+            {q.prompt && <span>{q.prompt}</span>}
           </div>
+          <ExamImageGallery images={q.images} />
           <div style={{ display: 'grid', gap: 8 }}>
             {q.options.map((o) => {
               const sel = answers[q.id] === o.id
@@ -134,7 +158,10 @@ export function TakeClient({ assignmentId, title, description, questions }: {
                     {sel && <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--primary)' }} />}
                   </span>
                   <input type="radio" name={q.id} checked={sel} onChange={() => setAnswers((p) => ({ ...p, [q.id]: o.id }))} style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }} />
-                  <span style={{ fontSize: 14 }}>{o.label}</span>
+                  <span style={{ flex: 1, minWidth: 0, display: 'grid', gap: 6 }}>
+                    <ExamImageGallery images={o.images} />
+                    <span style={{ fontSize: 14 }}>{o.label}</span>
+                  </span>
                 </label>
               )
             })}
