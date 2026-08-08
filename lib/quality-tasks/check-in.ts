@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
+import { isCheckInClosed } from './logic'
 import { getOccurrenceAccess, listTaskPeople } from './server'
 import { addParticipantToSelection, resolveParticipantSelection, resolveParticipants } from './participants'
 import type { QualityTaskCheckIn } from './types'
@@ -14,13 +15,16 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/
 
 function str(value: unknown) { return typeof value === 'string' ? value : '' }
 function nullable(value: unknown) { return typeof value === 'string' ? value : null }
+function checkInClosed(instance: Row) {
+  return isCheckInClosed(instance.status === 'completed' ? 'completed' : 'open', nullable(instance.check_in_closed_at))
+}
 
 export function createCheckInToken() {
   return randomBytes(32).toString('base64url')
 }
 
 /**
- * ออก QR token ให้รอบประชุม — ออกครั้งเดียวแล้วใช้ token เดิมตลอด
+ * ออก QR token ให้รอบประชุม — ออกครั้งเดียวแล้วใช้ token เดิมจนกว่าจะปิดรับเช็คอิน
  *
  * เรียกซ้ำได้: ถ้ามี token แล้วคืนของเดิม ไม่ออกใหม่ ป้องกันไม่ให้ QR ที่พิมพ์
  * แจกไปแล้วใช้ไม่ได้เพราะมีคนกดปุ่มซ้ำ
@@ -29,6 +33,7 @@ export async function issueCheckInToken(instanceId: string, actor: Actor, level:
   const access = await getOccurrenceAccess(instanceId, actor, level)
   const existing = nullable(access.instance.check_in_token)
   if (existing) return existing
+  if (checkInClosed(access.instance)) throw new Error('การประชุมนี้ปิดรับเช็คอินแล้ว')
 
   const token = createCheckInToken()
   const { error } = await supabaseAdmin
@@ -47,12 +52,44 @@ export async function issueCheckInToken(instanceId: string, actor: Actor, level:
   return str(data?.check_in_token) || token
 }
 
+/** ปิดรับเช็คอินของรอบนี้ — เป็นการปิดถาวรของ QR token เดิม */
+export async function closeCheckIn(instanceId: string, actor: Actor, level: PermLevel) {
+  const access = await getOccurrenceAccess(instanceId, actor, level)
+  const existing = nullable(access.instance.check_in_closed_at)
+  if (existing) return existing
+
+  const closedAt = new Date().toISOString()
+  const { error } = await supabaseAdmin
+    .from('quality_task_instances')
+    .update({ check_in_closed_at: closedAt, updated_by: actor.id, updated_at: closedAt })
+    .eq('id', instanceId)
+    .is('check_in_closed_at', null)
+  if (error) throw new Error(error.message)
+
+  const { data, error: readError } = await supabaseAdmin
+    .from('quality_task_instances')
+    .select('check_in_closed_at')
+    .eq('id', instanceId)
+    .single()
+  if (readError) throw new Error(readError.message)
+  const committedAt = nullable(data?.check_in_closed_at) ?? closedAt
+
+  supabaseAdmin.from('audit_log').insert({
+    action: 'quality_task.check_in.close',
+    user_id: actor.id,
+    target: instanceId,
+    detail: `ปิดรับเช็คอิน ${committedAt}`,
+  }).then(undefined, () => {})
+
+  return committedAt
+}
+
 export interface CheckInContext {
   instanceId: string
   title: string
   periodLabel: string
   plannedDate: string | null
-  /** ปิดรับเช็คอินเมื่อรอบถูกปิดงานแล้ว — ขอบเขตที่อธิบายได้ตอนตรวจประเมิน */
+  /** ปิดรับเช็คอินเมื่อเจ้าหน้าที่กดปิด หรือรอบถูกปิดงานแล้ว */
   closed: boolean
   alreadyCheckedIn: boolean
   isListedParticipant: boolean
@@ -99,7 +136,7 @@ export async function getCheckInContext(token: string, actorId: string | null): 
     title: str(template.title) || str(instance.period_label),
     periodLabel: str(instance.period_label),
     plannedDate: nullable(instance.planned_date),
-    closed: instance.status === 'completed',
+    closed: checkInClosed(instance),
     alreadyCheckedIn: Boolean(existing),
     isListedParticipant: actorId ? participants.some(p => str(p.id) === actorId) : false,
   }
@@ -127,7 +164,7 @@ export async function recordCheckIn(token: string, actor: Actor): Promise<CheckI
     .maybeSingle()
   if (error) throw new Error(error.message)
   if (!instance) return { status: 'not_found' }
-  if (instance.status === 'completed') return { status: 'closed' }
+  if (checkInClosed(instance)) return { status: 'closed' }
 
   const instanceId = str(instance.id)
   const template = (instance.quality_task_templates ?? {}) as Row
@@ -184,12 +221,12 @@ export async function recordGuestCheckIn(
 
   const { data: instance, error } = await supabaseAdmin
     .from('quality_task_instances')
-    .select('id, status')
+    .select('id, status, check_in_closed_at')
     .eq('check_in_token', token)
     .maybeSingle()
   if (error) throw new Error(error.message)
   if (!instance) return { status: 'not_found' }
-  if (instance.status === 'completed') return { status: 'closed' }
+  if (checkInClosed(instance)) return { status: 'closed' }
 
   const instanceId = str(instance.id)
   const { error: insertError } = await supabaseAdmin.from('quality_task_check_ins').insert({

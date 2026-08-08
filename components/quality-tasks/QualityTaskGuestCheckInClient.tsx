@@ -117,7 +117,7 @@ export function QualityTaskGuestCheckInClient({ token }: { token: string }) {
 
             {state.context.closed ? (
               <p style={{ marginTop: 16, padding: '10px 12px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: 13 }}>
-                <Icon name="lock" size={14} /> การประชุมนี้ปิดงานแล้ว ไม่รับเช็คอินเพิ่ม
+                <Icon name="lock" size={14} /> การประชุมนี้ปิดรับเช็คอินแล้ว ไม่รับเช็คอินเพิ่ม
               </p>
             ) : state.phase === 'choice' ? (
               <div style={{ marginTop: 18, display: 'grid', gap: 10 }}>

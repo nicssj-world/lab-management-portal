@@ -25,7 +25,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   try {
     const result = await recordCheckIn((await params).token, actor)
     if (result.status === 'not_found') return NextResponse.json({ error: 'ไม่พบ QR สำหรับการประชุมนี้' }, { status: 404 })
-    if (result.status === 'closed') return NextResponse.json({ error: 'การประชุมนี้ปิดงานแล้ว ไม่รับเช็คอินเพิ่ม' }, { status: 409 })
+    if (result.status === 'closed') return NextResponse.json({ error: 'การประชุมนี้ปิดรับเช็คอินแล้ว ไม่รับเช็คอินเพิ่ม' }, { status: 409 })
     return NextResponse.json({
       ok: true,
       already: result.status === 'already',

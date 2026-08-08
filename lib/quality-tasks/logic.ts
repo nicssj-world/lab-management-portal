@@ -1,5 +1,6 @@
 import type { PermLevel } from '@/lib/permissions'
-import type { AssigneeEntry, QualityTaskSchedule, TaskSchedulingState, TaskStatus, TaskUrgency } from './types'
+import { isAdminRole } from '@/lib/roles'
+import type { AssigneeEntry, QualityTaskSchedule, TaskKind, TaskSchedulingState, TaskStatus, TaskUrgency } from './types'
 
 const DAY_MS = 86_400_000
 
@@ -62,6 +63,27 @@ export function resolveAssigneeEntries(defaultEntries: AssigneeEntry[], override
 
 export function canMutateOccurrence(level: PermLevel, isAssigned: boolean, _isUnassigned: boolean) {
   return level === 'edit' || (level === 'view' && isAssigned)
+}
+
+export function canViewOccurrence(level: PermLevel) {
+  return level === 'view' || level === 'edit'
+}
+
+export function isCheckInClosed(status: TaskStatus, closedAt: string | null) {
+  return status === 'completed' || Boolean(closedAt)
+}
+
+export function isWeekendDate(date: string) {
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay()
+  return day === 0 || day === 6
+}
+
+export function canManageQualityTaskHolidays(role: string | null | undefined) {
+  return isAdminRole(role)
+}
+
+export function supportsActionItems(input: { taskKind: TaskKind; participantCount: number; checkInCount: number }) {
+  return input.taskKind === 'meeting' || input.participantCount > 0 || input.checkInCount > 0
 }
 
 export function completionBlockReason(evidenceRequired: boolean, attachmentCount: number) {

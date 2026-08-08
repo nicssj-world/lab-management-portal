@@ -12,7 +12,7 @@ const createSchema = z.object({
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await qualityTaskContext('view'); if (ctx.response) return ctx.response
-  try { const items = await listActionItems((await params).id, ctx.actor, ctx.level); return NextResponse.json({ items }) } catch (error) { return qualityTaskError(error) }
+  try { const items = await listActionItems((await params).id, ctx.level); return NextResponse.json({ items }) } catch (error) { return qualityTaskError(error) }
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
