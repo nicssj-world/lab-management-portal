@@ -160,26 +160,91 @@ export const REPORTER_POSITIONS = [
   'พนักงานประจำห้องทดลอง',
 ] as const
 
-export const INCIDENT_CATEGORIES = [
-  'สิ่งส่งตรวจ Hemolysis',
-  'สิ่งส่งตรวจ Turbid',
-  'สิ่งส่งตรวจ clot',
-  'สิ่งส่งตรวจปริมาตรไม่เพียงพอสำหรับการทดสอบ',
-  'ชื่อใบนำส่งตรวจกับสิ่งส่งตรวจไม่ตรงกัน',
-  'สิ่งส่งตรวจผิดชนิด หรือ ใส่ภาชนะผิดชนิด',
-  'เก็บสิ่งส่งตรวจผิดราย',
-  'Request ผิดราย',
-  'ไม่ได้รับสิ่งส่งตรวจ',
-  'ส่งสิ่งส่งตรวจเกินระยะเวลาที่กำหนด',
-  'ติด Barcode ผิดราย',
-  'ตัวอย่างไม่ครบตามใบส่งตรวจ',
-  'ไม่ติดชื่อสกุลบนภาชนะที่ส่งตรวจ',
-  'สิ่งส่งตรวจหก - แตก เลอะ',
-  'ระบบ LIS ขัดข้อง',
-  'ระบบ HIS ขัดข้อง',
-  'Reagent หมดอายุ',
-  'อื่นๆ',
-] as const
+export type IncidentCategoryGroup = {
+  readonly id: string
+  readonly label: string
+  readonly items: readonly string[]
+}
+
+export const INCIDENT_CATEGORY_GROUPS = [
+  {
+    id: 'specimen',
+    label: 'สิ่งส่งตรวจ/การรับตัวอย่าง',
+    items: [
+      'สิ่งส่งตรวจ Hemolysis',
+      'สิ่งส่งตรวจ Turbid',
+      'สิ่งส่งตรวจ clot',
+      'สิ่งส่งตรวจปริมาตรไม่เพียงพอสำหรับการทดสอบ',
+      'สิ่งส่งตรวจผิดชนิด หรือ ใส่ภาชนะผิดชนิด',
+      'ตัวอย่างไม่ครบตามใบส่งตรวจ',
+      'สิ่งส่งตรวจหก - แตก เลอะ',
+    ],
+  },
+  {
+    id: 'identity',
+    label: 'การระบุตัวตน/ใบส่งตรวจ',
+    items: [
+      'ชื่อใบนำส่งตรวจกับสิ่งส่งตรวจไม่ตรงกัน',
+      'เก็บสิ่งส่งตรวจผิดราย',
+      'Request ผิดราย',
+      'ติด Barcode ผิดราย',
+      'ไม่ติดชื่อสกุลบนภาชนะที่ส่งตรวจ',
+    ],
+  },
+  {
+    id: 'process',
+    label: 'การขนส่ง/กระบวนการ',
+    items: [
+      'ไม่ได้รับสิ่งส่งตรวจ',
+      'ส่งสิ่งส่งตรวจเกินระยะเวลาที่กำหนด',
+    ],
+  },
+  {
+    id: 'system',
+    label: 'ระบบ/วัสดุ/อื่นๆ',
+    items: [
+      'ระบบ LIS ขัดข้อง',
+      'ระบบ HIS ขัดข้อง',
+      'Reagent หมดอายุ',
+      'อื่นๆ',
+    ],
+  },
+  {
+    id: 'blood-order',
+    label: 'คำสั่งการใช้เลือดคลาดเคลื่อน',
+    items: [
+      'สั่งเลือด/ส่วนประกอบเลือดผิดจำนวน',
+      'สั่งเลือด/ส่วนประกอบเลือดผิดชนิด/ไม่ตรงชนิด',
+      'สั่งเลือด/ส่วนประกอบเลือดผิดคน',
+    ],
+  },
+  {
+    id: 'blood-issue',
+    label: 'การจ่ายเลือดคลาดเคลื่อน',
+    items: [
+      'จ่ายเลือด/ส่วนประกอบเลือดล่าช้า',
+      'จ่ายเลือด/ส่วนประกอบเลือดผิดจำนวน/ชนิด',
+      'จ่ายเลือด/ส่วนประกอบเลือดผิดคน',
+    ],
+  },
+  {
+    id: 'blood-administration',
+    label: 'การบริหารเลือดคลาดเคลื่อน',
+    items: [
+      'ไม่ให้เลือด/ส่วนประกอบเลือด',
+      'เกิดปฏิกิริยาหลังให้เลือด',
+      'เกิดปฏิกิริยาหลังให้เลือดรุนแรง',
+      'ให้เลือดผิดหมู่',
+    ],
+  },
+] as const satisfies readonly IncidentCategoryGroup[]
+
+export const INCIDENT_CATEGORIES = INCIDENT_CATEGORY_GROUPS.flatMap(group => group.items)
+
+export function incidentCategoryGroupFor(category?: string | null): IncidentCategoryGroup | undefined {
+  if (!category) return undefined
+  return INCIDENT_CATEGORY_GROUPS.find(group => (group.items as readonly string[]).includes(category))
+}
 
 export const THAI_MONTHS = [
   { value: '01', label: 'ม.ค.' }, { value: '02', label: 'ก.พ.' }, { value: '03', label: 'มี.ค.' },
