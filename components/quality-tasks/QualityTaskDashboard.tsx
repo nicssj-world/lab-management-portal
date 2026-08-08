@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import QRCode from "qrcode";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PermLevel } from "@/lib/permissions";
 import type {
   AssigneeEntry,
@@ -28,6 +28,10 @@ import {
   occurrenceDisplayTitle,
   supportsActionItems,
 } from "@/lib/quality-tasks/logic";
+import {
+  QUALITY_TASK_POLL_INTERVAL_MS,
+  shouldPollQualityTaskDashboard,
+} from "@/lib/quality-tasks/polling";
 
 type Person = {
   id: string;
@@ -247,19 +251,91 @@ export function QualityTaskDashboard({
       ? monthRange(selected.periodStart.slice(0, 7))
       : null;
 
-  async function load(nextMonth = month, nextScope = scope) {
+  const load = useCallback(async (nextMonth = month, nextScope = scope) => {
     const { from, to } = monthRange(nextMonth);
     const [occurrencesResponse, holidaysResponse] = await Promise.all([
-      fetch(`/api/admin/quality-tasks/occurrences?from=${from}&to=${to}&scope=${nextScope}`),
-      fetch(`/api/admin/quality-tasks/holidays?from=${from}&to=${to}`),
+      fetch(
+        `/api/admin/quality-tasks/occurrences?from=${from}&to=${to}&scope=${nextScope}`,
+        { cache: "no-store" },
+      ),
+      fetch(`/api/admin/quality-tasks/holidays?from=${from}&to=${to}`, {
+        cache: "no-store",
+      }),
     ]);
     const occurrencesJson = await occurrencesResponse.json();
     const holidaysJson = await holidaysResponse.json();
     if (!occurrencesResponse.ok) throw new Error(occurrencesJson.error);
     if (!holidaysResponse.ok) throw new Error(holidaysJson.error);
-    setItems(occurrencesJson.occurrences);
+    const occurrences = occurrencesJson.occurrences as QualityTaskOccurrence[];
+    setItems(occurrences);
+    setSelected((current) =>
+      current
+        ? occurrences.find((occurrence) => occurrence.key === current.key) ?? current
+        : current,
+    );
     setHolidays(holidaysJson.holidays ?? []);
-  }
+  }, [month, scope]);
+  useEffect(() => {
+    if (!selected) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pollInFlight = false;
+
+    function clearTimer() {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    }
+    function schedule() {
+      if (
+        cancelled ||
+        !shouldPollQualityTaskDashboard(true, document.visibilityState)
+      ) {
+        return;
+      }
+      clearTimer();
+      timer = setTimeout(() => {
+        timer = null;
+        void poll();
+      }, QUALITY_TASK_POLL_INTERVAL_MS);
+    }
+    async function poll() {
+      if (
+        cancelled ||
+        pollInFlight ||
+        !shouldPollQualityTaskDashboard(true, document.visibilityState)
+      ) {
+        return;
+      }
+      pollInFlight = true;
+      try {
+        await load();
+      } catch {
+        // การโหลดรอบถัดไปจะลองใหม่เอง ไม่รบกวนผู้ใช้ด้วย error ชั่วคราว
+      } finally {
+        pollInFlight = false;
+        schedule();
+      }
+    }
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        clearTimer();
+        void poll();
+      } else {
+        clearTimer();
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    schedule();
+    return () => {
+      cancelled = true;
+      clearTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [load, selected?.key]);
   async function move(delta: number) {
     const next = shiftMonth(month, delta);
     setMonth(next);
