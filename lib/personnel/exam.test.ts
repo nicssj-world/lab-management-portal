@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   ExamDefinitionSchema,
   definitionForTaking,
+  normalizeExamDefinition,
   stripExamImageRuntimeUrls,
   type ExamDefinitionView,
 } from './exam'
@@ -54,5 +55,15 @@ assert.ok(persistedQuestionImage)
 assert.ok(persistedOptionImage)
 assert.equal('url' in persistedQuestionImage, false)
 assert.equal('url' in persistedOptionImage, false)
+
+const legacy = normalizeExamDefinition({
+  questions: [{
+    id: 'legacy-q', prompt: 'คำถามเดิม', type: 'single_choice',
+    options: [{ id: 'legacy-o-1', label: 'ใช่', isCorrect: true }, { id: 'legacy-o-2', label: 'ไม่ใช่', isCorrect: false }],
+  }],
+})
+assert.deepEqual(legacy.questions[0].images, [])
+assert.deepEqual(legacy.questions[0].options[0].images, [])
+assert.deepEqual(legacy, normalizeExamDefinition({ ...legacy, questions: legacy.questions }))
 
 console.log('personnel exam definition: ok')
