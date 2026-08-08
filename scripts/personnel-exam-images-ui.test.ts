@@ -10,6 +10,10 @@ const take = read('app/(protected)/staff/personnel/exams/[assignmentId]/take/Tak
 for (const required of ['onDrop', 'onPaste', 'onKeyDown', 'aria-live', 'focus-visible', 'type="button"']) {
   assert.ok(dropzone.includes(required), `dropzone must include ${required}`)
 }
+assert.ok(dropzone.includes('const [expanded, setExpanded] = useState(false)'), 'image upload must start collapsed')
+assert.ok(dropzone.includes('เพิ่มรูปภาพ'), 'collapsed image upload must expose an add-image action')
+assert.ok(dropzone.includes('aria-expanded={expanded}'), 'add-image action must expose its disclosure state')
+assert.ok(dropzone.includes('{expanded && ('), 'upload controls must be revealed only after expansion')
 for (const required of ['ExamImageDropzone', 'รูปคำถาม', 'รูปตัวเลือก', 'uploadExamImage', 'stripExamImageRuntimeUrls']) {
   assert.ok(builder.includes(required), `builder must include ${required}`)
 }
