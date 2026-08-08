@@ -246,6 +246,11 @@ export function incidentCategoryGroupFor(category?: string | null): IncidentCate
   return INCIDENT_CATEGORY_GROUPS.find(group => (group.items as readonly string[]).includes(category))
 }
 
+export function openGroupsForIncidentCategory(category?: string | null): string[] {
+  const group = incidentCategoryGroupFor(category)
+  return group ? [group.id] : []
+}
+
 export const THAI_MONTHS = [
   { value: '01', label: 'ม.ค.' }, { value: '02', label: 'ก.พ.' }, { value: '03', label: 'มี.ค.' },
   { value: '04', label: 'เม.ย.' }, { value: '05', label: 'พ.ค.' }, { value: '06', label: 'มิ.ย.' },

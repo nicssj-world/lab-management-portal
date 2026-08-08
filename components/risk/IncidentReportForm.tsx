@@ -9,7 +9,7 @@ import { ErrorBanner, Field, Panel } from './shared/ui'
 import { LAB_MAP_SPACE_OPTIONS } from '@/lib/lab-map/space-options'
 import {
   FONT, INCIDENT_CATEGORY_GROUPS, LAB_DEPARTMENTS, REPORTER_POSITIONS, SPACE,
-  incidentCategoryGroupFor, inputStyle, tabularNums, textareaStyle, todayIso,
+  incidentCategoryGroupFor, inputStyle, openGroupsForIncidentCategory, tabularNums, textareaStyle, todayIso,
 } from './shared/tokens'
 
 type Draft = {
@@ -383,7 +383,10 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
                                 type="radio"
                                 value={category}
                                 checked={checked}
-                                onChange={e => set({ event_category: e.target.value })}
+                                onChange={e => {
+                                  set({ event_category: e.target.value })
+                                  setOpenGroups(openGroupsForIncidentCategory(e.target.value))
+                                }}
                                 onBlur={blur('event_category')}
                                 style={{ width: 18, height: 18, flex: '0 0 auto', accentColor: 'var(--primary)' }}
                               />
