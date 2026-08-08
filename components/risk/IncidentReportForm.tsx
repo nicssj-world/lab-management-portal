@@ -8,8 +8,8 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { ErrorBanner, Field, Panel } from './shared/ui'
 import { LAB_MAP_SPACE_OPTIONS } from '@/lib/lab-map/space-options'
 import {
-  FONT, INCIDENT_CATEGORIES, LAB_DEPARTMENTS, REPORTER_POSITIONS, SPACE,
-  inputStyle, tabularNums, textareaStyle, todayIso,
+  FONT, INCIDENT_CATEGORY_GROUPS, LAB_DEPARTMENTS, REPORTER_POSITIONS, SPACE,
+  incidentCategoryGroupFor, inputStyle, tabularNums, textareaStyle, todayIso,
 } from './shared/tokens'
 
 type Draft = {
@@ -67,6 +67,7 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
   const [error, setError] = useState('')
   const [submitted, setSubmitted] = useState<{ id: number; report_no: string | null } | null>(null)
   const [draftRestored, setDraftRestored] = useState(false)
+  const [openGroups, setOpenGroups] = useState<string[]>([])
   const formRef = useRef<HTMLFormElement>(null)
 
   // กู้ร่างที่ค้างไว้ — งานห้องแล็บถูกขัดจังหวะบ่อย ฟอร์มที่หายทั้งหมดคือเหตุผลที่คนเลิกรายงาน
@@ -83,6 +84,12 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
       window.localStorage.removeItem(DRAFT_KEY)
     }
   }, [])
+
+  useEffect(() => {
+    const group = incidentCategoryGroupFor(draft.event_category)
+    if (!group) return
+    setOpenGroups(previous => previous.includes(group.id) ? previous : [...previous, group.id])
+  }, [draft.event_category])
 
   useEffect(() => {
     if (submitted) return
@@ -103,8 +110,16 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
 
     const firstInvalid = (Object.keys(errors) as (keyof Draft)[])[0]
     if (firstInvalid) {
-      // พาโฟกัสไปที่ช่องแรกที่ยังไม่ผ่าน แทนที่จะให้ผู้ใช้ไล่หาเองว่าอะไรผิด
-      formRef.current?.querySelector<HTMLElement>(`[name="${firstInvalid}"]`)?.focus()
+      if (firstInvalid === 'event_category') {
+        const firstGroupId = INCIDENT_CATEGORY_GROUPS[0]?.id
+        if (firstGroupId) {
+          setOpenGroups(previous => previous.includes(firstGroupId) ? previous : [...previous, firstGroupId])
+        }
+        formRef.current?.querySelector<HTMLElement>('[data-event-category-trigger]')?.focus()
+      } else {
+        // พาโฟกัสไปที่ช่องแรกที่ยังไม่ผ่าน แทนที่จะให้ผู้ใช้ไล่หาเองว่าอะไรผิด
+        formRef.current?.querySelector<HTMLElement>(`[name="${firstInvalid}"]`)?.focus()
+      }
       return
     }
 
@@ -286,17 +301,103 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
             )}
           </div>
 
-          <Field label="ประเภทเหตุการณ์" required error={errorOf('event_category')} htmlFor="event_category">
-            <select
-              id="event_category" name="event_category"
-              value={draft.event_category}
-              onChange={e => set({ event_category: e.target.value })}
-              onBlur={blur('event_category')}
-              style={inputStyle}
+          <Field
+            label="ประเภทเหตุการณ์"
+            required
+            error={errorOf('event_category')}
+            htmlFor="event-category-group-specimen"
+          >
+            <div
+              id="event_category"
+              role="radiogroup"
+              aria-label="ประเภทเหตุการณ์"
+              aria-required="true"
+              aria-invalid={Boolean(errorOf('event_category'))}
+              style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
             >
-              <option value="">— เลือกประเภทที่ใกล้เคียงที่สุด —</option>
-              {INCIDENT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+              {INCIDENT_CATEGORY_GROUPS.map(group => {
+                const isOpen = openGroups.includes(group.id)
+                const isSelected = (group.items as readonly string[]).includes(draft.event_category)
+                const triggerId = `event-category-group-${group.id}`
+                const optionsId = `${triggerId}-options`
+
+                return (
+                  <div
+                    key={group.id}
+                    style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}
+                  >
+                    <button
+                      id={triggerId}
+                      data-event-category-trigger
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-controls={optionsId}
+                      onClick={() => setOpenGroups(previous => (
+                        previous.includes(group.id)
+                          ? previous.filter(id => id !== group.id)
+                          : [...previous, group.id]
+                      ))}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.sm,
+                        width: '100%', minHeight: 48, padding: '10px 12px', border: 0,
+                        background: isSelected ? 'var(--primary-soft)' : 'var(--card)',
+                        color: 'var(--ink)', font: 'inherit', textAlign: 'left', cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700 }}>
+                        {isSelected && <Icon name="check" size={15} style={{ color: 'var(--primary)', flex: '0 0 auto' }} />}
+                        <span>{group.label}</span>
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flex: '0 0 auto', color: 'var(--muted)', fontSize: FONT.xs }}>
+                        <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {isSelected ? `เลือกแล้ว · ${draft.event_category}` : `${group.items.length} รายการ`}
+                        </span>
+                        <Icon name="chevDown" size={15} style={{ transform: isOpen ? 'rotate(180deg)' : undefined }} />
+                      </span>
+                    </button>
+
+                    {isOpen && (
+                      <div
+                        id={optionsId}
+                        role="group"
+                        aria-labelledby={triggerId}
+                        style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}
+                      >
+                        {group.items.map((category, index) => {
+                          const optionId = `event-category-${group.id}-${index}`
+                          const checked = draft.event_category === category
+                          return (
+                            <label
+                              key={category}
+                              htmlFor={optionId}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 10, minHeight: 44,
+                                padding: '9px 12px', borderBottom: index === group.items.length - 1 ? 0 : '1px solid var(--border)',
+                                background: checked ? 'color-mix(in srgb, var(--primary) 8%, var(--card))' : 'var(--card)',
+                                color: 'var(--ink)', cursor: 'pointer',
+                              }}
+                            >
+                              <input
+                                id={optionId}
+                                name="event_category"
+                                type="radio"
+                                value={category}
+                                checked={checked}
+                                onChange={e => set({ event_category: e.target.value })}
+                                onBlur={blur('event_category')}
+                                style={{ width: 18, height: 18, flex: '0 0 auto', accentColor: 'var(--primary)' }}
+                              />
+                              <span style={{ flex: 1, minWidth: 0, fontSize: FONT.md, lineHeight: 1.45 }}>{category}</span>
+                              {checked && <Icon name="check" size={16} style={{ color: 'var(--primary)', flex: '0 0 auto' }} />}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </Field>
 
           <Field
