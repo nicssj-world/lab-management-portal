@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { definitionForTaking, type ExamDefinition } from '@/lib/personnel/exam'
+import { hydrateExamDefinitionImages } from '@/lib/personnel/exam-image-server'
 import { TakeClient } from './TakeClient'
 
 export default async function TakeExamPage({ params }: { params: Promise<{ assignmentId: string }> }) {
@@ -18,5 +19,6 @@ export default async function TakeExamPage({ params }: { params: Promise<{ assig
   if (!exam) notFound()
 
   const forTaking = definitionForTaking(exam.definition as ExamDefinition)
-  return <TakeClient assignmentId={assignmentId} title={exam.title} description={exam.description} questions={forTaking.questions} />
+  const hydrated = await hydrateExamDefinitionImages(forTaking)
+  return <TakeClient assignmentId={assignmentId} title={exam.title} description={exam.description} questions={hydrated.questions} />
 }

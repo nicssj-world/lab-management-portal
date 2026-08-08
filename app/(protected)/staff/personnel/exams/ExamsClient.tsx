@@ -1,11 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
+import { ExamImageDropzone } from '@/components/personnel/ExamImageDropzone'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
-import type { CompetencyExam, ExamDefinition, ExamQuestion } from '@/lib/personnel/exam'
+import { stripExamImageRuntimeUrls, type CompetencyExam, type ExamDefinition, type ExamDefinitionView, type ExamImageView, type ExamOptionView, type ExamQuestionView } from '@/lib/personnel/exam'
+import { EXAM_IMAGE_MAX_PER_TARGET } from '@/lib/personnel/exam-image-validation'
+import { uploadExamImage } from '@/lib/personnel/exam-image-client'
 
 export type ExamRow = CompetencyExam & { assignedCount: number; gradedCount: number }
 export type MyAssignment = { id: string; status: string; score: number | null; passed: boolean | null; title: string; description: string | null }
@@ -160,11 +163,11 @@ function ResultsModal({ exam, onClose, onError }: { exam: ExamRow; onClose: () =
 }
 
 // ── Exam builder ──
-type QDraft = ExamQuestion
-function newOption(label = '') { return { id: uid(), label, isCorrect: false } }
+type QDraft = ExamQuestionView
+function newOption(label = ''): ExamOptionView { return { id: uid(), label, isCorrect: false, images: [] } }
 function newQuestion(type: 'single_choice' | 'yes_no'): QDraft {
-  if (type === 'yes_no') return { id: uid(), prompt: '', type, options: [{ id: uid(), label: 'ใช่', isCorrect: false }, { id: uid(), label: 'ไม่ใช่', isCorrect: false }] }
-  return { id: uid(), prompt: '', type, options: [newOption(), newOption()] }
+  if (type === 'yes_no') return { id: uid(), prompt: '', type, images: [], options: [{ id: uid(), label: 'ใช่', isCorrect: false, images: [] }, { id: uid(), label: 'ไม่ใช่', isCorrect: false, images: [] }] }
+  return { id: uid(), prompt: '', type, images: [], options: [newOption(), newOption()] }
 }
 
 function ExamBuilderModal({ exam, categories, onClose, onSaved, onError }: {
@@ -174,10 +177,24 @@ function ExamBuilderModal({ exam, categories, onClose, onSaved, onError }: {
   const [description, setDescription] = useState(exam?.description ?? '')
   const [passMark, setPassMark] = useState(String(exam?.pass_mark ?? 60))
   const [authorizeCategory, setAuthorizeCategory] = useState(exam?.definition.authorizeCategory ?? '')
-  const [questions, setQuestions] = useState<QDraft[]>(exam?.definition.questions ?? [])
+  const initialQuestions = (exam?.definition.questions ?? []).map((question) => ({
+    ...question,
+    images: question.images ?? [],
+    options: question.options.map((option) => ({ ...option, images: option.images ?? [] })),
+  })) as QDraft[]
+  const [questions, setQuestions] = useState<QDraft[]>(initialQuestions)
   const [saving, setSaving] = useState(false)
+  const [pendingUploads, setPendingUploads] = useState<Record<string, number>>({})
+  const [targetErrors, setTargetErrors] = useState<Record<string, string>>({})
+  const [retryFiles, setRetryFiles] = useState<Record<string, File[]>>({})
+  const draftImageKeys = useRef(new Set<string>())
   // Questions/answer key are frozen once anyone has taken the exam.
   const locked = (exam?.gradedCount ?? 0) > 0
+
+  type ImageTarget = { kind: 'question'; questionId: string } | { kind: 'option'; questionId: string; optionId: string }
+  const targetKey = (target: ImageTarget) => target.kind === 'question' ? `question:${target.questionId}` : `option:${target.questionId}:${target.optionId}`
+  const questionTarget = (questionId: string): ImageTarget => ({ kind: 'question', questionId })
+  const optionTarget = (questionId: string, optionId: string): ImageTarget => ({ kind: 'option', questionId, optionId })
 
   const patchQ = (qid: string, patch: Partial<QDraft>) => setQuestions((qs) => qs.map((q) => (q.id === qid ? { ...q, ...patch } : q)))
   const setCorrect = (qid: string, oid: string) => setQuestions((qs) => qs.map((q) => q.id === qid ? { ...q, options: q.options.map((o) => ({ ...o, isCorrect: o.id === oid })) } : q))
@@ -185,15 +202,137 @@ function ExamBuilderModal({ exam, categories, onClose, onSaved, onError }: {
   const addOpt = (qid: string) => setQuestions((qs) => qs.map((q) => q.id === qid ? { ...q, options: [...q.options, newOption()] } : q))
   const delOpt = (qid: string, oid: string) => setQuestions((qs) => qs.map((q) => q.id === qid ? { ...q, options: q.options.filter((o) => o.id !== oid) } : q))
 
+  function imagesForTarget(target: ImageTarget, source = questions): ExamImageView[] {
+    const question = source.find((item) => item.id === target.questionId)
+    if (!question) return []
+    if (target.kind === 'question') return question.images
+    return question.options.find((option) => option.id === target.optionId)?.images ?? []
+  }
+
+  function appendImage(target: ImageTarget, image: ExamImageView) {
+    setQuestions((qs) => qs.map((question) => {
+      if (question.id !== target.questionId) return question
+      if (target.kind === 'question') return { ...question, images: [...question.images, image] }
+      return {
+        ...question,
+        options: question.options.map((option) => option.id === target.optionId ? { ...option, images: [...option.images, image] } : option),
+      }
+    }))
+  }
+
+  function setTargetError(target: ImageTarget, message?: string) {
+    const key = targetKey(target)
+    setTargetErrors((previous) => {
+      const next = { ...previous }
+      if (message) next[key] = message
+      else delete next[key]
+      return next
+    })
+  }
+
+  function setPendingCount(target: ImageTarget, count: number) {
+    const key = targetKey(target)
+    setPendingUploads((previous) => {
+      const next = { ...previous }
+      if (count > 0) next[key] = count
+      else delete next[key]
+      return next
+    })
+  }
+
+  async function handleFiles(target: ImageTarget, files: File[]) {
+    const currentImages = imagesForTarget(target)
+    const pending = pendingUploads[targetKey(target)] ?? 0
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'))
+    const remaining = Math.max(0, EXAM_IMAGE_MAX_PER_TARGET - currentImages.length - pending)
+    const capacityError = imageFiles.length > remaining ? `แนบรูปได้ไม่เกิน ${EXAM_IMAGE_MAX_PER_TARGET} รูปต่อ${target.kind === 'question' ? 'คำถาม' : 'ตัวเลือก'}` : ''
+    const typeError = imageFiles.length < files.length ? 'รองรับเฉพาะไฟล์รูปภาพ' : ''
+    const acceptedFiles = imageFiles.slice(0, remaining)
+    if (capacityError || typeError) setTargetError(target, capacityError || typeError)
+    if (acceptedFiles.length === 0) return
+
+    const key = targetKey(target)
+    setPendingCount(target, acceptedFiles.length)
+    setRetryFiles((previous) => ({ ...previous, [key]: [] }))
+    const failed: File[] = []
+    let firstFailure = ''
+    await Promise.all(acceptedFiles.map(async (file) => {
+      try {
+        const image = await uploadExamImage(file)
+        draftImageKeys.current.add(image.key)
+        appendImage(target, image)
+      } catch (error) {
+        failed.push(file)
+        if (!firstFailure) firstFailure = error instanceof Error ? error.message : 'อัปโหลดรูปไม่สำเร็จ'
+      }
+    }))
+    setPendingCount(target, 0)
+    setRetryFiles((previous) => {
+      const next = { ...previous }
+      if (failed.length > 0) next[key] = failed
+      else delete next[key]
+      return next
+    })
+    if (firstFailure) setTargetError(target, `${firstFailure} กด “ลองอีกครั้ง” เพื่ออัปโหลดซ้ำ`)
+    else if (!capacityError && !typeError) setTargetError(target)
+  }
+
+  async function removeImage(target: ImageTarget, imageId: string) {
+    const image = imagesForTarget(target).find((item) => item.id === imageId)
+    if (!image) return
+    setQuestions((qs) => qs.map((question) => {
+      if (question.id !== target.questionId) return question
+      if (target.kind === 'question') return { ...question, images: question.images.filter((item) => item.id !== imageId) }
+      return {
+        ...question,
+        options: question.options.map((option) => option.id === target.optionId ? { ...option, images: option.images.filter((item) => item.id !== imageId) } : option),
+      }
+    }))
+    if (!draftImageKeys.current.has(image.key)) return
+    draftImageKeys.current.delete(image.key)
+    const response = await fetch('/api/admin/personnel/exams/images', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: image.key }),
+    })
+    if (!response.ok) {
+      draftImageKeys.current.add(image.key)
+      setTargetError(target, 'ลบไฟล์ชั่วคราวไม่สำเร็จ ระบบจะลอง cleanup ตอนบันทึก')
+    }
+  }
+
+  async function cleanupDraftImages() {
+    const keys = [...draftImageKeys.current]
+    draftImageKeys.current.clear()
+    await Promise.allSettled(keys.map(async (key) => {
+      await fetch('/api/admin/personnel/exams/images', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }),
+      })
+    }))
+    onClose()
+  }
+
+  function closeBuilder() {
+    void cleanupDraftImages()
+  }
+
   async function save() {
-    const definition: ExamDefinition = { questions, authorizeCategory: authorizeCategory || null }
+    const runtimeDefinition: ExamDefinitionView = { questions, authorizeCategory: authorizeCategory || null }
+    const definition: ExamDefinition = stripExamImageRuntimeUrls(runtimeDefinition)
     if (!title.trim()) { onError('กรุณากรอกชื่อข้อสอบ'); return }
     if (questions.length === 0) { onError('เพิ่มอย่างน้อยหนึ่งคำถาม'); return }
+    setTargetErrors({})
     for (const q of questions) {
-      if (!q.prompt.trim()) { onError('มีคำถามที่ยังไม่ได้กรอก'); return }
-      if (!q.options.some((o) => o.isCorrect)) { onError(`เลือกเฉลยของคำถาม “${q.prompt || '(ว่าง)'}”`); return }
-      if (q.options.some((o) => !o.label.trim())) { onError('มีตัวเลือกที่ยังไม่ได้กรอก'); return }
+      const qTarget = questionTarget(q.id)
+      if (!q.prompt.trim() && q.images.length === 0) { setTargetError(qTarget, 'กรุณากรอกคำถามหรือแนบรูป'); onError('มีคำถามที่ยังไม่ได้กรอกหรือแนบรูป'); return }
+      if (!q.options.some((o) => o.isCorrect)) { onError(`เลือกเฉลยของคำถาม “${q.prompt || '(รูปภาพประกอบ)'}”`); return }
+      for (const option of q.options) {
+        if (!option.label.trim() && option.images.length === 0) {
+          setTargetError(optionTarget(q.id, option.id), 'กรุณากรอกตัวเลือกหรือแนบรูป')
+          onError('มีตัวเลือกที่ยังไม่ได้กรอกหรือแนบรูป')
+          return
+        }
+      }
     }
+    if (Object.values(pendingUploads).some((count) => count > 0)) { onError('รอการอัปโหลดรูปให้เสร็จก่อนบันทึก'); return }
     setSaving(true)
     try {
       const body = { title: title.trim(), description: description.trim() || null, definition, passMark: Number(passMark) }
@@ -202,13 +341,13 @@ function ExamBuilderModal({ exam, categories, onClose, onSaved, onError }: {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? 'บันทึกไม่สำเร็จ')
-      onSaved({ ...data, assignedCount: exam?.assignedCount ?? 0, gradedCount: exam?.gradedCount ?? 0 })
+      onSaved({ ...data, definition: runtimeDefinition, assignedCount: exam?.assignedCount ?? 0, gradedCount: exam?.gradedCount ?? 0 })
     } catch (e) { onError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ') } finally { setSaving(false) }
   }
 
   return (
-    <Overlay title={exam ? 'แก้ไขข้อสอบ' : 'สร้างข้อสอบ'} onClose={onClose} wide footer={
-      <><button style={ghost} onClick={onClose}>ยกเลิก</button><button style={btn} disabled={saving} onClick={save}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>
+    <Overlay title={exam ? 'แก้ไขข้อสอบ' : 'สร้างข้อสอบ'} onClose={closeBuilder} wide footer={
+      <><button style={ghost} onClick={closeBuilder}>ยกเลิก</button><button style={btn} disabled={saving} onClick={save}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>
     }>
       <div style={{ display: 'grid', gap: 12 }}>
         <label style={{ display: 'grid', gap: 5 }}><span style={lbl}>ชื่อข้อสอบ</span><input style={input} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
@@ -231,23 +370,47 @@ function ExamBuilderModal({ exam, categories, onClose, onSaved, onError }: {
               {!locked && <button style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: 'var(--danger)', cursor: 'pointer' }} onClick={() => setQuestions((qs) => qs.filter((x) => x.id !== q.id))}><Icon name="trash" size={14} /></button>}
             </div>
             <input style={{ ...input, marginBottom: 8 }} placeholder="คำถาม" value={q.prompt} disabled={locked} onChange={(e) => patchQ(q.id, { prompt: e.target.value })} />
+            <ExamImageDropzone
+              label="รูปคำถาม"
+              images={q.images}
+              pendingCount={pendingUploads[targetKey(questionTarget(q.id))] ?? 0}
+              disabled={locked}
+              error={targetErrors[targetKey(questionTarget(q.id))]}
+              onFiles={(files) => { void handleFiles(questionTarget(q.id), files) }}
+              onRemove={(imageId) => { void removeImage(questionTarget(q.id), imageId) }}
+              onRetry={retryFiles[targetKey(questionTarget(q.id))]?.length ? () => { void handleFiles(questionTarget(q.id), retryFiles[targetKey(questionTarget(q.id))] ?? []) } : undefined}
+            />
             <div style={{ display: 'grid', gap: 6 }}>
               {q.options.map((o) => (
-                <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input type="radio" name={`correct-${q.id}`} checked={o.isCorrect} disabled={locked} onChange={() => setCorrect(q.id, o.id)} title="เฉลย" />
-                  <input style={{ ...input, minHeight: 32 }} value={o.label} disabled={locked || q.type === 'yes_no'} onChange={(e) => setOptLabel(q.id, o.id, e.target.value)} placeholder="ตัวเลือก" />
-                  {!locked && q.type === 'single_choice' && q.options.length > 2 && <button style={{ border: 0, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }} onClick={() => delOpt(q.id, o.id)}><Icon name="x" size={14} /></button>}
+                <div key={o.id} style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="radio" name={`correct-${q.id}`} checked={o.isCorrect} disabled={locked} onChange={() => setCorrect(q.id, o.id)} title="เฉลย" />
+                    <input style={{ ...input, minHeight: 32 }} value={o.label} disabled={locked || q.type === 'yes_no'} onChange={(e) => setOptLabel(q.id, o.id, e.target.value)} placeholder="ตัวเลือก" />
+                    {!locked && q.type === 'single_choice' && q.options.length > 2 && <button type="button" style={{ border: 0, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }} onClick={() => delOpt(q.id, o.id)}><Icon name="x" size={14} /></button>}
+                  </div>
+                  <div style={{ marginLeft: 28 }}>
+                    <ExamImageDropzone
+                      label="รูปตัวเลือก"
+                      images={o.images}
+                      pendingCount={pendingUploads[targetKey(optionTarget(q.id, o.id))] ?? 0}
+                      disabled={locked}
+                      error={targetErrors[targetKey(optionTarget(q.id, o.id))]}
+                      onFiles={(files) => { void handleFiles(optionTarget(q.id, o.id), files) }}
+                      onRemove={(imageId) => { void removeImage(optionTarget(q.id, o.id), imageId) }}
+                      onRetry={retryFiles[targetKey(optionTarget(q.id, o.id))]?.length ? () => { void handleFiles(optionTarget(q.id, o.id), retryFiles[targetKey(optionTarget(q.id, o.id))] ?? []) } : undefined}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
-            {!locked && q.type === 'single_choice' && <button style={{ ...ghost, minHeight: 30, marginTop: 8, fontSize: 12 }} onClick={() => addOpt(q.id)}>+ ตัวเลือก</button>}
+            {!locked && q.type === 'single_choice' && <button type="button" style={{ ...ghost, minHeight: 30, marginTop: 8, fontSize: 12 }} onClick={() => addOpt(q.id)}>+ ตัวเลือก</button>}
           </div>
         ))}
       </div>
       {!locked && (
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <button style={ghost} onClick={() => setQuestions((qs) => [...qs, newQuestion('single_choice')])}>+ คำถามปรนัย</button>
-          <button style={ghost} onClick={() => setQuestions((qs) => [...qs, newQuestion('yes_no')])}>+ คำถามถูก/ผิด</button>
+          <button type="button" style={ghost} onClick={() => setQuestions((qs) => [...qs, newQuestion('single_choice')])}>+ คำถามปรนัย</button>
+          <button type="button" style={ghost} onClick={() => setQuestions((qs) => [...qs, newQuestion('yes_no')])}>+ คำถามถูก/ผิด</button>
         </div>
       )}
     </Overlay>
@@ -299,12 +462,13 @@ function AssignModal({ exam, roster, onClose, onDone, onError }: {
 
 const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--muted)' }
 function Overlay({ title, children, footer, onClose, wide }: { title: string; children: React.ReactNode; footer: React.ReactNode; onClose: () => void; wide?: boolean }) {
+  const titleId = useId()
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: wide ? 640 : 480, maxHeight: '90vh', overflow: 'auto' }}>
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: wide ? 640 : 480, maxHeight: '90vh', overflow: 'auto' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>{title}</div>
-          <button onClick={onClose} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--muted)' }}><Icon name="x" size={18} /></button>
+          <div id={titleId} style={{ fontSize: 15, fontWeight: 700 }}>{title}</div>
+          <button type="button" aria-label={`ปิด${title}`} onClick={onClose} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--muted)' }}><Icon name="x" size={18} /></button>
         </div>
         <div style={{ padding: 20 }}>{children}</div>
         <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>{footer}</div>
