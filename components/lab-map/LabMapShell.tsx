@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { GoogleMapEmbed } from './GoogleMapEmbed'
 import { LabMapCanvas } from './LabMapCanvas'
 import { LabMapStyles } from './LabMapStyles'
 import { SafetyEquipmentDetailDialog } from './SafetyEquipmentDetailDialog'
@@ -247,6 +248,7 @@ export function LabMapShell({
               {assembly.latitude != null && assembly.longitude != null ? (
                 <>
                   <code>{assembly.latitude.toFixed(6)}, {assembly.longitude.toFixed(6)}</code>
+                  <GoogleMapEmbed latitude={assembly.latitude} longitude={assembly.longitude} nameTh={assembly.nameTh} />
                   <div className="lab-map-assembly-actions">
                     <button type="button" onClick={() => void copyAssemblyCoordinates(assembly.latitude!, assembly.longitude!)}>
                       คัดลอกพิกัด

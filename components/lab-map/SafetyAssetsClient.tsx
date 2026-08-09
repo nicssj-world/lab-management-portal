@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Badge, type BadgeColor } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { uploadFileWithProgress } from '@/lib/documents/upload-with-progress'
 import { normalizeRole } from '@/lib/roles'
@@ -12,6 +13,7 @@ import type {
   AssemblyPointDTO, AssemblyPointVerificationDTO, LabMapDTO, LabPointType, SafetyAssetDTO, SafetyInspectionDTO,
   SafetyInspectionRoundDTO,
 } from '@/lib/lab-map/types'
+import { GoogleMapEmbed } from './GoogleMapEmbed'
 import { LabMapCanvas } from './LabMapCanvas'
 import { LabMapStyles } from './LabMapStyles'
 import { SafetyAssetsStyles } from './SafetyAssetsStyles'
@@ -137,6 +139,10 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   // more equipment kinds (spill-kit, nss-eyewash, ...) get pinned alongside the fire extinguishers.
   const mapSafetyEquipment = assetDraft && !assetDraft.id ? assets : filteredAssets
   const workingMap = useMemo<LabMapDTO>(() => ({ ...map, safetyEquipment: mapSafetyEquipment, assemblyPoints: points }), [map, mapSafetyEquipment, points])
+  // จุดรวมพล/จุดปลอดภัยอยู่นอกอาคาร ไม่มี x/y บนผังพื้น — ตอนอยู่แท็บนี้จึงโชว์พิกัดของจุดที่กำลังแก้ไข (ถ้ามี) ก่อนจุดที่เลือกดูอยู่
+  // ยังไม่ได้เลือก/แก้ไขอะไรเลยก็ยังอยากเห็นแผนที่ทันที — จุดรวมพล (pointType: 'assembly') ปกติมีแค่จุดเดียวในไซต์
+  // (ที่เหลือเป็นจุดปลอดภัย) จึงใช้จุดนั้นเป็นค่าเริ่มต้นได้โดยไม่ต้องรองรับหลายหมุดพร้อมกัน
+  const assemblyMapPoint = pointDraft ?? selectedPoint ?? points.find(point => point.pointType === 'assembly') ?? null
   const inspectionResultCounts = useMemo(() => inspectionQueue.items.reduce((counts, queueItem) => {
     if (!queueItem.completed) return counts
     const result = queueItem.asset.latestInspection?.result
@@ -389,27 +395,42 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
           </div>
           <div className="safety-workspace" data-mobile-view={mobileView}>
             <div className="safety-map-pane">
-              <LabMapCanvas map={workingMap} mode="safety" selectedCode={selectedCode} activeRouteCodes={[]}
-                showAllSafetyEquipment
-                onSelect={selectMap} onMoveSafetyEquipment={canEdit ? input => void moveSafetyEquipment(input) : undefined}
-                draftSafetyEquipment={assetDraft && !assetDraft.id ? {
-                  code: 'draft-safety-equipment', nameTh: assetDraft.nameTh || 'อุปกรณ์ใหม่',
-                  kind: assetDraft.kind ?? 'fire-extinguisher', x: assetDraft.x ?? 739, y: assetDraft.y ?? 446,
-                } : null}
-                onMoveDraftSafetyEquipment={assetDraft && !assetDraft.id ? position => setAssetDraft(current => ({ ...current, ...position })) : undefined} />
-              {assetDraft && !assetDraft.id ? <section className="safety-map-placement" aria-label="วางหมุดอุปกรณ์">
-                <strong>วางหมุดอุปกรณ์</strong>
-                <span>กดหมุดค้าง 250ms แล้วลากหมุดไปยังตำแหน่งจริง</span>
-                <small>{map.spaces.find(space => space.code === assetDraft.spaceCode)?.nameTh ?? 'ทางเดิน/ไม่ระบุห้อง'} · {Math.round(assetDraft.x ?? 739)}, {Math.round(assetDraft.y ?? 446)}</small>
-                <div>
-                  <button type="button" onClick={() => { setAssetDraft(null); setMobileView('list') }}>ยกเลิก</button>
-                  <button type="button" onClick={() => setMobileView('list')}>ยืนยันตำแหน่งนี้</button>
-                </div>
-              </section> : null}
-              {positionFailure ? <p className="safety-position-error" role="alert">
-                {positionFailure.message}
-                <button type="button" onClick={() => void moveSafetyEquipment(positionFailure.input)}>ลองบันทึกตำแหน่งอีกครั้ง</button>
-              </p> : null}
+              {tab === 'assembly' ? (
+                // จุดรวมพล/จุดปลอดภัยเป็นตำแหน่งนอกอาคาร (มีแค่ latitude/longitude ไม่มี x/y บนผังพื้น)
+                // ผังพื้นห้องปฏิบัติการจึงไม่มีความหมายเชิงตำแหน่งสำหรับจุดเหล่านี้ — สลับไปแสดงแผนที่จริงแทน
+                assemblyMapPoint?.latitude != null && assemblyMapPoint?.longitude != null ? (
+                  <GoogleMapEmbed latitude={assemblyMapPoint.latitude} longitude={assemblyMapPoint.longitude} nameTh={assemblyMapPoint.nameTh} style={{ height: 640, aspectRatio: 'auto' }} />
+                ) : (
+                  <div className="safety-map-empty">
+                    <Icon name="globe" size={28} />
+                    <p>{pointDraft ? 'กรอกพิกัด หรือกดใช้พิกัดปัจจุบันของอุปกรณ์ เพื่อดูตำแหน่งบนแผนที่' : 'เลือกหรือเพิ่มจุดรวมพล/จุดปลอดภัยเพื่อดูตำแหน่งบนแผนที่'}</p>
+                  </div>
+                )
+              ) : (
+                <>
+                  <LabMapCanvas map={workingMap} mode="safety" selectedCode={selectedCode} activeRouteCodes={[]}
+                    showAllSafetyEquipment
+                    onSelect={selectMap} onMoveSafetyEquipment={canEdit ? input => void moveSafetyEquipment(input) : undefined}
+                    draftSafetyEquipment={assetDraft && !assetDraft.id ? {
+                      code: 'draft-safety-equipment', nameTh: assetDraft.nameTh || 'อุปกรณ์ใหม่',
+                      kind: assetDraft.kind ?? 'fire-extinguisher', x: assetDraft.x ?? 739, y: assetDraft.y ?? 446,
+                    } : null}
+                    onMoveDraftSafetyEquipment={assetDraft && !assetDraft.id ? position => setAssetDraft(current => ({ ...current, ...position })) : undefined} />
+                  {assetDraft && !assetDraft.id ? <section className="safety-map-placement" aria-label="วางหมุดอุปกรณ์">
+                    <strong>วางหมุดอุปกรณ์</strong>
+                    <span>กดหมุดค้าง 250ms แล้วลากหมุดไปยังตำแหน่งจริง</span>
+                    <small>{map.spaces.find(space => space.code === assetDraft.spaceCode)?.nameTh ?? 'ทางเดิน/ไม่ระบุห้อง'} · {Math.round(assetDraft.x ?? 739)}, {Math.round(assetDraft.y ?? 446)}</small>
+                    <div>
+                      <button type="button" onClick={() => { setAssetDraft(null); setMobileView('list') }}>ยกเลิก</button>
+                      <button type="button" onClick={() => setMobileView('list')}>ยืนยันตำแหน่งนี้</button>
+                    </div>
+                  </section> : null}
+                  {positionFailure ? <p className="safety-position-error" role="alert">
+                    {positionFailure.message}
+                    <button type="button" onClick={() => void moveSafetyEquipment(positionFailure.input)}>ลองบันทึกตำแหน่งอีกครั้ง</button>
+                  </p> : null}
+                </>
+              )}
             </div>
             <aside className="safety-sidebar">
               {tab === 'assets' ? (
@@ -672,18 +693,20 @@ function AssemblyPanel({ points, selected, canEdit, canManage, busy, draft, onSe
       </div> : null}
     </div> : null}
     <div className="safety-list">{points.map(point => <button key={point.id} className="safety-card" data-selected={selected?.id === point.id} onClick={() => onSelect(point.code)}><span className="safety-card-head"><strong>{point.nameTh}</strong><span className="safety-card-badges"><Badge color={pointTypeColor(point.pointType)}>{pointTypeLabel(point.pointType)}</Badge><Badge color={point.verified ? 'green' : 'amber'}>{point.verified ? 'ยืนยันแล้ว' : 'รอยืนยัน'}</Badge></span></span><small>{point.detailTh} · {point.exitCodes.join(', ')}</small></button>)}</div>
-    {draft ? <AssemblyEditor key={`point-${draft.id ?? 'new'}-${draft.pointType ?? 'assembly'}`} draft={draft} busy={busy} onCancel={() => onDraft(null)} onSave={value => onRun(async () => { const editing = Boolean(value.id); await jsonRequest(editing ? `/api/admin/lab-map/assembly-points/${value.id}` : '/api/admin/lab-map/assembly-points', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editing ? { ...value, code: undefined, updatedAt: value.updatedAt } : value) }); await onReload(); onDraft(null) })} /> : selected ? <AssemblyDetail key={selected.id} point={selected} canEdit={canEdit} canManage={canManage} busy={busy} onEdit={() => onDraft(selected)} onRun={onRun} onReload={onReload} /> : null}
+    {draft ? <AssemblyEditor key={`point-${draft.id ?? 'new'}-${draft.pointType ?? 'assembly'}`} draft={draft} busy={busy} onCancel={() => onDraft(null)} onChange={onDraft} onSave={value => onRun(async () => { const editing = Boolean(value.id); await jsonRequest(editing ? `/api/admin/lab-map/assembly-points/${value.id}` : '/api/admin/lab-map/assembly-points', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editing ? { ...value, code: undefined, updatedAt: value.updatedAt } : value) }); await onReload(); onDraft(null) })} /> : selected ? <AssemblyDetail key={selected.id} point={selected} canEdit={canEdit} canManage={canManage} busy={busy} onEdit={() => onDraft(selected)} onRun={onRun} onReload={onReload} /> : null}
   </>
 }
 
-function AssemblyEditor({ draft, busy, onCancel, onSave }: { draft: Partial<AssemblyPointDTO>; busy: boolean; onCancel: () => void; onSave: (v: Partial<AssemblyPointDTO>) => void }) {
+function AssemblyEditor({ draft, busy, onCancel, onSave, onChange }: { draft: Partial<AssemblyPointDTO>; busy: boolean; onCancel: () => void; onSave: (v: Partial<AssemblyPointDTO>) => void; onChange?: (v: Partial<AssemblyPointDTO>) => void }) {
   const [value, setValue] = useState({ ...draft }); const [accuracy, setAccuracy] = useState<number | null>(null); const [geoError, setGeoError] = useState('')
+  useEffect(() => { onChange?.(value) }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
   function locate() { setGeoError(''); navigator.geolocation.getCurrentPosition(position => { setValue(current => ({ ...current, latitude: Number(position.coords.latitude.toFixed(6)), longitude: Number(position.coords.longitude.toFixed(6)) })); setAccuracy(Math.round(position.coords.accuracy)) }, error => setGeoError(error.message), { enableHighAccuracy: true, timeout: 15000 }) }
   const currentPointType = value.pointType ?? 'assembly'
   return <section className="safety-form"><h2 style={{ margin: 0, fontSize: 16 }}>{draft.id ? `แก้ไข${pointTypeLabel(currentPointType)}` : `เพิ่ม${pointTypeLabel(currentPointType)}`}</h2>
     <fieldset><legend>ประเภทจุด</legend><div className="safety-point-type-options">{(['assembly', 'safe'] as const).map(pointType => <label key={pointType} style={{ flexDirection: 'row', alignItems: 'center' }}><input type="radio" name={`point-type-${draft.id ?? 'new'}`} checked={currentPointType === pointType} onChange={() => setValue({ ...value, pointType })} style={{ width: 20, minHeight: 20 }} />{POINT_TYPE_LABELS[pointType]}</label>)}</div></fieldset>
     <div className="safety-form-grid"><label>รหัส<input value={value.code ?? ''} disabled={Boolean(draft.id)} onChange={e => setValue({ ...value, code: e.target.value })} /></label><label>ชื่อ<input value={value.nameTh ?? ''} onChange={e => setValue({ ...value, nameTh: e.target.value })} /></label><label>Latitude<input type="number" step="0.000001" value={value.latitude ?? ''} onChange={e => setValue({ ...value, latitude: e.target.value ? Number(e.target.value) : null })} /></label><label>Longitude<input type="number" step="0.000001" value={value.longitude ?? ''} onChange={e => setValue({ ...value, longitude: e.target.value ? Number(e.target.value) : null })} /></label></div>
     <Button variant="secondary" size="lg" icon="globe" onClick={locate}>ใช้พิกัดปัจจุบันของอุปกรณ์</Button>{accuracy != null ? <p className="safety-coordinate-note">ความแม่นยำประมาณ {accuracy} เมตร — ตรวจสอบก่อนบันทึก</p> : null}{geoError ? <p role="alert" className="safety-muted">อ่าน GPS ไม่สำเร็จ: {geoError} คุณยังกรอกพิกัดเองได้</p> : null}
+    <GoogleMapEmbed latitude={value.latitude} longitude={value.longitude} nameTh={value.nameTh} />
     <label>รายละเอียด/จุดสังเกต<textarea value={value.detailTh ?? ''} onChange={e => setValue({ ...value, detailTh: e.target.value })} /></label>
     <fieldset><legend>ทางออกที่เชื่อม</legend>{EXIT_OPTIONS.map(exit => <label key={exit} style={{ flexDirection: 'row', alignItems: 'center' }}><input type="checkbox" checked={(value.exitCodes ?? []).includes(exit)} onChange={e => setValue({ ...value, exitCodes: e.target.checked ? [...(value.exitCodes ?? []), exit] : (value.exitCodes ?? []).filter(v => v !== exit) })} style={{ width: 20, minHeight: 20 }} />{exit.replace('exit-', '').toUpperCase()}</label>)}</fieldset>
     <div className="safety-actions"><Button variant="secondary" size="lg" onClick={onCancel}>ยกเลิก</Button><Button size="lg" icon="check" disabled={busy || !value.code || !value.nameTh} onClick={() => onSave(value)}>บันทึกแบบร่าง</Button></div>
@@ -696,7 +719,7 @@ function AssemblyDetail({ point, canEdit, canManage, busy, onEdit, onRun, onRelo
   const typeLabel = pointTypeLabel(point.pointType)
   async function verify() { if (!file || point.latitude == null || point.longitude == null) throw new Error('ต้องมีพิกัดและรูปหลักฐาน'); const signed = await jsonRequest(`/api/admin/lab-map/assembly-points/${point.id}/verification-photo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileName: file.name, contentType: file.type, sizeBytes: file.size }) }); await uploadFileWithProgress(signed.uploadUrl, file, file.type, () => {}); await jsonRequest(`/api/admin/lab-map/assembly-points/${point.id}/verification-photo`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: signed.key, fileName: file.name, latitude: point.latitude, longitude: point.longitude, accuracyMeters: accuracy, note: note || null }) }); await onReload() }
   return <section className="safety-form"><span className="safety-card-head"><h2 style={{ margin: 0, fontSize: 17 }}>{point.nameTh}</h2><span className="safety-card-badges"><Badge color={pointTypeColor(point.pointType)}>{typeLabel}</Badge><Badge color={point.verified ? 'green' : 'amber'}>{point.verified ? 'ยืนยันแล้ว' : 'รอยืนยัน'}</Badge></span></span><p style={{ margin: 0 }}>{point.detailTh || 'ไม่ระบุจุดสังเกต'}</p><p className="safety-muted" style={{ margin: 0 }}>ประเภท: {typeLabel} · ทางออก: {point.exitCodes.join(', ')}</p>
-    {coordinates ? <div className="safety-actions"><Button variant="secondary" size="lg" onClick={() => void navigator.clipboard.writeText(coordinates)}>คัดลอกพิกัด</Button><a href={`https://www.google.com/maps?q=${coordinates}`} target="_blank" rel="noreferrer" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: 'var(--primary)', fontWeight: 650 }}>เปิด Google Maps</a></div> : <p className="safety-muted">ยังไม่มีพิกัด GPS</p>}
+    {coordinates ? <><GoogleMapEmbed latitude={point.latitude} longitude={point.longitude} nameTh={point.nameTh} /><div className="safety-actions"><Button variant="secondary" size="lg" onClick={() => void navigator.clipboard.writeText(coordinates)}>คัดลอกพิกัด</Button><a href={`https://www.google.com/maps?q=${coordinates}`} target="_blank" rel="noreferrer" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: 'var(--primary)', fontWeight: 650 }}>เปิด Google Maps</a></div></> : <p className="safety-muted">ยังไม่มีพิกัด GPS</p>}
     {point.latestVerification ? <img className="safety-photo" src={point.latestVerification.photoUrl} alt={`หลักฐาน${typeLabel} ${point.nameTh}`} /> : null}
     <AssemblyHistory assemblyPointId={point.id} />
     {canEdit ? <><SafetyPhotoPicker label="รูปยืนยัน" file={file} disabled={busy} onChange={setFile} /><label>ความแม่นยำ GPS (เมตร)<input type="number" min={0} value={accuracy ?? ''} onChange={e => setAccuracy(e.target.value ? Number(e.target.value) : null)} /></label><label>หมายเหตุ<textarea value={note} onChange={e => setNote(e.target.value)} /></label>{point.exitCodes.length === 0 ? <p className="safety-coordinate-note">ต้องเชื่อมทางออกอย่างน้อยหนึ่งจุดก่อนยืนยันหน้างาน</p> : null}<div className="safety-actions"><Button variant="secondary" size="lg" icon="edit" onClick={onEdit}>แก้ข้อมูล</Button><Button size="lg" icon="check" disabled={busy || !file || !coordinates || point.exitCodes.length === 0} onClick={() => void onRun(verify)}>ยืนยัน{typeLabel}</Button></div></> : null}
