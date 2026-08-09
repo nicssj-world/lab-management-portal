@@ -11,6 +11,9 @@ function main() {
   assert.equal(getEquipmentPinSymbol('99', 'Centrifuge, table top').kind, 'code', 'classification must take precedence over a name fallback')
   assert.deepEqual(getEquipmentPinSymbol(null, 'Custom equipment'), { kind: 'code', code: 'EQ', label: 'อุปกรณ์ทั่วไป' })
 
+  assert.equal(getEquipmentPinSymbol('Analyzer', 'Anything').code, 'AN')
+  assert.equal(getEquipmentPinSymbol('Analyzer (Rental)', 'Anything').code, 'AN')
+
   console.log('equipment map pin symbol resolver passed')
 }
 

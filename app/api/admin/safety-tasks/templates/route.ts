@@ -8,6 +8,7 @@ const assigneeSchema = z.object({ userId: z.string().uuid().nullable(), manualNa
 const scheduleSchema = z.object({
   id: z.string().default(''), templateId: z.string().default(''), intervalUnit: z.enum(['day', 'week', 'month', 'year']),
   intervalCount: z.number().int().positive(), recurrenceMode: z.enum(['fixed_calendar', 'rolling_completion']),
+  dueDayOfMonth: z.number().int().min(1).max(28).nullable().optional().default(null),
   startsOn: z.string().date(), endsOn: z.string().date().nullable(), active: z.boolean(),
 })
 const requirementSchema = z.object({

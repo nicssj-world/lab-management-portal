@@ -51,10 +51,13 @@ export function generatePeriods(schedule: QualityTaskSchedule, rangeStart: strin
 }
 
 export function deriveTaskState(
-  input: { status: TaskStatus; plannedDate: string | null; periodEnd: string; reminderDays: number },
+  input: { status: TaskStatus; plannedDate: string | null; periodStart?: string; periodEnd: string; dueDayOfMonth?: number | null; reminderDays: number },
   today: string,
 ): { scheduling: TaskSchedulingState; urgency: TaskUrgency; effectiveDueDate: string } {
-  const effectiveDueDate = input.plannedDate ?? input.periodEnd
+  const monthDueDate = input.periodStart && input.dueDayOfMonth
+    ? `${input.periodStart.slice(0, 7)}-${String(input.dueDayOfMonth).padStart(2, '0')}`
+    : null
+  const effectiveDueDate = input.plannedDate ?? monthDueDate ?? input.periodEnd
   const scheduling = input.plannedDate ? 'scheduled' : 'unscheduled'
   if (input.status === 'completed') return { scheduling, urgency: 'completed', effectiveDueDate }
   const remaining = Math.round((parseIso(effectiveDueDate).getTime() - parseIso(today).getTime()) / DAY_MS)

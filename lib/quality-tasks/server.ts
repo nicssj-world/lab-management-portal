@@ -65,6 +65,7 @@ export async function getQualityTaskTemplates(activeOnly = false, workstream: Ta
     schedules.set(templateId, [...(schedules.get(templateId) ?? []), {
       id: str(row.id), templateId, intervalUnit: str(row.interval_unit) as TaskIntervalUnit,
       intervalCount: Number(row.interval_count), recurrenceMode: (str(row.recurrence_mode) || 'fixed_calendar') as RecurrenceMode,
+      dueDayOfMonth: row.due_day_of_month == null ? null : Number(row.due_day_of_month),
       startsOn: str(row.starts_on), endsOn: nullable(row.ends_on), active: Boolean(row.active),
     }])
   }
@@ -159,7 +160,7 @@ export async function getQualityTaskOccurrences(
         const selection = resolveParticipantSelection(template.defaultParticipantDepts, template.defaultParticipantUserIds, rowDepts, rowUserIds)
         const resolvedParticipants = resolveParticipants(people, selection.depts, selection.userIds)
         const status = taskStatus(row?.status)
-        const state = deriveTaskState({ status, plannedDate: nullable(row?.planned_date), periodEnd: period.end, reminderDays: template.reminderDays }, today)
+        const state = deriveTaskState({ status, plannedDate: nullable(row?.planned_date), periodStart: period.start, periodEnd: period.end, dueDayOfMonth: schedule.dueDayOfMonth, reminderDays: template.reminderDays }, today)
         result.push({ key, instanceId, template, scheduleId: schedule.id, periodStart: period.start, periodEnd: period.end,
           periodLabel: row ? str(row.period_label) : periodLabel(period.start, period.end), ownerTextOverride: nullable(row?.owner_text_override), plannedDate: nullable(row?.planned_date),
           status, note: nullable(row?.note), completionNote: nullable(row?.completion_note),
@@ -224,7 +225,7 @@ export async function materializeOccurrence(payload: OccurrenceCreatePayload, ac
   const { data: scheduleRow, error } = await supabaseAdmin.from('quality_task_schedules').select('*').eq('id', payload.scheduleId).single()
   fail(error)
   await assertTemplateWorkstream(str(scheduleRow.template_id), workstream)
-  const schedule: QualityTaskSchedule = { id: str(scheduleRow.id), templateId: str(scheduleRow.template_id), intervalUnit: str(scheduleRow.interval_unit) as TaskIntervalUnit, intervalCount: Number(scheduleRow.interval_count), recurrenceMode: (str(scheduleRow.recurrence_mode) || 'fixed_calendar') as RecurrenceMode, startsOn: str(scheduleRow.starts_on), endsOn: nullable(scheduleRow.ends_on), active: Boolean(scheduleRow.active) }
+  const schedule: QualityTaskSchedule = { id: str(scheduleRow.id), templateId: str(scheduleRow.template_id), intervalUnit: str(scheduleRow.interval_unit) as TaskIntervalUnit, intervalCount: Number(scheduleRow.interval_count), recurrenceMode: (str(scheduleRow.recurrence_mode) || 'fixed_calendar') as RecurrenceMode, dueDayOfMonth: scheduleRow.due_day_of_month == null ? null : Number(scheduleRow.due_day_of_month), startsOn: str(scheduleRow.starts_on), endsOn: nullable(scheduleRow.ends_on), active: Boolean(scheduleRow.active) }
   if (level !== 'edit') {
     const { data: defaults, error: defaultError } = await supabaseAdmin.from('quality_task_default_assignees').select('user_id').eq('template_id', schedule.templateId)
     fail(defaultError)
@@ -237,7 +238,7 @@ export async function materializeOccurrence(payload: OccurrenceCreatePayload, ac
 }
 
 export async function getOccurrenceAccess(instanceId: string, actor: Actor, level: PermLevel, workstream: TaskWorkstream = 'quality', allowApprover = false) {
-  const { data: instance, error } = await supabaseAdmin.from('quality_task_instances').select('*, quality_task_templates!inner(evidence_required,approval_mode,approver_id,workstream)').eq('id', instanceId).eq('quality_task_templates.workstream', workstream).single()
+  const { data: instance, error } = await supabaseAdmin.from('quality_task_instances').select('*, quality_task_templates!inner(source_key,evidence_required,approval_mode,approver_id,workstream)').eq('id', instanceId).eq('quality_task_templates.workstream', workstream).single()
   fail(error)
   const [{ data: overrides }, { data: defaults }] = await Promise.all([
     supabaseAdmin.from('quality_task_instance_assignees').select('user_id, manual_name').eq('instance_id', instanceId),
@@ -261,6 +262,9 @@ export async function getOccurrenceReadAccess(instanceId: string, level: PermLev
 export async function updateOccurrence(instanceId: string, payload: OccurrenceActionPayload, actor: Actor, level: PermLevel, workstream: TaskWorkstream = 'quality') {
   const reviewing = payload.action === 'approve' || payload.action === 'reject'
   const access = await getOccurrenceAccess(instanceId, actor, level, workstream, reviewing)
+  if (workstream === 'safety' && ['CBH-ST-04', 'CBH-ST-26'].includes(str(access.template.source_key))) {
+    throw new Error('งานแม่รายเดือนปิดอัตโนมัติจากผลตรวจของทุกจุด กรุณาดำเนินการในแท็บตรวจประจำเดือน')
+  }
   if (payload.action === 'schedule') {
     if ((payload.assignees || payload.participantDepts || payload.participantUserIds) && level !== 'edit') throw new Error('Forbidden')
     if (payload.plannedDate && access.instance.schedule_id) {
@@ -390,7 +394,7 @@ export async function saveTemplate(input: Omit<QualityTaskTemplate, 'id' | 'sour
   const omitted = (existingSchedules ?? []).map((s: Row) => str(s.id)).filter(id => !retained.has(id))
   if (omitted.length) fail((await supabaseAdmin.from('quality_task_schedules').update({ active: false }).in('id', omitted)).error)
   for (const [index, schedule] of input.schedules.entries()) {
-    const schedulePayload = { interval_unit: schedule.intervalUnit, interval_count: schedule.intervalCount, recurrence_mode: schedule.recurrenceMode, starts_on: schedule.startsOn, ends_on: schedule.endsOn, active: schedule.active }
+    const schedulePayload = { interval_unit: schedule.intervalUnit, interval_count: schedule.intervalCount, recurrence_mode: schedule.recurrenceMode, due_day_of_month: schedule.dueDayOfMonth ?? null, starts_on: schedule.startsOn, ends_on: schedule.endsOn, active: schedule.active }
     if (schedule.id) fail((await supabaseAdmin.from('quality_task_schedules').update(schedulePayload).eq('id', schedule.id).eq('template_id', templateId)).error)
     else fail((await supabaseAdmin.from('quality_task_schedules').insert({ template_id: templateId, schedule_key: `custom-${Date.now()}-${index + 1}`, ...schedulePayload })).error)
   }

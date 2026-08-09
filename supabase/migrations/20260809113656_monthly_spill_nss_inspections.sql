@@ -10,6 +10,7 @@ ALTER TABLE public.quality_task_schedules
 
 ALTER TABLE public.lab_map_safety_assets
   ADD COLUMN IF NOT EXISTS inspection_profile text,
+  ADD COLUMN IF NOT EXISTS department text,
   ADD COLUMN IF NOT EXISTS activated_on date NOT NULL DEFAULT current_date;
 ALTER TABLE public.lab_map_safety_assets
   DROP CONSTRAINT IF EXISTS lab_map_safety_assets_inspection_profile_check,
@@ -73,6 +74,28 @@ CREATE INDEX IF NOT EXISTS lab_map_safety_asset_assignments_lookup
 CREATE INDEX IF NOT EXISTS lab_map_safety_asset_assignments_user
   ON public.lab_map_safety_asset_assignments(user_id, active_from, active_to);
 
+CREATE TABLE IF NOT EXISTS public.lab_map_safety_asset_profile_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  asset_id uuid NOT NULL REFERENCES public.lab_map_safety_assets(id) ON DELETE RESTRICT,
+  profile text NOT NULL CHECK (profile IN (
+    'biohazard_spill_kit', 'chemical_spill_kit', 'nss_eyewash'
+  )),
+  active_from date NOT NULL,
+  active_to date,
+  created_by uuid REFERENCES public.profiles(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (active_to IS NULL OR active_to >= active_from),
+  UNIQUE (asset_id, active_from)
+);
+CREATE INDEX IF NOT EXISTS lab_map_safety_asset_profile_history_lookup
+  ON public.lab_map_safety_asset_profile_history(asset_id, active_from, active_to);
+
+INSERT INTO public.lab_map_safety_asset_profile_history(asset_id, profile, active_from, created_by)
+SELECT id, inspection_profile, activated_on, created_by
+FROM public.lab_map_safety_assets
+WHERE inspection_profile IS NOT NULL
+ON CONFLICT (asset_id, active_from) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS public.lab_map_safety_asset_supplies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   asset_id uuid NOT NULL REFERENCES public.lab_map_safety_assets(id) ON DELETE RESTRICT,
@@ -120,26 +143,35 @@ ALTER TABLE public.lab_map_safety_inspections
   ALTER COLUMN photo_content_type DROP NOT NULL,
   ALTER COLUMN photo_size_bytes DROP NOT NULL;
 ALTER TABLE public.lab_map_safety_inspections
-  DROP CONSTRAINT IF EXISTS lab_map_safety_inspections_inspection_profile_check;
+  DROP CONSTRAINT IF EXISTS lab_map_safety_inspections_inspection_profile_check,
+  DROP CONSTRAINT IF EXISTS lab_map_safety_inspections_photo_required_check;
 ALTER TABLE public.lab_map_safety_inspections
   ADD CONSTRAINT lab_map_safety_inspections_inspection_profile_check CHECK (
     inspection_profile IS NULL OR inspection_profile IN (
       'biohazard_spill_kit', 'chemical_spill_kit', 'nss_eyewash'
     )
+  ),
+  ADD CONSTRAINT lab_map_safety_inspections_photo_required_check CHECK (
+    COALESCE(inspection_profile IN ('biohazard_spill_kit', 'chemical_spill_kit', 'nss_eyewash'), false)
+    OR (photo_r2_key IS NOT NULL AND photo_file_name IS NOT NULL
+      AND photo_content_type IS NOT NULL AND photo_size_bytes IS NOT NULL)
   );
 
 ALTER TABLE public.lab_map_safety_form_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lab_map_safety_form_template_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lab_map_safety_asset_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.lab_map_safety_asset_profile_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lab_map_safety_asset_supplies ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON public.lab_map_safety_form_templates FROM anon, authenticated;
 REVOKE ALL ON public.lab_map_safety_form_template_items FROM anon, authenticated;
 REVOKE ALL ON public.lab_map_safety_asset_assignments FROM anon, authenticated;
+REVOKE ALL ON public.lab_map_safety_asset_profile_history FROM anon, authenticated;
 REVOKE ALL ON public.lab_map_safety_asset_supplies FROM anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.lab_map_safety_form_templates TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.lab_map_safety_form_template_items TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.lab_map_safety_asset_assignments TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.lab_map_safety_asset_profile_history TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.lab_map_safety_asset_supplies TO service_role;
 
 WITH templates(profile, version, title_th, active) AS (VALUES

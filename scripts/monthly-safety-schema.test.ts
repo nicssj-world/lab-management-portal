@@ -12,6 +12,7 @@ for (const token of [
   'lab_map_safety_form_templates',
   'lab_map_safety_form_template_items',
   'lab_map_safety_asset_assignments',
+  'lab_map_safety_asset_profile_history',
   'lab_map_safety_asset_supplies',
   'inspection_profile',
   'assignee_snapshot',
@@ -26,6 +27,7 @@ for (const table of [
   'lab_map_safety_form_templates',
   'lab_map_safety_form_template_items',
   'lab_map_safety_asset_assignments',
+  'lab_map_safety_asset_profile_history',
   'lab_map_safety_asset_supplies',
 ]) {
   assert.match(sql, new RegExp(`ALTER TABLE public\\.${table} ENABLE ROW LEVEL SECURITY`, 'i'), `${table} enables RLS`)

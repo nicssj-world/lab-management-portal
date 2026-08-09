@@ -7,8 +7,9 @@ import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
 import type { QualityTaskActionItem, QualityTaskOccurrence, QualityTaskTemplate, SafetyCertificate, TaskStatus } from '@/lib/quality-tasks/types'
 import { certificateRenewalWindow, isLinkedQualityOccurrence, linkedQualityTaskHref, missingEvidenceRequirements } from '@/lib/quality-tasks/safety'
+import { MonthlySafetyInspectionBoard } from './MonthlySafetyInspectionBoard'
 
-type Tab = 'overview' | 'tasks' | 'calendar' | 'evidence' | 'certificates'
+type Tab = 'overview' | 'monthly' | 'tasks' | 'calendar' | 'evidence' | 'certificates'
 type Person = { id: string; name: string; dept: string | null; role: string; position_title: string | null }
 type EvidenceItem = {
   id: string; instanceId: string; fileName: string; contentType: string; sizeBytes: number; uploadedAt: string
@@ -21,6 +22,7 @@ type SafetyIntegration = {
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'overview', label: 'ภาพรวม', icon: 'dash' },
+  { id: 'monthly', label: 'ตรวจประจำเดือน', icon: 'check' },
   { id: 'tasks', label: 'รายการงาน', icon: 'clipboard' },
   { id: 'calendar', label: 'ปฏิทิน', icon: 'calendar' },
   { id: 'evidence', label: 'หลักฐานประจำปี', icon: 'inbox' },
@@ -93,7 +95,7 @@ export function SafetyTaskHub({
   const [certDraft, setCertDraft] = useState({ certificateType: '', documentNo: '', holderName: '', department: '', issuedOn: '', expiresOn: '', noExpiry: false, ownerId: '' })
 
   useEffect(() => {
-    if (window.matchMedia('(max-width: 767px)').matches) setTab('tasks')
+    if (window.matchMedia('(max-width: 767px)').matches) setTab('monthly')
   }, [])
 
   useEffect(() => {
@@ -286,6 +288,8 @@ export function SafetyTaskHub({
 
       {error && <div className="safety-error" role="alert"><Icon name="alert" size={16} />{error}<button onClick={() => setError('')} aria-label="ปิดข้อความ"><Icon name="x" size={14} /></button></div>}
 
+      {tab === 'monthly' && <section id="safety-panel-monthly" role="tabpanel" aria-labelledby="safety-tab-monthly" className="safety-panel"><MonthlySafetyInspectionBoard isEditor={isEditor} fiscalYear={fiscalYear} /></section>}
+
       {tab === 'overview' && <section id="safety-panel-overview" role="tabpanel" aria-labelledby="safety-tab-overview" className="safety-panel">
         <div className="safety-metrics">
           {[
@@ -367,8 +371,9 @@ function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integra
   const [requirementId, setRequirementId] = useState(item.template.evidenceRequirements[0]?.id ?? '')
   const missing = missingEvidenceRequirements(item.template.evidenceRequirements, item.attachments)
   const linkedQualityMeeting = isLinkedQualityOccurrence(item)
+  const monthlySafetyTask = ['CBH-ST-04', 'CBH-ST-26'].includes(item.template.sourceKey ?? '')
   const assigned = item.assignees.some(entry => entry.userId === actorId)
-  const canOperate = !linkedQualityMeeting && (isEditor || assigned)
+  const canOperate = !linkedQualityMeeting && !monthlySafetyTask && (isEditor || assigned)
   const canApprove = isEditor || item.template.approverId === actorId
   const checkedInUserIds = new Set(item.checkIns.map(entry => entry.userId).filter(Boolean))
   return <div className="safety-drawer-layer"><button className="safety-drawer-backdrop" aria-label="ปิดรายละเอียด" onClick={onClose} /><aside className="safety-drawer" role="dialog" aria-modal="true" aria-labelledby="safety-task-title">
@@ -377,7 +382,7 @@ function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integra
     {error && <div className="safety-error" role="alert">{error}</div>}
     <div className="safety-drawer-body">
       {linkedQualityMeeting && <div className="safety-linked-source"><Icon name="calendar" size={18} /><span><b>การประชุมนี้ใช้ข้อมูลหลักจากงานคุณภาพ</b><small>วันประชุม สถานะ ผู้เข้าร่วม และหลักฐานเป็นข้อมูลชุดเดียวกัน</small></span><Link href={linkedQualityTaskHref(item)}>ไปจัดการในงานคุณภาพ <Icon name="arrowRight" size={14} /></Link></div>}
-      <section><h3>ข้อกำหนดอ้างอิง</h3><dl className="safety-detail-grid"><div><dt>เอกสาร/แบบฟอร์ม</dt><dd>{item.template.referenceCode ?? 'ข้อกำหนดภายใน'}</dd></div><div><dt>รอบงาน</dt><dd>{item.template.frequencyText}</dd></div><div><dt>การอนุมัติ</dt><dd>{item.template.approvalMode === 'required' ? 'ผู้อนุมัติ 1 ขั้น' : 'ปิดงานได้เมื่อหลักฐานครบ'}</dd></div><div><dt>แหล่งข้อมูล</dt><dd>{linkedQualityMeeting ? 'ปฏิทินงานคุณภาพ' : item.template.integrationKind === 'safety_inspection' ? 'Inspection Round บนแผนที่' : item.template.integrationKind === 'equipment_reference' ? 'ทะเบียนเครื่องมือ' : 'งานความปลอดภัย'}</dd></div></dl>{item.template.description && <p className="safety-description">{item.template.description}</p>}{item.template.integrationKind === 'safety_inspection' && isEditor && item.status !== 'completed' && <Button icon="clipboard" variant="soft" onClick={onInspection} disabled={busy}>เปิด Inspection Round</Button>}{item.template.integrationKind === 'equipment_reference' && <Link className="safety-inline-link" href="/staff/equipment"><Icon name="microscope" size={14} />เปิดทะเบียนเครื่องมือ</Link>}{integrations.filter(integration => integration.kind === 'safety_inspection').map(integration => <InspectionResultBlock key={integration.id} integration={integration} />)}</section>
+      <section><h3>ข้อกำหนดอ้างอิง</h3><dl className="safety-detail-grid"><div><dt>เอกสาร/แบบฟอร์ม</dt><dd>{item.template.referenceCode ?? 'ข้อกำหนดภายใน'}</dd></div><div><dt>รอบงาน</dt><dd>{item.template.frequencyText}</dd></div><div><dt>การอนุมัติ</dt><dd>{item.template.approvalMode === 'required' ? 'ผู้อนุมัติ 1 ขั้น' : 'ปิดงานได้เมื่อหลักฐานครบ'}</dd></div><div><dt>แหล่งข้อมูล</dt><dd>{monthlySafetyTask ? 'แท็บตรวจประจำเดือน' : linkedQualityMeeting ? 'ปฏิทินงานคุณภาพ' : item.template.integrationKind === 'safety_inspection' ? 'Inspection Round บนแผนที่' : item.template.integrationKind === 'equipment_reference' ? 'ทะเบียนเครื่องมือ' : 'งานความปลอดภัย'}</dd></div></dl>{item.template.description && <p className="safety-description">{item.template.description}</p>}{monthlySafetyTask && <p className="safety-description">งานแม่รายการนี้ติดตามและปิดอัตโนมัติเมื่อทุกจุดส่งผลหรือถูกข้าม โปรดดำเนินการในแท็บ “ตรวจประจำเดือน”</p>}{item.template.integrationKind === 'safety_inspection' && !monthlySafetyTask && isEditor && item.status !== 'completed' && <Button icon="clipboard" variant="soft" onClick={onInspection} disabled={busy}>เปิด Inspection Round</Button>}{item.template.integrationKind === 'equipment_reference' && <Link className="safety-inline-link" href="/staff/equipment"><Icon name="microscope" size={14} />เปิดทะเบียนเครื่องมือ</Link>}{integrations.filter(integration => integration.kind === 'safety_inspection').map(integration => <InspectionResultBlock key={integration.id} integration={integration} />)}</section>
       <section><h3>หลักฐานที่ต้องมี</h3><div className="safety-requirements">{item.template.evidenceRequirements.map(requirement => { const count = item.attachments.filter(file => file.requirementId === requirement.id).length; const complete = count >= requirement.minimumFiles; return <div key={requirement.id} className={complete ? 'is-complete' : ''}><Icon name={complete ? 'check' : 'clock'} size={14} /><span><b>{requirement.label}</b><small>{requirement.required ? `บังคับอย่างน้อย ${requirement.minimumFiles} ไฟล์` : 'ไม่บังคับ'}</small></span><strong>{count}/{requirement.minimumFiles}</strong></div>})}{!item.template.evidenceRequirements.length && <div className={item.attachments.length ? 'is-complete' : ''}><Icon name={item.attachments.length ? 'check' : 'clock'} size={14} /><span><b>เอกสารหรือรูปภาพประกอบ</b><small>{item.template.evidenceRequired ? 'ต้องมีอย่างน้อย 1 ไฟล์' : 'ไม่บังคับ'}</small></span><strong>{item.attachments.length}</strong></div>}</div>
         <div className="safety-files">{item.attachments.map(file => <a key={file.id} href={`/api/admin/${linkedQualityMeeting ? 'quality-tasks' : 'safety-tasks'}/attachments/${file.id}`} target="_blank" rel="noreferrer"><Icon name="doc" size={14} /><span>{file.fileName}</span><small>{(file.sizeBytes / 1024 / 1024).toFixed(1)} MB</small></a>)}</div>
         {canOperate && item.status !== 'completed' && item.status !== 'pending_review' && <div className="safety-upload-row">{item.template.evidenceRequirements.length > 0 && <select value={requirementId} onChange={event => setRequirementId(event.target.value)} aria-label="ประเภทหลักฐาน">{item.template.evidenceRequirements.map(requirement => <option key={requirement.id} value={requirement.id}>{requirement.label}</option>)}</select>}<label className={busy ? 'is-disabled' : ''}><Icon name="upload" size={14} />แนบไฟล์<input type="file" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) onUpload(file, requirementId || null); event.currentTarget.value = '' }} /></label></div>}

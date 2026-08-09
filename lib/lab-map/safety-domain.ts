@@ -1,6 +1,6 @@
 export const SAFETY_EQUIPMENT_KINDS = [
   'fire-extinguisher', 'fire-hose', 'manual-call-point', 'aed', 'first-aid-kit',
-  'eyewash', 'emergency-shower', 'spill-kit', 'emergency-shutoff',
+  'eyewash', 'nss-eyewash', 'emergency-shower', 'spill-kit', 'emergency-shutoff',
 ] as const
 
 export type SafetyEquipmentKind = typeof SAFETY_EQUIPMENT_KINDS[number]

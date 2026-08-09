@@ -10,6 +10,7 @@ const KIND_LABELS: Record<LabSafetyEquipmentDefinition['kind'], string> = {
   aed: 'เครื่อง AED',
   'first-aid-kit': 'ชุดปฐมพยาบาล',
   eyewash: 'ที่ล้างตา',
+  'nss-eyewash': 'น้ำยาล้างตา NSS',
   'emergency-shower': 'ฝักบัวฉุกเฉิน',
   'spill-kit': 'ชุดจัดการสารหกรั่วไหล',
   'emergency-shutoff': 'จุดตัดระบบฉุกเฉิน',

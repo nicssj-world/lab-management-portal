@@ -24,11 +24,24 @@ type StaffOption = { id: string; name: string | null; role: string }
 type EditorOption = { user_id: string }
 type Tab = 'assets' | 'assembly' | 'editors'
 type SafetyMobileView = 'list' | 'map' | 'inspect'
+type MonthlyProfile = 'biohazard_spill_kit' | 'chemical_spill_kit' | 'nss_eyewash'
+type MonthlyConfigSupply = {
+  id?: string; templateItemId: string | null; supplyType: 'spill_item' | 'nss_bottle'; internalCode: string; labelTh: string
+  manufacturedOrPackedOn: string; purchasedOn: string; expiresOn: string; supplier: string
+}
+type MonthlyConfigResponse = {
+  asset: { inspection_profile: MonthlyProfile | null; activated_on: string }
+  assignments: { user_id: string; assignment_role: 'primary' | 'backup' }[]
+  supplies: { id: string; template_item_id: string | null; supply_type: 'spill_item' | 'nss_bottle'; internal_code: string; label_th: string; manufactured_or_packed_on: string | null; purchased_on: string | null; expires_on: string | null; supplier: string | null }[]
+  people: { id: string; name: string | null; dept: string | null }[]
+  template: { id: string; version: number; title_th: string } | null
+  templateItems: { id: string; item_key: string; label_th: string; sort_order: number }[]
+}
 
 const KIND_LABELS: Record<string, string> = {
   'fire-extinguisher': 'ถังดับเพลิง', 'fire-hose': 'สายฉีดน้ำดับเพลิง',
   'manual-call-point': 'จุดกดแจ้งเหตุ', aed: 'AED', 'first-aid-kit': 'ชุดปฐมพยาบาล',
-  eyewash: 'อ่างล้างตา', 'emergency-shower': 'ฝักบัวฉุกเฉิน', 'spill-kit': 'Spill Kit',
+  eyewash: 'อ่างล้างตา', 'nss-eyewash': 'น้ำยาล้างตา NSS', 'emergency-shower': 'ฝักบัวฉุกเฉิน', 'spill-kit': 'Spill Kit',
   'emergency-shutoff': 'จุดตัดฉุกเฉิน',
 }
 const STATUS_LABELS: Record<string, string> = {
@@ -56,6 +69,7 @@ function pointTypeColor(pointType?: LabPointType) {
 }
 
 function todayIso() { return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }) }
+function nextMonthStart() { const today = new Date(`${todayIso()}T00:00:00Z`); return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1)).toISOString().slice(0, 10) }
 
 async function jsonRequest(url: string, init?: RequestInit) {
   const response = await fetch(url, init)
@@ -474,6 +488,7 @@ function AssetEditor({ draft, spaces, busy, onCancel, onSave }: { draft: Partial
       <label>ชื่อ<input value={value.nameTh ?? ''} onChange={e => setValue({ ...value, nameTh: e.target.value })} /></label>
       <label>ประเภท<select value={value.kind ?? ''} onChange={e => setValue({ ...value, kind: e.target.value as SafetyAssetDTO['kind'] })}>{Object.entries(KIND_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
       <label>ห้อง<select value={value.spaceCode ?? ''} onChange={e => setValue({ ...value, spaceCode: e.target.value || null })}><option value="">ไม่ระบุ</option>{spaces.map(space => <option key={space.code} value={space.code}>{space.nameTh}</option>)}</select></label>
+      <label>หน่วยงาน<input value={value.department ?? ''} onChange={e => setValue({ ...value, department: e.target.value || null })} /></label>
       <details className="safety-advanced-coordinates">
         <summary>พิกัดขั้นสูง</summary>
         <div>
@@ -501,8 +516,9 @@ function AssetDetail({ item, locationLabel, canEdit, canManage, busy, onEdit, on
   return <section className="safety-form"><span className="safety-card-head"><h2 style={{ margin: 0, fontSize: 17 }}>{item.nameTh}</h2><Badge color={STATUS_COLORS[item.operationalStatus ?? 'unverified']}>{STATUS_LABELS[item.operationalStatus ?? 'unverified']}</Badge></span>
     <p className="safety-muted" style={{ margin: 0 }}>{KIND_LABELS[item.kind]} · {item.code}<br />ตำแหน่ง: {locationLabel}<br />พิกัด {item.x}, {item.y}</p>
     <div className="safety-actions"><Button variant="secondary" size="lg" onClick={onShowMap}>ดูตำแหน่งบนผัง</Button></div>
-    {item.latestInspection ? <><p style={{ margin: 0 }}>ตรวจล่าสุด {item.latestInspection.inspectedOn} · {STATUS_LABELS[item.latestInspection.result]}</p><img className="safety-photo" src={item.latestInspection.photoUrl} alt={`หลักฐานการตรวจ ${item.nameTh}`} /></> : <p className="safety-muted">ยังไม่มีประวัติการตรวจ</p>}
+    {item.latestInspection ? <><p style={{ margin: 0 }}>ตรวจล่าสุด {item.latestInspection.inspectedOn} · {STATUS_LABELS[item.latestInspection.result]}</p>{item.latestInspection.photoUrl ? <img className="safety-photo" src={item.latestInspection.photoUrl} alt={`หลักฐานการตรวจ ${item.nameTh}`} /> : null}</> : <p className="safety-muted">ยังไม่มีประวัติการตรวจ</p>}
     <AssetHistory assetId={item.id} />
+    {canEdit && ['spill-kit', 'nss-eyewash'].includes(item.kind) ? <MonthlySafetyAssetConfig asset={item} onSaved={onReload} /> : null}
     {canEdit ? <><h3 style={{ margin: '6px 0 0', fontSize: 14 }}>บันทึกผลตรวจ</h3><div className="safety-form-grid">
       <label>ผลตรวจ<select value={result} onChange={e => setResult(e.target.value)}><option value="passed">ผ่าน</option><option value="needs_attention">ต้องติดตาม</option><option value="failed">ไม่พร้อมใช้</option><option value="not_found">ไม่พบอุปกรณ์</option></select></label>
       <SafetyPhotoPicker label="รูปหลักฐาน" file={file} disabled={busy} onChange={setFile} />
@@ -511,6 +527,115 @@ function AssetDetail({ item, locationLabel, canEdit, canManage, busy, onEdit, on
     <div className="safety-actions"><Button variant="secondary" size="lg" icon="edit" onClick={onEdit}>แก้ข้อมูล</Button><Button size="lg" icon="check" disabled={busy || !file} onClick={() => void onRun(inspect)}>ยืนยันผลตรวจ</Button></div></> : null}
     {canManage ? <Button variant="danger" size="lg" disabled={busy} onClick={() => { if (confirm('เลิกใช้อุปกรณ์นี้หรือไม่')) void onRun(async () => { await jsonRequest(`/api/admin/lab-map/safety-assets/${item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ updatedAt: item.updatedAt, retire: true }) }); await onReload() }) }}>เลิกใช้งาน</Button> : null}
   </section>
+}
+
+function MonthlySafetyAssetConfig({ asset, onSaved }: { asset: SafetyAssetDTO; onSaved: () => Promise<void> }) {
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [profile, setProfile] = useState<MonthlyProfile | null>(asset.inspectionProfile)
+  const [activatedOn, setActivatedOn] = useState(nextMonthStart())
+  const [primaryId, setPrimaryId] = useState('')
+  const [backupId, setBackupId] = useState('')
+  const [people, setPeople] = useState<MonthlyConfigResponse['people']>([])
+  const [template, setTemplate] = useState<MonthlyConfigResponse['template']>(null)
+  const [supplies, setSupplies] = useState<MonthlyConfigSupply[]>([])
+
+  function existingSupplies(data: MonthlyConfigResponse): MonthlyConfigSupply[] {
+    return data.supplies.map(item => ({
+      id: item.id, templateItemId: item.template_item_id, supplyType: item.supply_type,
+      internalCode: item.internal_code, labelTh: item.label_th,
+      manufacturedOrPackedOn: item.manufactured_or_packed_on ?? '', purchasedOn: item.purchased_on ?? '',
+      expiresOn: item.expires_on ?? '', supplier: item.supplier ?? '',
+    }))
+  }
+  function suppliesFromTemplate(data: MonthlyConfigResponse): MonthlyConfigSupply[] {
+    return data.templateItems.map(item => ({
+      templateItemId: item.id, supplyType: 'spill_item', internalCode: item.item_key.toUpperCase(), labelTh: item.label_th,
+      manufacturedOrPackedOn: '', purchasedOn: '', expiresOn: '', supplier: '',
+    }))
+  }
+  async function load(profileOverride?: MonthlyProfile) {
+    setError('')
+    const suffix = profileOverride ? `?profile=${encodeURIComponent(profileOverride)}` : ''
+    try {
+      const data = await jsonRequest(`/api/admin/lab-map/safety-assets/${asset.id}/monthly-profile${suffix}`) as MonthlyConfigResponse
+      setPeople(data.people); setTemplate(data.template)
+      if (!profileOverride) {
+        const current = data.asset.inspection_profile
+        setProfile(current); setActivatedOn(nextMonthStart())
+        setPrimaryId(data.assignments.find(item => item.assignment_role === 'primary')?.user_id ?? '')
+        setBackupId(data.assignments.find(item => item.assignment_role === 'backup')?.user_id ?? '')
+        setSupplies(existingSupplies(data))
+      } else if (profileOverride === data.asset.inspection_profile) setSupplies(existingSupplies(data))
+      else setSupplies(profileOverride === 'nss_eyewash' ? [] : suppliesFromTemplate(data))
+    } catch (reason) { setError((reason as Error).message) }
+    finally { setLoaded(true) }
+  }
+  useEffect(() => { void load() }, [asset.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function changeProfile(next: MonthlyProfile | null) {
+    setProfile(next); setNotice('')
+    if (!next) { setTemplate(null); setSupplies([]); return }
+    await load(next)
+  }
+  function updateSupply(index: number, patch: Partial<MonthlyConfigSupply>) {
+    setSupplies(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item))
+  }
+  function addBottle() {
+    setSupplies(items => [...items, { templateItemId: null, supplyType: 'nss_bottle', internalCode: `NSS-${String(items.length + 1).padStart(3, '0')}`, labelTh: `NSS ขวดที่ ${items.length + 1}`, manufacturedOrPackedOn: '', purchasedOn: '', expiresOn: '', supplier: '' }])
+  }
+  async function save() {
+    setSaving(true); setError(''); setNotice('')
+    try {
+      const assignments = [primaryId ? { userId: primaryId, assignmentRole: 'primary' } : null, backupId ? { userId: backupId, assignmentRole: 'backup' } : null].filter(Boolean)
+      const body = {
+        profile, activatedOn, assignments,
+        supplies: profile ? supplies.map(item => ({
+          id: item.id, templateItemId: item.templateItemId, supplyType: item.supplyType,
+          internalCode: item.internalCode, labelTh: item.labelTh,
+          manufacturedOrPackedOn: item.manufacturedOrPackedOn || null, purchasedOn: item.purchasedOn || null,
+          expiresOn: item.expiresOn || null, supplier: item.supplier.trim() || null,
+        })) : [],
+      }
+      const data = await jsonRequest(`/api/admin/lab-map/safety-assets/${asset.id}/monthly-profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) as MonthlyConfigResponse
+      setSupplies(existingSupplies(data)); setNotice('บันทึกทะเบียนแล้ว จุดนี้จะเข้ารอบตามวันที่เริ่มใช้'); await onSaved()
+    } catch (reason) { setError((reason as Error).message) }
+    finally { setSaving(false) }
+  }
+
+  const profileOptions = asset.kind === 'nss-eyewash'
+    ? [{ value: 'nss_eyewash', label: 'NSS Eyewash' }]
+    : [{ value: 'biohazard_spill_kit', label: 'Biohazard Spill Kit' }, { value: 'chemical_spill_kit', label: 'Chemical Spill Kit' }]
+  return <details className="safety-monthly-config" open={Boolean(asset.inspectionProfile)}>
+    <summary>Profile ตรวจประจำเดือน</summary>
+    {!loaded ? <p className="safety-muted">กำลังโหลดทะเบียน…</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+      {error ? <p role="alert" style={{ margin: 0, color: 'var(--danger)', fontSize: 12 }}>{error}</p> : null}
+      {notice ? <p role="status" style={{ margin: 0, color: 'var(--success)', fontSize: 12 }}>{notice}</p> : null}
+      <div className="safety-form-grid">
+        <label>Profile ตรวจประจำเดือน<select value={profile ?? ''} onChange={event => void changeProfile((event.target.value || null) as MonthlyProfile | null)}><option value="">ไม่เข้ารอบตรวจประจำเดือน</option>{profileOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label>เริ่มใช้<input type="date" value={activatedOn} onChange={event => setActivatedOn(event.target.value)} /><small className="safety-muted">จุดใหม่ควรเริ่มวันที่ 1 ของเดือนถัดไป</small></label>
+        {profile ? <><label>ผู้รับผิดชอบหลัก<select value={primaryId} onChange={event => setPrimaryId(event.target.value)}><option value="">เลือกผู้รับผิดชอบหลัก</option>{people.map(person => <option key={person.id} value={person.id} disabled={person.id === backupId}>{person.name ?? person.id}{person.dept ? ` · ${person.dept}` : ''}</option>)}</select></label>
+        <label>ผู้รับผิดชอบสำรอง<select value={backupId} onChange={event => setBackupId(event.target.value)}><option value="">ไม่ระบุ</option>{people.map(person => <option key={person.id} value={person.id} disabled={person.id === primaryId}>{person.name ?? person.id}{person.dept ? ` · ${person.dept}` : ''}</option>)}</select></label></> : null}
+      </div>
+      {profile ? <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><div className="safety-card-head"><div><strong>Inventory / ขวด NSS</strong><small style={{ display: 'block' }}>{template ? `${template.title_th} · Version ${template.version}` : 'แม่แบบนี้ยัง inactive จึงยังเปิดใช้ไม่ได้'}</small></div>{profile === 'nss_eyewash' ? <Button variant="secondary" size="lg" icon="plus" onClick={addBottle}>เพิ่มขวด NSS</Button> : null}</div>
+        {supplies.map((item, index) => <article key={item.id ?? item.templateItemId ?? index} style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 8 }}>
+          <div className="safety-card-head"><strong>{index + 1}. {item.labelTh}</strong>{profile === 'nss_eyewash' ? <button type="button" onClick={() => setSupplies(items => items.filter((_, itemIndex) => itemIndex !== index))} style={{ minHeight: 44, border: 0, background: 'transparent', color: 'var(--danger)' }}>นำขวดออก</button> : null}</div>
+          <div className="safety-form-grid">
+            <label>รหัส<input value={item.internalCode} onChange={event => updateSupply(index, { internalCode: event.target.value })} /></label>
+            <label>ชื่อรายการ<input value={item.labelTh} onChange={event => updateSupply(index, { labelTh: event.target.value })} /></label>
+            <label>วันผลิต/บรรจุ หรือวันที่รับ<input type="date" value={item.manufacturedOrPackedOn} onChange={event => updateSupply(index, { manufacturedOrPackedOn: event.target.value })} /></label>
+            <label>วันที่ซื้อ<input type="date" value={item.purchasedOn} onChange={event => updateSupply(index, { purchasedOn: event.target.value })} /></label>
+            <label>วันหมดอายุ<input type="date" value={item.expiresOn} onChange={event => updateSupply(index, { expiresOn: event.target.value })} /></label>
+            <label>ผู้ขาย<input value={item.supplier} onChange={event => updateSupply(index, { supplier: event.target.value })} /></label>
+          </div>
+        </article>)}
+        {!supplies.length ? <p className="safety-muted" style={{ margin: 0 }}>ยังไม่มีรายการ inventory — เพิ่มขวดหรือเปิดใช้แม่แบบก่อนบันทึก</p> : null}
+      </section> : null}
+      <div className="safety-actions"><Button size="lg" icon="check" disabled={saving || !activatedOn || Boolean(profile && (!primaryId || !supplies.length || !template))} onClick={() => void save()}>{saving ? 'กำลังบันทึก…' : 'บันทึกทะเบียนรายเดือน'}</Button></div>
+    </div>}
+  </details>
 }
 
 function AssetHistory({ assetId }: { assetId: string }) {
@@ -524,7 +649,7 @@ function AssetHistory({ assetId }: { assetId: string }) {
   }, [assetId])
   if (!items.length) return null
   return <details><summary>ประวัติการตรวจทั้งหมด ({items.length})</summary><div className="safety-history">
-    {items.map(entry => <article key={entry.id}><strong>{entry.inspectedOn} · {STATUS_LABELS[entry.result]}</strong><small>{entry.inspectorName ?? entry.inspectedBy}{entry.note ? ` · ${entry.note}` : ''}</small><img className="safety-photo" src={entry.photoUrl} alt={`หลักฐานการตรวจวันที่ ${entry.inspectedOn}`} /></article>)}
+    {items.map(entry => <article key={entry.id}><strong>{entry.inspectedOn} · {STATUS_LABELS[entry.result]}</strong><small>{entry.inspectorName ?? entry.inspectedBy}{entry.note ? ` · ${entry.note}` : ''}</small>{entry.photoUrl ? <img className="safety-photo" src={entry.photoUrl} alt={`หลักฐานการตรวจวันที่ ${entry.inspectedOn}`} /> : null}</article>)}
   </div></details>
 }
 

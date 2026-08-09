@@ -104,6 +104,7 @@ export type SafetyEquipmentKind =
   | 'aed'
   | 'first-aid-kit'
   | 'eyewash'
+  | 'nss-eyewash'
   | 'emergency-shower'
   | 'spill-kit'
   | 'emergency-shutoff'
@@ -144,7 +145,7 @@ export interface SafetyInspectionDTO {
   nextInspectionDate: string | null
   expiresOn: string | null
   note: string | null
-  photoUrl: string
+  photoUrl: string | null
   inspectedBy: string
   inspectorName: string | null
   createdAt: string
@@ -153,8 +154,11 @@ export interface SafetyInspectionDTO {
 export interface SafetyAssetDTO extends LabSafetyEquipmentDefinition {
   id: string
   spaceCode: string | null
+  department: string | null
   positionStatus: 'unverified' | 'verified'
   lifecycleStatus: 'active' | 'retired'
+  inspectionProfile: 'biohazard_spill_kit' | 'chemical_spill_kit' | 'nss_eyewash' | null
+  activatedOn: string
   positionVerifiedBy: string | null
   positionVerifiedAt: string | null
   createdAt: string

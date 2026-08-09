@@ -22,6 +22,7 @@ export interface QualityTaskSchedule {
   intervalUnit: TaskIntervalUnit
   intervalCount: number
   recurrenceMode: RecurrenceMode
+  dueDayOfMonth?: number | null
   startsOn: string
   endsOn: string | null
   active: boolean

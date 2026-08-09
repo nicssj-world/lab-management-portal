@@ -18,11 +18,23 @@ export interface SpillKitAnswerInput {
   note: string | null
 }
 
+export interface SafetySupplyReplacementInput {
+  oldSupplyId: string
+  newSupplyId?: string
+  internalCode: string
+  labelTh: string
+  manufacturedOrPackedOn: string | null
+  purchasedOn: string | null
+  expiresOn: string | null
+  supplier: string | null
+}
+
 export interface SpillKitInspectionPayload {
   kind: 'spill_kit'
   inspectedOn: string
   answers: SpillKitAnswerInput[]
   correctiveAction?: string | null
+  replacements?: SafetySupplyReplacementInput[]
 }
 
 export interface NssBottleAnswerInput {
@@ -36,6 +48,7 @@ export interface NssInspectionPayload {
   kind: 'nss'
   activeBottleIds: string[]
   bottles: NssBottleAnswerInput[]
+  replacements?: SafetySupplyReplacementInput[]
 }
 
 export interface SafetyAssetAssignment {
@@ -75,6 +88,12 @@ export interface MonthlySafetyPoint {
   assignments: SafetyAssetAssignment[]
 }
 
+export interface SafetyAssetProfilePeriod {
+  profile: SafetyInspectionProfileKey
+  activeFrom: string
+  activeTo: string | null
+}
+
 const DAY_MS = 86_400_000
 
 function dateAtUtc(value: string) {
@@ -85,6 +104,11 @@ export function dueDateForMonth(month: string, dueDay: number) {
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('Invalid month')
   if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28) throw new Error('Invalid due day')
   return `${month}-${String(dueDay).padStart(2, '0')}`
+}
+
+export function effectiveProfileAt(periods: SafetyAssetProfilePeriod[], date: string) {
+  return periods.filter(period => period.activeFrom <= date && (!period.activeTo || period.activeTo >= date))
+    .sort((left, right) => right.activeFrom.localeCompare(left.activeFrom))[0]?.profile ?? null
 }
 
 export function fiscalMonths(fiscalYear: number) {
@@ -136,6 +160,19 @@ export function validateNssSubmission(input: Pick<NssInspectionPayload, 'activeB
     ok: true as const,
     issueCount: input.bottles.filter(bottle => bottle.clarity === 'turbid' || bottle.bottleCondition === 'cracked').length,
   }
+}
+
+export function validateSupplyReplacements(replacements: SafetySupplyReplacementInput[], abnormalSupplyIds: Set<string>) {
+  if (new Set(replacements.map(item => item.oldSupplyId)).size !== replacements.length) {
+    return { ok: false as const, error: 'รายการที่เปลี่ยนต้องไม่ซ้ำกัน' }
+  }
+  if (replacements.some(item => !abnormalSupplyIds.has(item.oldSupplyId))) {
+    return { ok: false as const, error: 'เปลี่ยน inventory ได้เฉพาะรายการที่พบปัญหา' }
+  }
+  if (replacements.some(item => !item.internalCode.trim() || !item.labelTh.trim())) {
+    return { ok: false as const, error: 'inventory ใหม่ต้องมีรหัสและชื่อรายการ' }
+  }
+  return { ok: true as const }
 }
 
 export function monthlyPeriod(month: string, dueDay = 15) {

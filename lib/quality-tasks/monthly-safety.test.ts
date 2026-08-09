@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import {
   dueDateForMonth,
+  effectiveProfileAt,
   fiscalMonths,
   pointStatusForMonth,
   validateNssSubmission,
+  validateSupplyReplacements,
   validateSpillKitSubmission,
 } from './monthly-safety'
 
@@ -12,6 +14,14 @@ assert.deepEqual(fiscalMonths(2570), [
   '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03',
   '2027-04', '2027-05', '2027-06', '2027-07', '2027-08', '2027-09',
 ])
+assert.equal(effectiveProfileAt([
+  { profile: 'biohazard_spill_kit', activeFrom: '2026-01-01', activeTo: '2026-08-31' },
+  { profile: 'chemical_spill_kit', activeFrom: '2026-09-01', activeTo: null },
+], '2026-08-01'), 'biohazard_spill_kit')
+assert.equal(effectiveProfileAt([
+  { profile: 'biohazard_spill_kit', activeFrom: '2026-01-01', activeTo: '2026-08-31' },
+  { profile: 'chemical_spill_kit', activeFrom: '2026-09-01', activeTo: null },
+], '2026-09-01'), 'chemical_spill_kit')
 
 assert.equal(pointStatusForMonth({ submittedAt: null, issueCount: 0, skippedAt: null, dueOn: '2026-08-15' }, '2026-08-07'), 'pending')
 assert.equal(pointStatusForMonth({ submittedAt: null, issueCount: 0, skippedAt: null, dueOn: '2026-08-15' }, '2026-08-08'), 'due_soon')
@@ -44,5 +54,12 @@ assert.deepEqual(validateNssSubmission({
   activeBottleIds: ['nss-1', 'nss-2'],
   bottles: [{ supplyId: 'nss-1', clarity: 'clear', bottleCondition: 'intact', correctiveAction: null }],
 }), { ok: false, error: 'กรุณาตรวจขวด NSS ที่ใช้งานอยู่ให้ครบทุกขวด' })
+
+assert.deepEqual(validateSupplyReplacements([
+  { oldSupplyId: 'nss-2', internalCode: 'NSS-NEW', labelTh: 'NSS ขวดใหม่', manufacturedOrPackedOn: '2026-08-01', purchasedOn: '2026-08-10', expiresOn: '2030-08-01', supplier: 'Supplier' },
+], new Set(['nss-2'])), { ok: true })
+assert.deepEqual(validateSupplyReplacements([
+  { oldSupplyId: 'nss-1', internalCode: 'NSS-NEW', labelTh: 'NSS ขวดใหม่', manufacturedOrPackedOn: null, purchasedOn: null, expiresOn: null, supplier: null },
+], new Set(['nss-2'])), { ok: false, error: 'เปลี่ยน inventory ได้เฉพาะรายการที่พบปัญหา' })
 
 console.log('monthly safety domain tests passed')

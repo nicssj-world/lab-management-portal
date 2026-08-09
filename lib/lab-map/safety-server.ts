@@ -12,7 +12,7 @@ function inspectionRow(row: Record<string, unknown>): SafetyInspectionDTO {
     id: String(row.id), assetId: String(row.asset_id), result: row.result as SafetyInspectionDTO['result'],
     inspectedOn: String(row.inspected_on), nextInspectionDate: row.next_inspection_date as string | null,
     expiresOn: row.expires_on as string | null, note: row.note as string | null,
-    photoUrl: `/api/admin/lab-map/safety-inspections/${row.id}/photo`,
+    photoUrl: row.photo_r2_key ? `/api/admin/lab-map/safety-inspections/${row.id}/photo` : null,
     inspectedBy: String(row.inspected_by), inspectorName: null, createdAt: String(row.created_at),
   }
 }
@@ -44,7 +44,10 @@ export async function listSafetyAssets(includeRetired = false): Promise<SafetyAs
       kind: row.kind as SafetyAssetDTO['kind'], x: Number(row.x), y: Number(row.y),
       verified: positionStatus === 'verified', sourceNoteTh: row.source_note_th as string | undefined,
       shutoffFor: row.shutoff_for as SafetyAssetDTO['shutoffFor'], spaceCode: row.space_code as string | null,
+      department: row.department as string | null,
       positionStatus, lifecycleStatus: row.lifecycle_status as SafetyAssetDTO['lifecycleStatus'],
+      inspectionProfile: row.inspection_profile as SafetyAssetDTO['inspectionProfile'],
+      activatedOn: String(row.activated_on),
       positionVerifiedBy: row.position_verified_by as string | null,
       positionVerifiedAt: row.position_verified_at as string | null,
       createdAt: String(row.created_at), updatedAt: String(row.updated_at), latestInspection,

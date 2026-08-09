@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabaseAdmin.from('lab_map_safety_assets').insert({
     code: value.code, name_th: value.nameTh, kind: value.kind, shutoff_for: value.shutoffFor ?? null,
     x: value.x, y: value.y, space_code: value.spaceCode ?? null,
+    department: value.department ?? null,
     source_note_th: value.sourceNoteTh ?? null, created_by: guard.actor.id,
   }).select('*').single()
   if (error?.code === '23505') return NextResponse.json({ error: 'รหัสอุปกรณ์ซ้ำ' }, { status: 409 })

@@ -24,6 +24,7 @@ export async function PATCH(req: NextRequest, { params }: Context) {
     shutoffFor: parsed.data.shutoffFor !== undefined ? parsed.data.shutoffFor : current.shutoff_for,
     x: parsed.data.x ?? Number(current.x), y: parsed.data.y ?? Number(current.y),
     spaceCode: parsed.data.spaceCode !== undefined ? parsed.data.spaceCode : current.space_code,
+    department: parsed.data.department !== undefined ? parsed.data.department : current.department,
     sourceNoteTh: parsed.data.sourceNoteTh !== undefined ? parsed.data.sourceNoteTh : current.source_note_th,
   })
   if (!merged.success) return NextResponse.json({ error: merged.error.issues[0]?.message }, { status: 422 })
@@ -34,6 +35,7 @@ export async function PATCH(req: NextRequest, { params }: Context) {
   const update = {
     name_th: merged.data.nameTh, kind: merged.data.kind, shutoff_for: merged.data.shutoffFor ?? null,
     x: merged.data.x, y: merged.data.y, space_code: merged.data.spaceCode ?? null,
+    department: merged.data.department ?? null,
     source_note_th: merged.data.sourceNoteTh ?? null,
     lifecycle_status: parsed.data.retire ? 'retired' : current.lifecycle_status,
     ...(positionChanged ? { position_status: 'unverified', position_verified_by: null, position_verified_at: null } : {}),

@@ -17,7 +17,7 @@ import { EquipmentDetailModal } from '@/components/equipment/EquipmentDetailModa
 import { EquipmentPmCalModal } from '@/components/equipment/EquipmentPmCalModal'
 import { PmCalPlanWorkspace } from '@/components/equipment/PmCalPlanWorkspace'
 import { mergeEquipmentDepartments } from '@/lib/equipment/departments'
-import { getLabCodeInfo } from '@/lib/equipment-lab-code'
+import { getLabCodeInfo, LAB_CODE_CLASSIFICATIONS } from '@/lib/equipment-lab-code'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
 import { EQUIPMENT_WORK_GROUPS, isEquipmentAreaSelectable } from '@/lib/equipment-map/walk-groups'
@@ -216,6 +216,8 @@ const inputStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = {
   fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 4, display: 'block',
 }
+
+const CLASSIFICATION_OPTIONS = Object.values(LAB_CODE_CLASSIFICATIONS)
 
 function RiskHint() {
   const term = (text: string, color: string, bg: string) => (
@@ -494,7 +496,10 @@ function EquipmentModal({
             </div>
             <div>
               <label style={labelStyle}>Classification</label>
-              <input style={inputStyle} value={form.classification ?? ''} onChange={e => set('classification', e.target.value || null)} placeholder="Diagnostic / Misc other" />
+              <select style={inputStyle} value={form.classification ?? ''} onChange={e => set('classification', e.target.value || null)}>
+                <option value="">ยังไม่ระบุ</option>
+                {CLASSIFICATION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
             <div>
               <div style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}>

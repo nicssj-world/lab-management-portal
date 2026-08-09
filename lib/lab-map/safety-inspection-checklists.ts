@@ -47,6 +47,11 @@ export const SAFETY_INSPECTION_CHECKLISTS: Readonly<Record<SafetyEquipmentKind, 
     required('cleanliness', 'อ่างและน้ำสะอาด ไม่มีสิ่งปนเปื้อน'),
     required('drain', 'ระบบระบายน้ำทำงานปกติ'),
   ],
+  'nss-eyewash': [
+    required('clarity', 'น้ำยา NSS ใส ไม่มีตะกอนหรือสิ่งปนเปื้อน'),
+    required('bottle-condition', 'ขวดสมบูรณ์ ไม่มีรอยร้าวหรือรั่วซึม'),
+    required('expiry', 'น้ำยา NSS ยังไม่หมดอายุ'),
+  ],
   'emergency-shower': [
     required('accessible', 'เข้าถึงฝักบัวฉุกเฉินได้ทันที'),
     required('activation', 'คันดึงหรือกลไกเปิดทำงานได้'),

@@ -28,7 +28,7 @@ const CODE_CLASSIFICATIONS: Record<string, string> = {
   '10': 'AP', autopipette: 'AP',
   '13': 'WT', calibrationweight: 'WT',
   '14': 'AN', analyzer: 'AN',
-  '15': 'AN', analyzerental: 'AN',
+  '15': 'AN', analyzerrental: 'AN',
   '16': 'RT', rotator: 'RT',
   '17': 'VX', vortexmixer: 'VX',
   '18': 'TM', timer: 'TM',

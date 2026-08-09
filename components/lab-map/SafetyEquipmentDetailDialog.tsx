@@ -109,10 +109,10 @@ export function SafetyEquipmentDetailDialog({
                 <div><dt>ผู้ตรวจ</dt><dd>{inspection.inspectorName ?? inspection.inspectedBy}</dd></div>
               </dl>
               {inspection.note ? <p className="lab-map-equipment-note"><b>หมายเหตุ:</b> {inspection.note}</p> : null}
-              <figure>
+              {inspection.photoUrl ? <figure>
                 <img src={inspection.photoUrl} alt={`รูปหลักฐานการตรวจ ${equipment.nameTh} วันที่ ${inspection.inspectedOn}`} />
                 <figcaption>รูปหลักฐานการตรวจล่าสุด</figcaption>
-              </figure>
+              </figure> : null}
             </>
           ) : null}
 
