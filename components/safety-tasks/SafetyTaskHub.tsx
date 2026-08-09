@@ -1,12 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
-import type { QualityTaskActionItem, QualityTaskOccurrence, QualityTaskTemplate, SafetyCertificate, TaskStatus } from '@/lib/quality-tasks/types'
+import type { QualityTaskActionItem, QualityTaskHoliday, QualityTaskOccurrence, QualityTaskTemplate, SafetyCertificate, TaskStatus } from '@/lib/quality-tasks/types'
 import { certificateRenewalWindow, isLinkedQualityOccurrence, linkedQualityTaskHref, missingEvidenceRequirements } from '@/lib/quality-tasks/safety'
+import { isWeekendDate } from '@/lib/quality-tasks/logic'
 import { MonthlySafetyInspectionBoard } from './MonthlySafetyInspectionBoard'
 
 type Tab = 'overview' | 'monthly' | 'tasks' | 'calendar' | 'evidence' | 'certificates'
@@ -60,7 +61,7 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 export function SafetyTaskHub({
-  actorId, isEditor, fiscalYear, range, initialOccurrences, templates, initialEvidence, initialCertificates, people,
+  actorId, isEditor, fiscalYear, range, initialOccurrences, templates, initialEvidence, initialCertificates, initialHolidays, people,
 }: {
   actorId: string
   isEditor: boolean
@@ -70,18 +71,23 @@ export function SafetyTaskHub({
   templates: QualityTaskTemplate[]
   initialEvidence: EvidenceItem[]
   initialCertificates: SafetyCertificate[]
+  initialHolidays: QualityTaskHoliday[]
   people: Person[]
 }) {
   const [tab, setTab] = useState<Tab>('overview')
   const [occurrences, setOccurrences] = useState(initialOccurrences)
   const [evidence, setEvidence] = useState(initialEvidence)
   const [certificates, setCertificates] = useState(initialCertificates)
+  const [holidays] = useState(initialHolidays)
   const [selected, setSelected] = useState<QualityTaskOccurrence | null>(null)
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all')
   const [search, setSearch] = useState('')
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [draggedKey, setDraggedKey] = useState<string | null>(null)
+  const [dragOverDay, setDragOverDay] = useState<number | null>(null)
+  const draggedRef = useRef<QualityTaskOccurrence | null>(null)
   const [actionItems, setActionItems] = useState<QualityTaskActionItem[]>([])
   const [integrations, setIntegrations] = useState<SafetyIntegration[]>([])
   const [capaText, setCapaText] = useState('')
@@ -140,6 +146,13 @@ export function SafetyTaskHub({
     const days = new Date(Date.UTC(year, month, 0)).getUTCDate()
     return [...Array(firstDay).fill(null), ...Array.from({ length: days }, (_, index) => index + 1)] as (number | null)[]
   }, [calendarMonth])
+  const holidayByDate = useMemo(() => new Map(holidays.map(holiday => [holiday.holidayDate, holiday])), [holidays])
+
+  function blockedDateReason(date: string): string | null {
+    if (isWeekendDate(date)) return 'ไม่สามารถเลือกวันเสาร์-อาทิตย์ได้'
+    const holiday = holidayByDate.get(date)
+    return holiday ? `วันที่เลือกตรงกับวันหยุด: ${holiday.name}` : null
+  }
 
   function openTask(item: QualityTaskOccurrence) {
     setSelected(item)
@@ -178,6 +191,22 @@ export function SafetyTaskHub({
       }
       await json(await fetch(`/api/admin/safety-tasks/occurrences/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }))
       await reload(selected.key)
+    } catch (cause) { setError((cause as Error).message) } finally { setBusy(false) }
+  }
+
+  function canRescheduleItem(item: QualityTaskOccurrence) {
+    return !isLinkedQualityOccurrence(item) && !['CBH-ST-04', 'CBH-ST-26'].includes(item.template.sourceKey ?? '') && (isEditor || item.assignees.some(entry => entry.userId === actorId))
+  }
+
+  async function rescheduleItem(item: QualityTaskOccurrence, date: string) {
+    if (busy || (item.plannedDate ?? item.periodStart) === date) return
+    const reason = blockedDateReason(date)
+    if (reason) { setError(reason); return }
+    setBusy(true); setError('')
+    try {
+      const id = await ensureInstance(item)
+      await json(await fetch(`/api/admin/safety-tasks/occurrences/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'schedule', plannedDate: date }) }))
+      await reload(selected?.key === item.key ? item.key : undefined)
     } catch (cause) { setError((cause as Error).message) } finally { setBusy(false) }
   }
 
@@ -334,8 +363,49 @@ export function SafetyTaskHub({
 
       {tab === 'calendar' && <section id="safety-panel-calendar" role="tabpanel" aria-labelledby="safety-tab-calendar" className="safety-panel">
         <div className="safety-calendar-head"><button onClick={() => setCalendarMonth(previousMonth(calendarMonth))} aria-label="เดือนก่อน"><Icon name="arrowLeft" /></button><h2>{new Date(`${calendarMonth}-01T00:00:00+07:00`).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}</h2><button onClick={() => setCalendarMonth(nextMonth(calendarMonth))} aria-label="เดือนถัดไป"><Icon name="arrowRight" /></button></div>
-        <div className="safety-calendar-grid"><div className="safety-weekdays">{['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((day, index) => <span key={day} className={index === 0 || index === 6 ? 'safety-weekday is-weekend' : 'safety-weekday'}>{day}</span>)}</div><div className="safety-days">{calendarCells.map((day, index) => { const isWeekend = index % 7 === 0 || index % 7 === 6; return <div key={index} className={`${isWeekend ? 'safety-day is-weekend' : 'safety-day'}${!day ? ' is-blank' : ''}`}>{day && <><b>{day}</b>{calendarItems.filter(item => Number(item.effectiveDueDate.slice(8)) === day).slice(0, 3).map(item => <button key={item.key} className={`is-${STATUS[item.status].tone}`} onClick={() => openTask(item)}><Icon name={STATUS[item.status].icon} size={13} />{item.template.title}</button>)}</>}</div> })}</div></div>
-        <div className="safety-calendar-agenda safety-agenda">{calendarItems.sort((a, b) => a.effectiveDueDate.localeCompare(b.effectiveDueDate)).map(item => <button key={item.key} onClick={() => openTask(item)}><time>{thaiDate(item.effectiveDueDate)}</time><span><b>{item.template.title}</b><small>{isLinkedQualityOccurrence(item) ? 'เชื่อมจากปฏิทินงานคุณภาพ' : item.template.ownerText}</small></span><StatusBadge status={item.status} /></button>)}</div>
+        <div className="safety-calendar-grid">
+          <div className="safety-weekdays">{['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((day, index) => <span key={day} className={index === 0 || index === 6 ? 'safety-weekday is-weekend' : 'safety-weekday'}>{day}</span>)}</div>
+          <div className="safety-days">{calendarCells.map((day, index) => {
+            const isWeekend = index % 7 === 0 || index % 7 === 6
+            const date = day ? `${calendarMonth}-${String(day).padStart(2, '0')}` : null
+            const holiday = date ? holidayByDate.get(date) : undefined
+            const blocked = isWeekend || Boolean(holiday)
+            const acceptsDrop = Boolean(day && draggedKey && !blocked && date)
+            return (
+              <div
+                key={index}
+                className={`${isWeekend ? 'safety-day is-weekend' : 'safety-day'}${!day ? ' is-blank' : ''}${holiday ? ' is-holiday' : ''}${dragOverDay === day ? ' is-drag-over' : ''}`}
+                onDragOver={acceptsDrop ? (event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; if (dragOverDay !== day) setDragOverDay(day) } : undefined}
+                onDragLeave={day && draggedKey ? () => setDragOverDay(current => current === day ? null : current) : undefined}
+                onDrop={acceptsDrop ? (event) => {
+                  event.preventDefault()
+                  const dragged = draggedRef.current
+                  draggedRef.current = null; setDraggedKey(null); setDragOverDay(null)
+                  if (dragged && date) void rescheduleItem(dragged, date)
+                } : undefined}
+              >
+                {day && <>
+                  <b>{day}</b>
+                  {holiday && <span className="safety-day-holiday" title={holiday.name}><Icon name="alert" size={10} />{holiday.name}</span>}
+                  {calendarItems.filter(item => Number(item.effectiveDueDate.slice(8)) === day).slice(0, 3).map(item => {
+                    const draggable = canRescheduleItem(item)
+                    return (
+                      <button
+                        key={item.key}
+                        draggable={draggable}
+                        onDragStart={draggable ? (event) => { draggedRef.current = item; setDraggedKey(item.key); event.dataTransfer.effectAllowed = 'move' } : undefined}
+                        onDragEnd={draggable ? () => { draggedRef.current = null; setDraggedKey(null); setDragOverDay(null) } : undefined}
+                        className={`is-${STATUS[item.status].tone}${draggable ? ' is-draggable' : ''}${draggedKey === item.key ? ' is-dragging' : ''}`}
+                        onClick={() => openTask(item)}
+                      ><Icon name={STATUS[item.status].icon} size={13} />{item.template.title}</button>
+                    )
+                  })}
+                </>}
+              </div>
+            )
+          })}</div>
+        </div>
+        <div className="safety-calendar-agenda safety-agenda">{calendarItems.sort((a, b) => a.effectiveDueDate.localeCompare(b.effectiveDueDate)).map(item => <button key={item.key} onClick={() => openTask(item)}><time>{thaiDate(item.effectiveDueDate)}</time><span><b>{item.template.title}</b><small>{holidayByDate.get(item.effectiveDueDate)?.name ?? (isLinkedQualityOccurrence(item) ? 'เชื่อมจากปฏิทินงานคุณภาพ' : item.template.ownerText)}</small></span><StatusBadge status={item.status} /></button>)}</div>
       </section>}
 
       {tab === 'evidence' && <section id="safety-panel-evidence" role="tabpanel" aria-labelledby="safety-tab-evidence" className="safety-panel">
@@ -353,7 +423,7 @@ export function SafetyTaskHub({
         {!certificates.length && <div className="safety-empty">ยังไม่มีใบรับรองในทะเบียน</div>}
       </section>}
 
-      {selected && <TaskDrawer item={selected} actorId={actorId} isEditor={isEditor} busy={busy} error={error} actionItems={actionItems} integrations={integrations} capaText={capaText} capaDue={capaDue} riskOpen={riskOpen} riskText={riskText} riskLikelihood={riskLikelihood} riskImpact={riskImpact} onClose={() => { setSelected(null); setError(''); setRiskOpen(false) }} onAction={taskAction} onInspection={startInspectionRound} onUpload={uploadEvidence} onCapaText={setCapaText} onCapaDue={setCapaDue} onAddCapa={addCapa} onToggleCapa={toggleCapa} onRiskOpen={setRiskOpen} onRiskText={setRiskText} onRiskLikelihood={setRiskLikelihood} onRiskImpact={setRiskImpact} onEscalateRisk={escalateRisk} />}
+      {selected && <TaskDrawer item={selected} actorId={actorId} isEditor={isEditor} busy={busy} error={error} actionItems={actionItems} integrations={integrations} capaText={capaText} capaDue={capaDue} riskOpen={riskOpen} riskText={riskText} riskLikelihood={riskLikelihood} riskImpact={riskImpact} onClose={() => { setSelected(null); setError(''); setRiskOpen(false) }} onAction={taskAction} onInspection={startInspectionRound} onUpload={uploadEvidence} onCapaText={setCapaText} onCapaDue={setCapaDue} onAddCapa={addCapa} onToggleCapa={toggleCapa} onRiskOpen={setRiskOpen} onRiskText={setRiskText} onRiskLikelihood={setRiskLikelihood} onRiskImpact={setRiskImpact} onEscalateRisk={escalateRisk} onReschedule={rescheduleItem} blockedDateReason={blockedDateReason} />}
       {certificateOpen && <CertificateDialog draft={certDraft} people={people} busy={busy} replacing={Boolean(replaceCertificateId)} onChange={setCertDraft} onClose={() => { setCertificateOpen(false); setReplaceCertificateId(null) }} onSubmit={addCertificate} />}
 
       <style jsx global>{SAFETY_CSS}</style>
@@ -364,11 +434,13 @@ export function SafetyTaskHub({
 function previousMonth(value: string) { const date = new Date(`${value}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() - 1); return date.toISOString().slice(0, 7) }
 function nextMonth(value: string) { const date = new Date(`${value}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + 1); return date.toISOString().slice(0, 7) }
 
-function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integrations, capaText, capaDue, riskOpen, riskText, riskLikelihood, riskImpact, onClose, onAction, onInspection, onUpload, onCapaText, onCapaDue, onAddCapa, onToggleCapa, onRiskOpen, onRiskText, onRiskLikelihood, onRiskImpact, onEscalateRisk }: {
+function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integrations, capaText, capaDue, riskOpen, riskText, riskLikelihood, riskImpact, onClose, onAction, onInspection, onUpload, onCapaText, onCapaDue, onAddCapa, onToggleCapa, onRiskOpen, onRiskText, onRiskLikelihood, onRiskImpact, onEscalateRisk, onReschedule, blockedDateReason }: {
   item: QualityTaskOccurrence; actorId: string; isEditor: boolean; busy: boolean; error: string; actionItems: QualityTaskActionItem[]; integrations: SafetyIntegration[]; capaText: string; capaDue: string; riskOpen: boolean; riskText: string; riskLikelihood: number; riskImpact: number
   onClose: () => void; onAction: (action: 'start' | 'submit' | 'approve' | 'reject') => void; onInspection: () => void; onUpload: (file: File, requirementId: string | null) => void; onCapaText: (value: string) => void; onCapaDue: (value: string) => void; onAddCapa: () => void; onToggleCapa: (item: QualityTaskActionItem) => void; onRiskOpen: (value: boolean) => void; onRiskText: (value: string) => void; onRiskLikelihood: (value: number) => void; onRiskImpact: (value: number) => void; onEscalateRisk: () => void
+  onReschedule: (item: QualityTaskOccurrence, date: string) => void; blockedDateReason: (date: string) => string | null
 }) {
   const [requirementId, setRequirementId] = useState(item.template.evidenceRequirements[0]?.id ?? '')
+  const [dateWarning, setDateWarning] = useState('')
   const missing = missingEvidenceRequirements(item.template.evidenceRequirements, item.attachments)
   const linkedQualityMeeting = isLinkedQualityOccurrence(item)
   const monthlySafetyTask = ['CBH-ST-04', 'CBH-ST-26'].includes(item.template.sourceKey ?? '')
@@ -379,6 +451,24 @@ function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integra
   return <div className="safety-drawer-layer"><button className="safety-drawer-backdrop" aria-label="ปิดรายละเอียด" onClick={onClose} /><aside className="safety-drawer" role="dialog" aria-modal="true" aria-labelledby="safety-task-title">
     <header><div><span className="safety-reference">{item.template.referenceCode ?? 'SAFETY TASK'}</span><h2 id="safety-task-title">{item.template.title}</h2><p>{item.periodLabel} · กำหนด {thaiDate(item.effectiveDueDate)}</p></div><button onClick={onClose} aria-label="ปิด"><Icon name="x" /></button></header>
     <div className="safety-drawer-status"><StatusBadge status={item.status} /><span className={`safety-urgency is-${item.urgency}`}>{urgencyLabel(item)}</span><span><Icon name="user" size={13} />{item.assignees.map(entry => entry.manualName).filter(Boolean).join(', ') || item.template.ownerText}</span></div>
+    {canOperate && item.status !== 'completed' && <div className="safety-date-row">
+      <label htmlFor="safety-planned-date"><Icon name="clock" size={13} />เปลี่ยนวันที่</label>
+      <input
+        id="safety-planned-date"
+        type="date"
+        defaultValue={item.plannedDate ?? item.effectiveDueDate}
+        disabled={busy}
+        onChange={(event) => {
+          const date = event.target.value
+          if (!date) return
+          const reason = blockedDateReason(date)
+          if (reason) { setDateWarning(reason); event.target.value = item.plannedDate ?? item.effectiveDueDate; return }
+          setDateWarning('')
+          onReschedule(item, date)
+        }}
+      />
+      {dateWarning && <small className="safety-date-warning"><Icon name="alert" size={11} />{dateWarning}</small>}
+    </div>}
     {error && <div className="safety-error" role="alert">{error}</div>}
     <div className="safety-drawer-body">
       {linkedQualityMeeting && <div className="safety-linked-source"><Icon name="calendar" size={18} /><span><b>การประชุมนี้ใช้ข้อมูลหลักจากงานคุณภาพ</b><small>วันประชุม สถานะ ผู้เข้าร่วม และหลักฐานเป็นข้อมูลชุดเดียวกัน</small></span><Link href={linkedQualityTaskHref(item)}>ไปจัดการในงานคุณภาพ <Icon name="arrowRight" size={14} /></Link></div>}
@@ -424,7 +514,7 @@ const SAFETY_CSS = `
 .safety-task-list{border:1px solid var(--border);border-radius:11px;background:var(--card);overflow:hidden}.safety-task-row{position:relative;width:100%;display:grid;grid-template-columns:54px minmax(260px,1fr) 90px 125px 80px 18px;align-items:center;gap:12px;padding:12px 14px;border:0;border-bottom:1px solid var(--border);background:transparent;color:inherit;text-align:left;font-family:inherit;cursor:pointer}.safety-task-row:before{content:"";position:absolute;left:0;width:3px;height:100%;background:#cbd5e1}.safety-task-row.is-overdue:before{background:#dc2626}.safety-task-row.is-due-soon:before{background:#d97706}.safety-task-row:hover{background:color-mix(in srgb,var(--safety) 4%,transparent)}.safety-task-date{display:flex;flex-direction:column;align-items:center}.safety-task-date b{font-size:19px;color:var(--safety)}.safety-task-date small{font-size:9px;color:var(--muted)}.safety-task-main{display:flex;flex-direction:column;min-width:0}.safety-task-main strong{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.safety-task-main small{font-size:10px;color:var(--muted)}.safety-task-meta{display:flex;gap:5px;color:var(--safety);font-size:9px;font-weight:700}.safety-task-meta i{font-style:normal;color:var(--muted)}.safety-task-evidence{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:10px}
 .safety-status{display:inline-flex;align-items:center;justify-content:center;gap:5px;width:max-content;padding:4px 7px;border-radius:12px;font-size:9.5px;font-weight:700;background:#f1f5f9;color:#475569}.safety-status.is-cyan{background:#ecfeff;color:#0e7490}.safety-status.is-amber{background:#fffbeb;color:#b45309}.safety-status.is-teal{background:#ecfdf5;color:#047857}.safety-urgency{font-size:9px;font-weight:700;color:#64748b}.safety-urgency.is-overdue{color:#dc2626}.safety-urgency.is-due-soon{color:#b45309}
 .safety-empty{padding:42px;text-align:center;color:var(--muted);font-size:12px}
-.safety-calendar-head{display:flex;justify-content:center;align-items:center;gap:16px;margin-bottom:12px}.safety-calendar-head h2{min-width:220px;margin:0;text-align:center;font-size:17px}.safety-calendar-head button{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:inherit;cursor:pointer}.safety-calendar-grid{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--card)}.safety-weekdays,.safety-days{display:grid;grid-template-columns:repeat(7,1fr)}.safety-weekdays span{padding:8px;text-align:center;background:color-mix(in srgb,var(--safety) 5%,var(--card));color:var(--muted);font-size:10px;font-weight:700}.safety-days>div{min-height:108px;padding:7px;border-top:1px solid var(--border);border-right:1px solid var(--border)}.safety-days>div:nth-child(7n){border-right:0}.safety-days>div>b{display:block;margin-bottom:4px;font-size:10px}.safety-days button{width:100%;display:flex;align-items:center;gap:3px;margin:3px 0;padding:3px 4px;border:0;border-left:2px solid #64748b;background:#f8fafc;color:#334155;font-family:inherit;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.safety-days button.is-teal{border-color:#0f766e}.safety-days button.is-cyan{border-color:#0891b2}.safety-days button.is-amber{border-color:#d97706}.safety-calendar-agenda{display:none}
+.safety-calendar-head{display:flex;justify-content:center;align-items:center;gap:16px;margin-bottom:12px}.safety-calendar-head h2{min-width:220px;margin:0;text-align:center;font-size:17px}.safety-calendar-head button{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:inherit;cursor:pointer}.safety-calendar-grid{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--card)}.safety-weekdays,.safety-days{display:grid;grid-template-columns:repeat(7,1fr)}.safety-weekdays span{padding:8px;text-align:center;background:color-mix(in srgb,var(--safety) 5%,var(--card));color:var(--muted);font-size:10px;font-weight:700}.safety-days>div{min-height:108px;padding:7px;border-top:1px solid var(--border);border-right:1px solid var(--border)}.safety-days>div:nth-child(7n){border-right:0}.safety-days>div>b{display:block;margin-bottom:4px;font-size:10px}.safety-days button{width:100%;display:flex;align-items:center;gap:3px;margin:3px 0;padding:3px 4px;border:0;border-left:2px solid #64748b;background:#f8fafc;color:#334155;font-family:inherit;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.safety-days button.is-teal{border-color:#0f766e}.safety-days button.is-cyan{border-color:#0891b2}.safety-days button.is-amber{border-color:#d97706}.safety-days button.is-draggable{cursor:grab}.safety-days button.is-dragging{opacity:.45;cursor:grabbing}.safety-day.is-holiday:not(.is-blank){background:color-mix(in srgb,var(--danger) 7%,var(--card))}.safety-day.is-drag-over{background:var(--primary-soft);outline:2px dashed var(--primary);outline-offset:-2px}.safety-day-holiday{display:flex;align-items:center;gap:3px;margin-bottom:4px;color:var(--danger);font-size:8px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.safety-date-row{display:flex;flex-direction:column;gap:5px;padding:11px 22px;border-bottom:1px solid var(--border)}.safety-date-row label{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:650;color:var(--muted)}.safety-date-row input{width:max-content;padding:7px 9px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:inherit;font-family:inherit;font-size:12px}.safety-date-warning{display:flex;align-items:center;gap:4px;color:var(--danger);font-size:10px}.safety-calendar-agenda{display:none}
 .safety-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin:5px 0 16px}.safety-count-chip{padding:6px 10px;border-radius:12px;background:var(--safety-pale);color:var(--safety);font-size:10px;font-weight:700}.safety-evidence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.safety-evidence-grid>a{display:grid;grid-template-columns:38px minmax(0,1fr) 16px;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:inherit;text-decoration:none}.safety-evidence-grid>a:hover{border-color:var(--safety)}.safety-evidence-grid>a>span:nth-child(2){display:flex;flex-direction:column;min-width:0}.safety-evidence-grid b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.safety-evidence-grid small,.safety-evidence-grid em{font-size:9px;color:var(--muted);font-style:normal}.safety-file-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:8px;background:#fef2f2;color:#dc2626}.safety-file-icon.is-image{background:#ecfeff;color:#0891b2}.safety-file-icon.is-sheet{background:#ecfdf5;color:#059669}
 .safety-certificate-list{display:flex;flex-direction:column;gap:7px}.safety-certificate-list article{display:grid;grid-template-columns:42px minmax(220px,1fr) 130px 140px 120px 68px;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--border);border-left:3px solid var(--safety-teal);border-radius:8px;background:var(--card)}.safety-certificate-list article.is-due-soon{border-left-color:#d97706}.safety-certificate-list article.is-overdue{border-left-color:#dc2626}.safety-cert-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--safety-pale);color:var(--safety)}.safety-certificate-list article small{color:var(--safety);font-size:9px;font-weight:700}.safety-certificate-list h3{margin:2px 0;font-size:13px}.safety-certificate-list p{margin:0;color:var(--muted);font-size:10px}.safety-certificate-list dl{margin:0}.safety-certificate-list dt{font-size:9px;color:var(--muted)}.safety-certificate-list dd{margin:2px 0;font-size:11px;font-weight:600}.safety-renewal{display:inline-flex;align-items:center;gap:4px;color:#047857;font-size:9px;font-weight:700}.safety-renewal.is-due-soon{color:#b45309}.safety-renewal.is-overdue{color:#dc2626}.safety-cert-actions{display:flex;gap:4px}.safety-cert-actions a,.safety-cert-actions button{display:grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--safety);cursor:pointer}
 .safety-drawer-layer,.safety-dialog-layer{position:fixed;inset:0;z-index:70}.safety-drawer-backdrop{position:absolute;inset:0;border:0;background:rgba(15,23,42,.42);cursor:default}.safety-drawer{position:absolute;right:0;top:0;bottom:0;width:min(610px,94vw);display:flex;flex-direction:column;background:var(--card);box-shadow:-20px 0 50px rgba(15,23,42,.18);animation:drawer-in .22s ease-out}@keyframes drawer-in{from{transform:translateX(30px);opacity:.5}to{transform:none;opacity:1}}.safety-drawer>header{display:flex;justify-content:space-between;padding:20px 22px 14px;border-bottom:1px solid var(--border)}.safety-drawer>header h2{margin:5px 0 2px;font-size:19px}.safety-drawer>header p{margin:0;color:var(--muted);font-size:11px}.safety-drawer>header button,.safety-dialog header button{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.safety-reference{padding:3px 6px;background:var(--safety);color:white;font-size:8px;font-weight:800;letter-spacing:.1em}.safety-drawer-status{display:flex;align-items:center;gap:10px;padding:9px 22px;border-bottom:1px solid var(--border)}.safety-drawer-status>span:last-child{display:flex;align-items:center;gap:5px;margin-left:auto;color:var(--muted);font-size:10px}.safety-drawer-body{flex:1;overflow-y:auto;padding:0 22px 25px}.safety-drawer-body>section{padding:18px 0;border-bottom:1px solid var(--border)}.safety-drawer-body h3{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:12px}.safety-drawer-body h3>span{font-size:9px;color:var(--safety);font-weight:800}.safety-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0}.safety-detail-grid div{padding:9px;background:color-mix(in srgb,var(--safety) 4%,var(--card));border-radius:6px}.safety-detail-grid dt{color:var(--muted);font-size:9px}.safety-detail-grid dd{margin:2px 0;font-size:11px;font-weight:650}.safety-description{font-size:11px;color:var(--muted);line-height:1.6}.safety-inline-link,.safety-risk-toggle{display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:var(--safety);font-size:10px;text-decoration:none}.safety-risk-toggle{border:0;background:transparent;font-family:inherit;cursor:pointer}

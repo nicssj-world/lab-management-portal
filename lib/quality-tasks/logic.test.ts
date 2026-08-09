@@ -8,6 +8,7 @@ import {
   isWeekendDate,
   isCheckInClosed,
   canManageQualityTaskHolidays,
+  nextBusinessDay,
   supportsActionItems,
   resolveAssigneeEntries,
 } from './logic'
@@ -43,10 +44,18 @@ assert.deepEqual(
   { scheduling: 'unscheduled', urgency: 'due-soon', effectiveDueDate: '2026-07-31' },
 )
 assert.deepEqual(
-  deriveTaskState({ status: 'open', plannedDate: null, periodStart: '2026-08-01', periodEnd: '2026-08-31', dueDayOfMonth: 15, reminderDays: 7 }, '2026-08-08'),
-  { scheduling: 'unscheduled', urgency: 'due-soon', effectiveDueDate: '2026-08-15' },
-  'uses the configured monthly due day without changing scheduling state',
+  deriveTaskState({ status: 'open', plannedDate: null, periodStart: '2026-08-01', periodEnd: '2026-08-31', dueDayOfMonth: 15, reminderDays: 7 }, '2026-08-10'),
+  { scheduling: 'unscheduled', urgency: 'due-soon', effectiveDueDate: '2026-08-17' },
+  '15th falls on a Saturday in Aug 2026, so the auto due date shifts to the next business day (Monday 17th)',
 )
+assert.deepEqual(
+  deriveTaskState({ status: 'open', plannedDate: null, periodStart: '2026-08-01', periodEnd: '2026-08-31', dueDayOfMonth: 15, reminderDays: 7 }, '2026-08-10', new Set(['2026-08-17'])),
+  { scheduling: 'unscheduled', urgency: 'normal', effectiveDueDate: '2026-08-18' },
+  'also skips past a configured holiday that falls on the first business day after the weekend',
+)
+assert.equal(nextBusinessDay('2026-08-15'), '2026-08-17', 'Saturday shifts forward to the following Monday')
+assert.equal(nextBusinessDay('2026-08-10'), '2026-08-10', 'a weekday with no holiday is left unchanged')
+assert.equal(nextBusinessDay('2026-08-10', new Set(['2026-08-10'])), '2026-08-11', 'a holiday weekday shifts to the next day')
 assert.deepEqual(
   deriveTaskState({ status: 'open', plannedDate: '2026-08-02', periodEnd: '2026-07-31', reminderDays: 7 }, '2026-08-03'),
   { scheduling: 'scheduled', urgency: 'overdue', effectiveDueDate: '2026-08-02' },

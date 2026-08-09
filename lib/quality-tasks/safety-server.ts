@@ -168,6 +168,7 @@ const INSPECTION_KINDS: Record<string, string[]> = {
   'CBH-ST-03': ['fire-extinguisher', 'fire-hose'],
   'CBH-ST-04': ['spill-kit'],
   'CBH-ST-19': ['spill-kit'],
+  'CBH-ST-26': ['nss-eyewash'],
 }
 
 export async function openSafetyInspectionRoundFromTask(instanceId: string, actor: Actor, level: PermLevel) {

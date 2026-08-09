@@ -50,14 +50,27 @@ export function generatePeriods(schedule: QualityTaskSchedule, rangeStart: strin
   return result
 }
 
+// Auto-computed due dates (fixed day-of-month, or period end when there's no such day) must
+// never land on a weekend or a configured holiday — push forward to the next business day.
+// A user-picked plannedDate is exempt: it is validated at the point of choice (updateOccurrence)
+// and shifting it here would silently override what the person explicitly selected.
+export function nextBusinessDay(date: string, holidays: ReadonlySet<string> = new Set()) {
+  let current = date
+  while (isWeekendDate(current) || holidays.has(current)) {
+    current = iso(new Date(parseIso(current).getTime() + DAY_MS))
+  }
+  return current
+}
+
 export function deriveTaskState(
   input: { status: TaskStatus; plannedDate: string | null; periodStart?: string; periodEnd: string; dueDayOfMonth?: number | null; reminderDays: number },
   today: string,
+  holidays: ReadonlySet<string> = new Set(),
 ): { scheduling: TaskSchedulingState; urgency: TaskUrgency; effectiveDueDate: string } {
   const monthDueDate = input.periodStart && input.dueDayOfMonth
     ? `${input.periodStart.slice(0, 7)}-${String(input.dueDayOfMonth).padStart(2, '0')}`
     : null
-  const effectiveDueDate = input.plannedDate ?? monthDueDate ?? input.periodEnd
+  const effectiveDueDate = input.plannedDate ?? nextBusinessDay(monthDueDate ?? input.periodEnd, holidays)
   const scheduling = input.plannedDate ? 'scheduled' : 'unscheduled'
   if (input.status === 'completed') return { scheduling, urgency: 'completed', effectiveDueDate }
   const remaining = Math.round((parseIso(effectiveDueDate).getTime() - parseIso(today).getTime()) / DAY_MS)

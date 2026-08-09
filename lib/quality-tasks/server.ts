@@ -5,7 +5,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
-import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, canViewOccurrence, completionBlockReason, deriveTaskState, generatePeriods, occurrenceKey, resolveAssigneeEntries } from './logic'
+import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, canViewOccurrence, completionBlockReason, deriveTaskState, generatePeriods, isWeekendDate, occurrenceKey, resolveAssigneeEntries } from './logic'
+import { listQualityTaskHolidays } from './holidays'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import { canApproveTask, nextRollingDueDate, templateRemovalMode } from './safety'
 import type {
@@ -107,6 +108,11 @@ export async function getQualityTaskOccurrences(
   const { data: instanceRows, error } = await supabaseAdmin.from('quality_task_instances').select('*')
     .in('template_id', templates.map(template => template.id)).lte('period_start', input.to).gte('period_end', input.from)
   fail(error)
+  // Widen the holiday lookup a little past `to` since an auto due date near the edge of the
+  // range can shift forward past it when it lands on a holiday/weekend.
+  const holidayShiftEnd = new Date(`${input.to}T00:00:00Z`)
+  holidayShiftEnd.setUTCDate(holidayShiftEnd.getUTCDate() + 7)
+  const holidays = new Set((await listQualityTaskHolidays(input.from, holidayShiftEnd.toISOString().slice(0, 10))).map(holiday => holiday.holidayDate))
   const instanceIds = ((instanceRows ?? []) as Row[]).map(r => str(r.id))
   const [{ data: assigneeRows, error: assigneeError }, { data: attachmentRows, error: attachmentError }, { data: checkInRows, error: checkInError }] = instanceIds.length
     ? await Promise.all([
@@ -160,7 +166,7 @@ export async function getQualityTaskOccurrences(
         const selection = resolveParticipantSelection(template.defaultParticipantDepts, template.defaultParticipantUserIds, rowDepts, rowUserIds)
         const resolvedParticipants = resolveParticipants(people, selection.depts, selection.userIds)
         const status = taskStatus(row?.status)
-        const state = deriveTaskState({ status, plannedDate: nullable(row?.planned_date), periodStart: period.start, periodEnd: period.end, dueDayOfMonth: schedule.dueDayOfMonth, reminderDays: template.reminderDays }, today)
+        const state = deriveTaskState({ status, plannedDate: nullable(row?.planned_date), periodStart: period.start, periodEnd: period.end, dueDayOfMonth: schedule.dueDayOfMonth, reminderDays: template.reminderDays }, today, holidays)
         result.push({ key, instanceId, template, scheduleId: schedule.id, periodStart: period.start, periodEnd: period.end,
           periodLabel: row ? str(row.period_label) : periodLabel(period.start, period.end), ownerTextOverride: nullable(row?.owner_text_override), plannedDate: nullable(row?.planned_date),
           status, note: nullable(row?.note), completionNote: nullable(row?.completion_note),
@@ -186,7 +192,7 @@ export async function getQualityTaskOccurrences(
     const selection = resolveParticipantSelection(template.defaultParticipantDepts, template.defaultParticipantUserIds, rowDepts, rowUserIds)
     const resolvedParticipants = resolveParticipants(people, selection.depts, selection.userIds)
     const status = taskStatus(row.status)
-    const state = deriveTaskState({ status, plannedDate: nullable(row.planned_date), periodEnd: str(row.period_end), reminderDays: template.reminderDays }, today)
+    const state = deriveTaskState({ status, plannedDate: nullable(row.planned_date), periodEnd: str(row.period_end), reminderDays: template.reminderDays }, today, holidays)
     result.push({ key: occurrenceKey(null, template.id, str(row.period_start)), instanceId, template, scheduleId: null,
       periodStart: str(row.period_start), periodEnd: str(row.period_end), periodLabel: str(row.period_label), ownerTextOverride: nullable(row.owner_text_override), plannedDate: nullable(row.planned_date),
       status, note: nullable(row.note), completionNote: nullable(row.completion_note),
@@ -267,6 +273,12 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
   }
   if (payload.action === 'schedule') {
     if ((payload.assignees || payload.participantDepts || payload.participantUserIds) && level !== 'edit') throw new Error('Forbidden')
+    if (payload.plannedDate) {
+      if (isWeekendDate(payload.plannedDate)) throw new Error('ไม่สามารถเลือกวันเสาร์-อาทิตย์ได้')
+      const { data: holiday, error: holidayError } = await supabaseAdmin.from('quality_task_holidays').select('name').eq('holiday_date', payload.plannedDate).maybeSingle()
+      fail(holidayError)
+      if (holiday) throw new Error(`วันที่เลือกตรงกับวันหยุด: ${str(holiday.name)}`)
+    }
     if (payload.plannedDate && access.instance.schedule_id) {
       const { data: schedule, error: scheduleError } = await supabaseAdmin.from('quality_task_schedules').select('interval_unit').eq('id', access.instance.schedule_id).single()
       fail(scheduleError)
