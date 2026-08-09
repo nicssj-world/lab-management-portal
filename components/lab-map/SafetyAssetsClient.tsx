@@ -111,7 +111,6 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   const listScrollTopRef = useRef(0)
   const listContainerRef = useRef<HTMLDivElement>(null)
 
-  const workingMap = useMemo<LabMapDTO>(() => ({ ...map, safetyEquipment: assets, assemblyPoints: points }), [map, assets, points])
   const selectedAsset = assets.find(item => item.code === selectedCode) ?? null
   const selectedPoint = points.find(item => item.code === selectedCode) ?? null
   const selectedLocationLabel = selectedAsset
@@ -133,6 +132,11 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
     completedAssetIds,
   }), [queueAssets, completedAssetIds, kind, query, spaceCode, status])
   const filteredAssets = inspectionQueue.items.map(item => item.asset)
+  // Keep the map in sync with the sidebar's filters — without this, the canvas always draws
+  // every asset regardless of the kind/status/query/space filters, which gets crowded fast as
+  // more equipment kinds (spill-kit, nss-eyewash, ...) get pinned alongside the fire extinguishers.
+  const mapSafetyEquipment = assetDraft && !assetDraft.id ? assets : filteredAssets
+  const workingMap = useMemo<LabMapDTO>(() => ({ ...map, safetyEquipment: mapSafetyEquipment, assemblyPoints: points }), [map, mapSafetyEquipment, points])
   const inspectionResultCounts = useMemo(() => inspectionQueue.items.reduce((counts, queueItem) => {
     if (!queueItem.completed) return counts
     const result = queueItem.asset.latestInspection?.result
