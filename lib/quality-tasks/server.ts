@@ -7,7 +7,7 @@ import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
 import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, canViewOccurrence, completionBlockReason, deriveTaskState, generatePeriods, occurrenceKey, resolveAssigneeEntries } from './logic'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
-import { canApproveTask, nextRollingDueDate } from './safety'
+import { canApproveTask, nextRollingDueDate, templateRemovalMode } from './safety'
 import type {
   AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskActionItem, QualityTaskAttachment, QualityTaskCheckIn,
   QualityTaskEvidenceRequirement, QualityTaskOccurrence, QualityTaskSchedule, QualityTaskTemplate, RecurrenceMode,
@@ -413,15 +413,27 @@ export async function saveTemplate(input: Omit<QualityTaskTemplate, 'id' | 'sour
   return templateId
 }
 
-export async function deleteTemplate(id: string, actor: Actor, workstream: TaskWorkstream = 'quality') {
+export async function deleteTemplate(
+  id: string,
+  actor: Actor,
+  workstream: TaskWorkstream = 'quality',
+  options: { archiveWhenUsed?: boolean } = {},
+) {
   await assertTemplateWorkstream(id, workstream)
   const { count, error: countError } = await supabaseAdmin.from('quality_task_instances').select('*', { count: 'exact', head: true }).eq('template_id', id)
   fail(countError)
-  if ((count ?? 0) > 0) throw new Error('ไม่สามารถลบได้ เนื่องจากกิจกรรมนี้มีการสร้างงานไปแล้ว กรุณาปิดใช้งานแทน')
+  const mode = templateRemovalMode(count ?? 0)
+  if (mode === 'archive') {
+    if (!options.archiveWhenUsed) throw new Error('ไม่สามารถลบได้ เนื่องจากกิจกรรมนี้มีการสร้างงานไปแล้ว กรุณาปิดใช้งานแทน')
+    fail((await supabaseAdmin.from('quality_task_templates').update({ active: false, updated_at: new Date().toISOString() }).eq('id', id).eq('workstream', workstream)).error)
+    audit(actor, 'quality_task.template.archive', id, { workstream, instanceCount: count })
+    return { mode }
+  }
   await supabaseAdmin.from('quality_task_default_assignees').delete().eq('template_id', id)
   await supabaseAdmin.from('quality_task_schedules').delete().eq('template_id', id)
   fail((await supabaseAdmin.from('quality_task_templates').delete().eq('id', id)).error)
   audit(actor, 'quality_task.template.delete', id, {})
+  return { mode }
 }
 
 export async function listTaskPeople() {

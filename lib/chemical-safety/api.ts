@@ -40,6 +40,15 @@ export function transitionError(error: unknown) {
   if (/invalid_product_snapshot/i.test(message)) {
     return NextResponse.json({ error: 'ข้อมูลสารในคำขอไม่ครบหรือไม่ถูกต้อง กรุณาสร้างคำขอใหม่' }, { status: 422 })
   }
+  if (/invalid_registry_entry_snapshot|registry_(room_location_required|department_location_forbidden|product_required|product_name_required)|chemical_location_not_found/i.test(message)) {
+    return NextResponse.json({ error: 'ข้อมูลรายการทะเบียนไม่ครบหรือไม่ถูกต้อง กรุณาสร้างคำขอใหม่' }, { status: 422 })
+  }
+  if (/sds_product_mismatch/i.test(message)) {
+    return NextResponse.json({ error: 'SDS ที่เลือกไม่ใช่ product เดียวกับรายการทะเบียน' }, { status: 422 })
+  }
+  if (/approved_sds_pdf_required/i.test(message)) {
+    return NextResponse.json({ error: 'ต้องเลือก SDS ที่อนุมัติแล้วและมีไฟล์ PDF' }, { status: 409 })
+  }
   if (/not_draft|not_in_review|stale|self_review|already/i.test(message)) {
     return NextResponse.json({ error: 'สถานะรายการเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่' }, { status: 409 })
   }

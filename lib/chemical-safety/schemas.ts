@@ -140,11 +140,61 @@ export const chemicalDepartmentChemicalProposalSchema = z.object({
   ghsHazardClasses: z.array(chemicalGhsHazardClassProposalSchema).max(20).default([]),
 }).strict()
 
+const chemicalRegistryHoldingShape = {
+  storageScope: chemicalStorageScope,
+  locationId: uuid.nullable().optional(),
+  lotNumber: optionalText(150),
+  packageValue: z.number().finite().nonnegative(),
+  packageUnit: quantityUnit,
+  currentContainerCount: z.number().int().nonnegative(),
+  minimumStock: z.number().int().nonnegative(),
+  reportedTotalRaw: optionalText(200),
+  calculatedTotalValue: z.number().finite().nonnegative().nullable().optional(),
+  calculatedTotalUnit: quantityUnit.nullable().optional(),
+  receivedOn: nullableDate,
+  openedOn: nullableDate,
+  expiresOn: nullableDate,
+  effectiveOn: nullableDate,
+}
+
+function validateRegistryPlacement(value: { storageScope: 'room' | 'department'; locationId?: string | null }, ctx: z.RefinementCtx) {
+  if (value.storageScope === 'room' && !value.locationId) {
+    ctx.addIssue({ code: 'custom', path: ['locationId'], message: 'กรุณาเลือกตำแหน่งจัดเก็บ' })
+  }
+  if (value.storageScope === 'department' && value.locationId) {
+    ctx.addIssue({ code: 'custom', path: ['locationId'], message: 'สารของงานห้ามระบุตำแหน่งจัดเก็บ' })
+  }
+}
+
+export const chemicalRegistryEntryProposalSchema = z.discriminatedUnion('productMode', [
+  z.object({
+    productMode: z.literal('existing'),
+    productId: uuid,
+    ...chemicalRegistryHoldingShape,
+  }).strict(),
+  z.object({
+    productMode: z.literal('new'),
+    canonicalName: z.string().trim().min(1).max(300),
+    aliases: z.array(z.string().trim().min(1).max(300)).max(50).default([]),
+    casNumber: z.string().trim().regex(/^\d{2,7}-\d{2}-\d$/).nullable().optional(),
+    manufacturer: optionalText(300),
+    supplier: optionalText(300),
+    productCode: optionalText(150),
+    concentration: optionalText(100),
+    physicalState: z.enum(['solid', 'liquid', 'gas', 'mixture', 'unknown']).nullable().optional(),
+    ghsSourceText: optionalText(2000),
+    ghsPictogramCodes: z.array(pictogram).max(9).default([]),
+    ghsHazardClasses: z.array(chemicalGhsHazardClassProposalSchema).max(20).default([]),
+    ...chemicalRegistryHoldingShape,
+  }).strict(),
+]).superRefine(validateRegistryPlacement)
+
 export const chemicalChangeRequestSchema = z.discriminatedUnion('entityType', [
   z.object({ entityType: z.literal('product'), entityId: uuid, unitId: uuid, proposedData: chemicalProductProposalSchema }).strict(),
   z.object({ entityType: z.literal('holding'), entityId: uuid, unitId: uuid, proposedData: chemicalHoldingProposalSchema }).strict(),
   z.object({ entityType: z.literal('new_chemical'), unitId: uuid, proposedData: chemicalNewChemicalProposalSchema }).strict(),
   z.object({ entityType: z.literal('department_chemical'), unitId: uuid, proposedData: chemicalDepartmentChemicalProposalSchema }).strict(),
+  z.object({ entityType: z.literal('registry_entry'), unitId: uuid, proposedData: chemicalRegistryEntryProposalSchema }).strict(),
 ])
 
 export const chemicalChangeDraftPatchSchema = z.object({
@@ -205,10 +255,13 @@ export const chemicalSdsMetadataSchema = z.object(chemicalSdsMetadataShape).stri
 
 // สร้างฉบับร่างเปล่า — รายละเอียด GHS มากรอกทีหลังผ่าน PATCH
 export const chemicalSdsCreateSchema = z.object({
-  productId: uuid,
-  unitId: uuid,
+  holdingId: uuid,
   language: z.string().trim().min(2).max(30).default('th'),
   revisionLabel: optionalText(100),
+}).strict()
+
+export const chemicalSdsPublicationSchema = z.object({
+  sdsVersionId: uuid,
 }).strict()
 
 // แก้ฉบับร่าง — productId/unitId ไม่ต้องส่ง เพราะ route หาเองจาก id ของฉบับร่าง

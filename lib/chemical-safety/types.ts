@@ -6,9 +6,12 @@ export type SdsMatchStatus = 'candidate' | 'mismatch' | 'missing' | 'unsupported
 export type ChemicalStorageZoneCode = 'A' | 'B' | 'C' | 'T'
 export type ChemicalStorageLocationKind = 'cabinet' | 'shelf' | 'table'
 export type ChemicalStorageScope = 'room' | 'department'
+export type ChemicalWorkflowOrigin = 'legacy' | 'registry_v2'
+export type ChemicalSdsDestination = 'room' | 'department'
+export type ChemicalSdsPublicationStatus = 'unlinked' | 'ready' | 'active' | 'stale'
 export type ChemicalPhysicalState = 'solid' | 'liquid' | 'gas' | 'mixture' | 'unknown'
 export type ChemicalRole = 'custodian' | 'reviewer'
-export type ChemicalChangeEntityType = 'product' | 'holding' | 'new_chemical' | 'department_chemical'
+export type ChemicalChangeEntityType = 'product' | 'holding' | 'new_chemical' | 'department_chemical' | 'registry_entry'
 export type ChemicalSdsState = 'approved' | 'review_due' | 'draft' | 'mismatch' | 'missing'
 
 export type JsonPrimitive = boolean | number | string | null
@@ -34,6 +37,7 @@ export interface ChemicalRegistryRow {
   casNumber: string | null
   concentration: string | null
   storageScope: ChemicalStorageScope
+  workflowOrigin: ChemicalWorkflowOrigin
   roomId: string | null
   locationId: string | null
   packageValue: number | null
@@ -56,6 +60,9 @@ export interface ChemicalRegistryRow {
   lifecycleStatus: ChemicalLifecycleStatus
   sdsStatus: string
   hasSdsFile: boolean
+  sdsVersionId: string | null
+  publicationStatus: ChemicalSdsPublicationStatus
+  publicationDestination: ChemicalSdsDestination
   pictogramCodes: GhsPictogramCode[]
   signalWord: string | null
   hazards: Array<{ className: string; category: string }>
@@ -143,6 +150,7 @@ export interface ChemicalHoldingDTO {
   productId: string
   unitId: string
   storageScope: ChemicalStorageScope
+  workflowOrigin: ChemicalWorkflowOrigin
   locationId: string | null
   lotNumber: string | null
   packageValue: number
@@ -187,6 +195,8 @@ export interface ChemicalSdsHazardDTO {
 export interface ChemicalSdsDTO {
   id: string
   productId: string
+  sourceHoldingId: string | null
+  workflowOrigin: ChemicalWorkflowOrigin
   fileId: string | null
   sourceUrl: string | null
   fileUrl: string | null
@@ -217,6 +227,22 @@ export interface ChemicalSdsDTO {
   hazards: ChemicalSdsHazardDTO[]
 }
 
+export interface ChemicalSdsPublicationDTO {
+  id: string
+  publicId: string
+  productId: string
+  unitId: string
+  sourceHoldingId: string
+  sdsVersionId: string
+  destination: ChemicalSdsDestination
+  departmentCode: string | null
+  displayName: string
+  status: Extract<ChemicalSdsPublicationStatus, 'active' | 'stale'>
+  linkedBy: string | null
+  linkedAt: string
+  staleAt: string | null
+}
+
 export interface ChemicalRoleScopeDTO {
   userId: string
   unitId: string
@@ -233,7 +259,7 @@ export interface ChemicalReviewDecisionDTO {
 export interface ChemicalChangeRequestDTO {
   id: string
   entityType: ChemicalChangeEntityType
-  /** null เฉพาะตอน entityType เป็น 'new_chemical' ซึ่งยังไม่มี entity อยู่จริง */
+  /** null ตอนคำขอยังไม่ได้สร้าง entity จริง เช่น new_chemical และ registry_entry */
   entityId: string | null
   unitId: string
   proposedData: Record<string, JsonValue>

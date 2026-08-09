@@ -14,6 +14,7 @@ const row = {
   casNumber: '67-64-1',
   concentration: null,
   storageScope: 'room',
+  workflowOrigin: 'legacy',
   roomId: '33333333-3333-4333-8333-333333333333',
   locationId: '44444444-4444-4444-8444-444444444444',
   packageValue: null,
@@ -41,6 +42,9 @@ const row = {
   updatedAt: '2026-08-09T00:00:00.000Z',
   lifecycleStatus: 'retired',
   hasSdsFile: false,
+  sdsVersionId: null,
+  publicationStatus: 'unlinked',
+  publicationDestination: 'room',
 } satisfies ChemicalRegistryRow
 
 assert.deepEqual(toChemicalExportRows([row], new Set([row.holdingId])), [{

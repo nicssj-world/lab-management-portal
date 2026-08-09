@@ -8,10 +8,13 @@ import { QualityTaskDashboard } from '@/components/quality-tasks/QualityTaskDash
 
 export const dynamic = 'force-dynamic'
 
-export default async function QualityTasksPage({ searchParams }: { searchParams: Promise<{ create?: string }> }) {
+export default async function QualityTasksPage({ searchParams }: { searchParams: Promise<{ create?: string; month?: string; task?: string }> }) {
   const actor = await getActor(); if (!actor) redirect('/login')
   const level = await getPermissionLevel(actor, 'งานคุณภาพ'); if (level === 'none') redirect('/staff/dashboard')
-  const [year, monthNumber] = bangkokToday().split('-').map(Number); const month = monthNumber - 1
+  const { create, month: requestedMonth, task } = await searchParams
+  const currentMonth = bangkokToday().slice(0, 7)
+  const initialMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth ?? '') ? requestedMonth! : currentMonth
+  const [year, monthNumber] = initialMonth.split('-').map(Number); const month = monthNumber - 1
   const from = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10)
   const to = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10)
   const [people, templates, holidays] = await Promise.all([
@@ -23,6 +26,5 @@ export default async function QualityTasksPage({ searchParams }: { searchParams:
     { from, to, actorId: actor.id, level, scope: 'all' },
     { people, templates },
   )
-  const { create } = await searchParams
-  return <QualityTaskDashboard actorId={actor.id} level={level} isAdmin={isAdminRole(actor.role)} initialMonth={`${year}-${String(month + 1).padStart(2, '0')}`} initialOccurrences={occurrences} initialHolidays={holidays} templates={templates} people={people as { id: string; name: string; dept: string | null; role: string; position_title: string | null }[]} initialAdHoc={create === '1'} />
+  return <QualityTaskDashboard actorId={actor.id} level={level} isAdmin={isAdminRole(actor.role)} initialMonth={initialMonth} initialOccurrences={occurrences} initialHolidays={holidays} templates={templates} people={people as { id: string; name: string; dept: string | null; role: string; position_title: string | null }[]} initialAdHoc={create === '1'} initialSelectedKey={task} />
 }

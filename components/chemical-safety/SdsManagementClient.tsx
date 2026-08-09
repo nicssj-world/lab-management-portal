@@ -227,8 +227,8 @@ function ChemicalSdsPanel({
       <SdsPanelIntro
         icon="doc"
         title="SDS ห้องสารเคมี"
-        description="จัดการเอกสารของสารในทะเบียน ตั้งแต่แนบไฟล์ แก้ไขข้อมูล จนถึงส่งทบทวน"
-        note="แยกผู้ส่งและผู้ทบทวน"
+        description="ดูเอกสารจากทะเบียน และดูแล workflow เดิมเฉพาะรายการ legacy"
+        note="รายการใหม่จัดการจากทะเบียนสารเคมี"
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>
         <Stat label="ฉบับร่าง" value={counts.get('draft') ?? 0} icon="edit" color="blue" />
@@ -265,6 +265,7 @@ function ChemicalSdsPanel({
                   <div style={{ minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: FONT.lg, color: 'var(--ink)' }}>
                       {product?.name ?? 'ไม่ทราบชื่อสาร'}
+                      {item.workflowOrigin === 'registry_v2' && <Badge color="purple" size="sm" style={{ marginLeft: 7 }}>จากทะเบียน</Badge>}
                     </h2>
                     <p style={{ margin: '4px 0 0', fontSize: FONT.base, color: 'var(--muted)' }}>
                       {item.revisionLabel || 'ไม่ระบุฉบับ'} · {item.manufacturer || 'ไม่ระบุผู้ผลิต'} ·{' '}
@@ -303,7 +304,7 @@ function ChemicalSdsPanel({
                       เปิดไฟล์
                     </Button>
                   )}
-                  {canEdit && item.status === 'draft' && (
+                  {item.workflowOrigin === 'legacy' && canEdit && item.status === 'draft' && (
                     <>
                       <Button variant="secondary" icon="edit" disabled={busy} onClick={() => setEditing(item)}>
                         แก้ไข
@@ -318,7 +319,7 @@ function ChemicalSdsPanel({
                       </Button>
                     </>
                   )}
-                  {canReview && item.status === 'in_review' && (
+                  {item.workflowOrigin === 'legacy' && canReview && item.status === 'in_review' && (
                     ownSubmission ? (
                       <span style={{ fontSize: FONT.sm, color: 'var(--muted)', alignSelf: 'center' }}>
                         <Icon name="lock" size={12} /> ผู้ส่งไม่สามารถทบทวนฉบับของตนเอง
@@ -383,7 +384,6 @@ function DepartmentSdsPanel({
 }) {
   const [openCode, setOpenCode] = useState<string | null>(null)
   const [busyCode, setBusyCode] = useState<string | null>(null)
-  const [uploading, setUploading] = useState<{ code: string; department: string } | null>(null)
   const [replacing, setReplacing] = useState<{ id: string; department: string; displayName: string } | null>(null)
   const [registering, setRegistering] = useState<{ group: DepartmentSdsGroupDTO; fileId?: string } | null>(null)
   const [linking, setLinking] = useState<{ file: DepartmentSdsGroupDTO['files'][number]; departmentName: string } | null>(null)
@@ -498,9 +498,6 @@ function DepartmentSdsPanel({
                   </Button>
                   {canPublish && (
                     <>
-                      <Button variant="secondary" icon="plus" disabled={busy} onClick={() => setUploading({ code: group.code, department: group.department })}>
-                        เพิ่ม SDS
-                      </Button>
                       {group.status === 'published' ? (
                         <Button variant="danger" icon="lock" disabled={busy} onClick={() => void setStatus(group.code, 'draft')}>
                           ยกเลิกเผยแพร่
@@ -522,7 +519,7 @@ function DepartmentSdsPanel({
 
               {group.fileCount === 0 && (
                 <p style={{ margin: `${SPACE.xs}px 0 0`, fontSize: FONT.sm, color: 'var(--warning)' }}>
-                  <Icon name="alert" size={12} /> ยังไม่มีเอกสารในระบบ — อัปโหลดไฟล์ SDS ใหม่สำหรับงานนี้ได้
+                  <Icon name="alert" size={12} /> ยังไม่มีเอกสาร — กรุณาเพิ่มสารและจัดการ SDS จากหน้าทะเบียนสารเคมี
                 </p>
               )}
 
@@ -539,6 +536,7 @@ function DepartmentSdsPanel({
                       >
                         <span style={{ fontSize: FONT.base, minWidth: 0 }}>
                           {file.displayName}
+                          {file.source === 'registry_v2' && <Badge color="purple" size="sm" style={{ marginLeft: 6 }}>จากทะเบียน</Badge>}
                           {file.displayNameEdited && <Badge color="blue" size="sm" style={{ marginLeft: 6 }}>แก้ชื่อแล้ว</Badge>}
                           {file.registryLink.status === 'pending' && <Badge color="amber" size="sm" style={{ marginLeft: 6 }}>รออนุมัติ</Badge>}
                           {file.registryLink.status === 'linked' && <Badge color="green" size="sm" style={{ marginLeft: 6 }}>อยู่ในทะเบียน · ผูกไฟล์แล้ว</Badge>}
@@ -551,7 +549,7 @@ function DepartmentSdsPanel({
                             title="เปิดไฟล์"
                             onClick={() => setPreview({ url: file.fileUrl, title: file.displayName })}
                           />
-                          {canRegister && file.registryLink.status === 'unlinked' && (
+                          {file.source === 'legacy' && canRegister && file.registryLink.status === 'unlinked' && (
                             <Button
                               variant="ghost"
                               icon="flask"
@@ -562,7 +560,7 @@ function DepartmentSdsPanel({
                               เพิ่มเข้าทะเบียนสารเคมี
                             </Button>
                           )}
-                          {canRegister && file.registryLink.status === 'registered' && (
+                          {file.source === 'legacy' && canRegister && file.registryLink.status === 'registered' && (
                             <Button
                               variant="ghost"
                               icon="check"
@@ -573,7 +571,7 @@ function DepartmentSdsPanel({
                               ผูกไฟล์กับทะเบียน
                             </Button>
                           )}
-                          {canPublish && (
+                          {file.source === 'legacy' && canPublish && (
                             <>
                               <Button
                                 variant="ghost"
@@ -620,17 +618,6 @@ function DepartmentSdsPanel({
           )
         })}
       </div>
-      {uploading && (
-        <DepartmentSdsUploadModal
-          departmentCode={uploading.code}
-          departmentName={uploading.department}
-          onClose={() => setUploading(null)}
-          onSaved={(message) => {
-            setUploading(null)
-            onDone(message)
-          }}
-        />
-      )}
       {replacing && (
         <DepartmentSdsReplaceModal
           id={replacing.id}
@@ -758,91 +745,6 @@ function DepartmentSdsReplaceModal({
         <footer style={{ padding: SPACE.md, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: SPACE.xs }}>
           <Button variant="secondary" onClick={onClose} disabled={busy}>ยกเลิก</Button>
           <Button icon="upload" onClick={() => void replace()} disabled={busy}>{busy ? 'กำลังแทนที่…' : 'แทนที่ไฟล์'}</Button>
-        </footer>
-      </div>
-    </div>
-  )
-}
-
-function DepartmentSdsUploadModal({
-  departmentCode, departmentName, onClose, onSaved,
-}: {
-  departmentCode: string
-  departmentName: string
-  onClose: () => void
-  onSaved: (message: string) => void
-}) {
-  const [file, setFile] = useState<File | null>(null)
-  const [displayName, setDisplayName] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  function selectFile(nextFile: File) {
-    setFile(nextFile)
-    setError(null)
-    if (!displayName.trim()) setDisplayName(nextFile.name.replace(/\.pdf$/i, ''))
-  }
-
-  async function upload() {
-    if (!file) { setError('กรุณาเลือกไฟล์ PDF'); return }
-    if (!displayName.trim()) { setError('กรุณาระบุชื่อเอกสารที่แสดง'); return }
-
-    setBusy(true)
-    setError(null)
-    try {
-      const body = new FormData()
-      body.append('file', file)
-      body.append('displayName', displayName.trim())
-      const response = await fetch(`/api/admin/chemical-safety/department-sds/${departmentCode}/upload`, { method: 'POST', body })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(payload.error || 'อัปโหลดไฟล์ SDS ไม่สำเร็จ')
-      onSaved(payload.republishRequired
-        ? 'อัปโหลดไฟล์แล้ว กรุณาเผยแพร่งานนี้อีกครั้งก่อนแสดงต่อสาธารณะ'
-        : 'อัปโหลดไฟล์ SDS แล้ว')
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'อัปโหลดไฟล์ SDS ไม่สำเร็จ')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div role="dialog" aria-modal="true" aria-label={`อัปโหลด SDS สำหรับ ${departmentName}`} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-    }}>
-      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 620, boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden' }}>
-        <header style={{ padding: SPACE.md, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: SPACE.sm }}>
-          <div>
-            <div style={{ fontSize: FONT.xs, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--primary)' }}>SDS แยกตามงาน</div>
-            <h2 style={{ margin: '4px 0 0', fontSize: FONT.xl, color: 'var(--ink)' }}>อัปโหลด SDS · {departmentName}</h2>
-          </div>
-          <Button variant="ghost" icon="x" title="ปิด" onClick={onClose} disabled={busy} />
-        </header>
-
-        <div style={{ padding: SPACE.md, display: 'grid', gap: SPACE.sm }}>
-          <SdsDropzone onFile={selectFile} disabled={busy} hint="รับเฉพาะ PDF ขนาดไม่เกิน 50 MB" />
-          {file && <p style={{ margin: 0, fontSize: FONT.sm, color: 'var(--success)' }}><Icon name="check" size={13} /> เลือกไฟล์: {file.name}</p>}
-          <label style={{ display: 'block' }}>
-            <span style={{ display: 'block', marginBottom: 4, fontSize: FONT.sm, fontWeight: 600, color: 'var(--muted)' }}>ชื่อเอกสารที่แสดง *</span>
-            <input
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              maxLength={300}
-              disabled={busy}
-              style={{ width: '100%', minHeight: 44, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', boxSizing: 'border-box', font: 'inherit', color: 'var(--ink)', background: 'var(--card)' }}
-              placeholder="เช่น SDS น้ำยาตรวจ..."
-            />
-          </label>
-          <p style={{ margin: 0, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>
-            หากงานนี้เผยแพร่อยู่ ระบบจะยกเลิกการเผยแพร่ชั่วคราว เพื่อให้ตรวจรายการใหม่ก่อนกดเผยแพร่อีกครั้ง
-          </p>
-          {error && <p role="alert" style={{ margin: 0, padding: SPACE.xs, borderRadius: 8, fontSize: FONT.sm, color: 'var(--danger)', background: 'rgba(220,38,38,.10)' }}>{error}</p>}
-        </div>
-
-        <footer style={{ padding: SPACE.md, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: SPACE.xs }}>
-          <Button variant="secondary" onClick={onClose} disabled={busy}>ยกเลิก</Button>
-          <Button icon="upload" onClick={() => void upload()} disabled={busy}>{busy ? 'กำลังอัปโหลด…' : 'อัปโหลด SDS'}</Button>
         </footer>
       </div>
     </div>

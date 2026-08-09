@@ -11,6 +11,7 @@ import type {
   GhsPictogramCode,
 } from '@/lib/chemical-safety/types'
 import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
+import { CHEMICAL_SDS_DEPARTMENTS } from '@/lib/chemical-safety/departments'
 import { GhsPictogram } from './GhsPictogram'
 import { FONT, SPACE } from './shared/tokens'
 
@@ -39,11 +40,12 @@ interface HazardDraft { classTh: string; classEn: string }
 export type RegistryChangeMode = 'create' | 'edit-product' | 'edit-holding'
 
 export function RegistryChangeModal({
-  mode, locations, units, product, registryRow, onClose, onSaved,
+  mode, locations, units, products, product, registryRow, onClose, onSaved,
 }: {
   mode: RegistryChangeMode
   locations: ChemicalStorageLocationDTO[]
   units: ChemicalUnitDTO[]
+  products: ChemicalProductDTO[]
   /** จำเป็นเมื่อ mode = 'edit-product' */
   product?: ChemicalProductDTO
   /** จำเป็นเมื่อ mode = 'edit-holding' หรือใช้เติมหน่วยงานเริ่มต้นตอน 'create' */
@@ -54,7 +56,19 @@ export function RegistryChangeModal({
   const isCreate = mode === 'create'
   const isProduct = mode === 'edit-product'
   const isHolding = mode === 'edit-holding'
-  const isDepartment = isHolding && registryRow?.storageScope === 'department'
+  const [productMode, setProductMode] = useState<'new' | 'existing'>('new')
+  const [selectedProductId, setSelectedProductId] = useState('')
+  const [storageScope, setStorageScope] = useState<'room' | 'department'>(registryRow?.storageScope ?? 'room')
+  const isDepartment = isHolding
+    ? registryRow?.storageScope === 'department'
+    : isCreate && storageScope === 'department'
+  const departmentNames = useMemo(
+    () => new Set<string>(CHEMICAL_SDS_DEPARTMENTS.map(department => department.department)),
+    [],
+  )
+  const selectableUnits = isDepartment
+    ? units.filter(unit => departmentNames.has(unit.nameTh))
+    : units
 
   const [canonicalName, setCanonicalName] = useState(product?.canonicalName ?? registryRow?.canonicalName ?? '')
   const [aliasesText, setAliasesText] = useState(registryRow?.aliases.join(', ') ?? '')
@@ -147,10 +161,18 @@ export function RegistryChangeModal({
   }
 
   function buildNewChemicalProposal() {
+    const productProposal = buildProductProposal()
     return {
-      ...buildProductProposal(),
+      canonicalName: productProposal.canonicalName,
       aliases: aliasesText.split(',').map(item => item.trim()).filter(Boolean),
-      locationId,
+      casNumber: productProposal.casNumber,
+      manufacturer: productProposal.manufacturer,
+      supplier: productProposal.supplier,
+      productCode: productProposal.productCode,
+      concentration: productProposal.concentration,
+      physicalState: productProposal.physicalState,
+      storageScope,
+      locationId: isDepartment ? null : locationId,
       lotNumber: lotNumber.trim() || null,
       packageValue: Number(packageValue),
       packageUnit,
@@ -169,7 +191,8 @@ export function RegistryChangeModal({
   }
 
   async function submit() {
-    if (!canonicalName.trim()) { setError('กรุณาระบุชื่อสาร'); return }
+    if ((!isCreate || productMode === 'new') && !canonicalName.trim()) { setError('กรุณาระบุชื่อสาร'); return }
+    if (isCreate && productMode === 'existing' && !selectedProductId) { setError('กรุณาเลือกสารเคมีเดิม'); return }
     if ((isCreate || isHolding) && !isDepartment && !locationId) { setError('กรุณาเลือกตำแหน่งจัดเก็บ'); return }
     if (!unitId) { setError('กรุณาเลือกหน่วยงานที่รับผิดชอบ'); return }
 
@@ -180,7 +203,29 @@ export function RegistryChangeModal({
         ? { entityType: 'product', entityId: product!.id, unitId, proposedData: buildProductProposal() }
         : isHolding
           ? { entityType: 'holding', entityId: registryRow!.holdingId, unitId, proposedData: buildHoldingProposal() }
-          : { entityType: 'new_chemical', unitId, proposedData: buildNewChemicalProposal() }
+          : {
+              entityType: 'registry_entry',
+              unitId,
+              proposedData: productMode === 'existing'
+                ? {
+                    productMode: 'existing',
+                    productId: selectedProductId,
+                    storageScope,
+                    locationId: isDepartment ? null : locationId,
+                    lotNumber: lotNumber.trim() || null,
+                    packageValue: Number(packageValue),
+                    packageUnit,
+                    currentContainerCount: Number(currentContainerCount),
+                    minimumStock: Number(minimumStock),
+                    calculatedTotalValue: calculatedTotal?.value ?? null,
+                    calculatedTotalUnit: calculatedTotal?.unit ?? null,
+                    receivedOn: receivedOn || null,
+                    openedOn: openedOn || null,
+                    expiresOn: expiresOn || null,
+                    effectiveOn: effectiveOn || null,
+                  }
+                : { productMode: 'new', ...buildNewChemicalProposal() },
+            }
 
       const created = await fetch('/api/admin/chemical-safety/change-requests', {
         method: 'POST',
@@ -237,7 +282,40 @@ export function RegistryChangeModal({
         </header>
 
         <div style={{ padding: SPACE.md, display: 'grid', gap: SPACE.md }}>
-          {!isHolding && (
+          {isCreate && (
+            <section>
+              <h3 style={sectionStyle}>เลือกรายการสารเคมี</h3>
+              <div style={gridStyle}>
+                <label>
+                  <span style={labelStyle}>วิธีเพิ่มรายการ *</span>
+                  <select value={productMode} onChange={(event) => setProductMode(event.target.value as 'new' | 'existing')} style={inputStyle}>
+                    <option value="new">สร้าง product ใหม่</option>
+                    <option value="existing">ใช้ product ที่มีอยู่</option>
+                  </select>
+                </label>
+                {productMode === 'existing' && (
+                  <label>
+                    <span style={labelStyle}>สารเคมีเดิม *</span>
+                    <select value={selectedProductId} onChange={(event) => setSelectedProductId(event.target.value)} style={inputStyle}>
+                      <option value="">เลือกสารเคมี</option>
+                      {products.filter(item => item.lifecycleStatus === 'active').map(item => (
+                        <option key={item.id} value={item.id}>
+                          {item.canonicalName}{item.manufacturer ? ` · ${item.manufacturer}` : ''}{item.productCode ? ` · ${item.productCode}` : ''}{item.concentration ? ` · ${item.concentration}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+              {productMode === 'existing' && (
+                <p style={{ margin: `${SPACE.xs}px 0 0`, color: 'var(--muted)', fontSize: FONT.xs }}>
+                  ใช้ซ้ำเฉพาะ product เดียวกันจริง ซึ่งรวมผู้ผลิต รหัสผลิตภัณฑ์ และความเข้มข้นของรายการเดิม
+                </p>
+              )}
+            </section>
+          )}
+
+          {!isHolding && (!isCreate || productMode === 'new') && (
             <section>
               <h3 style={sectionStyle}>ข้อมูลสาร</h3>
               <div style={gridStyle}>
@@ -272,10 +350,27 @@ export function RegistryChangeModal({
             <div style={gridStyle}>
               <label>
                 <span style={labelStyle}>หน่วยงานที่รับผิดชอบ *</span>
-                <select value={unitId} onChange={(e) => setUnitId(e.target.value)} style={inputStyle} disabled={isHolding || isProduct}>
-                  {units.map(unit => <option key={unit.id} value={unit.id}>{unit.nameTh}</option>)}
+                  <select value={unitId} onChange={(e) => setUnitId(e.target.value)} style={inputStyle} disabled={isHolding || isProduct}>
+                  {selectableUnits.map(unit => <option key={unit.id} value={unit.id}>{unit.nameTh}</option>)}
                 </select>
               </label>
+              {isCreate && (
+                <label>
+                  <span style={labelStyle}>ประเภทจัดเก็บ *</span>
+                  <select value={storageScope} onChange={(event) => {
+                    const next = event.target.value as 'room' | 'department'
+                    setStorageScope(next)
+                    if (next === 'department') {
+                      setLocationId('')
+                      const departmentUnits = units.filter(unit => departmentNames.has(unit.nameTh))
+                      if (!departmentUnits.some(unit => unit.id === unitId)) setUnitId(departmentUnits[0]?.id ?? '')
+                    }
+                  }} style={inputStyle}>
+                    <option value="room">ห้องเก็บสารเคมี</option>
+                    <option value="department">ตามหน่วยงาน</option>
+                  </select>
+                </label>
+              )}
               {!isProduct && !isDepartment && (
                 <label>
                   <span style={labelStyle}>ตำแหน่งจัดเก็บ *</span>
@@ -311,7 +406,7 @@ export function RegistryChangeModal({
             )}
           </section>
 
-          {!isHolding && (
+          {!isHolding && (!isCreate || productMode === 'new') && (
             <section>
               <h3 style={sectionStyle}>GHS เบื้องต้นสำหรับทะเบียน (ถ้าทราบ)</h3>
               <p style={{ margin: `0 0 ${SPACE.sm}px`, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>

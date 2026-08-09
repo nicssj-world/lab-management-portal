@@ -24,36 +24,20 @@ export async function POST(
   if (guard.response) return guard.response
 
   try {
-    if (input.data.status === 'published') {
-      // เผยแพร่งานที่ไม่มีไฟล์เลยจะได้หัวข้อว่างบนหน้าสาธารณะ ซึ่งไม่มีประโยชน์กับใคร
-      const count = await supabaseAdmin
-        .from('chemical_department_sds')
-        .select('id', { count: 'exact', head: true })
-        .eq('department_code', department.code)
-      if (count.error) throw count.error
-      if ((count.count ?? 0) === 0) {
+    const updated = await supabaseAdmin.rpc('set_chemical_sds_department_publication_status', {
+      p_department_code: department.code,
+      p_status: input.data.status,
+      p_actor_id: guard.actor.id,
+    })
+    if (updated.error) {
+      if (/department_sds_empty/i.test(updated.error.message)) {
         return NextResponse.json({ error: 'งานนี้ยังไม่มีเอกสาร SDS ให้เผยแพร่' }, { status: 422 })
       }
+      if (/department_sds_not_found/i.test(updated.error.message)) {
+        return NextResponse.json({ error: 'ไม่พบงาน' }, { status: 404 })
+      }
+      throw updated.error
     }
-
-    const published = input.data.status === 'published'
-    const updated = await supabaseAdmin
-      .from('chemical_sds_departments')
-      .update({
-        status: input.data.status,
-        published_by: published ? guard.actor.id : null,
-        published_at: published ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('code', department.code)
-    if (updated.error) throw updated.error
-
-    supabaseAdmin.from('audit_log').insert({
-      action: 'chemical_safety.department_sds.publish',
-      user_id: guard.actor.id,
-      target: department.code,
-      detail: JSON.stringify({ department: department.department, status: input.data.status }),
-    }).then(undefined, () => {})
 
     return NextResponse.json({ ok: true })
   } catch (error) {

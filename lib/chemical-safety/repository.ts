@@ -19,7 +19,6 @@ import type {
 import type { ImportReviewFilters, InternalSdsFilters } from './schemas'
 import { mapChemicalPlacement } from './registry-row'
 import { camelProposal } from './proposal-keys'
-import { roomChemicalProductIds } from './sds-visibility'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type Row = Record<string, any>
@@ -33,6 +32,7 @@ export interface ChemicalRepositorySnapshot {
   rooms: Row[]
   locations: Row[]
   sdsVersions: Row[]
+  sdsPublications: Row[]
   sdsHazards: Row[]
   importRows: Row[]
   importBatches: Row[]
@@ -51,7 +51,7 @@ async function selectAll(table: string): Promise<Row[]> {
 
 const databaseSource: ChemicalRepositorySource = {
   async loadSnapshot() {
-    const [products, aliases, units, unitProducts, holdings, rooms, locations, sdsVersions, sdsHazards, importRows, importBatches, pendingChanges] = await Promise.all([
+    const [products, aliases, units, unitProducts, holdings, rooms, locations, sdsVersions, sdsPublications, sdsHazards, importRows, importBatches, pendingChanges] = await Promise.all([
       selectAll('chemical_products'),
       selectAll('chemical_product_aliases'),
       selectAll('chemical_units'),
@@ -60,12 +60,13 @@ const databaseSource: ChemicalRepositorySource = {
       selectAll('chemical_rooms'),
       selectAll('chemical_storage_locations'),
       selectAll('chemical_sds_versions'),
+      selectAll('chemical_sds_publications'),
       selectAll('chemical_sds_hazards'),
       selectAll('chemical_import_rows'),
       selectAll('chemical_import_batches'),
       selectAll('chemical_change_requests'),
     ])
-    return { products, aliases, units, unitProducts, holdings, rooms, locations, sdsVersions, sdsHazards, importRows, importBatches, pendingChanges }
+    return { products, aliases, units, unitProducts, holdings, rooms, locations, sdsVersions, sdsPublications, sdsHazards, importRows, importBatches, pendingChanges }
   },
 }
 
@@ -176,6 +177,8 @@ function mapSds(row: Row, hazards: Row[]): ChemicalSdsDTO {
   return {
     id: String(row.id),
     productId: String(row.product_id),
+    sourceHoldingId: text(row.source_holding_id),
+    workflowOrigin: row.workflow_origin === 'registry_v2' ? 'registry_v2' : 'legacy',
     fileId: text(row.file_id),
     sourceUrl: text(row.source_url),
     fileUrl: row.file_id ? `/api/admin/chemical-safety/sds/${row.id}/file` : null,
@@ -245,7 +248,22 @@ export async function listChemicalRegistryWithSource(
     if (!product || !unit || !unitProduct) continue
     const versions = sdsByProduct.get(product.id) ?? []
     const approved = versions.find(item => item.status === 'approved')
-    const draft = versions.find(item => item.status === 'draft' || item.status === 'in_review')
+    const holdingVersions = versions.filter(item => String(item.source_holding_id ?? '') === String(holding.id))
+    const draft = holdingVersions.find(item => item.status === 'draft' || item.status === 'in_review')
+      ?? versions.find(item => item.status === 'draft' || item.status === 'in_review')
+    const selectedVersion = draft ?? approved ?? null
+    const holdingPublications = snapshot.sdsPublications
+      .filter(item => String(item.source_holding_id) === String(holding.id))
+      .sort((a, b) => String(b.linked_at).localeCompare(String(a.linked_at)))
+    const activePublication = holdingPublications.find(item => item.status === 'active')
+    const stalePublication = holdingPublications.find(item => item.status === 'stale')
+    const publicationStatus = activePublication
+      ? 'active'
+      : stalePublication
+        ? 'stale'
+        : approved
+          ? 'ready'
+          : 'unlinked'
     const holdingImportEvidence = snapshot.importRows.find(item => {
       const normalized = jsonObject(item.normalized_data)
       return typeof normalized.holdingId === 'string' && normalized.holdingId === String(holding.id)
@@ -301,6 +319,7 @@ export async function listChemicalRegistryWithSource(
       casNumber: text(product.cas_number),
       concentration: text(product.concentration),
       storageScope: placement.storageScope,
+      workflowOrigin: holding.workflow_origin === 'registry_v2' ? 'registry_v2' : 'legacy',
       roomId: room?.id == null ? null : String(room.id),
       locationId: placement.locationId,
       packageValue,
@@ -324,6 +343,9 @@ export async function listChemicalRegistryWithSource(
       lifecycleStatus: product.lifecycle_status === 'retired' ? 'retired' : 'active',
       sdsStatus,
       hasSdsFile: versions.some(item => item.file_id != null && String(item.file_id).trim() !== ''),
+      sdsVersionId: selectedVersion ? String(selectedVersion.id) : null,
+      publicationStatus,
+      publicationDestination: placement.storageScope,
       pictogramCodes: pictograms,
       signalWord: approved ? text(approved.signal_word) : null,
       hazards,
@@ -490,9 +512,19 @@ export async function listChemicalProductRecords(): Promise<ChemicalProductDTO[]
 
 export async function listInternalSds(filters: InternalSdsFilters = {}): Promise<ChemicalSdsDTO[]> {
   const snapshot = await databaseSource.loadSnapshot()
-  const roomProductIds = roomChemicalProductIds(snapshot.holdings, filters.unitId)
   return snapshot.sdsVersions.filter(row => {
-    if (!roomProductIds.has(String(row.product_id))) return false
+    if (filters.unitId) {
+      const sourceHolding = row.source_holding_id
+        ? snapshot.holdings.find(holding => String(holding.id) === String(row.source_holding_id))
+        : null
+      const compatibleUnit = sourceHolding
+        ? String(sourceHolding.unit_id) === filters.unitId
+        : snapshot.holdings.some(holding => (
+          String(holding.product_id) === String(row.product_id)
+          && String(holding.unit_id) === filters.unitId
+        ))
+      if (!compatibleUnit) return false
+    }
     if (filters.productId && row.product_id !== filters.productId) return false
     if (filters.status && row.status !== filters.status) return false
     const product = snapshot.products.find(item => item.id === row.product_id)

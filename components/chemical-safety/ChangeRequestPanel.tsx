@@ -11,12 +11,18 @@ import { FONT, SPACE } from './shared/tokens'
 const ENTITY_LABEL: Record<string, string> = {
   new_chemical: 'เพิ่มสารเคมีใหม่',
   department_chemical: 'เพิ่มสารจาก SDS งาน',
+  registry_entry: 'เพิ่มรายการทะเบียน',
   product: 'แก้ไขข้อมูลสาร',
   holding: 'แก้ไขคลัง',
 }
 
 function summarize(item: ChemicalChangeRequestListItemDTO): string {
   const data = item.proposedData
+  if (item.entityType === 'registry_entry') {
+    const mode = data.productMode === 'existing' ? 'ใช้ product เดิม' : 'สร้าง product ใหม่'
+    const scope = data.storageScope === 'department' ? 'ตามหน่วยงาน' : 'ห้องเก็บสารเคมี'
+    return `${mode} · ${scope}`
+  }
   if (item.entityType === 'new_chemical' || item.entityType === 'department_chemical' || item.entityType === 'product') {
     const parts = [
       typeof data.casNumber === 'string' ? `CAS ${data.casNumber}` : null,

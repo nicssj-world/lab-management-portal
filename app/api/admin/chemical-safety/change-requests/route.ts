@@ -64,10 +64,16 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const input = await parseJson(request, chemicalChangeRequestSchema)
   if (input.response) return input.response
+  if (input.data.entityType === 'new_chemical') {
+    return NextResponse.json({
+      error: 'registry_entry_required',
+      message: 'กรุณาเพิ่มสารเคมีใหม่ด้วย registry-first workflow',
+    }, { status: 409 })
+  }
   const guard = await requireChemicalCustodian(input.data.unitId)
   if (guard.response) return guard.response
   try {
-    // 'new_chemical' ยังไม่มี entity ให้อ้างอิง entity_id จึงต้องเป็น null (ตาราง/RPC บังคับคู่กันไว้แล้ว)
+    // คำขอสร้างรายการใหม่ยังไม่มี entity ให้อ้างอิงจนกว่าจะผ่านการทบทวน
     const entityId = input.data.entityType === 'product' || input.data.entityType === 'holding'
       ? input.data.entityId
       : null

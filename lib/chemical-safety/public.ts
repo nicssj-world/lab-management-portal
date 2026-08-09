@@ -35,17 +35,18 @@ function pictogramList(value: unknown): GhsPictogramCode[] {
 }
 
 async function loadPublicRows() {
-  const [products, aliases, unitProducts, units, versions, holdings, locations, rooms] = await Promise.all([
+  const [products, aliases, unitProducts, units, versions, publications, holdings, locations, rooms] = await Promise.all([
     rows('chemical_products', query => query.eq('lifecycle_status', 'active')),
     rows('chemical_product_aliases'),
     rows('chemical_unit_products', query => query.eq('active', true).eq('public_eligible', true)),
     rows('chemical_units', query => query.eq('active', true)),
     rows('chemical_sds_versions', query => query.eq('status', 'approved')),
+    rows('chemical_sds_publications', query => query.eq('status', 'active')),
     rows('chemical_inventory_holdings'),
     rows('chemical_storage_locations', query => query.eq('active', true)),
     rows('chemical_rooms', query => query.eq('code', CHEMICAL_ROOM_CODE)),
   ])
-  return { products, aliases, unitProducts, units, versions, holdings, locations, rooms }
+  return { products, aliases, unitProducts, units, versions, publications, holdings, locations, rooms }
 }
 
 export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<PublicSdsResult[]> {
@@ -57,8 +58,16 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
   }
 
   const unitById = new Map(data.units.map(unit => [unit.id, unit]))
+  const activeRoomPublicationKeys = new Set(data.publications
+    .filter(publication => publication.destination === 'room')
+    .map(publication => `${publication.product_id}:${publication.unit_id}`))
+  const legacyHoldingKeys = new Set(data.holdings
+    .filter(holding => holding.workflow_origin !== 'registry_v2')
+    .map(holding => `${holding.product_id}:${holding.unit_id}`))
   const publishedUnits = new Map<string, Array<{ code: string; name: string }>>()
   for (const link of data.unitProducts) {
+    const productUnitKey = `${link.product_id}:${link.unit_id}`
+    if (!legacyHoldingKeys.has(productUnitKey) || activeRoomPublicationKeys.has(productUnitKey)) continue
     const unit = unitById.get(link.unit_id)
     if (!unit) continue
     const values = publishedUnits.get(link.product_id) ?? []
@@ -68,13 +77,16 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
     publishedUnits.set(link.product_id, values)
   }
 
-  const versionByProduct = new Map(data.versions.map(version => [version.product_id, version]))
+  const legacyVersions = data.versions.filter(version => version.workflow_origin !== 'registry_v2')
+  const versionByProduct = new Map(legacyVersions.map(version => [version.product_id, version]))
+  const versionById = new Map(data.versions.map(version => [String(version.id), version]))
 
   // ตำแหน่งจัดเก็บมาจาก holding ไม่ใช่จาก product — สารตัวเดียวอาจถูกเก็บได้หลายที่
   const locationById = new Map(data.locations.map(location => [location.id, location]))
   const positionByProduct = new Map<string, { code: string; zoneCode: string }>()
   for (const holding of data.holdings) {
-    if (holding.storage_scope === 'department') continue
+    if (holding.storage_scope === 'department' || holding.workflow_origin === 'registry_v2') continue
+    if (activeRoomPublicationKeys.has(`${holding.product_id}:${holding.unit_id}`)) continue
     if (positionByProduct.has(holding.product_id)) continue
     const location = locationById.get(holding.location_id)
     if (!location) continue
@@ -85,6 +97,21 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
   }
 
   const results: PublicSdsResult[] = []
+  function matchesFilters(item: PublicSdsResult) {
+    const haystack = JSON.stringify([
+      item.canonicalName, item.aliases, item.casNumber, item.manufacturer,
+      item.supplier, item.units, item.hazardClassesTh, item.positionCode,
+    ]).toLocaleLowerCase('th')
+    if (filters.q && !haystack.includes(filters.q.toLocaleLowerCase('th'))) return false
+    if (filters.unit && !item.units.some(unit => unit.code === filters.unit || unit.name === filters.unit)) return false
+    if (filters.language && item.language !== filters.language) return false
+    if (filters.ghs && !item.pictogramCodes.includes(filters.ghs)) return false
+    if (filters.zone && item.zoneCode !== filters.zone) return false
+    if (filters.position && item.positionCode !== filters.position) return false
+    if (filters.productIds && !filters.productIds.includes(item.publicId)) return false
+    return true
+  }
+
   for (const product of data.products) {
     const units = publishedUnits.get(product.id) ?? []
     // เกณฑ์เดียวของการขึ้นหน้าสาธารณะคือ "มีหน่วยงานที่เผยแพร่ได้"
@@ -137,18 +164,62 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
       downloadUrl: approved ? `/api/public/sds/${publicId}/file?disposition=attachment` : null,
     }
 
-    const haystack = JSON.stringify([
-      item.canonicalName, item.aliases, item.casNumber, item.manufacturer,
-      item.supplier, item.units, item.hazardClassesTh, item.positionCode,
-    ]).toLocaleLowerCase('th')
-    if (filters.q && !haystack.includes(filters.q.toLocaleLowerCase('th'))) continue
-    if (filters.unit && !item.units.some(unit => unit.code === filters.unit || unit.name === filters.unit)) continue
-    if (filters.language && item.language !== filters.language) continue
-    if (filters.ghs && !item.pictogramCodes.includes(filters.ghs)) continue
-    if (filters.zone && item.zoneCode !== filters.zone) continue
-    if (filters.position && item.positionCode !== filters.position) continue
-    if (filters.productIds && !filters.productIds.includes(publicId)) continue
-    results.push(item)
+    if (matchesFilters(item)) results.push(item)
+  }
+
+  const productById = new Map(data.products.map(product => [String(product.id), product]))
+  const holdingById = new Map(data.holdings.map(holding => [String(holding.id), holding]))
+  for (const publication of data.publications.filter(item => item.destination === 'room')) {
+    const product = productById.get(String(publication.product_id))
+    const version = versionById.get(String(publication.sds_version_id))
+    const holding = holdingById.get(String(publication.source_holding_id))
+    const unit = unitById.get(publication.unit_id)
+    if (
+      !product || !version || !version.file_id || !holding || holding.storage_scope !== 'room' || !unit
+      || String(version.product_id) !== String(publication.product_id)
+      || String(holding.product_id) !== String(publication.product_id)
+      || String(holding.unit_id) !== String(publication.unit_id)
+    ) continue
+
+    const location = locationById.get(holding.location_id)
+    const statements = Array.isArray(version.h_statements)
+      ? version.h_statements.filter((item: any) => item && typeof item.code === 'string' && typeof item.text === 'string')
+      : []
+    const sdsPictograms = pictogramList(version.pictogram_codes)
+    const masterlistPictograms = pictogramList(product.ghs_pictogram_codes)
+    const hazardClassesTh = Array.isArray(product.ghs_hazard_classes)
+      ? product.ghs_hazard_classes
+          .map((hazard: any) => (hazard && typeof hazard.class_th === 'string' ? hazard.class_th : null))
+          .filter((value: string | null): value is string => value !== null)
+      : []
+    const publicId = String(publication.public_id)
+    const item: PublicSdsResult = {
+      publicId,
+      canonicalName: String(publication.display_name || product.canonical_name),
+      aliases: aliasByProduct.get(product.id) ?? [],
+      casNumber: product.cas_number ?? null,
+      concentration: version.concentration ?? product.concentration ?? null,
+      manufacturer: version.manufacturer ?? product.manufacturer ?? null,
+      supplier: version.supplier ?? product.supplier ?? null,
+      productCode: version.product_code ?? product.product_code ?? null,
+      units: [{ code: String(unit.code), name: String(unit.name_th) }],
+      language: version.language || 'th',
+      revisionLabel: version.revision_label ?? null,
+      effectiveOn: version.effective_on ?? null,
+      signalWord: version.signal_word ?? null,
+      pictogramCodes: sdsPictograms.length > 0 ? sdsPictograms : masterlistPictograms,
+      ghsSource: sdsPictograms.length > 0 ? 'sds' : 'masterlist',
+      hazardClassesTh,
+      hCodes: statements.map((statement: any) => statement.code),
+      hazardStatements: statements,
+      sourceUrl: version.source_url ?? null,
+      sdsStatus: 'approved',
+      positionCode: location?.code ? String(location.code) : null,
+      zoneCode: location?.zone_code ? String(location.zone_code) : null,
+      viewUrl: `/api/public/sds/${publicId}/file?disposition=inline`,
+      downloadUrl: `/api/public/sds/${publicId}/file?disposition=attachment`,
+    }
+    if (matchesFilters(item)) results.push(item)
   }
 
   return results.sort((a, b) => a.canonicalName.localeCompare(b.canonicalName, 'th'))
@@ -228,12 +299,31 @@ export async function listPublicDepartmentSds(): Promise<PublicDepartmentSdsGrou
 
   const codes = departments.map(row => String(row.code))
   const items = await rows('chemical_department_sds', query => query.in('department_code', codes))
+  const publications = await rows('chemical_sds_publications', query => query
+    .eq('status', 'active')
+    .eq('destination', 'department')
+    .in('department_code', codes))
+  const publicationVersionIds = publications.map(item => String(item.sds_version_id))
+  const publicationVersions = publicationVersionIds.length > 0
+    ? await rows('chemical_sds_versions', query => query.in('id', publicationVersionIds).eq('status', 'approved'))
+    : []
+  const availableVersionIds = new Set(publicationVersions
+    .filter(version => version.file_id != null)
+    .map(version => String(version.id)))
 
   const byDepartment = new Map<string, PublicDepartmentSdsGroup['items']>()
   for (const item of items) {
     const list = byDepartment.get(String(item.department_code)) ?? []
     list.push({ publicId: String(item.public_id), displayName: String(item.display_name) })
     byDepartment.set(String(item.department_code), list)
+  }
+  for (const publication of publications) {
+    if (!availableVersionIds.has(String(publication.sds_version_id))) continue
+    const version = publicationVersions.find(item => String(item.id) === String(publication.sds_version_id))
+    if (!version || String(version.product_id) !== String(publication.product_id)) continue
+    const list = byDepartment.get(String(publication.department_code)) ?? []
+    list.push({ publicId: String(publication.public_id), displayName: String(publication.display_name) })
+    byDepartment.set(String(publication.department_code), list)
   }
 
   const orderByCode = new Map(CHEMICAL_SDS_DEPARTMENTS.map((item, index) => [item.code, index]))
@@ -250,17 +340,62 @@ export async function listPublicDepartmentSds(): Promise<PublicDepartmentSdsGrou
 }
 
 export async function getPublicSdsFile(publicId: string): Promise<PublicSdsFile | null> {
+  const { data: publication } = await supabaseAdmin
+    .from('chemical_sds_publications')
+    .select('sds_version_id, product_id, unit_id, source_holding_id')
+    .eq('public_id', publicId)
+    .eq('destination', 'room')
+    .eq('status', 'active')
+    .maybeSingle()
+  if (publication) {
+    const { data: sourceHolding } = await supabaseAdmin
+      .from('chemical_inventory_holdings').select('id').eq('id', publication.source_holding_id)
+      .eq('product_id', publication.product_id).eq('unit_id', publication.unit_id)
+      .eq('storage_scope', 'room').maybeSingle()
+    if (!sourceHolding) return null
+    const { data: version } = await supabaseAdmin
+      .from('chemical_sds_versions')
+      .select('file_id')
+      .eq('id', publication.sds_version_id)
+      .eq('product_id', publication.product_id)
+      .eq('status', 'approved')
+      .maybeSingle()
+    if (!version?.file_id) return null
+    const { data: file } = await supabaseAdmin
+      .from('chemical_sds_files').select('r2_key, file_name, content_type').eq('id', version.file_id).maybeSingle()
+    if (!file || file.content_type !== 'application/pdf') return null
+    return { r2Key: file.r2_key, fileName: file.file_name, contentType: 'application/pdf' }
+  }
+
+  // Compatibility path: product public_id and legacy approved version keep the old URL.
   const { data: product } = await supabaseAdmin
     .from('chemical_products').select('id').eq('public_id', publicId).eq('lifecycle_status', 'active').maybeSingle()
   if (!product) return null
+  const { data: legacyHolding } = await supabaseAdmin
+    .from('chemical_inventory_holdings').select('id').eq('product_id', product.id)
+    .eq('workflow_origin', 'legacy').limit(1).maybeSingle()
+  if (!legacyHolding) return null
   const { data: links } = await supabaseAdmin
     .from('chemical_unit_products').select('unit_id').eq('product_id', product.id).eq('active', true).eq('public_eligible', true)
   if (!links?.length) return null
-  const { data: version } = await supabaseAdmin
-    .from('chemical_sds_versions').select('file_id').eq('product_id', product.id).eq('status', 'approved').maybeSingle()
-  if (!version?.file_id) return null
+  const { data: legacyVersion } = await supabaseAdmin
+    .from('chemical_sds_versions').select('file_id').eq('product_id', product.id)
+    .eq('workflow_origin', 'legacy').eq('status', 'approved').maybeSingle()
+  let fileId = legacyVersion?.file_id ?? null
+  if (!fileId) {
+    const { data: activePublication } = await supabaseAdmin
+      .from('chemical_sds_publications').select('sds_version_id').eq('product_id', product.id)
+      .eq('destination', 'room').eq('status', 'active').limit(1).maybeSingle()
+    if (activePublication) {
+      const { data: activeVersion } = await supabaseAdmin
+        .from('chemical_sds_versions').select('file_id').eq('id', activePublication.sds_version_id)
+        .eq('status', 'approved').maybeSingle()
+      fileId = activeVersion?.file_id ?? null
+    }
+  }
+  if (!fileId) return null
   const { data: file } = await supabaseAdmin
-    .from('chemical_sds_files').select('r2_key, file_name, content_type').eq('id', version.file_id).maybeSingle()
+    .from('chemical_sds_files').select('r2_key, file_name, content_type').eq('id', fileId).maybeSingle()
   if (!file || file.content_type !== 'application/pdf') return null
   return { r2Key: file.r2_key, fileName: file.file_name, contentType: 'application/pdf' }
 }
@@ -272,7 +407,34 @@ export async function getPublicDepartmentSdsFile(publicId: string): Promise<Publ
     .select('file_id, department_code')
     .eq('public_id', publicId)
     .maybeSingle()
-  if (!entry) return null
+  if (!entry) {
+    const { data: publication } = await supabaseAdmin
+      .from('chemical_sds_publications')
+      .select('sds_version_id, department_code, product_id, unit_id, source_holding_id')
+      .eq('public_id', publicId)
+      .eq('destination', 'department')
+      .eq('status', 'active')
+      .maybeSingle()
+    if (!publication) return null
+
+    const { data: sourceHolding } = await supabaseAdmin
+      .from('chemical_inventory_holdings').select('id').eq('id', publication.source_holding_id)
+      .eq('product_id', publication.product_id).eq('unit_id', publication.unit_id)
+      .eq('storage_scope', 'department').maybeSingle()
+    if (!sourceHolding) return null
+
+    const { data: department } = await supabaseAdmin
+      .from('chemical_sds_departments').select('status').eq('code', publication.department_code).maybeSingle()
+    if (department?.status !== 'published') return null
+    const { data: version } = await supabaseAdmin
+      .from('chemical_sds_versions').select('file_id').eq('id', publication.sds_version_id)
+      .eq('product_id', publication.product_id).eq('status', 'approved').maybeSingle()
+    if (!version?.file_id) return null
+    const { data: file } = await supabaseAdmin
+      .from('chemical_sds_files').select('r2_key, file_name, content_type').eq('id', version.file_id).maybeSingle()
+    if (!file || file.content_type !== 'application/pdf') return null
+    return { r2Key: file.r2_key, fileName: file.file_name, contentType: 'application/pdf' }
+  }
 
   const { data: department } = await supabaseAdmin
     .from('chemical_sds_departments')

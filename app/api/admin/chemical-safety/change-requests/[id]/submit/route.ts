@@ -7,6 +7,7 @@ import {
   chemicalHoldingProposalSchema,
   chemicalNewChemicalProposalSchema,
   chemicalProductProposalSchema,
+  chemicalRegistryEntryProposalSchema,
   chemicalSubmitSchema,
 } from '@/lib/chemical-safety/schemas'
 import { calculateHoldingTotalFromFields, isQuantityUnit } from '@/lib/chemical-safety/domain'
@@ -40,6 +41,7 @@ function proposalSchemaFor(entityType: string): ZodTypeAny {
   if (entityType === 'product') return chemicalProductProposalSchema
   if (entityType === 'new_chemical') return chemicalNewChemicalProposalSchema
   if (entityType === 'department_chemical') return chemicalDepartmentChemicalProposalSchema
+  if (entityType === 'registry_entry') return chemicalRegistryEntryProposalSchema
   return chemicalHoldingProposalSchema
 }
 

@@ -9,6 +9,7 @@ import {
 
 export interface DepartmentSdsFileDTO {
   id: string
+  source: 'legacy' | 'registry_v2'
   publicId: string
   displayName: string
   displayNameEdited: boolean
@@ -54,9 +55,10 @@ export interface DepartmentSdsGroupDTO {
  * คืนทุกงานเสมอแม้ยังไม่มีไฟล์ เพื่อให้เห็นว่างานไหนยังไม่ได้นำเข้า
  */
 export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
-  const [departments, entries, links, pendingRequests, units, products, unitProducts, holdings] = await Promise.all([
+  const [departments, entries, publications, links, pendingRequests, units, products, unitProducts, holdings] = await Promise.all([
     supabaseAdmin.from('chemical_sds_departments').select('*').order('display_order'),
     supabaseAdmin.from('chemical_department_sds').select('*'),
+    supabaseAdmin.from('chemical_sds_publications').select('*').eq('destination', 'department').eq('status', 'active'),
     supabaseAdmin.from('chemical_department_chemical_links').select('department_sds_id, product_id, holding_id, sds_version_id'),
     supabaseAdmin.from('chemical_change_requests').select('unit_id, status, proposed_data').eq('entity_type', 'department_chemical').in('status', ['draft', 'in_review']),
     supabaseAdmin.from('chemical_units').select('id, name_th').eq('active', true),
@@ -71,6 +73,7 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
   ])
   if (departments.error) throw new Error(`chemical_sds_departments: ${departments.error.message}`)
   if (entries.error) throw new Error(`chemical_department_sds: ${entries.error.message}`)
+  if (publications.error) throw new Error(`chemical_sds_publications: ${publications.error.message}`)
   if (links.error) throw new Error(`chemical_department_chemical_links: ${links.error.message}`)
   if (pendingRequests.error) throw new Error(`chemical_change_requests: ${pendingRequests.error.message}`)
   if (units.error) throw new Error(`chemical_units: ${units.error.message}`)
@@ -148,6 +151,7 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
     const list = byDepartment.get(String(entry.department_code)) ?? []
     list.push({
       id: String(entry.id),
+      source: 'legacy',
       publicId: String(entry.public_id),
       displayName: String(entry.display_name),
       displayNameEdited: Boolean(entry.display_name_edited),
@@ -214,6 +218,29 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
       })(),
     })
     byDepartment.set(String(entry.department_code), list)
+  }
+
+  for (const publication of publications.data ?? []) {
+    const departmentCode = String(publication.department_code)
+    const list = byDepartment.get(departmentCode) ?? []
+    list.push({
+      id: String(publication.id),
+      source: 'registry_v2',
+      publicId: String(publication.public_id),
+      displayName: String(publication.display_name),
+      displayNameEdited: false,
+      sourcePath: 'registry-v2',
+      fileUrl: `/api/admin/chemical-safety/sds/${publication.sds_version_id}/file`,
+      registryLink: {
+        status: 'linked',
+        productId: String(publication.product_id),
+        productName: productNames.get(String(publication.product_id)) ?? null,
+        holdingId: String(publication.source_holding_id),
+        sdsVersionId: String(publication.sds_version_id),
+        candidates: [],
+      },
+    })
+    byDepartment.set(departmentCode, list)
   }
 
   const seeded = new Map((departments.data ?? []).map(row => [String(row.code), row]))

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -13,6 +13,7 @@ import { Stat } from '@/components/ui/Stat'
 import { ViewTabs } from '@/components/ui/ViewTabs'
 import { CHEMICAL_HUB_VIEWS, type ChemicalHubView } from '@/lib/navigation'
 import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
+import { paginateRegistryItems } from '@/lib/chemical-safety/registry-pagination'
 import { CHEMICAL_GROUP_SUMMARY } from '@/lib/chemical-safety/storage-manifest'
 import type {
   ChemicalChangeRequestListItemDTO,
@@ -25,7 +26,7 @@ import type {
 } from '@/lib/chemical-safety/types'
 import { ChangeRequestPanel } from './ChangeRequestPanel'
 import { RegistryChangeModal, type RegistryChangeMode } from './RegistryChangeModal'
-import { SdsEditorModal } from './SdsEditorModal'
+import { RegistrySdsWorkflowModal } from './RegistrySdsWorkflowModal'
 import { SdsManagementClient, type SdsProductInfo } from './SdsManagementClient'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
 import { FONT, SPACE, ZONE_META, tabularNums } from './shared/tokens'
@@ -74,9 +75,122 @@ interface ModalState {
   registryRow?: ChemicalRegistryRow
 }
 
-interface SdsModalState {
-  sds: ChemicalSdsDTO
-  row: ChemicalRegistryRow
+interface FloatingScrollbarState {
+  visible: boolean
+  left: number
+  width: number
+  contentWidth: number
+}
+
+function RegistryHorizontalScroll({ children }: { children: ReactNode }) {
+  const registryTableScrollRef = useRef<HTMLDivElement | null>(null)
+  const registryFloatingScrollRef = useRef<HTMLDivElement | null>(null)
+  const [floatingScrollbar, setFloatingScrollbar] = useState<FloatingScrollbarState>({
+    visible: false,
+    left: 0,
+    width: 0,
+    contentWidth: 0,
+  })
+
+  useEffect(() => {
+    const tableScroller = registryTableScrollRef.current
+    if (!tableScroller) return
+
+    let animationFrame = 0
+    const updateFloatingScrollbar = () => {
+      const rect = tableScroller.getBoundingClientRect()
+      const viewportWidth = document.documentElement.clientWidth
+      const viewportHeight = window.innerHeight
+      const left = Math.max(8, rect.left)
+      const right = Math.min(viewportWidth - 8, rect.right)
+      const width = Math.max(0, right - left)
+      const nextState: FloatingScrollbarState = {
+        visible: tableScroller.scrollWidth > tableScroller.clientWidth
+          && width > 48
+          && rect.top < viewportHeight
+          && rect.bottom > viewportHeight,
+        left,
+        width,
+        contentWidth: tableScroller.scrollWidth,
+      }
+
+      setFloatingScrollbar(current => (
+        current.visible === nextState.visible
+          && current.left === nextState.left
+          && current.width === nextState.width
+          && current.contentWidth === nextState.contentWidth
+          ? current
+          : nextState
+      ))
+    }
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(animationFrame)
+      animationFrame = requestAnimationFrame(updateFloatingScrollbar)
+    }
+
+    updateFloatingScrollbar()
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(scheduleUpdate)
+    resizeObserver?.observe(tableScroller)
+    if (tableScroller.firstElementChild) resizeObserver?.observe(tableScroller.firstElementChild)
+    window.addEventListener('scroll', scheduleUpdate, { passive: true })
+    window.addEventListener('resize', scheduleUpdate, { passive: true })
+
+    return () => {
+      cancelAnimationFrame(animationFrame)
+      resizeObserver?.disconnect()
+      window.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('resize', scheduleUpdate)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!floatingScrollbar.visible || !registryFloatingScrollRef.current || !registryTableScrollRef.current) return
+    registryFloatingScrollRef.current.scrollLeft = registryTableScrollRef.current.scrollLeft
+  }, [floatingScrollbar.visible, floatingScrollbar.contentWidth])
+
+  function syncFromTable() {
+    const tableScroller = registryTableScrollRef.current
+    const floatingScroller = registryFloatingScrollRef.current
+    if (tableScroller && floatingScroller && floatingScroller.scrollLeft !== tableScroller.scrollLeft) {
+      floatingScroller.scrollLeft = tableScroller.scrollLeft
+    }
+  }
+
+  function syncFromFloating() {
+    const tableScroller = registryTableScrollRef.current
+    const floatingScroller = registryFloatingScrollRef.current
+    if (tableScroller && floatingScroller && tableScroller.scrollLeft !== floatingScroller.scrollLeft) {
+      tableScroller.scrollLeft = floatingScroller.scrollLeft
+    }
+  }
+
+  return (
+    <>
+      <div
+        ref={registryTableScrollRef}
+        className="chemical-registry-table-scroll"
+        onScroll={syncFromTable}
+        tabIndex={0}
+        aria-label="ตารางทะเบียนสารเคมี เลื่อนในแนวนอนเพื่อดูคอลัมน์เพิ่มเติม"
+      >
+        {children}
+      </div>
+      {floatingScrollbar.visible && (
+        <div
+          ref={registryFloatingScrollRef}
+          className="chemical-registry-floating-scroll"
+          style={{ left: floatingScrollbar.left, width: floatingScrollbar.width }}
+          onScroll={syncFromFloating}
+          tabIndex={0}
+          aria-label="แถบเลื่อนแนวนอนสำหรับตารางทะเบียนสารเคมี"
+        >
+          <div style={{ width: floatingScrollbar.contentWidth, height: 1 }} />
+        </div>
+      )}
+    </>
+  )
 }
 
 export function ChemicalSafetyHubClient({
@@ -90,14 +204,14 @@ export function ChemicalSafetyHubClient({
   const [position, setPosition] = useState('')
   const [scopeFilter, setScopeFilter] = useState('')
   const [lifecycleFilter, setLifecycleFilter] = useState<'all' | 'active' | 'retired'>('all')
+  const [registryPage, setRegistryPage] = useState(1)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [exporting, setExporting] = useState(false)
   const [newChemicalHoldingIds, setNewChemicalHoldingIds] = useState<Set<string>>(new Set())
   const [modal, setModal] = useState<ModalState | null>(null)
-  const [sdsModal, setSdsModal] = useState<SdsModalState | null>(null)
+  const [sdsModal, setSdsModal] = useState<ChemicalRegistryRow | null>(null)
   const [busyProductId, setBusyProductId] = useState<string | null>(null)
-  const [creatingSdsProductId, setCreatingSdsProductId] = useState<string | null>(null)
 
   const canPropose = canManageChemicals || canProposeUnitIds.length > 0
   const canReview = canManageChemicals || canReviewUnitIds.length > 0
@@ -114,6 +228,7 @@ export function ChemicalSafetyHubClient({
   // เพื่อให้กดย้อนกลับได้เหมือนการกดแท็บ
   function openCabinet(code: string) {
     setPosition(code)
+    setRegistryPage(1)
     const params = new URLSearchParams(searchParams.toString())
     params.set('view', 'registry')
     router.push(`${pathname}?${params.toString()}`, { scroll: false })
@@ -137,6 +252,10 @@ export function ChemicalSafetyHubClient({
         .filter(Boolean).join(' ').toLocaleLowerCase('th').includes(needle)
     })
   }, [registry, position, selectedUnitId, selectedRoomId, lifecycleFilter, debouncedSearch, productById])
+  const registryPagination = useMemo(
+    () => paginateRegistryItems(visible, registryPage),
+    [visible, registryPage],
+  )
 
   const atPosition = useMemo(() => {
     const map = new Map<string, ChemicalRegistryRow[]>()
@@ -228,42 +347,6 @@ export function ChemicalSafetyHubClient({
     }
   }
 
-  async function openSdsEditor(row: ChemicalRegistryRow) {
-    const existing = sdsItems.find(item => item.productId === row.productId && item.status === 'draft')
-    if (existing) {
-      setSdsModal({ sds: existing, row })
-      return
-    }
-
-    setCreatingSdsProductId(row.productId)
-    try {
-      const response = await fetch('/api/admin/chemical-safety/sds', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: row.productId, unitId: row.unitId, language: 'th' }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(payload.error || 'สร้างฉบับร่าง SDS ไม่สำเร็จ')
-      const timestamp = new Date().toISOString()
-      setSdsModal({
-        row,
-        sds: {
-          id: String(payload.id), productId: row.productId, fileId: null, sourceUrl: null, fileUrl: null,
-          manufacturer: null, supplier: null, productCode: null, concentration: row.concentration,
-          language: 'th', revisionLabel: null, effectiveOn: null, reviewDueOn: null, signalWord: null,
-          pictogramCodes: [], hStatements: [], pStatements: [], storageInstructions: null,
-          incompatibilities: null, emergencySummary: null, status: 'draft', submittedBy: null,
-          submittedAt: null, reviewedBy: null, reviewedAt: null, reviewReason: null, createdBy: actorId,
-          createdAt: String(payload.createdAt ?? timestamp), updatedAt: String(payload.updatedAt ?? timestamp), hazards: [],
-        },
-      })
-    } catch (caught) {
-      notify(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ', false)
-    } finally {
-      setCreatingSdsProductId(null)
-    }
-  }
-
   async function toggleLifecycle(row: ChemicalRegistryRow) {
     const product = productById.get(row.productId)
     if (!product) { notify('ไม่พบข้อมูลสาร กรุณารีเฟรชหน้า', false); return }
@@ -332,6 +415,12 @@ export function ChemicalSafetyHubClient({
         .chemical-hub .chemical-unit-select select:hover{border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
         .chemical-hub .chemical-unit-select select:focus-visible{border-color:var(--primary);outline:3px solid color-mix(in srgb,var(--primary) 22%,transparent)}
         .chemical-hub .chemical-filter-result{margin-left:auto;color:var(--muted);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+        .chemical-hub .chemical-registry-table-scroll{overflow-x:auto;scrollbar-gutter:stable;overscroll-behavior-x:contain}
+        .chemical-hub .chemical-registry-floating-scroll{position:fixed;z-index:900;bottom:max(0px,env(safe-area-inset-bottom));height:18px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;background:var(--card);border-top:1px solid var(--border);box-shadow:0 -4px 14px rgba(15,23,42,.12)}
+        .chemical-hub .chemical-registry-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:11px 14px;border-top:1px solid var(--border);background:var(--surface-2)}
+        .chemical-hub .chemical-registry-pagination-info{color:var(--muted);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+        .chemical-hub .chemical-registry-pagination-actions{display:flex;align-items:center;gap:8px}
+        .chemical-hub .chemical-registry-pagination-page{min-width:86px;text-align:center;color:var(--ink);font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
         .chemical-hub .chemical-sds-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 14px;padding:16px 18px;border:1px solid var(--border);border-radius:16px;background:linear-gradient(135deg,var(--card),var(--surface-2))}
         .chemical-hub .chemical-sds-intro-main{display:flex;align-items:flex-start;gap:11px}
         .chemical-hub .chemical-sds-intro-icon{display:grid;place-items:center;width:34px;height:34px;flex:0 0 auto;border-radius:10px;color:var(--primary);background:var(--primary-soft)}
@@ -432,7 +521,7 @@ export function ChemicalSafetyHubClient({
               icon="search"
               size="lg"
               value={search}
-              onChange={setSearch}
+              onChange={(value) => { setSearch(value); setRegistryPage(1) }}
               placeholder="ค้นหาชื่อสาร ชื่อพ้อง หรือเลข CAS"
               style={{ flex: '1 1 280px', minWidth: 240 }}
             />
@@ -452,7 +541,7 @@ export function ChemicalSafetyHubClient({
           <Card className="chemical-filter-panel" padding={0}>
             <div className="chemical-filter-label"><Icon name="filter" size={13} /> หน่วยงาน</div>
             <label className="chemical-unit-select">
-              <select value={scopeFilter} onChange={(event) => setScopeFilter(event.target.value)} aria-label="กรองตามหน่วยงาน">
+              <select value={scopeFilter} onChange={(event) => { setScopeFilter(event.target.value); setRegistryPage(1) }} aria-label="กรองตามหน่วยงาน">
                 <option value="">ทุกหน่วยงาน / ห้องสารเคมี ({registry.length} รายการ)</option>
                 <optgroup label="หน่วยงาน">
                   {unitOptions.map(option => <option key={option.value} value={`unit:${option.value}`}>{option.label}</option>)}
@@ -463,7 +552,7 @@ export function ChemicalSafetyHubClient({
               </select>
             </label>
             <label className="chemical-unit-select">
-              <select value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value as typeof lifecycleFilter)} aria-label="กรองตามสถานะการใช้งาน">
+              <select value={lifecycleFilter} onChange={(event) => { setLifecycleFilter(event.target.value as typeof lifecycleFilter); setRegistryPage(1) }} aria-label="กรองตามสถานะการใช้งาน">
                 <option value="all">ทุกสถานะการใช้งาน</option>
                 <option value="active">Active</option>
                 <option value="retired">Inactive</option>
@@ -476,11 +565,11 @@ export function ChemicalSafetyHubClient({
             <Card padding={0}><EmptyState icon="flask" title="ไม่พบสารเคมีที่ตรงกับเงื่อนไข" hint="ลองล้างคำค้นหรือเลือกหน่วยงานหรือห้องสารเคมีอื่น" /></Card>
           ) : (
             <Card padding={0}>
-              <div style={{ overflowX: 'auto' }}>
+              <RegistryHorizontalScroll>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1080 }}>
                   <thead>
                     <tr>
-                      {['สารเคมี', 'หน่วยงาน / ตำแหน่ง', 'ปริมาณ', 'สถานะการใช้งาน', 'สถานะ SDS', 'GHS', 'สารเคมีนำเข้าใหม่', ...(canPropose ? ['จัดการ'] : [])].map(heading => (
+                      {['สารเคมี', 'หน่วยงาน / ตำแหน่ง', 'ปริมาณ', 'สถานะการใช้งาน', 'สถานะ SDS', 'GHS', 'สารเคมีนำเข้าใหม่', ...(canPropose || canReview ? ['จัดการ'] : [])].map(heading => (
                         <th key={heading} style={{
                           padding: '11px 14px', textAlign: 'left', fontSize: FONT.xs, fontWeight: 700,
                           letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)',
@@ -490,7 +579,7 @@ export function ChemicalSafetyHubClient({
                     </tr>
                   </thead>
                   <tbody>
-                    {visible.map(row => {
+                    {registryPagination.items.map(row => {
                       const product = productById.get(row.productId)
                       const packageCalculation = calculateHoldingTotalFromFields({
                         packageValue: row.packageValue,
@@ -502,7 +591,8 @@ export function ChemicalSafetyHubClient({
                       const isInactive = product?.lifecycleStatus === 'retired'
                       const isNewChemical = newChemicalHoldingIds.has(row.holdingId)
                       const busy = busyProductId === row.productId
-                      const creatingSds = creatingSdsProductId === row.productId
+                      const canEditRow = canManageChemicals || canProposeUnitIds.includes(row.unitId)
+                      const canReviewRow = canManageChemicals || canReviewUnitIds.includes(row.unitId)
                       return (
                         <tr
                           key={row.holdingId}
@@ -560,7 +650,12 @@ export function ChemicalSafetyHubClient({
                               <Badge color={isInactive ? 'gray' : 'green'} dot>{isInactive ? 'Inactive' : 'Active'}</Badge>
                             ) : <span style={tabularNums}>—</span>}
                           </td>
-                          <td style={cellStyle}><SdsStateBadge state={row.sdsStatus} /></td>
+                          <td style={cellStyle}>
+                            <SdsStateBadge state={row.sdsStatus} />
+                            <div style={{ marginTop: 5, fontSize: FONT.xs, color: row.publicationStatus === 'stale' ? 'var(--warning)' : 'var(--muted)' }}>
+                              {row.publicationStatus === 'active' ? 'เผยแพร่แล้ว' : row.publicationStatus === 'ready' ? 'พร้อมเชื่อม' : row.publicationStatus === 'stale' ? 'ต้องเชื่อมฉบับใหม่' : 'ยังไม่เชื่อมเผยแพร่'}
+                            </div>
+                          </td>
                           <td style={cellStyle}>
                             <GhsRow codes={row.pictogramCodes} hazardClassesTh={row.hazards.map(h => h.className)} size={32} />
                           </td>
@@ -576,31 +671,36 @@ export function ChemicalSafetyHubClient({
                               <span style={{ fontSize: FONT.sm }}>นำเข้าใหม่</span>
                             </label>
                           </td>
-                          {canPropose && (
+                          {(canPropose || canReview) && (
                             <td style={cellStyle}>
                               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                {canEditRow && (
+                                  <>
+                                    <Button
+                                      variant="ghost" size="sm" icon="edit" title="แก้ไขคลัง (ตำแหน่ง/ปริมาณ)"
+                                      onClick={() => setModal({ mode: 'edit-holding', registryRow: row })}
+                                    />
+                                    <Button
+                                      variant="ghost" size="sm" icon="doc" title="แก้ไขข้อมูลสาร"
+                                      disabled={!product}
+                                      onClick={() => product && setModal({ mode: 'edit-product', product, registryRow: row })}
+                                    />
+                                  </>
+                                )}
                                 <Button
-                                  variant="ghost" size="sm" icon="edit" title="แก้ไขคลัง (ตำแหน่ง/ปริมาณ)"
-                                  onClick={() => setModal({ mode: 'edit-holding', registryRow: row })}
-                                />
-                                <Button
-                                  variant="ghost" size="sm" icon="doc" title="แก้ไขข้อมูลสาร"
-                                  disabled={!product}
-                                  onClick={() => product && setModal({ mode: 'edit-product', product, registryRow: row })}
-                                />
-                                <Button
-                                  variant="ghost" size="sm" icon="upload" title="อัปโหลดไฟล์ SDS"
-                                  disabled={creatingSds}
-                                  onClick={() => void openSdsEditor(row)}
+                                  variant="ghost" size="sm" icon="upload" title="จัดการ workflow SDS"
+                                  onClick={() => setSdsModal(row)}
                                 >
                                   SDS
                                 </Button>
-                                <Button
-                                  variant="ghost" size="sm" icon={isInactive ? 'check' : 'trash'}
-                                  title={isInactive ? 'ตั้งเป็น Active' : 'ตั้งเป็น Inactive'}
-                                  disabled={busy || !product}
-                                  onClick={() => void toggleLifecycle(row)}
-                                />
+                                {canEditRow && (
+                                  <Button
+                                    variant="ghost" size="sm" icon={isInactive ? 'check' : 'trash'}
+                                    title={isInactive ? 'ตั้งเป็น Active' : 'ตั้งเป็น Inactive'}
+                                    disabled={busy || !product}
+                                    onClick={() => void toggleLifecycle(row)}
+                                  />
+                                )}
                               </div>
                             </td>
                           )}
@@ -609,7 +709,29 @@ export function ChemicalSafetyHubClient({
                     })}
                   </tbody>
                 </table>
-              </div>
+              </RegistryHorizontalScroll>
+              <nav className="chemical-registry-pagination" aria-label="แบ่งหน้าทะเบียนสารเคมี">
+                <span className="chemical-registry-pagination-info">
+                  รายการ {registryPagination.from.toLocaleString()}–{registryPagination.to.toLocaleString()} จาก {visible.length.toLocaleString()}
+                </span>
+                <div className="chemical-registry-pagination-actions">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={registryPagination.currentPage === 1}
+                    onClick={() => setRegistryPage(registryPagination.currentPage - 1)}
+                  >ก่อนหน้า</Button>
+                  <span className="chemical-registry-pagination-page" aria-current="page">
+                    หน้า {registryPagination.currentPage.toLocaleString()} / {registryPagination.pageCount.toLocaleString()}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={registryPagination.currentPage === registryPagination.pageCount}
+                    onClick={() => setRegistryPage(registryPagination.currentPage + 1)}
+                  >ถัดไป</Button>
+                </div>
+              </nav>
             </Card>
           )}
         </>
@@ -636,6 +758,7 @@ export function ChemicalSafetyHubClient({
           mode={modal.mode}
           locations={locations}
           units={units}
+          products={products}
           product={modal.product}
           registryRow={modal.registryRow}
           onClose={() => setModal(null)}
@@ -644,15 +767,15 @@ export function ChemicalSafetyHubClient({
       )}
 
       {sdsModal && (
-        <SdsEditorModal
-          sds={sdsModal.sds}
-          productName={sdsModal.row.canonicalName}
-          seed={{
-            pictogramCodes: sdsModal.row.pictogramCodes,
-            hazardClassesTh: sdsModal.row.hazards.map(hazard => hazard.className),
-          }}
+        <RegistrySdsWorkflowModal
+          row={sdsModal}
+          product={productById.get(sdsModal.productId)}
+          items={sdsItems}
+          actorId={actorId}
+          canEdit={canManageChemicals || canProposeUnitIds.includes(sdsModal.unitId)}
+          canReview={canManageChemicals || canReviewUnitIds.includes(sdsModal.unitId)}
           onClose={() => setSdsModal(null)}
-          onSaved={notify}
+          onDone={notify}
         />
       )}
 

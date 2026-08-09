@@ -16,7 +16,7 @@ import type { QualityTaskSchedule } from './types'
 function schedule(overrides: Partial<QualityTaskSchedule> = {}): QualityTaskSchedule {
   return {
     id: 'schedule-1', templateId: 'template-1', intervalUnit: 'month', intervalCount: 1,
-    recurrenceMode: 'fixed_calendar', startsOn: '2025-10-01', endsOn: null, active: true, ...overrides,
+    recurrenceMode: 'fixed_calendar', startsOn: '2025-10-01', endsOn: null, dueDayOfMonth: null, active: true, ...overrides,
   }
 }
 
@@ -41,6 +41,11 @@ assert.deepEqual(
 assert.deepEqual(
   deriveTaskState({ status: 'open', plannedDate: null, periodEnd: '2026-07-31', reminderDays: 7 }, '2026-07-24'),
   { scheduling: 'unscheduled', urgency: 'due-soon', effectiveDueDate: '2026-07-31' },
+)
+assert.deepEqual(
+  deriveTaskState({ status: 'open', plannedDate: null, periodStart: '2026-08-01', periodEnd: '2026-08-31', dueDayOfMonth: 15, reminderDays: 7 }, '2026-08-08'),
+  { scheduling: 'unscheduled', urgency: 'due-soon', effectiveDueDate: '2026-08-15' },
+  'uses the configured monthly due day without changing scheduling state',
 )
 assert.deepEqual(
   deriveTaskState({ status: 'open', plannedDate: '2026-08-02', periodEnd: '2026-07-31', reminderDays: 7 }, '2026-08-03'),

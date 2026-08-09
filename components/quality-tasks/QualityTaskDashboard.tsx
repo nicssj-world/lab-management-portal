@@ -57,6 +57,7 @@ type Props = {
   templates: QualityTaskTemplate[];
   people: Person[];
   initialAdHoc?: boolean;
+  initialSelectedKey?: string;
 };
 type HolidayDraft = {
   id: string | null;
@@ -169,6 +170,7 @@ export function QualityTaskDashboard({
   templates,
   people,
   initialAdHoc = false,
+  initialSelectedKey,
 }: Props) {
   const [month, setMonth] = useState(initialMonth);
   const [items, setItems] = useState(initialOccurrences);
@@ -179,7 +181,9 @@ export function QualityTaskDashboard({
   const [owner, setOwner] = useState("");
   const [assignee, setAssignee] = useState("");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<QualityTaskOccurrence | null>(null);
+  const [selected, setSelected] = useState<QualityTaskOccurrence | null>(
+    () => initialSelectedKey ? initialOccurrences.find(item => item.key === initialSelectedKey) ?? null : null,
+  );
   const [history, setHistory] = useState<History[]>([]);
   const [adHoc, setAdHoc] = useState<{
     templateId: string;

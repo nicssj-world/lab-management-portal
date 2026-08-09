@@ -131,8 +131,9 @@ assert.match(
   'department SDS files are only served for published departments',
 )
 assert.match(departmentSdsUploadApi, /requireDepartmentSdsPublisher/, 'อัปโหลด SDS แยกตามงานต้องตรวจสิทธิ์ผู้จัดการงาน')
-assert.match(departmentSdsUploadApi, /validateChemicalPdf/, 'อัปโหลด SDS แยกตามงานต้องตรวจชนิดและลายเซ็น PDF')
-assert.match(departmentSdsUploadApi, /status: 'draft', published_by: null, published_at: null/, 'เพิ่มไฟล์ในงานที่เผยแพร่แล้วต้องกลับสู่ฉบับร่างเพื่อทบทวนใหม่')
+assert.match(departmentSdsUploadApi, /legacy_creation_closed/, 'endpoint เดิมต้องปิดการสร้างไฟล์ SDS แยกตามงานใหม่')
+assert.match(departmentSdsUploadApi, /status:\s*409/, 'การสร้าง legacy entry ใหม่ต้องตอบ conflict')
+assert.doesNotMatch(departmentSdsUploadApi, /PutObjectCommand/, 'endpoint legacy ที่ปิดแล้วต้องไม่อัปโหลดไฟล์ใหม่')
 assert.match(adminDepartmentSdsFileApi, /requireChemicalViewer/, 'เจ้าหน้าที่ต้องเปิดดู SDS แยกตามงานได้แม้งานยังเป็นฉบับร่าง')
 assert.match(adminDepartmentSdsFileApi, /chemical_department_sds/, 'route เปิดไฟล์เจ้าหน้าที่ต้องค้นจากรายการ SDS แยกตามงาน')
 // สารที่ SDS ยังไม่อนุมัติต้องไม่มี URL ไฟล์ แม้จะแสดงการจำแนก GHS บนหน้าสาธารณะ

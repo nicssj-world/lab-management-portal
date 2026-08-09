@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { safetyTaskContext, safetyTaskError } from '@/lib/quality-tasks/safety-api'
-import { getQualityTaskOccurrences, materializeOccurrence } from '@/lib/quality-tasks/server'
+import { materializeOccurrence } from '@/lib/quality-tasks/server'
+import { getSafetyCalendarOccurrences } from '@/lib/quality-tasks/safety-calendar-server'
 
 const createSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('scheduled'), scheduleId: z.string().uuid(), periodStart: z.string().date() }),
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
   const from = req.nextUrl.searchParams.get('from') ?? `${new Date().getFullYear()}-01-01`
   const to = req.nextUrl.searchParams.get('to') ?? `${new Date().getFullYear()}-12-31`
   try {
-    return NextResponse.json({ occurrences: await getQualityTaskOccurrences({ from, to, actorId: ctx.actor.id, level: ctx.level, scope: req.nextUrl.searchParams.get('scope') === 'mine' ? 'mine' : 'all', workstream: 'safety' }) })
+    return NextResponse.json({ occurrences: await getSafetyCalendarOccurrences({ from, to, actorId: ctx.actor.id, level: ctx.level, scope: req.nextUrl.searchParams.get('scope') === 'mine' ? 'mine' : 'all' }) })
   } catch (error) { return safetyTaskError(error) }
 }
 

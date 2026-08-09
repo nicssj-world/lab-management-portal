@@ -1,7 +1,9 @@
-import type { ApprovalMode, TaskIntervalUnit } from './types'
+import type { ApprovalMode, QualityTaskOccurrence, TaskIntervalUnit } from './types'
 
 const DAY_MS = 86_400_000
 export const SAFETY_EVIDENCE_MAX_BYTES = 20 * 1024 * 1024
+export const SAFETY_MEETING_QUALITY_SOURCE_KEY = 'CBH-QT-42'
+export const RETIRED_SAFETY_MEETING_SOURCE_KEY = 'CBH-ST-05'
 
 const EVIDENCE_TYPES = new Map<string, string[]>([
   ['.pdf', ['application/pdf']],
@@ -46,6 +48,31 @@ export function submissionStatus(approvalMode: ApprovalMode) {
 
 export function canApproveTask(level: 'none' | 'view' | 'edit', actorId: string, approverId: string | null) {
   return level === 'edit' || (level === 'view' && approverId === actorId)
+}
+
+export function templateRemovalMode(instanceCount: number) {
+  return instanceCount > 0 ? 'archive' as const : 'delete' as const
+}
+
+export function isLinkedQualityOccurrence(item: QualityTaskOccurrence) {
+  return item.template.workstream === 'quality' && item.template.sourceKey === SAFETY_MEETING_QUALITY_SOURCE_KEY
+}
+
+export function mergeSafetyCalendarOccurrences(
+  safetyOccurrences: readonly QualityTaskOccurrence[],
+  qualityOccurrences: readonly QualityTaskOccurrence[],
+) {
+  const items = [
+    ...safetyOccurrences.filter(item => item.template.sourceKey !== RETIRED_SAFETY_MEETING_SOURCE_KEY),
+    ...qualityOccurrences.filter(isLinkedQualityOccurrence),
+  ]
+  return [...new Map(items.map(item => [item.key, item])).values()]
+    .sort((a, b) => a.effectiveDueDate.localeCompare(b.effectiveDueDate) || a.template.title.localeCompare(b.template.title, 'th'))
+}
+
+export function linkedQualityTaskHref(item: QualityTaskOccurrence) {
+  const params = new URLSearchParams({ month: item.effectiveDueDate.slice(0, 7), task: item.key })
+  return `/staff/quality-tasks?${params.toString()}`
 }
 
 export function missingEvidenceRequirements(

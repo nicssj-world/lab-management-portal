@@ -54,7 +54,7 @@ assert.ok(hubSource.includes('RegistryChangeModal'), 'ทะเบียนส�
 assert.ok(hubSource.includes('ChangeRequestPanel'), 'ทะเบียนสารเคมีต้องมีแผงรอทบทวนคำขอ')
 // แท็บต้องผูกกับ URL ไม่ใช่ useState ไม่งั้นแชร์ลิงก์และกดย้อนกลับไม่ได้
 assert.ok(hubSource.includes('ViewTabs'), 'แท็บของหน้าห้องสารเคมีต้องใช้ ViewTabs ที่ผูกกับ ?view=')
-assert.ok(hubSource.includes('openSdsEditor'), 'ทะเบียนสารเคมีต้องเปิดฟอร์มอัปโหลด SDS ได้จากแต่ละรายการ')
+assert.ok(hubSource.includes('RegistrySdsWorkflowModal'), 'ทะเบียนสารเคมีต้องเปิด workflow SDS ได้จากแต่ละรายการ')
 assert.ok(hubSource.includes("icon=\"upload\""), 'ทะเบียนสารเคมีต้องมีปุ่มอัปโหลดไฟล์ SDS')
 assert.ok(hubSource.includes('สถานะการใช้งาน'), 'ทะเบียนสารเคมีต้องมีตัวกรอง/คอลัมน์สถานะการใช้งาน')
 assert.ok(hubSource.includes('Active') && hubSource.includes('Inactive'), 'ทะเบียนสารเคมีต้องแสดงสถานะ Active/Inactive')
@@ -64,9 +64,12 @@ assert.ok(hubSource.includes('Export PDF'), 'ทะเบียนสารเ�
 assert.ok(hubSource.includes('สารเคมีนำเข้าใหม่'), 'ทะเบียนสารเคมีต้องมี checkbox ทำเครื่องหมายสารเคมีนำเข้าใหม่')
 assert.ok(hubSource.includes('newChemicalHoldingIds'), 'ทะเบียนสารเคมีต้องส่งรายการที่ทำเครื่องหมายไปยัง export')
 assert.ok(hubSource.includes('...(selectedRoomId ? { roomId: selectedRoomId } : {})'), 'export ต้องส่งตัวกรองห้องสารเคมีไปยัง API')
+assert.ok(hubSource.includes('RegistryHorizontalScroll'), 'ตารางทะเบียนต้องมี scrollbar แนวนอนที่เข้าถึงได้โดยไม่ต้องเลื่อนไปท้ายตาราง')
+assert.ok(hubSource.includes('chemical-registry-floating-scroll'), 'ตารางทะเบียนต้องแสดง scrollbar แนวนอนแบบลอยระหว่างที่ท้ายตารางยังอยู่นอกจอ')
+assert.ok(hubSource.includes('registryTableScrollRef'), 'scrollbar แบบลอยต้อง sync ตำแหน่งกับตารางทะเบียน')
 
 const registryModalSource = readFileSync(join(COMPONENT_DIR, 'RegistryChangeModal.tsx'), 'utf8')
-assert.ok(registryModalSource.includes('{!isHolding && ('), 'ฟอร์มแก้ไขสารต้องแสดงส่วน GHS')
+assert.ok(registryModalSource.includes("productMode === 'new'"), 'ฟอร์มสร้าง product ใหม่ต้องแสดงส่วนข้อมูลสารและ GHS')
 assert.ok(registryModalSource.includes('ghsPictogramCodes: pictograms'), 'ฟอร์มแก้ไขสารต้องส่งสัญลักษณ์ GHS ผ่าน workflow')
 assert.ok(registryModalSource.includes('ghsHazardClasses: hazards'), 'ฟอร์มแก้ไขสารต้องส่งหมวดความเป็นอันตรายผ่าน workflow')
 assert.ok(registryModalSource.includes('GHS เบื้องต้นสำหรับทะเบียน'), 'ฟอร์มทะเบียนต้องระบุว่า GHS เป็นข้อมูลเบื้องต้น')
@@ -82,7 +85,7 @@ const departmentLinkModalSource = existsSync(departmentLinkModalPath) ? readFile
 const sdsPdfViewerPath = join(COMPONENT_DIR, 'SdsPdfViewerModal.tsx')
 assert.ok(existsSync(sdsPdfViewerPath), 'SDS PDF viewer modal must exist')
 const sdsPdfViewerSource = existsSync(sdsPdfViewerPath) ? readFileSync(sdsPdfViewerPath, 'utf8') : ''
-assert.ok(sdsSource.includes('เพิ่ม SDS'), 'SDS แยกตามงานต้องมีปุ่มเพิ่มเอกสารใหม่')
+assert.ok(!sdsSource.includes('DepartmentSdsUploadModal'), 'SDS แยกตามงานต้องปิดการเพิ่มเอกสาร legacy ใหม่')
 assert.ok(sdsSource.includes('แก้ไขชื่อ'), 'SDS แยกตามงานต้องมีปุ่มแก้ไขชื่อเอกสาร')
 assert.match(
   sdsSource,

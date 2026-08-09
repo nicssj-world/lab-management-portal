@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { requireSafetyViewer, isSafetyEditor } from '@/lib/lab-map/safety-access'
-import { getQualityTaskOccurrences, getQualityTaskTemplates, listTaskPeople, materializeCertificateRenewals } from '@/lib/quality-tasks/server'
+import { getQualityTaskTemplates, listTaskPeople, materializeCertificateRenewals } from '@/lib/quality-tasks/server'
+import { getSafetyCalendarOccurrences } from '@/lib/quality-tasks/safety-calendar-server'
 import { bangkokToday } from '@/lib/quality-tasks/logic'
 import { fiscalYearForDate } from '@/lib/quality-tasks/safety'
 import { listSafetyCertificates, listSafetyEvidence } from '@/lib/quality-tasks/safety-server'
@@ -22,9 +23,9 @@ export default async function SafetyTasksPage() {
   const [people, templates, evidence, certificates] = await Promise.all([
     listTaskPeople(), getQualityTaskTemplates(true, 'safety'), listSafetyEvidence(fiscalYear), listSafetyCertificates(),
   ])
-  const occurrences = await getQualityTaskOccurrences(
-    { from, to, actorId: actor.id, level: editor ? 'edit' : 'view', scope: 'all', workstream: 'safety' },
-    { people, templates },
+  const occurrences = await getSafetyCalendarOccurrences(
+    { from, to, actorId: actor.id, level: editor ? 'edit' : 'view', scope: 'all' },
+    { people, safetyTemplates: templates },
   )
   return <SafetyTaskHub actorId={actor.id} isEditor={editor} fiscalYear={fiscalYear} range={{ from, to }} initialOccurrences={occurrences} templates={templates} initialEvidence={evidence} initialCertificates={certificates} people={people as { id: string; name: string; dept: string | null; role: string; position_title: string | null }[]} />
 }

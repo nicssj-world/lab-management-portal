@@ -16,7 +16,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const ctx = await safetyTaskContext('edit'); if (ctx.response) return ctx.response
   try {
     const id = (await params).id
-    await deleteTemplate(id, ctx.actor, 'safety')
-    return NextResponse.json({ ok: true })
+    const result = await deleteTemplate(id, ctx.actor, 'safety', { archiveWhenUsed: true })
+    return NextResponse.json({ ok: true, mode: result.mode })
   } catch (error) { return safetyTaskError(error) }
 }

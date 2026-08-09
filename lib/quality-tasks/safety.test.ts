@@ -29,6 +29,28 @@ assert.equal(safety.canApproveTask('edit', 'editor', null), true)
 assert.equal(safety.canApproveTask('view', 'approver', 'approver'), true)
 assert.equal(safety.canApproveTask('view', 'viewer', 'approver'), false)
 
+assert.equal(typeof safety.templateRemovalMode, 'function', 'template removal policy is exported')
+assert.equal(safety.templateRemovalMode(0), 'delete', 'unused master task can be deleted permanently')
+assert.equal(safety.templateRemovalMode(1), 'archive', 'master task with history is archived instead of rejected')
+
+const linkedCalendarItems = safety.mergeSafetyCalendarOccurrences(
+  [
+    { key: 'safety-round', effectiveDueDate: '2026-08-10', template: { sourceKey: 'CBH-ST-09', workstream: 'safety' } },
+    { key: 'duplicate-safety-meeting', effectiveDueDate: '2026-08-15', template: { sourceKey: 'CBH-ST-05', workstream: 'safety' } },
+  ] as any,
+  [
+    { key: 'quality-safety-meeting', effectiveDueDate: '2026-08-15', template: { sourceKey: 'CBH-QT-42', workstream: 'quality' } },
+    { key: 'other-quality-task', effectiveDueDate: '2026-08-20', template: { sourceKey: 'CBH-QT-41', workstream: 'quality' } },
+  ] as any,
+)
+assert.deepEqual(linkedCalendarItems.map(item => item.key), ['safety-round', 'quality-safety-meeting'], 'Safety calendar projects only the canonical Quality safety meeting and removes its retired duplicate')
+assert.equal(safety.isLinkedQualityOccurrence(linkedCalendarItems[1]), true, 'projected Quality meeting is marked as linked')
+assert.equal(
+  safety.linkedQualityTaskHref({ ...linkedCalendarItems[1], key: 'schedule:2026-08-01' }),
+  '/staff/quality-tasks?month=2026-08&task=schedule%3A2026-08-01',
+  'Safety calendar links to the canonical meeting and month in Quality Tasks',
+)
+
 const requirements = [
   { id: 'form', required: true, minimumFiles: 1 },
   { id: 'photo', required: true, minimumFiles: 2 },
