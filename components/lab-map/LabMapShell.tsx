@@ -239,10 +239,10 @@ export function LabMapShell({
       ) : null}
       {relevantAssemblyPoints.length > 0 ? (
         <div className="lab-map-assembly-note lab-map-assembly-list">
-          <strong>จุดรวมพล</strong>
+          <strong>จุดรวมพล/จุดปลอดภัย</strong>
           {relevantAssemblyPoints.map((assembly) => (
             <section className="lab-map-assembly-card" key={assembly.code}>
-              <h3>{assembly.nameTh}</h3>
+              <h3>{assembly.pointType === 'safe' ? 'จุดปลอดภัย' : 'จุดรวมพล'} · {assembly.nameTh}</h3>
               {assembly.detailTh ? <p>{assembly.detailTh}</p> : null}
               {assembly.latitude != null && assembly.longitude != null ? (
                 <>

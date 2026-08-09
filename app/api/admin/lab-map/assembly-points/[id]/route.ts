@@ -22,6 +22,7 @@ export async function PATCH(req: NextRequest, { params }: Context) {
   const merged = assemblyPointInputSchema.safeParse({
     code: current.code, nameTh: parsed.data.nameTh ?? current.name_th,
     detailTh: parsed.data.detailTh !== undefined ? parsed.data.detailTh : current.detail_th,
+    pointType: parsed.data.pointType ?? (current.point_type === 'safe' ? 'safe' : 'assembly'),
     latitude: parsed.data.latitude !== undefined ? parsed.data.latitude : current.latitude == null ? null : Number(current.latitude),
     longitude: parsed.data.longitude !== undefined ? parsed.data.longitude : current.longitude == null ? null : Number(current.longitude),
     exitCodes: parsed.data.exitCodes ?? currentExits,
@@ -35,6 +36,7 @@ export async function PATCH(req: NextRequest, { params }: Context) {
     || currentExits.join('|') !== nextExits.join('|')
   const update = {
     name_th: merged.data.nameTh, detail_th: merged.data.detailTh ?? null,
+    point_type: merged.data.pointType,
     latitude: merged.data.latitude ?? null, longitude: merged.data.longitude ?? null,
     lifecycle_status: parsed.data.retire ? 'retired' : current.lifecycle_status,
     ...(positionChanged ? { position_status: 'unverified', position_verified_by: null, position_verified_at: null } : {}),

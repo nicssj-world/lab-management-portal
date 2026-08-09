@@ -122,10 +122,14 @@ export interface LabSafetyEquipmentDefinition {
   operationalStatus?: 'unverified' | 'verified' | 'passed' | 'needs_attention' | 'failed' | 'overdue' | 'due_soon'
 }
 
+export type LabPointType = 'assembly' | 'safe'
+
 export interface LabAssemblyPointDefinition {
   code: string
   nameTh: string
   detailTh?: string
+  /** Legacy snapshots may omit this field; omitted values are treated as assembly points. */
+  pointType?: LabPointType
   exitCodes: readonly string[]
   latitude?: number | null
   longitude?: number | null

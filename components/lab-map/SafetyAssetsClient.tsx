@@ -9,7 +9,7 @@ import { uploadFileWithProgress } from '@/lib/documents/upload-with-progress'
 import { normalizeRole } from '@/lib/roles'
 import { buildSafetyInspectionQueue, nextSafetyAssetCode, previousSafetyAssetCode } from '@/lib/lab-map/safety-inspection-workflow'
 import type {
-  AssemblyPointDTO, AssemblyPointVerificationDTO, LabMapDTO, SafetyAssetDTO, SafetyInspectionDTO,
+  AssemblyPointDTO, AssemblyPointVerificationDTO, LabMapDTO, LabPointType, SafetyAssetDTO, SafetyInspectionDTO,
   SafetyInspectionRoundDTO,
 } from '@/lib/lab-map/types'
 import { LabMapCanvas } from './LabMapCanvas'
@@ -39,7 +39,21 @@ const STATUS_COLORS: Record<string, BadgeColor> = {
   unverified: 'amber', verified: 'blue', passed: 'green', needs_attention: 'amber',
   failed: 'red', overdue: 'red', due_soon: 'amber',
 }
+const POINT_TYPE_LABELS: Record<LabPointType, string> = {
+  assembly: 'จุดรวมพล', safe: 'จุดปลอดภัย',
+}
+const POINT_TYPE_COLORS: Record<LabPointType, BadgeColor> = {
+  assembly: 'blue', safe: 'green',
+}
 const EXIT_OPTIONS = ['exit-3a', 'exit-3b', 'exit-3c']
+
+function pointTypeLabel(pointType?: LabPointType) {
+  return POINT_TYPE_LABELS[pointType ?? 'assembly']
+}
+
+function pointTypeColor(pointType?: LabPointType) {
+  return POINT_TYPE_COLORS[pointType ?? 'assembly']
+}
 
 function todayIso() { return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }) }
 
@@ -515,16 +529,30 @@ function AssetHistory({ assetId }: { assetId: string }) {
 }
 
 function AssemblyPanel({ points, selected, canEdit, canManage, busy, draft, onSelect, onDraft, onRun, onReload }: { points: AssemblyPointDTO[]; selected: AssemblyPointDTO | null; canEdit: boolean; canManage: boolean; busy: boolean; draft: Partial<AssemblyPointDTO> | null; onSelect: (v: string | null) => void; onDraft: (v: Partial<AssemblyPointDTO> | null) => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void> }) {
-  return <>{canEdit ? <Button size="lg" icon="plus" onClick={() => onDraft({ exitCodes: [], latitude: null, longitude: null })}>เพิ่มจุดรวมพล</Button> : null}
-    <div className="safety-list">{points.map(point => <button key={point.id} className="safety-card" data-selected={selected?.id === point.id} onClick={() => onSelect(point.code)}><span className="safety-card-head"><strong>{point.nameTh}</strong><Badge color={point.verified ? 'green' : 'amber'}>{point.verified ? 'ยืนยันแล้ว' : 'รอยืนยัน'}</Badge></span><small>{point.detailTh} · {point.exitCodes.join(', ')}</small></button>)}</div>
-    {draft ? <AssemblyEditor draft={draft} busy={busy} onCancel={() => onDraft(null)} onSave={value => onRun(async () => { const editing = Boolean(value.id); await jsonRequest(editing ? `/api/admin/lab-map/assembly-points/${value.id}` : '/api/admin/lab-map/assembly-points', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editing ? { ...value, code: undefined, updatedAt: value.updatedAt } : value) }); await onReload(); onDraft(null) })} /> : selected ? <AssemblyDetail key={selected.id} point={selected} canEdit={canEdit} canManage={canManage} busy={busy} onEdit={() => onDraft(selected)} onRun={onRun} onReload={onReload} /> : null}
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  function startDraft(pointType: LabPointType) {
+    setAddMenuOpen(false)
+    onSelect(null)
+    onDraft({ pointType, exitCodes: [], latitude: null, longitude: null })
+  }
+  return <>{canEdit ? <div className="safety-point-add" role="group" aria-label="เพิ่มจุดความปลอดภัย">
+      <Button size="lg" icon="plus" onClick={() => setAddMenuOpen(open => !open)}>เพิ่มจุด</Button>
+      {addMenuOpen ? <div className="safety-point-add-options" role="group" aria-label="เลือกประเภทจุด">
+        <Button variant="secondary" size="lg" onClick={() => startDraft('assembly')}>จุดรวมพล</Button>
+        <Button variant="secondary" size="lg" onClick={() => startDraft('safe')}>จุดปลอดภัย</Button>
+      </div> : null}
+    </div> : null}
+    <div className="safety-list">{points.map(point => <button key={point.id} className="safety-card" data-selected={selected?.id === point.id} onClick={() => onSelect(point.code)}><span className="safety-card-head"><strong>{point.nameTh}</strong><span className="safety-card-badges"><Badge color={pointTypeColor(point.pointType)}>{pointTypeLabel(point.pointType)}</Badge><Badge color={point.verified ? 'green' : 'amber'}>{point.verified ? 'ยืนยันแล้ว' : 'รอยืนยัน'}</Badge></span></span><small>{point.detailTh} · {point.exitCodes.join(', ')}</small></button>)}</div>
+    {draft ? <AssemblyEditor key={`point-${draft.id ?? 'new'}-${draft.pointType ?? 'assembly'}`} draft={draft} busy={busy} onCancel={() => onDraft(null)} onSave={value => onRun(async () => { const editing = Boolean(value.id); await jsonRequest(editing ? `/api/admin/lab-map/assembly-points/${value.id}` : '/api/admin/lab-map/assembly-points', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editing ? { ...value, code: undefined, updatedAt: value.updatedAt } : value) }); await onReload(); onDraft(null) })} /> : selected ? <AssemblyDetail key={selected.id} point={selected} canEdit={canEdit} canManage={canManage} busy={busy} onEdit={() => onDraft(selected)} onRun={onRun} onReload={onReload} /> : null}
   </>
 }
 
 function AssemblyEditor({ draft, busy, onCancel, onSave }: { draft: Partial<AssemblyPointDTO>; busy: boolean; onCancel: () => void; onSave: (v: Partial<AssemblyPointDTO>) => void }) {
   const [value, setValue] = useState({ ...draft }); const [accuracy, setAccuracy] = useState<number | null>(null); const [geoError, setGeoError] = useState('')
   function locate() { setGeoError(''); navigator.geolocation.getCurrentPosition(position => { setValue(current => ({ ...current, latitude: Number(position.coords.latitude.toFixed(6)), longitude: Number(position.coords.longitude.toFixed(6)) })); setAccuracy(Math.round(position.coords.accuracy)) }, error => setGeoError(error.message), { enableHighAccuracy: true, timeout: 15000 }) }
-  return <section className="safety-form"><h2 style={{ margin: 0, fontSize: 16 }}>{draft.id ? 'แก้ไขจุดรวมพล' : 'เพิ่มจุดรวมพล'}</h2>
+  const currentPointType = value.pointType ?? 'assembly'
+  return <section className="safety-form"><h2 style={{ margin: 0, fontSize: 16 }}>{draft.id ? `แก้ไข${pointTypeLabel(currentPointType)}` : `เพิ่ม${pointTypeLabel(currentPointType)}`}</h2>
+    <fieldset><legend>ประเภทจุด</legend><div className="safety-point-type-options">{(['assembly', 'safe'] as const).map(pointType => <label key={pointType} style={{ flexDirection: 'row', alignItems: 'center' }}><input type="radio" name={`point-type-${draft.id ?? 'new'}`} checked={currentPointType === pointType} onChange={() => setValue({ ...value, pointType })} style={{ width: 20, minHeight: 20 }} />{POINT_TYPE_LABELS[pointType]}</label>)}</div></fieldset>
     <div className="safety-form-grid"><label>รหัส<input value={value.code ?? ''} disabled={Boolean(draft.id)} onChange={e => setValue({ ...value, code: e.target.value })} /></label><label>ชื่อ<input value={value.nameTh ?? ''} onChange={e => setValue({ ...value, nameTh: e.target.value })} /></label><label>Latitude<input type="number" step="0.000001" value={value.latitude ?? ''} onChange={e => setValue({ ...value, latitude: e.target.value ? Number(e.target.value) : null })} /></label><label>Longitude<input type="number" step="0.000001" value={value.longitude ?? ''} onChange={e => setValue({ ...value, longitude: e.target.value ? Number(e.target.value) : null })} /></label></div>
     <Button variant="secondary" size="lg" icon="globe" onClick={locate}>ใช้พิกัดปัจจุบันของอุปกรณ์</Button>{accuracy != null ? <p className="safety-coordinate-note">ความแม่นยำประมาณ {accuracy} เมตร — ตรวจสอบก่อนบันทึก</p> : null}{geoError ? <p role="alert" className="safety-muted">อ่าน GPS ไม่สำเร็จ: {geoError} คุณยังกรอกพิกัดเองได้</p> : null}
     <label>รายละเอียด/จุดสังเกต<textarea value={value.detailTh ?? ''} onChange={e => setValue({ ...value, detailTh: e.target.value })} /></label>
@@ -536,13 +564,14 @@ function AssemblyEditor({ draft, busy, onCancel, onSave }: { draft: Partial<Asse
 function AssemblyDetail({ point, canEdit, canManage, busy, onEdit, onRun, onReload }: { point: AssemblyPointDTO; canEdit: boolean; canManage: boolean; busy: boolean; onEdit: () => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void> }) {
   const [file, setFile] = useState<File | null>(null); const [note, setNote] = useState(''); const [accuracy, setAccuracy] = useState<number | null>(null)
   const coordinates = point.latitude != null && point.longitude != null ? `${point.latitude},${point.longitude}` : null
+  const typeLabel = pointTypeLabel(point.pointType)
   async function verify() { if (!file || point.latitude == null || point.longitude == null) throw new Error('ต้องมีพิกัดและรูปหลักฐาน'); const signed = await jsonRequest(`/api/admin/lab-map/assembly-points/${point.id}/verification-photo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileName: file.name, contentType: file.type, sizeBytes: file.size }) }); await uploadFileWithProgress(signed.uploadUrl, file, file.type, () => {}); await jsonRequest(`/api/admin/lab-map/assembly-points/${point.id}/verification-photo`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: signed.key, fileName: file.name, latitude: point.latitude, longitude: point.longitude, accuracyMeters: accuracy, note: note || null }) }); await onReload() }
-  return <section className="safety-form"><span className="safety-card-head"><h2 style={{ margin: 0, fontSize: 17 }}>{point.nameTh}</h2><Badge color={point.verified ? 'green' : 'amber'}>{point.verified ? 'ยืนยันแล้ว' : 'รอยืนยัน'}</Badge></span><p style={{ margin: 0 }}>{point.detailTh || 'ไม่ระบุจุดสังเกต'}</p><p className="safety-muted" style={{ margin: 0 }}>ทางออก: {point.exitCodes.join(', ')}</p>
+  return <section className="safety-form"><span className="safety-card-head"><h2 style={{ margin: 0, fontSize: 17 }}>{point.nameTh}</h2><span className="safety-card-badges"><Badge color={pointTypeColor(point.pointType)}>{typeLabel}</Badge><Badge color={point.verified ? 'green' : 'amber'}>{point.verified ? 'ยืนยันแล้ว' : 'รอยืนยัน'}</Badge></span></span><p style={{ margin: 0 }}>{point.detailTh || 'ไม่ระบุจุดสังเกต'}</p><p className="safety-muted" style={{ margin: 0 }}>ประเภท: {typeLabel} · ทางออก: {point.exitCodes.join(', ')}</p>
     {coordinates ? <div className="safety-actions"><Button variant="secondary" size="lg" onClick={() => void navigator.clipboard.writeText(coordinates)}>คัดลอกพิกัด</Button><a href={`https://www.google.com/maps?q=${coordinates}`} target="_blank" rel="noreferrer" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: 'var(--primary)', fontWeight: 650 }}>เปิด Google Maps</a></div> : <p className="safety-muted">ยังไม่มีพิกัด GPS</p>}
-    {point.latestVerification ? <img className="safety-photo" src={point.latestVerification.photoUrl} alt={`หลักฐานจุดรวมพล ${point.nameTh}`} /> : null}
+    {point.latestVerification ? <img className="safety-photo" src={point.latestVerification.photoUrl} alt={`หลักฐาน${typeLabel} ${point.nameTh}`} /> : null}
     <AssemblyHistory assemblyPointId={point.id} />
-    {canEdit ? <><SafetyPhotoPicker label="รูปยืนยัน" file={file} disabled={busy} onChange={setFile} /><label>ความแม่นยำ GPS (เมตร)<input type="number" min={0} value={accuracy ?? ''} onChange={e => setAccuracy(e.target.value ? Number(e.target.value) : null)} /></label><label>หมายเหตุ<textarea value={note} onChange={e => setNote(e.target.value)} /></label>{point.exitCodes.length === 0 ? <p className="safety-coordinate-note">ต้องเชื่อมทางออกอย่างน้อยหนึ่งจุดก่อนยืนยันหน้างาน</p> : null}<div className="safety-actions"><Button variant="secondary" size="lg" icon="edit" onClick={onEdit}>แก้ข้อมูล</Button><Button size="lg" icon="check" disabled={busy || !file || !coordinates || point.exitCodes.length === 0} onClick={() => void onRun(verify)}>ยืนยันจุดรวมพล</Button></div></> : null}
-    {canManage ? <Button variant="danger" size="lg" disabled={busy} onClick={() => { if (confirm('เลิกใช้จุดรวมพลนี้หรือไม่')) void onRun(async () => { await jsonRequest(`/api/admin/lab-map/assembly-points/${point.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ updatedAt: point.updatedAt, retire: true }) }); await onReload() }) }}>เลิกใช้งาน</Button> : null}
+    {canEdit ? <><SafetyPhotoPicker label="รูปยืนยัน" file={file} disabled={busy} onChange={setFile} /><label>ความแม่นยำ GPS (เมตร)<input type="number" min={0} value={accuracy ?? ''} onChange={e => setAccuracy(e.target.value ? Number(e.target.value) : null)} /></label><label>หมายเหตุ<textarea value={note} onChange={e => setNote(e.target.value)} /></label>{point.exitCodes.length === 0 ? <p className="safety-coordinate-note">ต้องเชื่อมทางออกอย่างน้อยหนึ่งจุดก่อนยืนยันหน้างาน</p> : null}<div className="safety-actions"><Button variant="secondary" size="lg" icon="edit" onClick={onEdit}>แก้ข้อมูล</Button><Button size="lg" icon="check" disabled={busy || !file || !coordinates || point.exitCodes.length === 0} onClick={() => void onRun(verify)}>ยืนยัน{typeLabel}</Button></div></> : null}
+    {canManage ? <Button variant="danger" size="lg" disabled={busy} onClick={() => { if (confirm(`เลิกใช้${typeLabel}นี้หรือไม่`)) void onRun(async () => { await jsonRequest(`/api/admin/lab-map/assembly-points/${point.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ updatedAt: point.updatedAt, retire: true }) }); await onReload() }) }}>เลิกใช้งาน</Button> : null}
   </section>
 }
 

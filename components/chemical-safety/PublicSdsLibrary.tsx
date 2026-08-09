@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { PublicSdsResult } from '@/lib/chemical-safety/public-types'
 import type { GhsPictogramCode } from '@/lib/chemical-safety/types'
 import { GhsPictogram } from './GhsPictogram'
+import { SdsPdfViewerModal } from './SdsPdfViewerModal'
 
 const GHS_CODES = Array.from({ length: 9 }, (_, index) => `GHS0${index + 1}`)
 const ZONES = [
@@ -26,6 +27,7 @@ export function PublicSdsLibrary({
   const [ghs, setGhs] = useState('')
   const [zone, setZone] = useState('')
   const [state, setState] = useState<'idle' | 'loading' | 'error' | 'limited'>('idle')
+  const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
 
   const units = useMemo(
     () => [...new Map(initialItems.flatMap(item => item.units).map(item => [item.code, item])).values()],
@@ -163,7 +165,13 @@ export function PublicSdsLibrary({
 
               {item.viewUrl && item.downloadUrl ? (
                 <div className="sds-actions">
-                  <a href={item.viewUrl} target="_blank" rel="noopener noreferrer">เปิด SDS</a>
+                  <button
+                    type="button"
+                    onClick={() => setPreview({ url: item.viewUrl!, title: item.canonicalName })}
+                    aria-haspopup="dialog"
+                  >
+                    เปิด SDS
+                  </button>
                   <a href={item.downloadUrl}>ดาวน์โหลด PDF</a>
                 </div>
               ) : (
@@ -175,6 +183,13 @@ export function PublicSdsLibrary({
             </article>
           ))}
         </div>
+      )}
+      {preview && (
+        <SdsPdfViewerModal
+          url={preview.url}
+          title={preview.title}
+          onClose={() => setPreview(null)}
+        />
       )}
     </>
   )

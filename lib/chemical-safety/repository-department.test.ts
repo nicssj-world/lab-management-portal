@@ -6,6 +6,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'test-service-role-key'
 
 async function main() {
   const { mapChemicalPlacement } = await import('./registry-row')
+  const departmentRepository = readFileSync('lib/chemical-safety/department-repository.ts', 'utf8')
   const placement = mapChemicalPlacement(
     { storage_scope: 'department', location_id: null },
     undefined,
@@ -25,6 +26,41 @@ async function main() {
   )
 
   assert.match(readFileSync('lib/chemical-safety/repository.ts', 'utf8'), /importedQuantityStatus === 'unsupported-unit'/)
+  assert.match(
+    departmentRepository,
+    /lot_number, package_value, package_unit, current_container_count/,
+    'department SDS registry candidates must include holding details for explicit selection',
+  )
+  assert.match(
+    departmentRepository,
+    /chemical_inventory_holdings'[\s\S]{0,220}storage_scope[\s\S]{0,120}\.eq\('storage_scope', 'department'\)/,
+    'department SDS registry candidates must exclude room-scoped holdings',
+  )
+  assert.match(
+    departmentRepository,
+    /chemical_products'[\s\S]{0,120}lifecycle_status/,
+    'department SDS repository must load lifecycle status without hiding names of already-linked inactive products',
+  )
+  assert.match(
+    departmentRepository,
+    /activeProductIds[\s\S]{0,1600}!activeProductIds\.has\(productId\)/,
+    'department SDS registry candidates must exclude inactive products',
+  )
+  assert.match(
+    departmentRepository,
+    /findRegisteredDepartmentChemicals/,
+    'department SDS repository must retain every matching holding instead of choosing one implicitly',
+  )
+  assert.match(
+    departmentRepository,
+    /candidates:/,
+    'department SDS registry-link DTO must expose matching holdings',
+  )
+  assert.match(
+    departmentRepository,
+    /availableToLink:\s*!linkedHoldingIds\.has/,
+    'already-linked holdings must be unavailable in the explicit link workflow',
+  )
   console.log('chemical-safety department registry repository: ok')
 }
 

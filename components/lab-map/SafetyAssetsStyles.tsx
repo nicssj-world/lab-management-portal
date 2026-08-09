@@ -7,6 +7,7 @@ export function SafetyAssetsStyles() {
     .safety-tabs button[aria-selected="true"]{background:var(--primary);border-color:var(--primary);color:#fff}
     .safety-workspace{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr);gap:12px;align-items:start}
     .safety-sidebar{display:flex;flex-direction:column;gap:10px;min-width:0}
+    .safety-point-add{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.safety-point-add-options{display:flex;gap:6px;flex-wrap:wrap}.safety-point-add-options button{min-height:44px}
     .safety-toolbar{display:grid;grid-template-columns:minmax(140px,1fr) auto;gap:8px}
     .safety-toolbar input,.safety-toolbar select,.safety-form input,.safety-form select,.safety-form textarea{width:100%;min-height:44px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--ink);padding:8px 10px;font:inherit}
     .safety-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.safety-filter-grid select{width:100%;min-height:44px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--ink);padding:8px;font:inherit}
@@ -16,9 +17,10 @@ export function SafetyAssetsStyles() {
     .safety-card:hover,.safety-card[data-selected="true"]{border-color:var(--primary);background:var(--primary-soft);box-shadow:inset 4px 0 0 var(--primary)}
     .safety-card:focus-visible,.safety-tabs button:focus-visible,.safety-form :focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 35%,transparent);outline-offset:2px}
     .safety-page :where(button,input,select,textarea,summary):focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 42%,transparent);outline-offset:2px}
-    .safety-card-head,.safety-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+    .safety-card-head,.safety-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.safety-card-badges{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
     .safety-card small{display:block;color:var(--muted);font-size:12px;line-height:1.45;margin-top:5px;overflow-wrap:anywhere}.safety-muted{color:var(--muted);font-size:12px}
     .safety-form{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+    .safety-form fieldset{display:grid;gap:7px;margin:0;padding:9px;border:1px solid var(--border);border-radius:8px}.safety-form fieldset legend{padding:0 4px;color:var(--muted);font-size:12px;font-weight:700}.safety-point-type-options{display:flex;gap:14px;flex-wrap:wrap}.safety-point-type-options label{color:var(--ink)!important;font-size:13px!important;font-weight:650!important}
     .safety-editor-focus{display:grid;gap:10px;scroll-margin-top:16px}
     .safety-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     .safety-form label{display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:12px;font-weight:600}

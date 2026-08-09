@@ -19,7 +19,9 @@ import type {
   GhsPictogramCode,
 } from '@/lib/chemical-safety/types'
 import { SdsEditorModal } from './SdsEditorModal'
+import { SdsPdfViewerModal } from './SdsPdfViewerModal'
 import { DepartmentChemicalModal } from './DepartmentChemicalModal'
+import { DepartmentSdsLinkModal } from './DepartmentSdsLinkModal'
 import { SdsDropzone } from './shared/SdsDropzone'
 import { FONT, SPACE, tabularNums } from './shared/tokens'
 import { DepartmentPublishBadge, GhsRow, SdsStatusBadge } from './shared/ui'
@@ -153,6 +155,7 @@ function ChemicalSdsPanel({
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [editing, setEditing] = useState<ChemicalSdsDTO | null>(null)
+  const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -292,7 +295,10 @@ function ChemicalSdsPanel({
                     <Button
                       variant="secondary"
                       icon="eye"
-                      onClick={() => window.open(`/api/admin/chemical-safety/sds/${item.id}/file`, '_blank', 'noopener')}
+                      onClick={() => setPreview({
+                        url: `/api/admin/chemical-safety/sds/${item.id}/file`,
+                        title: product?.name ?? 'SDS',
+                      })}
                     >
                       เปิดไฟล์
                     </Button>
@@ -351,6 +357,13 @@ function ChemicalSdsPanel({
           onSaved={onDone}
         />
       )}
+      {preview && (
+        <SdsPdfViewerModal
+          url={preview.url}
+          title={preview.title}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </>
   )
 }
@@ -373,6 +386,8 @@ function DepartmentSdsPanel({
   const [uploading, setUploading] = useState<{ code: string; department: string } | null>(null)
   const [replacing, setReplacing] = useState<{ id: string; department: string; displayName: string } | null>(null)
   const [registering, setRegistering] = useState<{ group: DepartmentSdsGroupDTO; fileId?: string } | null>(null)
+  const [linking, setLinking] = useState<{ file: DepartmentSdsGroupDTO['files'][number]; departmentName: string } | null>(null)
+  const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
 
   const totals = useMemo(() => ({
     files: groups.reduce((sum, group) => sum + group.fileCount, 0),
@@ -456,7 +471,6 @@ function DepartmentSdsPanel({
         {groups.map(group => {
           const canPublish = publishableCodes.includes(group.code)
           const canRegister = canManageChemicals || (group.chemicalUnitId !== null && canEditUnitIds.includes(group.chemicalUnitId))
-          const unlinkedFiles = group.files.filter(file => file.registryLink.status === 'unlinked')
           const open = openCode === group.code
           const busy = busyCode === group.code
           return (
@@ -503,17 +517,6 @@ function DepartmentSdsPanel({
                       )}
                     </>
                   )}
-                  {canRegister && unlinkedFiles.length > 0 && (
-                    <Button
-                      variant="soft"
-                      icon="flask"
-                      disabled={busy}
-                      onClick={() => setRegistering({ group })}
-                      title="เลือกไฟล์ SDS เพื่อนำสารเข้าทะเบียน"
-                    >
-                      นำเข้าเป็นสารเคมี
-                    </Button>
-                  )}
                 </div>
               </div>
 
@@ -538,39 +541,52 @@ function DepartmentSdsPanel({
                           {file.displayName}
                           {file.displayNameEdited && <Badge color="blue" size="sm" style={{ marginLeft: 6 }}>แก้ชื่อแล้ว</Badge>}
                           {file.registryLink.status === 'pending' && <Badge color="amber" size="sm" style={{ marginLeft: 6 }}>รออนุมัติ</Badge>}
-                          {file.registryLink.status === 'linked' && <Badge color="green" size="sm" style={{ marginLeft: 6 }}>อยู่ในทะเบียน</Badge>}
+                          {file.registryLink.status === 'linked' && <Badge color="green" size="sm" style={{ marginLeft: 6 }}>อยู่ในทะเบียน · ผูกไฟล์แล้ว</Badge>}
+                          {file.registryLink.status === 'registered' && <Badge color="green" size="sm" style={{ marginLeft: 6 }}>พบในทะเบียน · ยังไม่ผูกไฟล์</Badge>}
                         </span>
                         <span style={{ display: 'flex', gap: 4 }}>
                           <Button
                             variant="ghost"
                             icon="eye"
                             title="เปิดไฟล์"
-                            onClick={() => window.open(file.fileUrl, '_blank', 'noopener')}
+                            onClick={() => setPreview({ url: file.fileUrl, title: file.displayName })}
                           />
                           {canRegister && file.registryLink.status === 'unlinked' && (
                             <Button
                               variant="ghost"
                               icon="flask"
                               size="sm"
-                              title="นำเข้าเป็นสารเคมี"
+                              title="เพิ่มเข้าทะเบียนสารเคมี"
                               onClick={() => setRegistering({ group, fileId: file.id })}
                             >
-                              นำเข้าเป็นสารเคมี
+                              เพิ่มเข้าทะเบียนสารเคมี
+                            </Button>
+                          )}
+                          {canRegister && file.registryLink.status === 'registered' && (
+                            <Button
+                              variant="ghost"
+                              icon="check"
+                              size="sm"
+                              title="เลือกและผูกไฟล์กับรายการเดิมในทะเบียน"
+                              onClick={() => setLinking({ file, departmentName: group.department })}
+                            >
+                              ผูกไฟล์กับทะเบียน
                             </Button>
                           )}
                           {canPublish && (
                             <>
-                              {file.registryLink.status !== 'linked' && (
-                                <Button
-                                  variant="ghost"
-                                  icon="upload"
-                                  size="sm"
-                                  title="แทนที่ไฟล์ด้วยฉบับใหม่"
-                                  onClick={() => setReplacing({ id: file.id, department: group.department, displayName: file.displayName })}
-                                >
-                                  แทนที่ไฟล์
-                                </Button>
-                              )}
+                              <Button
+                                variant="ghost"
+                                icon="upload"
+                                size="sm"
+                                disabled={file.registryLink.status === 'linked'}
+                                title={file.registryLink.status === 'linked'
+                                  ? 'ไฟล์นี้ผูกกับทะเบียนสารเคมีแล้ว จึงต้องจัดการ SDS จากทะเบียนสารเคมี'
+                                  : 'แทนที่ไฟล์ด้วยฉบับใหม่'}
+                                onClick={() => setReplacing({ id: file.id, department: group.department, displayName: file.displayName })}
+                              >
+                                แทนที่ไฟล์
+                              </Button>
                               <Button
                                 variant="ghost"
                                 icon="edit"
@@ -580,17 +596,18 @@ function DepartmentSdsPanel({
                               >
                                 แก้ไขชื่อ
                               </Button>
-                              {file.registryLink.status !== 'linked' && (
-                                <Button
-                                  variant="ghost"
-                                  icon="trash"
-                                  size="sm"
-                                  title="ลบเอกสาร"
-                                  onClick={() => void removeFile(file.id, file.displayName)}
-                                >
-                                  ลบ
-                                </Button>
-                              )}
+                              <Button
+                                variant="ghost"
+                                icon="trash"
+                                size="sm"
+                                disabled={file.registryLink.status === 'linked'}
+                                title={file.registryLink.status === 'linked'
+                                  ? 'ไฟล์นี้ผูกกับทะเบียนสารเคมีแล้ว จึงไม่สามารถลบจากรายการ SDS แยกตามงานได้'
+                                  : 'ลบเอกสาร'}
+                                onClick={() => void removeFile(file.id, file.displayName)}
+                              >
+                                ลบ
+                              </Button>
                             </>
                           )}
                         </span>
@@ -637,6 +654,24 @@ function DepartmentSdsPanel({
             setRegistering(null)
             onDone(message, ok)
           }}
+        />
+      )}
+      {linking && (
+        <DepartmentSdsLinkModal
+          file={linking.file}
+          departmentName={linking.departmentName}
+          onClose={() => setLinking(null)}
+          onLinked={(message) => {
+            setLinking(null)
+            onDone(message)
+          }}
+        />
+      )}
+      {preview && (
+        <SdsPdfViewerModal
+          url={preview.url}
+          title={preview.title}
+          onClose={() => setPreview(null)}
         />
       )}
     </>

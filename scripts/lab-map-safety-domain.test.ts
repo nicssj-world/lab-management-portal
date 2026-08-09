@@ -26,6 +26,9 @@ const assembly = {
   latitude: null, longitude: null, exitCodes: ['exit-3a'],
 }
 assert.equal(assemblyPointInputSchema.safeParse(assembly).success, true, 'draft assembly point may omit GPS')
+assert.equal(assemblyPointInputSchema.parse(assembly).pointType, 'assembly', 'legacy point input defaults to assembly')
+assert.equal(assemblyPointInputSchema.parse({ ...assembly, pointType: 'safe' }).pointType, 'safe', 'safe point input is preserved')
+assert.equal(assemblyPointInputSchema.safeParse({ ...assembly, pointType: 'invalid' }).success, false, 'point type is constrained')
 assert.equal(assemblyPointInputSchema.safeParse({ ...assembly, latitude: 91, longitude: 101 }).success, false)
 assert.equal(assemblyPointInputSchema.safeParse({ ...assembly, latitude: 13.3, longitude: 181 }).success, false)
 assert.equal(assemblyPointInputSchema.safeParse({ ...assembly, exitCodes: [] }).success, true, 'draft may be saved before exits are confirmed')

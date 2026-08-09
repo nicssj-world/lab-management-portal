@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   chemicalDepartmentChemicalProposalSchema,
@@ -11,6 +11,7 @@ const read = (relativePath: string) => readFileSync(join(root, relativePath), 'u
 
 const migration = read('scripts/chemical-safety-department-registry.sql')
 const cliMigration = read('supabase/migrations/20260808154713_chemical_safety_department_registry.sql')
+const existingLinkMigration = read('supabase/migrations/20260809074220_link_department_sds_existing_holding.sql')
 const registryCrudSql = read('scripts/chemical-safety-registry-crud.sql')
 const schemas = read('lib/chemical-safety/schemas.ts')
 const types = read('lib/chemical-safety/types.ts')
@@ -25,6 +26,8 @@ const departmentModal = read('components/chemical-safety/DepartmentChemicalModal
 const registryClient = read('components/chemical-safety/ChemicalSafetyHubClient.tsx')
 const publicModule = read('lib/chemical-safety/public.ts')
 const chemicalApi = read('lib/chemical-safety/api.ts')
+const existingLinkRoutePath = 'app/api/admin/chemical-safety/department-sds/[code]/link-existing/route.ts'
+const existingLinkRoute = existsSync(join(root, existingLinkRoutePath)) ? read(existingLinkRoutePath) : ''
 
 assert.match(migration, /storage_scope/i, 'migration adds an explicit storage scope')
 assert.match(migration, /location_id[^\n]*drop not null/i, 'department holdings allow a null location')
@@ -37,6 +40,41 @@ assert.match(migration, /department_chemical/i, 'review RPC handles department c
 assert.match(migration, /location_id\s+is null/i, 'department approval persists no storage location')
 assert.match(migration, /chemical_department_sds_file_change_guard/i, 'linked SDS file content cannot be replaced at the database boundary')
 assert.equal(cliMigration, migration, 'Supabase CLI migration stays identical to the documented manual migration')
+assert.match(
+  existingLinkMigration,
+  /CREATE OR REPLACE FUNCTION public\.link_department_sds_to_existing_holding\s*\(\s*p_department_sds_id uuid,\s*p_holding_id uuid,\s*p_actor_id uuid\s*\)/i,
+  'existing-holding link migration defines the atomic RPC',
+)
+assert.match(existingLinkMigration, /SECURITY INVOKER SET search_path = ''/i, 'link RPC keeps caller privileges and an empty search path')
+for (const guard of [
+  'department_sds_not_found',
+  'department_sds_file_not_found',
+  'department_sds_unit_not_found',
+  'department_sds_already_linked',
+  'department_holding_not_found',
+  'department_holding_wrong_scope',
+  'department_holding_wrong_unit',
+  'department_holding_inactive',
+  'department_holding_already_linked',
+]) {
+  assert.ok(existingLinkMigration.includes(guard), `link RPC must enforce ${guard}`)
+}
+assert.match(existingLinkMigration, /INSERT INTO public\.chemical_sds_versions/i, 'link RPC creates an SDS version only when needed')
+assert.match(existingLinkMigration, /INSERT INTO public\.chemical_department_chemical_links/i, 'link RPC creates the authoritative department SDS link')
+assert.match(existingLinkMigration, /chemical_safety\.department_sds\.link_existing/i, 'link RPC records an audit event')
+assert.doesNotMatch(existingLinkMigration, /INSERT INTO public\.chemical_products/i, 'linking an existing holding must not create a product')
+assert.doesNotMatch(existingLinkMigration, /INSERT INTO public\.chemical_unit_products/i, 'linking an existing holding must not create a unit-product')
+assert.doesNotMatch(existingLinkMigration, /INSERT INTO public\.chemical_inventory_holdings/i, 'linking an existing holding must not create stock')
+assert.match(
+  existingLinkMigration,
+  /REVOKE ALL ON FUNCTION public\.link_department_sds_to_existing_holding\(uuid,uuid,uuid\)[\s\S]*FROM PUBLIC, anon, authenticated/i,
+  'link RPC is not executable by browser roles',
+)
+assert.match(
+  existingLinkMigration,
+  /GRANT EXECUTE ON FUNCTION public\.link_department_sds_to_existing_holding\(uuid,uuid,uuid\)[\s\S]*TO service_role/i,
+  'only the backend service role may execute the link RPC',
+)
 
 // Product edit proposals now always carry the GHS fields from the registry form.
 // Both the original workflow script and the scope-aware dispatcher migration must
@@ -71,9 +109,22 @@ for (const source of [changeRequestsRoute, changeRequestSubmitRoute, route]) {
 }
 assert.match(sdsMutationRoute, /chemical_department_chemical_links/i, 'linked department SDS files cannot be deleted')
 assert.match(sdsReplaceRoute, /chemical_department_chemical_links/i, 'linked department SDS files cannot be replaced')
+assert.ok(existingLinkRoute, 'existing-holding link route must exist')
+assert.match(existingLinkRoute, /holdingId:\s*z\.string\(\)\.uuid\(\)/, 'link route validates a holding UUID')
+assert.match(existingLinkRoute, /requireChemicalCustodian/i, 'link route enforces chemical custodian scope')
+assert.match(existingLinkRoute, /chemical_sds_departments/i, 'link route resolves the SDS department server-side')
+assert.match(existingLinkRoute, /chemical_units/i, 'link route resolves the active chemical unit server-side')
+assert.match(existingLinkRoute, /link_department_sds_to_existing_holding/i, 'link route delegates the atomic mutation to the RPC')
+assert.match(existingLinkRoute, /department_holding_already_linked/i, 'link route maps expected RPC conflicts')
+assert.doesNotMatch(
+  existingLinkRoute,
+  /\.from\(['"]chemical_department_chemical_links['"]\)\s*\.insert/,
+  'link route must not perform a non-atomic direct link insert',
+)
 
 assert.match(departmentRepository, /registryLink/i, 'department SDS DTO exposes registry-link state')
-assert.match(sdsClient, /นำเข้าเป็นสารเคมี/i, 'department SDS UI exposes chemical registration')
+assert.match(sdsClient, /เพิ่มเข้าทะเบียนสารเคมี/i, 'department SDS UI exposes chemical registration')
+assert.doesNotMatch(sdsClient, /onClick=\{\(\) => setRegistering\(\{ group \}\)\}/, 'department-level registration shortcut is removed')
 assert.match(sdsClient, /storageScope|ไม่มีตำแหน่งจัดเก็บ/i, 'department chemical form has no storage location')
 assert.match(sdsClient, /canEditUnitIds/i, 'department registration uses chemical edit scopes')
 assert.match(departmentModal, /ghsPictogramCodes/i, 'department chemical form captures GHS details')

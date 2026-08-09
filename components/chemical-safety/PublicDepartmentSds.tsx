@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { PublicDepartmentSdsGroup } from '@/lib/chemical-safety/public-types'
+import { SdsPdfViewerModal } from './SdsPdfViewerModal'
 
 /**
  * คลังเอกสาร SDS แยกตามงาน
@@ -20,6 +21,7 @@ export function PublicDepartmentSds({
   const [active, setActive] = useState(initialActive)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), search ? 300 : 0)
@@ -67,7 +69,8 @@ export function PublicDepartmentSds({
   }
 
   return (
-    <section className="sds-dept" aria-labelledby="sds-dept-heading">
+    <>
+      <section className="sds-dept" aria-labelledby="sds-dept-heading">
       <style>{`
         .sds-dept{margin:0 0 40px}
         .sds-dept h2{margin:0;font-size:clamp(20px,3vw,28px);color:var(--ink);letter-spacing:-.02em}
@@ -82,12 +85,12 @@ export function PublicDepartmentSds({
         .sds-dept-search{width:100%;max-width:420px;min-height:46px;margin-bottom:14px;padding:0 14px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);font:inherit}
         .sds-dept-search:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
         .sds-dept-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;list-style:none;margin:0;padding:0}
-        .sds-dept-item a{display:flex;align-items:center;gap:10px;min-height:52px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink);text-decoration:none;font-size:13px;font-weight:600;line-height:1.45;transition:border-color .18s ease,box-shadow .18s ease}
-        .sds-dept-item a:hover{border-color:var(--primary);box-shadow:0 8px 24px rgba(15,23,42,.08)}
-        .sds-dept-item a:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
+        .sds-dept-item a,.sds-dept-item button{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink);font:inherit;font-size:13px;font-weight:600;line-height:1.45;text-align:left;text-decoration:none;cursor:pointer;transition:border-color .18s ease,box-shadow .18s ease}
+        .sds-dept-item a:hover,.sds-dept-item button:hover{border-color:var(--primary);box-shadow:0 8px 24px rgba(15,23,42,.08)}
+        .sds-dept-item a:focus-visible,.sds-dept-item button:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
         .sds-dept-item svg{flex:0 0 auto;color:var(--primary)}
         .sds-dept-none{grid-column:1/-1;color:var(--muted);font-size:13px;padding:20px 0}
-        @media(prefers-reduced-motion:reduce){.sds-dept-tab,.sds-dept-item a{transition:none}}
+        @media(prefers-reduced-motion:reduce){.sds-dept-tab,.sds-dept-item a,.sds-dept-item button{transition:none}}
       `}</style>
 
       <h2 id="sds-dept-heading">SDS แยกตามงาน</h2>
@@ -130,22 +133,33 @@ export function PublicDepartmentSds({
               <li className="sds-dept-none">ไม่พบเอกสารที่ตรงกับคำค้น</li>
             ) : items.map(item => (
               <li key={item.publicId} className="sds-dept-item">
-                <a
-                  href={`/api/public/department-sds/${item.publicId}/file?disposition=inline`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  aria-haspopup="dialog"
+                  onClick={() => setPreview({
+                    url: `/api/public/department-sds/${item.publicId}/file?disposition=inline`,
+                    title: item.displayName,
+                  })}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <path d="M14 2v6h6" />
                   </svg>
                   <span>{item.displayName}</span>
-                </a>
+                </button>
               </li>
             ))}
           </ul>
         </>
       )}
-    </section>
+      </section>
+      {preview && (
+        <SdsPdfViewerModal
+          url={preview.url}
+          title={preview.title}
+          onClose={() => setPreview(null)}
+        />
+      )}
+    </>
   )
 }

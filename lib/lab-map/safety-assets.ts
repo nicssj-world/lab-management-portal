@@ -21,6 +21,7 @@ export const LAB_ASSEMBLY_POINTS: readonly LabAssemblyPointDefinition[] = [
     code: 'assembly-front-admin-building',
     nameTh: 'พื้นที่หน้าอาคารอำนวยการ',
     detailTh: 'ด้านหน้าหอพระ',
+    pointType: 'assembly',
     exitCodes: ['exit-3a', 'exit-3b', 'exit-3c'],
   },
 ]

@@ -61,7 +61,7 @@ export default async function PublicSdsPage({
         .sds-filter-panel{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:14px;margin:0 0 20px;padding:18px;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:0 10px 34px rgba(8,43,79,.07)}
         .sds-filter-panel label{display:grid;gap:7px;font-size:12px;font-weight:800;color:var(--muted)}
         .sds-filter-panel input,.sds-filter-panel select{width:100%;min-height:46px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--ink);padding:0 13px;font:inherit}
-        .sds-filter-panel input:focus-visible,.sds-filter-panel select:focus-visible,.sds-actions a:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
+        .sds-filter-panel input:focus-visible,.sds-filter-panel select:focus-visible,.sds-actions a:focus-visible,.sds-actions button:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
 
         .sds-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
         .sds-card{display:flex;flex-direction:column;border:1px solid var(--border);border-top:5px solid var(--primary);border-radius:16px;padding:20px;background:var(--card);box-shadow:0 12px 34px rgba(8,43,79,.08)}
@@ -86,8 +86,8 @@ export default async function PublicSdsPage({
         .sds-hazards{padding-left:20px;font-size:12px;line-height:1.55;color:var(--ink);margin:0 0 12px}
         .sds-pending-note{margin:auto 0 0;padding:11px 13px;border-radius:10px;background:var(--surface-2);color:var(--muted);font-size:12px;line-height:1.6}
         .sds-actions{display:flex;gap:10px;margin:auto 0 0;padding-top:6px}
-        .sds-actions a{min-height:44px;display:inline-flex;align-items:center;padding:0 16px;border-radius:10px;text-decoration:none;font-weight:800;font-size:13px;background:var(--primary);color:#fff;transition:filter .18s ease}
-        .sds-actions a:hover{filter:brightness(.94)}
+        .sds-actions a,.sds-actions button{min-height:44px;display:inline-flex;align-items:center;padding:0 16px;border:0;border-radius:10px;background:var(--primary);color:#fff;font:inherit;font-weight:800;font-size:13px;text-decoration:none;cursor:pointer;transition:filter .18s ease}
+        .sds-actions a:hover,.sds-actions button:hover{filter:brightness(.94)}
         .sds-actions a + a{background:transparent;color:var(--primary);border:1px solid var(--primary)}
 
         .sds-state{text-align:center;padding:30px;color:var(--muted)}
@@ -96,7 +96,7 @@ export default async function PublicSdsPage({
         .sds-skel{border-radius:6px;background:var(--surface-2)}
 
         @media(max-width:980px){.sds-filter-panel{grid-template-columns:1fr 1fr}}
-        @media(max-width:850px){.sds-card-grid{grid-template-columns:1fr}.sds-filter-panel{grid-template-columns:1fr}.sds-hero-search{grid-template-columns:1fr}.sds-hero-search button{width:100%}.manual-banner{align-items:flex-start;flex-direction:column}.manual-actions{width:100%}.manual-actions a{flex:1}.sds-card dl{grid-template-columns:1fr}.sds-public-page{padding:20px 14px 48px}.sds-hero{padding:28px 22px}}
+        @media(max-width:850px){.sds-card-grid{grid-template-columns:1fr}.sds-filter-panel{grid-template-columns:1fr}.sds-hero-search{grid-template-columns:1fr}.sds-hero-search button{width:100%}.manual-banner{align-items:flex-start;flex-direction:column}.manual-actions{width:100%}.manual-actions a,.manual-actions button{flex:1}.sds-card dl{grid-template-columns:1fr}.sds-public-page{padding:20px 14px 48px}.sds-hero{padding:28px 22px}}
         @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
       `}</style>
 

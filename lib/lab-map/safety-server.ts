@@ -93,6 +93,7 @@ export async function listAssemblyPoints(includeRetired = false): Promise<Assemb
   return (points ?? []).map(row => ({
     id: String(row.id), code: String(row.code), nameTh: String(row.name_th),
     detailTh: row.detail_th as string | undefined,
+    pointType: row.point_type === 'safe' ? 'safe' : 'assembly',
     exitCodes: exitsByPoint.get(String(row.id)) ?? [],
     latitude: row.latitude == null ? null : Number(row.latitude),
     longitude: row.longitude == null ? null : Number(row.longitude),
@@ -115,7 +116,7 @@ export async function safetyAssetSnapshot() {
 
 export async function assemblyPointSnapshot() {
   return (await listAssemblyPoints(false)).map(item => ({
-    code: item.code, nameTh: item.nameTh, detailTh: item.detailTh, exitCodes: item.exitCodes,
+    code: item.code, nameTh: item.nameTh, detailTh: item.detailTh, pointType: item.pointType ?? 'assembly', exitCodes: item.exitCodes,
     latitude: item.latitude, longitude: item.longitude, verified: item.verified,
   }))
 }

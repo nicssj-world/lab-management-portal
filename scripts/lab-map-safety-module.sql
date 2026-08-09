@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS public.lab_map_assembly_points (
   code text NOT NULL UNIQUE,
   name_th text NOT NULL,
   detail_th text,
+  point_type text NOT NULL DEFAULT 'assembly',
   latitude numeric(9,6) CHECK (latitude BETWEEN -90 AND 90),
   longitude numeric(10,6) CHECK (longitude BETWEEN -180 AND 180),
   position_status text NOT NULL DEFAULT 'unverified' CHECK (position_status IN ('unverified', 'verified')),
@@ -119,6 +120,17 @@ CREATE TABLE IF NOT EXISTS public.lab_map_assembly_points (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT assembly_gps_pair CHECK ((latitude IS NULL) = (longitude IS NULL))
 );
+
+ALTER TABLE public.lab_map_assembly_points
+  ADD COLUMN IF NOT EXISTS point_type text;
+UPDATE public.lab_map_assembly_points SET point_type = 'assembly' WHERE point_type IS NULL;
+ALTER TABLE public.lab_map_assembly_points
+  ALTER COLUMN point_type SET DEFAULT 'assembly',
+  ALTER COLUMN point_type SET NOT NULL;
+ALTER TABLE public.lab_map_assembly_points
+  DROP CONSTRAINT IF EXISTS assembly_point_type_check;
+ALTER TABLE public.lab_map_assembly_points
+  ADD CONSTRAINT assembly_point_type_check CHECK (point_type IN ('assembly', 'safe'));
 
 CREATE TABLE IF NOT EXISTS public.lab_map_assembly_point_exits (
   assembly_point_id uuid NOT NULL REFERENCES public.lab_map_assembly_points(id) ON DELETE CASCADE,

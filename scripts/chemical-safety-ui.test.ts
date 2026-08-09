@@ -4,7 +4,7 @@
 // ผลคือ dark mode พังทั้งโมดูล เพราะสีที่ฝังไว้ไม่เปลี่ยนตามธีม
 
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const COMPONENT_DIR = join(process.cwd(), 'components', 'chemical-safety')
@@ -74,8 +74,43 @@ assert.ok(registryModalSource.includes('<option value="active">Active</option>')
 assert.ok(registryModalSource.includes('<option value="retired">Inactive</option>'), 'ฟอร์มทะเบียนต้องเลือกสถานะ Inactive ได้')
 
 const sdsSource = readFileSync(join(COMPONENT_DIR, 'SdsManagementClient.tsx'), 'utf8')
+const publicSdsLibrarySource = readFileSync(join(COMPONENT_DIR, 'PublicSdsLibrary.tsx'), 'utf8')
+const publicDepartmentSdsSource = readFileSync(join(COMPONENT_DIR, 'PublicDepartmentSds.tsx'), 'utf8')
+const safetyManualActionsSource = readFileSync(join(COMPONENT_DIR, 'SafetyManualActions.tsx'), 'utf8')
+const departmentLinkModalPath = join(COMPONENT_DIR, 'DepartmentSdsLinkModal.tsx')
+const departmentLinkModalSource = existsSync(departmentLinkModalPath) ? readFileSync(departmentLinkModalPath, 'utf8') : ''
+const sdsPdfViewerPath = join(COMPONENT_DIR, 'SdsPdfViewerModal.tsx')
+assert.ok(existsSync(sdsPdfViewerPath), 'SDS PDF viewer modal must exist')
+const sdsPdfViewerSource = existsSync(sdsPdfViewerPath) ? readFileSync(sdsPdfViewerPath, 'utf8') : ''
 assert.ok(sdsSource.includes('เพิ่ม SDS'), 'SDS แยกตามงานต้องมีปุ่มเพิ่มเอกสารใหม่')
 assert.ok(sdsSource.includes('แก้ไขชื่อ'), 'SDS แยกตามงานต้องมีปุ่มแก้ไขชื่อเอกสาร')
+assert.match(
+  sdsSource,
+  /registryLink\.status === 'registered'[\s\S]{0,200}พบในทะเบียน · ยังไม่ผูกไฟล์/,
+  'SDS ที่พบสารจากการเทียบชื่อต้องบอกว่ายังไม่ได้ผูกไฟล์กับทะเบียน',
+)
+assert.equal(
+  sdsSource.match(/disabled=\{file\.registryLink\.status === 'linked'\}/g)?.length,
+  2,
+  'ไฟล์ที่ผูกทะเบียนแล้วต้องยังแสดงปุ่มแทนที่และลบแบบปิดใช้งานทั้งสองปุ่ม',
+)
+assert.ok(
+  sdsSource.includes('ไฟล์นี้ผูกกับทะเบียนสารเคมีแล้ว'),
+  'ปุ่มที่ปิดใช้งานต้องอธิบายเหตุผลว่ามีการผูกไฟล์กับทะเบียนแล้ว',
+)
+assert.ok(existsSync(departmentLinkModalPath), 'modal สำหรับผูก SDS กับ holding เดิมต้องมีอยู่')
+assert.ok(sdsSource.includes('DepartmentSdsLinkModal'), 'SDS แยกตามงานต้องเปิด modal ผูกไฟล์กับทะเบียน')
+assert.match(
+  sdsSource,
+  /registryLink\.status === 'registered'[\s\S]{0,500}ผูกไฟล์กับทะเบียน/,
+  'ปุ่มผูกไฟล์ต้องแสดงเฉพาะรายการที่พบในทะเบียนแต่ยังไม่ผูกไฟล์',
+)
+assert.ok(departmentLinkModalSource.includes('file.registryLink.candidates'), 'link modal must list every matched holding candidate')
+assert.ok(departmentLinkModalSource.includes('availableToLink'), 'link modal must disable holdings already linked elsewhere')
+assert.ok(departmentLinkModalSource.includes('type="radio"'), 'link modal must require an explicit holding selection')
+assert.ok(departmentLinkModalSource.includes('/link-existing'), 'link modal must call the dedicated atomic endpoint')
+assert.ok(departmentLinkModalSource.includes('role="dialog"'), 'link modal must declare dialog semantics')
+assert.ok(departmentLinkModalSource.includes('aria-modal="true"'), 'link modal must be announced as modal')
 for (const required of ['@/components/ui/Card', '@/components/ui/Button', '@/components/ui/Stat']) {
   assert.ok(sdsSource.includes(required), `SdsManagementClient ต้อง import ${required}`)
 }
@@ -96,6 +131,18 @@ for (const file of files) {
 
 // ── modal ต้องปิดด้วยปุ่ม X เท่านั้น ตามข้อตกลงของโปรเจค ────────────────────
 const modalSource = readFileSync(join(COMPONENT_DIR, 'SdsEditorModal.tsx'), 'utf8')
+assert.ok(sdsPdfViewerSource.includes('PdfViewer'), 'SDS PDF viewer modal must use the shared PDF viewer')
+assert.ok(sdsPdfViewerSource.includes('forcePdfJs'), 'SDS PDF viewer modal must keep PDF fallback inside the page')
+for (const [name, source] of [
+  ['staff SDS management', sdsSource],
+  ['public chemical SDS library', publicSdsLibrarySource],
+  ['public department SDS library', publicDepartmentSdsSource],
+  ['SDS editor', modalSource],
+  ['safety manual on SDS page', safetyManualActionsSource],
+] as const) {
+  assert.ok(source.includes('SdsPdfViewerModal'), `${name} must use the in-page SDS PDF viewer`)
+  assert.doesNotMatch(source, /window\.open\(|target="_blank"/, `${name} must not open PDF in a new tab`)
+}
 assert.ok(modalSource.includes('role="dialog"'), 'SdsEditorModal ต้องประกาศ role="dialog"')
 assert.ok(modalSource.includes('aria-modal="true"'), 'SdsEditorModal ต้องประกาศ aria-modal')
 assert.ok(modalSource.includes('GHS ที่ยืนยันจาก SDS หมวด 2'), 'ฟอร์ม SDS ต้องระบุว่า GHS มาจาก SDS หมวด 2')

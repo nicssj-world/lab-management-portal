@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 422 })
   const value = parsed.data
   const { data, error } = await supabaseAdmin.from('lab_map_assembly_points').insert({
-    code: value.code, name_th: value.nameTh, detail_th: value.detailTh ?? null,
+    code: value.code, name_th: value.nameTh, detail_th: value.detailTh ?? null, point_type: value.pointType,
     latitude: value.latitude ?? null, longitude: value.longitude ?? null, created_by: guard.actor.id,
   }).select('*').single()
   if (error?.code === '23505') return NextResponse.json({ error: 'รหัสจุดรวมพลซ้ำ' }, { status: 409 })

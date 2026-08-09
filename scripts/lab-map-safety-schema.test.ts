@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const sql = readFileSync('scripts/lab-map-safety-module.sql', 'utf8')
+const pointTypeMigration = readFileSync('supabase/migrations/20260809075130_lab_map_safety_point_types.sql', 'utf8')
 
 for (const table of [
   'lab_map_safety_assets', 'lab_map_safety_inspections', 'lab_map_safety_editors',
@@ -16,6 +17,10 @@ for (const kind of [
 
 assert.match(sql, /asset_snapshot\s+jsonb/i)
 assert.match(sql, /assembly_point_snapshot\s+jsonb/i)
+assert.match(sql, /point_type\s+text\s+not null/i)
+assert.match(sql, /point_type[^;]+assembly[^;]+safe/i)
+assert.match(pointTypeMigration, /add column if not exists point_type/i)
+assert.match(pointTypeMigration, /assembly_point_type_check/i)
 assert.match(sql, /position_status[^;]+unverified[^;]+verified/i)
 assert.match(sql, /latitude[\s\S]+between -90 and 90/i)
 assert.match(sql, /longitude[\s\S]+between -180 and 180/i)

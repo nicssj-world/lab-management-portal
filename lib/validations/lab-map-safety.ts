@@ -79,6 +79,7 @@ const assemblyPointBaseSchema = z.object({
   code: immutableCode,
   nameTh: z.string().trim().min(1).max(200),
   detailTh: optionalText,
+  pointType: z.enum(['assembly', 'safe']).default('assembly'),
   latitude: z.number().min(-90).max(90).nullish(),
   longitude: z.number().min(-180).max(180).nullish(),
   // จุดรวมพลสร้างเป็น working draft ได้ก่อนผูกทางออก; RPC ยืนยันหน้างานและ publish gate

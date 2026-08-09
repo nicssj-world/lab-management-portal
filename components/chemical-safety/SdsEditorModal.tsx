@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import type { ChemicalSdsDTO, GhsPictogramCode } from '@/lib/chemical-safety/types'
 import { GhsPictogram } from './GhsPictogram'
+import { SdsPdfViewerModal } from './SdsPdfViewerModal'
 import { SdsDropzone } from './shared/SdsDropzone'
 import { FONT, SPACE } from './shared/tokens'
 
@@ -74,6 +75,7 @@ export function SdsEditorModal({
 
   const [updatedAt, setUpdatedAt] = useState(sds.updatedAt)
   const [hasFile, setHasFile] = useState(Boolean(sds.fileId))
+  const [previewOpen, setPreviewOpen] = useState(false)
   const [busy, setBusy] = useState<'save' | 'upload' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -149,15 +151,16 @@ export function SdsEditorModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`แก้ไข SDS ของ ${productName}`}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-      }}
-    >
+    <>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`แก้ไข SDS ของ ${productName}`}
+        style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}
+      >
       <div style={{
         background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 780,
         maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)',
@@ -182,7 +185,7 @@ export function SdsEditorModal({
               <>
                 <style>{`
                   .sds-current-file-card{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:${SPACE.sm}px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--primary) 28%,var(--border));border-radius:12px;background:var(--primary-soft)}
-                  .sds-current-file-action{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:0 0 auto;min-height:42px;padding:10px 14px;border-radius:9px;background:var(--primary);color:#fff;font-size:13px;font-weight:800;letter-spacing:.01em;text-decoration:none;box-shadow:0 6px 14px color-mix(in srgb,var(--primary) 22%,transparent);transition:transform .15s ease,filter .15s ease,box-shadow .15s ease}
+                  .sds-current-file-action{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:0 0 auto;min-height:42px;padding:10px 14px;border:0;border-radius:9px;background:var(--primary);color:#fff;font:inherit;font-size:13px;font-weight:800;letter-spacing:.01em;text-decoration:none;cursor:pointer;box-shadow:0 6px 14px color-mix(in srgb,var(--primary) 22%,transparent);transition:transform .15s ease,filter .15s ease,box-shadow .15s ease}
                   .sds-current-file-action:hover{filter:brightness(.95);transform:translateY(-1px);box-shadow:0 8px 18px color-mix(in srgb,var(--primary) 28%,transparent)}
                   .sds-current-file-action:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 35%,transparent);outline-offset:2px}
                   @media(max-width:560px){.sds-current-file-card{align-items:stretch;flex-direction:column}.sds-current-file-action{width:100%;box-sizing:border-box}}
@@ -196,18 +199,17 @@ export function SdsEditorModal({
                     </div>
                     <div style={{ marginTop: 4, fontSize: FONT.xs, color: 'var(--muted)' }}>เปิดดูไฟล์ PDF ที่แนบอยู่ในระบบ</div>
                   </div>
-                  <a
+                  <button
                     className="sds-current-file-action"
-                    href={`/api/admin/chemical-safety/sds/${sds.id}/file`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    type="button"
+                    onClick={() => setPreviewOpen(true)}
                     title="เปิดไฟล์ปัจจุบัน"
                     aria-label={`เปิดไฟล์ปัจจุบันของ ${productName}`}
                   >
                     <Icon name="eye" size={17} />
                     <span>เปิดไฟล์ปัจจุบัน</span>
                     <Icon name="arrowRight" size={15} />
-                  </a>
+                  </button>
                 </div>
               </>
             )}
@@ -339,8 +341,16 @@ export function SdsEditorModal({
             {busy === 'save' ? 'กำลังบันทึก…' : 'บันทึก'}
           </Button>
         </footer>
+        </div>
       </div>
-    </div>
+      {previewOpen && (
+        <SdsPdfViewerModal
+          url={`/api/admin/chemical-safety/sds/${sds.id}/file`}
+          title={productName}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
+    </>
   )
 }
 

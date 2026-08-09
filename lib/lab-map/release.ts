@@ -66,7 +66,7 @@ export function validatePublishableRelease(input: MapReleaseDTO): string[] {
     blockers.push('ยังไม่ได้ยืนยันตำแหน่งอุปกรณ์ความปลอดภัยหน้างาน')
   }
   if (assemblyPoints.some((item) => !item.verified || item.latitude == null || item.longitude == null || item.exitCodes.length === 0)) {
-    blockers.push('จุดรวมพลยังยืนยันไม่ครบ ต้องมี GPS รูปหลักฐาน และทางออกอย่างน้อยหนึ่งจุด')
+    blockers.push('จุดรวมพล/จุดปลอดภัยยังยืนยันไม่ครบ ต้องมี GPS รูปหลักฐาน และทางออกอย่างน้อยหนึ่งจุด')
   }
   if (input.manifestHash !== manifestHashForSnapshots(safetyEquipment, assemblyPoints)) blockers.push('ฉบับร่างไม่ตรงกับผังในระบบปัจจุบัน')
   for (const station of LAB_STATIONS) {
