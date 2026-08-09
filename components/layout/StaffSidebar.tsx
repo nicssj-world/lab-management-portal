@@ -94,8 +94,10 @@ const NAV_ITEMS: NavEntry[] = [
     ] },
   // กลุ่ม "ความปลอดภัย" — แม่ไม่ถือ resource ตามรูปแบบเดียวกับกลุ่มความเสี่ยงและกลุ่ม IT
   // แผนที่หนีไฟและจุดสแกนต้องเข้าถึงได้ทุกคนที่ล็อกอิน
-  { href: '/staff/lab-map', th: 'ความปลอดภัย', en: 'Safety', icon: 'shield', color: '#0E7490',
+  { href: '/staff/safety', th: 'ความปลอดภัย', en: 'Safety', icon: 'shield', color: '#0E7490',
     children: [
+      { href: '/staff/safety', th: 'งานและหลักฐาน', en: 'Tasks & Evidence', icon: 'clipboard', color: '#0E7490' },
+      { href: '/staff/safety/registry', th: 'Master Task', en: 'Master Tasks', icon: 'settings', color: '#0E7490', safetyEditor: true },
       { href: '/staff/lab-map', th: 'แผนที่ห้องปฏิบัติการ', en: 'Laboratory Map', icon: 'building', color: '#0E7490' },
       { href: '/staff/lab-map/chemicals', th: 'สารเคมีและ SDS', en: 'Chemicals & SDS', icon: 'flask', color: '#0E7490', safetyEditor: true },
     ] },
@@ -317,8 +319,8 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
             const visibleChildren = item.children.filter(childVisible)
             if (visibleChildren.length === 0) return null
             const parentHref = visibleChildren.some(c => c.href === item.href) ? item.href : visibleChildren[0].href
-            const groupBase = item.href.split('/').slice(0, 3).join('/') // e.g. /staff/documents
-            const groupActive = pathname === groupBase || pathname.startsWith(groupBase + '/')
+            const groupBase = item.href
+            const groupActive = visibleChildren.some(child => pathname === child.href || pathname.startsWith(child.href + '/'))
             const expanded = !collapsed && groupActive && collapsedGroup !== groupBase
             const showActiveRow = groupActive && (collapsed || !expanded)
             return (

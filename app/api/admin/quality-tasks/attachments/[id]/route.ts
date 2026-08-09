@@ -6,7 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { qualityTaskContext, qualityTaskError } from '@/lib/quality-tasks/api'
 
 async function attachment(id: string) {
-  const { data, error } = await supabaseAdmin.from('quality_task_attachments').select('*, quality_task_instances(status, quality_task_templates(evidence_required))').eq('id', id).single()
+  const { data, error } = await supabaseAdmin.from('quality_task_attachments').select('*, quality_task_instances!inner(status, quality_task_templates!inner(evidence_required,workstream))').eq('id', id).eq('quality_task_instances.quality_task_templates.workstream', 'quality').single()
   if (error || !data) throw new Error(error?.message ?? 'Attachment not found')
   return data as any
 }

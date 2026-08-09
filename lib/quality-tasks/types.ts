@@ -1,8 +1,12 @@
-export type TaskIntervalUnit = 'week' | 'month' | 'year'
-export type TaskStatus = 'open' | 'completed'
+export type TaskWorkstream = 'quality' | 'safety'
+export type TaskIntervalUnit = 'day' | 'week' | 'month' | 'year'
+export type RecurrenceMode = 'fixed_calendar' | 'rolling_completion'
+export type TaskStatus = 'open' | 'in_progress' | 'pending_review' | 'completed'
 export type TaskUrgency = 'normal' | 'due-soon' | 'overdue' | 'completed'
 export type TaskSchedulingState = 'unscheduled' | 'scheduled'
 export type TaskKind = 'activity' | 'meeting'
+export type ApprovalMode = 'none' | 'required'
+export type IntegrationKind = 'none' | 'safety_inspection' | 'equipment_reference'
 
 // A responsible person can be a linked system user OR a manually-typed name (matching the
 // equipment registry's "dropdown or type a name yourself" pattern) — never both meaningfully
@@ -17,6 +21,7 @@ export interface QualityTaskSchedule {
   templateId: string
   intervalUnit: TaskIntervalUnit
   intervalCount: number
+  recurrenceMode: RecurrenceMode
   startsOn: string
   endsOn: string | null
   active: boolean
@@ -25,6 +30,7 @@ export interface QualityTaskSchedule {
 export interface QualityTaskTemplate {
   id: string
   sourceKey: string | null
+  workstream: TaskWorkstream
   categoryCode: string
   categoryName: string
   activityNo: number | null
@@ -34,18 +40,34 @@ export interface QualityTaskTemplate {
   frequencyText: string
   ownerText: string
   taskKind: TaskKind
+  approvalMode: ApprovalMode
+  integrationKind: IntegrationKind
+  approverId: string | null
   reminderDays: number
   evidenceRequired: boolean
   active: boolean
   defaultAssignees: AssigneeEntry[]
   defaultParticipantDepts: string[]
   defaultParticipantUserIds: string[]
+  evidenceRequirements: QualityTaskEvidenceRequirement[]
   schedules: QualityTaskSchedule[]
+}
+
+export interface QualityTaskEvidenceRequirement {
+  id: string
+  templateId: string
+  label: string
+  evidenceKind: string
+  required: boolean
+  minimumFiles: number
+  sortOrder: number
 }
 
 export interface QualityTaskAttachment {
   id: string
   instanceId: string
+  requirementId: string | null
+  evidenceKind: string
   fileName: string
   contentType: string
   sizeBytes: number
@@ -89,6 +111,11 @@ export interface QualityTaskOccurrence {
   completionNote: string | null
   completedBy: string | null
   completedAt: string | null
+  submittedBy: string | null
+  submittedAt: string | null
+  reviewedBy: string | null
+  reviewedAt: string | null
+  reviewNote: string | null
   assignees: AssigneeEntry[]
   participantDepts: string[]
   participantUserIds: string[]
@@ -112,12 +139,33 @@ export interface QualityTaskActionItem {
   doneBy: string | null
 }
 
+export interface SafetyCertificate {
+  id: string
+  certificateType: string
+  documentNo: string | null
+  holderName: string
+  department: string | null
+  issuedOn: string | null
+  expiresOn: string | null
+  noExpiry: boolean
+  ownerId: string | null
+  fileName: string
+  contentType: string
+  sizeBytes: number
+  uploadedAt: string
+  renewalInstanceId: string | null
+}
+
 export type OccurrenceCreatePayload =
   | { mode: 'scheduled'; scheduleId: string; periodStart: string }
   | { mode: 'adHoc'; templateId: string; label: string; ownerText?: string; startDate: string; endDate: string; assignees: AssigneeEntry[] }
 
 export type OccurrenceActionPayload =
   | { action: 'schedule'; plannedDate: string | null; note?: string | null; assignees?: AssigneeEntry[]; participantDepts?: string[]; participantUserIds?: string[] }
+  | { action: 'start' }
+  | { action: 'submit'; completionNote?: string | null }
+  | { action: 'approve'; note?: string | null }
+  | { action: 'reject'; reason: string }
   | { action: 'complete'; completionNote?: string | null }
   | { action: 'reopen'; reason: string }
 

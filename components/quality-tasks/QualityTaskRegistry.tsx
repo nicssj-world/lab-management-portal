@@ -29,6 +29,7 @@ function blank(no: number): QualityTaskTemplate {
   return {
     id: "",
     sourceKey: null,
+    workstream: "quality",
     categoryCode: "A",
     categoryName: CATS.A,
     activityNo: no,
@@ -38,12 +39,16 @@ function blank(no: number): QualityTaskTemplate {
     frequencyText: "ตามที่กำหนด",
     ownerText: "",
     taskKind: "activity",
+    approvalMode: "none",
+    integrationKind: "none",
+    approverId: null,
     reminderDays: 7,
     evidenceRequired: false,
     active: true,
     defaultAssignees: [],
     defaultParticipantDepts: [],
     defaultParticipantUserIds: [],
+    evidenceRequirements: [],
     schedules: [],
   };
 }
@@ -504,6 +509,7 @@ export function QualityTaskRegistry({
                         templateId: draft.id,
                         intervalUnit: "month",
                         intervalCount: 1,
+                        recurrenceMode: "fixed_calendar",
                         startsOn: "2025-10-01",
                         endsOn: null,
                         active: true,

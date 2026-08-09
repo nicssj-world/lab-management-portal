@@ -43,6 +43,8 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/equipment/map':    { th: 'แผนผังเครื่องมือ',            en: 'Equipment Map' },
   '/staff/lab-map':          { th: 'แผนที่ห้องปฏิบัติการ',        en: 'Laboratory Map' },
   '/staff/lab-map/chemicals': { th: 'สารเคมีและ SDS', en: 'Chemicals & SDS' },
+  '/staff/safety':          { th: 'งานและหลักฐานความปลอดภัย', en: 'Safety Tasks & Evidence' },
+  '/staff/safety/registry': { th: 'Master Task ความปลอดภัย', en: 'Safety Master Tasks' },
   '/staff/personnel':            { th: 'ทะเบียนบุคลากร',          en: 'MT-CBH Staff' },
   '/staff/personnel/compliance': { th: 'รายงานคุณภาพบุคลากร',     en: 'Personnel Quality Report' },
   '/staff/personnel/workforce':  { th: 'Dashboard อัตรากำลัง',     en: 'Workforce Dashboard' },

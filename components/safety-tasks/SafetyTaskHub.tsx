@@ -1,0 +1,429 @@
+'use client'
+
+import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
+import { Button } from '@/components/ui/Button'
+import { Icon } from '@/components/ui/Icon'
+import type { QualityTaskActionItem, QualityTaskOccurrence, QualityTaskTemplate, SafetyCertificate, TaskStatus } from '@/lib/quality-tasks/types'
+import { certificateRenewalWindow, missingEvidenceRequirements } from '@/lib/quality-tasks/safety'
+
+type Tab = 'overview' | 'tasks' | 'calendar' | 'evidence' | 'certificates'
+type Person = { id: string; name: string; dept: string | null; role: string; position_title: string | null }
+type EvidenceItem = {
+  id: string; instanceId: string; fileName: string; contentType: string; sizeBytes: number; uploadedAt: string
+  requirementId: string | null; evidenceKind: string; taskTitle: string; referenceCode: string | null; periodLabel: string; fiscalYear: number
+}
+type SafetyIntegration = {
+  id: string; kind: string; sourceId: string; syncStatus: string; metadata: Record<string, unknown>
+  items?: { status: string; inspectionId: string | null; asset: { code?: string; name_th?: string; kind?: string } | null; inspection: { id?: string; result?: string; inspected_on?: string; note?: string | null; photo_file_name?: string } | null }[]
+}
+
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: 'overview', label: 'ภาพรวม', icon: 'dash' },
+  { id: 'tasks', label: 'รายการงาน', icon: 'clipboard' },
+  { id: 'calendar', label: 'ปฏิทิน', icon: 'calendar' },
+  { id: 'evidence', label: 'หลักฐานประจำปี', icon: 'inbox' },
+  { id: 'certificates', label: 'ใบรับรอง', icon: 'shieldCheck' },
+]
+
+const STATUS: Record<TaskStatus, { label: string; icon: string; tone: string }> = {
+  open: { label: 'ยังไม่เริ่ม', icon: 'clock', tone: 'slate' },
+  in_progress: { label: 'กำลังดำเนินการ', icon: 'trending', tone: 'cyan' },
+  pending_review: { label: 'รอตรวจทาน', icon: 'eye', tone: 'amber' },
+  completed: { label: 'เสร็จสิ้น', icon: 'check', tone: 'teal' },
+}
+
+function thaiDate(value: string | null, options?: Intl.DateTimeFormatOptions) {
+  if (!value) return '—'
+  return new Date(`${value.slice(0, 10)}T00:00:00+07:00`).toLocaleDateString('th-TH', options ?? { day: 'numeric', month: 'short', year: '2-digit' })
+}
+
+function StatusBadge({ status }: { status: TaskStatus }) {
+  const item = STATUS[status]
+  return <span className={`safety-status is-${item.tone}`}><Icon name={item.icon} size={13} />{item.label}</span>
+}
+
+function urgencyLabel(item: QualityTaskOccurrence) {
+  if (item.status === 'completed') return 'เสร็จแล้ว'
+  if (item.urgency === 'overdue') return 'เกินกำหนด'
+  if (item.urgency === 'due-soon') return 'ใกล้ถึงกำหนด'
+  return 'ตามแผน'
+}
+
+async function json<T>(response: Response): Promise<T> {
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(body.error ?? 'ดำเนินการไม่สำเร็จ')
+  return body as T
+}
+
+export function SafetyTaskHub({
+  actorId, isEditor, fiscalYear, range, initialOccurrences, templates, initialEvidence, initialCertificates, people,
+}: {
+  actorId: string
+  isEditor: boolean
+  fiscalYear: number
+  range: { from: string; to: string }
+  initialOccurrences: QualityTaskOccurrence[]
+  templates: QualityTaskTemplate[]
+  initialEvidence: EvidenceItem[]
+  initialCertificates: SafetyCertificate[]
+  people: Person[]
+}) {
+  const [tab, setTab] = useState<Tab>('overview')
+  const [occurrences, setOccurrences] = useState(initialOccurrences)
+  const [evidence, setEvidence] = useState(initialEvidence)
+  const [certificates, setCertificates] = useState(initialCertificates)
+  const [selected, setSelected] = useState<QualityTaskOccurrence | null>(null)
+  const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all')
+  const [search, setSearch] = useState('')
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [actionItems, setActionItems] = useState<QualityTaskActionItem[]>([])
+  const [integrations, setIntegrations] = useState<SafetyIntegration[]>([])
+  const [capaText, setCapaText] = useState('')
+  const [capaDue, setCapaDue] = useState('')
+  const [riskOpen, setRiskOpen] = useState(false)
+  const [riskText, setRiskText] = useState('')
+  const [riskLikelihood, setRiskLikelihood] = useState(3)
+  const [riskImpact, setRiskImpact] = useState(3)
+  const [certificateOpen, setCertificateOpen] = useState(false)
+  const [replaceCertificateId, setReplaceCertificateId] = useState<string | null>(null)
+  const [certDraft, setCertDraft] = useState({ certificateType: '', documentNo: '', holderName: '', department: '', issuedOn: '', expiresOn: '', noExpiry: false, ownerId: '' })
+
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 767px)').matches) setTab('tasks')
+  }, [])
+
+  useEffect(() => {
+    if (!selected && !certificateOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setSelected(null); setCertificateOpen(false); setReplaceCertificateId(null); setRiskOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [certificateOpen, selected])
+
+  useEffect(() => {
+    if (!selected?.instanceId) { setActionItems([]); setIntegrations([]); return }
+    fetch(`/api/admin/safety-tasks/occurrences/${selected.instanceId}/action-items`)
+      .then(response => json<{ items: QualityTaskActionItem[] }>(response))
+      .then(body => setActionItems(body.items)).catch(() => setActionItems([]))
+    fetch(`/api/admin/safety-tasks/occurrences/${selected.instanceId}/integrations`)
+      .then(response => json<{ integrations: SafetyIntegration[] }>(response))
+      .then(body => setIntegrations(body.integrations)).catch(() => setIntegrations([]))
+  }, [selected?.instanceId])
+
+  const counts = useMemo(() => ({
+    all: occurrences.length,
+    open: occurrences.filter(item => item.status === 'open').length,
+    active: occurrences.filter(item => item.status === 'in_progress').length,
+    review: occurrences.filter(item => item.status === 'pending_review').length,
+    completed: occurrences.filter(item => item.status === 'completed').length,
+    overdue: occurrences.filter(item => item.status !== 'completed' && item.urgency === 'overdue').length,
+  }), [occurrences])
+
+  const visibleTasks = useMemo(() => occurrences.filter(item => {
+    if (statusFilter !== 'all' && item.status !== statusFilter) return false
+    const q = search.trim().toLocaleLowerCase('th')
+    return !q || `${item.template.title} ${item.template.referenceCode ?? ''} ${item.template.ownerText}`.toLocaleLowerCase('th').includes(q)
+  }), [occurrences, search, statusFilter])
+
+  const calendarItems = useMemo(() => occurrences.filter(item => item.effectiveDueDate.startsWith(calendarMonth)), [calendarMonth, occurrences])
+  const calendarCells = useMemo(() => {
+    const [year, month] = calendarMonth.split('-').map(Number)
+    const firstDay = new Date(Date.UTC(year, month - 1, 1)).getUTCDay()
+    const days = new Date(Date.UTC(year, month, 0)).getUTCDate()
+    return [...Array(firstDay).fill(null), ...Array.from({ length: days }, (_, index) => index + 1)] as (number | null)[]
+  }, [calendarMonth])
+
+  async function reload(preferredKey?: string) {
+    const [taskBody, evidenceBody, certificateBody] = await Promise.all([
+      json<{ occurrences: QualityTaskOccurrence[] }>(await fetch(`/api/admin/safety-tasks/occurrences?from=${range.from}&to=${range.to}`)),
+      json<{ evidence: EvidenceItem[] }>(await fetch(`/api/admin/safety-tasks/evidence?fiscalYear=${fiscalYear}`)),
+      json<{ certificates: SafetyCertificate[] }>(await fetch('/api/admin/safety-tasks/certificates')),
+    ])
+    setOccurrences(taskBody.occurrences); setEvidence(evidenceBody.evidence); setCertificates(certificateBody.certificates)
+    if (preferredKey) setSelected(taskBody.occurrences.find(item => item.key === preferredKey) ?? null)
+  }
+
+  async function ensureInstance(item: QualityTaskOccurrence) {
+    if (item.instanceId) return item.instanceId
+    if (!item.scheduleId) throw new Error('ไม่พบรอบงานสำหรับสร้างรายการ')
+    const body = await json<{ instance: { id: string } }>(await fetch('/api/admin/safety-tasks/occurrences', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'scheduled', scheduleId: item.scheduleId, periodStart: item.periodStart }),
+    }))
+    return body.instance.id
+  }
+
+  async function taskAction(action: 'start' | 'submit' | 'approve' | 'reject') {
+    if (!selected) return
+    setBusy(true); setError('')
+    try {
+      const id = await ensureInstance(selected)
+      let payload: Record<string, unknown> = { action }
+      if (action === 'reject') {
+        const reason = window.prompt('เหตุผลที่ส่งกลับแก้ไข')?.trim()
+        if (!reason) return
+        payload = { action, reason }
+      }
+      await json(await fetch(`/api/admin/safety-tasks/occurrences/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }))
+      await reload(selected.key)
+    } catch (cause) { setError((cause as Error).message) } finally { setBusy(false) }
+  }
+
+  async function startInspectionRound() {
+    if (!selected) return
+    setBusy(true); setError('')
+    try {
+      const id = await ensureInstance(selected)
+      const body = await json<{ roundId: string }>(await fetch(`/api/admin/safety-tasks/occurrences/${id}/inspection-round`, { method: 'POST' }))
+      window.location.assign(`/staff/lab-map?inspectionRound=${body.roundId}`)
+    } catch (cause) { setError((cause as Error).message); setBusy(false) }
+  }
+
+  async function uploadEvidence(file: File, requirementId: string | null) {
+    if (!selected) return
+    setBusy(true); setError('')
+    try {
+      const instanceId = await ensureInstance(selected)
+      const presign = await json<{ uploadUrl: string; key: string }>(await fetch('/api/admin/safety-tasks/attachments/presign', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instanceId, fileName: file.name, contentType: file.type, sizeBytes: file.size }),
+      }))
+      const upload = await fetch(presign.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+      if (!upload.ok) throw new Error('อัปโหลดไฟล์ไปคลังหลักฐานไม่สำเร็จ')
+      await json(await fetch('/api/admin/safety-tasks/attachments/finalize', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instanceId, key: presign.key, fileName: file.name, requirementId, evidenceKind: selected.template.evidenceRequirements.find(item => item.id === requirementId)?.evidenceKind ?? 'document' }),
+      }))
+      await reload(selected.key)
+    } catch (cause) { setError((cause as Error).message) } finally { setBusy(false) }
+  }
+
+  async function addCapa() {
+    if (!selected || !capaText.trim()) return
+    setBusy(true); setError('')
+    try {
+      const instanceId = await ensureInstance(selected)
+      const body = await json<{ item: QualityTaskActionItem }>(await fetch(`/api/admin/safety-tasks/occurrences/${instanceId}/action-items`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignee: { userId: actorId, manualName: null }, description: capaText, dueDate: capaDue || null }),
+      }))
+      setActionItems(items => [...items, body.item]); setCapaText(''); setCapaDue('')
+    } catch (cause) { setError((cause as Error).message) } finally { setBusy(false) }
+  }
+
+  async function toggleCapa(item: QualityTaskActionItem) {
+    if (!selected?.instanceId) return
+    try {
+      const body = await json<{ item: QualityTaskActionItem }>(await fetch(`/api/admin/safety-tasks/occurrences/${selected.instanceId}/action-items/${item.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done: !item.doneAt }),
+      }))
+      setActionItems(items => items.map(current => current.id === item.id ? body.item : current))
+    } catch (cause) { setError((cause as Error).message) }
+  }
+
+  async function escalateRisk() {
+    if (!selected?.instanceId || !riskText.trim()) return
+    setBusy(true); setError('')
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      await json(await fetch(`/api/admin/safety-tasks/occurrences/${selected.instanceId}/risk`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          risk_no: null, assessed_date: today, department: null, space_code: null, hazard_category: 'ความปลอดภัย',
+          process_step: selected.template.title, risk_statement: riskText, affected_parties: null, causes: null,
+          existing_controls: null, additional_controls: null, reference_docs: selected.template.referenceCode,
+          likelihood: riskLikelihood, impact: riskImpact, owner: selected.template.ownerText, status: 'open', next_review_date: null,
+        }),
+      }))
+      setRiskOpen(false); setRiskText('')
+    } catch (cause) { setError((cause as Error).message) } finally { setBusy(false) }
+  }
+
+  async function addCertificate(file: File) {
+    setBusy(true); setError('')
+    try {
+      const presign = await json<{ uploadUrl: string; key: string }>(await fetch('/api/admin/safety-tasks/certificates/presign', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileName: file.name, contentType: file.type, sizeBytes: file.size }),
+      }))
+      const upload = await fetch(presign.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+      if (!upload.ok) throw new Error('อัปโหลดใบรับรองไม่สำเร็จ')
+      const certificateUrl = replaceCertificateId ? `/api/admin/safety-tasks/certificates/${replaceCertificateId}/replace` : '/api/admin/safety-tasks/certificates'
+      await json(await fetch(certificateUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          certificateType: certDraft.certificateType, documentNo: certDraft.documentNo || null, holderName: certDraft.holderName,
+          department: certDraft.department || null, issuedOn: certDraft.issuedOn || null, expiresOn: certDraft.noExpiry ? null : certDraft.expiresOn || null,
+          noExpiry: certDraft.noExpiry, ownerId: certDraft.ownerId || null, key: presign.key, fileName: file.name,
+        }),
+      }))
+      setCertificateOpen(false); setReplaceCertificateId(null); setCertDraft({ certificateType: '', documentNo: '', holderName: '', department: '', issuedOn: '', expiresOn: '', noExpiry: false, ownerId: '' })
+      await reload()
+    } catch (cause) { setError((cause as Error).message) } finally { setBusy(false) }
+  }
+
+  return (
+    <main className="safety-shell">
+      <section className="safety-hero">
+        <div>
+          <div className="safety-kicker"><span /> SAFETY CONTROL DESK · FY {fiscalYear}</div>
+          <h1>งานความปลอดภัยและหลักฐาน</h1>
+          <p>ติดตามกิจกรรม ข้อกำหนด เอกสารรับรอง และ CAPA ในรอบปีงบประมาณเดียวกัน</p>
+        </div>
+        <div className="safety-hero-actions">
+          <div className="safety-fiscal"><small>รอบปีงบประมาณ</small><strong>{thaiDate(range.from)} — {thaiDate(range.to)}</strong></div>
+          {isEditor && <Link href="/staff/safety/registry" className="safety-link-button"><Icon name="settings" size={15} /> Master Task</Link>}
+        </div>
+      </section>
+
+      <nav className="safety-tabs" role="tablist" aria-label="เมนูงานความปลอดภัย">
+        {TABS.map((item, index) => <button id={`safety-tab-${item.id}`} key={item.id} role="tab" aria-selected={tab === item.id} aria-controls={`safety-panel-${item.id}`} tabIndex={tab === item.id ? 0 : -1} onClick={() => setTab(item.id)} onKeyDown={event => { if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return; event.preventDefault(); const targetIndex = event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length; setTab(TABS[targetIndex].id); requestAnimationFrame(() => document.getElementById(`safety-tab-${TABS[targetIndex].id}`)?.focus()) }}><Icon name={item.icon} size={15} /><span>{item.label}</span>{item.id === 'tasks' && counts.overdue > 0 && <b>{counts.overdue}</b>}</button>)}
+      </nav>
+
+      {error && <div className="safety-error" role="alert"><Icon name="alert" size={16} />{error}<button onClick={() => setError('')} aria-label="ปิดข้อความ"><Icon name="x" size={14} /></button></div>}
+
+      {tab === 'overview' && <section id="safety-panel-overview" role="tabpanel" aria-labelledby="safety-tab-overview" className="safety-panel">
+        <div className="safety-metrics">
+          {[
+            ['งานทั้งหมด', counts.all, 'clipboard', 'neutral'], ['เกินกำหนด', counts.overdue, 'alert', 'danger'],
+            ['กำลังทำ', counts.active, 'trending', 'cyan'], ['รอตรวจทาน', counts.review, 'eye', 'amber'], ['เสร็จแล้ว', counts.completed, 'check', 'teal'],
+          ].map(([label, value, icon, tone]) => <article key={String(label)} className={`safety-metric is-${tone}`}><Icon name={String(icon)} size={18} /><div><strong>{value}</strong><span>{label}</span></div></article>)}
+        </div>
+        <div className="safety-overview-grid">
+          <section className="safety-card">
+            <header><div><small>PRIORITY BOARD</small><h2>งานที่ต้องจัดการก่อน</h2></div><button onClick={() => setTab('tasks')}>ดูทั้งหมด <Icon name="arrowRight" size={13} /></button></header>
+            <div className="safety-priority-list">
+              {occurrences.filter(item => item.status !== 'completed').sort((a, b) => a.effectiveDueDate.localeCompare(b.effectiveDueDate)).slice(0, 7).map(item => <button key={item.key} onClick={() => setSelected(item)}>
+                <time>{thaiDate(item.effectiveDueDate, { day: '2-digit', month: 'short' })}</time><span><b>{item.template.title}</b><small>{item.template.referenceCode ?? item.template.frequencyText}</small></span><StatusBadge status={item.status} />
+              </button>)}
+              {!counts.all && <div className="safety-empty">ยังไม่มีงานในปีงบประมาณนี้</div>}
+            </div>
+          </section>
+          <aside className="safety-card safety-readiness">
+            <header><div><small>EVIDENCE READINESS</small><h2>ความพร้อมของหลักฐาน</h2></div></header>
+            <div className="safety-gauge" style={{ '--progress': `${counts.all ? Math.round(counts.completed / counts.all * 100) : 0}%` } as React.CSSProperties}><strong>{counts.all ? Math.round(counts.completed / counts.all * 100) : 0}%</strong><span>ปิดงานแล้ว</span></div>
+            <dl><div><dt>ไฟล์หลักฐาน</dt><dd>{evidence.length}</dd></div><div><dt>ใบรับรองใช้งาน</dt><dd>{certificates.length}</dd></div><div><dt>ใกล้หมดอายุ ≤ 60 วัน</dt><dd>{certificates.filter(item => certificateRenewalWindow(item, new Date().toISOString().slice(0, 10)).urgency === 'due-soon').length}</dd></div></dl>
+          </aside>
+        </div>
+      </section>}
+
+      {tab === 'tasks' && <section id="safety-panel-tasks" role="tabpanel" aria-labelledby="safety-tab-tasks" className="safety-panel">
+        <div className="safety-toolbar">
+          <label className="safety-search"><Icon name="search" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="ค้นหากิจกรรม เอกสารอ้างอิง หรือผู้รับผิดชอบ" /></label>
+          <div className="safety-filter" aria-label="กรองสถานะ">{(['all', 'open', 'in_progress', 'pending_review', 'completed'] as const).map(value => <button key={value} aria-pressed={statusFilter === value} onClick={() => setStatusFilter(value)}>{value === 'all' ? 'ทั้งหมด' : STATUS[value].label}</button>)}</div>
+        </div>
+        <div className="safety-task-list safety-agenda">
+          {visibleTasks.map(item => <button key={item.key} className={`safety-task-row is-${item.urgency}`} onClick={() => setSelected(item)}>
+            <span className="safety-task-date"><b>{new Date(`${item.effectiveDueDate}T00:00:00+07:00`).getDate()}</b><small>{new Date(`${item.effectiveDueDate}T00:00:00+07:00`).toLocaleDateString('th-TH', { month: 'short' })}</small></span>
+            <span className="safety-task-main"><span className="safety-task-meta">{item.template.frequencyText}<i>•</i>{item.template.referenceCode ?? 'ข้อกำหนดภายใน'}</span><strong>{item.template.title}</strong><small>{item.template.ownerText}</small></span>
+            <span className="safety-task-evidence"><Icon name={missingEvidenceRequirements(item.template.evidenceRequirements, item.attachments).length ? 'alert' : 'check'} size={14} />{item.attachments.length} ไฟล์</span>
+            <StatusBadge status={item.status} />
+            <span className={`safety-urgency is-${item.urgency}`}>{urgencyLabel(item)}</span><Icon name="chevRight" size={16} />
+          </button>)}
+          {!visibleTasks.length && <div className="safety-empty">ไม่พบงานตามตัวกรอง</div>}
+        </div>
+      </section>}
+
+      {tab === 'calendar' && <section id="safety-panel-calendar" role="tabpanel" aria-labelledby="safety-tab-calendar" className="safety-panel">
+        <div className="safety-calendar-head"><button onClick={() => setCalendarMonth(previousMonth(calendarMonth))} aria-label="เดือนก่อน"><Icon name="arrowLeft" /></button><h2>{new Date(`${calendarMonth}-01T00:00:00+07:00`).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}</h2><button onClick={() => setCalendarMonth(nextMonth(calendarMonth))} aria-label="เดือนถัดไป"><Icon name="arrowRight" /></button></div>
+        <div className="safety-calendar-grid"><div className="safety-weekdays">{['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map(day => <span key={day}>{day}</span>)}</div><div className="safety-days">{calendarCells.map((day, index) => <div key={index} className={!day ? 'is-blank' : ''}>{day && <><b>{day}</b>{calendarItems.filter(item => Number(item.effectiveDueDate.slice(8)) === day).slice(0, 3).map(item => <button key={item.key} className={`is-${STATUS[item.status].tone}`} onClick={() => setSelected(item)}><Icon name={STATUS[item.status].icon} size={11} />{item.template.title}</button>)}</>}</div>)}</div></div>
+        <div className="safety-calendar-agenda safety-agenda">{calendarItems.sort((a, b) => a.effectiveDueDate.localeCompare(b.effectiveDueDate)).map(item => <button key={item.key} onClick={() => setSelected(item)}><time>{thaiDate(item.effectiveDueDate)}</time><span><b>{item.template.title}</b><small>{item.template.ownerText}</small></span><StatusBadge status={item.status} /></button>)}</div>
+      </section>}
+
+      {tab === 'evidence' && <section id="safety-panel-evidence" role="tabpanel" aria-labelledby="safety-tab-evidence" className="safety-panel">
+        <div className="safety-section-head"><div><small>FISCAL ARCHIVE · 1 ต.ค. – 30 ก.ย.</small><h2>หลักฐานประจำปีงบประมาณ {fiscalYear}</h2><p>ไฟล์จาก Safety Task จะเข้าคลังนี้อัตโนมัติ</p></div><span className="safety-count-chip">{evidence.length} ไฟล์</span></div>
+        <div className="safety-evidence-grid">{evidence.map(file => <a key={file.id} href={`/api/admin/safety-tasks/attachments/${file.id}`} target="_blank" rel="noreferrer"><span className={`safety-file-icon is-${file.contentType.includes('image') ? 'image' : file.contentType.includes('sheet') || file.contentType.includes('excel') ? 'sheet' : 'pdf'}`}><Icon name={file.contentType.includes('image') ? 'eye' : file.contentType.includes('sheet') || file.contentType.includes('excel') ? 'chart' : 'doc'} size={18} /></span><span><b>{file.fileName}</b><small>{file.taskTitle}</small><em>{file.referenceCode ?? file.periodLabel} · {(file.sizeBytes / 1024 / 1024).toFixed(1)} MB</em></span><Icon name="download" size={15} /></a>)}</div>
+        {!evidence.length && <div className="safety-empty">ยังไม่มีไฟล์หลักฐานในปีงบประมาณนี้</div>}
+      </section>}
+
+      {tab === 'certificates' && <section id="safety-panel-certificates" role="tabpanel" aria-labelledby="safety-tab-certificates" className="safety-panel">
+        <div className="safety-section-head"><div><small>CERTIFICATE REGISTER</small><h2>ทะเบียนใบรับรอง</h2><p>ระบบสร้าง Renewal Task ก่อนหมดอายุ 90 วัน และเตือนซ้ำที่ 60/30 วัน</p></div>{isEditor && <Button icon="plus" onClick={() => { setReplaceCertificateId(null); setCertificateOpen(true) }}>เพิ่มใบรับรอง</Button>}</div>
+        <div className="safety-certificate-list">{certificates.map(item => {
+          const window = certificateRenewalWindow(item, new Date().toISOString().slice(0, 10))
+          return <article key={item.id} className={`is-${window.urgency}`}><span className="safety-cert-mark"><Icon name="shieldCheck" size={20} /></span><div><small>{item.certificateType}</small><h3>{item.holderName}</h3><p>{item.documentNo || 'ไม่มีเลขที่'}{item.department ? ` · ${item.department}` : ''}</p></div><dl><dt>วันที่ออก</dt><dd>{thaiDate(item.issuedOn)}</dd></dl><dl><dt>วันหมดอายุ</dt><dd>{item.noExpiry ? 'ไม่มีวันหมดอายุ' : thaiDate(item.expiresOn)}</dd></dl><span className={`safety-renewal is-${window.urgency}`}><Icon name={window.urgency === 'overdue' ? 'alert' : window.shouldCreate ? 'clock' : 'check'} size={13} />{item.noExpiry ? 'ถาวร' : window.urgency === 'overdue' ? `หมดอายุ ${Math.abs(window.daysRemaining ?? 0)} วัน` : window.reminderStage ? `เตือน ${window.reminderStage} วัน · เหลือ ${window.daysRemaining}` : 'ปกติ'}</span><span className="safety-cert-actions"><a href={`/api/admin/safety-tasks/certificates/${item.id}/file`} target="_blank" rel="noreferrer" aria-label={`เปิดไฟล์ ${item.fileName}`}><Icon name="eye" size={16} /></a>{isEditor && <button aria-label={`แทนที่ ${item.certificateType}`} onClick={() => { setReplaceCertificateId(item.id); setCertDraft({ certificateType: item.certificateType, documentNo: item.documentNo ?? '', holderName: item.holderName, department: item.department ?? '', issuedOn: item.issuedOn ?? '', expiresOn: item.expiresOn ?? '', noExpiry: item.noExpiry, ownerId: item.ownerId ?? '' }); setCertificateOpen(true) }}><Icon name="upload" size={15} /></button>}</span></article>
+        })}</div>
+        {!certificates.length && <div className="safety-empty">ยังไม่มีใบรับรองในทะเบียน</div>}
+      </section>}
+
+      {selected && <TaskDrawer item={selected} actorId={actorId} isEditor={isEditor} busy={busy} error={error} actionItems={actionItems} integrations={integrations} capaText={capaText} capaDue={capaDue} riskOpen={riskOpen} riskText={riskText} riskLikelihood={riskLikelihood} riskImpact={riskImpact} onClose={() => { setSelected(null); setError(''); setRiskOpen(false) }} onAction={taskAction} onInspection={startInspectionRound} onUpload={uploadEvidence} onCapaText={setCapaText} onCapaDue={setCapaDue} onAddCapa={addCapa} onToggleCapa={toggleCapa} onRiskOpen={setRiskOpen} onRiskText={setRiskText} onRiskLikelihood={setRiskLikelihood} onRiskImpact={setRiskImpact} onEscalateRisk={escalateRisk} />}
+      {certificateOpen && <CertificateDialog draft={certDraft} people={people} busy={busy} replacing={Boolean(replaceCertificateId)} onChange={setCertDraft} onClose={() => { setCertificateOpen(false); setReplaceCertificateId(null) }} onSubmit={addCertificate} />}
+
+      <style jsx global>{SAFETY_CSS}</style>
+    </main>
+  )
+}
+
+function previousMonth(value: string) { const date = new Date(`${value}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() - 1); return date.toISOString().slice(0, 7) }
+function nextMonth(value: string) { const date = new Date(`${value}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + 1); return date.toISOString().slice(0, 7) }
+
+function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integrations, capaText, capaDue, riskOpen, riskText, riskLikelihood, riskImpact, onClose, onAction, onInspection, onUpload, onCapaText, onCapaDue, onAddCapa, onToggleCapa, onRiskOpen, onRiskText, onRiskLikelihood, onRiskImpact, onEscalateRisk }: {
+  item: QualityTaskOccurrence; actorId: string; isEditor: boolean; busy: boolean; error: string; actionItems: QualityTaskActionItem[]; integrations: SafetyIntegration[]; capaText: string; capaDue: string; riskOpen: boolean; riskText: string; riskLikelihood: number; riskImpact: number
+  onClose: () => void; onAction: (action: 'start' | 'submit' | 'approve' | 'reject') => void; onInspection: () => void; onUpload: (file: File, requirementId: string | null) => void; onCapaText: (value: string) => void; onCapaDue: (value: string) => void; onAddCapa: () => void; onToggleCapa: (item: QualityTaskActionItem) => void; onRiskOpen: (value: boolean) => void; onRiskText: (value: string) => void; onRiskLikelihood: (value: number) => void; onRiskImpact: (value: number) => void; onEscalateRisk: () => void
+}) {
+  const [requirementId, setRequirementId] = useState(item.template.evidenceRequirements[0]?.id ?? '')
+  const missing = missingEvidenceRequirements(item.template.evidenceRequirements, item.attachments)
+  const assigned = item.assignees.some(entry => entry.userId === actorId)
+  const canOperate = isEditor || assigned
+  const canApprove = isEditor || item.template.approverId === actorId
+  return <div className="safety-drawer-layer"><button className="safety-drawer-backdrop" aria-label="ปิดรายละเอียด" onClick={onClose} /><aside className="safety-drawer" role="dialog" aria-modal="true" aria-labelledby="safety-task-title">
+    <header><div><span className="safety-reference">{item.template.referenceCode ?? 'SAFETY TASK'}</span><h2 id="safety-task-title">{item.template.title}</h2><p>{item.periodLabel} · กำหนด {thaiDate(item.effectiveDueDate)}</p></div><button onClick={onClose} aria-label="ปิด"><Icon name="x" /></button></header>
+    <div className="safety-drawer-status"><StatusBadge status={item.status} /><span className={`safety-urgency is-${item.urgency}`}>{urgencyLabel(item)}</span><span><Icon name="user" size={13} />{item.assignees.map(entry => entry.manualName).filter(Boolean).join(', ') || item.template.ownerText}</span></div>
+    {error && <div className="safety-error" role="alert">{error}</div>}
+    <div className="safety-drawer-body">
+      <section><h3><span>01</span>ข้อกำหนดอ้างอิง</h3><dl className="safety-detail-grid"><div><dt>เอกสาร/แบบฟอร์ม</dt><dd>{item.template.referenceCode ?? 'ข้อกำหนดภายใน'}</dd></div><div><dt>รอบงาน</dt><dd>{item.template.frequencyText}</dd></div><div><dt>การอนุมัติ</dt><dd>{item.template.approvalMode === 'required' ? 'ผู้อนุมัติ 1 ขั้น' : 'ปิดงานได้เมื่อหลักฐานครบ'}</dd></div><div><dt>Integration</dt><dd>{item.template.integrationKind === 'safety_inspection' ? 'Inspection Round บนแผนที่' : item.template.integrationKind === 'equipment_reference' ? 'ทะเบียนเครื่องมือ' : 'ไม่มี'}</dd></div></dl>{item.template.description && <p className="safety-description">{item.template.description}</p>}{item.template.integrationKind === 'safety_inspection' && isEditor && item.status !== 'completed' && <Button icon="clipboard" variant="soft" onClick={onInspection} disabled={busy}>เปิด Inspection Round</Button>}{item.template.integrationKind === 'equipment_reference' && <Link className="safety-inline-link" href="/staff/equipment"><Icon name="microscope" size={14} />เปิดทะเบียนเครื่องมือ</Link>}{integrations.filter(integration => integration.kind === 'safety_inspection').map(integration => <InspectionResultBlock key={integration.id} integration={integration} />)}</section>
+      <section><h3><span>02</span>หลักฐานที่ต้องมี</h3><div className="safety-requirements">{item.template.evidenceRequirements.map(requirement => { const count = item.attachments.filter(file => file.requirementId === requirement.id).length; const complete = count >= requirement.minimumFiles; return <div key={requirement.id} className={complete ? 'is-complete' : ''}><Icon name={complete ? 'check' : 'clock'} size={14} /><span><b>{requirement.label}</b><small>{requirement.required ? `บังคับอย่างน้อย ${requirement.minimumFiles} ไฟล์` : 'ไม่บังคับ'}</small></span><strong>{count}/{requirement.minimumFiles}</strong></div>})}{!item.template.evidenceRequirements.length && <div className={item.attachments.length ? 'is-complete' : ''}><Icon name={item.attachments.length ? 'check' : 'clock'} size={14} /><span><b>เอกสารหรือรูปภาพประกอบ</b><small>{item.template.evidenceRequired ? 'ต้องมีอย่างน้อย 1 ไฟล์' : 'ไม่บังคับ'}</small></span><strong>{item.attachments.length}</strong></div>}</div>
+        <div className="safety-files">{item.attachments.map(file => <a key={file.id} href={`/api/admin/safety-tasks/attachments/${file.id}`} target="_blank" rel="noreferrer"><Icon name="doc" size={14} /><span>{file.fileName}</span><small>{(file.sizeBytes / 1024 / 1024).toFixed(1)} MB</small></a>)}</div>
+        {canOperate && item.status !== 'completed' && item.status !== 'pending_review' && <div className="safety-upload-row">{item.template.evidenceRequirements.length > 0 && <select value={requirementId} onChange={event => setRequirementId(event.target.value)} aria-label="ประเภทหลักฐาน">{item.template.evidenceRequirements.map(requirement => <option key={requirement.id} value={requirement.id}>{requirement.label}</option>)}</select>}<label className={busy ? 'is-disabled' : ''}><Icon name="upload" size={14} />แนบไฟล์<input type="file" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) onUpload(file, requirementId || null); event.currentTarget.value = '' }} /></label></div>}
+      </section>
+      <section><h3><span>03</span>CAPA / Action Item</h3><div className="safety-capa-list">{actionItems.map(action => <label key={action.id} className={action.doneAt ? 'is-done' : ''}><input type="checkbox" checked={Boolean(action.doneAt)} onChange={() => onToggleCapa(action)} /><span><b>{action.description}</b><small>{action.dueDate ? `กำหนด ${thaiDate(action.dueDate)}` : 'ไม่ระบุกำหนด'}</small></span></label>)}</div>{canOperate && <div className="safety-capa-add"><input value={capaText} onChange={event => onCapaText(event.target.value)} placeholder="ระบุการแก้ไข/ป้องกัน" /><input type="date" value={capaDue} onChange={event => onCapaDue(event.target.value)} /><Button size="sm" icon="plus" onClick={onAddCapa} disabled={busy || !capaText.trim()}>เพิ่ม</Button></div>}<button className="safety-risk-toggle" onClick={() => onRiskOpen(!riskOpen)}><Icon name="shield" size={14} />ส่งรายการรุนแรงหรือเกิดซ้ำไป Risk Register</button>{riskOpen && <div className="safety-risk-form"><textarea value={riskText} onChange={event => onRiskText(event.target.value)} placeholder="ถ้า… จะทำให้…" /><label>โอกาสเกิด <select value={riskLikelihood} onChange={event => onRiskLikelihood(Number(event.target.value))}>{[1,2,3,4,5].map(value => <option key={value}>{value}</option>)}</select></label><label>ผลกระทบ <select value={riskImpact} onChange={event => onRiskImpact(Number(event.target.value))}>{[1,2,3,4,5].map(value => <option key={value}>{value}</option>)}</select></label><Button size="sm" onClick={onEscalateRisk} disabled={busy || !riskText.trim()}>สร้าง Risk</Button></div>}</section>
+      <section><h3><span>04</span>Audit Timeline</h3><ol className="safety-timeline"><li className="is-done"><i /><span><b>สร้างรอบงาน</b><small>{thaiDate(item.periodStart)}</small></span></li>{item.submittedAt && <li className="is-done"><i /><span><b>ส่งตรวจ / ส่งหลักฐาน</b><small>{new Date(item.submittedAt).toLocaleString('th-TH')}</small></span></li>}{item.reviewedAt && <li className="is-done"><i /><span><b>{item.status === 'in_progress' ? 'ส่งกลับแก้ไข' : 'ตรวจทานแล้ว'}</b><small>{item.reviewNote || new Date(item.reviewedAt).toLocaleString('th-TH')}</small></span></li>}{item.completedAt && <li className="is-done"><i /><span><b>ปิดงาน</b><small>{new Date(item.completedAt).toLocaleString('th-TH')}</small></span></li>}</ol></section>
+    </div>
+    {canOperate && item.status !== 'completed' && <footer>{item.status === 'open' && <Button variant="secondary" onClick={() => onAction('start')} disabled={busy}>เริ่มดำเนินการ</Button>}{item.status !== 'pending_review' && <Button icon="check" onClick={() => onAction('submit')} disabled={busy || missing.length > 0}>{item.template.approvalMode === 'required' ? 'ส่งตรวจทาน' : 'ปิดงาน'}</Button>}{item.status === 'pending_review' && canApprove && <><Button variant="secondary" onClick={() => onAction('reject')} disabled={busy}>ส่งกลับแก้ไข</Button><Button icon="check" onClick={() => onAction('approve')} disabled={busy}>อนุมัติและปิดงาน</Button></>}</footer>}
+  </aside></div>
+}
+
+type CertificateDraft = { certificateType: string; documentNo: string; holderName: string; department: string; issuedOn: string; expiresOn: string; noExpiry: boolean; ownerId: string }
+function InspectionResultBlock({ integration }: { integration: SafetyIntegration }) {
+  const items = integration.items ?? []
+  const completed = items.filter(item => item.status === 'completed').length
+  const abnormal = items.filter(item => item.inspection && item.inspection.result !== 'passed')
+  return <div className="safety-inspection-result"><header><span><Icon name="clipboard" size={14} />ผล Inspection Round</span><b>{integration.syncStatus === 'synced' ? 'SYNCED' : 'PENDING'}</b></header><div className="safety-inspection-summary"><span>ตรวจแล้ว <b>{completed}/{items.length}</b></span><span>ผิดปกติ <b>{abnormal.length}</b></span><Link href={`/staff/lab-map?inspectionRound=${integration.sourceId}`}>เปิดบนแผนที่</Link></div>{items.filter(item => item.inspection).map(item => <div className={`safety-inspection-item is-${item.inspection?.result}`} key={item.inspectionId}><span><b>{item.asset?.name_th ?? item.asset?.code ?? 'อุปกรณ์'}</b><small>{item.inspection?.note || item.inspection?.result}</small></span>{item.inspectionId && <a href={`/api/admin/lab-map/safety-inspections/${item.inspectionId}/photo`} target="_blank" rel="noreferrer"><Icon name="eye" size={13} />รูปตรวจ</a>}</div>)}</div>
+}
+
+function CertificateDialog({ draft, people, busy, replacing, onChange, onClose, onSubmit }: { draft: CertificateDraft; people: Person[]; busy: boolean; replacing: boolean; onChange: (value: CertificateDraft) => void; onClose: () => void; onSubmit: (file: File) => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const set = (key: keyof typeof draft, value: string | boolean) => onChange({ ...draft, [key]: value })
+  return <div className="safety-dialog-layer"><button className="safety-drawer-backdrop" aria-label="ปิด" onClick={onClose} /><form className="safety-dialog" onSubmit={event => { event.preventDefault(); if (file) onSubmit(file) }}><header><div><small>CERTIFICATE REGISTER</small><h2>{replacing ? 'แทนที่ใบรับรอง' : 'เพิ่มใบรับรอง'}</h2></div><button type="button" onClick={onClose}><Icon name="x" /></button></header><div className="safety-form-grid"><label><span>ประเภทใบรับรอง *</span><input required value={draft.certificateType} onChange={event => set('certificateType', event.target.value)} /></label><label><span>เลขที่</span><input value={draft.documentNo} onChange={event => set('documentNo', event.target.value)} /></label><label><span>ผู้ถือ/หน่วยงาน *</span><input required value={draft.holderName} onChange={event => set('holderName', event.target.value)} /></label><label><span>แผนก</span><input value={draft.department} onChange={event => set('department', event.target.value)} /></label><label><span>วันที่ออก</span><input type="date" value={draft.issuedOn} onChange={event => set('issuedOn', event.target.value)} /></label><label><span>วันหมดอายุ</span><input type="date" disabled={draft.noExpiry} required={!draft.noExpiry} value={draft.expiresOn} onChange={event => set('expiresOn', event.target.value)} /></label><label className="safety-check"><input type="checkbox" checked={draft.noExpiry} onChange={event => set('noExpiry', event.target.checked)} />ไม่มีวันหมดอายุ</label><label><span>ผู้รับผิดชอบ</span><select value={draft.ownerId} onChange={event => set('ownerId', event.target.value)}><option value="">— ไม่ระบุ —</option>{people.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><label className="safety-file-pick"><span>ไฟล์ใบรับรอง *</span><input required type="file" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx" onChange={event => setFile(event.target.files?.[0] ?? null)} /><small>{replacing ? 'ฉบับเดิมและประวัติจะยังคงอยู่' : 'PDF, JPG, PNG, XLS, XLSX ไม่เกิน 20 MB'}</small></label></div><footer><Button type="button" variant="secondary" onClick={onClose}>ยกเลิก</Button><Button type="submit" icon="upload" disabled={busy || !file}>{replacing ? 'บันทึกฉบับใหม่' : 'บันทึกใบรับรอง'}</Button></footer></form></div>
+}
+
+const SAFETY_CSS = `
+.safety-inspection-result{margin-top:12px;border:1px solid color-mix(in srgb,var(--safety) 28%,var(--border));border-radius:8px;overflow:hidden}.safety-inspection-result>header{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:color-mix(in srgb,var(--safety) 7%,var(--card))}.safety-inspection-result>header span{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:750}.safety-inspection-result>header b{color:var(--safety);font-size:8px;letter-spacing:.1em}.safety-inspection-summary{display:flex;align-items:center;gap:14px;padding:7px 10px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:9px;color:var(--muted)}.safety-inspection-summary b{color:var(--ink)}.safety-inspection-summary a{margin-left:auto;color:var(--safety);font-weight:700;text-decoration:none}.safety-inspection-item{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-bottom:1px dashed var(--border)}.safety-inspection-item:last-child{border-bottom:0}.safety-inspection-item>span{display:flex;flex-direction:column}.safety-inspection-item b{font-size:9px}.safety-inspection-item small{font-size:8px;color:var(--muted)}.safety-inspection-item>a{display:flex;align-items:center;gap:4px;color:var(--safety);font-size:8px;text-decoration:none}.safety-inspection-item.is-failed,.safety-inspection-item.is-needs_attention{background:#fff7ed}
+.safety-shell{--safety:#0e7490;--safety-dark:#155e75;--safety-teal:#0f766e;--safety-pale:#ecfeff;max-width:1480px;margin:0 auto;padding:24px;color:var(--ink)}
+.safety-hero{position:relative;overflow:hidden;display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:28px 30px;border:1px solid color-mix(in srgb,var(--safety) 24%,var(--border));border-radius:16px;background:linear-gradient(120deg,color-mix(in srgb,var(--safety-pale) 82%,var(--card)),var(--card) 62%)}
+.safety-hero:after{content:"";position:absolute;width:330px;height:330px;right:-110px;top:-190px;border:42px solid color-mix(in srgb,var(--safety) 10%,transparent);border-radius:50%}
+.safety-kicker{display:flex;align-items:center;gap:8px;color:var(--safety);font-size:10px;font-weight:800;letter-spacing:.16em}.safety-kicker span{width:30px;height:3px;background:var(--safety)}
+.safety-hero h1{margin:8px 0 3px;font-size:clamp(25px,3vw,38px);line-height:1.2;letter-spacing:-.035em}.safety-hero p,.safety-section-head p{margin:0;color:var(--muted);font-size:13px}.safety-hero-actions{z-index:1;display:flex;align-items:center;gap:10px}.safety-fiscal{display:flex;flex-direction:column;padding:9px 12px;border-left:3px solid var(--safety);background:color-mix(in srgb,var(--card) 75%,transparent)}.safety-fiscal small{font-size:10px;color:var(--muted)}.safety-fiscal strong{font-size:12px}.safety-link-button{display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:8px;background:var(--safety);color:white;text-decoration:none;font-size:12px;font-weight:650}
+.safety-tabs{display:flex;gap:4px;margin:18px 0;border-bottom:1px solid var(--border);overflow-x:auto}.safety-tabs button{position:relative;display:flex;align-items:center;gap:7px;padding:10px 15px;border:0;background:transparent;color:var(--muted);font-family:inherit;font-size:12.5px;white-space:nowrap;cursor:pointer}.safety-tabs button[aria-selected=true]{color:var(--safety);font-weight:700}.safety-tabs button[aria-selected=true]:after{content:"";position:absolute;height:3px;left:10px;right:10px;bottom:-1px;background:var(--safety)}.safety-tabs b{min-width:18px;padding:1px 5px;border-radius:9px;background:#dc2626;color:white;font-size:10px}
+.safety-panel{animation:safety-in .2s ease-out}@keyframes safety-in{from{opacity:.4;transform:translateY(3px)}to{opacity:1;transform:none}}
+.safety-error{display:flex;align-items:center;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #fecaca;border-radius:8px;background:#fef2f2;color:#b91c1c;font-size:12px}.safety-error button{margin-left:auto;border:0;background:none;color:inherit;cursor:pointer}
+.safety-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}.safety-metric{display:flex;align-items:center;gap:12px;padding:15px 16px;border:1px solid var(--border);border-top:3px solid #94a3b8;border-radius:10px;background:var(--card)}.safety-metric>svg{color:#64748b}.safety-metric div{display:flex;flex-direction:column}.safety-metric strong{font-size:24px;line-height:1}.safety-metric span{margin-top:4px;color:var(--muted);font-size:11px}.safety-metric.is-danger{border-top-color:#dc2626}.safety-metric.is-danger>svg{color:#dc2626}.safety-metric.is-cyan{border-top-color:#0891b2}.safety-metric.is-cyan>svg{color:#0891b2}.safety-metric.is-amber{border-top-color:#d97706}.safety-metric.is-amber>svg{color:#d97706}.safety-metric.is-teal{border-top-color:#0f766e}.safety-metric.is-teal>svg{color:#0f766e}
+.safety-overview-grid{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(270px,.7fr);gap:14px;margin-top:14px}.safety-card{border:1px solid var(--border);border-radius:12px;background:var(--card)}.safety-card>header{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border)}.safety-card header small,.safety-section-head small,.safety-dialog header small{color:var(--safety);font-size:9px;font-weight:800;letter-spacing:.14em}.safety-card h2,.safety-section-head h2{margin:2px 0 0;font-size:17px}.safety-card header button{display:flex;align-items:center;gap:5px;border:0;background:none;color:var(--safety);font-family:inherit;font-size:11px;cursor:pointer}
+.safety-priority-list>button{width:100%;display:grid;grid-template-columns:62px minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 18px;border:0;border-bottom:1px solid var(--border);background:transparent;text-align:left;font-family:inherit;color:inherit;cursor:pointer}.safety-priority-list>button:hover{background:color-mix(in srgb,var(--safety) 5%,transparent)}.safety-priority-list time{font-weight:750;color:var(--safety)}.safety-priority-list span{display:flex;flex-direction:column;min-width:0}.safety-priority-list span b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.safety-priority-list span small{color:var(--muted);font-size:10px}
+.safety-readiness{padding-bottom:14px}.safety-gauge{position:relative;width:150px;height:150px;margin:22px auto 16px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:conic-gradient(var(--safety-teal) var(--progress),var(--border) 0)}.safety-gauge:after{content:"";position:absolute;inset:14px;border-radius:50%;background:var(--card)}.safety-gauge strong,.safety-gauge span{z-index:1}.safety-gauge strong{font-size:27px}.safety-gauge span{font-size:10px;color:var(--muted)}.safety-readiness dl{margin:0 18px}.safety-readiness dl div{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--border);font-size:11px}.safety-readiness dt{color:var(--muted)}.safety-readiness dd{margin:0;font-weight:700}
+.safety-toolbar{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}.safety-search{display:flex;align-items:center;gap:8px;min-width:300px;padding:0 11px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--muted)}.safety-search input{width:100%;height:36px;border:0;outline:0;background:transparent;color:var(--ink);font-family:inherit}.safety-filter{display:flex;gap:4px}.safety-filter button{padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer}.safety-filter button[aria-pressed=true]{border-color:var(--safety);background:color-mix(in srgb,var(--safety) 10%,var(--card));color:var(--safety);font-weight:700}
+.safety-task-list{border:1px solid var(--border);border-radius:11px;background:var(--card);overflow:hidden}.safety-task-row{position:relative;width:100%;display:grid;grid-template-columns:54px minmax(260px,1fr) 90px 125px 80px 18px;align-items:center;gap:12px;padding:12px 14px;border:0;border-bottom:1px solid var(--border);background:transparent;color:inherit;text-align:left;font-family:inherit;cursor:pointer}.safety-task-row:before{content:"";position:absolute;left:0;width:3px;height:100%;background:#cbd5e1}.safety-task-row.is-overdue:before{background:#dc2626}.safety-task-row.is-due-soon:before{background:#d97706}.safety-task-row:hover{background:color-mix(in srgb,var(--safety) 4%,transparent)}.safety-task-date{display:flex;flex-direction:column;align-items:center}.safety-task-date b{font-size:19px;color:var(--safety)}.safety-task-date small{font-size:9px;color:var(--muted)}.safety-task-main{display:flex;flex-direction:column;min-width:0}.safety-task-main strong{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.safety-task-main small{font-size:10px;color:var(--muted)}.safety-task-meta{display:flex;gap:5px;color:var(--safety);font-size:9px;font-weight:700}.safety-task-meta i{font-style:normal;color:var(--muted)}.safety-task-evidence{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:10px}
+.safety-status{display:inline-flex;align-items:center;justify-content:center;gap:5px;width:max-content;padding:4px 7px;border-radius:12px;font-size:9.5px;font-weight:700;background:#f1f5f9;color:#475569}.safety-status.is-cyan{background:#ecfeff;color:#0e7490}.safety-status.is-amber{background:#fffbeb;color:#b45309}.safety-status.is-teal{background:#ecfdf5;color:#047857}.safety-urgency{font-size:9px;font-weight:700;color:#64748b}.safety-urgency.is-overdue{color:#dc2626}.safety-urgency.is-due-soon{color:#b45309}
+.safety-empty{padding:42px;text-align:center;color:var(--muted);font-size:12px}
+.safety-calendar-head{display:flex;justify-content:center;align-items:center;gap:16px;margin-bottom:12px}.safety-calendar-head h2{min-width:220px;margin:0;text-align:center;font-size:17px}.safety-calendar-head button{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:inherit;cursor:pointer}.safety-calendar-grid{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--card)}.safety-weekdays,.safety-days{display:grid;grid-template-columns:repeat(7,1fr)}.safety-weekdays span{padding:8px;text-align:center;background:color-mix(in srgb,var(--safety) 5%,var(--card));color:var(--muted);font-size:10px;font-weight:700}.safety-days>div{min-height:108px;padding:7px;border-top:1px solid var(--border);border-right:1px solid var(--border)}.safety-days>div:nth-child(7n){border-right:0}.safety-days>div>b{display:block;margin-bottom:4px;font-size:10px}.safety-days button{width:100%;display:flex;align-items:center;gap:3px;margin:3px 0;padding:3px 4px;border:0;border-left:2px solid #64748b;background:#f8fafc;color:#334155;font-family:inherit;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.safety-days button.is-teal{border-color:#0f766e}.safety-days button.is-cyan{border-color:#0891b2}.safety-days button.is-amber{border-color:#d97706}.safety-calendar-agenda{display:none}
+.safety-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin:5px 0 16px}.safety-count-chip{padding:6px 10px;border-radius:12px;background:var(--safety-pale);color:var(--safety);font-size:10px;font-weight:700}.safety-evidence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.safety-evidence-grid>a{display:grid;grid-template-columns:38px minmax(0,1fr) 16px;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:inherit;text-decoration:none}.safety-evidence-grid>a:hover{border-color:var(--safety)}.safety-evidence-grid>a>span:nth-child(2){display:flex;flex-direction:column;min-width:0}.safety-evidence-grid b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.safety-evidence-grid small,.safety-evidence-grid em{font-size:9px;color:var(--muted);font-style:normal}.safety-file-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:8px;background:#fef2f2;color:#dc2626}.safety-file-icon.is-image{background:#ecfeff;color:#0891b2}.safety-file-icon.is-sheet{background:#ecfdf5;color:#059669}
+.safety-certificate-list{display:flex;flex-direction:column;gap:7px}.safety-certificate-list article{display:grid;grid-template-columns:42px minmax(220px,1fr) 130px 140px 120px 68px;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--border);border-left:3px solid var(--safety-teal);border-radius:8px;background:var(--card)}.safety-certificate-list article.is-due-soon{border-left-color:#d97706}.safety-certificate-list article.is-overdue{border-left-color:#dc2626}.safety-cert-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--safety-pale);color:var(--safety)}.safety-certificate-list article small{color:var(--safety);font-size:9px;font-weight:700}.safety-certificate-list h3{margin:2px 0;font-size:13px}.safety-certificate-list p{margin:0;color:var(--muted);font-size:10px}.safety-certificate-list dl{margin:0}.safety-certificate-list dt{font-size:9px;color:var(--muted)}.safety-certificate-list dd{margin:2px 0;font-size:11px;font-weight:600}.safety-renewal{display:inline-flex;align-items:center;gap:4px;color:#047857;font-size:9px;font-weight:700}.safety-renewal.is-due-soon{color:#b45309}.safety-renewal.is-overdue{color:#dc2626}.safety-cert-actions{display:flex;gap:4px}.safety-cert-actions a,.safety-cert-actions button{display:grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--safety);cursor:pointer}
+.safety-drawer-layer,.safety-dialog-layer{position:fixed;inset:0;z-index:70}.safety-drawer-backdrop{position:absolute;inset:0;border:0;background:rgba(15,23,42,.42);cursor:default}.safety-drawer{position:absolute;right:0;top:0;bottom:0;width:min(610px,94vw);display:flex;flex-direction:column;background:var(--card);box-shadow:-20px 0 50px rgba(15,23,42,.18);animation:drawer-in .22s ease-out}@keyframes drawer-in{from{transform:translateX(30px);opacity:.5}to{transform:none;opacity:1}}.safety-drawer>header{display:flex;justify-content:space-between;padding:20px 22px 14px;border-bottom:1px solid var(--border)}.safety-drawer>header h2{margin:5px 0 2px;font-size:19px}.safety-drawer>header p{margin:0;color:var(--muted);font-size:11px}.safety-drawer>header button,.safety-dialog header button{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.safety-reference{padding:3px 6px;background:var(--safety);color:white;font-size:8px;font-weight:800;letter-spacing:.1em}.safety-drawer-status{display:flex;align-items:center;gap:10px;padding:9px 22px;border-bottom:1px solid var(--border)}.safety-drawer-status>span:last-child{display:flex;align-items:center;gap:5px;margin-left:auto;color:var(--muted);font-size:10px}.safety-drawer-body{flex:1;overflow-y:auto;padding:0 22px 25px}.safety-drawer-body>section{padding:18px 0;border-bottom:1px solid var(--border)}.safety-drawer-body h3{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:12px}.safety-drawer-body h3>span{font-size:9px;color:var(--safety);font-weight:800}.safety-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0}.safety-detail-grid div{padding:9px;background:color-mix(in srgb,var(--safety) 4%,var(--card));border-radius:6px}.safety-detail-grid dt{color:var(--muted);font-size:9px}.safety-detail-grid dd{margin:2px 0;font-size:11px;font-weight:650}.safety-description{font-size:11px;color:var(--muted);line-height:1.6}.safety-inline-link,.safety-risk-toggle{display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:var(--safety);font-size:10px;text-decoration:none}.safety-risk-toggle{border:0;background:transparent;font-family:inherit;cursor:pointer}
+.safety-requirements{display:flex;flex-direction:column;gap:5px}.safety-requirements>div{display:grid;grid-template-columns:18px 1fr auto;align-items:center;gap:7px;padding:8px;border:1px solid #fed7aa;border-radius:6px;background:#fff7ed;color:#c2410c}.safety-requirements>div.is-complete{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.safety-requirements span{display:flex;flex-direction:column}.safety-requirements b{font-size:10px}.safety-requirements small{font-size:8px;opacity:.8}.safety-requirements strong{font-size:10px}.safety-files{display:flex;flex-direction:column;margin-top:7px}.safety-files a{display:flex;align-items:center;gap:6px;padding:6px;color:var(--ink);text-decoration:none;font-size:10px}.safety-files a span{flex:1}.safety-files a small{color:var(--muted)}.safety-upload-row{display:flex;gap:7px;margin-top:8px}.safety-upload-row select{flex:1;min-width:0;border:1px solid var(--border);border-radius:7px;background:var(--card);color:inherit;font-family:inherit;font-size:10px}.safety-upload-row label{display:inline-flex;align-items:center;gap:5px;padding:7px 10px;border-radius:7px;background:var(--safety);color:white;font-size:10px;font-weight:700;cursor:pointer}.safety-upload-row input[type=file]{display:none}.safety-upload-row label.is-disabled{opacity:.5}
+.safety-capa-list label{display:flex;align-items:flex-start;gap:8px;padding:7px;border-bottom:1px dashed var(--border);cursor:pointer}.safety-capa-list label span{display:flex;flex-direction:column}.safety-capa-list label b{font-size:10px}.safety-capa-list label small{color:var(--muted);font-size:9px}.safety-capa-list label.is-done b{text-decoration:line-through;color:var(--muted)}.safety-capa-add{display:grid;grid-template-columns:1fr 130px auto;gap:6px;margin-top:8px}.safety-capa-add input,.safety-risk-form textarea,.safety-risk-form select{min-width:0;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:inherit;font-family:inherit;font-size:10px}.safety-risk-form{display:grid;grid-template-columns:1fr auto auto auto;gap:6px;margin-top:8px;padding:9px;border:1px solid var(--border);border-radius:8px}.safety-risk-form textarea{resize:vertical}.safety-risk-form label{font-size:9px;color:var(--muted)}.safety-risk-form select{display:block;margin-top:2px}
+.safety-timeline{list-style:none;margin:0;padding:0 0 0 6px}.safety-timeline li{position:relative;display:flex;gap:10px;padding:0 0 14px}.safety-timeline li:before{content:"";position:absolute;left:4px;top:8px;bottom:-2px;width:1px;background:var(--border)}.safety-timeline li:last-child:before{display:none}.safety-timeline i{z-index:1;width:9px;height:9px;margin-top:3px;border:2px solid var(--card);border-radius:50%;background:var(--safety)}.safety-timeline span{display:flex;flex-direction:column}.safety-timeline b{font-size:10px}.safety-timeline small{font-size:8px;color:var(--muted)}.safety-drawer>footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 22px;border-top:1px solid var(--border);background:color-mix(in srgb,var(--card) 94%,var(--safety-pale))}
+.safety-dialog{position:absolute;top:50%;left:50%;width:min(620px,94vw);max-height:90vh;overflow:auto;transform:translate(-50%,-50%);border-radius:13px;background:var(--card);box-shadow:0 30px 80px rgba(15,23,42,.3)}.safety-dialog>header{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid var(--border)}.safety-dialog h2{margin:3px 0;font-size:18px}.safety-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:18px 20px}.safety-form-grid label{display:flex;flex-direction:column;gap:4px}.safety-form-grid label>span{font-size:10px;font-weight:650}.safety-form-grid input,.safety-form-grid select{height:36px;padding:0 9px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:inherit;font-family:inherit}.safety-form-grid .safety-check{flex-direction:row;align-items:center;font-size:10px}.safety-form-grid .safety-check input{height:auto}.safety-file-pick{grid-column:1/-1}.safety-file-pick small{font-size:9px;color:var(--muted)}.safety-dialog>footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--border)}
+@media(max-width:1023px){.safety-metrics{grid-template-columns:repeat(3,1fr)}.safety-overview-grid{grid-template-columns:1fr}.safety-evidence-grid{grid-template-columns:repeat(2,1fr)}.safety-task-row{grid-template-columns:48px minmax(200px,1fr) 115px 18px}.safety-task-evidence,.safety-task-row>.safety-urgency{display:none}.safety-certificate-list article{grid-template-columns:40px minmax(190px,1fr) 120px 100px 68px}.safety-certificate-list article dl:first-of-type{display:none}}
+@media(max-width:767px){.safety-shell{padding:14px}.safety-hero{display:block;padding:20px}.safety-hero p{font-size:11px}.safety-hero-actions{margin-top:13px}.safety-fiscal{display:none}.safety-tabs{margin:12px -2px}.safety-tabs button{padding:9px 11px}.safety-tabs button span{font-size:11px}.safety-metrics{grid-template-columns:repeat(2,1fr)}.safety-metric{padding:12px}.safety-metric strong{font-size:20px}.safety-overview-grid{margin-top:10px}.safety-readiness{display:none}.safety-priority-list>button{grid-template-columns:52px 1fr}.safety-priority-list .safety-status{display:none}.safety-toolbar{display:block}.safety-search{min-width:0;margin-bottom:8px}.safety-filter{overflow-x:auto}.safety-task-row{grid-template-columns:44px minmax(0,1fr) 18px;padding:11px 10px;gap:8px}.safety-task-row>.safety-status,.safety-task-row>.safety-task-evidence,.safety-task-row>.safety-urgency{display:none}.safety-task-main strong{white-space:normal}.safety-task-meta{font-size:8px}.safety-calendar-grid{display:none}.safety-calendar-agenda.safety-agenda{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:9px;background:var(--card)}.safety-calendar-agenda>button{display:grid;grid-template-columns:75px 1fr auto;align-items:center;gap:8px;padding:10px;border:0;border-bottom:1px solid var(--border);background:transparent;color:inherit;text-align:left;font-family:inherit}.safety-calendar-agenda time{font-size:9px;color:var(--safety)}.safety-calendar-agenda span:nth-child(2){display:flex;flex-direction:column}.safety-calendar-agenda b{font-size:10px}.safety-calendar-agenda small{font-size:8px;color:var(--muted)}.safety-section-head{align-items:flex-start}.safety-section-head p{font-size:10px}.safety-evidence-grid{grid-template-columns:1fr}.safety-certificate-list article{grid-template-columns:38px minmax(0,1fr) 68px;gap:8px}.safety-certificate-list article dl,.safety-certificate-list .safety-renewal{display:none}.safety-drawer{width:100vw}.safety-drawer>header{padding:16px}.safety-drawer-status{padding:8px 16px}.safety-drawer-status>span:last-child{display:none}.safety-drawer-body{padding:0 16px 22px}.safety-detail-grid{grid-template-columns:1fr}.safety-capa-add{grid-template-columns:1fr auto}.safety-capa-add input[type=date]{display:none}.safety-risk-form{grid-template-columns:1fr 1fr}.safety-risk-form textarea{grid-column:1/-1}.safety-drawer>footer{padding:10px 16px}.safety-form-grid{grid-template-columns:1fr}.safety-file-pick{grid-column:auto}}
+`

@@ -20,9 +20,16 @@ function iso(date: Date) {
 
 function advance(date: Date, unit: QualityTaskSchedule['intervalUnit'], count: number) {
   const next = new Date(date)
+  if (unit === 'day') next.setUTCDate(next.getUTCDate() + count)
   if (unit === 'week') next.setUTCDate(next.getUTCDate() + count * 7)
-  if (unit === 'month') next.setUTCMonth(next.getUTCMonth() + count)
-  if (unit === 'year') next.setUTCFullYear(next.getUTCFullYear() + count)
+  if (unit === 'month' || unit === 'year') {
+    const originalDay = next.getUTCDate()
+    const targetMonth = next.getUTCMonth() + (unit === 'month' ? count : count * 12)
+    next.setUTCDate(1)
+    next.setUTCMonth(targetMonth)
+    const lastDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate()
+    next.setUTCDate(Math.min(originalDay, lastDay))
+  }
   return next
 }
 

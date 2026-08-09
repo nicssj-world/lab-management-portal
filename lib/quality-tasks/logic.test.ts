@@ -16,7 +16,7 @@ import type { QualityTaskSchedule } from './types'
 function schedule(overrides: Partial<QualityTaskSchedule> = {}): QualityTaskSchedule {
   return {
     id: 'schedule-1', templateId: 'template-1', intervalUnit: 'month', intervalCount: 1,
-    startsOn: '2025-10-01', endsOn: null, active: true, ...overrides,
+    recurrenceMode: 'fixed_calendar', startsOn: '2025-10-01', endsOn: null, active: true, ...overrides,
   }
 }
 

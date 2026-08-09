@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auditSafety, requireSafetyEditor } from '@/lib/lab-map/safety-access'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { syncSafetyInspectionRoundToTask } from '@/lib/quality-tasks/safety-server'
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -21,11 +22,25 @@ export async function PATCH(req: NextRequest, { params }: Context) {
     status: 'closed', closed_by: guard.actor.id, closed_at: closedAt,
   }).eq('id', id).eq('started_by', guard.actor.id).eq('status', 'open').select('*').maybeSingle()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!data) return NextResponse.json({ error: 'ไม่พบรอบตรวจที่เปิดอยู่' }, { status: 404 })
+  if (!data) {
+    const { data: closedRound } = await supabaseAdmin.from('lab_map_safety_inspection_rounds').select('*').eq('id', id).eq('started_by', guard.actor.id).eq('status', 'closed').maybeSingle()
+    if (!closedRound) return NextResponse.json({ error: 'ไม่พบรอบตรวจที่เปิดอยู่' }, { status: 404 })
+    try {
+      const taskSync = await syncSafetyInspectionRoundToTask(id, guard.actor)
+      return NextResponse.json({ data: closedRound, taskSync, retried: true })
+    } catch (syncError) {
+      return NextResponse.json({ data: closedRound, taskSync: { status: 'pending', error: (syncError as Error).message } }, { status: 202 })
+    }
+  }
   try {
     await auditSafety('lab_map.safety_inspection_round.close', guard.actor.id, id, { status: 'closed', closedAt })
   } catch (auditError) {
     return NextResponse.json({ error: (auditError as Error).message }, { status: 500 })
   }
-  return NextResponse.json({ data })
+  try {
+    const taskSync = await syncSafetyInspectionRoundToTask(id, guard.actor)
+    return NextResponse.json({ data, taskSync })
+  } catch (syncError) {
+    return NextResponse.json({ data, taskSync: { status: 'pending', error: (syncError as Error).message } }, { status: 202 })
+  }
 }
