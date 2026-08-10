@@ -4,6 +4,7 @@ import { parseJson, transitionError, unexpectedError } from '@/lib/chemical-safe
 import {
   chemicalChangeDraftPatchSchema,
   chemicalDepartmentChemicalProposalSchema,
+  chemicalHoldingDeleteProposalSchema,
   chemicalHoldingProposalSchema,
   chemicalNewChemicalProposalSchema,
   chemicalProductProposalSchema,
@@ -42,6 +43,7 @@ function proposalSchemaFor(entityType: string): ZodTypeAny {
   if (entityType === 'new_chemical') return chemicalNewChemicalProposalSchema
   if (entityType === 'department_chemical') return chemicalDepartmentChemicalProposalSchema
   if (entityType === 'registry_entry') return chemicalRegistryEntryProposalSchema
+  if (entityType === 'holding_delete') return chemicalHoldingDeleteProposalSchema
   return chemicalHoldingProposalSchema
 }
 
@@ -91,7 +93,7 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<'/api/admin/
   )
   if (!proposal.success) return NextResponse.json({ error: 'ข้อมูลข้อเสนอไม่ครบ', issues: proposal.error.flatten() }, { status: 422 })
   try {
-    const proposedData = current.data.entity_type === 'product'
+    const proposedData = current.data.entity_type === 'product' || current.data.entity_type === 'holding_delete'
       ? proposal.data
       : normalizeStoredProposal(current.data.entity_type, proposal.data, current.data.unit_id)
     const { data, error } = await supabaseAdmin.from('chemical_change_requests').update({ proposed_data: snakeProposal(proposedData), updated_at: new Date().toISOString() })
@@ -120,7 +122,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/admin/c
   )
   if (!proposal.success) return NextResponse.json({ error: 'ข้อมูลข้อเสนอไม่ครบ' }, { status: 422 })
   try {
-    const proposedData = current.data.entity_type === 'product'
+    const proposedData = current.data.entity_type === 'product' || current.data.entity_type === 'holding_delete'
       ? proposal.data
       : normalizeStoredProposal(current.data.entity_type, proposal.data, current.data.unit_id)
     if (current.data.status === 'draft') {

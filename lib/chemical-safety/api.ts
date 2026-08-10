@@ -49,6 +49,9 @@ export function transitionError(error: unknown) {
   if (/approved_sds_pdf_required/i.test(message)) {
     return NextResponse.json({ error: 'ต้องเลือก SDS ที่อนุมัติแล้วและมีไฟล์ PDF' }, { status: 409 })
   }
+  if (/holding_in_use_cannot_delete/i.test(message)) {
+    return NextResponse.json({ error: 'รายการนี้เชื่อมกับ SDS หรือ SDS งานอยู่ ไม่สามารถลบได้' }, { status: 409 })
+  }
   if (/not_draft|not_in_review|stale|self_review|already/i.test(message)) {
     return NextResponse.json({ error: 'สถานะรายการเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่' }, { status: 409 })
   }

@@ -467,7 +467,7 @@ assert.match(
 assert.match(changeRequestsRoute, /export async function GET/, 'change-requests route exposes a GET for the pending-review panel')
 assert.match(
   changeRequestsRoute,
-  /entityType === 'product' \|\| input\.data\.entityType === 'holding'[\s\S]{0,80}: null/,
+  /entityType === 'product' \|\| input\.data\.entityType === 'holding'[\s\S]{0,160}: null/,
   'new-chemical and department-chemical requests store a null entity_id instead of a bogus one',
 )
 assert.match(

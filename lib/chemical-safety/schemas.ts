@@ -189,12 +189,18 @@ export const chemicalRegistryEntryProposalSchema = z.discriminatedUnion('product
   }).strict(),
 ]).superRefine(validateRegistryPlacement)
 
+// ลบ holding เดิม — ไม่มีฟิลด์ให้แก้ไข มีแค่เหตุผลไว้ให้ผู้ทบทวนอ่านประกอบก่อนอนุมัติ
+export const chemicalHoldingDeleteProposalSchema = z.object({
+  reason: optionalText(500),
+}).strict()
+
 export const chemicalChangeRequestSchema = z.discriminatedUnion('entityType', [
   z.object({ entityType: z.literal('product'), entityId: uuid, unitId: uuid, proposedData: chemicalProductProposalSchema }).strict(),
   z.object({ entityType: z.literal('holding'), entityId: uuid, unitId: uuid, proposedData: chemicalHoldingProposalSchema }).strict(),
   z.object({ entityType: z.literal('new_chemical'), unitId: uuid, proposedData: chemicalNewChemicalProposalSchema }).strict(),
   z.object({ entityType: z.literal('department_chemical'), unitId: uuid, proposedData: chemicalDepartmentChemicalProposalSchema }).strict(),
   z.object({ entityType: z.literal('registry_entry'), unitId: uuid, proposedData: chemicalRegistryEntryProposalSchema }).strict(),
+  z.object({ entityType: z.literal('holding_delete'), entityId: uuid, unitId: uuid, proposedData: chemicalHoldingDeleteProposalSchema }).strict(),
 ])
 
 export const chemicalChangeDraftPatchSchema = z.object({

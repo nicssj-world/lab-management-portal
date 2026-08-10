@@ -74,10 +74,11 @@ export async function POST(request: NextRequest) {
   if (guard.response) return guard.response
   try {
     // คำขอสร้างรายการใหม่ยังไม่มี entity ให้อ้างอิงจนกว่าจะผ่านการทบทวน
-    const entityId = input.data.entityType === 'product' || input.data.entityType === 'holding'
+    const entityId = input.data.entityType === 'product' || input.data.entityType === 'holding' || input.data.entityType === 'holding_delete'
       ? input.data.entityId
       : null
-    const proposedData = input.data.entityType === 'product'
+    // holding_delete ไม่มีฟิลด์ปริมาณให้คำนวณ ส่งตรงเหมือน product ไม่ผ่าน normalizeStoredProposal
+    const proposedData = input.data.entityType === 'product' || input.data.entityType === 'holding_delete'
       ? input.data.proposedData
       : normalizeStoredProposal(input.data.entityType, input.data.proposedData, input.data.unitId)
     const { data, error } = await supabaseAdmin.from('chemical_change_requests').insert({
