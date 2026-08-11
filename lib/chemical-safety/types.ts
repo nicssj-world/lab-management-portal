@@ -13,7 +13,7 @@ export type ChemicalSdsDestination = 'room' | 'department'
 export type ChemicalSdsPublicationStatus = 'unlinked' | 'ready' | 'active' | 'stale'
 export type ChemicalPhysicalState = 'solid' | 'liquid' | 'gas' | 'mixture' | 'unknown'
 export type ChemicalRole = 'custodian' | 'reviewer'
-export type ChemicalChangeEntityType = 'product' | 'holding' | 'new_chemical' | 'department_chemical' | 'registry_entry'
+export type ChemicalChangeEntityType = 'product' | 'holding' | 'new_chemical' | 'department_chemical' | 'registry_entry' | 'holding_delete'
 export type ChemicalSdsState = 'approved' | 'review_due' | 'draft' | 'mismatch' | 'missing'
 
 export type JsonPrimitive = boolean | number | string | null

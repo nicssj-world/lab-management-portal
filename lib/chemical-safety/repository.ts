@@ -447,7 +447,7 @@ export async function listChemicalChangeRequests(): Promise<ChemicalChangeReques
       let productName: string | null = null
       if (row.entity_type === 'product') {
         productName = productById.get(row.entity_id)?.canonical_name ?? null
-      } else if (row.entity_type === 'holding') {
+      } else if (row.entity_type === 'holding' || row.entity_type === 'holding_delete') {
         const holding = holdingById.get(row.entity_id)
         productName = holding ? productById.get(holding.product_id)?.canonical_name ?? null : null
       } else {

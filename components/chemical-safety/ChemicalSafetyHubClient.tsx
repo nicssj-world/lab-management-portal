@@ -212,6 +212,7 @@ export function ChemicalSafetyHubClient({
   const [modal, setModal] = useState<ModalState | null>(null)
   const [sdsModal, setSdsModal] = useState<ChemicalRegistryRow | null>(null)
   const [busyProductId, setBusyProductId] = useState<string | null>(null)
+  const [busyHoldingId, setBusyHoldingId] = useState<string | null>(null)
 
   const canPropose = canManageChemicals || canProposeUnitIds.length > 0
   const canReview = canManageChemicals || canReviewUnitIds.length > 0
@@ -392,6 +393,40 @@ export function ChemicalSafetyHubClient({
       notify(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ', false)
     } finally {
       setBusyProductId(null)
+    }
+  }
+
+  async function deleteHolding(row: ChemicalRegistryRow) {
+    if (!window.confirm(`ยืนยันส่งคำขอลบรายการ "${row.canonicalName}" ออกจากทะเบียน? คำขอจะถูกส่งให้ผู้ทบทวนอนุมัติก่อนมีผลจริง`)) return
+
+    setBusyHoldingId(row.holdingId)
+    try {
+      const created = await fetch('/api/admin/chemical-safety/change-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: 'holding_delete',
+          entityId: row.holdingId,
+          unitId: row.unitId,
+          proposedData: {},
+        }),
+      })
+      const createdPayload = await created.json().catch(() => ({}))
+      if (!created.ok) throw new Error(createdPayload.error || 'สร้างคำขอไม่สำเร็จ')
+
+      const submitted = await fetch(`/api/admin/chemical-safety/change-requests/${createdPayload.data.id}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const submittedPayload = await submitted.json().catch(() => ({}))
+      if (!submitted.ok) throw new Error(submittedPayload.error || 'ส่งทบทวนไม่สำเร็จ')
+
+      notify('ส่งคำขอลบเข้าสู่การทบทวนแล้ว')
+    } catch (caught) {
+      notify(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ', false)
+    } finally {
+      setBusyHoldingId(null)
     }
   }
 
@@ -699,6 +734,14 @@ export function ChemicalSafetyHubClient({
                                     title={isInactive ? 'ตั้งเป็น Active' : 'ตั้งเป็น Inactive'}
                                     disabled={busy || !product}
                                     onClick={() => void toggleLifecycle(row)}
+                                  />
+                                )}
+                                {canEditRow && (
+                                  <Button
+                                    variant="danger" size="sm" icon="x"
+                                    title="ลบรายการนี้ออกจากทะเบียน"
+                                    disabled={busyHoldingId === row.holdingId}
+                                    onClick={() => void deleteHolding(row)}
                                   />
                                 )}
                               </div>
