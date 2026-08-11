@@ -195,7 +195,7 @@ function ChemicalSdsPanel({
         <div style={{ display: 'flex', gap: SPACE.xs, alignItems: 'flex-start', fontSize: FONT.md }}>
           <Icon name="info" size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
           <span>
-            <strong>วิธีอ่านตัวเลข:</strong> รายการในทะเบียนคือจำนวนสารที่เก็บอยู่ในห้อง ส่วนเวอร์ชัน SDS คือจำนวนเอกสารทั้งหมด
+            <strong>การนับรายการและเวอร์ชัน SDS:</strong> รายการในทะเบียนคือจำนวนสารที่เก็บอยู่ในห้อง ส่วนเวอร์ชัน SDS คือจำนวนเอกสารทั้งหมด
             จึงอาจไม่เท่ากันเมื่อสารหนึ่งรายการมี SDS มากกว่าหนึ่งฉบับ
           </span>
         </div>

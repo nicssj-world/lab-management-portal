@@ -111,6 +111,8 @@ assert.ok(sdsSource.includes('รอเพิ่มเข้าทะเบี�
 assert.ok(sdsSource.includes('summarizeRoomSds'), 'SDS ห้องสารเคมีต้องสรุปจำนวนจากทะเบียนและจำนวนเวอร์ชันแยกกัน')
 assert.ok(sdsSource.includes('มี SDS ผูกทะเบียน'), 'SDS ห้องสารเคมีต้องแสดงจำนวนสารที่ผูก SDS แล้วอย่างชัดเจน')
 assert.ok(sdsSource.includes('ยังไม่มี SDS'), 'SDS ห้องสารเคมีต้องแสดงสารในทะเบียนที่ยังไม่มี SDS')
+assert.ok(sdsSource.includes('การนับรายการและเวอร์ชัน SDS'), 'SDS ห้องสารเคมีต้องใช้หัวข้ออธิบายจำนวนที่สื่อความหมายชัดเจน')
+assert.doesNotMatch(sdsSource, /วิธีอ่านตัวเลข/, 'SDS ห้องสารเคมีไม่ควรใช้คำว่า วิธีอ่านตัวเลข')
 assert.doesNotMatch(sdsSource, /ส่งทบทวน/, 'หน้า SDS ปลายทางต้องไม่เป็นจุดส่ง SDS เข้าทบทวน')
 assert.doesNotMatch(sdsSource, /บันทึกผลไม่อนุมัติแล้ว/, 'หน้า SDS ปลายทางต้องไม่เป็นจุดตัดสินอนุมัติ SDS')
 assert.match(
