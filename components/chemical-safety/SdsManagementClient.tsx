@@ -13,16 +13,18 @@ import type { ChemicalSdsView } from '@/lib/navigation'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
 import type {
   ChemicalProductDTO,
+  ChemicalRegistryRow,
   ChemicalSdsDTO,
   ChemicalUnitDTO,
   GhsPictogramCode,
 } from '@/lib/chemical-safety/types'
+import { sdsItemsForHolding, summarizeRoomSds } from '@/lib/chemical-safety/sds-room-summary'
 import { SdsPdfViewerModal } from './SdsPdfViewerModal'
 import { DepartmentChemicalModal } from './DepartmentChemicalModal'
 import { DepartmentSdsLinkModal } from './DepartmentSdsLinkModal'
 import { SdsDropzone } from './shared/SdsDropzone'
 import { FONT, SPACE, tabularNums } from './shared/tokens'
-import { DepartmentPublishBadge, GhsRow, SdsStatusBadge } from './shared/ui'
+import { DepartmentPublishBadge, GhsRow, SdsStateBadge, SdsStatusBadge } from './shared/ui'
 
 export interface SdsProductInfo {
   productId: string
@@ -34,6 +36,7 @@ export interface SdsProductInfo {
 interface Props {
   view: ChemicalSdsView
   items: ChemicalSdsDTO[]
+  roomRegistry: ChemicalRegistryRow[]
   products: SdsProductInfo[]
   chemicalProducts: ChemicalProductDTO[]
   units: ChemicalUnitDTO[]
@@ -56,7 +59,7 @@ function useToast() {
 
 export function SdsManagementClient({
   view, items, products, departments, canManage,
-  chemicalProducts, units, canEditUnitIds, publishableDepartmentCodes,
+  roomRegistry, chemicalProducts, units, canEditUnitIds, publishableDepartmentCodes,
 }: Props) {
   const router = useRouter()
   const { toasts, add } = useToast()
@@ -71,6 +74,7 @@ export function SdsManagementClient({
       {view === 'sds-chemicals' ? (
         <ChemicalSdsPanel
           items={items}
+          roomRegistry={roomRegistry}
           products={products}
         />
       ) : (
@@ -132,9 +136,10 @@ function SdsPanelIntro({
 }
 
 function ChemicalSdsPanel({
-  items, products,
+  items, roomRegistry, products,
 }: {
   items: ChemicalSdsDTO[]
+  roomRegistry: ChemicalRegistryRow[]
   products: SdsProductInfo[]
 }) {
   const [search, setSearch] = useState('')
@@ -151,24 +156,50 @@ function ChemicalSdsPanel({
     [products],
   )
 
+  const summary = useMemo(() => summarizeRoomSds(roomRegistry, items), [roomRegistry, items])
+
   const rows = useMemo(() => {
     const needle = debouncedSearch.toLocaleLowerCase('th')
-    return items.filter(item => {
+    return roomRegistry.map(registryRow => {
+      const versions = sdsItemsForHolding(items, registryRow.holdingId)
+      return { registryRow, versions }
+    }).filter(({ registryRow, versions }) => {
       if (!needle) return true
-      const product = productById.get(item.productId)
-      return [product?.name, item.manufacturer, item.supplier, item.revisionLabel]
+      const versionText = versions.map(item => {
+        const product = productById.get(item.productId)
+        return [product?.name, item.manufacturer, item.supplier, item.revisionLabel]
+          .filter(Boolean).join(' ')
+      }).join(' ')
+      return [registryRow.canonicalName, registryRow.unitName, registryRow.positionCode, versionText]
         .filter(Boolean).join(' ').toLocaleLowerCase('th').includes(needle)
     })
-  }, [items, debouncedSearch, productById])
+  }, [items, roomRegistry, debouncedSearch, productById])
 
   return (
     <>
       <SdsPanelIntro
         icon="doc"
         title="SDS ห้องสารเคมี"
-        description="แสดงเอกสาร SDS ของห้องสารเคมีที่มาจากทะเบียนสารเคมี"
-        note="ดูเอกสารที่นี่ · จัดการ workflow ที่ทะเบียนสารเคมี"
+        description="แสดงสารจากทะเบียนห้องสารเคมีเป็นหลัก แล้วรวม SDS ทุกเวอร์ชันไว้ใต้สารเดียวกัน"
+        note="จำนวนรายการอ้างอิงทะเบียน · จัดการ workflow ที่ทะเบียนสารเคมี"
       />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>
+        <Stat label="รายการในทะเบียนห้อง" value={summary.holdingCount} icon="flask" color="blue" />
+        <Stat label="มี SDS ผูกทะเบียน" value={summary.linkedHoldingCount} icon="link" color="green" />
+        <Stat label="ยังไม่มี SDS" value={summary.missingHoldingCount} icon="inbox" color="amber" />
+        <Stat label="เวอร์ชัน SDS" value={summary.versionCount} icon="doc" color="purple" />
+      </div>
+
+      <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, borderLeft: '4px solid var(--primary)' }}>
+        <div style={{ display: 'flex', gap: SPACE.xs, alignItems: 'flex-start', fontSize: FONT.md }}>
+          <Icon name="info" size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+          <span>
+            <strong>วิธีอ่านตัวเลข:</strong> รายการในทะเบียนคือจำนวนสารที่เก็บอยู่ในห้อง ส่วนเวอร์ชัน SDS คือจำนวนเอกสารทั้งหมด
+            จึงอาจไม่เท่ากันเมื่อสารหนึ่งรายการมี SDS มากกว่าหนึ่งฉบับ
+          </span>
+        </div>
+      </Card>
 
       <div style={{ marginBottom: SPACE.sm }}>
         <Input
@@ -176,62 +207,89 @@ function ChemicalSdsPanel({
           size="lg"
           value={search}
           onChange={setSearch}
-          placeholder="ค้นหาชื่อสาร ผู้ผลิต หรือฉบับที่"
+          placeholder="ค้นหาชื่อสาร หน่วยงาน ตำแหน่ง ผู้ผลิต หรือฉบับที่"
           style={{ maxWidth: 420 }}
         />
       </div>
       {rows.length === 0 ? (
-        <Card padding={0}><EmptyState icon="doc" title="ไม่พบเอกสาร SDS ที่ตรงกับเงื่อนไข" /></Card>
+        <Card padding={0}><EmptyState icon="flask" title="ไม่พบสารในทะเบียนห้องสารเคมีที่ตรงกับเงื่อนไข" /></Card>
       ) : (
         <div style={{ display: 'grid', gap: SPACE.sm }}>
-          {rows.map(item => {
-            const product = productById.get(item.productId)
+          {rows.map(({ registryRow, versions }) => {
             return (
-              <Card key={item.id} padding={SPACE.md}>
+              <Card key={registryRow.holdingId} padding={SPACE.md}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap' }}>
                   <div style={{ minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: FONT.lg, color: 'var(--ink)' }}>
-                      {product?.name ?? 'ไม่ทราบชื่อสาร'}
-                      {item.workflowOrigin === 'registry_v2' && <Badge color="purple" size="sm" style={{ marginLeft: 7 }}>จากทะเบียน</Badge>}
+                      {registryRow.canonicalName}
                     </h2>
                     <p style={{ margin: '4px 0 0', fontSize: FONT.base, color: 'var(--muted)' }}>
-                      {item.revisionLabel || 'ไม่ระบุฉบับ'} · {item.manufacturer || 'ไม่ระบุผู้ผลิต'} ·{' '}
-                      {item.language || 'th'} · มีผล {item.effectiveOn || '—'}
+                      {registryRow.unitName} · ตำแหน่ง {registryRow.positionCode || 'ไม่ระบุ'}
                     </p>
                   </div>
-                  <SdsStatusBadge status={item.status} />
+                  <SdsStateBadge state={registryRow.sdsStatus} />
                 </div>
 
-                <div style={{ marginTop: SPACE.sm }}>
-                  <GhsRow
-                    codes={item.pictogramCodes}
-                    hazardClassesTh={product?.hazardClassesTh ?? []}
-                    size={34}
-                  />
-                </div>
+                {versions.length === 0 ? (
+                  <div style={{ marginTop: SPACE.sm, padding: SPACE.sm, borderRadius: 10, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: FONT.sm }}>
+                    <strong style={{ color: 'var(--ink)' }}>ยังไม่มี SDS ที่ผูกกับรายการนี้</strong>
+                    <div style={{ marginTop: 3 }}>เพิ่มหรือผูก SDS จากปุ่ม SDS ในทะเบียนสารเคมี</div>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: SPACE.sm, display: 'grid', gap: SPACE.xs }}>
+                    <div style={{ fontSize: FONT.sm, fontWeight: 800, color: 'var(--ink)' }}>
+                      SDS ที่ผูกกับทะเบียน · {versions.length} เวอร์ชัน
+                    </div>
+                    {versions.map(item => {
+                      const product = productById.get(item.productId)
+                      return (
+                        <div key={item.id} style={{ padding: SPACE.sm, border: '1px solid var(--border)', borderRadius: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={{ color: 'var(--ink)' }}>{item.revisionLabel || 'ไม่ระบุฉบับ'}</strong>
+                              {item.workflowOrigin === 'registry_v2' && <Badge color="purple" size="sm" style={{ marginLeft: 7 }}>จากทะเบียน</Badge>}
+                              <div style={{ marginTop: 3, fontSize: FONT.sm, color: 'var(--muted)' }}>
+                                {item.manufacturer || 'ไม่ระบุผู้ผลิต'} · {item.language || 'th'} · มีผล {item.effectiveOn || '—'}
+                              </div>
+                            </div>
+                            <SdsStatusBadge status={item.status} />
+                          </div>
 
-                <div style={{ marginTop: SPACE.xs, fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
-                  H {item.hStatements.length} รายการ · P {item.pStatements.length} รายการ ·{' '}
-                  {item.fileId ? 'แนบไฟล์แล้ว' : 'ยังไม่แนบไฟล์'}
-                  {item.reviewReason && (
-                    <span style={{ color: 'var(--danger)' }}> · เหตุผล: {item.reviewReason}</span>
-                  )}
-                </div>
+                          <div style={{ marginTop: SPACE.xs }}>
+                            <GhsRow
+                              codes={item.pictogramCodes}
+                              hazardClassesTh={product?.hazardClassesTh ?? []}
+                              size={30}
+                            />
+                          </div>
 
-                <div style={{ marginTop: SPACE.sm, display: 'flex', gap: SPACE.xs, flexWrap: 'wrap' }}>
-                  {item.fileId && (
-                    <Button
-                      variant="secondary"
-                      icon="eye"
-                      onClick={() => setPreview({
-                        url: `/api/admin/chemical-safety/sds/${item.id}/file`,
-                        title: product?.name ?? 'SDS',
-                      })}
-                    >
-                      เปิดไฟล์
-                    </Button>
-                  )}
-                </div>
+                          <div style={{ marginTop: SPACE.xs, fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
+                            H {item.hStatements.length} รายการ · P {item.pStatements.length} รายการ ·{' '}
+                            {item.fileId ? 'แนบไฟล์แล้ว' : 'ยังไม่แนบไฟล์'}
+                            {item.reviewReason && (
+                              <span style={{ color: 'var(--danger)' }}> · เหตุผล: {item.reviewReason}</span>
+                            )}
+                          </div>
+
+                          {item.fileId && (
+                            <div style={{ marginTop: SPACE.xs, display: 'flex', gap: SPACE.xs, flexWrap: 'wrap' }}>
+                              <Button
+                                variant="secondary"
+                                icon="eye"
+                                onClick={() => setPreview({
+                                  url: `/api/admin/chemical-safety/sds/${item.id}/file`,
+                                  title: registryRow.canonicalName,
+                                })}
+                              >
+                                เปิดไฟล์
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </Card>
             )
           })}

@@ -818,6 +818,7 @@ export function ChemicalSafetyHubClient({
         <SdsManagementClient
           view={view}
           items={roomSdsItems}
+          roomRegistry={registry.filter(row => row.storageScope === 'room')}
           products={sdsProducts}
           chemicalProducts={products}
           units={units}

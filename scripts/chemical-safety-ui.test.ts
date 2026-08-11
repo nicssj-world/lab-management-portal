@@ -57,6 +57,7 @@ assert.ok(hubSource.includes('ViewTabs'), 'แท็บของหน้าห�
 assert.ok(hubSource.includes('RegistrySdsWorkflowModal'), 'ทะเบียนสารเคมีต้องเปิด workflow SDS ได้จากแต่ละรายการ')
 assert.ok(hubSource.includes('summarizeSdsWorkflow'), 'ทะเบียนสารเคมีต้องเป็นจุดเดียวที่สรุปสถานะ workflow SDS')
 assert.ok(hubSource.includes('ศูนย์กลาง workflow SDS'), 'ทะเบียนสารเคมีต้องอธิบายว่าเป็นศูนย์กลาง workflow SDS')
+assert.ok(hubSource.includes('roomRegistry'), 'แท็บ SDS ห้องสารเคมีต้องได้รับรายการสารจากทะเบียนโดยตรง')
 assert.ok(hubSource.includes("icon=\"upload\""), 'ทะเบียนสารเคมีต้องมีปุ่มอัปโหลดไฟล์ SDS')
 assert.ok(hubSource.includes('สถานะการใช้งาน'), 'ทะเบียนสารเคมีต้องมีตัวกรอง/คอลัมน์สถานะการใช้งาน')
 assert.ok(hubSource.includes('Active') && hubSource.includes('Inactive'), 'ทะเบียนสารเคมีต้องแสดงสถานะ Active/Inactive')
@@ -107,6 +108,9 @@ assert.ok(existsSync(departmentLinkModalPath), 'modal สำหรับผู�
 assert.ok(sdsSource.includes('DepartmentSdsLinkModal'), 'SDS แยกตามงานต้องเปิด modal ผูกไฟล์กับทะเบียน')
 assert.ok(sdsSource.includes('การอนุมัติ SDS ให้ทำในทะเบียนสารเคมี'), 'แท็บ SDS แยกตามงานต้องแยกการเผยแพร่ออกจากการอนุมัติ SDS')
 assert.ok(sdsSource.includes('รอเพิ่มเข้าทะเบียน'), 'คำขอ legacy ของงานต้องไม่ใช้ป้ายรออนุมัติที่สับสนกับ SDS review')
+assert.ok(sdsSource.includes('summarizeRoomSds'), 'SDS ห้องสารเคมีต้องสรุปจำนวนจากทะเบียนและจำนวนเวอร์ชันแยกกัน')
+assert.ok(sdsSource.includes('มี SDS ผูกทะเบียน'), 'SDS ห้องสารเคมีต้องแสดงจำนวนสารที่ผูก SDS แล้วอย่างชัดเจน')
+assert.ok(sdsSource.includes('ยังไม่มี SDS'), 'SDS ห้องสารเคมีต้องแสดงสารในทะเบียนที่ยังไม่มี SDS')
 assert.doesNotMatch(sdsSource, /ส่งทบทวน/, 'หน้า SDS ปลายทางต้องไม่เป็นจุดส่ง SDS เข้าทบทวน')
 assert.doesNotMatch(sdsSource, /บันทึกผลไม่อนุมัติแล้ว/, 'หน้า SDS ปลายทางต้องไม่เป็นจุดตัดสินอนุมัติ SDS')
 assert.match(
