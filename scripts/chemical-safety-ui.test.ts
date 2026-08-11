@@ -57,6 +57,8 @@ assert.ok(hubSource.includes('ViewTabs'), 'แท็บของหน้าห�
 assert.ok(hubSource.includes('RegistrySdsWorkflowModal'), 'ทะเบียนสารเคมีต้องเปิด workflow SDS ได้จากแต่ละรายการ')
 assert.ok(hubSource.includes('summarizeSdsWorkflow'), 'ทะเบียนสารเคมีต้องเป็นจุดเดียวที่สรุปสถานะ workflow SDS')
 assert.ok(hubSource.includes('ศูนย์กลาง workflow SDS'), 'ทะเบียนสารเคมีต้องอธิบายว่าเป็นศูนย์กลาง workflow SDS')
+assert.ok(hubSource.includes('ทะเบียนสารเคมีคือศูนย์กลางการสร้าง แก้ไข ส่งทบทวน และอนุมัติ SDS'), 'คำอธิบาย workflow ต้องระบุงานที่ทำในทะเบียนสารเคมีให้ชัดเจน')
+assert.ok(hubSource.includes('หน้า SDS ใช้สำหรับดูเอกสารและจัดการการเผยแพร่'), 'คำอธิบาย workflow ต้องระบุหน้าที่ของหน้า SDS ให้ชัดเจน')
 assert.ok(hubSource.includes('roomRegistry'), 'แท็บ SDS ห้องสารเคมีต้องได้รับรายการสารจากทะเบียนโดยตรง')
 assert.ok(hubSource.includes("icon=\"upload\""), 'ทะเบียนสารเคมีต้องมีปุ่มอัปโหลดไฟล์ SDS')
 assert.ok(hubSource.includes('สถานะการใช้งาน'), 'ทะเบียนสารเคมีต้องมีตัวกรอง/คอลัมน์สถานะการใช้งาน')

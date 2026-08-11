@@ -204,7 +204,7 @@ function RegistrySdsWorkflowSummary({ summary }: { summary: SdsWorkflowSummary }
           <div>
             <h2 style={{ margin: 0, color: 'var(--ink)', fontSize: FONT.lg }}>ศูนย์กลาง workflow SDS</h2>
             <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: FONT.sm, lineHeight: 1.5 }}>
-              SDS ของห้องสารเคมีและ SDS แยกตามงานจัดการจากปุ่ม <strong>SDS</strong> ในทะเบียนสารเคมีเท่านั้น
+              ทะเบียนสารเคมีคือศูนย์กลางการสร้าง แก้ไข ส่งทบทวน และอนุมัติ SDS ส่วนหน้า SDS ใช้สำหรับดูเอกสารและจัดการการเผยแพร่
             </p>
           </div>
           <Badge color="purple">{summary.total.toLocaleString()} เวอร์ชัน</Badge>
