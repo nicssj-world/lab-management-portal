@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { FilterChips, type FilterChipItem } from '@/components/ui/FilterChips'
 import { Icon } from '@/components/ui/Icon'
 import { Input } from '@/components/ui/Input'
 import { Stat } from '@/components/ui/Stat'
@@ -18,7 +17,6 @@ import type {
   ChemicalUnitDTO,
   GhsPictogramCode,
 } from '@/lib/chemical-safety/types'
-import { SdsEditorModal } from './SdsEditorModal'
 import { SdsPdfViewerModal } from './SdsPdfViewerModal'
 import { DepartmentChemicalModal } from './DepartmentChemicalModal'
 import { DepartmentSdsLinkModal } from './DepartmentSdsLinkModal'
@@ -40,10 +38,8 @@ interface Props {
   chemicalProducts: ChemicalProductDTO[]
   units: ChemicalUnitDTO[]
   departments: DepartmentSdsGroupDTO[]
-  actorId: string
   canManage: boolean
   canEditUnitIds: string[]
-  canReviewUnitIds: string[]
   publishableDepartmentCodes: string[]
 }
 
@@ -59,13 +55,11 @@ function useToast() {
 }
 
 export function SdsManagementClient({
-  view, items, products, departments, actorId, canManage,
-  chemicalProducts, units, canEditUnitIds, canReviewUnitIds, publishableDepartmentCodes,
+  view, items, products, departments, canManage,
+  chemicalProducts, units, canEditUnitIds, publishableDepartmentCodes,
 }: Props) {
   const router = useRouter()
   const { toasts, add } = useToast()
-  const canEdit = canManage || canEditUnitIds.length > 0
-  const canReview = canManage || canReviewUnitIds.length > 0
 
   const notify = useCallback((message: string, ok = true) => {
     add(message, ok)
@@ -78,10 +72,6 @@ export function SdsManagementClient({
         <ChemicalSdsPanel
           items={items}
           products={products}
-          actorId={actorId}
-          canEdit={canEdit}
-          canReview={canReview}
-          onDone={notify}
         />
       ) : (
         <DepartmentSdsPanel
@@ -142,21 +132,14 @@ function SdsPanelIntro({
 }
 
 function ChemicalSdsPanel({
-  items, products, actorId, canEdit, canReview, onDone,
+  items, products,
 }: {
   items: ChemicalSdsDTO[]
   products: SdsProductInfo[]
-  actorId: string
-  canEdit: boolean
-  canReview: boolean
-  onDone: (message: string, ok?: boolean) => void
 }) {
-  const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [editing, setEditing] = useState<ChemicalSdsDTO | null>(null)
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
-  const [busyId, setBusyId] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), search ? 350 : 0)
@@ -168,74 +151,24 @@ function ChemicalSdsPanel({
     [products],
   )
 
-  const counts = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const item of items) map.set(item.status, (map.get(item.status) ?? 0) + 1)
-    return map
-  }, [items])
-
   const rows = useMemo(() => {
     const needle = debouncedSearch.toLocaleLowerCase('th')
     return items.filter(item => {
-      if (status && item.status !== status) return false
       if (!needle) return true
       const product = productById.get(item.productId)
       return [product?.name, item.manufacturer, item.supplier, item.revisionLabel]
         .filter(Boolean).join(' ').toLocaleLowerCase('th').includes(needle)
     })
-  }, [items, status, debouncedSearch, productById])
-
-  const statusChips: FilterChipItem<string>[] = [
-    { value: '', label: 'ทุกสถานะ', count: items.length },
-    { value: 'draft', label: 'ฉบับร่าง', count: counts.get('draft') ?? 0 },
-    { value: 'in_review', label: 'รอทบทวน', count: counts.get('in_review') ?? 0 },
-    { value: 'approved', label: 'อนุมัติแล้ว', count: counts.get('approved') ?? 0 },
-    { value: 'rejected', label: 'ไม่อนุมัติ', count: counts.get('rejected') ?? 0 },
-    { value: 'superseded', label: 'ถูกแทนที่', count: counts.get('superseded') ?? 0 },
-  ]
-
-  async function act(id: string, path: string, body?: unknown, successMessage = 'ดำเนินการแล้ว') {
-    setBusyId(id)
-    try {
-      const response = await fetch(`/api/admin/chemical-safety/sds/${id}${path}`, {
-        method: 'POST',
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(payload.error || 'ดำเนินการไม่สำเร็จ')
-      onDone(successMessage)
-    } catch (caught) {
-      onDone(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ', false)
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  function reject(id: string) {
-    const reason = window.prompt('เหตุผลที่ไม่อนุมัติ')
-    if (reason === null) return
-    if (reason.trim() === '') {
-      onDone('กรุณาระบุเหตุผลที่ไม่อนุมัติ', false)
-      return
-    }
-    void act(id, '/review', { decision: 'rejected', reason: reason.trim() }, 'บันทึกผลไม่อนุมัติแล้ว')
-  }
+  }, [items, debouncedSearch, productById])
 
   return (
     <>
       <SdsPanelIntro
         icon="doc"
         title="SDS ห้องสารเคมี"
-        description="ดูเอกสารจากทะเบียน และดูแล workflow เดิมเฉพาะรายการ legacy"
-        note="รายการใหม่จัดการจากทะเบียนสารเคมี"
+        description="แสดงเอกสาร SDS ของห้องสารเคมีที่มาจากทะเบียนสารเคมี"
+        note="ดูเอกสารที่นี่ · จัดการ workflow ที่ทะเบียนสารเคมี"
       />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>
-        <Stat label="ฉบับร่าง" value={counts.get('draft') ?? 0} icon="edit" color="blue" />
-        <Stat label="รอทบทวน" value={counts.get('in_review') ?? 0} icon="clock" color="amber" />
-        <Stat label="อนุมัติแล้ว" value={counts.get('approved') ?? 0} icon="shieldCheck" color="green" />
-        <Stat label="ไม่อนุมัติ" value={counts.get('rejected') ?? 0} icon="x" color="red" />
-      </div>
 
       <div style={{ marginBottom: SPACE.sm }}>
         <Input
@@ -247,18 +180,12 @@ function ChemicalSdsPanel({
           style={{ maxWidth: 420 }}
         />
       </div>
-      <div style={{ marginBottom: SPACE.md }}>
-        <FilterChips items={statusChips} value={status} onChange={setStatus} label="กรองตามสถานะเอกสาร" compact />
-      </div>
-
       {rows.length === 0 ? (
         <Card padding={0}><EmptyState icon="doc" title="ไม่พบเอกสาร SDS ที่ตรงกับเงื่อนไข" /></Card>
       ) : (
         <div style={{ display: 'grid', gap: SPACE.sm }}>
           {rows.map(item => {
             const product = productById.get(item.productId)
-            const busy = busyId === item.id
-            const ownSubmission = item.submittedBy === actorId
             return (
               <Card key={item.id} padding={SPACE.md}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap' }}>
@@ -304,41 +231,6 @@ function ChemicalSdsPanel({
                       เปิดไฟล์
                     </Button>
                   )}
-                  {item.workflowOrigin === 'legacy' && canEdit && item.status === 'draft' && (
-                    <>
-                      <Button variant="secondary" icon="edit" disabled={busy} onClick={() => setEditing(item)}>
-                        แก้ไข
-                      </Button>
-                      <Button
-                        icon="arrowRight"
-                        disabled={busy || !item.fileId}
-                        title={item.fileId ? undefined : 'ต้องแนบไฟล์ SDS ก่อนจึงจะส่งทบทวนได้'}
-                        onClick={() => void act(item.id, '/submit', undefined, 'ส่งทบทวนแล้ว')}
-                      >
-                        ส่งทบทวน
-                      </Button>
-                    </>
-                  )}
-                  {item.workflowOrigin === 'legacy' && canReview && item.status === 'in_review' && (
-                    ownSubmission ? (
-                      <span style={{ fontSize: FONT.sm, color: 'var(--muted)', alignSelf: 'center' }}>
-                        <Icon name="lock" size={12} /> ผู้ส่งไม่สามารถทบทวนฉบับของตนเอง
-                      </span>
-                    ) : (
-                      <>
-                        <Button
-                          icon="check"
-                          disabled={busy}
-                          onClick={() => void act(item.id, '/review', { decision: 'approved', reason: '' }, 'อนุมัติแล้ว')}
-                        >
-                          อนุมัติ
-                        </Button>
-                        <Button variant="danger" icon="x" disabled={busy} onClick={() => reject(item.id)}>
-                          ไม่อนุมัติ
-                        </Button>
-                      </>
-                    )
-                  )}
                 </div>
               </Card>
             )
@@ -346,18 +238,6 @@ function ChemicalSdsPanel({
         </div>
       )}
 
-      {editing && (
-        <SdsEditorModal
-          sds={editing}
-          productName={productById.get(editing.productId)?.name ?? 'ไม่ทราบชื่อสาร'}
-          seed={{
-            pictogramCodes: productById.get(editing.productId)?.pictogramCodes ?? [],
-            hazardClassesTh: productById.get(editing.productId)?.hazardClassesTh ?? [],
-          }}
-          onClose={() => setEditing(null)}
-          onSaved={onDone}
-        />
-      )}
       {preview && (
         <SdsPdfViewerModal
           url={preview.url}
@@ -448,7 +328,7 @@ function DepartmentSdsPanel({
       <SdsPanelIntro
         icon="users"
         title="SDS แยกตามงาน"
-        description="รวมเอกสาร SDS ของแต่ละงานให้ตรวจสอบ แก้ไขชื่อ และเผยแพร่เป็นชุดได้จากพื้นที่เดียว"
+        description="รวมเอกสาร SDS ของแต่ละงานให้ตรวจสอบและเผยแพร่เป็นชุดได้จากพื้นที่เดียว การอนุมัติ SDS ให้ทำในทะเบียนสารเคมี"
         note="เผยแพร่ทั้งงานพร้อมกัน"
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>
@@ -538,7 +418,7 @@ function DepartmentSdsPanel({
                           {file.displayName}
                           {file.source === 'registry_v2' && <Badge color="purple" size="sm" style={{ marginLeft: 6 }}>จากทะเบียน</Badge>}
                           {file.displayNameEdited && <Badge color="blue" size="sm" style={{ marginLeft: 6 }}>แก้ชื่อแล้ว</Badge>}
-                          {file.registryLink.status === 'pending' && <Badge color="amber" size="sm" style={{ marginLeft: 6 }}>รออนุมัติ</Badge>}
+                          {file.registryLink.status === 'pending' && <Badge color="amber" size="sm" style={{ marginLeft: 6 }}>รอเพิ่มเข้าทะเบียน</Badge>}
                           {file.registryLink.status === 'linked' && <Badge color="green" size="sm" style={{ marginLeft: 6 }}>อยู่ในทะเบียน · ผูกไฟล์แล้ว</Badge>}
                           {file.registryLink.status === 'registered' && <Badge color="green" size="sm" style={{ marginLeft: 6 }}>พบในทะเบียน · ยังไม่ผูกไฟล์</Badge>}
                         </span>

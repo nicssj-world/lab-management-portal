@@ -49,7 +49,9 @@ export function RegistrySdsWorkflowModal({
   const [error, setError] = useState<string | null>(null)
 
   const productVersions = useMemo(
-    () => items.filter(item => item.productId === row.productId && item.sourceHoldingId === row.holdingId),
+    () => items.filter(item => item.productId === row.productId && (
+      item.sourceHoldingId === row.holdingId || item.linkedHoldingIds.includes(row.holdingId)
+    )),
     [items, row.holdingId, row.productId],
   )
   const ownVersion = createdDraft ?? productVersions.find(item => (
@@ -96,6 +98,7 @@ export function RegistrySdsWorkflowModal({
       const timestamp = new Date().toISOString()
       const draft: ChemicalSdsDTO = {
         id: String(payload.id), productId: row.productId, sourceHoldingId: row.holdingId,
+        linkedHoldingIds: [],
         workflowOrigin: 'registry_v2', fileId: null, sourceUrl: null, fileUrl: null,
         manufacturer: product?.manufacturer ?? null, supplier: product?.supplier ?? null,
         productCode: product?.productCode ?? null, concentration: row.concentration,

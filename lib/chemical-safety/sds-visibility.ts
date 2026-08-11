@@ -17,6 +17,35 @@ export interface ChemicalDepartmentSdsVisibilityLinkRow {
 }
 
 /**
+ * Resolve the SDS versions owned by one registry holding.
+ *
+ * New registry rows point directly at the holding. Legacy department rows
+ * point through chemical_department_chemical_links. Deliberately do not fall
+ * back to product_id here: one product may be used by both a room and a
+ * department, and that fallback is the source of the old cross-scope leak.
+ */
+export function sdsVersionIdsForHolding(
+  versions: ChemicalSdsVisibilityVersionRow[],
+  departmentLinks: ChemicalDepartmentSdsVisibilityLinkRow[],
+  holdingId: string,
+): Set<string> {
+  const linkedVersionIds = new Set(
+    departmentLinks
+      .filter(link => link.holding_id != null && String(link.holding_id) === holdingId && link.sds_version_id != null)
+      .map(link => String(link.sds_version_id)),
+  )
+
+  return new Set(
+    versions
+      .filter(version => version.id != null && (
+        (version.source_holding_id != null && String(version.source_holding_id) === holdingId)
+        || linkedVersionIds.has(String(version.id))
+      ))
+      .map(version => String(version.id)),
+  )
+}
+
+/**
  * SDS ห้องสารเคมีต้องอ้างอิงจากสารที่มี holding ในห้องจริงเท่านั้น
  * เพราะ chemical_sds_versions เป็นข้อมูลระดับ product และจึงอาจถูกสร้างจาก SDS แยกตามงานได้ด้วย
  */

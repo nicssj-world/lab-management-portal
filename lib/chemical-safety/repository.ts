@@ -19,7 +19,7 @@ import type {
 import type { ImportReviewFilters, InternalSdsFilters } from './schemas'
 import { mapChemicalPlacement } from './registry-row'
 import { camelProposal } from './proposal-keys'
-import { roomChemicalSdsVersionIds } from './sds-visibility'
+import { roomChemicalSdsVersionIds, sdsVersionIdsForHolding } from './sds-visibility'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type Row = Record<string, any>
@@ -176,11 +176,12 @@ function calculateRegistryQuantity(input: {
   }) ?? imported ?? input.stored
 }
 
-function mapSds(row: Row, hazards: Row[]): ChemicalSdsDTO {
+function mapSds(row: Row, hazards: Row[], linkedHoldingIds: string[] = []): ChemicalSdsDTO {
   return {
     id: String(row.id),
     productId: String(row.product_id),
     sourceHoldingId: text(row.source_holding_id),
+    linkedHoldingIds,
     workflowOrigin: row.workflow_origin === 'registry_v2' ? 'registry_v2' : 'legacy',
     fileId: text(row.file_id),
     sourceUrl: text(row.source_url),
@@ -250,10 +251,16 @@ export async function listChemicalRegistryWithSource(
     const room = placement.storageScope === 'room' && location ? roomById.get(location.room_id) : null
     if (!product || !unit || !unitProduct) continue
     const versions = sdsByProduct.get(product.id) ?? []
-    const holdingVersions = versions.filter(item => String(item.source_holding_id ?? '') === String(holding.id))
-    const approved = holdingVersions.find(item => item.status === 'approved')
-    const draft = holdingVersions.find(item => item.status === 'draft' || item.status === 'in_review')
-    const selectedVersion = draft ?? approved ?? null
+    const holdingVersionIds = sdsVersionIdsForHolding(versions, snapshot.sdsDepartmentLinks, String(holding.id))
+    const holdingVersions = versions.filter(item => holdingVersionIds.has(String(item.id)))
+    const approved = holdingVersions
+      .filter(item => item.status === 'approved')
+      .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0] ?? null
+    const selectedVersion = holdingVersions
+      .filter(item => ['draft', 'in_review', 'rejected'].includes(String(item.status)))
+      .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0]
+      ?? approved
+      ?? null
     const holdingPublications = snapshot.sdsPublications
       .filter(item => String(item.source_holding_id) === String(holding.id))
       .sort((a, b) => String(b.linked_at).localeCompare(String(a.linked_at)))
@@ -272,9 +279,9 @@ export async function listChemicalRegistryWithSource(
     })
     const importEvidence = holdingImportEvidence ?? snapshot.importRows.find(item => item.target_product_id === product.id)
     const sdsStatus = currentSdsState({
-      status: approved ? 'approved' : draft ? draft.status : null,
+      status: selectedVersion?.status === 'rejected' ? 'draft' : selectedVersion?.status ?? null,
       reviewDueOn: approved ? text(approved.review_due_on) : null,
-      matchStatus: approved || draft ? null : importEvidence?.match_status ?? 'missing',
+      matchStatus: approved || selectedVersion ? null : importEvidence?.match_status ?? 'missing',
     }, today)
     // GHS จากเอกสาร SDS ที่ผ่านการทบทวนแล้วชนะเสมอ ถ้ายังไม่มีจึงใช้ค่าที่แปลงจาก master list
     // ก่อนหน้านี้อ่านจากฉบับที่อนุมัติอย่างเดียว คอลัมน์ GHS จึงว่างทุกแถวจนกว่าจะมีคนอนุมัติ
@@ -344,7 +351,8 @@ export async function listChemicalRegistryWithSource(
       unitName: String(unit.name_th),
       lifecycleStatus: product.lifecycle_status === 'retired' ? 'retired' : 'active',
       sdsStatus,
-      hasSdsFile: versions.some(item => item.file_id != null && String(item.file_id).trim() !== ''),
+      sdsWorkflowStatus: selectedVersion?.status ?? null,
+      hasSdsFile: holdingVersions.some(item => item.file_id != null && String(item.file_id).trim() !== ''),
       sdsVersionId: selectedVersion ? String(selectedVersion.id) : null,
       publicationStatus,
       publicationDestination: placement.storageScope,
@@ -517,20 +525,29 @@ export async function listInternalSds(filters: InternalSdsFilters = {}, scope: '
   const roomVersionIds = scope === 'room'
     ? roomChemicalSdsVersionIds(snapshot.sdsVersions, snapshot.holdings, snapshot.sdsDepartmentLinks)
     : null
+  const linkedHoldingIdsByVersion = new Map<string, string[]>()
+  for (const link of snapshot.sdsDepartmentLinks) {
+    if (link.sds_version_id == null || link.holding_id == null) continue
+    const versionId = String(link.sds_version_id)
+    linkedHoldingIdsByVersion.set(versionId, [
+      ...(linkedHoldingIdsByVersion.get(versionId) ?? []),
+      String(link.holding_id),
+    ])
+  }
   return snapshot.sdsVersions.filter(row => {
     if (roomVersionIds && !roomVersionIds.has(String(row.id))) return false
     if (filters.unitId) {
       const sourceHoldingId = row.source_holding_id ? String(row.source_holding_id) : null
-      const sourceHolding = sourceHoldingId
-        ? snapshot.holdings.find(holding => String(holding.id) === String(row.source_holding_id))
-        : null
-      const compatibleUnit = sourceHolding
-        ? String(sourceHolding.unit_id) === filters.unitId
-        : snapshot.holdings.some(holding => (
-          String(holding.product_id) === String(row.product_id)
-          && String(holding.unit_id) === filters.unitId
-          && (scope !== 'room' || holding.storage_scope === 'room')
-        ))
+      const linkedHoldingIds = linkedHoldingIdsByVersion.get(String(row.id)) ?? []
+      const relatedHoldingIds = [
+        ...(sourceHoldingId ? [sourceHoldingId] : []),
+        ...linkedHoldingIds,
+      ]
+      const compatibleUnit = relatedHoldingIds.some(holdingId => snapshot.holdings.some(holding => (
+        String(holding.id) === holdingId
+        && String(holding.unit_id) === filters.unitId
+        && (scope !== 'room' || holding.storage_scope === 'room')
+      )))
       if (!compatibleUnit) return false
     }
     if (filters.productId && row.product_id !== filters.productId) return false
@@ -538,5 +555,5 @@ export async function listInternalSds(filters: InternalSdsFilters = {}, scope: '
     const product = snapshot.products.find(item => item.id === row.product_id)
     if (filters.q && !JSON.stringify([product?.canonical_name, row.manufacturer, row.supplier, row.product_code]).toLocaleLowerCase('th').includes(filters.q.toLocaleLowerCase('th'))) return false
     return true
-  }).map(row => mapSds(row, snapshot.sdsHazards)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  }).map(row => mapSds(row, snapshot.sdsHazards, linkedHoldingIdsByVersion.get(String(row.id)) ?? [])).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }

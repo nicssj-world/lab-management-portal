@@ -61,6 +61,7 @@ export interface ChemicalRegistryRow {
   unitName: string
   lifecycleStatus: ChemicalLifecycleStatus
   sdsStatus: string
+  sdsWorkflowStatus?: ChemicalWorkflowStatus | null
   hasSdsFile: boolean
   sdsVersionId: string | null
   publicationStatus: ChemicalSdsPublicationStatus
@@ -198,6 +199,7 @@ export interface ChemicalSdsDTO {
   id: string
   productId: string
   sourceHoldingId: string | null
+  linkedHoldingIds: string[]
   workflowOrigin: ChemicalWorkflowOrigin
   fileId: string | null
   sourceUrl: string | null

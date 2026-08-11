@@ -15,6 +15,7 @@ import { CHEMICAL_HUB_VIEWS, type ChemicalHubView } from '@/lib/navigation'
 import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
 import { paginateRegistryItems } from '@/lib/chemical-safety/registry-pagination'
 import { CHEMICAL_GROUP_SUMMARY } from '@/lib/chemical-safety/storage-manifest'
+import { summarizeSdsWorkflow, type SdsWorkflowSummary } from '@/lib/chemical-safety/sds-workflow-summary'
 import type {
   ChemicalChangeRequestListItemDTO,
   ChemicalProductDTO,
@@ -33,6 +34,7 @@ import { FONT, SPACE, ZONE_META, tabularNums } from './shared/tokens'
 import {
   GhsRow,
   PositionChip,
+  SdsStatusBadge,
   SdsStateBadge,
 } from './shared/ui'
 
@@ -194,6 +196,30 @@ function RegistryHorizontalScroll({ children }: { children: ReactNode }) {
   )
 }
 
+function RegistrySdsWorkflowSummary({ summary }: { summary: SdsWorkflowSummary }) {
+  return (
+    <section aria-label="ศูนย์กลาง workflow SDS" style={{ marginBottom: SPACE.md }}>
+      <Card padding={SPACE.md} style={{ borderLeft: '4px solid var(--primary)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ margin: 0, color: 'var(--ink)', fontSize: FONT.lg }}>ศูนย์กลาง workflow SDS</h2>
+            <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: FONT.sm, lineHeight: 1.5 }}>
+              SDS ของห้องสารเคมีและ SDS แยกตามงานจัดการจากปุ่ม <strong>SDS</strong> ในทะเบียนสารเคมีเท่านั้น
+            </p>
+          </div>
+          <Badge color="purple">{summary.total.toLocaleString()} เวอร์ชัน</Badge>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: SPACE.sm, marginTop: SPACE.md }}>
+          <Stat label="ฉบับร่าง" value={summary.draft} icon="edit" color="blue" />
+          <Stat label="รอทบทวน" value={summary.inReview} icon="clock" color="amber" />
+          <Stat label="อนุมัติแล้ว" value={summary.approved} icon="shieldCheck" color="green" />
+          <Stat label="ไม่อนุมัติ" value={summary.rejected} icon="x" color="red" />
+        </div>
+      </Card>
+    </section>
+  )
+}
+
 export function ChemicalSafetyHubClient({
   view, locations, rooms, registry, products, changeRequests, units, actorId, canManageChemicals,
   canProposeUnitIds, canReviewUnitIds, sdsItems, roomSdsItems, sdsProducts, departmentSds, publishableDepartmentCodes,
@@ -218,6 +244,7 @@ export function ChemicalSafetyHubClient({
   const canPropose = canManageChemicals || canProposeUnitIds.length > 0
   const canReview = canManageChemicals || canReviewUnitIds.length > 0
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products])
+  const sdsWorkflowSummary = useMemo(() => summarizeSdsWorkflow(sdsItems), [sdsItems])
   const selectedUnitId = scopeFilter.startsWith('unit:') ? scopeFilter.slice('unit:'.length) : ''
   const selectedRoomId = scopeFilter.startsWith('room:') ? scopeFilter.slice('room:'.length) : ''
 
@@ -542,6 +569,7 @@ export function ChemicalSafetyHubClient({
             </div>
             <span className="chemical-section-count"><Icon name="flask" size={14} /> {visible.length.toLocaleString()} รายการที่แสดง</span>
           </div>
+          <RegistrySdsWorkflowSummary summary={sdsWorkflowSummary} />
           {canReview && (
             <ChangeRequestPanel
               items={changeRequests}
@@ -688,6 +716,11 @@ export function ChemicalSafetyHubClient({
                           </td>
                           <td style={cellStyle}>
                             <SdsStateBadge state={row.sdsStatus} />
+                            {row.sdsWorkflowStatus && (
+                              <div style={{ marginTop: 5 }}>
+                                <SdsStatusBadge status={row.sdsWorkflowStatus} />
+                              </div>
+                            )}
                             <div style={{ marginTop: 5, fontSize: FONT.xs, color: row.publicationStatus === 'stale' ? 'var(--warning)' : 'var(--muted)' }}>
                               {row.publicationStatus === 'active' ? 'เผยแพร่แล้ว' : row.publicationStatus === 'ready' ? 'พร้อมเชื่อม' : row.publicationStatus === 'stale' ? 'ต้องเชื่อมฉบับใหม่' : 'ยังไม่เชื่อมเผยแพร่'}
                             </div>
@@ -789,10 +822,8 @@ export function ChemicalSafetyHubClient({
           chemicalProducts={products}
           units={units}
           departments={departmentSds}
-          actorId={actorId}
           canManage={canManageChemicals}
           canEditUnitIds={canProposeUnitIds}
-          canReviewUnitIds={canReviewUnitIds}
           publishableDepartmentCodes={publishableDepartmentCodes}
         />
       )}

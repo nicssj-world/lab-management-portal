@@ -1,6 +1,26 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { roomChemicalSdsVersionIds } from './sds-visibility'
+import { roomChemicalSdsVersionIds, sdsVersionIdsForHolding } from './sds-visibility'
+
+assert.deepEqual(
+  [...sdsVersionIdsForHolding(
+    [
+      { id: 'direct-room', product_id: 'product-a', source_holding_id: 'room-holding' },
+      { id: 'linked-department', product_id: 'product-b', source_holding_id: null },
+      { id: 'shared-department', product_id: 'product-c', source_holding_id: null },
+      { id: 'other-department', product_id: 'product-d', source_holding_id: null },
+    ],
+    [
+      { sds_version_id: 'linked-department', holding_id: 'department-holding' },
+      { sds_version_id: 'shared-department', holding_id: 'department-holding' },
+      { sds_version_id: 'shared-department', holding_id: 'second-department-holding' },
+      { sds_version_id: 'other-department', holding_id: 'other-holding' },
+    ],
+    'department-holding',
+  )].sort(),
+  ['linked-department', 'shared-department'],
+  'ทะเบียนต้อง resolve SDS จาก source holding หรือ department link ของ holding เดียวกันเท่านั้น',
+)
 
 assert.deepEqual(
   [...roomChemicalSdsVersionIds(
@@ -39,9 +59,10 @@ assert.match(createRouteSource, /chemical_inventory_holdings[\s\S]*?holdingId/)
 assert.doesNotMatch(createRouteSource, /\.eq\('storage_scope', 'room'\)/)
 assert.match(workflowSource, /source_holding_id/)
 assert.match(repositorySource, /roomChemicalSdsVersionIds\(snapshot\.sdsVersions, snapshot\.holdings, snapshot\.sdsDepartmentLinks\)/)
-assert.match(repositorySource, /const approved = holdingVersions\.find\(item => item\.status === 'approved'\)/)
+assert.match(repositorySource, /const approved = holdingVersions[\s\S]*?item\.status === 'approved'/)
 assert.doesNotMatch(repositorySource, /const draft = holdingVersions\.find[\s\S]*\?\? versions\.find/)
 assert.match(registrySdsModalSource, /item\.sourceHoldingId === row\.holdingId/)
+assert.match(registrySdsModalSource, /item\.linkedHoldingIds\.includes\(row\.holdingId\)/)
 assert.match(pageSource, /listInternalSds\(\{\}, 'room'\)/)
 assert.match(hubSource, /roomSdsItems/)
 
