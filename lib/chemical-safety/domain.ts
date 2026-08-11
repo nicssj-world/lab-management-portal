@@ -1,4 +1,4 @@
-import type { ChemicalSdsState, ChemicalWorkflowStatus, QuantityUnit, SdsMatchStatus } from './types'
+import type { ChemicalSdsState, ChemicalWorkflowStatus, MeasuredUnit, QuantityUnit, SdsMatchStatus } from './types'
 
 export interface QuantityPart {
   value: number
@@ -38,7 +38,7 @@ export function calculateHoldingTotal(parts: readonly QuantityPart[]): QuantityT
 
   const dimensions = new Set(parts.map(part => unitDimension(part.unit)))
   if (dimensions.size > 1) {
-    throw new Error('Cannot combine mass and volume quantities')
+    throw new Error('Cannot combine mass and volume quantities, or different count-based units')
   }
 
   const baseTotal = parts.reduce((total, part) => {
@@ -56,6 +56,11 @@ export function calculateHoldingTotal(parts: readonly QuantityPart[]): QuantityT
     return nextTotal
   }, 0)
   const dimension = dimensions.values().next().value
+
+  // หน่วยนับจำนวน (ไม่ใช่ mL/L/g/kg) ไม่มีการแปลง/รวมหน่วย — คืนยอดรวมด้วยหน่วยเดิมตรงๆ
+  if (dimension !== 'volume' && dimension !== 'mass') {
+    return { value: roundToSix(baseTotal), unit: parts[0].unit }
+  }
 
   if (baseTotal >= 1000) {
     return {
@@ -103,8 +108,14 @@ export function calculateHoldingTotalFromFields(input: {
   }
 }
 
-export function isQuantityUnit(value: unknown): value is QuantityUnit {
+export function isMeasuredUnit(value: unknown): value is MeasuredUnit {
   return value === 'mL' || value === 'L' || value === 'g' || value === 'kg'
+}
+
+/** หน่วยที่วัดได้ (mL/L/g/kg) หรือหน่วยนับจำนวนอิสระที่ไม่ว่างเปล่า เช่น 'test', 'kit' */
+export function isQuantityUnit(value: unknown): value is QuantityUnit {
+  if (isMeasuredUnit(value)) return true
+  return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 20
 }
 
 export function detectQuantityConflict({ calculated, reportedRaw }: QuantityConflictInput): boolean {
@@ -135,7 +146,14 @@ export function currentSdsState(input: CurrentSdsStateInput, todayIso: string): 
   return 'missing'
 }
 
-function unitDimension(unit: QuantityUnit): 'volume' | 'mass' {
+function unitDimension(unit: QuantityUnit): string {
+  if (unit === 'mL' || unit === 'L') return 'volume'
+  if (unit === 'g' || unit === 'kg') return 'mass'
+  // หน่วยนับจำนวน: รวมกันได้เฉพาะข้อความหน่วยเดียวกันเท่านั้น
+  return `count:${unit}`
+}
+
+function measuredUnitDimension(unit: MeasuredUnit): 'volume' | 'mass' {
   return unit === 'mL' || unit === 'L' ? 'volume' : 'mass'
 }
 
@@ -158,7 +176,7 @@ function parseReportedQuantity(value: string): { baseValue: number; dimension: '
   if (parsedValue === null || parsedValue < 0) return null
 
   const unit = normalizedQuantityUnit(match[2])
-  return unit ? { baseValue: toBaseUnit(parsedValue, unit), dimension: unitDimension(unit) } : null
+  return unit ? { baseValue: toBaseUnit(parsedValue, unit), dimension: measuredUnitDimension(unit) } : null
 }
 
 function parseQuantityNumber(value: string): number | null {
@@ -179,7 +197,7 @@ function parseQuantityNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function normalizedQuantityUnit(value: string): QuantityUnit | null {
+function normalizedQuantityUnit(value: string): MeasuredUnit | null {
   const normalized = value.replace(/\.$/, '')
   if (normalized === 'ml' || normalized === 'milliliter' || normalized === 'milliliters' || normalized === 'millilitre' || normalized === 'millilitres' || normalized === 'มิลลิลิตร' || normalized === 'มล') return 'mL'
   if (normalized === 'l' || normalized === 'liter' || normalized === 'liters' || normalized === 'litre' || normalized === 'litres' || normalized === 'ลิตร') return 'L'

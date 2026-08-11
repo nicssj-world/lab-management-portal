@@ -3,7 +3,8 @@ import { z } from 'zod'
 const uuid = z.string().uuid()
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const nullableDate = isoDate.nullable().optional()
-const quantityUnit = z.enum(['mL', 'L', 'g', 'kg'])
+// หน่วยที่วัดได้ (mL/L/g/kg) หรือหน่วยนับจำนวนอิสระ เช่น 'test', 'kit' — ดู isQuantityUnit ใน lib/chemical-safety/domain.ts
+const quantityUnit = z.string().trim().min(1).max(20).regex(/^[\p{L}\p{N}.\-/ ]+$/u)
 const pictogram = z.enum(['GHS01', 'GHS02', 'GHS03', 'GHS04', 'GHS05', 'GHS06', 'GHS07', 'GHS08', 'GHS09'])
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional()
 const chemicalStorageScope = z.enum(['room', 'department'])

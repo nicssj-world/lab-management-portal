@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
-import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
+import { calculateHoldingTotalFromFields, isMeasuredUnit } from '@/lib/chemical-safety/domain'
 import type {
   ChemicalProductDTO,
   ChemicalUnitDTO,
@@ -18,7 +18,9 @@ const ALL_PICTOGRAMS: GhsPictogramCode[] = [
   'GHS01', 'GHS02', 'GHS03', 'GHS04', 'GHS05', 'GHS06', 'GHS07', 'GHS08', 'GHS09',
 ]
 const PHYSICAL_STATES = ['', 'solid', 'liquid', 'gas', 'mixture', 'unknown'] as const
-const PACKAGE_UNITS = ['mL', 'L', 'g', 'kg'] as const
+// รายการแนะนำในช่องหน่วย — พิมพ์หน่วยอื่นได้อิสระ (เช่น 'test' สำหรับ test kit ที่นับเป็นจำนวนครั้งตรวจ ไม่ใช่ปริมาตร/น้ำหนัก)
+const PACKAGE_UNIT_SUGGESTIONS = ['mL', 'L', 'g', 'kg', 'test', 'kit', 'ชิ้น', 'ea'] as const
+const CUSTOM_UNIT_VALUE = '__custom__'
 
 const inputStyle: CSSProperties = {
   width: '100%', padding: '9px 12px', borderRadius: 8,
@@ -73,7 +75,8 @@ export function DepartmentChemicalModal({
 
   const [lotNumber, setLotNumber] = useState('')
   const [packageValue, setPackageValue] = useState('')
-  const [packageUnit, setPackageUnit] = useState<(typeof PACKAGE_UNITS)[number]>('mL')
+  const [packageUnit, setPackageUnit] = useState<string>('mL')
+  const [unitMode, setUnitMode] = useState<'preset' | 'custom'>('preset')
   const [currentContainerCount, setCurrentContainerCount] = useState('')
   const [minimumStock, setMinimumStock] = useState('')
   const [receivedOn, setReceivedOn] = useState('')
@@ -91,14 +94,19 @@ export function DepartmentChemicalModal({
     return [product.canonicalName, product.casNumber, product.manufacturer, product.supplier]
       .filter(Boolean).join(' ').toLocaleLowerCase('th').includes(normalizedSearch)
   }).slice(0, 12), [activeProducts, normalizedSearch])
+  // หน่วยนับจำนวน (เช่น 'test', 'kit') ไม่มีแนวคิด "ภาชนะ" ให้คูณ — กรอกปริมาณคงเหลือตรงๆ ไม่คำนวณ
+  const isMeasured = isMeasuredUnit(packageUnit)
+  const effectiveContainerCount = isMeasured ? Number(currentContainerCount) : 1
+
   const calculatedTotal = useMemo(() => {
+    if (!isMeasured) return null
     if (!packageValue.trim() || !currentContainerCount.trim()) return null
     return calculateHoldingTotalFromFields({
       packageValue: Number(packageValue),
       packageUnit,
-      currentContainerCount: Number(currentContainerCount),
+      currentContainerCount: effectiveContainerCount,
     })
-  }, [packageValue, packageUnit, currentContainerCount])
+  }, [isMeasured, packageValue, packageUnit, currentContainerCount, effectiveContainerCount])
 
   function selectProduct(product: ChemicalProductDTO) {
     setSelectedProductId(product.id)
@@ -140,9 +148,9 @@ export function DepartmentChemicalModal({
     if (productMode === 'existing' && !selectedProduct) { setError('กรุณาเลือกสารเดิมจากรายการ หรือเลือกสร้างสารใหม่'); return }
     if (!canonicalName.trim()) { setError('กรุณาระบุชื่อสาร'); return }
     if (!packageValue.trim() || !Number.isFinite(Number(packageValue)) || Number(packageValue) < 0) {
-      setError('กรุณาระบุปริมาตร/น้ำหนักต่อภาชนะให้ถูกต้อง'); return
+      setError(isMeasured ? 'กรุณาระบุปริมาตร/น้ำหนักต่อภาชนะให้ถูกต้อง' : 'กรุณาระบุปริมาณคงเหลือให้ถูกต้อง'); return
     }
-    if (!currentContainerCount.trim() || !Number.isInteger(Number(currentContainerCount)) || Number(currentContainerCount) < 0) {
+    if (isMeasured && (!currentContainerCount.trim() || !Number.isInteger(Number(currentContainerCount)) || Number(currentContainerCount) < 0)) {
       setError('กรุณาระบุจำนวนภาชนะเป็นจำนวนเต็ม'); return
     }
     if (!minimumStock.trim() || !Number.isInteger(Number(minimumStock)) || Number(minimumStock) < 0) {
@@ -167,7 +175,7 @@ export function DepartmentChemicalModal({
         lotNumber: lotNumber.trim() || null,
         packageValue: Number(packageValue),
         packageUnit,
-        currentContainerCount: Number(currentContainerCount),
+        currentContainerCount: effectiveContainerCount,
         minimumStock: Number(minimumStock),
         reportedTotalRaw: null,
         calculatedTotalValue: calculatedTotal?.value ?? null,
@@ -303,14 +311,35 @@ export function DepartmentChemicalModal({
             </div>
             <div style={gridStyle}>
               <Field label="เลขล็อต" value={lotNumber} onChange={setLotNumber} disabled={busy} />
-              <Field label="ปริมาตร/น้ำหนักต่อภาชนะ *" value={packageValue} onChange={setPackageValue} type="number" disabled={busy} />
+              <Field label={isMeasured ? 'ปริมาณต่อภาชนะ *' : 'ปริมาณคงเหลือ *'} value={packageValue} onChange={setPackageValue} type="number" disabled={busy} />
               <label>
                 <span style={labelStyle}>หน่วย *</span>
-                <select value={packageUnit} onChange={event => setPackageUnit(event.target.value as typeof PACKAGE_UNITS[number])} style={inputStyle} disabled={busy}>
-                  {PACKAGE_UNITS.map(item => <option key={item}>{item}</option>)}
+                <select
+                  value={unitMode === 'custom' ? CUSTOM_UNIT_VALUE : packageUnit}
+                  onChange={event => {
+                    const next = event.target.value
+                    if (next === CUSTOM_UNIT_VALUE) { setUnitMode('custom') }
+                    else { setUnitMode('preset'); setPackageUnit(next) }
+                  }}
+                  style={inputStyle}
+                  disabled={busy}
+                >
+                  {PACKAGE_UNIT_SUGGESTIONS.map(item => <option key={item} value={item}>{item}</option>)}
+                  <option value={CUSTOM_UNIT_VALUE}>อื่นๆ (ระบุเอง)</option>
                 </select>
+                {unitMode === 'custom' && (
+                  <input
+                    value={packageUnit}
+                    onChange={event => setPackageUnit(event.target.value)}
+                    style={{ ...inputStyle, marginTop: 6 }}
+                    disabled={busy}
+                    placeholder="พิมพ์หน่วย เช่น test, kit"
+                  />
+                )}
               </label>
-              <Field label="จำนวนภาชนะปัจจุบัน *" value={currentContainerCount} onChange={setCurrentContainerCount} type="number" disabled={busy} />
+              {isMeasured && (
+                <Field label="จำนวนภาชนะปัจจุบัน *" value={currentContainerCount} onChange={setCurrentContainerCount} type="number" disabled={busy} />
+              )}
               <Field label="จำนวนสต๊อกขั้นต่ำ *" value={minimumStock} onChange={setMinimumStock} type="number" disabled={busy} />
               {calculatedTotal && <div style={{ gridColumn: '1 / -1', padding: `${SPACE.xs}px ${SPACE.sm}px`, borderRadius: 8, background: 'var(--primary-soft)', color: 'var(--ink)', fontSize: FONT.sm }}>ปริมาณรวมที่คำนวณอัตโนมัติ: <strong>{calculatedTotal.value.toLocaleString('th-TH', { maximumFractionDigits: 6 })} {calculatedTotal.unit}</strong></div>}
               <Field label="วันที่รับเข้า" value={receivedOn} onChange={setReceivedOn} type="date" disabled={busy} />

@@ -10,7 +10,7 @@ import type {
   ChemicalUnitDTO,
   GhsPictogramCode,
 } from '@/lib/chemical-safety/types'
-import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
+import { calculateHoldingTotalFromFields, isMeasuredUnit } from '@/lib/chemical-safety/domain'
 import { CHEMICAL_SDS_DEPARTMENTS } from '@/lib/chemical-safety/departments'
 import { GhsPictogram } from './GhsPictogram'
 import { FONT, SPACE } from './shared/tokens'
@@ -19,7 +19,9 @@ const ALL_PICTOGRAMS: GhsPictogramCode[] = [
   'GHS01', 'GHS02', 'GHS03', 'GHS04', 'GHS05', 'GHS06', 'GHS07', 'GHS08', 'GHS09',
 ]
 const PHYSICAL_STATES = ['', 'solid', 'liquid', 'gas', 'mixture', 'unknown'] as const
-const PACKAGE_UNITS = ['mL', 'L', 'g', 'kg'] as const
+// รายการแนะนำในช่องหน่วย — พิมพ์หน่วยอื่นได้อิสระ (เช่น 'test' สำหรับ test kit ที่นับเป็นจำนวนครั้งตรวจ ไม่ใช่ปริมาตร/น้ำหนัก)
+const PACKAGE_UNIT_SUGGESTIONS = ['mL', 'L', 'g', 'kg', 'test', 'kit', 'ชิ้น', 'ea'] as const
+const CUSTOM_UNIT_VALUE = '__custom__'
 
 const inputStyle: CSSProperties = {
   width: '100%', padding: '9px 12px', borderRadius: 8,
@@ -85,7 +87,9 @@ export function RegistryChangeModal({
   const [locationId, setLocationId] = useState(registryRow?.locationId ?? '')
   const [lotNumber, setLotNumber] = useState(registryRow?.lotNumber ?? '')
   const [packageValue, setPackageValue] = useState(String(registryRow?.packageValue ?? ''))
-  const [packageUnit, setPackageUnit] = useState(registryRow?.packageUnit ?? 'mL')
+  const [packageUnit, setPackageUnit] = useState<string>(registryRow?.packageUnit ?? 'mL')
+  const [unitMode, setUnitMode] = useState<'preset' | 'custom'>(() =>
+    (PACKAGE_UNIT_SUGGESTIONS as readonly string[]).includes(registryRow?.packageUnit ?? 'mL') ? 'preset' : 'custom')
   const [currentContainerCount, setCurrentContainerCount] = useState(String(registryRow?.currentContainerCount ?? ''))
   const [minimumStock, setMinimumStock] = useState(String(registryRow?.minimumStock ?? ''))
   const [receivedOn, setReceivedOn] = useState(registryRow?.receivedOn ?? '')
@@ -93,12 +97,17 @@ export function RegistryChangeModal({
   const [expiresOn, setExpiresOn] = useState(registryRow?.expiresOn ?? '')
   const [effectiveOn, setEffectiveOn] = useState(registryRow?.effectiveOn ?? '')
 
+  // หน่วยนับจำนวน (เช่น 'test', 'kit') ไม่มีแนวคิด "ภาชนะ" ให้คูณ — กรอกปริมาณคงเหลือตรงๆ ไม่คำนวณ
+  const isMeasured = isMeasuredUnit(packageUnit)
+  const effectiveContainerCount = isMeasured ? Number(currentContainerCount) : 1
+
   const calculatedTotal = useMemo(() => {
+    if (!isMeasured) return null
     if (!packageValue.trim() || !currentContainerCount.trim()) return null
     const derived = calculateHoldingTotalFromFields({
       packageValue: Number(packageValue),
       packageUnit,
-      currentContainerCount: Number(currentContainerCount),
+      currentContainerCount: effectiveContainerCount,
     })
     const matchesExistingFields = registryRow
       && registryRow.packageValue === Number(packageValue)
@@ -113,7 +122,7 @@ export function RegistryChangeModal({
       return { value: registryRow.calculatedTotalValue, unit: registryRow.calculatedTotalUnit }
     }
     return derived
-  }, [packageValue, packageUnit, currentContainerCount, registryRow])
+  }, [isMeasured, packageValue, packageUnit, currentContainerCount, registryRow])
 
   const [pictograms, setPictograms] = useState<GhsPictogramCode[]>(product?.ghsPictogramCodes ?? [])
   const [hazards, setHazards] = useState<HazardDraft[]>(product?.ghsHazardClasses ?? [])
@@ -149,7 +158,7 @@ export function RegistryChangeModal({
       lotNumber: lotNumber.trim() || null,
       packageValue: Number(packageValue),
       packageUnit,
-      currentContainerCount: Number(currentContainerCount),
+      currentContainerCount: effectiveContainerCount,
       minimumStock: Number(minimumStock),
       calculatedTotalValue: calculatedTotal?.value ?? null,
       calculatedTotalUnit: calculatedTotal?.unit ?? null,
@@ -176,7 +185,7 @@ export function RegistryChangeModal({
       lotNumber: lotNumber.trim() || null,
       packageValue: Number(packageValue),
       packageUnit,
-      currentContainerCount: Number(currentContainerCount),
+      currentContainerCount: effectiveContainerCount,
       minimumStock: Number(minimumStock),
       calculatedTotalValue: calculatedTotal?.value ?? null,
       calculatedTotalUnit: calculatedTotal?.unit ?? null,
@@ -215,7 +224,7 @@ export function RegistryChangeModal({
                     lotNumber: lotNumber.trim() || null,
                     packageValue: Number(packageValue),
                     packageUnit,
-                    currentContainerCount: Number(currentContainerCount),
+                    currentContainerCount: effectiveContainerCount,
                     minimumStock: Number(minimumStock),
                     calculatedTotalValue: calculatedTotal?.value ?? null,
                     calculatedTotalUnit: calculatedTotal?.unit ?? null,
@@ -384,14 +393,33 @@ export function RegistryChangeModal({
             {!isProduct && (
               <div style={{ ...gridStyle, marginTop: SPACE.sm }}>
                 <Field label="เลขล็อต" value={lotNumber} onChange={setLotNumber} />
-                <Field label="ปริมาตร/น้ำหนักต่อภาชนะ *" value={packageValue} onChange={setPackageValue} type="number" />
+                <Field label={isMeasured ? 'ปริมาณต่อภาชนะ *' : 'ปริมาณคงเหลือ *'} value={packageValue} onChange={setPackageValue} type="number" />
                 <label>
                   <span style={labelStyle}>หน่วย *</span>
-                  <select value={packageUnit} onChange={(e) => setPackageUnit(e.target.value as typeof PACKAGE_UNITS[number])} style={inputStyle}>
-                    {PACKAGE_UNITS.map(unitOption => <option key={unitOption}>{unitOption}</option>)}
+                  <select
+                    value={unitMode === 'custom' ? CUSTOM_UNIT_VALUE : packageUnit}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      if (next === CUSTOM_UNIT_VALUE) { setUnitMode('custom') }
+                      else { setUnitMode('preset'); setPackageUnit(next) }
+                    }}
+                    style={inputStyle}
+                  >
+                    {PACKAGE_UNIT_SUGGESTIONS.map(unitOption => <option key={unitOption} value={unitOption}>{unitOption}</option>)}
+                    <option value={CUSTOM_UNIT_VALUE}>อื่นๆ (ระบุเอง)</option>
                   </select>
+                  {unitMode === 'custom' && (
+                    <input
+                      value={packageUnit}
+                      onChange={(e) => setPackageUnit(e.target.value)}
+                      style={{ ...inputStyle, marginTop: 6 }}
+                      placeholder="พิมพ์หน่วย เช่น test, kit"
+                    />
+                  )}
                 </label>
-                <Field label="จำนวนภาชนะปัจจุบัน *" value={currentContainerCount} onChange={setCurrentContainerCount} type="number" />
+                {isMeasured && (
+                  <Field label="จำนวนภาชนะปัจจุบัน *" value={currentContainerCount} onChange={setCurrentContainerCount} type="number" />
+                )}
                 <Field label="จำนวนสต๊อกขั้นต่ำ *" value={minimumStock} onChange={setMinimumStock} type="number" />
                 {calculatedTotal && (
                   <div style={{ gridColumn: '1 / -1', padding: `${SPACE.xs}px ${SPACE.sm}px`, borderRadius: 8, background: 'var(--primary-soft)', color: 'var(--ink)', fontSize: FONT.sm }}>

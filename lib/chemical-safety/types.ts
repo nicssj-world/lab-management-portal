@@ -1,7 +1,9 @@
 export type ChemicalWorkflowStatus = 'draft' | 'in_review' | 'approved' | 'superseded' | 'rejected'
 export type ChemicalLifecycleStatus = 'active' | 'retired'
 export type GhsPictogramCode = 'GHS01' | 'GHS02' | 'GHS03' | 'GHS04' | 'GHS05' | 'GHS06' | 'GHS07' | 'GHS08' | 'GHS09'
-export type QuantityUnit = 'mL' | 'L' | 'g' | 'kg'
+export type MeasuredUnit = 'mL' | 'L' | 'g' | 'kg'
+/** หน่วยที่วัดได้ (mL/L/g/kg) หรือหน่วยนับจำนวนอิสระ เช่น 'test', 'kit' — ดู isMeasuredUnit/isQuantityUnit ใน domain.ts */
+export type QuantityUnit = MeasuredUnit | string
 export type SdsMatchStatus = 'candidate' | 'mismatch' | 'missing' | 'unsupported' | 'duplicate'
 export type ChemicalStorageZoneCode = 'A' | 'B' | 'C' | 'T'
 export type ChemicalStorageLocationKind = 'cabinet' | 'shelf' | 'table'
