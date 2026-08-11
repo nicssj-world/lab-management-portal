@@ -49,12 +49,11 @@ export function RegistrySdsWorkflowModal({
   const [error, setError] = useState<string | null>(null)
 
   const productVersions = useMemo(
-    () => items.filter(item => item.productId === row.productId),
-    [items, row.productId],
+    () => items.filter(item => item.productId === row.productId && item.sourceHoldingId === row.holdingId),
+    [items, row.holdingId, row.productId],
   )
   const ownVersion = createdDraft ?? productVersions.find(item => (
-    item.sourceHoldingId === row.holdingId
-    && ['draft', 'in_review', 'rejected'].includes(item.status)
+    ['draft', 'in_review', 'rejected'].includes(item.status)
   )) ?? null
   const approvedVersions = productVersions.filter(item => item.status === 'approved' && item.fileId)
   const approved = approvedVersions[0] ?? null
@@ -240,4 +239,3 @@ export function RegistrySdsWorkflowModal({
     </div>
   )
 }
-

@@ -19,6 +19,7 @@ import type {
 import type { ImportReviewFilters, InternalSdsFilters } from './schemas'
 import { mapChemicalPlacement } from './registry-row'
 import { camelProposal } from './proposal-keys'
+import { roomChemicalSdsVersionIds } from './sds-visibility'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type Row = Record<string, any>
@@ -33,6 +34,7 @@ export interface ChemicalRepositorySnapshot {
   locations: Row[]
   sdsVersions: Row[]
   sdsPublications: Row[]
+  sdsDepartmentLinks: Row[]
   sdsHazards: Row[]
   importRows: Row[]
   importBatches: Row[]
@@ -51,7 +53,7 @@ async function selectAll(table: string): Promise<Row[]> {
 
 const databaseSource: ChemicalRepositorySource = {
   async loadSnapshot() {
-    const [products, aliases, units, unitProducts, holdings, rooms, locations, sdsVersions, sdsPublications, sdsHazards, importRows, importBatches, pendingChanges] = await Promise.all([
+    const [products, aliases, units, unitProducts, holdings, rooms, locations, sdsVersions, sdsPublications, sdsDepartmentLinks, sdsHazards, importRows, importBatches, pendingChanges] = await Promise.all([
       selectAll('chemical_products'),
       selectAll('chemical_product_aliases'),
       selectAll('chemical_units'),
@@ -61,12 +63,13 @@ const databaseSource: ChemicalRepositorySource = {
       selectAll('chemical_storage_locations'),
       selectAll('chemical_sds_versions'),
       selectAll('chemical_sds_publications'),
+      selectAll('chemical_department_chemical_links'),
       selectAll('chemical_sds_hazards'),
       selectAll('chemical_import_rows'),
       selectAll('chemical_import_batches'),
       selectAll('chemical_change_requests'),
     ])
-    return { products, aliases, units, unitProducts, holdings, rooms, locations, sdsVersions, sdsPublications, sdsHazards, importRows, importBatches, pendingChanges }
+    return { products, aliases, units, unitProducts, holdings, rooms, locations, sdsVersions, sdsPublications, sdsDepartmentLinks, sdsHazards, importRows, importBatches, pendingChanges }
   },
 }
 
@@ -247,10 +250,9 @@ export async function listChemicalRegistryWithSource(
     const room = placement.storageScope === 'room' && location ? roomById.get(location.room_id) : null
     if (!product || !unit || !unitProduct) continue
     const versions = sdsByProduct.get(product.id) ?? []
-    const approved = versions.find(item => item.status === 'approved')
     const holdingVersions = versions.filter(item => String(item.source_holding_id ?? '') === String(holding.id))
+    const approved = holdingVersions.find(item => item.status === 'approved')
     const draft = holdingVersions.find(item => item.status === 'draft' || item.status === 'in_review')
-      ?? versions.find(item => item.status === 'draft' || item.status === 'in_review')
     const selectedVersion = draft ?? approved ?? null
     const holdingPublications = snapshot.sdsPublications
       .filter(item => String(item.source_holding_id) === String(holding.id))
@@ -510,11 +512,16 @@ export async function listChemicalProductRecords(): Promise<ChemicalProductDTO[]
     .sort((a, b) => a.canonicalName.localeCompare(b.canonicalName, 'th'))
 }
 
-export async function listInternalSds(filters: InternalSdsFilters = {}): Promise<ChemicalSdsDTO[]> {
+export async function listInternalSds(filters: InternalSdsFilters = {}, scope: 'all' | 'room' = 'all'): Promise<ChemicalSdsDTO[]> {
   const snapshot = await databaseSource.loadSnapshot()
+  const roomVersionIds = scope === 'room'
+    ? roomChemicalSdsVersionIds(snapshot.sdsVersions, snapshot.holdings, snapshot.sdsDepartmentLinks)
+    : null
   return snapshot.sdsVersions.filter(row => {
+    if (roomVersionIds && !roomVersionIds.has(String(row.id))) return false
     if (filters.unitId) {
-      const sourceHolding = row.source_holding_id
+      const sourceHoldingId = row.source_holding_id ? String(row.source_holding_id) : null
+      const sourceHolding = sourceHoldingId
         ? snapshot.holdings.find(holding => String(holding.id) === String(row.source_holding_id))
         : null
       const compatibleUnit = sourceHolding
@@ -522,6 +529,7 @@ export async function listInternalSds(filters: InternalSdsFilters = {}): Promise
         : snapshot.holdings.some(holding => (
           String(holding.product_id) === String(row.product_id)
           && String(holding.unit_id) === filters.unitId
+          && (scope !== 'room' || holding.storage_scope === 'room')
         ))
       if (!compatibleUnit) return false
     }

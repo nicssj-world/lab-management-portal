@@ -37,7 +37,7 @@ export default async function ChemicalSafetyPage({
     'registry',
   )
 
-  const [locations, rooms, registry, products, changeRequests, unitRows, scopes, sdsItems, departmentSds, sdsProductRows] = await Promise.all([
+  const [locations, rooms, registry, products, changeRequests, unitRows, scopes, sdsItems, roomSdsItems, departmentSds, sdsProductRows] = await Promise.all([
     getChemicalStorageLayout('chemical-prep'),
     listChemicalRooms(),
     listChemicalRegistry(),
@@ -46,6 +46,7 @@ export default async function ChemicalSafetyPage({
     supabaseAdmin.from('chemical_units').select('id, code, name_th, active, created_at').eq('active', true).order('name_th'),
     supabaseAdmin.from('chemical_role_scopes').select('unit_id, role').eq('user_id', actor.id),
     listInternalSds(),
+    listInternalSds({}, 'room'),
     listDepartmentSds(),
     supabaseAdmin
       .from('chemical_products')
@@ -99,6 +100,7 @@ export default async function ChemicalSafetyPage({
         canProposeUnitIds={rows.filter(row => row.role === 'custodian').map(row => row.unit_id)}
         canReviewUnitIds={rows.filter(row => row.role === 'reviewer').map(row => row.unit_id)}
         sdsItems={sdsItems}
+        roomSdsItems={roomSdsItems}
         sdsProducts={sdsProducts}
         departmentSds={departmentSds}
         publishableDepartmentCodes={publishableDepartmentCodes}

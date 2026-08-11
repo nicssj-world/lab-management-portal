@@ -49,6 +49,7 @@ interface Props {
   canProposeUnitIds: string[]
   canReviewUnitIds: string[]
   sdsItems: ChemicalSdsDTO[]
+  roomSdsItems: ChemicalSdsDTO[]
   sdsProducts: SdsProductInfo[]
   departmentSds: DepartmentSdsGroupDTO[]
   publishableDepartmentCodes: string[]
@@ -195,7 +196,7 @@ function RegistryHorizontalScroll({ children }: { children: ReactNode }) {
 
 export function ChemicalSafetyHubClient({
   view, locations, rooms, registry, products, changeRequests, units, actorId, canManageChemicals,
-  canProposeUnitIds, canReviewUnitIds, sdsItems, sdsProducts, departmentSds, publishableDepartmentCodes,
+  canProposeUnitIds, canReviewUnitIds, sdsItems, roomSdsItems, sdsProducts, departmentSds, publishableDepartmentCodes,
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -783,7 +784,7 @@ export function ChemicalSafetyHubClient({
       {(view === 'sds-chemicals' || view === 'sds-departments') && (
         <SdsManagementClient
           view={view}
-          items={sdsItems}
+          items={roomSdsItems}
           products={sdsProducts}
           chemicalProducts={products}
           units={units}
