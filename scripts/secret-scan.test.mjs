@@ -46,6 +46,7 @@ const hook = readFileSync('.githooks/pre-commit', 'utf8')
 assert.match(hook, /secret-scan\.mjs --staged/)
 
 const workflow = readFileSync('.github/workflows/secret-scan.yml', 'utf8')
+assert.match(workflow, /actions\/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6\.0\.0/)
 assert.match(workflow, /npm run test:secrets/)
 assert.match(workflow, /npm run security:secrets/)
 
