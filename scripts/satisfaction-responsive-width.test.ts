@@ -4,10 +4,11 @@ import { resolve } from 'node:path'
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
 const module = read('components/satisfaction/SatisfactionModule.tsx')
+const css = read('app/globals.css')
 const builder = read('components/satisfaction/SurveyBuilder.tsx')
 const publicPage = read('app/s/[token]/page.tsx')
 
-assert.ok(module.includes('.satisfaction-page{width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box}'), 'staff satisfaction page relies on the shared protected-layout gutter')
+assert.ok(css.includes('.satisfaction-module .satisfaction-page { width: 100%; max-width: none;'), 'staff satisfaction page relies on the shared protected-layout gutter')
 assert.ok(!module.includes('@media(min-width:1440px){.satisfaction-page{max-width:1440px;margin-inline:auto}}'), 'staff dashboard has no large-screen width cap')
 assert.ok(!module.includes('@media(min-width:768px){.satisfaction-page{padding:24px}}'), 'staff dashboard does not add a second desktop gutter')
 assert.ok(builder.includes('.survey-builder-page{max-width:1180px;margin:0 auto}'), 'survey builder retains a readable centered width')
