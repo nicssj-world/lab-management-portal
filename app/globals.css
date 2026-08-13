@@ -710,3 +710,46 @@ button { font-family: inherit; }
   .quality-module .eq-tab,
   .quality-module .eqa-tab { flex: 0 0 auto; padding: 9px 12px; }
 }
+
+/* Staff satisfaction — clinical operations surfaces and responsive states. */
+.satisfaction-module,
+.satisfaction-builder-page { min-width: 0; color: var(--ink); }
+.satisfaction-module .satisfaction-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 18px; border-bottom: 1px solid var(--border); }
+.satisfaction-module .satisfaction-section-heading h2 { margin: 0; color: var(--ink); font-size: 15px; }
+.satisfaction-module .satisfaction-section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.satisfaction-module .satisfaction-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.satisfaction-module .satisfaction-summary-card { display: flex; align-items: flex-start; gap: 12px; box-shadow: 0 7px 18px rgba(15, 23, 42, .045); }
+.satisfaction-module .satisfaction-summary-icon { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; border-radius: 10px; }
+.satisfaction-module .satisfaction-summary-card-teal .satisfaction-summary-icon { color: var(--primary); background: var(--primary-soft); }
+.satisfaction-module .satisfaction-summary-card-blue .satisfaction-summary-icon { color: var(--primary-2); background: rgba(37, 99, 235, .10); }
+.satisfaction-module .satisfaction-summary-card-purple .satisfaction-summary-icon { color: #7C3AED; background: rgba(124, 58, 237, .10); }
+.satisfaction-module .satisfaction-summary-copy { min-width: 0; }
+.satisfaction-module .satisfaction-summary-label,.satisfaction-module .satisfaction-summary-hint { color: var(--muted); font-size: 12px; }
+.satisfaction-module .satisfaction-summary-value { margin-top: 3px; color: var(--ink); font-size: 26px; font-weight: 800; line-height: 1.2; }
+.satisfaction-module .satisfaction-summary-hint { margin-top: 4px; font-size: 11.5px; }
+.satisfaction-module .satisfaction-table-wrap { overflow-x: auto; }
+.satisfaction-module .satisfaction-table { width: 100%; min-width: 680px; border-collapse: collapse; }
+.satisfaction-module .satisfaction-table th { padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--muted); background: var(--surface-2); font-size: 11px; font-weight: 800; text-align: left; }
+.satisfaction-module .satisfaction-table td { padding: 14px; border-bottom: 1px solid var(--border); color: var(--ink); font-size: 13px; vertical-align: middle; }
+.satisfaction-module .satisfaction-table tbody tr { transition: background .15s ease; }
+.satisfaction-module .satisfaction-table tbody tr:hover { background: color-mix(in srgb, var(--primary-soft) 48%, transparent); }
+.satisfaction-module .satisfaction-loading { display: grid; gap: 10px; min-height: 220px; place-content: center; padding: 24px; }
+.satisfaction-module .satisfaction-skeleton-row { display: block; width: min(460px, 75vw); height: 12px; border-radius: 999px; background: var(--surface-2); }
+.satisfaction-module .satisfaction-loading-label { display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.satisfaction-inline-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid color-mix(in srgb, var(--danger) 20%, var(--border)); border-radius: 9px; color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--card)); font-size: 12px; }
+.satisfaction-dialog-scrim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgba(15, 23, 42, .58); backdrop-filter: blur(3px); }
+.satisfaction-dialog-panel { width: min(560px, 100%); max-height: min(760px, calc(100vh - 32px)); overflow: auto; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 24px 80px rgba(0, 0, 0, .28); }
+.satisfaction-builder-page { width: min(1180px, 100%); margin: 0 auto; padding: 24px; }
+@media (max-width: 767px) {
+  .satisfaction-module .satisfaction-summary-grid { grid-template-columns: 1fr; }
+  .satisfaction-module .satisfaction-section-heading { align-items: flex-start; flex-direction: column; }
+  .satisfaction-module .satisfaction-table { min-width: 0; }
+  .satisfaction-module .satisfaction-table thead { display: none; }
+  .satisfaction-module .satisfaction-table tbody,.satisfaction-module .satisfaction-table tr,.satisfaction-module .satisfaction-table td { display: block; }
+  .satisfaction-module .satisfaction-table tr { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .satisfaction-module .satisfaction-table td { display: grid; grid-template-columns: minmax(100px, 38%) minmax(0, 1fr); gap: 10px; padding: 5px 0; border: 0; }
+  .satisfaction-module .satisfaction-table td::before { content: attr(data-label); color: var(--muted); font-size: 11px; font-weight: 700; }
+  .satisfaction-inline-error { align-items: flex-start; flex-direction: column; }
+  .satisfaction-builder-page { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .satisfaction-module .satisfaction-table tbody tr { transition: none; } }

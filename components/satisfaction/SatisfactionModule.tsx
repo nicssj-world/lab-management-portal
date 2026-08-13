@@ -70,7 +70,7 @@ export function SatisfactionModule({
   )
 
   return (
-    <div className="satisfaction-page" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="satisfaction-module satisfaction-page" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <style>{`
         .satisfaction-page{width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box}
         .satisfaction-tabs{display:flex;gap:5px;overflow-x:auto;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;scrollbar-width:thin}
