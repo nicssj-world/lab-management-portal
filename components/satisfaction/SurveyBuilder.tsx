@@ -11,6 +11,7 @@ import type { PermLevel } from '@/lib/permissions'
 import { validateDefinitionForPublish, type DefinitionIssue } from '@/lib/surveys/definition'
 import type { SurveyQuestion, SurveyQuestionType, SurveySection, SurveyVersionDefinition } from '@/lib/surveys/types'
 import type { SurveyWorkspace } from '@/lib/surveys/server'
+import { SatisfactionDialog } from './SatisfactionDialog'
 import { SurveyPreviewModal } from './SurveyPreviewModal'
 
 const TYPE_LABELS: Record<SurveyQuestionType, string> = {
@@ -164,17 +165,13 @@ export function SurveyBuilder({ workspace, level }: { workspace: SurveyWorkspace
   }
 
   return (
-    <main className="survey-builder-page" style={{ padding: 24, minWidth: 0 }}>
-      <style>{`
-        .survey-builder-page{max-width:1180px;margin:0 auto}.builder-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}.builder-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;align-items:start}.builder-section{scroll-margin-top:80px}.builder-question{border:1px solid var(--border);border-radius:11px;padding:14px;background:var(--card)}.builder-question+.builder-question{margin-top:10px}.builder-field{display:flex;flex-direction:column;gap:5px}.builder-field label{font-size:11.5px;color:var(--muted);font-weight:700}.builder-input{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink);padding:9px 10px;font:inherit;font-size:13px}.builder-input:focus-visible,.builder-icon-button:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 25%,transparent);outline-offset:2px;border-color:var(--primary)}.builder-icon-button{width:30px;height:30px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--muted);display:grid;place-items:center;cursor:pointer}.builder-icon-button:disabled{opacity:.35;cursor:not-allowed}.builder-option{display:grid;grid-template-columns:32px 1fr 88px 30px;gap:7px;align-items:center;margin-top:7px}.builder-sticky{position:sticky;top:72px}.builder-issue{padding:8px 10px;border-radius:8px;background:rgba(220,38,38,.08);color:var(--danger);font-size:12px;margin-top:6px}@media(max-width:900px){.builder-grid{grid-template-columns:1fr}.builder-sticky{position:static}}@media(max-width:767px){.survey-builder-page{padding:16px!important}.builder-option{grid-template-columns:28px 1fr 30px}.builder-option .builder-score{display:none}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
-      `}</style>
-
+    <div className="satisfaction-builder-page survey-builder-page">
       <div className="builder-toolbar">
-        <div>
-          <Link href="/staff/satisfaction" style={{ color: 'var(--muted)', fontSize: 12, textDecoration: 'none' }}>← กลับไปหน้ารวม</Link>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7, flexWrap: 'wrap' }}><h1 style={{ margin: 0, fontSize: 22, color: 'var(--ink)' }}>{workspace.survey.code}</h1><Badge color={definition.status === 'draft' ? 'amber' : 'green'}>Version {definition.versionNumber} · {definition.status === 'draft' ? 'ฉบับร่าง' : 'เผยแพร่แล้ว'}</Badge></div>
+        <div className="builder-identity">
+          <Link href="/staff/satisfaction" className="builder-back-link">← กลับไปหน้ารวม</Link>
+          <div className="builder-title-row"><h1>{workspace.survey.code}</h1><Badge color={definition.status === 'draft' ? 'amber' : 'green'}>Version {definition.versionNumber} · {definition.status === 'draft' ? 'ฉบับร่าง' : 'เผยแพร่แล้ว'}</Badge></div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="builder-toolbar-actions">
           <Button variant="secondary" icon="eye" onClick={() => setPreviewOpen(true)}>ดูตัวอย่าง</Button>
           {level === 'edit' && definition.status !== 'draft' && <Button icon="edit" onClick={cloneDraft} disabled={cloning}>{cloning ? 'กำลังสร้าง…' : 'สร้างฉบับร่างใหม่'}</Button>}
           {!readOnly && <Button variant="secondary" icon="x" onClick={() => setDiscardConfirmOpen(true)} disabled={publishing || saveState === 'saving'}>ยกเลิกฉบับร่าง</Button>}
@@ -182,62 +179,60 @@ export function SurveyBuilder({ workspace, level }: { workspace: SurveyWorkspace
         </div>
       </div>
 
-      <div aria-live="polite" style={{ minHeight: 20, fontSize: 12, color: saveState === 'error' ? 'var(--danger)' : 'var(--muted)', marginBottom: 8 }}>{readOnly ? (level === 'edit' ? 'เวอร์ชันที่เผยแพร่แล้วเป็นแบบอ่านอย่างเดียว' : 'คุณมีสิทธิ์ดูแบบสำรวจเท่านั้น') : saveMessage || 'การเปลี่ยนแปลงจะบันทึกอัตโนมัติ'}</div>
+      <div className={`builder-save-status builder-save-status-${saveState}`} data-save-state={saveState} aria-live="polite">{readOnly ? (level === 'edit' ? 'เวอร์ชันที่เผยแพร่แล้วเป็นแบบอ่านอย่างเดียว' : 'คุณมีสิทธิ์ดูแบบสำรวจเท่านั้น') : saveMessage || 'การเปลี่ยนแปลงจะบันทึกอัตโนมัติ'}</div>
 
       <div className="builder-grid">
         <div>
-          <Card style={{ marginBottom: 14 }}>
+          <Card className="builder-metadata-card">
             <div className="builder-field"><label htmlFor="survey-title">ชื่อแบบสำรวจ</label><input id="survey-title" className="builder-input" disabled={readOnly} value={definition.title} onChange={(event) => setDefinition((current) => ({ ...current, title: event.target.value }))} /></div>
-            <div className="builder-field" style={{ marginTop: 10 }}><label htmlFor="survey-description">คำอธิบาย</label><textarea id="survey-description" className="builder-input" rows={2} disabled={readOnly} value={definition.description ?? ''} onChange={(event) => setDefinition((current) => ({ ...current, description: event.target.value }))} /></div>
+            <div className="builder-field builder-description-field"><label htmlFor="survey-description">คำอธิบาย</label><textarea id="survey-description" className="builder-input" rows={2} disabled={readOnly} value={definition.description ?? ''} onChange={(event) => setDefinition((current) => ({ ...current, description: event.target.value }))} /></div>
           </Card>
 
           {definition.sections.map((section, sectionIndex) => (
-            <Card key={section.id} className="builder-section" style={{ marginBottom: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--primary-soft)', color: 'var(--primary)', display: 'grid', placeItems: 'center', fontWeight: 800, flexShrink: 0 }}>{sectionIndex + 1}</div>
-                <div className="builder-field" style={{ flex: 1 }}><label htmlFor={`section-${section.id}`}>ชื่อส่วน</label><input id={`section-${section.id}`} className="builder-input" disabled={readOnly} value={section.title} onChange={(event) => updateSection(section.id, { title: event.target.value })} /></div>
-                {!readOnly && <><button type="button" className="builder-icon-button" aria-label="เลื่อนขึ้น" disabled={sectionIndex === 0} onClick={() => moveSection(sectionIndex, -1)}><Icon name="chevDown" size={14} style={{ transform: 'rotate(180deg)' }} /></button><button type="button" className="builder-icon-button" aria-label="เลื่อนลง" disabled={sectionIndex === definition.sections.length - 1} onClick={() => moveSection(sectionIndex, 1)}><Icon name="chevDown" size={14} /></button><button type="button" className="builder-icon-button" aria-label="ลบส่วน" onClick={() => updateSections((sections) => sections.filter((item) => item.id !== section.id))}><Icon name="trash" size={14} /></button></>}
+            <Card key={section.id} className="builder-section">
+              <div className="builder-section-header">
+                <div className="builder-section-number">{sectionIndex + 1}</div>
+                <div className="builder-field builder-section-title-field"><label htmlFor={`section-${section.id}`}>ชื่อส่วน</label><input id={`section-${section.id}`} className="builder-input" disabled={readOnly} value={section.title} onChange={(event) => updateSection(section.id, { title: event.target.value })} /></div>
+                {!readOnly && <div className="builder-section-actions"><button type="button" className="builder-icon-button" aria-label="เลื่อนขึ้น" disabled={sectionIndex === 0} onClick={() => moveSection(sectionIndex, -1)}><Icon name="chevDown" size={14} style={{ transform: 'rotate(180deg)' }} /></button><button type="button" className="builder-icon-button" aria-label="เลื่อนลง" disabled={sectionIndex === definition.sections.length - 1} onClick={() => moveSection(sectionIndex, 1)}><Icon name="chevDown" size={14} /></button><button type="button" className="builder-icon-button" aria-label="ลบส่วน" onClick={() => updateSections((sections) => sections.filter((item) => item.id !== section.id))}><Icon name="trash" size={14} /></button></div>}
               </div>
 
-              <div style={{ marginTop: 14 }}>
+              <div className="builder-question-list">
                 {section.questions.map((question, questionIndex) => (
                   <QuestionEditor key={question.id} question={question} index={questionIndex} count={section.questions.length} readOnly={readOnly} onChange={(next) => updateQuestion(section.id, question.id, () => next)} onMove={(offset) => moveQuestion(section.id, questionIndex, offset)} onDelete={() => updateSection(section.id, { questions: section.questions.filter((item) => item.id !== question.id) })} />
                 ))}
               </div>
-              {!readOnly && <div style={{ marginTop: 12 }}><Button size="sm" variant="soft" icon="plus" onClick={() => updateSection(section.id, { questions: [...section.questions, createQuestion(section.id, 'rating_scale', section.questions.length + 1)] })}>เพิ่มคำถาม</Button></div>}
+              {!readOnly && <div className="builder-add-question"><Button size="sm" variant="soft" icon="plus" onClick={() => updateSection(section.id, { questions: [...section.questions, createQuestion(section.id, 'rating_scale', section.questions.length + 1)] })}>เพิ่มคำถาม</Button></div>}
             </Card>
           ))}
           {!readOnly && <Button variant="secondary" icon="plus" full onClick={addSection}>เพิ่มส่วนใหม่</Button>}
         </div>
 
         <aside className="builder-sticky">
-          <Card>
-            <h2 style={{ margin: 0, fontSize: 14, color: 'var(--ink)' }}>ความพร้อมก่อนเผยแพร่</h2>
-            <p style={{ margin: '5px 0 12px', fontSize: 11.5, color: 'var(--muted)' }}>ตรวจชื่อส่วน คำถาม ตัวเลือก และเกณฑ์คะแนน</p>
+          <Card className="builder-readiness-card">
+            <h2>ความพร้อมก่อนเผยแพร่</h2>
+            <p>ตรวจชื่อส่วน คำถาม ตัวเลือก และเกณฑ์คะแนน</p>
             <div data-definition-issues tabIndex={-1}>
-              {publishIssues.length === 0 ? <div style={{ padding: 10, borderRadius: 8, background: 'rgba(22,163,74,.08)', color: 'var(--success)', fontSize: 12 }}>ยังไม่พบข้อผิดพลาดจากการตรวจล่าสุด</div> : publishIssues.map((issue, index) => <div key={`${issue.path}-${index}`} className="builder-issue"><strong>{issue.path}</strong><br />{issue.message}</div>)}
+              {publishIssues.length === 0 ? <div className="builder-ready-state">ยังไม่พบข้อผิดพลาดจากการตรวจล่าสุด</div> : publishIssues.map((issue, index) => <div key={`${issue.path}-${index}`} className="builder-issue"><strong>{issue.path}</strong><br />{issue.message}</div>)}
             </div>
           </Card>
         </aside>
       </div>
       {previewOpen && <SurveyPreviewModal definition={definition} onClose={() => setPreviewOpen(false)} />}
-      {discardConfirmOpen && <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,23,42,.58)', display: 'grid', placeItems: 'center', padding: 16 }}>
-        <section role="dialog" aria-modal="true" aria-labelledby="discard-draft-title" style={{ width: 'min(470px,100%)', borderRadius: 16, background: 'var(--surface)', boxShadow: '0 24px 80px rgba(0,0,0,.28)' }}>
-          <div style={{ padding: 20 }}>
-            <h2 id="discard-draft-title" style={{ margin: 0, color: 'var(--ink)', fontSize: 18 }}>ยกเลิกฉบับร่าง Version {definition.versionNumber}?</h2>
-            <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>
+      {discardConfirmOpen && <SatisfactionDialog labelledBy="discard-draft-title" onClose={() => setDiscardConfirmOpen(false)} className="builder-discard-dialog">
+          <div className="builder-discard-content">
+            <h2 id="discard-draft-title">ยกเลิกฉบับร่าง Version {definition.versionNumber}?</h2>
+            <p>
               {hasPriorPublishedVersion
                 ? 'การเปลี่ยนแปลงในฉบับร่างนี้จะถูกลบ และระบบจะแสดงฉบับเผยแพร่ก่อนหน้าอีกครั้ง'
                 : 'นี่เป็นฉบับร่างแรก จึงจะเก็บแบบสำรวจเข้าคลังแทนการลบแบบสำรวจถาวร'}
             </p>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0 20px 20px' }}>
-            <Button variant="secondary" onClick={() => setDiscardConfirmOpen(false)} disabled={discarding}>กลับไปแก้ไข</Button>
+          <div className="builder-discard-actions">
+            <Button variant="secondary" onClick={() => setDiscardConfirmOpen(false)} disabled={discarding} data-dialog-autofocus>กลับไปแก้ไข</Button>
             <Button variant="danger" icon="x" onClick={discardDraft} disabled={discarding}>{discarding ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิกฉบับร่าง'}</Button>
           </div>
-        </section>
-      </div>}
-    </main>
+      </SatisfactionDialog>}
+    </div>
   )
 }
 

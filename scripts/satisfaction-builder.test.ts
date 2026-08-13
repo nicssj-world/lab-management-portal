@@ -29,6 +29,7 @@ for (const path of mutationRoutes.slice(1)) {
 const builder = read('components/satisfaction/SurveyBuilder.tsx')
 const renderer = read('components/satisfaction/SurveyRenderer.tsx')
 const preview = read('components/satisfaction/SurveyPreviewModal.tsx')
+const dialog = read('components/satisfaction/SatisfactionDialog.tsx')
 const page = read('app/(protected)/staff/satisfaction/[surveyId]/page.tsx')
 const sql = read('scripts/satisfaction-survey-module.sql')
 
@@ -42,7 +43,8 @@ for (const type of ['single_choice', 'short_text', 'number', 'rating_scale', 'lo
   assert.ok(renderer.includes(type), `renderer supports ${type}`)
 }
 assert.ok(preview.includes('<SurveyRenderer'), 'preview reuses the renderer')
-assert.ok(preview.includes('aria-modal="true"'), 'preview is an accessible modal')
+assert.ok(preview.includes('<SatisfactionDialog'), 'preview uses the shared accessible dialog')
+assert.ok(dialog.includes('aria-modal="true"'), 'shared preview dialog is modal')
 assert.ok(!builder.includes("@/lib/supabase/admin"), 'client builder does not import admin client')
 assert.ok(!renderer.includes("@/lib/supabase/admin"), 'client renderer does not import admin client')
 assert.ok(page.includes('await params'), 'builder page awaits dynamic params')
