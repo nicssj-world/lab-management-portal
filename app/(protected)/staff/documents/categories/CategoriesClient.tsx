@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -67,7 +67,16 @@ export function CategoriesClient({ docs, userRole, docRole, userName, userId = '
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null)
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
+  const [readingDocIds, setReadingDocIds] = useState<Set<string>>(new Set())
   const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string; forcePdfJs?: boolean } | null>(null)
+
+  // Keep the category eye in sync with the document library for the current user.
+  useEffect(() => {
+    fetch('/api/admin/documents/my-reads')
+      .then((r) => r.json())
+      .then((ids: string[]) => { if (Array.isArray(ids)) setReadDocIds(new Set(ids)) })
+      .catch(() => {})
+  }, [])
 
   function toggleDept(dept: string) {
     setExpandedDept((prev) => (prev === dept ? null : dept))
@@ -86,11 +95,20 @@ export function CategoriesClient({ docs, userRole, docRole, userName, userId = '
   }
 
   async function quickRead(doc: Pick<CategoryDoc, 'id' | 'title' | 'file_url'>) {
+    if (readingDocIds.has(doc.id)) return
+    setReadingDocIds((prev) => new Set(prev).add(doc.id))
     try {
       const res = await fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
       const json = await res.json()
       if (json.url) { setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(doc.file_url), title: doc.title, forcePdfJs: json.preview_uncontrolled === true }); setReadDocIds((prev) => new Set(prev).add(doc.id)) }
     } catch { /* ignore */ }
+    finally {
+      setReadingDocIds((prev) => {
+        const next = new Set(prev)
+        next.delete(doc.id)
+        return next
+      })
+    }
   }
 
   async function handleDownload(path: string | null | undefined) {
@@ -254,6 +272,8 @@ export function CategoriesClient({ docs, userRole, docRole, userName, userId = '
                               {typeDocs.map((d, dIdx) => {
                                 const tone = STATUS_TONE[d.status] ?? STATUS_TONE.Draft
                                 const loading = detailLoadingId === d.id
+                                const hasRead = readDocIds.has(d.id)
+                                const reading = readingDocIds.has(d.id)
                                 return (
                                   <div
                                     key={d.id}
@@ -281,8 +301,12 @@ export function CategoriesClient({ docs, userRole, docRole, userName, userId = '
                                     {d.file_url ? (
                                       <button
                                         onClick={() => quickRead(d)}
-                                        title="อ่านเอกสาร"
-                                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 9px', height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', flexShrink: 0 }}
+                                        disabled={readingDocIds.has(d.id)}
+                                        title={reading ? 'กำลังเปิดเอกสาร...' : 'อ่านเอกสาร'}
+                                        aria-label={reading ? 'กำลังเปิดเอกสาร' : hasRead ? 'อ่านเอกสารแล้ว' : 'อ่านเอกสาร'}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 9px', height: 28, borderRadius: 7, border: `1px solid ${hasRead ? 'var(--success)' : 'var(--border)'}`, background: 'transparent', color: hasRead ? 'var(--success)' : 'var(--muted)', cursor: reading ? 'wait' : 'pointer', flexShrink: 0, opacity: reading ? .6 : 1 }}
+                                        onMouseEnter={(e) => { if (!reading) { e.currentTarget.style.borderColor = 'var(--success)'; e.currentTarget.style.color = 'var(--success)' } }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = hasRead ? 'var(--success)' : 'var(--border)'; e.currentTarget.style.color = hasRead ? 'var(--success)' : 'var(--muted)' }}
                                       >
                                         <Icon name="eye" size={13} />
                                       </button>
