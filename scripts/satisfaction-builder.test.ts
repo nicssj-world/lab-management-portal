@@ -16,7 +16,7 @@ const mutationRoutes = [
 
 for (const path of mutationRoutes) {
   const source = read(path)
-  assert.ok(source.includes("requireResource('แบบสำรวจความพึงพอใจ'"), `${path} checks resource`)
+  assert.ok(source.includes("requireSatisfaction('edit')"), `${path} checks satisfaction edit guard`)
   assert.ok(source.includes("'edit'"), `${path} checks edit permission`)
   assert.ok(source.includes('.safeParse('), `${path} parses mutation input with Zod`)
 }
