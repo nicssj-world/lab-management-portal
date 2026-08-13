@@ -41,6 +41,8 @@ assert.match(charts, /responseCount === 0/, 'charts have an explicit no-data bra
 assert.match(charts, /satisfaction-chart-table/, 'chart tables use a shared accessible class')
 assert.match(charts, /satisfaction-question-table/, 'question table has a wrapping layout')
 assert.match(charts, /<td>{item\.fullName}<\/td>/, 'question table keeps the full prompt')
+assert.match(charts, /name: question\.prompt,/, 'question chart keeps the full prompt')
+assert.doesNotMatch(charts, /question\.prompt\.slice\(0, 34\)/, 'question chart no longer truncates labels')
 assert.match(campaigns, /useRouter/, 'campaign mutations refresh without a full browser reload')
 assert.match(campaigns, /aria-live="polite"/, 'campaign mutation feedback is announced')
 assert.match(campaigns, /copyState/, 'QR copy has explicit success state')

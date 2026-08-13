@@ -24,7 +24,7 @@ export function SatisfactionCharts({ data }: { data: SurveyDashboardData }) {
     return <Card><EmptyState title="ยังไม่มีคำตอบสำหรับแสดงผล" hint="เมื่อมีคำตอบที่ให้คะแนนแล้ว กราฟและตารางจะปรากฏที่นี่" icon="chart" /></Card>
   }
   const questionData = data.questions.slice(0, 10).map((question) => ({
-    name: question.prompt.length > 34 ? `${question.prompt.slice(0, 34)}…` : question.prompt,
+    name: question.prompt,
     fullName: question.prompt,
     value: question.normalizedPct ?? 0,
     count: question.answerCount,
@@ -46,7 +46,7 @@ export function SatisfactionCharts({ data }: { data: SurveyDashboardData }) {
       </Card>
       <Card>
         <ChartHeading title="คะแนนรายคำถาม" hint="10 คำถามแรก เรียงจากคะแนนสูง" />
-        <div className="chart-box" aria-label="กราฟคะแนนรายคำถาม"><ResponsiveContainer width="100%" height="100%"><BarChart data={questionData} layout="vertical" margin={{ top: 6, right: 38, left: 18, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis type="number" domain={[0, 100]} hide /><YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10, fill: 'var(--muted)' }} /><Tooltip cursor={false} content={<ChartTooltip />} /><Bar dataKey="value" name="คะแนน" fill="#2563EB" radius={[0, 5, 5, 0]}><LabelList dataKey="value" position="right" formatter={(value: unknown) => `${value}%`} /></Bar></BarChart></ResponsiveContainer></div>
+        <div className="chart-box satisfaction-question-chart-box" style={{ height: Math.max(300, questionData.length * 38) }} aria-label="กราฟคะแนนรายคำถาม"><ResponsiveContainer width="100%" height="100%"><BarChart data={questionData} layout="vertical" margin={{ top: 6, right: 38, left: 18, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis type="number" domain={[0, 100]} hide /><YAxis type="category" dataKey="name" width={220} tick={{ fontSize: 10, fill: 'var(--muted)' }} /><Tooltip cursor={false} content={<ChartTooltip />} /><Bar dataKey="value" name="คะแนน" fill="#2563EB" radius={[0, 5, 5, 0]}><LabelList dataKey="value" position="right" formatter={(value: unknown) => `${value}%`} /></Bar></BarChart></ResponsiveContainer></div>
         <table className="satisfaction-chart-table satisfaction-question-table"><caption className="satisfaction-visually-hidden">ตารางคะแนนรายคำถาม</caption><thead><tr><th scope="col">คำถาม</th><th scope="col">คะแนน</th><th scope="col">n</th></tr></thead><tbody>{questionData.map((item) => <tr key={item.fullName}><td>{item.fullName}</td><td>{item.value}%</td><td>{item.count}</td></tr>)}</tbody></table>
       </Card>
       <Card>
