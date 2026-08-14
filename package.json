@@ -10,6 +10,7 @@
     "start": "next start",
     "prepare": "node scripts/install-git-hooks.mjs",
     "test:secrets": "node scripts/secret-scan.test.mjs",
+    "test:share-metadata": "tsx scripts/share-metadata.test.ts",
     "security:secrets": "node scripts/secret-scan.mjs",
     "test:lab-map": "tsx scripts/lab-map-domain.test.ts",
     "test:lab-map-ui": "tsx scripts/lab-map-ui.test.ts",
