@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AnnualKpiRow, Department, KpiDefinition, KpiEntry, KpiSatisfaction, VwKpiDashboardRow } from '@/lib/supabase/types'
 import { calcResult, isPass } from '@/lib/kpi-utils'
 
+const KPI_ENTRY_PAGE_SIZE = 1000
+
 export async function getDashboard(
   supabase: SupabaseClient,
   year: number,
@@ -176,12 +178,22 @@ export async function getKpiEntries(
 
 // All entries for a fiscal year (every dept, every month) — used by export + status matrix
 export async function getYearEntries(supabase: SupabaseClient, year: number): Promise<KpiEntry[]> {
-  const { data, error } = await supabase
-    .from('kpi_entries')
-    .select('*')
-    .eq('fiscal_year', year)
-  if (error) throw error
-  return data ?? []
+  const rows: KpiEntry[] = []
+
+  for (let from = 0; ; from += KPI_ENTRY_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('kpi_entries')
+      .select('*')
+      .eq('fiscal_year', year)
+      .order('id', { ascending: true })
+      .range(from, from + KPI_ENTRY_PAGE_SIZE - 1)
+    if (error) throw error
+
+    rows.push(...(data ?? []))
+    if (!data || data.length < KPI_ENTRY_PAGE_SIZE) break
+  }
+
+  return rows
 }
 
 // dept_id list a user is assigned to fill (empty if none)
