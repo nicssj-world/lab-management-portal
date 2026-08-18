@@ -143,7 +143,7 @@ export async function getQualityTaskOccurrences(
     }])
   }
   const instanceByKey = new Map<string, Row>()
-  for (const row of (instanceRows ?? []) as Row[]) instanceByKey.set(occurrenceKey(nullable(row.schedule_id), str(row.template_id), str(row.period_start)), row)
+  for (const row of (instanceRows ?? []) as Row[]) instanceByKey.set(occurrenceKey(nullable(row.schedule_id), str(row.template_id), str(row.period_start), str(row.id)), row)
   const today = bangkokToday()
   const scheduledFrom = input.from < QUALITY_TASK_TRACKING_START ? QUALITY_TASK_TRACKING_START : input.from
   const result: QualityTaskOccurrence[] = []
@@ -193,7 +193,7 @@ export async function getQualityTaskOccurrences(
     const resolvedParticipants = resolveParticipants(people, selection.depts, selection.userIds)
     const status = taskStatus(row.status)
     const state = deriveTaskState({ status, plannedDate: nullable(row.planned_date), periodEnd: str(row.period_end), reminderDays: template.reminderDays }, today, holidays)
-    result.push({ key: occurrenceKey(null, template.id, str(row.period_start)), instanceId, template, scheduleId: null,
+    result.push({ key: occurrenceKey(null, template.id, str(row.period_start), instanceId), instanceId, template, scheduleId: null,
       periodStart: str(row.period_start), periodEnd: str(row.period_end), periodLabel: str(row.period_label), ownerTextOverride: nullable(row.owner_text_override), plannedDate: nullable(row.planned_date),
       status, note: nullable(row.note), completionNote: nullable(row.completion_note),
       completedBy: nullable(row.completed_by), completedAt: nullable(row.completed_at), assignees: assigned,

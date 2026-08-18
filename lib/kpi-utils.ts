@@ -22,24 +22,34 @@ export function getFiscalMonths(): number[] {
 }
 
 export function calcResult(n: number, d: number | null): number | null {
-  if (d === null) return null
+  if (!Number.isFinite(n) || d === null || !Number.isFinite(d) || d < 0) return null
+  // 0/0 means there were no incidents to measure. It is a completed entry,
+  // but it is not a percentage and must not be compared with the target.
   if (d === 0) return null
   return Math.round((n / d) * 100 * 100) / 100
+}
+
+export function isNoIncidentRate(
+  numerator: number | null | undefined,
+  denominator: number | null | undefined,
+): boolean {
+  return numerator === 0 && denominator === 0
 }
 
 export function isPass(
   result: number | null,
   targetType: string,
   targetVal: number,
-  numerator?: number
+  numerator?: number,
+  isCountMetric = false,
 ): boolean | null {
-  if (targetType === 'eq') {
-    if (numerator === undefined || numerator === null) return null
-    return numerator === 0
-  }
-  if (result === null) return null
-  if (targetType === 'gte') return result >= targetVal
-  if (targetType === 'lte') return result <= targetVal
+  // Count-only KPIs have no percentage result. Every target operator must
+  // therefore compare the numerator directly, not only `eq` targets.
+  const value = isCountMetric ? numerator : result
+  if (value === undefined || value === null) return null
+  if (targetType === 'eq') return value === targetVal
+  if (targetType === 'gte') return value >= targetVal
+  if (targetType === 'lte') return value <= targetVal
   return false
 }
 

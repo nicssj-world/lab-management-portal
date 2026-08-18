@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { calcResult, getFiscalMonths, getThaiMonthLabel } from '@/lib/kpi-utils'
+import { getKpiTargetLabel } from '@/lib/kpi/annual-labels'
+import { getUniqueWorksheetName } from '@/lib/kpi/export-sheet-names'
 import type { AnnualKpiRow, Department } from '@/lib/supabase/types'
 
 interface Props {
@@ -11,12 +13,6 @@ interface Props {
 }
 
 const MONTHS = getFiscalMonths()
-
-function targetLabel(row: AnnualKpiRow): string {
-  if (row.target_type === 'eq') return `= ${row.target_val} ${row.unit ?? ''}`.trim()
-  const op = row.target_type === 'gte' ? '≥' : '≤'
-  return `${op} ${row.target_val}${row.unit ?? '%'}`
-}
 
 // Build an array-of-arrays sheet mirroring the Google Sheet layout
 function rowsToAoa(rows: AnnualKpiRow[]): (string | number)[][] {
@@ -29,20 +25,20 @@ function rowsToAoa(rows: AnnualKpiRow[]): (string | number)[][] {
       totalNum += m.numerator ?? 0
       if (m.denominator !== null) { totalDen += m.denominator; hasTotalDen = true }
     }
-    const hasDen = Object.values(row.months).some((m) => m.denominator !== null)
+    const hasDen = row.denominator_label !== null
 
-    if (row.target_type === 'eq') {
+    if (!hasDen) {
       aoa.push([
-        row.kpi_name, targetLabel(row),
+        row.kpi_name, getKpiTargetLabel(row),
         ...MONTHS.map((m) => row.months[m]?.numerator ?? ''),
-        totalNum,
+        Object.values(row.months).some((m) => m.numerator !== null) ? totalNum : '',
       ])
       continue
     }
 
     // numerator row
     aoa.push([
-      `${row.kpi_name} (ทันเวลา)`, targetLabel(row),
+      `${row.kpi_name} (ทันเวลา)`, getKpiTargetLabel(row),
       ...MONTHS.map((m) => row.months[m]?.numerator ?? ''),
       totalNum,
     ])
@@ -71,15 +67,21 @@ export function KpiExportButton({ year, depts }: Props) {
     try {
       const XLSX = await import('xlsx')
       const wb = XLSX.utils.book_new()
+      const usedSheetNames = new Set<string>(['รวม'])
 
       // "รวม" sheet — group overview (excludes OUT/OPD server-side)
-      const overview: AnnualKpiRow[] = await fetch(`/kpi/api/annual?year=${year}`).then((r) => r.json())
+      const overviewResponse = await fetch(`/kpi/api/annual?year=${year}`)
+      if (!overviewResponse.ok) throw new Error('โหลดข้อมูลภาพรวมไม่สำเร็จ')
+      const overview: AnnualKpiRow[] = await overviewResponse.json()
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsToAoa(Array.isArray(overview) ? overview : [])), 'รวม')
 
       // Per-department sheets
       for (const dept of depts) {
-        const rows: AnnualKpiRow[] = await fetch(`/kpi/api/annual?year=${year}&dept=${dept.code}`).then((r) => r.json())
-        const sheetName = dept.code.slice(0, 31) // Excel sheet name limit
+        const response = await fetch(`/kpi/api/annual?year=${year}&dept=${dept.code}`)
+        if (!response.ok) throw new Error(`โหลดข้อมูล ${dept.code} ไม่สำเร็จ`)
+        const rows: AnnualKpiRow[] = await response.json()
+        const sheetName = getUniqueWorksheetName(dept.code, usedSheetNames)
+        usedSheetNames.add(sheetName)
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsToAoa(Array.isArray(rows) ? rows : [])), sheetName)
       }
 

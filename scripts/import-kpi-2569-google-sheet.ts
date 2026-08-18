@@ -27,7 +27,7 @@ const SOURCES = {
 } as const
 
 type Department = { id: number; code: string }
-type Definition = { id: number; code: string }
+type Definition = { id: number; code: string; denominator: string | null }
 type ExistingEntry = { dept_id: number; kpi_id: number; month: number; numerator: number | null }
 type Exclusion = { dept_id: number; kpi_id: number }
 type InsertEntry = {
@@ -86,7 +86,7 @@ async function main() {
   const sourceEntries = await loadSourceEntries()
   const [departmentsResult, definitionsResult, existingResult, exclusionsResult] = await Promise.all([
     db.from('departments').select('id, code').eq('is_active', true),
-    db.from('kpi_definitions').select('id, code'),
+    db.from('kpi_definitions').select('id, code, denominator'),
     db.from('kpi_entries').select('dept_id, kpi_id, month, numerator').eq('fiscal_year', FISCAL_YEAR),
     db.from('kpi_dept_exclusions').select('dept_id, kpi_id'),
   ])
@@ -127,14 +127,15 @@ async function main() {
     }
     if (candidates.has(key)) throw new Error(`Duplicate source value for ${source.deptCode} / ${source.kpiCode} / ${source.month}`)
 
+    const denominator = definition.denominator === null ? null : source.denominator
     candidates.set(key, {
       dept_id: department.id,
       kpi_id: definition.id,
       fiscal_year: FISCAL_YEAR,
       month: source.month,
       numerator: source.numerator,
-      denominator: source.denominator,
-      result_pct: calcResult(source.numerator, source.denominator),
+      denominator,
+      result_pct: calcResult(source.numerator, denominator),
     })
   }
 

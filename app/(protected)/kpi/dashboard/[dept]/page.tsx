@@ -1,7 +1,10 @@
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getDeptTrend, getDepartments, getDefinitions, getExclusions } from '@/lib/queries/kpi'
+import { getActor, canAccessResource } from '@/lib/auth/guards'
+import { getAssignedDeptIds, getDeptTrend, getDepartments, getDefinitions, getExclusions } from '@/lib/queries/kpi'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
+import { getKpiTargetLabel } from '@/lib/kpi/annual-labels'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -16,17 +19,24 @@ const CATEGORIES = ['TAT', 'ERROR', 'RISK']
 
 export default async function KpiDeptPage({ params }: Props) {
   const { dept } = await params
+  const actor = await getActor()
+  if (!actor) redirect('/login')
   const supabase = await createClient()
   const year = getCurrentThaiFiscalYear()
+  const depts = await getDepartments(supabase)
+  const deptInfo = depts.find((d) => d.code === dept)
 
-  const [deptTrend, depts, defs, exclusions] = await Promise.all([
+  if (!(await canAccessResource(actor, 'KPI', 'view'))) {
+    const assigned = await getAssignedDeptIds(supabaseAdmin, actor.id)
+    if (!deptInfo || !assigned.includes(deptInfo.id)) redirect('/kpi/dashboard')
+  }
+
+  const [deptTrend, defs, exclusions] = await Promise.all([
     getDeptTrend(supabase, dept, year),
-    getDepartments(supabase),
     getDefinitions(supabase),
     getExclusions(supabaseAdmin), // config table has no RLS read policy
   ])
 
-  const deptInfo = depts.find((d) => d.code === dept)
   // Hide KPI cards that this department is not required to fill
   const applicableDefs = deptInfo
     ? defs.filter((d) => !exclusions.has(`${deptInfo.id}|${d.id}`))
@@ -60,13 +70,14 @@ export default async function KpiDeptPage({ params }: Props) {
                   <Card key={def.id} padding={16}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>{def.name_th}</div>
                     <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 12 }}>
-                      Target: {def.target_type} {def.target_val}{def.unit ?? '%'}
+                      Target: {getKpiTargetLabel(def)}
                     </div>
                     <TrendChart
                       data={trendData}
-                      targetType={def.target_type ?? 'gte'}
-                      targetVal={def.target_val ?? 0}
-                      unit={def.unit ?? '%'}
+                      targetType={def.target_type}
+                      targetVal={def.target_val}
+                      unit={def.unit}
+                      isCountMetric={def.denominator === null}
                     />
                   </Card>
                 )

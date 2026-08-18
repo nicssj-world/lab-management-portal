@@ -9,6 +9,7 @@ import {
   isCheckInClosed,
   canManageQualityTaskHolidays,
   nextBusinessDay,
+  occurrenceKey,
   supportsActionItems,
   resolveAssigneeEntries,
 } from './logic'
@@ -98,5 +99,21 @@ assert.equal(canManageQualityTaskHolidays('Manager'), false, 'holiday management
 assert.equal(completionBlockReason(true, 0), 'ต้องแนบ PDF หลักฐานก่อนปิดงาน')
 assert.equal(completionBlockReason(true, 1), null)
 assert.equal(completionBlockReason(false, 0), null)
+
+assert.equal(
+  occurrenceKey(null, 'template-1', '2026-08-19', 'instance-1'),
+  'template-1:adhoc:instance-1',
+  'ad-hoc occurrence keys use the instance id',
+)
+assert.notEqual(
+  occurrenceKey(null, 'template-1', '2026-08-19', 'instance-1'),
+  occurrenceKey(null, 'template-1', '2026-08-19', 'instance-2'),
+  'two ad-hoc instances on the same date must have different keys',
+)
+assert.equal(
+  occurrenceKey('schedule-1', 'template-1', '2026-08-19', 'instance-1'),
+  'schedule-1:2026-08-19',
+  'scheduled occurrence keys remain schedule-based',
+)
 
 console.log('lib/quality-tasks/logic.test.ts: all assertions passed')

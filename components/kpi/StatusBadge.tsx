@@ -1,10 +1,11 @@
 interface Props {
   pass: boolean | null
+  emptyLabel?: string
 }
 
-export function StatusBadge({ pass }: Props) {
+export function StatusBadge({ pass, emptyLabel = 'ไม่มีข้อมูล' }: Props) {
   const cfg = pass === null
-    ? { bg: 'var(--surface-2)', fg: 'var(--muted)', dot: 'var(--muted)', label: 'ไม่มีข้อมูล' }
+    ? { bg: 'var(--surface-2)', fg: 'var(--muted)', dot: 'var(--muted)', label: emptyLabel }
     : pass
     ? { bg: 'rgba(22,163,74,.10)', fg: 'var(--success)', dot: 'var(--success)', label: 'ผ่าน' }
     : { bg: 'rgba(220,38,38,.10)', fg: 'var(--danger)', dot: 'var(--danger)', label: 'ไม่ผ่าน' }

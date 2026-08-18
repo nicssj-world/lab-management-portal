@@ -117,8 +117,8 @@ export function bangkokToday(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
 }
 
-export function occurrenceKey(scheduleId: string | null, templateId: string, periodStart: string) {
-  return scheduleId ? `${scheduleId}:${periodStart}` : `${templateId}:adhoc:${periodStart}`
+export function occurrenceKey(scheduleId: string | null, templateId: string, periodStart: string, instanceId: string | null = null) {
+  return scheduleId ? `${scheduleId}:${periodStart}` : `${templateId}:adhoc:${instanceId ?? periodStart}`
 }
 
 // Ad-hoc occurrences (scheduleId === null) store their user-typed subject in periodLabel —

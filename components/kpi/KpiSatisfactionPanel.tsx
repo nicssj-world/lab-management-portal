@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
+import { buildMetricCode, getMissingSatisfactionMetrics } from '@/lib/kpi/satisfaction-save'
+import { getLatestSatisfactionTarget } from '@/lib/kpi/satisfaction-display'
 import type { KpiSatisfaction } from '@/lib/supabase/types'
 
 interface Props {
@@ -27,6 +29,7 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
   const [editCell, setEditCell] = useState<{ code: string; year: number } | null>(null)
   const [editVal, setEditVal] = useState('')
   const [saving, setSaving] = useState(false)
+  const [cellError, setCellError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   // modal
@@ -50,7 +53,7 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
   }, [editCell])
 
   useEffect(() => {
-    if (addOpen) { setModalTab('metric'); setMetricName(''); setMetricTarget('80'); setModalErr('') }
+    if (addOpen) { setModalTab('metric'); setMetricName(''); setMetricTarget('80'); setModalErr(''); setCellError('') }
   }, [addOpen])
 
   // derive unique metrics from data (preserve default order, append new ones)
@@ -78,6 +81,7 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
 
   async function handleCellSave() {
     if (!editCell) return
+    let savedSuccessfully = false
     setSaving(true)
     try {
       const metric = metrics.find(m => m.code === editCell.code)
@@ -92,21 +96,28 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
         }),
       })
       const saved = await res.json()
-      if (res.ok) {
-        setData(prev => {
-          const idx = prev.findIndex(d => d.metric_code === editCell.code && d.fiscal_year === editCell.year)
-          return idx >= 0 ? prev.map((d, i) => i === idx ? saved : d) : [...prev, saved]
-        })
-      }
-    } finally { setSaving(false); setEditCell(null) }
+      if (!res.ok) throw new Error(saved?.error ?? 'บันทึกไม่สำเร็จ')
+      setData(prev => {
+        const idx = prev.findIndex(d => d.metric_code === editCell.code && d.fiscal_year === editCell.year)
+        return idx >= 0 ? prev.map((d, i) => i === idx ? saved : d) : [...prev, saved]
+      })
+      setCellError('')
+      savedSuccessfully = true
+    } catch (error) {
+      setCellError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+      if (savedSuccessfully) setEditCell(null)
+    }
   }
 
   async function handleAddMetric() {
     if (!metricName.trim()) { setModalErr('กรุณากรอกชื่อตัวชี้วัด'); return }
-    const code = metricName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
-    if (!code) { setModalErr('ชื่อต้องมีตัวอักษรภาษาอังกฤษหรือตัวเลข'); return }
-    if (metrics.some(m => m.code === code)) { setModalErr('ตัวชี้วัดนี้มีอยู่แล้ว'); return }
-    const target = parseFloat(metricTarget) || 80
+    const normalizedCode = metricName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+    if (normalizedCode && metrics.some(m => m.code === normalizedCode)) { setModalErr('ตัวชี้วัดนี้มีอยู่แล้ว'); return }
+    const code = buildMetricCode(metricName.trim(), new Set(metrics.map((metric) => metric.code)))
+    const parsedTarget = Number(metricTarget)
+    const target = Number.isFinite(parsedTarget) ? parsedTarget : 80
     setModalSaving(true); setModalErr('')
     try {
       // insert null entries for all existing years so column appears
@@ -117,7 +128,11 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ metric_code: code, metric_name: metricName.trim(), fiscal_year: y, value: null, target_val: target }),
         })
-        if (res.ok) results.push(await res.json())
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}))
+          throw new Error(error?.error ?? 'เพิ่มตัวชี้วัดไม่สำเร็จ')
+        }
+        results.push(await res.json())
       }
       setData(prev => {
         let next = [...prev]
@@ -128,6 +143,8 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
         return next
       })
       onAddClose?.()
+    } catch (error) {
+      setModalErr(error instanceof Error ? error.message : 'เพิ่มตัวชี้วัดไม่สำเร็จ')
     } finally { setModalSaving(false) }
   }
 
@@ -135,13 +152,18 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
     setModalSaving(true); setModalErr('')
     try {
       const results: KpiSatisfaction[] = []
-      for (const m of metrics) {
+      const missingMetrics = getMissingSatisfactionMetrics(metrics, newYear, data)
+      for (const m of missingMetrics) {
         const res = await fetch('/kpi/api/satisfaction', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ metric_code: m.code, metric_name: m.name, fiscal_year: newYear, value: null }),
         })
-        if (res.ok) results.push(await res.json())
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}))
+          throw new Error(error?.error ?? 'เพิ่มปีงบประมาณไม่สำเร็จ')
+        }
+        results.push(await res.json())
       }
       setData(prev => {
         let next = [...prev]
@@ -152,6 +174,8 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
         return next
       })
       onAddClose?.()
+    } catch (error) {
+      setModalErr(error instanceof Error ? error.message : 'เพิ่มปีงบประมาณไม่สำเร็จ')
     } finally { setModalSaving(false) }
   }
 
@@ -286,6 +310,7 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
           {canEdit && <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--primary)' }}>· คลิกค่าที่ต้องการแก้ไข</span>}
         </div>
 
+        {cellError && <div style={{ marginBottom: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(220,38,38,.08)', color: 'var(--danger)', fontSize: 12 }}>{cellError}</div>}
         <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>
           <table style={{ borderCollapse: 'collapse', fontSize: 13, minWidth: '100%' }}>
             <thead>
@@ -304,7 +329,7 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
                     {metric.name}
                   </td>
                   <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                    &gt;{getVal(metric.code, years[0])?.target_val ?? 80}%
+                    &gt;{getLatestSatisfactionTarget(data, metric.code, 80)}%
                   </td>
                   {years.map(year => {
                     const entry = getVal(metric.code, year)
@@ -318,7 +343,7 @@ export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: P
                         <td key={year} style={{ padding: '6px 10px', textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
                             <input
-                              ref={inputRef} type="number" step="0.01" value={editVal}
+                              ref={inputRef} type="number" min="0" max="100" step="0.01" value={editVal}
                               onChange={e => setEditVal(e.target.value)}
                               onKeyDown={e => { if (e.key === 'Enter') handleCellSave(); if (e.key === 'Escape') setEditCell(null) }}
                               style={{ width: 70, padding: '5px 7px', borderRadius: 6, border: '1px solid var(--primary)', fontSize: 12, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }}

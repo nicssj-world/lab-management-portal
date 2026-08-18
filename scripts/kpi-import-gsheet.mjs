@@ -156,9 +156,9 @@ async function main() {
       if (num === null) continue
       const isCount = COUNT_KPIS.has(kpi)
       if (!isCount) {
-        // percent KPI: need denominator; skip 0/0 (dept ไม่ได้ทำตัวชี้วัดนี้)
+        // percent KPI: need denominator; an explicit 0/0 is a valid
+        // no-incident entry, but it has no measurable percentage.
         if (den === null) continue
-        if (num === 0 && den === 0) continue
       }
       rowsToUpsert.push({
         dept_id: deptId.get(code),
@@ -167,7 +167,7 @@ async function main() {
         month,
         numerator: num,
         denominator: isCount ? null : den,
-        result_pct: isCount ? null : (den ? Math.round((num / den) * 10000) / 100 : null),
+        result_pct: isCount ? null : (den === 0 ? null : Math.round((num / den) * 10000) / 100),
       })
       n++
     }

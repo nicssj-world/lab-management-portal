@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { getSatisfaction } from '@/lib/queries/kpi'
+import { validateKpiSatisfactionPayload } from '@/lib/kpi/satisfaction-validation'
 
 export async function GET() {
   const supabase = await createClient()
@@ -23,9 +24,9 @@ export async function POST(request: NextRequest) {
   if ((perms['KPI'] ?? 'none') !== 'edit')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const body = await request.json()
-  const { metric_code, metric_name, fiscal_year, value, target_val } = body
-  if (!metric_code || !fiscal_year) return NextResponse.json({ error: 'metric_code and fiscal_year required' }, { status: 422 })
+  const validation = validateKpiSatisfactionPayload(await request.json())
+  if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 422 })
+  const { metric_code, metric_name, fiscal_year, value, target_val } = validation.data
 
   const upsertData: Record<string, unknown> = { metric_code, metric_name, fiscal_year, value: value ?? null }
   if (target_val !== undefined) upsertData.target_val = target_val
@@ -37,5 +38,11 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  supabaseAdmin.from('audit_log').insert({
+    action: 'kpi.satisfaction',
+    user_id: user.id,
+    target: `${metric_code}/${fiscal_year}`,
+    detail: `บันทึกความพึงพอใจ ${metric_name}`,
+  }).then(undefined, () => {})
   return NextResponse.json(data)
 }

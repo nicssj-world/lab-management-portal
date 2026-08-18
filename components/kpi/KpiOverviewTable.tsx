@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from './StatusBadge'
+import { isNoIncidentRate } from '@/lib/kpi-utils'
 import type { Department, KpiDefinition, VwKpiDashboardRow } from '@/lib/supabase/types'
+import { createRequestGuard, type RequestGuard } from '@/lib/kpi/request-guard'
 
 interface Props {
   year: number
@@ -19,23 +21,37 @@ export function KpiOverviewTable({ year, month }: Props) {
   const [entries, setEntries] = useState<VwKpiDashboardRow[]>([])
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const requestGuard = useRef<RequestGuard | null>(null)
+  if (requestGuard.current === null) requestGuard.current = createRequestGuard()
 
   useEffect(() => {
+    const request = requestGuard.current!.begin()
     async function load() {
       setLoading(true)
-      const [deptsRes, defsRes, entriesRes, configRes] = await Promise.all([
-        fetch('/kpi/api/departments').then((r) => r.json()),
-        fetch('/kpi/api/definitions').then((r) => r.json()),
-        fetch(`/kpi/api/entries?year=${year}&month=${month}`).then((r) => r.json()),
-        fetch('/kpi/api/config').then((r) => r.json()).catch(() => ({})),
-      ])
-      setDepts(Array.isArray(deptsRes) ? deptsRes : [])
-      setDefs(Array.isArray(defsRes) ? defsRes : [])
-      setEntries(Array.isArray(entriesRes) ? entriesRes : [])
-      setExcluded(new Set(Array.isArray(configRes?.exclusions) ? configRes.exclusions : []))
-      setLoading(false)
+      try {
+        const [deptsRes, defsRes, entriesRes, configRes] = await Promise.all([
+          fetch('/kpi/api/departments', { signal: request.signal }).then((r) => r.json()),
+          fetch('/kpi/api/definitions', { signal: request.signal }).then((r) => r.json()),
+          fetch(`/kpi/api/entries?year=${year}&month=${month}`, { signal: request.signal }).then((r) => r.json()),
+          fetch('/kpi/api/config', { signal: request.signal }).then((r) => r.json()).catch(() => ({})),
+        ])
+        if (!requestGuard.current!.isCurrent(request.id)) return
+        const departmentList: Department[] = Array.isArray(deptsRes) ? deptsRes : []
+        const visibleDepartments = configRes?.canViewAll === false && Array.isArray(configRes?.assignedDeptIds)
+          ? departmentList.filter((department) => configRes.assignedDeptIds.includes(department.id))
+          : departmentList
+        setDepts(visibleDepartments)
+        setDefs(Array.isArray(defsRes) ? defsRes : [])
+        setEntries(Array.isArray(entriesRes) ? entriesRes : [])
+        setExcluded(new Set(Array.isArray(configRes?.exclusions) ? configRes.exclusions : []))
+      } catch {
+        if (!requestGuard.current!.isCurrent(request.id)) return
+      }
+      if (requestGuard.current!.isCurrent(request.id)) setLoading(false)
     }
     load()
+
+    return () => requestGuard.current?.cancel()
   }, [year, month])
 
   if (loading) {
@@ -96,9 +112,10 @@ export function KpiOverviewTable({ year, month }: Props) {
                 }
                 const entry = entryMap.get(`${dept.code}|${def.code}`)
                 const isPass = entry?.is_pass ?? null
+                const noIncident = entry ? isNoIncidentRate(entry.numerator, entry.denominator) : false
                 return (
-                  <td key={def.id} style={{ padding: '8px 12px', textAlign: 'center', background: isPass === true ? '#F0FDF4' : isPass === false ? '#FEF2F2' : undefined }}>
-                    {entry ? <StatusBadge pass={isPass} /> : <span style={{ color: '#CBD5E1', fontSize: 11 }}>—</span>}
+                  <td key={def.id} title={noIncident ? 'ไม่มีอุบัติการณ์ (0/0) จึงไม่ประเมินผล' : undefined} style={{ padding: '8px 12px', textAlign: 'center', background: isPass === true ? '#F0FDF4' : isPass === false ? '#FEF2F2' : undefined }}>
+                    {entry ? <StatusBadge pass={isPass} emptyLabel={noIncident ? 'ไม่ประเมิน' : undefined} /> : <span style={{ color: '#CBD5E1', fontSize: 11 }}>—</span>}
                   </td>
                 )
               })}

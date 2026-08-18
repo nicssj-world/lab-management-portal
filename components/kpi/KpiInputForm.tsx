@@ -6,11 +6,17 @@ import { StatusBadge } from './StatusBadge'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { StickyScroll } from '@/components/ui/StickyScroll'
-import { calcResult, isPass, getCurrentThaiFiscalYear, getThaiMonthLabel, getFiscalMonths } from '@/lib/kpi-utils'
+import { calcResult, isNoIncidentRate, isPass, getThaiMonthLabel, getFiscalMonths } from '@/lib/kpi-utils'
+import { getKpiTargetLabel } from '@/lib/kpi/annual-labels'
+import { buildKpiSavePayload, type KpiEntryFormValue } from '@/lib/kpi/entry-save'
+import { isKpiEntryComplete } from '@/lib/kpi/entry-completeness'
+import { canEditKpiPeriod, getCurrentKpiPeriod, getPreviousKpiPeriod } from '@/lib/kpi/period-validation'
+import { createRequestGuard, type RequestGuard } from '@/lib/kpi/request-guard'
 import type { Department, KpiDefinition, VwKpiDashboardRow } from '@/lib/supabase/types'
 
 interface Config {
   canEditAll: boolean
+  isAdmin: boolean
   assignedDeptIds: number[]
   exclusions: string[] // "dept_id|kpi_id"
 }
@@ -22,7 +28,7 @@ interface EntryStatusRow {
   months: Record<number, { filled: number; required: number }>
 }
 
-type FieldVals = Record<number, { numerator: string; denominator: string }>
+type FieldVals = Record<number, KpiEntryFormValue>
 
 const SECTIONS: { key: string; title: string }[] = [
   { key: '1', title: '1. อัตราการรายงานผลการตรวจวิเคราะห์ทันเวลา (TAT)' },
@@ -48,18 +54,25 @@ function sectionKey(def: KpiDefinition): string {
   return (def.sub_code ?? '').split('.')[0] || def.category
 }
 
+function isFormValueComplete(def: KpiDefinition, value: KpiEntryFormValue | undefined): boolean {
+  if (!value || value.numerator.trim() === '') return false
+  const numerator = Number(value.numerator)
+  const denominator = def.denominator === null || value.denominator.trim() === ''
+    ? null
+    : Number(value.denominator)
+  return isKpiEntryComplete(numerator, denominator, def)
+}
+
 function targetLabel(def: KpiDefinition): string {
-  if (def.target_type === 'eq') return `= ${def.target_val} ${def.unit ?? ''}`.trim()
-  const op = def.target_type === 'gte' ? '≥' : '≤'
-  return `${op} ${def.target_val}${def.unit ?? '%'}`
+  return getKpiTargetLabel(def)
 }
 
 export function KpiInputForm() {
   const [config, setConfig] = useState<Config | null>(null)
   const [depts, setDepts] = useState<Department[]>([])
   const [defs, setDefs] = useState<KpiDefinition[]>([])
-  const [year, setYear] = useState(getCurrentThaiFiscalYear())
-  const [month, setMonth] = useState(new Date().getMonth() + 1)
+  const [year, setYear] = useState(() => getPreviousKpiPeriod().fiscalYear)
+  const [month, setMonth] = useState(() => getPreviousKpiPeriod().month)
   const [deptId, setDeptId] = useState<number | null>(null)
   const [values, setValues] = useState<FieldVals>({})
   const [dirty, setDirty] = useState(false)
@@ -68,6 +81,8 @@ export function KpiInputForm() {
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<EntryStatusRow[]>([])
   const { toasts, add } = useToast()
+  const rowRequestGuard = useRef<RequestGuard | null>(null)
+  if (rowRequestGuard.current === null) rowRequestGuard.current = createRequestGuard()
 
   // Departments this user may fill
   const editableDepts = useMemo(() => {
@@ -79,6 +94,18 @@ export function KpiInputForm() {
 
   const excludedSet = useMemo(() => new Set(config?.exclusions ?? []), [config])
   const isExcluded = useCallback((dId: number | null, kId: number) => dId != null && excludedSet.has(`${dId}|${kId}`), [excludedSet])
+  const currentPeriod = getCurrentKpiPeriod()
+  const periodLocked = !canEditKpiPeriod(config?.isAdmin ?? false, year, month)
+  const sections = useMemo(() => {
+    const known = new Set(SECTIONS.map((section) => section.key))
+    const extras: { key: string; title: string }[] = []
+    for (const def of defs) {
+      const key = sectionKey(def)
+      if (known.has(key) || extras.some((section) => section.key === key)) continue
+      extras.push({ key, title: `${def.category} — ตัวชี้วัดจากการตั้งค่า` })
+    }
+    return [...SECTIONS, ...extras]
+  }, [defs])
 
   // Initial load
   useEffect(() => {
@@ -87,7 +114,7 @@ export function KpiInputForm() {
       fetch('/kpi/api/departments').then((r) => r.json()),
       fetch('/kpi/api/definitions').then((r) => r.json()),
     ]).then(([c, d, k]) => {
-      const cfg: Config = { canEditAll: !!c?.canEditAll, assignedDeptIds: c?.assignedDeptIds ?? [], exclusions: c?.exclusions ?? [] }
+      const cfg: Config = { canEditAll: !!c?.canEditAll, isAdmin: !!c?.isAdmin, assignedDeptIds: c?.assignedDeptIds ?? [], exclusions: c?.exclusions ?? [] }
       setConfig(cfg)
       const deptList: Department[] = Array.isArray(d) ? d : []
       setDepts(deptList)
@@ -118,21 +145,28 @@ export function KpiInputForm() {
     if (!deptId) return
     setRowLoading(true)
     const deptCode = depts.find((d) => d.id === deptId)?.code ?? ''
-    fetch(`/kpi/api/entries?year=${year}&month=${month}&dept=${deptCode}`)
+    const request = rowRequestGuard.current!.begin()
+    fetch(`/kpi/api/entries?year=${year}&month=${month}&dept=${deptCode}`, { signal: request.signal })
       .then((r) => r.json())
       .then((entries: VwKpiDashboardRow[]) => {
+        if (!rowRequestGuard.current!.isCurrent(request.id)) return
         const init: FieldVals = {}
         for (const def of defs) {
           const entry = Array.isArray(entries) ? entries.find((e) => e.kpi_code === def.code) : undefined
           init[def.id] = {
             numerator: entry?.numerator != null ? String(entry.numerator) : '',
-            denominator: entry?.denominator != null ? String(entry.denominator) : '',
+            denominator: def.denominator !== null && entry?.denominator != null ? String(entry.denominator) : '',
           }
         }
         setValues(init)
         setDirty(false)
       })
-      .finally(() => setRowLoading(false))
+      .catch(() => {})
+      .finally(() => {
+        if (rowRequestGuard.current!.isCurrent(request.id)) setRowLoading(false)
+      })
+
+    return () => rowRequestGuard.current?.cancel()
   }, [deptId, year, month, defs, depts])
 
   // Guarded switching (warn if dirty)
@@ -142,6 +176,7 @@ export function KpiInputForm() {
   }, [dirty])
 
   function setField(kpiId: number, field: 'numerator' | 'denominator', v: string) {
+    if (periodLocked) return
     setDirty(true)
     setValues((prev) => {
       const next = { ...prev, [kpiId]: { ...prev[kpiId], [field]: v } }
@@ -162,28 +197,27 @@ export function KpiInputForm() {
 
   const progress = useMemo(() => {
     const applicable = defs.filter((d) => !isExcluded(deptId, d.id))
-    const filled = applicable.filter((d) => (values[d.id]?.numerator ?? '') !== '')
+    const filled = applicable.filter((d) => isFormValueComplete(d, values[d.id]))
     return { filled: filled.length, total: applicable.length }
   }, [defs, values, deptId, isExcluded])
 
   async function handleSubmit() {
     if (!deptId) return
+    if (periodLocked) {
+      add('งวดเดือนนี้ยังไม่สิ้นสุด ยังไม่สามารถบันทึกข้อมูลได้', false)
+      return
+    }
     setSaving(true)
     try {
-      const entries = defs
-        .filter((def) => !isExcluded(deptId, def.id))
-        .map((def) => {
-          const v = values[def.id] ?? { numerator: '', denominator: '' }
-          if (v.numerator === '') return null
-          const num = parseFloat(v.numerator) || 0
-          const den = def.denominator !== null ? (parseFloat(v.denominator) || null) : null
-          return { dept_id: deptId, kpi_id: def.id, fiscal_year: year, month, numerator: num, denominator: den }
-        })
-        .filter((e): e is NonNullable<typeof e> => e !== null)
+      const payload = buildKpiSavePayload(
+        defs.filter((def) => !isExcluded(deptId, def.id)),
+        values,
+        { dept_id: deptId, fiscal_year: year, month },
+      )
 
       const res = await fetch('/kpi/api/entries', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entries }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -218,11 +252,14 @@ export function KpiInputForm() {
       {/* Status matrix */}
       <EntryStatusMatrix
         status={status}
-        currentMonth={new Date().getMonth() + 1}
+        currentMonth={currentPeriod.month}
+        currentFiscalYear={currentPeriod.fiscalYear}
+        fiscalYear={year}
         selectedDeptId={deptId}
         selectedMonth={month}
         canPick={(dId) => config?.canEditAll || (config?.assignedDeptIds.includes(dId) ?? false)}
         isMine={(dId) => config?.assignedDeptIds.includes(dId) ?? false}
+        isPeriodLocked={(m) => !canEditKpiPeriod(config?.isAdmin ?? false, year, m)}
         onPick={(dId, m) => guardSwitch(() => { setDeptId(dId); setMonth(m) })}
       />
 
@@ -245,13 +282,23 @@ export function KpiInputForm() {
           >
             {editableDepts.map((d) => <option key={d.id} value={d.id}>{d.name_th}</option>)}
           </select>
-          <MonthSelector value={month} onChange={(m) => guardSwitch(() => setMonth(m))} />
+          <MonthSelector
+            value={month}
+            onChange={(m) => guardSwitch(() => setMonth(m))}
+            isMonthDisabled={(m) => !canEditKpiPeriod(config?.isAdmin ?? false, year, m)}
+          />
           <div style={{ marginLeft: 'auto' }}>
-            <Button variant="primary" icon="check" onClick={handleSubmit} disabled={saving || !dirty}>
+            <Button variant="primary" icon="check" onClick={handleSubmit} disabled={saving || !dirty || periodLocked}>
               {saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
             </Button>
           </div>
         </div>
+        {periodLocked && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 12 }}>
+            <Icon name="lock" size={13} />
+            งวดเดือน {getThaiMonthLabel(month)} ยังไม่สิ้นสุด — จะเปิดให้กรอกเมื่อขึ้นเดือนถัดไป
+          </div>
+        )}
         {/* Progress bar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'var(--surface-2)', overflow: 'hidden' }}>
@@ -271,11 +318,11 @@ export function KpiInputForm() {
           ))}
         </div>
       ) : (
-        SECTIONS.map((section) => {
+        sections.map((section) => {
           const sectionDefs = defs.filter((d) => sectionKey(d) === section.key)
           if (sectionDefs.length === 0) return null
           const applicable = sectionDefs.filter((d) => !isExcluded(deptId, d.id))
-          const doneCount = applicable.filter((d) => (values[d.id]?.numerator ?? '') !== '').length
+          const doneCount = applicable.filter((d) => isFormValueComplete(d, values[d.id])).length
           return (
             <div key={section.key} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '11px 16px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
@@ -293,6 +340,7 @@ export function KpiInputForm() {
                     def={def}
                     val={values[def.id] ?? { numerator: '', denominator: '' }}
                     excluded={isExcluded(deptId, def.id)}
+                    locked={periodLocked}
                     last={idx === sectionDefs.length - 1}
                     onChange={(field, v) => setField(def.id, field, v)}
                   />
@@ -315,10 +363,11 @@ export function KpiInputForm() {
   )
 }
 
-function KpiRow({ def, val, excluded, last, onChange }: {
+function KpiRow({ def, val, excluded, locked, last, onChange }: {
   def: KpiDefinition
   val: { numerator: string; denominator: string }
   excluded: boolean
+  locked: boolean
   last: boolean
   onChange: (field: 'numerator' | 'denominator', v: string) => void
 }) {
@@ -327,9 +376,17 @@ function KpiRow({ def, val, excluded, last, onChange }: {
   const num = parseFloat(val.numerator)
   const den = hasDen ? parseFloat(val.denominator) : null
   const result = !isNaN(num) ? calcResult(num, den != null && !isNaN(den) ? den : null) : null
-  const pass = (result !== null || def.target_type === 'eq')
-    ? isPass(result, def.target_type ?? '', def.target_val ?? 0, !isNaN(num) ? num : undefined)
-    : null
+  const noIncident = hasDen && isNoIncidentRate(
+    !isNaN(num) ? num : null,
+    den != null && !isNaN(den) ? den : null,
+  )
+  const pass = isPass(
+    result,
+    def.target_type ?? '',
+    def.target_val ?? 0,
+    !isNaN(num) ? num : undefined,
+    def.denominator === null,
+  )
   const overflow = hasDen && !isNaN(num) && den != null && !isNaN(den) && num > den
 
   const inputStyle: React.CSSProperties = {
@@ -362,10 +419,11 @@ function KpiRow({ def, val, excluded, last, onChange }: {
           <div>
             <input
               type="number" inputMode="numeric" value={val.numerator}
+              disabled={locked}
               onChange={(e) => onChange('numerator', e.target.value)}
               onBlur={() => setTouched(true)}
               placeholder="จำนวน" aria-label={`${def.name_th} จำนวน`}
-              style={inputStyle}
+              style={{ ...inputStyle, background: locked ? 'var(--surface-2)' : 'var(--card)', cursor: locked ? 'not-allowed' : 'text' }}
               onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--primary)')}
             />
           </div>
@@ -374,10 +432,11 @@ function KpiRow({ def, val, excluded, last, onChange }: {
               <>
                 <input
                   type="number" inputMode="numeric" value={val.denominator}
+                  disabled={locked}
                   onChange={(e) => onChange('denominator', e.target.value)}
                   onBlur={() => setTouched(true)}
                   placeholder="ทั้งหมด" aria-label={`${def.name_th} จำนวนทั้งหมด`}
-                  style={inputStyle}
+                  style={{ ...inputStyle, background: locked ? 'var(--surface-2)' : 'var(--card)', cursor: locked ? 'not-allowed' : 'text' }}
                   onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--primary)')}
                 />
                 {touched && overflow && (
@@ -388,11 +447,14 @@ function KpiRow({ def, val, excluded, last, onChange }: {
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>—</span>
             )}
           </div>
-          <div style={{ textAlign: 'center', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>
-            {result !== null ? `${result}${def.unit ?? '%'}` : '—'}
+          <div
+            title={noIncident ? 'ไม่มีอุบัติการณ์ (0/0) จึงไม่ประเมินผล' : undefined}
+            style={{ textAlign: 'center', fontSize: 13.5, fontWeight: 700, color: noIncident ? 'var(--muted)' : 'var(--ink)' }}
+          >
+            {noIncident ? 'N/A' : result !== null ? `${result}${def.unit ?? '%'}` : '—'}
           </div>
           <div style={{ textAlign: 'center' }}>
-            <StatusBadge pass={pass} />
+            <StatusBadge pass={pass} emptyLabel={noIncident ? 'ไม่ประเมิน' : undefined} />
           </div>
         </>
       )}
@@ -400,13 +462,16 @@ function KpiRow({ def, val, excluded, last, onChange }: {
   )
 }
 
-function EntryStatusMatrix({ status, currentMonth, selectedDeptId, selectedMonth, canPick, isMine, onPick }: {
+function EntryStatusMatrix({ status, currentMonth, currentFiscalYear, fiscalYear, selectedDeptId, selectedMonth, canPick, isMine, isPeriodLocked, onPick }: {
   status: EntryStatusRow[]
   currentMonth: number
+  currentFiscalYear: number
+  fiscalYear: number
   selectedDeptId: number | null
   selectedMonth: number
   canPick: (deptId: number) => boolean
   isMine: (deptId: number) => boolean
+  isPeriodLocked: (month: number) => boolean
   onPick: (deptId: number, month: number) => void
 }) {
   if (status.length === 0) return null
@@ -428,7 +493,7 @@ function EntryStatusMatrix({ status, currentMonth, selectedDeptId, selectedMonth
             <tr>
               <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, minWidth: 130 }}>แผนก</th>
               {MONTHS.map((m) => (
-                <th key={m} style={{ ...th, minWidth: 44, color: m === currentMonth ? 'var(--primary)' : 'var(--muted)' }}>{getThaiMonthLabel(m)}</th>
+                <th key={m} style={{ ...th, minWidth: 44, color: fiscalYear === currentFiscalYear && m === currentMonth ? 'var(--primary)' : 'var(--muted)', opacity: isPeriodLocked(m) ? 0.55 : 1 }}>{getThaiMonthLabel(m)}</th>
               ))}
             </tr>
           </thead>
@@ -457,6 +522,8 @@ function EntryStatusMatrix({ status, currentMonth, selectedDeptId, selectedMonth
                   {MONTHS.map((m) => {
                     const cell = row.months[m] ?? { filled: 0, required: 0 }
                     const isSelected = row.dept_id === selectedDeptId && m === selectedMonth
+                    const periodLocked = isPeriodLocked(m)
+                    const clickable = pickable && !periodLocked
                     let bg = 'transparent'; let content: React.ReactNode = '—'; let color = 'var(--muted)'
                     if (cell.required === 0) { content = '—' }
                     else if (cell.filled === 0) { content = '—'; color = '#CBD5E1' }
@@ -465,11 +532,11 @@ function EntryStatusMatrix({ status, currentMonth, selectedDeptId, selectedMonth
                     return (
                       <td
                         key={m}
-                        onClick={pickable ? () => onPick(row.dept_id, m) : undefined}
-                        title={cell.required > 0 ? `กรอกแล้ว ${cell.filled}/${cell.required}` : 'ไม่มีตัวชี้วัด'}
+                        onClick={clickable ? () => onPick(row.dept_id, m) : undefined}
+                        title={periodLocked ? 'ยังไม่ถึงงวดเดือนนี้ ไม่สามารถกรอกล่วงหน้าได้' : cell.required > 0 ? `กรอกแล้ว ${cell.filled}/${cell.required}` : 'ไม่มีตัวชี้วัด'}
                         style={{
                           padding: '5px 6px', textAlign: 'center', color, background: isSelected ? 'var(--primary-soft)' : bg,
-                          cursor: pickable ? 'pointer' : 'default',
+                          cursor: clickable ? 'pointer' : 'default', opacity: periodLocked ? 0.55 : 1,
                           outline: isSelected ? '2px solid var(--primary)' : 'none', outlineOffset: -2,
                         }}
                       >

@@ -210,7 +210,8 @@ create table kpi_definitions (
   unit        text,
   target_type text check (target_type in ('gte','lte','eq')),
   target_val  numeric(10,2),
-  sort_order  int default 0
+  sort_order  int default 0,
+  denominator text default null
 );
 
 create table kpi_entries (
@@ -239,14 +240,30 @@ create or replace view vw_kpi_dashboard as
 select d.code as dept_code, d.name_th as dept_name,
        k.code as kpi_code, k.category, k.sub_code, k.name_th as kpi_name,
        k.target_type, k.target_val, k.unit,
-       e.fiscal_year, e.month, e.numerator, e.denominator, e.result_pct,
+       e.fiscal_year, e.month, e.numerator, e.denominator,
        case
-         when k.target_type = 'eq'  then case when e.numerator is null then null::boolean else (e.numerator = 0) end
-         when e.result_pct is null  then null
-         when k.target_type = 'gte' then e.result_pct >= k.target_val
-         when k.target_type = 'lte' then e.result_pct <= k.target_val
+         when k.denominator is null or e.numerator is null or e.denominator is null or e.denominator < 0 then null::numeric
+         when e.denominator = 0 and e.numerator = 0 then null::numeric
+         when e.denominator = 0 then null::numeric
+         else round((e.numerator::numeric / e.denominator) * 100, 2)
+       end::numeric(8,2) as result_pct,
+       case
+         when e.numerator is null then null::boolean
+         when k.denominator is null then
+           case
+             when k.target_type = 'eq' then e.numerator = k.target_val
+             when k.target_type = 'gte' then e.numerator >= k.target_val
+             when k.target_type = 'lte' then e.numerator <= k.target_val
+             else false
+           end
+         when e.denominator is null or e.denominator < 0 or (e.denominator = 0 and e.numerator <> 0) then null::boolean
+         when e.denominator = 0 and e.numerator = 0 then null::boolean
+         when k.target_type = 'eq' then round((e.numerator::numeric / e.denominator) * 100, 2) = k.target_val
+         when k.target_type = 'gte' then round((e.numerator::numeric / e.denominator) * 100, 2) >= k.target_val
+         when k.target_type = 'lte' then round((e.numerator::numeric / e.denominator) * 100, 2) <= k.target_val
          else false
-       end as is_pass
+       end as is_pass,
+       k.denominator as denominator_label
 from kpi_entries e
 join departments d on d.id = e.dept_id
 join kpi_definitions k on k.id = e.kpi_id;

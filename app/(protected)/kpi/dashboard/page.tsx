@@ -43,6 +43,7 @@ export default function KpiDashboardPage() {
   const [depts, setDepts]   = useState<Department[]>([])
   const [satAddOpen, setSatAddOpen] = useState(false)
   const [assignedDeptIds, setAssignedDeptIds] = useState<number[]>([])
+  const [canViewAll, setCanViewAll] = useState(true)
   const { canEdit }         = usePermission('KPI')
   // Users assigned as a filler for at least one dept (kpi_dept_assignees) can also
   // reach the input form, even without the global KPI edit permission.
@@ -55,9 +56,20 @@ export default function KpiDashboardPage() {
       .catch(() => {})
     fetch('/kpi/api/config')
       .then(r => r.json())
-      .then(c => { if (Array.isArray(c?.assignedDeptIds)) setAssignedDeptIds(c.assignedDeptIds) })
+      .then(c => {
+        if (Array.isArray(c?.assignedDeptIds)) setAssignedDeptIds(c.assignedDeptIds)
+        if (typeof c?.canViewAll === 'boolean') setCanViewAll(c.canViewAll)
+      })
       .catch(() => {})
   }, [])
+
+  const visibleDepts = canViewAll ? depts : depts.filter((dept) => assignedDeptIds.includes(dept.id))
+
+  useEffect(() => {
+    if (!canViewAll && visibleDepts.length > 0 && (!deptCode || !visibleDepts.some((dept) => dept.code === deptCode))) {
+      setDeptCode(visibleDepts[0].code)
+    }
+  }, [canViewAll, deptCode, visibleDepts])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -92,7 +104,7 @@ export default function KpiDashboardPage() {
             {(tab === 'annual' || tab === 'dashboard') && (
               <select value={deptCode} onChange={e => setDeptCode(e.target.value)} style={selectStyle} aria-label="แผนก">
                 <option value="">ทุกแผนก (ภาพรวม)</option>
-                {depts.map(d => <option key={d.id} value={d.code}>{d.name_th}</option>)}
+                {visibleDepts.map(d => <option key={d.id} value={d.code}>{d.name_th}</option>)}
               </select>
             )}
             {tab === 'compare' && (
@@ -100,7 +112,7 @@ export default function KpiDashboardPage() {
             )}
             {tab === 'annual' && (
               <div style={{ marginLeft: 'auto' }}>
-                <KpiExportButton year={year} depts={depts} />
+                <KpiExportButton year={year} depts={visibleDepts} />
               </div>
             )}
           </div>

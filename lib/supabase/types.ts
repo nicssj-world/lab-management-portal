@@ -914,6 +914,7 @@ export interface VwKpiDashboardRow {
   target_type: 'gte' | 'lte' | 'eq'
   target_val: number
   unit: string | null
+  denominator_label: string | null
   fiscal_year: number
   month: number
   numerator: number | null

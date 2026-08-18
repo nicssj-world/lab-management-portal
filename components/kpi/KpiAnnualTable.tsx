@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { calcResult, isPass, getFiscalMonths, getThaiMonthLabel } from '@/lib/kpi-utils'
+import { calcResult, isNoIncidentRate, isPass, getFiscalMonths, getThaiMonthLabel } from '@/lib/kpi-utils'
+import { getKpiNumeratorLabel, getKpiTargetLabel } from '@/lib/kpi/annual-labels'
+import { createRequestGuard, type RequestGuard } from '@/lib/kpi/request-guard'
 import type { AnnualKpiRow } from '@/lib/supabase/types'
 
 interface Props {
@@ -25,7 +27,12 @@ function fmtNum(v: number | null | undefined): string {
   return String(v)
 }
 
-function fmtPct(v: number | null | undefined): string {
+function fmtPct(
+  v: number | null | undefined,
+  numerator?: number | null,
+  denominator?: number | null,
+): string {
+  if (isNoIncidentRate(numerator, denominator)) return 'N/A'
   if (v == null) return '—'
   return v.toFixed(2)
 }
@@ -44,16 +51,25 @@ function passTextColor(pass: boolean | null): string {
 export function KpiAnnualTable({ year, deptCode }: Props) {
   const [rows, setRows] = useState<AnnualKpiRow[]>([])
   const [loading, setLoading] = useState(true)
+  const requestGuard = useRef<RequestGuard | null>(null)
+  if (requestGuard.current === null) requestGuard.current = createRequestGuard()
 
   useEffect(() => {
     setLoading(true)
+    const request = requestGuard.current!.begin()
     const params = new URLSearchParams({ year: String(year) })
     if (deptCode) params.set('dept', deptCode)
-    fetch(`/kpi/api/annual?${params}`)
+    fetch(`/kpi/api/annual?${params}`, { signal: request.signal })
       .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setRows(d) })
+      .then(d => {
+        if (requestGuard.current!.isCurrent(request.id) && Array.isArray(d)) setRows(d)
+      })
       .catch(() => {})
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (requestGuard.current!.isCurrent(request.id)) setLoading(false)
+      })
+
+    return () => requestGuard.current?.cancel()
   }, [year, deptCode])
 
   if (loading) {
@@ -136,23 +152,27 @@ function SectionRows({ label, rows, thStyle, tdNum, tdPct }: {
       </tr>
 
       {rows.map(row => {
-        const hasDenominator = Object.values(row.months).some(m => m.denominator !== null)
+        const hasDenominator = row.denominator_label !== null
 
         // Calculate totals
-        let totalNum = 0, totalDen = 0, hasTotalDen = false
+        let totalNum = 0, totalDen = 0, hasTotalNum = false, hasTotalDen = false
         for (const m of Object.values(row.months)) {
-          totalNum += m.numerator ?? 0
-          if (m.denominator !== null) { totalDen += m.denominator; hasTotalDen = true }
+          if (m.numerator !== null) { totalNum += m.numerator; hasTotalNum = true }
+          if (hasDenominator && m.denominator !== null) { totalDen += m.denominator; hasTotalDen = true }
         }
-        const totalPct = calcResult(totalNum, hasTotalDen ? totalDen : null)
-        const totalPass = isPass(totalPct, row.target_type, row.target_val, row.target_type === 'eq' ? totalNum : undefined)
+        const hasInvalidTotal = hasDenominator && Object.values(row.months).some(
+          (month) => month.numerator !== null && month.denominator === null,
+        )
+        const totalPct = hasDenominator && !hasInvalidTotal
+          ? calcResult(totalNum, hasTotalDen ? totalDen : null)
+          : null
+        const isCountOnly = !hasDenominator
+        const totalPass = !hasTotalNum || hasInvalidTotal
+          ? null
+          : isPass(totalPct, row.target_type, row.target_val, isCountOnly ? totalNum : undefined, isCountOnly)
 
         // Target label
-        const targetLabel = row.target_type === 'eq'
-          ? `= 0`
-          : row.target_type === 'gte'
-          ? `≥ ${row.target_val}${row.unit ?? '%'}`
-          : `≤ ${row.target_val}${row.unit ?? '%'}`
+        const targetLabel = getKpiTargetLabel(row)
 
         return (
           <GroupRows
@@ -160,6 +180,7 @@ function SectionRows({ label, rows, thStyle, tdNum, tdPct }: {
             row={row}
             hasDenominator={hasDenominator}
             totalNum={totalNum}
+            hasTotalNum={hasTotalNum}
             totalDen={hasTotalDen ? totalDen : null}
             totalPct={totalPct}
             totalPass={totalPass}
@@ -173,10 +194,11 @@ function SectionRows({ label, rows, thStyle, tdNum, tdPct }: {
   )
 }
 
-function GroupRows({ row, hasDenominator, totalNum, totalDen, totalPct, totalPass, targetLabel, tdNum, tdPct }: {
+function GroupRows({ row, hasDenominator, totalNum, hasTotalNum, totalDen, totalPct, totalPass, targetLabel, tdNum, tdPct }: {
   row: AnnualKpiRow
   hasDenominator: boolean
   totalNum: number
+  hasTotalNum: boolean
   totalDen: number | null
   totalPct: number | null
   totalPass: boolean | null
@@ -193,7 +215,9 @@ function GroupRows({ row, hasDenominator, totalNum, totalDen, totalPct, totalPas
   const targetCell: React.CSSProperties = { padding: '6px 10px', textAlign: 'center', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }
   const borderRow = '1px solid var(--border)'
 
-  if (row.target_type === 'eq') {
+  const isCountOnly = !hasDenominator
+
+  if (isCountOnly) {
     // Count-only KPI: just one row
     return (
       <tr style={{ borderBottom: borderRow }}>
@@ -202,10 +226,10 @@ function GroupRows({ row, hasDenominator, totalNum, totalDen, totalPct, totalPas
         {MONTHS.map(m => {
           const d = row.months[m]
           const val = d?.numerator ?? null
-          const pass = val === null ? null : val === 0 ? true : false
+          const pass = isPass(null, row.target_type, row.target_val, val ?? undefined, true)
           return <td key={m} style={tdPct(pass)}>{val ?? '—'}</td>
         })}
-        <td style={tdPct(totalPass)}>{totalNum}</td>
+        <td style={tdPct(totalPass)}>{hasTotalNum ? totalNum : '—'}</td>
       </tr>
     )
   }
@@ -216,7 +240,7 @@ function GroupRows({ row, hasDenominator, totalNum, totalDen, totalPct, totalPas
       <tr style={{ borderBottom: hasDenominator ? 'none' : borderRow }}>
         <td style={{ ...labelCell, paddingTop: 9 }}>
           <span style={{ fontWeight: 600 }}>{row.kpi_name}</span>
-          <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>(ทันเวลา)</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>({getKpiNumeratorLabel(row.category)})</span>
         </td>
         <td style={targetCell} rowSpan={hasDenominator ? 3 : 2}>
           <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{targetLabel}</span>
@@ -225,7 +249,7 @@ function GroupRows({ row, hasDenominator, totalNum, totalDen, totalPct, totalPas
           const d = row.months[m]
           return <td key={m} style={tdNum}>{fmtNum(d?.numerator)}</td>
         })}
-        <td style={tdNum}>{fmtNum(totalNum)}</td>
+        <td style={tdNum}>{fmtNum(hasTotalNum ? totalNum : null)}</td>
       </tr>
 
       {/* Denominator row */}
@@ -245,9 +269,9 @@ function GroupRows({ row, hasDenominator, totalNum, totalDen, totalPct, totalPas
         <td style={{ ...labelCellMuted, paddingBottom: 9 }}>ร้อยละ</td>
         {MONTHS.map(m => {
           const d = row.months[m]
-          return <td key={m} style={tdPct(d?.is_pass ?? null)}>{fmtPct(d?.result_pct)}</td>
+          return <td key={m} title={isNoIncidentRate(d?.numerator, d?.denominator) ? 'ไม่มีอุบัติการณ์ (0/0) จึงไม่ประเมินผล' : undefined} style={tdPct(d?.is_pass ?? null)}>{fmtPct(d?.result_pct, d?.numerator, d?.denominator)}</td>
         })}
-        <td style={tdPct(totalPass)}>{fmtPct(totalPct)}</td>
+        <td title={isNoIncidentRate(hasTotalNum ? totalNum : null, totalDen) ? 'ไม่มีอุบัติการณ์ (0/0) จึงไม่ประเมินผล' : undefined} style={tdPct(totalPass)}>{fmtPct(totalPct, hasTotalNum ? totalNum : null, totalDen)}</td>
       </tr>
     </>
   )

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
+import { getKpiTargetLabel } from '@/lib/kpi/annual-labels'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import type { Department, KpiDefinition } from '@/lib/supabase/types'
 
@@ -156,7 +157,7 @@ export function KpiSettingsClient() {
                   {def.name_th}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                  {def.code} · {def.category} · เป้า {def.target_type === 'eq' ? '=' : def.target_type === 'gte' ? '≥' : '≤'} {def.target_val}{def.unit ?? '%'}
+                  {def.code} · {def.category} · เป้า {getKpiTargetLabel(def)}
                   {def.denominator !== null ? ' · คำนวณ %' : ' · นับจำนวน'}
                 </div>
               </div>

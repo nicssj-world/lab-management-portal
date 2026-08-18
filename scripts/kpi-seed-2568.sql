@@ -29,10 +29,7 @@ insert into kpi_definitions (code, category, sub_code, name_th, unit, target_typ
   ('RISK_LOWRISK','RISK','4.3','Low Risk C-D','%','lte',25,110,'อุบัติการณ์ทั้งหมด'),
   ('RISK_MODERATE','RISK','4.4','Moderate Risk E-F','ครั้ง','eq',0,120,null),
   ('RISK_SENTINEL','RISK','4.5','Sentinel Event G-I','ครั้ง','eq',0,130,null)
-on conflict (code) do update set
-  name_th=excluded.name_th, unit=excluded.unit, target_type=excluded.target_type,
-  target_val=excluded.target_val, sort_order=excluded.sort_order,
-  denominator=excluded.denominator, category=excluded.category, sub_code=excluded.sub_code;
+on conflict (code) do nothing;
 
 -- ─────────────────────────────────────────────────────────────────
 -- KPI ENTRIES ปีงบ 2568 (ตัวเลขจริงทุกเซลล์)
@@ -270,8 +267,10 @@ with
 insert into kpi_entries (dept_id, kpi_id, fiscal_year, month, numerator, denominator, result_pct)
 select d.id, k.id, raw.fy, raw.mo, raw.num, raw.den,
   case
-    when k.target_type = 'eq'           then null
-    when raw.den is null or raw.den = 0 then null
+    when k.denominator is null          then null
+    when raw.den is null or raw.den < 0 then null
+    when raw.den = 0 and raw.num = 0 then 0
+    when raw.den = 0 then null
     else round((raw.num::numeric / raw.den) * 100, 2)
   end
 from raw

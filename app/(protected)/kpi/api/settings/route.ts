@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { z } from 'zod'
+import { diffKpiSettings } from '@/lib/kpi/settings-diff'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -53,19 +54,35 @@ export async function PUT(req: NextRequest) {
 
   const { assignees, exclusions } = parsed.data
 
-  // Replace-all strategy: wipe then insert. Simple and correct for a small admin table.
-  const delA = await supabaseAdmin.from('kpi_dept_assignees').delete().neq('id', 0)
-  if (delA.error) return NextResponse.json({ error: delA.error.message }, { status: 500 })
-  if (assignees.length > 0) {
-    const insA = await supabaseAdmin.from('kpi_dept_assignees').insert(assignees)
-    if (insA.error) return NextResponse.json({ error: insA.error.message }, { status: 500 })
-  }
+  const [currentAssignees, currentExclusions] = await Promise.all([
+    supabaseAdmin.from('kpi_dept_assignees').select('id, dept_id, user_id'),
+    supabaseAdmin.from('kpi_dept_exclusions').select('id, dept_id, kpi_id'),
+  ])
+  if (currentAssignees.error) return NextResponse.json({ error: currentAssignees.error.message }, { status: 500 })
+  if (currentExclusions.error) return NextResponse.json({ error: currentExclusions.error.message }, { status: 500 })
 
-  const delE = await supabaseAdmin.from('kpi_dept_exclusions').delete().neq('id', 0)
-  if (delE.error) return NextResponse.json({ error: delE.error.message }, { status: 500 })
-  if (exclusions.length > 0) {
-    const insE = await supabaseAdmin.from('kpi_dept_exclusions').insert(exclusions)
-    if (insE.error) return NextResponse.json({ error: insE.error.message }, { status: 500 })
+  const diff = diffKpiSettings(
+    { assignees: currentAssignees.data ?? [], exclusions: currentExclusions.data ?? [] },
+    { assignees, exclusions },
+  )
+
+  // Insert first and delete stale rows afterwards. A failed insert therefore
+  // leaves the existing configuration intact instead of wiping it first.
+  if (diff.assigneesToInsert.length > 0) {
+    const result = await supabaseAdmin.from('kpi_dept_assignees').insert(diff.assigneesToInsert)
+    if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
+  }
+  if (diff.exclusionsToInsert.length > 0) {
+    const result = await supabaseAdmin.from('kpi_dept_exclusions').insert(diff.exclusionsToInsert)
+    if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
+  }
+  if (diff.assigneeIdsToDelete.length > 0) {
+    const result = await supabaseAdmin.from('kpi_dept_assignees').delete().in('id', diff.assigneeIdsToDelete)
+    if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
+  }
+  if (diff.exclusionIdsToDelete.length > 0) {
+    const result = await supabaseAdmin.from('kpi_dept_exclusions').delete().in('id', diff.exclusionIdsToDelete)
+    if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
   }
 
   supabaseAdmin.from('audit_log').insert({
