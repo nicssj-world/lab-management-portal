@@ -98,10 +98,16 @@ export function KpiInputForm() {
     }).catch(() => setLoading(false))
   }, [])
 
+  const statusRequestId = useRef(0)
   const loadStatus = useCallback(() => {
+    const requestId = ++statusRequestId.current
     fetch(`/kpi/api/entries/status?year=${year}`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setStatus(Array.isArray(d) ? d : []))
+      .then((d) => {
+        // Ignore out-of-order responses (e.g. the initial mount fetch resolving
+        // after a later post-save fetch) so a stale response can't clobber fresh status.
+        if (requestId === statusRequestId.current) setStatus(Array.isArray(d) ? d : [])
+      })
       .catch(() => {})
   }, [year])
 
