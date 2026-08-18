@@ -3,9 +3,10 @@ import {
   LAB_STATIONS, LAB_STRUCTURES, LAB_ZONES,
 } from './manifest'
 import { LAB_ASSEMBLY_POINTS, LAB_SAFETY_EQUIPMENT } from './safety-assets'
+import { mergeLiveSafetyPositions } from './live-safety-positions'
 import { isOfficialRelease } from './release'
 import { VISITOR_STATION_CODE, buildVisitorLabMapDTO } from './visitor'
-import type { LabMapDTO, MapMode, MapReleaseDTO } from './types'
+import type { LabAssemblyPointDefinition, LabMapDTO, LabSafetyEquipmentDefinition, MapMode, MapReleaseDTO } from './types'
 
 export type MapPrintKind = 'evacuation' | 'infection_control' | 'visitor_navigation'
 export type MapPaperSize = 'A3' | 'A4'
@@ -37,6 +38,9 @@ export function buildMapPrintDTO(input: {
   destinationCode?: string | null
   webUrl: string
   printedAt?: string
+  /** Current registry positions; only verified changes replace the release snapshot. */
+  liveSafetyEquipment?: readonly LabSafetyEquipmentDefinition[]
+  liveAssemblyPoints?: readonly LabAssemblyPointDefinition[]
 }): MapPrintResult {
   const station = LAB_STATIONS.find((item) => item.code === input.stationCode)
   if (!station) return { ok: false, error: input.kind === 'evacuation' ? 'missing_evacuation_preset' : 'unknown_station' }
@@ -68,6 +72,14 @@ export function buildMapPrintDTO(input: {
     ? LAB_ROUTE_PRESETS.filter((route) => route.kind === 'evacuation' && route.fromStationCode === input.stationCode)
     : []
   if (input.kind === 'evacuation' && routes.length === 0) return { ok: false, error: 'missing_evacuation_preset' }
+  const livePositionProjection = input.kind === 'evacuation' && (input.liveSafetyEquipment || input.liveAssemblyPoints)
+    ? mergeLiveSafetyPositions({
+      snapshotAssets: input.release.assetSnapshot ?? LAB_SAFETY_EQUIPMENT,
+      liveAssets: input.liveSafetyEquipment ?? [],
+      snapshotAssemblyPoints: input.release.assemblyPointSnapshot ?? LAB_ASSEMBLY_POINTS,
+      liveAssemblyPoints: input.liveAssemblyPoints ?? [],
+    })
+    : null
   const map: LabMapDTO = {
     version: input.release.versionCode,
     viewBox: LAB_MAP_VIEW_BOX,
@@ -82,8 +94,12 @@ export function buildMapPrintDTO(input: {
     stations: LAB_STATIONS.filter((item) => item.code === input.stationCode),
     routes,
     // ถังดับเพลิงและจุดรวมพลมีความหมายเฉพาะแผ่นเส้นทางหนีไฟ — แผ่นควบคุมการติดเชื้อไม่ต้องมี
-    safetyEquipment: input.kind === 'evacuation' ? (input.release.assetSnapshot ?? LAB_SAFETY_EQUIPMENT) : [],
-    assemblyPoints: input.kind === 'evacuation' ? (input.release.assemblyPointSnapshot ?? LAB_ASSEMBLY_POINTS) : [],
+    safetyEquipment: input.kind === 'evacuation'
+      ? (livePositionProjection?.safetyEquipment ?? input.release.assetSnapshot ?? LAB_SAFETY_EQUIPMENT)
+      : [],
+    assemblyPoints: input.kind === 'evacuation'
+      ? (livePositionProjection?.assemblyPoints ?? input.release.assemblyPointSnapshot ?? LAB_ASSEMBLY_POINTS)
+      : [],
   }
   return { ok: true, value: {
     ...common,

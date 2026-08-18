@@ -3,9 +3,11 @@ import { readFileSync } from 'node:fs'
 
 const sql = readFileSync('scripts/lab-map-safety-module.sql', 'utf8')
 const pointTypeMigration = readFileSync('supabase/migrations/20260809075130_lab_map_safety_point_types.sql', 'utf8')
+const autoSyncMigration = readFileSync('supabase/migrations/20260818184836_auto_sync_safety_inspection_round_evidence.sql', 'utf8')
 
 for (const table of [
   'lab_map_safety_assets', 'lab_map_safety_inspections', 'lab_map_safety_editors',
+  'lab_map_safety_inspection_expiry_corrections',
   'lab_map_safety_inspection_rounds', 'lab_map_safety_inspection_round_items',
   'lab_map_assembly_points', 'lab_map_assembly_point_exits', 'lab_map_assembly_point_verifications',
 ]) assert.match(sql, new RegExp(`create table if not exists public\\.${table}`, 'i'))
@@ -33,7 +35,16 @@ assert.match(sql, /assembly-front-admin-building/i)
 assert.match(sql, /exit-3a/i)
 assert.match(sql, /on conflict/i, 'seed must be idempotent')
 assert.match(sql, /checklist_snapshot jsonb not null default '\[\]'::jsonb/i)
+assert.match(sql, /superseded_at timestamptz/i)
+assert.match(sql, /lab_map_safety_inspections_asset_date_photo_unique/i)
+assert.match(sql, /lab_map_safety_inspections_auto_schedule/i)
+assert.match(sql, /NEW\.next_inspection_date := NEW\.inspected_on \+ 30/i)
+assert.match(sql, /link_lab_map_safety_inspection_to_round/i)
+assert.match(sql, /sync_lab_map_safety_inspection_round_existing_evidence/i)
+assert.match(sql, /correct_lab_map_safety_inspection_expiry/i)
 assert.match(sql, /unique\s*\(round_id, asset_id\)/i)
 assert.match(sql, /status text not null[^;]+open[^;]+closed/i)
+assert.match(autoSyncMigration, /security definer set search_path = ''/i)
+assert.match(autoSyncMigration, /GRANT EXECUTE ON FUNCTION public\.sync_lab_map_safety_inspection_round_existing_evidence/i)
 
 console.log('lab map safety schema contract passed')

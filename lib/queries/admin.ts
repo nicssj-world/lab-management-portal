@@ -61,7 +61,7 @@ const CRUD_ACTIONS = [
   'lab_map.person_assignment.create', 'lab_map.person_assignment.update', 'lab_map.person_assignment.delete',
   'lab_map.release.create', 'lab_map.release.update', 'lab_map.release.publish',
   'lab_map.safety_asset.create', 'lab_map.safety_asset.update', 'lab_map.safety_asset.retire',
-  'lab_map.safety_inspection.create', 'lab_map.safety_inspection_round.close',
+  'lab_map.safety_inspection.create', 'lab_map.safety_inspection.reuse', 'lab_map.safety_inspection.expiry_correction', 'lab_map.safety_inspection_round.close',
   'lab_map.assembly_point.create', 'lab_map.assembly_point.update', 'lab_map.assembly_point.retire',
   'lab_map.assembly_verification.create', 'lab_map.safety_editor.grant', 'lab_map.safety_editor.revoke',
   'chemical_safety.sds.create_draft', 'chemical_safety.sds.upload_file', 'chemical_safety.sds.delete_draft',

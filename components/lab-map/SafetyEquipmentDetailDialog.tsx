@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useId, useRef } from 'react'
+import { safetyExpiryLabel } from '@/lib/lab-map/safety-domain'
 import type { LabSafetyEquipmentDefinition, SafetyAssetDTO } from '@/lib/lab-map/types'
 
 const FOCUSABLE =
@@ -105,7 +106,7 @@ export function SafetyEquipmentDetailDialog({
                 <div><dt>ผลตรวจล่าสุด</dt><dd>{statusLabel(inspection.result)}</dd></div>
                 <div><dt>วันที่ตรวจ</dt><dd>{inspection.inspectedOn}</dd></div>
                 <div><dt>ตรวจครั้งถัดไป</dt><dd>{inspection.nextInspectionDate ?? 'ยังไม่ระบุ'}</dd></div>
-                <div><dt>วันหมดอายุ</dt><dd>{inspection.expiresOn ?? 'ยังไม่ระบุ'}</dd></div>
+                <div><dt>{safetyExpiryLabel(equipment.kind)}</dt><dd>{inspection.expiresOn ?? 'ยังไม่ระบุ'}</dd></div>
                 <div><dt>ผู้ตรวจ</dt><dd>{inspection.inspectorName ?? inspection.inspectedBy}</dd></div>
               </dl>
               {inspection.note ? <p className="lab-map-equipment-note"><b>หมายเหตุ:</b> {inspection.note}</p> : null}

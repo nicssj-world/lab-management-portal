@@ -9,7 +9,8 @@ assert.equal(deriveSafetyAssetStatus({ ...base, positionStatus: 'unverified' }, 
 assert.equal(deriveSafetyAssetStatus({ ...base, latestResult: 'failed' }, '2026-07-26'), 'failed')
 assert.equal(deriveSafetyAssetStatus({ ...base, latestResult: 'not_found' }, '2026-07-26'), 'failed')
 assert.equal(deriveSafetyAssetStatus({ ...base, nextInspectionDate: '2026-07-25' }, '2026-07-26'), 'overdue')
-assert.equal(deriveSafetyAssetStatus({ ...base, expiresOn: '2026-08-10' }, '2026-07-26'), 'due_soon')
+assert.equal(deriveSafetyAssetStatus({ ...base, expiresOn: '2026-07-31' }, '2026-07-26'), 'due_soon', 'five days before expiry is due soon')
+assert.equal(deriveSafetyAssetStatus({ ...base, expiresOn: '2026-08-01' }, '2026-07-26'), 'passed', 'six days before expiry is still on schedule')
 assert.equal(deriveSafetyAssetStatus({ ...base, latestResult: 'needs_attention' }, '2026-07-26'), 'needs_attention')
 
 const asset = {

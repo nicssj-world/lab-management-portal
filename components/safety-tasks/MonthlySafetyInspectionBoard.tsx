@@ -170,7 +170,7 @@ export function MonthlySafetyInspectionBoard({ isEditor, fiscalYear }: { isEdito
 
   return <section className="msb">
     <header className="msb-head">
-      <div><span className="msb-kicker">MONTHLY INSPECTIONS</span><h2>ตรวจ Spill Kit และน้ำยาล้างตา NSS</h2><p>เปิดรอบวันที่ 1 · เตือนวันที่ 8 · ครบกำหนดวันที่ 15 ของทุกเดือน</p></div>
+      <div><span className="msb-kicker">MONTHLY INSPECTIONS</span><h2>ตรวจ Spill Kit และน้ำยาล้างตา NSS</h2><p>เปิดรอบวันที่ 1 · เตือนล่วงหน้า 5 วัน · ครบกำหนดวันที่ 15 ของทุกเดือน</p></div>
       <div className="msb-actions">
         <a className="msb-download" href={`/api/admin/safety-tasks/monthly-inspections/report?fiscalYear=${fiscalYear}&month=${month}`}><Icon name="download" size={15} />PDF เดือนนี้</a>
         <a className="msb-download is-primary" href={`/api/admin/safety-tasks/monthly-inspections/report?fiscalYear=${fiscalYear}`}><Icon name="download" size={15} />PDF ปีงบประมาณ</a>

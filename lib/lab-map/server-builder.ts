@@ -9,6 +9,10 @@ import type { LabAssemblyPointDefinition, LabSafetyEquipmentDefinition } from '.
 export interface StaffMapRepository {
   activeSpaceCodes(): Promise<readonly string[]>
   activeZoneCodes(): Promise<readonly string[]>
+  liveSafetySnapshot?(): Promise<{
+    safetyEquipment: readonly LabSafetyEquipmentDefinition[]
+    assemblyPoints: readonly LabAssemblyPointDefinition[]
+  } | null>
   publishedSnapshots?(): Promise<{
     safetyEquipment: readonly LabSafetyEquipmentDefinition[]
     assemblyPoints: readonly LabAssemblyPointDefinition[]
@@ -22,6 +26,7 @@ export async function buildStaffLabMapDTO(repository: StaffMapRepository): Promi
     repository.activeZoneCodes(),
     repository.publishedSnapshots?.() ?? Promise.resolve(null),
   ])
+  const live = await (repository.liveSafetySnapshot?.() ?? Promise.resolve(null))
   const missingSpaces = REQUIRED_SPACE_CODES.filter((code) => !spaceCodes.includes(code))
   const missingZones = LAB_ZONES.map((zone) => zone.code).filter((code) => !zoneCodes.includes(code))
   if (missingSpaces.length || missingZones.length) {
@@ -40,7 +45,13 @@ export async function buildStaffLabMapDTO(repository: StaffMapRepository): Promi
     accessPoints: LAB_ACCESS_POINTS,
     stations: LAB_STATIONS,
     routes: LAB_ROUTE_PRESETS,
-    safetyEquipment: published?.safetyEquipment ?? LAB_SAFETY_EQUIPMENT,
-    assemblyPoints: published?.assemblyPoints ?? LAB_ASSEMBLY_POINTS,
+    // แผนที่เจ้าหน้าที่ต้องสะท้อนทะเบียนปัจจุบัน แม้ตำแหน่งจะเพิ่งบันทึกและยังรอยืนยัน
+    // ส่วน public/print ใช้ getPublishedLabMapSnapshot ซึ่งกรองตามกติกา verified แยกต่างหาก
+    safetyEquipment: live?.safetyEquipment
+      ?? published?.safetyEquipment
+      ?? LAB_SAFETY_EQUIPMENT,
+    assemblyPoints: live?.assemblyPoints
+      ?? published?.assemblyPoints
+      ?? LAB_ASSEMBLY_POINTS,
   }
 }

@@ -48,6 +48,10 @@ create table if not exists public.quality_task_instances (
   period_end date not null,
   period_label text not null,
   planned_date date,
+  planned_start_time time,
+  planned_end_time time,
+  meeting_location text,
+  meeting_agenda text,
   status text not null default 'open' check (status in ('open', 'completed')),
   note text,
   completion_note text,
@@ -59,6 +63,14 @@ create table if not exists public.quality_task_instances (
   updated_at timestamptz not null default now(),
   unique (schedule_id, period_start),
   check (period_end >= period_start),
+  check (
+    (planned_start_time is null and planned_end_time is null)
+    or (
+      planned_start_time is not null
+      and planned_end_time is not null
+      and planned_end_time > planned_start_time
+    )
+  ),
   check ((status = 'completed') = (completed_at is not null))
 );
 

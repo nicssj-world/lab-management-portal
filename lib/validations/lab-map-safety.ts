@@ -43,6 +43,10 @@ export const safetyAssetPositionSchema = z.object({
   updatedAt: z.string().datetime({ offset: true }),
 })
 
+export const safetyAssetPositionVerificationSchema = z.object({
+  updatedAt: z.string().datetime({ offset: true }),
+})
+
 export const safetyInspectionFiltersSchema = z.object({
   query: z.string().max(200),
   status: z.string().max(40),
@@ -69,11 +73,16 @@ export const inspectionFinalizeSchema = z.object({
   fileName: z.string().min(1).max(255),
   result: z.enum(['passed', 'needs_attention', 'failed', 'not_found']),
   inspectedOn: isoDate,
-  nextInspectionDate: isoDate.nullish(),
   expiresOn: isoDate.nullish(),
   note: optionalText,
   roundItemId: z.string().uuid().nullish(),
   checklist: z.array(safetyChecklistAnswerSchema).max(50).default([]),
+})
+
+export const safetyInspectionExpiryCorrectionSchema = z.object({
+  inspectionId: z.string().uuid(),
+  expiresOn: isoDate.nullable(),
+  updatedAt: z.string().datetime({ offset: true }),
 })
 
 const monthlyAssignmentSchema = z.object({

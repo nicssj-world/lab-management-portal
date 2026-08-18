@@ -6,6 +6,10 @@ import { buildStaffLabMapDTO, type StaffMapRepository } from './server-builder'
 const repository: StaffMapRepository = {
   activeSpaceCodes: async () => REQUIRED_SPACE_CODES,
   activeZoneCodes: async () => LAB_ZONES.map((zone) => zone.code),
+  liveSafetySnapshot: async () => ({
+    safetyEquipment: [{ code: 'extinguisher-2', kind: 'fire-extinguisher', nameTh: 'ถังดับเพลิง 2', x: 433, y: 153, verified: false }],
+    assemblyPoints: [{ code: 'assembly-1', nameTh: 'จุดรวมพล', exitCodes: ['exit-3a'], latitude: 13, longitude: 100, verified: true }],
+  }),
 }
 
 async function main() {
@@ -21,6 +25,11 @@ async function main() {
   assert.ok(map.spaces.some((space) => space.infectionClass), 'staff DTO keeps infection classes')
   assert.ok(map.safetyEquipment.length > 0, 'staff DTO carries fire safety equipment')
   assert.ok(map.assemblyPoints.length > 0, 'staff DTO carries assembly points')
+  assert.deepEqual(
+    map.safetyEquipment.find((item) => item.code === 'extinguisher-2'),
+    { code: 'extinguisher-2', kind: 'fire-extinguisher', nameTh: 'ถังดับเพลิง 2', x: 433, y: 153, verified: false },
+    'working staff map uses the current safety registry position when no release exists',
+  )
   assert.ok(map.stations.some((station) => station.kind === 'checkpoint'), 'staff DTO includes checkpoint stations, not just installation points')
   assert.equal(
     map.stations.find((station) => station.code === map.stationCode)?.kind,

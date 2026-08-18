@@ -24,7 +24,8 @@ assert.equal(effectiveProfileAt([
 ], '2026-09-01'), 'chemical_spill_kit')
 
 assert.equal(pointStatusForMonth({ submittedAt: null, issueCount: 0, skippedAt: null, dueOn: '2026-08-15' }, '2026-08-07'), 'pending')
-assert.equal(pointStatusForMonth({ submittedAt: null, issueCount: 0, skippedAt: null, dueOn: '2026-08-15' }, '2026-08-08'), 'due_soon')
+assert.equal(pointStatusForMonth({ submittedAt: null, issueCount: 0, skippedAt: null, dueOn: '2026-08-15' }, '2026-08-09'), 'pending', 'six days before the monthly due date is not due soon')
+assert.equal(pointStatusForMonth({ submittedAt: null, issueCount: 0, skippedAt: null, dueOn: '2026-08-15' }, '2026-08-10'), 'due_soon', 'five days before the monthly due date is due soon')
 assert.equal(pointStatusForMonth({ submittedAt: null, issueCount: 0, skippedAt: null, dueOn: '2026-08-15' }, '2026-08-16'), 'overdue')
 assert.equal(pointStatusForMonth({ submittedAt: '2026-08-10T02:00:00Z', issueCount: 2, skippedAt: null, dueOn: '2026-08-15' }, '2026-08-16'), 'submitted_with_issues')
 assert.equal(pointStatusForMonth({ submittedAt: null, issueCount: 0, skippedAt: '2026-08-09T00:00:00Z', dueOn: '2026-08-15' }, '2026-08-16'), 'skipped')

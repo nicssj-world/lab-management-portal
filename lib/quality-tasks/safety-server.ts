@@ -15,6 +15,9 @@ function fail(error: { message: string } | null, fallback = 'Safety task operati
 }
 function str(value: unknown) { return typeof value === 'string' ? value : '' }
 function nullable(value: unknown) { return typeof value === 'string' ? value : null }
+function isUniqueViolation(error: { code?: string; message?: string } | null) {
+  return error?.code === '23505' || /duplicate key|unique constraint/i.test(error?.message ?? '')
+}
 
 function audit(actorId: string, action: string, target: string, detail: unknown) {
   supabaseAdmin.from('audit_log').insert({ action, user_id: actorId, target, detail: JSON.stringify(detail) }).then(undefined, () => {})
@@ -117,25 +120,107 @@ export async function archiveSafetyCertificate(certificateId: string, actor: Act
   audit(actor.id, 'safety_task.certificate.archive', certificateId, {})
 }
 
+function latestInspectionEvidenceRows(rows: Row[]) {
+  const latestByAsset = new Map<string, Row>()
+  for (const row of rows) {
+    const assetKey = str(row.asset_id) || str(row.id)
+    const current = latestByAsset.get(assetKey)
+    if (!current) {
+      latestByAsset.set(assetKey, row)
+      continue
+    }
+    const candidateDate = str(row.inspected_on)
+    const currentDate = str(current.inspected_on)
+    const candidateIsRoundLinked = row.round_item_id ? 1 : 0
+    const currentIsRoundLinked = current.round_item_id ? 1 : 0
+    const candidateIsNewer = candidateDate > currentDate
+      || (candidateDate === currentDate && candidateIsRoundLinked > currentIsRoundLinked)
+      || (candidateDate === currentDate && candidateIsRoundLinked === currentIsRoundLinked
+        && `${str(row.created_at)}|${str(row.id)}` > `${str(current.created_at)}|${str(current.id)}`)
+    if (candidateIsNewer) latestByAsset.set(assetKey, row)
+  }
+  return [...latestByAsset.values()]
+}
+
 export async function listSafetyEvidence(fiscalYear?: number) {
-  let query = supabaseAdmin.from('quality_task_attachments').select('*, quality_task_instances!inner(period_end,period_label,quality_task_templates!inner(title,reference_code,workstream))')
+  let query = supabaseAdmin.from('quality_task_attachments').select('*, quality_task_instances!inner(id,period_end,period_label,quality_task_templates!inner(title,reference_code,workstream))')
     .eq('quality_task_instances.quality_task_templates.workstream', 'safety').order('uploaded_at', { ascending: false })
   if (fiscalYear) {
     const gregorianEndYear = fiscalYear - 543
     query = query.gte('quality_task_instances.period_end', `${gregorianEndYear - 1}-10-01`).lte('quality_task_instances.period_end', `${gregorianEndYear}-09-30`)
   }
-  const { data, error } = await query
-  fail(error)
-  return ((data ?? []) as Row[]).map(row => {
+  let inspectionQuery = supabaseAdmin.from('lab_map_safety_inspections')
+    .select('id,photo_r2_key,photo_file_name,photo_content_type,photo_size_bytes,inspected_on,created_at,round_item_id,asset_id')
+    .not('photo_r2_key', 'is', null)
+    .not('photo_file_name', 'is', null)
+    .is('superseded_at', null)
+    .order('created_at', { ascending: false })
+  if (fiscalYear) {
+    const gregorianEndYear = fiscalYear - 543
+    inspectionQuery = inspectionQuery.gte('inspected_on', `${gregorianEndYear - 1}-10-01`).lte('inspected_on', `${gregorianEndYear}-09-30`)
+  }
+  const [{ data, error }, { data: inspectionRows, error: inspectionError }] = await Promise.all([query, inspectionQuery])
+  fail(error); fail(inspectionError)
+  const taskEvidence = ((data ?? []) as Row[]).map(row => {
     const instance = row.quality_task_instances as Row
     const template = instance.quality_task_templates as Row
     return {
-      id: str(row.id), instanceId: str(row.instance_id), fileName: str(row.file_name), contentType: str(row.content_type),
+      id: str(row.id), instanceId: str(row.instance_id), sourceKind: 'task' as const, downloadHref: `/api/admin/safety-tasks/attachments/${str(row.id)}`,
+      fileName: str(row.file_name), contentType: str(row.content_type),
       sizeBytes: Number(row.size_bytes), uploadedAt: str(row.uploaded_at), requirementId: nullable(row.requirement_id),
       evidenceKind: str(row.evidence_kind) || 'document', taskTitle: str(template.title), referenceCode: nullable(template.reference_code),
       periodLabel: str(instance.period_label), fiscalYear: fiscalYearForDate(str(instance.period_end)),
+      assetKind: null, assetCode: null, assetName: null, taskSourceKey: null, inspectedOn: null,
     }
   })
+  const inspections = latestInspectionEvidenceRows((inspectionRows ?? []) as Row[])
+  if (!inspections.length) return taskEvidence
+
+  const roundItemIds = [...new Set(inspections.map(row => nullable(row.round_item_id)).filter((id): id is string => Boolean(id)))]
+  const assetIds = [...new Set(inspections.map(row => str(row.asset_id)).filter(Boolean))]
+  const [{ data: roundItems, error: roundItemError }, { data: assets, error: assetError }] = await Promise.all([
+    roundItemIds.length ? supabaseAdmin.from('lab_map_safety_inspection_round_items').select('id,round_id').in('id', roundItemIds) : Promise.resolve({ data: [], error: null }),
+    assetIds.length ? supabaseAdmin.from('lab_map_safety_assets').select('id,name_th,code,kind').in('id', assetIds) : Promise.resolve({ data: [], error: null }),
+  ])
+  fail(roundItemError); fail(assetError)
+  const roundIdByItem = new Map(((roundItems ?? []) as Row[]).map(row => [str(row.id), str(row.round_id)]))
+  const roundIds = [...new Set([...roundIdByItem.values()].filter(Boolean))]
+  const { data: links, error: linkError } = roundIds.length
+    ? await supabaseAdmin.from('quality_task_links').select('source_id,instance_id').eq('integration_kind', 'safety_inspection').eq('source_type', 'lab_map_safety_inspection_round').in('source_id', roundIds)
+    : { data: [], error: null }
+  fail(linkError)
+  const linkByRound = new Map(((links ?? []) as Row[]).map(row => [str(row.source_id), row]))
+  const instanceIds = [...new Set(((links ?? []) as Row[]).map(row => str(row.instance_id)).filter(Boolean))]
+  const { data: linkedInstances, error: instanceError } = instanceIds.length
+    ? await supabaseAdmin.from('quality_task_instances').select('id,period_label,period_end,quality_task_templates!inner(title,reference_code,workstream)').eq('quality_task_templates.workstream', 'safety').in('id', instanceIds)
+    : { data: [], error: null }
+  fail(instanceError)
+  const instanceById = new Map(((linkedInstances ?? []) as Row[]).map(row => [str(row.id), row]))
+  const assetById = new Map(((assets ?? []) as Row[]).map(row => [str(row.id), row]))
+  const taskKeys = new Set(((data ?? []) as Row[]).map(row => str(row.r2_key)))
+  const inspectionEvidence = inspections.filter(row => !taskKeys.has(str(row.photo_r2_key))).map(row => {
+    const inspectionId = str(row.id)
+    const roundId = roundIdByItem.get(str(row.round_item_id))
+    const link = roundId ? linkByRound.get(roundId) : undefined
+    const instance = link ? instanceById.get(str(link.instance_id)) : undefined
+    const template = instance?.quality_task_templates as Row | undefined
+    const asset = assetById.get(str(row.asset_id))
+    const inspectedOn = str(row.inspected_on)
+    const assetKind = nullable(asset?.kind)
+    return {
+      id: `inspection-${inspectionId}`, instanceId: instance ? str(instance.id) : null, sourceKind: 'inspection' as const,
+      downloadHref: `/api/admin/lab-map/safety-inspections/${inspectionId}/photo`, fileName: str(row.photo_file_name),
+      contentType: str(row.photo_content_type), sizeBytes: Number(row.photo_size_bytes ?? 0), uploadedAt: str(row.created_at),
+      requirementId: null, evidenceKind: 'inspection-photo',
+      taskTitle: str(asset?.name_th) || (template ? str(template.title) : `รูปตรวจ${str(asset?.code) || 'อุปกรณ์ความปลอดภัย'}`),
+      referenceCode: template ? nullable(template.reference_code) : 'LAB-MAP-SAFETY',
+      periodLabel: instance ? str(instance.period_label) : `ตรวจ ${inspectedOn}`,
+      fiscalYear: fiscalYearForDate(inspectedOn),
+      assetKind, assetCode: nullable(asset?.code), assetName: nullable(asset?.name_th),
+      taskSourceKey: inspectionSourceKeyForAssetKind(assetKind), inspectedOn,
+    }
+  })
+  return [...taskEvidence, ...inspectionEvidence].sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt))
 }
 
 export async function getSafetyTaskIntegrations(instanceId: string, level: PermLevel) {
@@ -171,32 +256,67 @@ const INSPECTION_KINDS: Record<string, string[]> = {
   'CBH-ST-26': ['nss-eyewash'],
 }
 
+function inspectionSourceKeyForAssetKind(kind: string | null) {
+  if (!kind) return null
+  return Object.entries(INSPECTION_KINDS).find(([, kinds]) => kinds.includes(kind))?.[0] ?? null
+}
+
 export async function openSafetyInspectionRoundFromTask(instanceId: string, actor: Actor, level: PermLevel) {
   const access = await getOccurrenceAccess(instanceId, actor, level, 'safety')
   if (level !== 'edit') throw new Error('Forbidden')
   if (str(access.template.integration_kind) !== 'safety_inspection') throw new Error('งานนี้ไม่ได้เชื่อมกับ Inspection Round')
   const { data: existing, error: existingError } = await supabaseAdmin.from('quality_task_links').select('source_id')
-    .eq('instance_id', instanceId).eq('integration_kind', 'safety_inspection').maybeSingle()
+    .eq('instance_id', instanceId).eq('integration_kind', 'safety_inspection').eq('source_type', 'lab_map_safety_inspection_round').maybeSingle()
   fail(existingError)
   if (existing) return { roundId: str(existing.source_id), reused: true }
   const { data: template, error: templateError } = await supabaseAdmin.from('quality_task_templates').select('source_key,title').eq('id', access.instance.template_id).single()
   fail(templateError)
   const kinds = INSPECTION_KINDS[str(template!.source_key)]
-  let assetQuery = supabaseAdmin.from('lab_map_safety_assets').select('id,kind').eq('lifecycle_status', 'active').order('code')
+  let assetQuery = supabaseAdmin.from('lab_map_safety_assets').select('id,kind,inspection_profile').eq('lifecycle_status', 'active').order('code')
   if (kinds?.length) assetQuery = assetQuery.in('kind', kinds)
   const { data: assets, error: assetError } = await assetQuery
   fail(assetError)
   if (!(assets ?? []).length) throw new Error('ไม่พบอุปกรณ์ที่เปิดใช้งานสำหรับรอบตรวจนี้')
+  const profiles = [...new Set((assets ?? []).map((asset: Row) => str(asset.inspection_profile)).filter(Boolean))]
+  const formTemplateByProfile = new Map<string, string>()
+  if (profiles.length) {
+    const { data: formTemplates, error: formTemplateError } = await supabaseAdmin.from('lab_map_safety_form_templates')
+      .select('id,profile,version').in('profile', profiles).eq('active', true).order('version', { ascending: false })
+    fail(formTemplateError)
+    for (const formTemplate of (formTemplates ?? []) as Row[]) {
+      const profile = str(formTemplate.profile)
+      if (profile && !formTemplateByProfile.has(profile)) formTemplateByProfile.set(profile, str(formTemplate.id))
+    }
+  }
+  const dueOn = nullable(access.instance.planned_date) ?? nullable(access.instance.period_end)
   const { data: round, error: roundError } = await supabaseAdmin.from('lab_map_safety_inspection_rounds').insert({
-    name_th: `${str(template!.title)} — ${bangkokToday()}`, filter_snapshot: { source: 'safety_task', kinds: kinds ?? [] }, started_by: actor.id,
+    name_th: `${str(template!.title)} — ${bangkokToday()}`, filter_snapshot: {
+      query: '', status: '', kind: '', spaceCode: '', source: 'safety_task', kinds: kinds ?? [],
+      taskInstanceId: instanceId, templateId: access.instance.template_id,
+      periodStart: access.instance.period_start, periodEnd: access.instance.period_end, dueOn,
+    }, started_by: actor.id,
   }).select('id').single()
   fail(roundError)
   try {
-    fail((await supabaseAdmin.from('lab_map_safety_inspection_round_items').insert((assets ?? []).map((asset: Row, index: number) => ({ round_id: round!.id, asset_id: asset.id, sequence_no: index + 1 })))).error)
-    fail((await supabaseAdmin.from('quality_task_links').insert({
+    fail((await supabaseAdmin.from('lab_map_safety_inspection_round_items').insert((assets ?? []).map((asset: Row, index: number) => ({
+      round_id: round!.id, asset_id: asset.id, sequence_no: index + 1,
+      task_instance_id: instanceId, template_id: formTemplateByProfile.get(str(asset.inspection_profile)) ?? null, due_on: dueOn,
+    })))).error)
+    const { error: linkError } = await supabaseAdmin.from('quality_task_links').insert({
       instance_id: instanceId, integration_kind: 'safety_inspection', source_type: 'lab_map_safety_inspection_round',
       source_id: round!.id, sync_status: 'pending', created_by: actor.id,
-    })).error)
+    })
+    if (linkError && isUniqueViolation(linkError)) {
+      const { data: raced, error: racedError } = await supabaseAdmin.from('quality_task_links').select('source_id')
+        .eq('instance_id', instanceId).eq('integration_kind', 'safety_inspection').eq('source_type', 'lab_map_safety_inspection_round').maybeSingle()
+      fail(racedError)
+      if (raced) {
+        await supabaseAdmin.from('lab_map_safety_inspection_round_items').delete().eq('round_id', round!.id)
+        await supabaseAdmin.from('lab_map_safety_inspection_rounds').delete().eq('id', round!.id)
+        return { roundId: str(raced.source_id), reused: true }
+      }
+    }
+    fail(linkError)
     fail((await supabaseAdmin.from('quality_task_instances').update({ status: 'in_progress', updated_by: actor.id, updated_at: new Date().toISOString() }).eq('id', instanceId)).error)
   } catch (error) {
     await supabaseAdmin.from('lab_map_safety_inspection_round_items').delete().eq('round_id', round!.id)

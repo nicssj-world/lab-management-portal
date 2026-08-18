@@ -6,7 +6,12 @@ import { getStaffLabMapDTO } from '@/lib/lab-map/server'
 import { normalizeRole } from '@/lib/roles'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
-export default async function SafetyAssetsPage() {
+export default async function SafetyAssetsPage({ searchParams }: {
+  searchParams: Promise<{ inspectionRound?: string | string[] | undefined }>
+}) {
+  const params = await searchParams
+  const rawInspectionRound = params.inspectionRound
+  const initialInspectionRoundId = Array.isArray(rawInspectionRound) ? rawInspectionRound[0] ?? null : rawInspectionRound ?? null
   const guard = await requireSafetyViewer()
   if (guard.response || !guard.actor) redirect('/login')
   const isAdmin = normalizeRole(guard.actor.role) === 'Admin'
@@ -24,6 +29,7 @@ export default async function SafetyAssetsPage() {
     canEdit={await isSafetyEditor(guard.actor)}
     canManage={isSafetyManager(guard.actor)}
     isAdmin={isAdmin}
+    initialInspectionRoundId={initialInspectionRoundId}
     staff={(staffRows.data ?? []).map(row => ({ id: String(row.id), name: row.name as string | null, role: String(row.role) }))}
     initialEditors={(editorRows.data ?? []).map(row => ({ user_id: String(row.user_id) }))}
   />

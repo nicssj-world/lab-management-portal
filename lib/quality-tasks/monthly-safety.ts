@@ -95,6 +95,7 @@ export interface SafetyAssetProfilePeriod {
 }
 
 const DAY_MS = 86_400_000
+export const MONTHLY_SAFETY_DUE_SOON_DAYS = 5
 
 function dateAtUtc(value: string) {
   return new Date(`${value}T00:00:00Z`)
@@ -127,7 +128,7 @@ export function pointStatusForMonth(
   if (input.submittedAt) return input.issueCount > 0 ? 'submitted_with_issues' : 'submitted'
   const remaining = Math.round((dateAtUtc(input.dueOn).getTime() - dateAtUtc(today).getTime()) / DAY_MS)
   if (remaining < 0) return 'overdue'
-  if (remaining <= 7) return 'due_soon'
+  if (remaining <= MONTHLY_SAFETY_DUE_SOON_DAYS) return 'due_soon'
   return 'pending'
 }
 

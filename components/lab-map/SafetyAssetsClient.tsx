@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Badge, type BadgeColor } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -8,7 +9,9 @@ import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { uploadFileWithProgress } from '@/lib/documents/upload-with-progress'
 import { normalizeRole } from '@/lib/roles'
+import { safetyExpiryLabel } from '@/lib/lab-map/safety-domain'
 import { buildSafetyInspectionQueue, nextSafetyAssetCode, previousSafetyAssetCode } from '@/lib/lab-map/safety-inspection-workflow'
+import { nextSafetyInspectionDate, SAFETY_INSPECTION_SCHEDULE_LABEL } from '@/lib/lab-map/safety-inspection-schedule'
 import type {
   AssemblyPointDTO, AssemblyPointVerificationDTO, LabMapDTO, LabPointType, SafetyAssetDTO, SafetyInspectionDTO,
   SafetyInspectionRoundDTO,
@@ -21,6 +24,8 @@ import { SafetyPhotoPicker } from './SafetyPhotoPicker'
 import { SafetyInspectionMobile } from './SafetyInspectionMobile'
 import { SafetyInspectionProgress } from './SafetyInspectionProgress'
 import { SafetyAssetScanner } from './SafetyAssetScanner'
+import { SafetyAssetStatusBadges } from './SafetyAssetStatusBadges'
+import { SafetyPositionVerification } from './SafetyPositionVerification'
 
 type StaffOption = { id: string; name: string | null; role: string }
 type EditorOption = { user_id: string }
@@ -48,11 +53,7 @@ const KIND_LABELS: Record<string, string> = {
 }
 const STATUS_LABELS: Record<string, string> = {
   unverified: 'รอยืนยันตำแหน่ง', verified: 'ยืนยันตำแหน่งแล้ว', passed: 'ผ่าน',
-  needs_attention: 'ต้องติดตาม', failed: 'ไม่พร้อมใช้', overdue: 'เกินกำหนดตรวจ', due_soon: 'ใกล้ครบกำหนด',
-}
-const STATUS_COLORS: Record<string, BadgeColor> = {
-  unverified: 'amber', verified: 'blue', passed: 'green', needs_attention: 'amber',
-  failed: 'red', overdue: 'red', due_soon: 'amber',
+  needs_attention: 'ต้องติดตาม', failed: 'ไม่พร้อมใช้', not_found: 'ไม่พบอุปกรณ์', overdue: 'เกินกำหนดตรวจ', due_soon: 'ใกล้ครบกำหนด',
 }
 const POINT_TYPE_LABELS: Record<LabPointType, string> = {
   assembly: 'จุดรวมพล', safe: 'จุดปลอดภัย',
@@ -80,13 +81,14 @@ async function jsonRequest(url: string, init?: RequestInit) {
   return json
 }
 
-export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, canEdit, canManage, isAdmin, staff, initialEditors }: {
+export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, canEdit, canManage, isAdmin, initialInspectionRoundId = null, staff, initialEditors }: {
   map: LabMapDTO
   initialAssets: SafetyAssetDTO[]
   initialAssemblyPoints: AssemblyPointDTO[]
   canEdit: boolean
   canManage: boolean
   isAdmin: boolean
+  initialInspectionRoundId?: string | null
   staff: StaffOption[]
   initialEditors: EditorOption[]
 }) {
@@ -106,6 +108,7 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   const [assetDraft, setAssetDraft] = useState<Partial<SafetyAssetDTO> | null>(null)
   const [pointDraft, setPointDraft] = useState<Partial<AssemblyPointDTO> | null>(null)
   const [editorQuery, setEditorQuery] = useState('')
+  const runLockRef = useRef(false)
   const [positionFailure, setPositionFailure] = useState<{
     message: string
     input: { id: string; code: string; x: number; y: number; spaceCode: string | null }
@@ -168,20 +171,22 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   const assignedEditorCount = assignableStaff.filter(person => editors.has(person.id)).length
 
   useEffect(() => {
-    if (!canEdit) return
+    if (!canEdit || !initialInspectionRoundId) return
     let active = true
-    void jsonRequest('/api/admin/lab-map/safety-inspection-rounds')
+    const roundUrl = `/api/admin/lab-map/safety-inspection-rounds?roundId=${encodeURIComponent(initialInspectionRoundId)}`
+    void jsonRequest(roundUrl)
       .then(result => {
         if (!active || !result.data) return
+        const filters = result.data.filters ?? {}
         setActiveRound(result.data)
-        setQuery(result.data.filters.query)
-        setStatus(result.data.filters.status)
-        setKind(result.data.filters.kind)
-        setSpaceCode(result.data.filters.spaceCode)
+        setQuery(typeof filters.query === 'string' ? filters.query : '')
+        setStatus(typeof filters.status === 'string' ? filters.status : '')
+        setKind(typeof filters.kind === 'string' ? filters.kind : '')
+        setSpaceCode(typeof filters.spaceCode === 'string' ? filters.spaceCode : '')
       })
       .catch(reason => { if (active) setError((reason as Error).message) })
     return () => { active = false }
-  }, [canEdit])
+  }, [canEdit, initialInspectionRoundId])
 
   useEffect(() => {
     if (!selectedAsset) return
@@ -201,8 +206,10 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   }
 
   async function run(action: () => Promise<void>) {
+    if (runLockRef.current) return
+    runLockRef.current = true
     setBusy(true); setError('')
-    try { await action() } catch (reason) { setError((reason as Error).message) } finally { setBusy(false) }
+    try { await action() } catch (reason) { setError((reason as Error).message) } finally { setBusy(false); runLockRef.current = false }
   }
 
   function selectMap(code: string) {
@@ -269,18 +276,6 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
     return null
   }
 
-  async function startInspectionRound() {
-    const result = await jsonRequest('/api/admin/lab-map/safety-inspection-rounds', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nameTh: `รอบตรวจ ${todayIso()}`,
-        filters: { query, status, kind, spaceCode },
-        orderedAssetIds: inspectionQueue.items.map(item => item.asset.id),
-      }),
-    })
-    setActiveRound(result.data)
-  }
-
   async function closeInspectionRound() {
     if (!activeRound) return
     await jsonRequest(`/api/admin/lab-map/safety-inspection-rounds/${activeRound.id}`, {
@@ -339,10 +334,11 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   }
 
   return (
-    <div className="safety-page lab-map-shell">
+      <div className="safety-page lab-map-shell">
       <LabMapStyles /><SafetyAssetsStyles />
       <PageHeader eyebrow="SAFETY ASSET CONTROL" title="ตรวจสอบอุปกรณ์และจุดรวมพล"
-        subtitle="ข้อมูลหน้างานเป็นฉบับร่างจนกว่าจะยืนยันหลักฐานและเผยแพร่แผนที่ฉบับใหม่" marginBottom={0} />
+        subtitle="ข้อมูลหน้างานเป็นฉบับร่างจนกว่าจะยืนยันหลักฐานและเผยแพร่แผนที่ฉบับใหม่" marginBottom={0}
+        actions={<Link href="/staff/safety" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}><Icon name="clipboard" size={15} />งานความปลอดภัย</Link>} />
       {error ? <p role="alert" style={{ margin: 0, padding: 10, borderRadius: 8, background: 'color-mix(in srgb,var(--danger) 10%,transparent)', color: 'var(--danger)' }}>{error}</p> : null}
       <div className="safety-tabs" role="tablist" aria-label="ข้อมูลความปลอดภัย">
         <button role="tab" aria-selected={tab === 'assets'} onClick={() => setTab('assets')}>อุปกรณ์ความปลอดภัย</button>
@@ -418,7 +414,7 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
                     onMoveDraftSafetyEquipment={assetDraft && !assetDraft.id ? position => setAssetDraft(current => ({ ...current, ...position })) : undefined} />
                   {assetDraft && !assetDraft.id ? <section className="safety-map-placement" aria-label="วางหมุดอุปกรณ์">
                     <strong>วางหมุดอุปกรณ์</strong>
-                    <span>กดหมุดค้าง 250ms แล้วลากหมุดไปยังตำแหน่งจริง</span>
+                    <span>ลากหมุดไปยังตำแหน่งจริง หรือกดค้าง 250ms แล้วลาก</span>
                     <small>{map.spaces.find(space => space.code === assetDraft.spaceCode)?.nameTh ?? 'ทางเดิน/ไม่ระบุห้อง'} · {Math.round(assetDraft.x ?? 739)}, {Math.round(assetDraft.y ?? 446)}</small>
                     <div>
                       <button type="button" onClick={() => { setAssetDraft(null); setMobileView('list') }}>ยกเลิก</button>
@@ -438,17 +434,20 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
                   <div className="safety-registry-panel">
                     <SafetyAssetScanner active={mobileView === 'list'} onCode={openAssetByCode} />
                     <SafetyInspectionProgress queue={inspectionQueue} roundName={activeRound?.nameTh}
-                      canStart={canEdit && !activeRound} canClose={Boolean(activeRound && inspectionQueue.progress.remaining === 0)} busy={busy}
-                      onStart={() => void run(startInspectionRound)} onClose={() => void run(closeInspectionRound)} />
+                      canStart={false} canClose={Boolean(activeRound && inspectionQueue.progress.remaining === 0)} busy={busy}
+                      startHint="เริ่มงานตรวจจากแท็บ “งานความปลอดภัย” เพื่อเชื่อม Task กับอุปกรณ์"
+                      onClose={() => void run(closeInspectionRound)} />
                     <AssetsPanel assets={filteredAssets} selected={selectedAsset} query={query} status={status} kind={kind} spaceCode={spaceCode} canEdit={canEdit} canManage={canManage}
                       busy={busy} draft={assetDraft} map={map} listRef={listContainerRef} onQuery={updateAssetFilter(setQuery)} onStatus={updateAssetFilter(setStatus)} onKind={updateAssetFilter(setKind)} onSpaceCode={updateAssetFilter(setSpaceCode)} onSelect={selectAssetFromList}
-                      onAdd={beginAssetPlacement} onDraft={setAssetDraft} onShowMap={() => setMobileView('map')} onRun={run} onReload={reload} />
+                      onAdd={beginAssetPlacement} onDraft={setAssetDraft} onShowMap={() => setMobileView('map')} onRun={run} onReload={reload}
+                      selectedRoundItemId={selectedRoundItem?.id ?? null}
+                      onInspectionSaved={result => inspectionSaved('stay', result)} />
                   </div>
                   {selectedAsset ? <SafetyInspectionMobile key={selectedAsset.id} item={selectedAsset} locationLabel={selectedLocationLabel}
                     queue={inspectionQueue} roundName={activeRound?.nameTh} roundId={activeRound?.id} roundItemId={selectedRoundItem?.id}
                     resultCounts={inspectionResultCounts} canEdit={canEdit}
                     onBack={backToList} onPrevious={() => { const code = adjacentPendingCode('previous'); if (code) setSelectedCode(code) }}
-                    onShowMap={() => setMobileView('map')} onSaved={inspectionSaved}
+                    onShowMap={() => setMobileView('map')} onSaved={inspectionSaved} onPositionVerified={reload}
                     onCloseRound={() => run(closeInspectionRound)} /> : null}
                 </>
               ) : (
@@ -463,11 +462,12 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   )
 }
 
-function AssetsPanel({ assets, selected, query, status, kind, spaceCode, canEdit, canManage, busy, draft, map, listRef, onQuery, onStatus, onKind, onSpaceCode, onSelect, onAdd, onDraft, onShowMap, onRun, onReload }: {
+function AssetsPanel({ assets, selected, query, status, kind, spaceCode, canEdit, canManage, busy, draft, map, listRef, onQuery, onStatus, onKind, onSpaceCode, onSelect, onAdd, onDraft, onShowMap, onRun, onReload, selectedRoundItemId, onInspectionSaved }: {
   assets: SafetyAssetDTO[]; selected: SafetyAssetDTO | null; query: string; status: string; kind: string; spaceCode: string; canEdit: boolean; canManage: boolean; busy: boolean
   draft: Partial<SafetyAssetDTO> | null; map: LabMapDTO; listRef: RefObject<HTMLDivElement | null>; onQuery: (v: string) => void; onStatus: (v: string) => void
   onKind: (v: string) => void; onSpaceCode: (v: string) => void
   onSelect: (v: string | null) => void; onAdd: () => void; onDraft: (v: Partial<SafetyAssetDTO> | null) => void; onShowMap: () => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void>
+  selectedRoundItemId: string | null; onInspectionSaved: (result: string) => Promise<void>
 }) {
   const editorRef = useRef<HTMLDivElement>(null)
   const spaceNameByCode = useMemo(() => new Map(map.spaces.map(space => [space.code, space.nameTh])), [map.spaces])
@@ -495,10 +495,10 @@ function AssetsPanel({ assets, selected, query, status, kind, spaceCode, canEdit
           body: JSON.stringify(editing ? { ...value, code: undefined, updatedAt: value.updatedAt } : value),
         }); await onReload(); onDraft(null)
       })} /> : selected ? <AssetDetail key={selected.id} item={selected} locationLabel={spaceNameByCode.get(selected.spaceCode ?? '') ?? selected.spaceCode ?? 'ไม่ระบุห้อง'} canEdit={canEdit} canManage={canManage} busy={busy}
-        onEdit={() => onDraft(selected)} onShowMap={onShowMap} onRun={onRun} onReload={onReload} /> : null}
+        onEdit={() => onDraft(selected)} onShowMap={onShowMap} onRun={onRun} onReload={onReload} roundItemId={selectedRoundItemId} onInspectionSaved={onInspectionSaved} /> : null}
     </div>
     <div className="safety-list" ref={listRef}>{assets.map(item => <button key={item.id} className="safety-card" data-selected={selected?.id === item.id} aria-pressed={selected?.id === item.id} onClick={() => onSelect(item.code)}>
-      <span className="safety-card-head"><strong>{item.nameTh}</strong><Badge color={STATUS_COLORS[item.operationalStatus ?? 'unverified']}>{STATUS_LABELS[item.operationalStatus ?? 'unverified']}</Badge></span>
+      <span className="safety-card-head"><strong>{item.nameTh}</strong><SafetyAssetStatusBadges item={item} /></span>
       <small>{KIND_LABELS[item.kind]} · {spaceNameByCode.get(item.spaceCode ?? '') ?? item.spaceCode ?? 'ไม่ระบุห้อง'} · {item.code}</small>
     </button>)}</div>
     {assets.length === 0 ? <EmptyState title="ไม่พบอุปกรณ์" /> : null}
@@ -528,28 +528,40 @@ function AssetEditor({ draft, spaces, busy, onCancel, onSave }: { draft: Partial
   </section>
 }
 
-function AssetDetail({ item, locationLabel, canEdit, canManage, busy, onEdit, onShowMap, onRun, onReload }: { item: SafetyAssetDTO; locationLabel: string; canEdit: boolean; canManage: boolean; busy: boolean; onEdit: () => void; onShowMap: () => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void> }) {
+function AssetDetail({ item, locationLabel, canEdit, canManage, busy, onEdit, onShowMap, onRun, onReload, roundItemId, onInspectionSaved }: { item: SafetyAssetDTO; locationLabel: string; canEdit: boolean; canManage: boolean; busy: boolean; onEdit: () => void; onShowMap: () => void; onRun: (f: () => Promise<void>) => Promise<void>; onReload: () => Promise<void>; roundItemId: string | null; onInspectionSaved: (result: string) => Promise<void> }) {
+  const latestInspection = item.latestInspection
   const [file, setFile] = useState<File | null>(null); const [result, setResult] = useState('passed'); const [note, setNote] = useState('')
-  const [nextDate, setNextDate] = useState(''); const [expires, setExpires] = useState('')
+  const [expires, setExpires] = useState(latestInspection?.expiresOn ?? '')
+  const inspectedOn = todayIso()
+  const nextDate = nextSafetyInspectionDate(inspectedOn)
+  async function correctExpiry() {
+    if (!latestInspection || expires === (latestInspection.expiresOn ?? '')) return
+    await jsonRequest(`/api/admin/lab-map/safety-assets/${item.id}/inspection-expiry`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inspectionId: latestInspection.id, expiresOn: expires || null, updatedAt: item.updatedAt }),
+    })
+    await onReload()
+  }
   async function inspect() {
     if (!file) throw new Error('กรุณาถ่ายหรือเลือกรูปหลักฐาน')
     const signed = await jsonRequest(`/api/admin/lab-map/safety-assets/${item.id}/inspection-photo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileName: file.name, contentType: file.type, sizeBytes: file.size }) })
     await uploadFileWithProgress(signed.uploadUrl, file, file.type, () => {})
-    await jsonRequest(`/api/admin/lab-map/safety-assets/${item.id}/inspection-photo`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: signed.key, fileName: file.name, result, inspectedOn: todayIso(), nextInspectionDate: nextDate || null, expiresOn: expires || null, note: note || null }) })
-    setFile(null); setNote(''); await onReload()
+    await jsonRequest(`/api/admin/lab-map/safety-assets/${item.id}/inspection-photo`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: signed.key, fileName: file.name, result, inspectedOn, expiresOn: expires || null, note: note || null, roundItemId: roundItemId ?? null, checklist: [] }) })
+    setFile(null); setNote(''); await onInspectionSaved(result)
   }
-  return <section className="safety-form"><span className="safety-card-head"><h2 style={{ margin: 0, fontSize: 17 }}>{item.nameTh}</h2><Badge color={STATUS_COLORS[item.operationalStatus ?? 'unverified']}>{STATUS_LABELS[item.operationalStatus ?? 'unverified']}</Badge></span>
+  return <section className="safety-form"><span className="safety-card-head"><h2 style={{ margin: 0, fontSize: 17 }}>{item.nameTh}</h2><SafetyAssetStatusBadges item={item} /></span>
     <p className="safety-muted" style={{ margin: 0 }}>{KIND_LABELS[item.kind]} · {item.code}<br />ตำแหน่ง: {locationLabel}<br />พิกัด {item.x}, {item.y}</p>
     <div className="safety-actions"><Button variant="secondary" size="lg" onClick={onShowMap}>ดูตำแหน่งบนผัง</Button></div>
+    <SafetyPositionVerification item={item} disabled={busy} onVerified={onReload} />
     {item.latestInspection ? <><p style={{ margin: 0 }}>ตรวจล่าสุด {item.latestInspection.inspectedOn} · {STATUS_LABELS[item.latestInspection.result]}</p>{item.latestInspection.photoUrl ? <img className="safety-photo" src={item.latestInspection.photoUrl} alt={`หลักฐานการตรวจ ${item.nameTh}`} /> : null}</> : <p className="safety-muted">ยังไม่มีประวัติการตรวจ</p>}
     <AssetHistory assetId={item.id} />
     {canEdit && ['spill-kit', 'nss-eyewash'].includes(item.kind) ? <MonthlySafetyAssetConfig asset={item} onSaved={onReload} /> : null}
     {canEdit ? <><h3 style={{ margin: '6px 0 0', fontSize: 14 }}>บันทึกผลตรวจ</h3><div className="safety-form-grid">
       <label>ผลตรวจ<select value={result} onChange={e => setResult(e.target.value)}><option value="passed">ผ่าน</option><option value="needs_attention">ต้องติดตาม</option><option value="failed">ไม่พร้อมใช้</option><option value="not_found">ไม่พบอุปกรณ์</option></select></label>
       <SafetyPhotoPicker label="รูปหลักฐาน" file={file} disabled={busy} onChange={setFile} />
-      <label>ตรวจครั้งถัดไป<input type="date" value={nextDate} onChange={e => setNextDate(e.target.value)} /></label><label>วันหมดอายุ<input type="date" value={expires} onChange={e => setExpires(e.target.value)} /></label>
+      <label>{SAFETY_INSPECTION_SCHEDULE_LABEL}<input type="date" value={nextDate} readOnly disabled /></label><label>{safetyExpiryLabel(item.kind)}<input type="date" value={expires} onChange={e => setExpires(e.target.value)} /></label>
     </div><label>หมายเหตุ<textarea value={note} onChange={e => setNote(e.target.value)} /></label>
-    <div className="safety-actions"><Button variant="secondary" size="lg" icon="edit" onClick={onEdit}>แก้ข้อมูล</Button><Button size="lg" icon="check" disabled={busy || !file} onClick={() => void onRun(inspect)}>ยืนยันผลตรวจ</Button></div></> : null}
+    <div className="safety-actions"><Button variant="secondary" size="lg" icon="edit" onClick={onEdit}>แก้ข้อมูล</Button><Button variant="secondary" size="lg" icon="check" disabled={busy || !latestInspection || expires === (latestInspection.expiresOn ?? '')} onClick={() => void onRun(correctExpiry)}>บันทึกการแก้ไข</Button><Button size="lg" icon="check" disabled={busy || !file} onClick={() => void onRun(inspect)}>ยืนยันผลตรวจ</Button></div></> : null}
     {canManage ? <Button variant="danger" size="lg" disabled={busy} onClick={() => { if (confirm('เลิกใช้อุปกรณ์นี้หรือไม่')) void onRun(async () => { await jsonRequest(`/api/admin/lab-map/safety-assets/${item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ updatedAt: item.updatedAt, retire: true }) }); await onReload() }) }}>เลิกใช้งาน</Button> : null}
   </section>
 }

@@ -50,6 +50,30 @@ if (visitor.ok) {
 const unknownDestination = buildMapPrintDTO({ release, kind: 'visitor_navigation', paperSize: 'A4', stationCode: 'office', destinationCode: 'fingerprint-nowhere', webUrl })
 assert.deepEqual(unknownDestination, { ok: false, error: 'unknown_visitor_destination' })
 
+const livePositionPrint = buildMapPrintDTO({
+  release: {
+    ...release,
+    assetSnapshot: [{ code: 'extinguisher-2', kind: 'fire-extinguisher', nameTh: 'ถังดับเพลิง 2', x: 10, y: 20, verified: true }],
+    assemblyPointSnapshot: [{ code: 'assembly-1', nameTh: 'จุดรวมพลเดิม', exitCodes: ['exit-3a'], latitude: 13, longitude: 100, verified: true }],
+  },
+  kind: 'evacuation', paperSize: 'A3', stationCode: 'office', webUrl,
+  liveSafetyEquipment: [{ code: 'extinguisher-2', kind: 'fire-extinguisher', nameTh: 'ถังดับเพลิง 2', x: 110, y: 120, verified: true }],
+  liveAssemblyPoints: [{ code: 'assembly-1', nameTh: 'จุดรวมพลใหม่', exitCodes: ['exit-3b'], latitude: 14, longitude: 101, verified: true }],
+})
+assert.ok(livePositionPrint.ok)
+if (livePositionPrint.ok) {
+  assert.deepEqual(
+    livePositionPrint.value.map.safetyEquipment[0] && { x: livePositionPrint.value.map.safetyEquipment[0].x, y: livePositionPrint.value.map.safetyEquipment[0].y },
+    { x: 110, y: 120 },
+    'printed evacuation maps use the current verified equipment position',
+  )
+  assert.deepEqual(
+    livePositionPrint.value.map.assemblyPoints[0] && { latitude: livePositionPrint.value.map.assemblyPoints[0].latitude, longitude: livePositionPrint.value.map.assemblyPoints[0].longitude },
+    { latitude: 14, longitude: 101 },
+    'printed evacuation maps use the current verified assembly point position',
+  )
+}
+
 const missing = buildMapPrintDTO({ release, kind: 'evacuation', paperSize: 'A3', stationCode: 'unknown', webUrl })
 assert.deepEqual(missing, { ok: false, error: 'missing_evacuation_preset' })
 console.log('lab map print DTO tests passed')

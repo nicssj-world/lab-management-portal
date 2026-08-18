@@ -20,10 +20,10 @@ export async function PATCH(req: NextRequest, { params }: Context) {
   const closedAt = new Date().toISOString()
   const { data, error } = await supabaseAdmin.from('lab_map_safety_inspection_rounds').update({
     status: 'closed', closed_by: guard.actor.id, closed_at: closedAt,
-  }).eq('id', id).eq('started_by', guard.actor.id).eq('status', 'open').select('*').maybeSingle()
+  }).eq('id', id).eq('status', 'open').select('*').maybeSingle()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) {
-    const { data: closedRound } = await supabaseAdmin.from('lab_map_safety_inspection_rounds').select('*').eq('id', id).eq('started_by', guard.actor.id).eq('status', 'closed').maybeSingle()
+    const { data: closedRound } = await supabaseAdmin.from('lab_map_safety_inspection_rounds').select('*').eq('id', id).eq('status', 'closed').maybeSingle()
     if (!closedRound) return NextResponse.json({ error: 'ไม่พบรอบตรวจที่เปิดอยู่' }, { status: 404 })
     try {
       const taskSync = await syncSafetyInspectionRoundToTask(id, guard.actor)

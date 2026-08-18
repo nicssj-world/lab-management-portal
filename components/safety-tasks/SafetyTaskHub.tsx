@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -13,8 +13,17 @@ import { MonthlySafetyInspectionBoard } from './MonthlySafetyInspectionBoard'
 type Tab = 'overview' | 'monthly' | 'tasks' | 'calendar' | 'evidence' | 'certificates'
 type Person = { id: string; name: string; dept: string | null; role: string; position_title: string | null }
 type EvidenceItem = {
-  id: string; instanceId: string; fileName: string; contentType: string; sizeBytes: number; uploadedAt: string
+  id: string; instanceId: string | null; sourceKind: 'task' | 'inspection'; downloadHref: string
+  fileName: string; contentType: string; sizeBytes: number; uploadedAt: string
   requirementId: string | null; evidenceKind: string; taskTitle: string; referenceCode: string | null; periodLabel: string; fiscalYear: number
+  assetKind: string | null; assetCode: string | null; assetName: string | null; taskSourceKey: string | null; inspectedOn: string | null
+}
+type InspectionEvidenceSummary = { photoCount: number; assetCount: number }
+type EvidenceSubgroup = {
+  key: string; title: string; referenceCode: string | null; periodLabel: string; sortNumber: number | null; files: EvidenceItem[]
+}
+type EvidenceGroup = {
+  key: string; title: string; subtitle: string; sourceKind: EvidenceItem['sourceKind']; referenceCode: string | null; periodLabel: string; files: EvidenceItem[]; children: EvidenceSubgroup[]
 }
 type SafetyIntegration = {
   id: string; kind: string; sourceId: string; syncStatus: string; metadata: Record<string, unknown>
@@ -60,6 +69,170 @@ async function json<T>(response: Response): Promise<T> {
   return body as T
 }
 
+function isImageEvidence(file: EvidenceItem) {
+  return file.contentType.toLowerCase().startsWith('image/')
+}
+
+const SAFETY_ASSET_KIND_LABELS: Record<string, string> = {
+  'fire-extinguisher': 'ถังดับเพลิง',
+  'fire-hose': 'สายฉีดน้ำดับเพลิง',
+  'manual-call-point': 'จุดกดแจ้งเหตุ',
+  aed: 'เครื่อง AED',
+  'first-aid-kit': 'ชุดปฐมพยาบาล',
+  'spill-kit': 'ชุดจัดการสารหกรั่วไหล',
+  'nss-eyewash': 'อ่างล้างตาฉุกเฉิน',
+  'emergency-shower': 'ฝักบัวฉุกเฉิน',
+  'emergency-shutoff': 'จุดตัดระบบฉุกเฉิน',
+}
+
+const evidenceCollator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
+
+function safetyAssetKindLabel(kind: string | null) {
+  if (!kind) return null
+  return SAFETY_ASSET_KIND_LABELS[kind] ?? kind
+}
+
+function evidenceNumber(value: string | null | undefined) {
+  const match = value?.trim().match(/(\d+)\s*$/)
+  return match ? Number(match[1]) : null
+}
+
+function fallbackEvidenceKindTitle(file: EvidenceItem) {
+  const source = file.assetName?.trim() || file.taskTitle.trim() || 'อุปกรณ์ความปลอดภัย'
+  return source.replace(/\s*[-#]?\s*\d+\s*$/, '').trim() || source
+}
+
+function filterSafetyEvidence(items: EvidenceItem[], query: string) {
+  const normalizedQuery = query.trim().toLocaleLowerCase('th')
+  if (!normalizedQuery) return items
+  return items.filter(file => [
+    file.taskTitle,
+    file.assetKind,
+    safetyAssetKindLabel(file.assetKind),
+    file.assetCode,
+    file.assetName,
+    file.referenceCode,
+    file.periodLabel,
+    file.fileName,
+  ].filter(Boolean).join(' ').toLocaleLowerCase('th').includes(normalizedQuery))
+}
+
+function groupSafetyEvidence(items: EvidenceItem[]): EvidenceGroup[] {
+  const groups = new Map<string, EvidenceGroup>()
+  for (const file of items) {
+    const isInspection = file.sourceKind === 'inspection'
+    const title = isInspection ? safetyAssetKindLabel(file.assetKind) ?? fallbackEvidenceKindTitle(file) : file.taskTitle.trim() || 'หลักฐานงาน'
+    const key = isInspection ? `inspection-kind:${file.assetKind ?? title}` : `task:${title}:${file.referenceCode ?? ''}`
+    const existing = groups.get(key) ?? {
+      key,
+      title,
+      subtitle: isInspection ? 'ประเภทอุปกรณ์ความปลอดภัย' : `${file.referenceCode ?? 'Safety Task'} · ${file.periodLabel}`,
+      sourceKind: file.sourceKind,
+      referenceCode: file.referenceCode,
+      periodLabel: file.periodLabel,
+      files: [],
+      children: [],
+    }
+    const childTitle = isInspection ? file.assetName?.trim() || file.taskTitle.trim() || 'อุปกรณ์ความปลอดภัย' : file.periodLabel || 'หลักฐานประจำงวด'
+    const childKey = isInspection ? `inspection-asset:${file.assetCode ?? childTitle}` : `task-period:${title}:${file.referenceCode ?? ''}:${file.periodLabel}`
+    const child = existing.children.find(item => item.key === childKey)
+    if (child) child.files.push(file)
+    else existing.children.push({
+      key: childKey,
+      title: childTitle,
+      referenceCode: file.referenceCode,
+      periodLabel: file.periodLabel,
+      sortNumber: isInspection ? evidenceNumber(file.assetCode) ?? evidenceNumber(file.assetName) ?? evidenceNumber(childTitle) : null,
+      files: [file],
+    })
+    existing.files.push(file)
+    groups.set(key, existing)
+  }
+  return [...groups.values()].map(group => ({
+    ...group,
+    children: [...group.children].map(child => ({
+      ...child,
+      files: [...child.files].sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt)),
+    })).sort((a, b) => {
+      if (a.sortNumber !== null && b.sortNumber !== null && a.sortNumber !== b.sortNumber) return a.sortNumber - b.sortNumber
+      if (a.sortNumber !== null && b.sortNumber === null) return -1
+      if (a.sortNumber === null && b.sortNumber !== null) return 1
+      return evidenceCollator.compare(a.title, b.title)
+    }),
+    files: [...group.files].sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt)),
+  })).sort((a, b) => {
+    if (a.sourceKind !== b.sourceKind) return a.sourceKind === 'inspection' ? -1 : 1
+    return evidenceCollator.compare(a.title, b.title)
+  })
+}
+
+function evidenceGroupKeys(groups: EvidenceGroup[]) {
+  return groups.flatMap(group => [group.key, ...group.children.map(child => child.key)])
+}
+
+function linkedTaskForEvidence(file: EvidenceItem, occurrences: QualityTaskOccurrence[]) {
+  if (file.instanceId) return occurrences.find(item => item.instanceId === file.instanceId)
+  if (file.sourceKind !== 'inspection' || !file.taskSourceKey || !file.inspectedOn) return undefined
+  return occurrences.find(item => item.template.sourceKey === file.taskSourceKey
+    && item.template.integrationKind === 'safety_inspection'
+    && item.periodStart <= file.inspectedOn!
+    && item.periodEnd >= file.inspectedOn!)
+}
+
+function summarizeInspectionEvidence(items: EvidenceItem[], occurrence: QualityTaskOccurrence | null): InspectionEvidenceSummary {
+  if (!occurrence || occurrence.template.integrationKind !== 'safety_inspection') return { photoCount: 0, assetCount: 0 }
+  const matching = items.filter(file => file.sourceKind === 'inspection'
+    && file.taskSourceKey === occurrence.template.sourceKey
+    && Boolean(file.inspectedOn)
+    && file.inspectedOn! >= occurrence.periodStart
+    && file.inspectedOn! <= occurrence.periodEnd)
+  const latestByAsset = new Map<string, EvidenceItem>()
+  for (const file of matching) {
+    const key = file.assetCode ?? file.id
+    const current = latestByAsset.get(key)
+    if (!current || `${file.inspectedOn}|${file.uploadedAt}` > `${current.inspectedOn}|${current.uploadedAt}`) latestByAsset.set(key, file)
+  }
+  return { photoCount: matching.length, assetCount: latestByAsset.size }
+}
+
+function EvidenceFileCard({ file, linkedTask, onOpenImage, onOpenTask }: {
+  file: EvidenceItem
+  linkedTask: QualityTaskOccurrence | undefined
+  onOpenImage: (file: EvidenceItem) => void
+  onOpenTask: (item: QualityTaskOccurrence) => void
+}) {
+  const image = isImageEvidence(file)
+  const meta = `${file.referenceCode ?? file.periodLabel} · ${(file.sizeBytes / 1024 / 1024).toFixed(1)} MB`
+  return <article className={`safety-evidence-card${image ? ' is-image' : ''}`}>
+    {image && <button type="button" className="safety-evidence-preview" onClick={() => onOpenImage(file)} aria-label={`เปิดรูปหลักฐาน ${file.taskTitle}`}>
+      <img src={file.downloadHref} alt={`รูปหลักฐาน ${file.taskTitle}`} loading="lazy" />
+      <span><Icon name="eye" size={14} />เปิดดูรูป</span>
+    </button>}
+    <div className="safety-evidence-file-row">
+      {!image && <span className={`safety-file-icon is-${file.contentType.includes('sheet') || file.contentType.includes('excel') ? 'sheet' : 'pdf'}`}><Icon name={file.contentType.includes('sheet') || file.contentType.includes('excel') ? 'chart' : 'doc'} size={18} /></span>}
+      {image && <span className="safety-file-icon is-image"><Icon name="eye" size={18} /></span>}
+      <span><b>{image ? 'รูปตรวจอุปกรณ์' : 'ไฟล์หลักฐาน'}</b><em>{meta}</em></span>
+      <a href={file.downloadHref} target="_blank" rel="noreferrer" aria-label={image ? 'ดาวน์โหลดรูปหลักฐาน' : 'ดาวน์โหลดไฟล์หลักฐาน'}><Icon name="download" size={15} /></a>
+    </div>
+    {linkedTask ? <button type="button" className="safety-evidence-task" onClick={() => onOpenTask(linkedTask)}><Icon name="clipboard" size={11} />{file.sourceKind === 'inspection' ? 'เปิดรายการตรวจ' : 'เปิดรายการงาน'}</button> : <span className="safety-evidence-task is-static"><Icon name="clipboard" size={11} />{file.sourceKind === 'inspection' ? 'หลักฐานจากทะเบียนอุปกรณ์' : 'หลักฐานประจำปี'}</span>}
+  </article>
+}
+
+function SafetyEvidenceLightbox({ file, onClose }: { file: EvidenceItem; onClose: () => void }) {
+  const title = file.taskTitle.trim() || 'รูปหลักฐาน'
+  return <div className="safety-evidence-lightbox">
+    <button type="button" className="safety-evidence-lightbox-backdrop" aria-label="ปิดรูปภาพ" onClick={onClose} />
+    <section className="safety-evidence-lightbox-dialog" role="dialog" aria-modal="true" aria-labelledby="safety-evidence-lightbox-title">
+      <header>
+        <div><span className="safety-evidence-lightbox-kicker">{file.sourceKind === 'inspection' ? 'รูปตรวจอุปกรณ์' : 'รูปหลักฐาน'}</span><h2 id="safety-evidence-lightbox-title">{title}</h2><p>{file.periodLabel}{file.referenceCode ? ` · ${file.referenceCode}` : ''}</p></div>
+        <button type="button" aria-label="ปิดรูปภาพ" onClick={onClose}><Icon name="x" size={18} /></button>
+      </header>
+      <div className="safety-evidence-lightbox-image"><img src={file.downloadHref} alt={`รูปหลักฐาน ${title}`} /></div>
+      <footer><span>คลิกพื้นที่รอบรูป หรือกด Esc เพื่อปิด</span><a href={file.downloadHref} target="_blank" rel="noreferrer"><Icon name="download" size={14} />ดาวน์โหลด</a></footer>
+    </section>
+  </div>
+}
+
 export function SafetyTaskHub({
   actorId, isEditor, fiscalYear, range, initialOccurrences, templates, initialEvidence, initialCertificates, initialHolidays, people,
 }: {
@@ -77,6 +250,7 @@ export function SafetyTaskHub({
   const [tab, setTab] = useState<Tab>('overview')
   const [occurrences, setOccurrences] = useState(initialOccurrences)
   const [evidence, setEvidence] = useState(initialEvidence)
+  const [evidenceSearch, setEvidenceSearch] = useState('')
   const [certificates, setCertificates] = useState(initialCertificates)
   const [holidays] = useState(initialHolidays)
   const [selected, setSelected] = useState<QualityTaskOccurrence | null>(null)
@@ -97,6 +271,8 @@ export function SafetyTaskHub({
   const [riskLikelihood, setRiskLikelihood] = useState(3)
   const [riskImpact, setRiskImpact] = useState(3)
   const [evidenceUploadOpen, setEvidenceUploadOpen] = useState(false)
+  const [evidencePreview, setEvidencePreview] = useState<EvidenceItem | null>(null)
+  const [collapsedEvidenceGroups, setCollapsedEvidenceGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(groupSafetyEvidence(initialEvidence).flatMap((group, index) => [[group.key, index > 0] as [string, boolean], ...group.children.map((child, childIndex) => [child.key, index > 0 || childIndex > 0] as [string, boolean])])))
   const [certificateOpen, setCertificateOpen] = useState(false)
   const [replaceCertificateId, setReplaceCertificateId] = useState<string | null>(null)
   const [certDraft, setCertDraft] = useState({ certificateType: '', documentNo: '', holderName: '', department: '', issuedOn: '', expiresOn: '', noExpiry: false, ownerId: '' })
@@ -106,14 +282,21 @@ export function SafetyTaskHub({
   }, [])
 
   useEffect(() => {
-    if (!selected && !certificateOpen) return
+    if (!selected && !certificateOpen && !evidencePreview) return
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      setSelected(null); setCertificateOpen(false); setReplaceCertificateId(null); setRiskOpen(false)
+      setSelected(null); setCertificateOpen(false); setReplaceCertificateId(null); setRiskOpen(false); setEvidencePreview(null)
     }
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [certificateOpen, selected])
+  }, [certificateOpen, evidencePreview, selected])
+
+  useEffect(() => {
+    if (!evidencePreview) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [evidencePreview])
 
   useEffect(() => {
     if (!selected?.instanceId || isLinkedQualityOccurrence(selected)) { setActionItems([]); setIntegrations([]); return }
@@ -141,6 +324,11 @@ export function SafetyTaskHub({
   }), [occurrences, search, statusFilter])
 
   const calendarItems = useMemo(() => occurrences.filter(item => item.effectiveDueDate.startsWith(calendarMonth)), [calendarMonth, occurrences])
+  const deferredEvidenceSearch = useDeferredValue(evidenceSearch)
+  const filteredEvidence = useMemo(() => filterSafetyEvidence(evidence, deferredEvidenceSearch), [deferredEvidenceSearch, evidence])
+  const evidenceGroups = useMemo(() => groupSafetyEvidence(filteredEvidence), [filteredEvidence])
+  const evidenceItemGroupCount = evidenceGroups.reduce((total, group) => total + group.children.length, 0)
+  const selectedInspectionEvidence = useMemo(() => summarizeInspectionEvidence(evidence, selected), [evidence, selected])
   const calendarCells = useMemo(() => {
     const [year, month] = calendarMonth.split('-').map(Number)
     const firstDay = new Date(Date.UTC(year, month - 1, 1)).getUTCDay()
@@ -181,6 +369,10 @@ export function SafetyTaskHub({
 
   async function taskAction(action: 'start' | 'submit' | 'approve' | 'reject') {
     if (!selected) return
+    if (action === 'start' && selected.template.integrationKind === 'safety_inspection' && !['CBH-ST-04', 'CBH-ST-26'].includes(selected.template.sourceKey ?? '')) {
+      await startInspectionRound()
+      return
+    }
     setBusy(true); setError('')
     try {
       const id = await ensureInstance(selected)
@@ -213,11 +405,12 @@ export function SafetyTaskHub({
 
   async function startInspectionRound() {
     if (!selected) return
+    if (!isEditor) { setError('ต้องให้ Safety Editor เป็นผู้เริ่มรอบตรวจจากหน้านี้'); return }
     setBusy(true); setError('')
     try {
       const id = await ensureInstance(selected)
       const body = await json<{ roundId: string }>(await fetch(`/api/admin/safety-tasks/occurrences/${id}/inspection-round`, { method: 'POST' }))
-      window.location.assign(`/staff/lab-map?inspectionRound=${body.roundId}`)
+      window.location.assign(`/staff/lab-map/safety-assets?inspectionRound=${encodeURIComponent(body.roundId)}`)
     } catch (cause) { setError((cause as Error).message); setBusy(false) }
   }
 
@@ -311,7 +504,7 @@ export function SafetyTaskHub({
           title="งานความปลอดภัยและหลักฐาน"
           subtitle="ติดตามกิจกรรม ข้อกำหนด เอกสารรับรอง และ CAPA ในรอบปีงบประมาณเดียวกัน"
           marginBottom={0}
-          actions={<><div className="safety-fiscal"><span>ปีงบประมาณ {fiscalYear}</span><strong>{thaiDate(range.from)} — {thaiDate(range.to)}</strong></div>{isEditor && <Link href="/staff/safety/registry" className="safety-link-button"><Icon name="settings" size={16} />จัดการ Master Task</Link>}</>}
+          actions={<><div className="safety-fiscal"><span>ปีงบประมาณ {fiscalYear}</span><strong>{thaiDate(range.from)} — {thaiDate(range.to)}</strong></div><Link href="/staff/lab-map/safety-assets" className="safety-link-button"><Icon name="shieldCheck" size={16} />ทะเบียนอุปกรณ์</Link>{isEditor && <Link href="/staff/safety/registry" className="safety-link-button"><Icon name="settings" size={16} />จัดการ Master Task</Link>}</>}
         />
       </section>
 
@@ -413,15 +606,33 @@ export function SafetyTaskHub({
       </section>}
 
       {tab === 'evidence' && <section id="safety-panel-evidence" role="tabpanel" aria-labelledby="safety-tab-evidence" className="safety-panel">
-        <div className="safety-section-head"><div><h2>หลักฐานประจำปีงบประมาณ {fiscalYear}</h2><p>จัดเก็บระหว่าง 1 ต.ค. – 30 ก.ย. และรับไฟล์จาก Safety Task โดยอัตโนมัติ</p></div><div className="safety-section-actions"><span className="safety-count-chip">{evidence.length} ไฟล์</span><Button icon="plus" size="sm" onClick={() => setEvidenceUploadOpen(true)}>เพิ่มหลักฐาน</Button></div></div>
-        <div className="safety-evidence-grid">{evidence.map(file => {
-          const linkedTask = occurrences.find(item => item.instanceId === file.instanceId)
-          return <div key={file.id} className="safety-evidence-card">
-            <a href={`/api/admin/safety-tasks/attachments/${file.id}`} target="_blank" rel="noreferrer"><span className={`safety-file-icon is-${file.contentType.includes('image') ? 'image' : file.contentType.includes('sheet') || file.contentType.includes('excel') ? 'sheet' : 'pdf'}`}><Icon name={file.contentType.includes('image') ? 'eye' : file.contentType.includes('sheet') || file.contentType.includes('excel') ? 'chart' : 'doc'} size={18} /></span><span><b>{file.fileName}</b><em>{file.referenceCode ?? file.periodLabel} · {(file.sizeBytes / 1024 / 1024).toFixed(1)} MB</em></span><Icon name="download" size={15} /></a>
-            {linkedTask ? <button type="button" className="safety-evidence-task" onClick={() => openTask(linkedTask)}><Icon name="clipboard" size={11} />{file.taskTitle}</button> : <span className="safety-evidence-task is-static"><Icon name="clipboard" size={11} />{file.taskTitle}</span>}
-          </div>
+        <div className="safety-section-head"><div><h2>หลักฐานประจำปีงบประมาณ {fiscalYear}</h2><p>จัดเก็บระหว่าง 1 ต.ค. – 30 ก.ย. รับไฟล์จาก Safety Task และรูปตรวจอุปกรณ์โดยอัตโนมัติ</p></div><div className="safety-section-actions"><span className="safety-count-chip">{evidenceSearch.trim() ? `${filteredEvidence.length}/${evidence.length} ไฟล์ · ${evidenceGroups.length} ประเภท · ${evidenceItemGroupCount} รายการ` : `${evidence.length} ไฟล์ · ${evidenceGroups.length} ประเภท · ${evidenceItemGroupCount} รายการ`}</span>{evidenceGroups.length > 1 && <><button type="button" className="safety-evidence-view-action" onClick={() => setCollapsedEvidenceGroups(Object.fromEntries(evidenceGroupKeys(evidenceGroups).map(key => [key, true])))}>หุบทั้งหมด</button><button type="button" className="safety-evidence-view-action" onClick={() => setCollapsedEvidenceGroups(Object.fromEntries(evidenceGroupKeys(evidenceGroups).map(key => [key, false])))}>แสดงทั้งหมด</button></>}<Button icon="plus" size="sm" onClick={() => setEvidenceUploadOpen(true)}>เพิ่มหลักฐาน</Button></div></div>
+        <div className="safety-evidence-toolbar"><label className="safety-evidence-search"><Icon name="search" size={15} /><span>ค้นหา</span><input type="search" value={evidenceSearch} onChange={event => setEvidenceSearch(event.target.value)} placeholder="ถังดับเพลิง 1, รหัสอุปกรณ์ หรือรอบตรวจ" aria-label="ค้นหาหลักฐานประจำปี" /></label>{evidenceSearch && <button type="button" className="safety-evidence-clear" onClick={() => setEvidenceSearch('')}>ล้างการค้นหา</button>}</div>
+        <div className="safety-evidence-groups">{evidenceGroups.map((group, index) => {
+          const collapsed = evidenceSearch.trim() ? false : Boolean(collapsedEvidenceGroups[group.key] ?? index > 0)
+          const groupId = `safety-evidence-group-${index}`
+          const imageCount = group.files.filter(isImageEvidence).length
+          return <section key={group.key} className={`safety-evidence-group${collapsed ? ' is-collapsed' : ''}`}>
+            <button type="button" className="safety-evidence-group-toggle" aria-expanded={!collapsed} aria-controls={groupId} aria-label={`${collapsed ? 'แสดง' : 'หุบ'}กลุ่ม ${group.title}`} onClick={() => setCollapsedEvidenceGroups(current => ({ ...current, [group.key]: !current[group.key] }))}>
+              <span className="safety-evidence-group-heading"><Icon name={collapsed ? 'chevRight' : 'chevDown'} size={15} /><span><b>{group.title}</b><small>{group.subtitle}</small></span></span>
+              <span className="safety-evidence-group-count">{group.children.length} รายการ · {group.files.length} ไฟล์{imageCount ? ` · ${imageCount} รูป` : ''}</span>
+            </button>
+            {!collapsed && <div id={groupId} className="safety-evidence-group-body"><div className="safety-evidence-subgroups">{group.children.map((child, childIndex) => {
+              const childCollapsed = evidenceSearch.trim() ? false : Boolean(collapsedEvidenceGroups[child.key] ?? (index > 0 || childIndex > 0))
+              const childId = `safety-evidence-subgroup-${index}-${childIndex}`
+              const childImageCount = child.files.filter(isImageEvidence).length
+              return <section key={child.key} className={`safety-evidence-subgroup${childCollapsed ? ' is-collapsed' : ''}`}>
+                <button type="button" className="safety-evidence-subgroup-toggle" aria-expanded={!childCollapsed} aria-controls={childId} aria-label={`${childCollapsed ? 'แสดง' : 'หุบ'}รายการ ${child.title}`} onClick={() => setCollapsedEvidenceGroups(current => ({ ...current, [child.key]: !current[child.key] }))}>
+                  <span className="safety-evidence-group-heading"><Icon name={childCollapsed ? 'chevRight' : 'chevDown'} size={14} /><span><b>{child.title}</b><small>{child.referenceCode ?? child.periodLabel}</small></span></span>
+                  <span className="safety-evidence-group-count">{child.files.length} ไฟล์{childImageCount ? ` · ${childImageCount} รูป` : ''}</span>
+                </button>
+                {!childCollapsed && <div id={childId} className="safety-evidence-subgroup-body"><div className="safety-evidence-grid">{child.files.map(file => <EvidenceFileCard key={file.id} file={file} linkedTask={linkedTaskForEvidence(file, occurrences)} onOpenImage={setEvidencePreview} onOpenTask={openTask} />)}</div></div>}
+              </section>
+            })}</div></div>}
+          </section>
         })}</div>
         {!evidence.length && <div className="safety-empty">ยังไม่มีไฟล์หลักฐานในปีงบประมาณนี้</div>}
+        {evidence.length > 0 && !filteredEvidence.length && <div className="safety-empty" role="status">ไม่พบหลักฐานที่ตรงกับ “{evidenceSearch}” ลองค้นหาด้วยชื่ออุปกรณ์หรือรหัส เช่น “ถังดับเพลิง 1”</div>}
       </section>}
 
       {tab === 'certificates' && <section id="safety-panel-certificates" role="tabpanel" aria-labelledby="safety-tab-certificates" className="safety-panel">
@@ -433,9 +644,10 @@ export function SafetyTaskHub({
         {!certificates.length && <div className="safety-empty">ยังไม่มีใบรับรองในทะเบียน</div>}
       </section>}
 
-      {selected && <TaskDrawer item={selected} actorId={actorId} isEditor={isEditor} busy={busy} error={error} actionItems={actionItems} integrations={integrations} capaText={capaText} capaDue={capaDue} riskOpen={riskOpen} riskText={riskText} riskLikelihood={riskLikelihood} riskImpact={riskImpact} onClose={() => { setSelected(null); setError(''); setRiskOpen(false) }} onAction={taskAction} onInspection={startInspectionRound} onUpload={(file, requirementId) => uploadEvidence(selected, file, requirementId)} onCapaText={setCapaText} onCapaDue={setCapaDue} onAddCapa={addCapa} onToggleCapa={toggleCapa} onRiskOpen={setRiskOpen} onRiskText={setRiskText} onRiskLikelihood={setRiskLikelihood} onRiskImpact={setRiskImpact} onEscalateRisk={escalateRisk} onReschedule={rescheduleItem} blockedDateReason={blockedDateReason} />}
+      {selected && <TaskDrawer item={selected} actorId={actorId} isEditor={isEditor} busy={busy} error={error} actionItems={actionItems} integrations={integrations} inspectionEvidence={selectedInspectionEvidence} capaText={capaText} capaDue={capaDue} riskOpen={riskOpen} riskText={riskText} riskLikelihood={riskLikelihood} riskImpact={riskImpact} onClose={() => { setSelected(null); setError(''); setRiskOpen(false) }} onAction={taskAction} onUpload={(file, requirementId) => uploadEvidence(selected, file, requirementId)} onCapaText={setCapaText} onCapaDue={setCapaDue} onAddCapa={addCapa} onToggleCapa={toggleCapa} onRiskOpen={setRiskOpen} onRiskText={setRiskText} onRiskLikelihood={setRiskLikelihood} onRiskImpact={setRiskImpact} onEscalateRisk={escalateRisk} onReschedule={rescheduleItem} blockedDateReason={blockedDateReason} />}
       {certificateOpen && <CertificateDialog draft={certDraft} people={people} busy={busy} replacing={Boolean(replaceCertificateId)} onChange={setCertDraft} onClose={() => { setCertificateOpen(false); setReplaceCertificateId(null) }} onSubmit={addCertificate} />}
       {evidenceUploadOpen && <EvidenceUploadDialog occurrences={occurrences.filter(canUploadTo)} busy={busy} onClose={() => setEvidenceUploadOpen(false)} onSubmit={async (item, file, requirementId) => { await uploadEvidence(item, file, requirementId); setEvidenceUploadOpen(false) }} />}
+      {evidencePreview && <SafetyEvidenceLightbox file={evidencePreview} onClose={() => setEvidencePreview(null)} />}
 
       <style jsx global>{SAFETY_CSS}</style>
     </main>
@@ -445,9 +657,9 @@ export function SafetyTaskHub({
 function previousMonth(value: string) { const date = new Date(`${value}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() - 1); return date.toISOString().slice(0, 7) }
 function nextMonth(value: string) { const date = new Date(`${value}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + 1); return date.toISOString().slice(0, 7) }
 
-function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integrations, capaText, capaDue, riskOpen, riskText, riskLikelihood, riskImpact, onClose, onAction, onInspection, onUpload, onCapaText, onCapaDue, onAddCapa, onToggleCapa, onRiskOpen, onRiskText, onRiskLikelihood, onRiskImpact, onEscalateRisk, onReschedule, blockedDateReason }: {
-  item: QualityTaskOccurrence; actorId: string; isEditor: boolean; busy: boolean; error: string; actionItems: QualityTaskActionItem[]; integrations: SafetyIntegration[]; capaText: string; capaDue: string; riskOpen: boolean; riskText: string; riskLikelihood: number; riskImpact: number
-  onClose: () => void; onAction: (action: 'start' | 'submit' | 'approve' | 'reject') => void; onInspection: () => void; onUpload: (file: File, requirementId: string | null) => void; onCapaText: (value: string) => void; onCapaDue: (value: string) => void; onAddCapa: () => void; onToggleCapa: (item: QualityTaskActionItem) => void; onRiskOpen: (value: boolean) => void; onRiskText: (value: string) => void; onRiskLikelihood: (value: number) => void; onRiskImpact: (value: number) => void; onEscalateRisk: () => void
+function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integrations, inspectionEvidence, capaText, capaDue, riskOpen, riskText, riskLikelihood, riskImpact, onClose, onAction, onUpload, onCapaText, onCapaDue, onAddCapa, onToggleCapa, onRiskOpen, onRiskText, onRiskLikelihood, onRiskImpact, onEscalateRisk, onReschedule, blockedDateReason }: {
+  item: QualityTaskOccurrence; actorId: string; isEditor: boolean; busy: boolean; error: string; actionItems: QualityTaskActionItem[]; integrations: SafetyIntegration[]; inspectionEvidence: InspectionEvidenceSummary; capaText: string; capaDue: string; riskOpen: boolean; riskText: string; riskLikelihood: number; riskImpact: number
+  onClose: () => void; onAction: (action: 'start' | 'submit' | 'approve' | 'reject') => void; onUpload: (file: File, requirementId: string | null) => void; onCapaText: (value: string) => void; onCapaDue: (value: string) => void; onAddCapa: () => void; onToggleCapa: (item: QualityTaskActionItem) => void; onRiskOpen: (value: boolean) => void; onRiskText: (value: string) => void; onRiskLikelihood: (value: number) => void; onRiskImpact: (value: number) => void; onEscalateRisk: () => void
   onReschedule: (item: QualityTaskOccurrence, date: string) => void; blockedDateReason: (date: string) => string | null
 }) {
   const [requirementId, setRequirementId] = useState(item.template.evidenceRequirements[0]?.id ?? '')
@@ -455,6 +667,7 @@ function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integra
   const missing = missingEvidenceRequirements(item.template.evidenceRequirements, item.attachments)
   const linkedQualityMeeting = isLinkedQualityOccurrence(item)
   const monthlySafetyTask = ['CBH-ST-04', 'CBH-ST-26'].includes(item.template.sourceKey ?? '')
+  const inspectionTask = item.template.integrationKind === 'safety_inspection' && !monthlySafetyTask
   const assigned = item.assignees.some(entry => entry.userId === actorId)
   const canOperate = !linkedQualityMeeting && !monthlySafetyTask && (isEditor || assigned)
   const canApprove = isEditor || item.template.approverId === actorId
@@ -483,15 +696,15 @@ function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integra
     {error && <div className="safety-error" role="alert">{error}</div>}
     <div className="safety-drawer-body">
       {linkedQualityMeeting && <div className="safety-linked-source"><Icon name="calendar" size={18} /><span><b>การประชุมนี้ใช้ข้อมูลหลักจากงานคุณภาพ</b><small>วันประชุม สถานะ ผู้เข้าร่วม และหลักฐานเป็นข้อมูลชุดเดียวกัน</small></span><Link href={linkedQualityTaskHref(item)}>ไปจัดการในงานคุณภาพ <Icon name="arrowRight" size={14} /></Link></div>}
-      <section><h3>ข้อกำหนดอ้างอิง</h3><dl className="safety-detail-grid"><div><dt>เอกสาร/แบบฟอร์ม</dt><dd>{item.template.referenceCode ?? 'ข้อกำหนดภายใน'}</dd></div><div><dt>รอบงาน</dt><dd>{item.template.frequencyText}</dd></div><div><dt>การอนุมัติ</dt><dd>{item.template.approvalMode === 'required' ? 'ผู้อนุมัติ 1 ขั้น' : 'ปิดงานได้เมื่อหลักฐานครบ'}</dd></div><div><dt>แหล่งข้อมูล</dt><dd>{monthlySafetyTask ? 'แท็บตรวจประจำเดือน' : linkedQualityMeeting ? 'ปฏิทินงานคุณภาพ' : item.template.integrationKind === 'safety_inspection' ? 'Inspection Round บนแผนที่' : item.template.integrationKind === 'equipment_reference' ? 'ทะเบียนเครื่องมือ' : 'งานความปลอดภัย'}</dd></div></dl>{item.template.description && <p className="safety-description">{item.template.description}</p>}{monthlySafetyTask && <p className="safety-description">งานแม่รายการนี้ติดตามและปิดอัตโนมัติเมื่อทุกจุดส่งผลหรือถูกข้าม โปรดดำเนินการในแท็บ “ตรวจประจำเดือน”</p>}{item.template.integrationKind === 'safety_inspection' && !monthlySafetyTask && isEditor && item.status !== 'completed' && <Button icon="clipboard" variant="soft" onClick={onInspection} disabled={busy}>เปิด Inspection Round</Button>}{item.template.integrationKind === 'equipment_reference' && <Link className="safety-inline-link" href="/staff/equipment"><Icon name="microscope" size={14} />เปิดทะเบียนเครื่องมือ</Link>}{integrations.filter(integration => integration.kind === 'safety_inspection').map(integration => <InspectionResultBlock key={integration.id} integration={integration} />)}</section>
-      <section><h3>หลักฐานที่ต้องมี</h3><div className="safety-requirements">{item.template.evidenceRequirements.map(requirement => { const count = item.attachments.filter(file => file.requirementId === requirement.id).length; const complete = count >= requirement.minimumFiles; return <div key={requirement.id} className={complete ? 'is-complete' : ''}><Icon name={complete ? 'check' : 'clock'} size={14} /><span><b>{requirement.label}</b><small>{requirement.required ? `บังคับอย่างน้อย ${requirement.minimumFiles} ไฟล์` : 'ไม่บังคับ'}</small></span><strong>{count}/{requirement.minimumFiles}</strong></div>})}{!item.template.evidenceRequirements.length && <div className={item.attachments.length ? 'is-complete' : ''}><Icon name={item.attachments.length ? 'check' : 'clock'} size={14} /><span><b>เอกสารหรือรูปภาพประกอบ</b><small>{item.template.evidenceRequired ? 'ต้องมีอย่างน้อย 1 ไฟล์' : 'ไม่บังคับ'}</small></span><strong>{item.attachments.length}</strong></div>}</div>
+      <section><h3>ข้อกำหนดอ้างอิง</h3><dl className="safety-detail-grid"><div><dt>เอกสาร/แบบฟอร์ม</dt><dd>{item.template.referenceCode ?? 'ข้อกำหนดภายใน'}</dd></div><div><dt>รอบงาน</dt><dd>{item.template.frequencyText}</dd></div><div><dt>การอนุมัติ</dt><dd>{item.template.approvalMode === 'required' ? 'ผู้อนุมัติ 1 ขั้น' : 'ปิดงานได้เมื่อหลักฐานครบ'}</dd></div><div><dt>แหล่งข้อมูล</dt><dd>{monthlySafetyTask ? 'แท็บตรวจประจำเดือน' : linkedQualityMeeting ? 'ปฏิทินงานคุณภาพ' : item.template.integrationKind === 'safety_inspection' ? 'Inspection Round บนแผนที่' : item.template.integrationKind === 'equipment_reference' ? 'ทะเบียนเครื่องมือ' : 'งานความปลอดภัย'}</dd></div></dl>{item.template.description && <p className="safety-description">{item.template.description}</p>}{monthlySafetyTask && <p className="safety-description">งานแม่รายการนี้ติดตามและปิดอัตโนมัติเมื่อทุกจุดส่งผลหรือถูกข้าม โปรดดำเนินการในแท็บ “ตรวจประจำเดือน”</p>}{item.template.integrationKind === 'equipment_reference' && <Link className="safety-inline-link" href="/staff/equipment"><Icon name="microscope" size={14} />เปิดทะเบียนเครื่องมือ</Link>}{integrations.filter(integration => integration.kind === 'safety_inspection').map(integration => <InspectionResultBlock key={integration.id} integration={integration} />)}</section>
+      <section><h3>หลักฐานที่ต้องมี</h3><div className="safety-requirements">{inspectionTask && <div className={inspectionEvidence.assetCount ? 'is-complete' : ''}><Icon name={inspectionEvidence.assetCount ? 'check' : 'clock'} size={14} /><span><b>รูปตรวจอุปกรณ์จาก Inspection Round</b><small>{inspectionEvidence.assetCount ? `มีแล้ว ${inspectionEvidence.assetCount} จุด · ${inspectionEvidence.photoCount} รูป จากทะเบียนอุปกรณ์` : 'ยังไม่มีรูปตรวจอุปกรณ์ในรอบนี้'}</small></span><strong>{inspectionEvidence.assetCount} จุด</strong></div>}{!inspectionTask && item.template.evidenceRequirements.map(requirement => { const count = item.attachments.filter(file => file.requirementId === requirement.id).length; const complete = count >= requirement.minimumFiles; return <div key={requirement.id} className={complete ? 'is-complete' : ''}><Icon name={complete ? 'check' : 'clock'} size={14} /><span><b>{requirement.label}</b><small>{requirement.required ? `บังคับอย่างน้อย ${requirement.minimumFiles} ไฟล์` : 'ไม่บังคับ'}</small></span><strong>{count}/{requirement.minimumFiles}</strong></div>})}{!inspectionTask && !item.template.evidenceRequirements.length && <div className={item.attachments.length ? 'is-complete' : ''}><Icon name={item.attachments.length ? 'check' : 'clock'} size={14} /><span><b>เอกสารหรือรูปภาพประกอบ</b><small>{item.template.evidenceRequired ? 'ต้องมีอย่างน้อย 1 ไฟล์' : 'ไม่บังคับ'}</small></span><strong>{item.attachments.length}</strong></div>}</div>
         <div className="safety-files">{item.attachments.map(file => <a key={file.id} href={`/api/admin/${linkedQualityMeeting ? 'quality-tasks' : 'safety-tasks'}/attachments/${file.id}`} target="_blank" rel="noreferrer"><Icon name="doc" size={14} /><span>{file.fileName}</span><small>{(file.sizeBytes / 1024 / 1024).toFixed(1)} MB</small></a>)}</div>
         {canOperate && item.status !== 'completed' && item.status !== 'pending_review' && <div className="safety-upload-row">{item.template.evidenceRequirements.length > 0 && <select value={requirementId} onChange={event => setRequirementId(event.target.value)} aria-label="ประเภทหลักฐาน">{item.template.evidenceRequirements.map(requirement => <option key={requirement.id} value={requirement.id}>{requirement.label}</option>)}</select>}<label className={busy ? 'is-disabled' : ''}><Icon name="upload" size={14} />แนบไฟล์<input type="file" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) onUpload(file, requirementId || null); event.currentTarget.value = '' }} /></label></div>}
       </section>
       {linkedQualityMeeting ? <section><h3>ผู้เข้าร่วมและการเช็คอิน</h3><div className="safety-meeting-summary"><span>ผู้เข้าร่วม <b>{item.participants.length}</b> คน</span><span>เช็คอินแล้ว <b>{item.checkIns.length}</b> คน</span></div><div className="safety-meeting-participants">{item.participants.map(person => <div key={person.id}><Icon name={checkedInUserIds.has(person.id) ? 'check' : 'user'} size={14} /><span><b>{person.name}</b><small>{person.positionTitle ?? 'ไม่ระบุตำแหน่ง'}</small></span><em>{checkedInUserIds.has(person.id) ? 'เช็คอินแล้ว' : 'ยังไม่เช็คอิน'}</em></div>)}{!item.participants.length && <p>ยังไม่ได้กำหนดรายชื่อผู้เข้าร่วม</p>}</div></section> : <section><h3>CAPA / Action Item</h3><div className="safety-capa-list">{actionItems.map(action => <label key={action.id} className={action.doneAt ? 'is-done' : ''}><input type="checkbox" checked={Boolean(action.doneAt)} onChange={() => onToggleCapa(action)} /><span><b>{action.description}</b><small>{action.dueDate ? `กำหนด ${thaiDate(action.dueDate)}` : 'ไม่ระบุกำหนด'}</small></span></label>)}</div>{canOperate && <div className="safety-capa-add"><input value={capaText} onChange={event => onCapaText(event.target.value)} placeholder="ระบุการแก้ไข/ป้องกัน" /><input type="date" value={capaDue} onChange={event => onCapaDue(event.target.value)} /><Button size="sm" icon="plus" onClick={onAddCapa} disabled={busy || !capaText.trim()}>เพิ่ม</Button></div>}<button className="safety-risk-toggle" onClick={() => onRiskOpen(!riskOpen)}><Icon name="shield" size={14} />ส่งรายการรุนแรงหรือเกิดซ้ำไป Risk Register</button>{riskOpen && <div className="safety-risk-form"><textarea value={riskText} onChange={event => onRiskText(event.target.value)} placeholder="ถ้า… จะทำให้…" /><label>โอกาสเกิด <select value={riskLikelihood} onChange={event => onRiskLikelihood(Number(event.target.value))}>{[1,2,3,4,5].map(value => <option key={value}>{value}</option>)}</select></label><label>ผลกระทบ <select value={riskImpact} onChange={event => onRiskImpact(Number(event.target.value))}>{[1,2,3,4,5].map(value => <option key={value}>{value}</option>)}</select></label><Button size="sm" onClick={onEscalateRisk} disabled={busy || !riskText.trim()}>สร้าง Risk</Button></div>}</section>}
       <section><h3>ประวัติการดำเนินงาน</h3><ol className="safety-timeline"><li className="is-done"><i /><span><b>สร้างรอบงาน</b><small>{thaiDate(item.periodStart)}</small></span></li>{item.submittedAt && <li className="is-done"><i /><span><b>ส่งตรวจ / ส่งหลักฐาน</b><small>{new Date(item.submittedAt).toLocaleString('th-TH')}</small></span></li>}{item.reviewedAt && <li className="is-done"><i /><span><b>{item.status === 'in_progress' ? 'ส่งกลับแก้ไข' : 'ตรวจทานแล้ว'}</b><small>{item.reviewNote || new Date(item.reviewedAt).toLocaleString('th-TH')}</small></span></li>}{item.completedAt && <li className="is-done"><i /><span><b>ปิดงาน</b><small>{new Date(item.completedAt).toLocaleString('th-TH')}</small></span></li>}</ol></section>
     </div>
-    {canOperate && item.status !== 'completed' && <footer>{item.status === 'open' && <Button variant="secondary" onClick={() => onAction('start')} disabled={busy}>เริ่มดำเนินการ</Button>}{item.status !== 'pending_review' && <Button icon="check" onClick={() => onAction('submit')} disabled={busy || missing.length > 0}>{item.template.approvalMode === 'required' ? 'ส่งตรวจทาน' : 'ปิดงาน'}</Button>}{item.status === 'pending_review' && canApprove && <><Button variant="secondary" onClick={() => onAction('reject')} disabled={busy}>ส่งกลับแก้ไข</Button><Button icon="check" onClick={() => onAction('approve')} disabled={busy}>อนุมัติและปิดงาน</Button></>}</footer>}
+    {canOperate && item.status !== 'completed' && <footer>{inspectionTask ? <>{item.status === 'open' && (isEditor ? <Button variant="secondary" icon="clipboard" onClick={() => onAction('start')} disabled={busy}>เริ่มตรวจอุปกรณ์</Button> : <span className="safety-description">รอ Safety Editor เริ่มรอบตรวจจากหน้านี้</span>)}{item.status === 'pending_review' && canApprove && <><Button variant="secondary" onClick={() => onAction('reject')} disabled={busy}>ส่งกลับแก้ไข</Button><Button icon="check" onClick={() => onAction('approve')} disabled={busy}>อนุมัติและปิดงาน</Button></>}</> : <>{item.status === 'open' && <Button variant="secondary" onClick={() => onAction('start')} disabled={busy}>เริ่มดำเนินการ</Button>}{item.status !== 'pending_review' && <Button icon="check" onClick={() => onAction('submit')} disabled={busy || missing.length > 0}>{item.template.approvalMode === 'required' ? 'ส่งตรวจทาน' : 'ปิดงาน'}</Button>}{item.status === 'pending_review' && canApprove && <><Button variant="secondary" onClick={() => onAction('reject')} disabled={busy}>ส่งกลับแก้ไข</Button><Button icon="check" onClick={() => onAction('approve')} disabled={busy}>อนุมัติและปิดงาน</Button></>}</>}</footer>}
   </aside></div>
 }
 
@@ -500,7 +713,10 @@ function InspectionResultBlock({ integration }: { integration: SafetyIntegration
   const items = integration.items ?? []
   const completed = items.filter(item => item.status === 'completed').length
   const abnormal = items.filter(item => item.inspection && item.inspection.result !== 'passed')
-  return <div className="safety-inspection-result"><header><span><Icon name="clipboard" size={14} />ผล Inspection Round</span><b>{integration.syncStatus === 'synced' ? 'SYNCED' : 'PENDING'}</b></header><div className="safety-inspection-summary"><span>ตรวจแล้ว <b>{completed}/{items.length}</b></span><span>ผิดปกติ <b>{abnormal.length}</b></span><Link href={`/staff/lab-map?inspectionRound=${integration.sourceId}`}>เปิดบนแผนที่</Link></div>{items.filter(item => item.inspection).map(item => <div className={`safety-inspection-item is-${item.inspection?.result}`} key={item.inspectionId}><span><b>{item.asset?.name_th ?? item.asset?.code ?? 'อุปกรณ์'}</b><small>{item.inspection?.note || item.inspection?.result}</small></span>{item.inspectionId && <a href={`/api/admin/lab-map/safety-inspections/${item.inspectionId}/photo`} target="_blank" rel="noreferrer"><Icon name="eye" size={13} />รูปตรวจ</a>}</div>)}</div>
+  const inspectionHref = integration.syncStatus === 'synced'
+    ? '/staff/lab-map/safety-assets'
+    : `/staff/lab-map/safety-assets?inspectionRound=${encodeURIComponent(integration.sourceId)}`
+  return <div className="safety-inspection-result"><header><span><Icon name="clipboard" size={14} />ผล Inspection Round</span><b>{integration.syncStatus === 'synced' ? 'SYNCED' : 'PENDING'}</b></header><div className="safety-inspection-summary"><span>ตรวจแล้ว <b>{completed}/{items.length}</b></span><span>ผิดปกติ <b>{abnormal.length}</b></span><Link href={inspectionHref}>{integration.syncStatus === 'synced' ? 'เปิดทะเบียนอุปกรณ์' : 'เปิดอุปกรณ์และรอบตรวจ'}</Link></div>{items.filter(item => item.inspection).map(item => <div className={`safety-inspection-item is-${item.inspection?.result}`} key={item.inspectionId}><span><b>{item.asset?.name_th ?? item.asset?.code ?? 'อุปกรณ์'}</b><small>{item.inspection?.note || item.inspection?.result}</small></span>{item.inspectionId && <a href={`/api/admin/lab-map/safety-inspections/${item.inspectionId}/photo`} target="_blank" rel="noreferrer"><Icon name="eye" size={13} />รูปตรวจ</a>}</div>)}</div>
 }
 
 function CertificateDialog({ draft, people, busy, replacing, onChange, onClose, onSubmit }: { draft: CertificateDraft; people: Person[]; busy: boolean; replacing: boolean; onChange: (value: CertificateDraft) => void; onClose: () => void; onSubmit: (file: File) => void }) {
@@ -573,6 +789,7 @@ const SAFETY_CSS = `
 .safety-empty{padding:42px;text-align:center;color:var(--muted);font-size:12px}
 .safety-calendar-head{display:flex;justify-content:center;align-items:center;gap:16px;margin-bottom:12px}.safety-calendar-head h2{min-width:220px;margin:0;text-align:center;font-size:17px}.safety-calendar-head button{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:inherit;cursor:pointer}.safety-calendar-grid{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--card)}.safety-weekdays,.safety-days{display:grid;grid-template-columns:repeat(7,1fr)}.safety-weekdays span{padding:8px;text-align:center;background:color-mix(in srgb,var(--safety) 5%,var(--card));color:var(--muted);font-size:10px;font-weight:700}.safety-days>div{min-height:108px;padding:7px;border-top:1px solid var(--border);border-right:1px solid var(--border)}.safety-days>div:nth-child(7n){border-right:0}.safety-days>div>b{display:block;margin-bottom:4px;font-size:10px}.safety-days button{width:100%;display:flex;align-items:center;gap:3px;margin:3px 0;padding:3px 4px;border:0;border-left:2px solid #64748b;background:#f8fafc;color:#334155;font-family:inherit;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.safety-days button.is-teal{border-color:#0f766e}.safety-days button.is-cyan{border-color:#0891b2}.safety-days button.is-amber{border-color:#d97706}.safety-days button.is-draggable{cursor:grab}.safety-days button.is-dragging{opacity:.45;cursor:grabbing}.safety-day.is-holiday:not(.is-blank){background:color-mix(in srgb,var(--danger) 7%,var(--card))}.safety-day.is-drag-over{background:var(--primary-soft);outline:2px dashed var(--primary);outline-offset:-2px}.safety-day-holiday{display:flex;align-items:center;gap:3px;margin-bottom:4px;color:var(--danger);font-size:8px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.safety-date-row{display:flex;flex-direction:column;gap:5px;padding:11px 22px;border-bottom:1px solid var(--border)}.safety-date-row label{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:650;color:var(--muted)}.safety-date-row input{width:max-content;padding:7px 9px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:inherit;font-family:inherit;font-size:12px}.safety-date-warning{display:flex;align-items:center;gap:4px;color:var(--danger);font-size:10px}.safety-calendar-agenda{display:none}
 .safety-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin:5px 0 16px}.safety-section-actions{display:flex;align-items:center;gap:10px}.safety-count-chip{padding:6px 10px;border-radius:12px;background:var(--safety-pale);color:var(--safety);font-size:10px;font-weight:700}.safety-evidence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.safety-evidence-card{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:9px;background:var(--card);overflow:hidden}.safety-evidence-card:hover{border-color:var(--safety)}.safety-evidence-card>a{display:grid;grid-template-columns:38px minmax(0,1fr) 16px;align-items:center;gap:10px;padding:12px;color:inherit;text-decoration:none}.safety-evidence-card>a>span:nth-child(2){display:flex;flex-direction:column;min-width:0}.safety-evidence-card b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.safety-evidence-card em{font-size:9px;color:var(--muted);font-style:normal}.safety-evidence-task{display:flex;align-items:center;gap:5px;padding:6px 12px;border:0;border-top:1px dashed var(--border);background:color-mix(in srgb,var(--safety) 4%,transparent);color:var(--safety);font-family:inherit;font-size:9px;font-weight:650;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.safety-evidence-task.is-static{color:var(--muted);cursor:default}.safety-file-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:8px;background:#fef2f2;color:#dc2626}.safety-file-icon.is-image{background:#ecfeff;color:#0891b2}.safety-file-icon.is-sheet{background:#ecfdf5;color:#059669}
+.safety-evidence-view-action{min-height:32px;padding:0 9px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--safety);font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:background-color .18s ease,border-color .18s ease}.safety-evidence-view-action:hover{border-color:var(--safety);background:var(--safety-pale)}.safety-evidence-groups{display:flex;flex-direction:column;gap:12px}.safety-evidence-group{border:1px solid var(--border);border-radius:12px;background:var(--card);overflow:hidden;box-shadow:0 5px 18px rgba(15,23,42,.04)}.safety-evidence-group-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:64px;gap:14px;padding:12px 14px;border:0;background:var(--card);color:inherit;text-align:left;font-family:inherit;cursor:pointer;transition:background-color .18s ease}.safety-evidence-group-toggle:hover{background:color-mix(in srgb,var(--safety) 5%,var(--card))}.safety-evidence-group-heading{display:flex;align-items:center;gap:9px;min-width:0}.safety-evidence-group-heading>svg{flex:0 0 auto;color:var(--safety)}.safety-evidence-group-heading>span{display:flex;flex-direction:column;gap:3px;min-width:0}.safety-evidence-group-heading b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.safety-evidence-group-heading small{color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.safety-evidence-group-count{flex:0 0 auto;padding:5px 8px;border-radius:999px;background:var(--safety-pale);color:var(--safety);font-size:10px;font-weight:750;white-space:nowrap}.safety-evidence-group-body{padding:10px;background:color-mix(in srgb,var(--surface-2) 55%,var(--card));border-top:1px solid var(--border)}.safety-evidence-card{box-shadow:0 2px 10px rgba(15,23,42,.035)}.safety-evidence-card.is-image{min-width:0}.safety-evidence-preview{position:relative;display:block;width:100%;aspect-ratio:4/3;padding:0;border:0;background:#e2e8f0;cursor:pointer;overflow:hidden}.safety-evidence-preview img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .25s ease,filter .25s ease}.safety-evidence-preview:hover img{transform:scale(1.025);filter:brightness(.84)}.safety-evidence-preview>span{position:absolute;right:9px;bottom:9px;display:inline-flex;align-items:center;gap:5px;padding:6px 8px;border-radius:7px;background:rgba(15,23,42,.78);color:#fff;font-size:10px;font-weight:700;opacity:.95}.safety-evidence-file-row{display:grid;grid-template-columns:36px minmax(0,1fr) 28px;align-items:center;gap:9px;padding:10px 11px}.safety-evidence-file-row>span:nth-child(2){display:flex;flex-direction:column;min-width:0}.safety-evidence-file-row b{font-size:11px}.safety-evidence-file-row em{font-size:9px;color:var(--muted);font-style:normal}.safety-evidence-file-row>a{display:grid;place-items:center;width:28px;height:28px;border:1px solid var(--border);border-radius:7px;color:var(--safety);text-decoration:none;transition:background-color .18s ease,border-color .18s ease}.safety-evidence-file-row>a:hover{border-color:var(--safety);background:var(--safety-pale)}.safety-evidence-lightbox{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:22px}.safety-evidence-lightbox-backdrop{position:absolute;inset:0;width:100%;height:100%;border:0;background:rgba(15,23,42,.72);cursor:pointer}.safety-evidence-lightbox-dialog{position:relative;z-index:1;display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:min(1080px,94vw);max-height:90vh;overflow:hidden;border:1px solid color-mix(in srgb,var(--border) 78%,white);border-radius:16px;background:var(--card);box-shadow:0 28px 80px rgba(15,23,42,.34)}.safety-evidence-lightbox-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:16px 18px;border-bottom:1px solid var(--border)}.safety-evidence-lightbox-dialog>header>div{min-width:0}.safety-evidence-lightbox-kicker{display:block;margin-bottom:4px;color:var(--safety);font-size:10px;font-weight:800;letter-spacing:.08em}.safety-evidence-lightbox-dialog h2{margin:0;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.safety-evidence-lightbox-dialog p{margin:4px 0 0;color:var(--muted);font-size:11px}.safety-evidence-lightbox-dialog>header>button{display:grid;place-items:center;flex:0 0 auto;width:36px;height:36px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:inherit;cursor:pointer}.safety-evidence-lightbox-dialog>header>button:hover{border-color:var(--safety);color:var(--safety)}.safety-evidence-lightbox-image{min-height:0;padding:16px;background:#0f172a;display:grid;place-items:center}.safety-evidence-lightbox-image img{display:block;max-width:100%;max-height:64vh;width:auto;height:auto;object-fit:contain}.safety-evidence-lightbox-dialog>footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 18px;border-top:1px solid var(--border);color:var(--muted);font-size:10px}.safety-evidence-lightbox-dialog>footer a{display:inline-flex;align-items:center;gap:6px;color:var(--safety);font-weight:750;text-decoration:none}.safety-evidence-lightbox-dialog>footer a:hover{text-decoration:underline}
 .safety-evidence-task-context{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid color-mix(in srgb,var(--safety) 26%,var(--border));border-radius:8px;background:var(--safety-pale);color:var(--safety)}.safety-evidence-task-context span{display:flex;flex-direction:column;gap:2px;color:var(--ink)}.safety-evidence-task-context b{font-size:11px}.safety-evidence-task-context small{font-size:9px;color:var(--muted)}
 .safety-certificate-list{display:flex;flex-direction:column;gap:7px}.safety-certificate-list article{display:grid;grid-template-columns:42px minmax(220px,1fr) 130px 140px 120px 68px;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--border);border-left:3px solid var(--safety-teal);border-radius:8px;background:var(--card)}.safety-certificate-list article.is-due-soon{border-left-color:#d97706}.safety-certificate-list article.is-overdue{border-left-color:#dc2626}.safety-cert-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--safety-pale);color:var(--safety)}.safety-certificate-list article small{color:var(--safety);font-size:9px;font-weight:700}.safety-certificate-list h3{margin:2px 0;font-size:13px}.safety-certificate-list p{margin:0;color:var(--muted);font-size:10px}.safety-certificate-list dl{margin:0}.safety-certificate-list dt{font-size:9px;color:var(--muted)}.safety-certificate-list dd{margin:2px 0;font-size:11px;font-weight:600}.safety-renewal{display:inline-flex;align-items:center;gap:4px;color:#047857;font-size:9px;font-weight:700}.safety-renewal.is-due-soon{color:#b45309}.safety-renewal.is-overdue{color:#dc2626}.safety-cert-actions{display:flex;gap:4px}.safety-cert-actions a,.safety-cert-actions button{display:grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--safety);cursor:pointer}
 .safety-drawer-layer,.safety-dialog-layer{position:fixed;inset:0;z-index:70}.safety-drawer-backdrop{position:absolute;inset:0;border:0;background:rgba(15,23,42,.42);cursor:default}.safety-drawer{position:absolute;right:0;top:0;bottom:0;width:min(610px,94vw);display:flex;flex-direction:column;background:var(--card);box-shadow:-20px 0 50px rgba(15,23,42,.18);animation:drawer-in .22s ease-out}@keyframes drawer-in{from{transform:translateX(30px);opacity:.5}to{transform:none;opacity:1}}.safety-drawer>header{display:flex;justify-content:space-between;padding:20px 22px 14px;border-bottom:1px solid var(--border)}.safety-drawer>header h2{margin:5px 0 2px;font-size:19px}.safety-drawer>header p{margin:0;color:var(--muted);font-size:11px}.safety-drawer>header button,.safety-dialog header button{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.safety-reference{padding:3px 6px;background:var(--safety);color:white;font-size:8px;font-weight:800;letter-spacing:.1em}.safety-drawer-status{display:flex;align-items:center;gap:10px;padding:9px 22px;border-bottom:1px solid var(--border)}.safety-drawer-status>span:last-child{display:flex;align-items:center;gap:5px;margin-left:auto;color:var(--muted);font-size:10px}.safety-drawer-body{flex:1;overflow-y:auto;padding:0 22px 25px}.safety-drawer-body>section{padding:18px 0;border-bottom:1px solid var(--border)}.safety-drawer-body h3{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:12px}.safety-drawer-body h3>span{font-size:9px;color:var(--safety);font-weight:800}.safety-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0}.safety-detail-grid div{padding:9px;background:color-mix(in srgb,var(--safety) 4%,var(--card));border-radius:6px}.safety-detail-grid dt{color:var(--muted);font-size:9px}.safety-detail-grid dd{margin:2px 0;font-size:11px;font-weight:650}.safety-description{font-size:11px;color:var(--muted);line-height:1.6}.safety-inline-link,.safety-risk-toggle{display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:var(--safety);font-size:10px;text-decoration:none}.safety-risk-toggle{border:0;background:transparent;font-family:inherit;cursor:pointer}
@@ -587,4 +804,9 @@ const SAFETY_CSS = `
 @media(max-width:1023px){.safety-metrics{grid-template-columns:repeat(3,1fr)}.safety-overview-grid{grid-template-columns:1fr}.safety-evidence-grid{grid-template-columns:repeat(2,1fr)}.safety-task-row{grid-template-columns:48px minmax(200px,1fr) 115px 18px}.safety-task-evidence,.safety-task-row>.safety-urgency{display:none}.safety-certificate-list article{grid-template-columns:40px minmax(190px,1fr) 120px 100px 68px}.safety-certificate-list article dl:first-of-type{display:none}}
 @media(max-width:767px){.safety-shell{padding:14px}.safety-hero{display:block;padding:20px}.safety-hero p{font-size:11px}.safety-hero-actions{margin-top:13px}.safety-fiscal{display:none}.safety-tabs{margin:12px -2px}.safety-tabs button{padding:9px 11px}.safety-tabs button span{font-size:11px}.safety-metrics{grid-template-columns:repeat(2,1fr)}.safety-metric{padding:12px}.safety-metric strong{font-size:20px}.safety-overview-grid{margin-top:10px}.safety-readiness{display:none}.safety-priority-list>button{grid-template-columns:52px 1fr}.safety-priority-list .safety-status{display:none}.safety-toolbar{display:block}.safety-search{min-width:0;margin-bottom:8px}.safety-filter{overflow-x:auto}.safety-task-row{grid-template-columns:44px minmax(0,1fr) 18px;padding:11px 10px;gap:8px}.safety-task-row>.safety-status,.safety-task-row>.safety-task-evidence,.safety-task-row>.safety-urgency{display:none}.safety-task-main strong{white-space:normal}.safety-task-meta{font-size:8px}.safety-calendar-grid{display:none}.safety-calendar-agenda.safety-agenda{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:9px;background:var(--card)}.safety-calendar-agenda>button{display:grid;grid-template-columns:75px 1fr auto;align-items:center;gap:8px;padding:10px;border:0;border-bottom:1px solid var(--border);background:transparent;color:inherit;text-align:left;font-family:inherit}.safety-calendar-agenda time{font-size:9px;color:var(--safety)}.safety-calendar-agenda span:nth-child(2){display:flex;flex-direction:column}.safety-calendar-agenda b{font-size:10px}.safety-calendar-agenda small{font-size:8px;color:var(--muted)}.safety-section-head{align-items:flex-start}.safety-section-head p{font-size:10px}.safety-evidence-grid{grid-template-columns:1fr}.safety-certificate-list article{grid-template-columns:38px minmax(0,1fr) 68px;gap:8px}.safety-certificate-list article dl,.safety-certificate-list .safety-renewal{display:none}.safety-drawer{width:100vw}.safety-drawer>header{padding:16px}.safety-drawer-status{padding:8px 16px}.safety-drawer-status>span:last-child{display:none}.safety-drawer-body{padding:0 16px 22px}.safety-detail-grid{grid-template-columns:1fr}.safety-capa-add{grid-template-columns:1fr auto}.safety-capa-add input[type=date]{display:none}.safety-risk-form{grid-template-columns:1fr 1fr}.safety-risk-form textarea{grid-column:1/-1}.safety-drawer>footer{padding:10px 16px}.safety-form-grid{grid-template-columns:1fr}.safety-file-pick{grid-column:auto}}
 @media(max-width:767px){.safety-shell{padding:0}.safety-page-header{padding:16px}.safety-tabs button span{font-size:12px}.safety-task-meta{font-size:10px}.safety-calendar-agenda time{font-size:11px}.safety-calendar-agenda b{font-size:12px}.safety-calendar-agenda small{font-size:10px}.safety-section-head p{font-size:12px}}
+@media(prefers-reduced-motion:reduce){.safety-evidence-preview img,.safety-evidence-view-action,.safety-evidence-group-toggle,.safety-evidence-file-row>a{transition:none}}
+@media(max-width:767px){.safety-section-head{display:block}.safety-section-actions{justify-content:flex-start;flex-wrap:wrap;gap:6px;margin-top:10px}.safety-evidence-group-toggle{min-height:60px;padding:11px}.safety-evidence-group-body{padding:8px}.safety-evidence-lightbox{padding:10px}.safety-evidence-lightbox-dialog{width:100%;max-height:92vh}.safety-evidence-lightbox-dialog>header{padding:13px 14px}.safety-evidence-lightbox-image{padding:10px}.safety-evidence-lightbox-image img{max-height:66vh}.safety-evidence-lightbox-dialog>footer{align-items:flex-start;flex-direction:column;padding:10px 14px}}
+.safety-evidence-toolbar{display:flex;align-items:center;gap:8px;margin:14px 0}.safety-evidence-search{display:flex;align-items:center;flex:1;min-width:240px;gap:8px;min-height:40px;padding:0 10px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--muted);transition:border-color .18s ease,box-shadow .18s ease}.safety-evidence-search:focus-within{border-color:var(--safety);box-shadow:0 0 0 3px color-mix(in srgb,var(--safety) 12%,transparent)}.safety-evidence-search>span{color:var(--ink);font-size:11px;font-weight:750;white-space:nowrap}.safety-evidence-search input{width:100%;min-width:0;height:36px;border:0;outline:0;background:transparent;color:var(--ink);font-family:inherit;font-size:12px}.safety-evidence-search input::placeholder{color:var(--muted)}.safety-evidence-clear{min-height:34px;padding:0 10px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--muted);font-family:inherit;font-size:10px;font-weight:700;cursor:pointer}.safety-evidence-clear:hover{border-color:var(--safety);color:var(--safety);background:var(--safety-pale)}.safety-evidence-subgroups{display:flex;flex-direction:column;gap:8px}.safety-evidence-subgroup{border:1px solid color-mix(in srgb,var(--border) 86%,var(--safety));border-radius:9px;background:var(--card);overflow:hidden}.safety-evidence-subgroup-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:48px;gap:10px;padding:9px 11px;border:0;background:var(--card);color:inherit;text-align:left;font-family:inherit;cursor:pointer;transition:background-color .18s ease}.safety-evidence-subgroup-toggle:hover{background:color-mix(in srgb,var(--safety) 5%,var(--card))}.safety-evidence-subgroup-toggle .safety-evidence-group-heading{gap:7px}.safety-evidence-subgroup-toggle .safety-evidence-group-heading b{font-size:12px}.safety-evidence-subgroup-toggle .safety-evidence-group-heading small{font-size:9px}.safety-evidence-subgroup-body{padding:8px;border-top:1px solid var(--border);background:color-mix(in srgb,var(--surface-2) 32%,var(--card))}
+@media(prefers-reduced-motion:reduce){.safety-evidence-search,.safety-evidence-clear,.safety-evidence-subgroup-toggle{transition:none}}
+@media(max-width:767px){.safety-evidence-toolbar{align-items:stretch;flex-direction:column}.safety-evidence-search{min-width:0}.safety-evidence-clear{align-self:flex-start}}
 `

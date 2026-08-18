@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Badge, type BadgeColor } from '@/components/ui/Badge'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { uploadFileWithProgress } from '@/lib/documents/upload-with-progress'
+import { safetyExpiryLabel } from '@/lib/lab-map/safety-domain'
+import { nextSafetyInspectionDate, SAFETY_INSPECTION_SCHEDULE_LABEL } from '@/lib/lab-map/safety-inspection-schedule'
 import { checklistForSafetyKind, validateChecklistCompletion } from '@/lib/lab-map/safety-inspection-checklists'
 import {
   deleteSafetyInspectionDraft,
@@ -19,6 +20,8 @@ import type {
 import { SafetyInspectionChecklist } from './SafetyInspectionChecklist'
 import { SafetyInspectionProgress } from './SafetyInspectionProgress'
 import { SafetyPhotoPicker } from './SafetyPhotoPicker'
+import { SafetyAssetStatusBadges } from './SafetyAssetStatusBadges'
+import { SafetyPositionVerification } from './SafetyPositionVerification'
 
 type SubmissionPhase = 'idle' | 'compressing' | 'signing' | 'uploading' | 'finalizing' | 'success' | 'error'
 type InspectionResult = 'passed' | 'needs_attention' | 'failed' | 'not_found'
@@ -26,7 +29,6 @@ type InspectionResult = 'passed' | 'needs_attention' | 'failed' | 'not_found'
 export interface SafetyInspectionDraft {
   result: InspectionResult
   note: string
-  nextInspectionDate: string
   expiresOn: string
   checklist: SafetyChecklistAnswer[]
   file: File | null
@@ -46,15 +48,6 @@ const RESULT_OPTIONS: ReadonlyArray<{ value: InspectionResult; label: string }> 
   { value: 'not_found', label: 'ไม่พบอุปกรณ์' },
 ]
 
-const STATUS_LABELS: Record<string, string> = {
-  unverified: 'รอยืนยันตำแหน่ง', verified: 'ยืนยันตำแหน่งแล้ว', passed: 'ผ่าน',
-  needs_attention: 'ต้องติดตาม', failed: 'ไม่พร้อมใช้', overdue: 'เกินกำหนดตรวจ', due_soon: 'ใกล้ครบกำหนด',
-}
-const STATUS_COLORS: Record<string, BadgeColor> = {
-  unverified: 'amber', verified: 'blue', passed: 'green', needs_attention: 'amber',
-  failed: 'red', overdue: 'red', due_soon: 'amber',
-}
-
 function todayIso() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 }
@@ -67,7 +60,7 @@ async function jsonRequest(url: string, init?: RequestInit) {
 }
 
 export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, roundItemId, canEdit,
-  roundId, resultCounts, onBack, onPrevious, onShowMap, onSaved, onCloseRound }: {
+  roundId, resultCounts, onBack, onPrevious, onShowMap, onSaved, onPositionVerified, onCloseRound }: {
   item: SafetyAssetDTO
   locationLabel: string
   queue: SafetyInspectionQueue
@@ -80,23 +73,27 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
   onPrevious: () => void
   onShowMap: () => void
   onSaved: (mode: 'stay' | 'next', result: InspectionResult) => Promise<void>
+  onPositionVerified: () => Promise<void>
   onCloseRound: () => Promise<void> | void
 }) {
   const template = useMemo(() => checklistForSafetyKind(item.kind), [item.kind])
   const [result, setResult] = useState<InspectionResult>('passed')
   const [note, setNote] = useState('')
-  const [nextInspectionDate, setNextInspectionDate] = useState('')
-  const [expiresOn, setExpiresOn] = useState('')
+  const nextInspectionDate = nextSafetyInspectionDate(todayIso())
+  const [expiresOn, setExpiresOn] = useState(item.latestInspection?.expiresOn ?? '')
   const [file, setFile] = useState<File | null>(null)
   const [checklist, setChecklist] = useState<SafetyChecklistAnswer[]>([])
   const [showErrors, setShowErrors] = useState(false)
   const [phase, setPhase] = useState<SubmissionPhase>('idle')
+  const [correctingExpiry, setCorrectingExpiry] = useState(false)
   const [uploadPercent, setUploadPercent] = useState<number | null>(null)
   const [message, setMessage] = useState('')
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine)
   const [storedDraft, setStoredDraft] = useState<StoredSafetyInspectionDraft | null>(null)
+  const submissionLockRef = useRef(false)
 
   const busy = ['signing', 'uploading', 'finalizing'].includes(phase)
+  const currentExpiresOn = item.latestInspection?.expiresOn ?? ''
   const roundComplete = Boolean(roundName && queue.progress.total > 0 && queue.progress.remaining === 0)
   const draftKey = useMemo(() => safetyInspectionDraftKey(roundId, item.id), [item.id, roundId])
 
@@ -140,17 +137,16 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
   }
 
   useEffect(() => {
-    const hasContent = Boolean(note || nextInspectionDate || expiresOn || checklist.length || file)
+    const hasContent = Boolean(note || expiresOn || checklist.length || file)
     if (!hasContent || storedDraft) return
     const timer = setTimeout(() => { void persistDraft(false) }, 500)
     return () => clearTimeout(timer)
-  }, [checklist, expiresOn, file, nextInspectionDate, note, storedDraft])
+  }, [checklist, expiresOn, file, note, storedDraft])
 
   function restoreStoredDraft() {
     if (!storedDraft) return
     setResult(storedDraft.result)
     setNote(storedDraft.note)
-    setNextInspectionDate(storedDraft.nextInspectionDate)
     setExpiresOn(storedDraft.expiresOn)
     setChecklist(storedDraft.checklist)
     setFile(storedDraft.compressedPhoto
@@ -173,9 +169,12 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
       setMessage('กรุณาถ่ายหรือเลือกรูปหลักฐาน')
       return
     }
+    if (submissionLockRef.current) return
+    submissionLockRef.current = true
     setMessage('')
     setUploadPercent(0)
     try {
+      const inspectedOn = todayIso()
       setPhase('signing')
       const signed = await jsonRequest(`/api/admin/lab-map/safety-assets/${item.id}/inspection-photo`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -184,16 +183,16 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
       setPhase('uploading')
       await uploadFileWithProgress(signed.uploadUrl, file, file.type, setUploadPercent)
       setPhase('finalizing')
-      await jsonRequest(`/api/admin/lab-map/safety-assets/${item.id}/inspection-photo`, {
+      const saved = await jsonRequest(`/api/admin/lab-map/safety-assets/${item.id}/inspection-photo`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          key: signed.key, fileName: file.name, result, inspectedOn: todayIso(),
-          nextInspectionDate: nextInspectionDate || null, expiresOn: expiresOn || null,
+          key: signed.key, fileName: file.name, result, inspectedOn,
+          expiresOn: expiresOn || null,
           note: note || null, roundItemId: roundItemId ?? null, checklist,
         }),
       })
       setPhase('success')
-      setMessage('บันทึกผลตรวจแล้ว')
+      setMessage(saved.reused ? 'มีผลตรวจวันนี้แล้ว ระบบใช้รูปเดิมให้แล้ว' : 'บันทึกผลตรวจแล้ว')
       await deleteSafetyInspectionDraft(draftKey)
       await onSaved(mode, result)
       if (mode === 'stay') {
@@ -204,6 +203,27 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
     } catch (error) {
       setPhase('error')
       setMessage((error as Error).message)
+    } finally {
+      submissionLockRef.current = false
+    }
+  }
+
+  async function correctExpiry() {
+    if (!item.latestInspection || expiresOn === currentExpiresOn) return
+    setCorrectingExpiry(true)
+    setMessage('')
+    try {
+      await jsonRequest(`/api/admin/lab-map/safety-assets/${item.id}/inspection-expiry`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inspectionId: item.latestInspection.id, expiresOn: expiresOn || null, updatedAt: item.updatedAt }),
+      })
+      setMessage('แก้ไขกำหนดวันเรียบร้อยแล้ว')
+      await onPositionVerified()
+    } catch (error) {
+      setPhase('idle')
+      setMessage((error as Error).message)
+    } finally {
+      setCorrectingExpiry(false)
     }
   }
 
@@ -223,8 +243,9 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
     </aside> : null}
     <div className="safety-inspection-identity">
       <span><h2>{item.nameTh}</h2><small>{item.code} · {locationLabel}</small></span>
-      <Badge color={STATUS_COLORS[item.operationalStatus ?? 'unverified']}>{STATUS_LABELS[item.operationalStatus ?? 'unverified']}</Badge>
+      <SafetyAssetStatusBadges item={item} />
     </div>
+    <SafetyPositionVerification item={item} disabled={busy} onVerified={onPositionVerified} />
     {roundComplete ? <section className="safety-round-summary" aria-label="สรุปรอบตรวจ">
       <h3>สรุปรอบตรวจ</h3>
       <dl>
@@ -243,8 +264,8 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
       <SafetyInspectionChecklist template={template} answers={checklist} showErrors={showErrors} disabled={busy} onChange={setChecklist} />
       <SafetyPhotoPicker label="รูปหลักฐาน" file={file} disabled={busy} uploadPercent={phase === 'uploading' ? uploadPercent : null} onChange={setFile} />
       <div className="safety-form-grid">
-        <label>ตรวจครั้งถัดไป<input type="date" value={nextInspectionDate} disabled={busy} onChange={event => setNextInspectionDate(event.target.value)} /></label>
-        <label>วันหมดอายุ<input type="date" value={expiresOn} disabled={busy} onChange={event => setExpiresOn(event.target.value)} /></label>
+        <label>{SAFETY_INSPECTION_SCHEDULE_LABEL}<input type="date" value={nextInspectionDate} readOnly disabled /></label>
+        <label>{safetyExpiryLabel(item.kind)}<input type="date" value={expiresOn} disabled={busy || correctingExpiry} onChange={event => setExpiresOn(event.target.value)} /></label>
       </div>
       <label>หมายเหตุ<textarea value={note} disabled={busy} onChange={event => setNote(event.target.value)} /></label>
     </div> : null}
@@ -254,11 +275,14 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
           : phase === 'finalizing' ? 'กำลังบันทึกผลตรวจ…' : message}
     </p>
     {canEdit && !roundComplete ? <footer className="safety-inspection-actions">
-      <button type="button" disabled={busy} onClick={onPrevious}>เครื่องก่อนหน้า</button>
-      <button type="button" disabled={busy} onClick={() => void persistDraft(true)}>บันทึกร่างในเครื่อง</button>
-      <button type="button" disabled={busy || !online} onClick={() => void submitInspection('next')}>
-        {!online ? 'รอเชื่อมต่อเพื่อส่งผลตรวจ' : phase === 'error' ? 'ลองอัปโหลดอีกครั้ง' : 'ยืนยันและไปเครื่องถัดไป'}
-      </button>
+      <button type="button" disabled={busy || correctingExpiry} onClick={onPrevious}>เครื่องก่อนหน้า</button>
+      <button type="button" disabled={busy || correctingExpiry} onClick={() => void persistDraft(true)}>บันทึกร่างในเครื่อง</button>
+      <div className="safety-inspection-primary-actions">
+        <button type="button" disabled={busy || correctingExpiry || !item.latestInspection || expiresOn === currentExpiresOn} onClick={() => void correctExpiry()}>บันทึกการแก้ไข</button>
+        <button type="button" disabled={busy || correctingExpiry || !online} onClick={() => void submitInspection('next')}>
+          {!online ? 'รอเชื่อมต่อเพื่อส่งผลตรวจ' : phase === 'error' ? 'ลองอัปโหลดอีกครั้ง' : 'ยืนยันและไปเครื่องถัดไป'}
+        </button>
+      </div>
     </footer> : null}
   </section>
 }

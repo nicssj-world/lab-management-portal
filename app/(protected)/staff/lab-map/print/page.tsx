@@ -10,6 +10,7 @@ import { currentManifestHash, pickReleaseRows } from '@/lib/lab-map/release'
 import { canManageMapReleases, mapReleaseRow } from '@/lib/lab-map/release-server'
 import { buildMapPrintDTO, type MapPaperSize, type MapPrintDTO } from '@/lib/lab-map/print'
 import { publicSafetyMapPath } from '@/lib/lab-map/public-safety'
+import { listAssemblyPoints, listSafetyAssets } from '@/lib/lab-map/safety-server'
 import type { MapReleaseDTO } from '@/lib/lab-map/types'
 
 export const dynamic = 'force-dynamic'
@@ -46,6 +47,10 @@ export default async function LabMapPrintPage() {
   const managedRelease: MapReleaseDTO = managedRow === printRow
     ? release
     : await withReviewerNames(managedRow ? mapReleaseRow(managedRow) : fallbackRelease())
+  const [liveSafetyEquipment, liveAssemblyPoints] = await Promise.all([
+    listSafetyAssets(false),
+    listAssemblyPoints(false),
+  ])
 
   const staffRows = canManage
     ? await supabaseAdmin.from('profiles').select('id, name, role').eq('status', 'active').is('deleted_at', null).order('name')
@@ -61,7 +66,10 @@ export default async function LabMapPrintPage() {
     const publicPath = publicSafetyMapPath(station.code)
     if (!publicPath) continue
     for (const kind of ['evacuation', 'infection_control'] as const) {
-      const result = buildMapPrintDTO({ release, kind, paperSize, stationCode: station.code, webUrl: `${siteUrl}${publicPath}` })
+      const result = buildMapPrintDTO({
+        release, kind, paperSize, stationCode: station.code, webUrl: `${siteUrl}${publicPath}`,
+        liveSafetyEquipment, liveAssemblyPoints,
+      })
       if (result.ok) catalog.push(result.value)
     }
   }
@@ -75,7 +83,10 @@ export default async function LabMapPrintPage() {
   const visitorMapPath = publicSafetyMapPath(VISITOR_STATION_CODE)
   for (const paperSize of papers) for (const destinationCode of destinations) {
     if (!visitorMapPath) continue
-    const result = buildMapPrintDTO({ release, kind: 'visitor_navigation', paperSize, stationCode: VISITOR_STATION_CODE, destinationCode, webUrl: `${siteUrl}${visitorMapPath}` })
+    const result = buildMapPrintDTO({
+      release, kind: 'visitor_navigation', paperSize, stationCode: VISITOR_STATION_CODE, destinationCode,
+      webUrl: `${siteUrl}${visitorMapPath}`, liveSafetyEquipment, liveAssemblyPoints,
+    })
     if (result.ok) catalog.push(result.value)
   }
 

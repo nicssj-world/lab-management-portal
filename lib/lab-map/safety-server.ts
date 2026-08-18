@@ -7,11 +7,13 @@ import type {
 import { todayBangkok } from '@/lib/risk/register'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
-function inspectionRow(row: Record<string, unknown>): SafetyInspectionDTO {
+type ExpiryCorrection = { expiresOn: string | null }
+
+function inspectionRow(row: Record<string, unknown>, correction?: ExpiryCorrection): SafetyInspectionDTO {
   return {
     id: String(row.id), assetId: String(row.asset_id), result: row.result as SafetyInspectionDTO['result'],
     inspectedOn: String(row.inspected_on), nextInspectionDate: row.next_inspection_date as string | null,
-    expiresOn: row.expires_on as string | null, note: row.note as string | null,
+    expiresOn: correction ? correction.expiresOn : row.expires_on as string | null, note: row.note as string | null,
     photoUrl: row.photo_r2_key ? `/api/admin/lab-map/safety-inspections/${row.id}/photo` : null,
     inspectedBy: String(row.inspected_by), inspectorName: null, createdAt: String(row.created_at),
   }
@@ -20,17 +22,34 @@ function inspectionRow(row: Record<string, unknown>): SafetyInspectionDTO {
 export async function listSafetyAssets(includeRetired = false): Promise<SafetyAssetDTO[]> {
   let assetsQuery = supabaseAdmin.from('lab_map_safety_assets').select('*')
   if (!includeRetired) assetsQuery = assetsQuery.eq('lifecycle_status', 'active')
-  const [{ data: assets, error }, { data: inspections, error: inspectionError }] = await Promise.all([
+  const [{ data: assets, error }, { data: inspections, error: inspectionError }, { data: corrections, error: correctionError }] = await Promise.all([
     assetsQuery,
-    supabaseAdmin.from('lab_map_safety_inspections').select('*').order('inspected_on', { ascending: false }).order('created_at', { ascending: false }),
+    supabaseAdmin.from('lab_map_safety_inspections').select('*').is('superseded_at', null).order('inspected_on', { ascending: false }).order('created_at', { ascending: false }),
+    supabaseAdmin.from('lab_map_safety_inspection_expiry_corrections').select('inspection_id, expires_on').order('corrected_at', { ascending: false }).order('id', { ascending: false }),
   ])
   if (error) throw new Error(error.message)
   if (inspectionError) throw new Error(inspectionError.message)
+  if (correctionError) throw new Error(correctionError.message)
 
+  const correctionByInspection = new Map<string, ExpiryCorrection>()
+  for (const row of corrections ?? []) {
+    const key = String(row.inspection_id)
+    if (!correctionByInspection.has(key)) correctionByInspection.set(key, { expiresOn: row.expires_on as string | null })
+  }
+  const inspectorIds = [...new Set((inspections ?? []).map(row => String(row.inspected_by)))]
+  const { data: profiles, error: profileError } = inspectorIds.length
+    ? await supabaseAdmin.from('profiles').select('id, name').in('id', inspectorIds)
+    : { data: [], error: null }
+  if (profileError) throw new Error(profileError.message)
+  const inspectorNameById = new Map((profiles ?? []).map(profile => [String(profile.id), profile.name as string | null]))
   const latestByAsset = new Map<string, SafetyInspectionDTO>()
   for (const row of inspections ?? []) {
     const key = String(row.asset_id)
-    if (!latestByAsset.has(key)) latestByAsset.set(key, inspectionRow(row))
+    if (!latestByAsset.has(key)) {
+      const inspection = inspectionRow(row, correctionByInspection.get(String(row.id)))
+      inspection.inspectorName = inspectorNameById.get(String(row.inspected_by)) ?? null
+      latestByAsset.set(key, inspection)
+    }
   }
 
   const sortedAssets = [...(assets ?? [])].sort((a, b) =>

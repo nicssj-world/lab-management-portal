@@ -25,7 +25,8 @@ assert.doesNotMatch(canvas, /from ['"]@\/lib\/lab-map\/manifest['"]/)
 // ── Mobile gestures ──
 // Rooms cover almost the whole SVG, so panning must begin from a room as well as empty floor.
 const labMapStartPan = canvas.match(/function startPan[\s\S]*?\n  function movePan/)?.[0] ?? ''
-assert.doesNotMatch(labMapStartPan, /target\.closest/, 'room taps must be eligible to begin a map pan')
+assert.match(labMapStartPan, /target\.closest\('\[data-equipment-code\]'\)/, 'equipment markers must not start a map pan')
+assert.doesNotMatch(labMapStartPan, /data-space-code/, 'room taps must remain eligible to begin a map pan')
 assert.match(canvas, /const activePointers = useRef\(new Map<number, \{ clientX: number; clientY: number; svgX: number; svgY: number \}>\(\)\)/, 'the map must track simultaneous pointers in screen and SVG coordinates')
 assert.match(canvas, /activePointers\.current\.size >= 2/, 'two-finger input must enter a pinch gesture')
 assert.match(canvas, /initialDistance/, 'pinch zoom must calculate scale from the initial finger distance')

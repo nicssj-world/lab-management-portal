@@ -8,6 +8,12 @@ export type SafetyInspectionResult = 'passed' | 'needs_attention' | 'failed' | '
 export type SafetyPositionStatus = 'unverified' | 'verified'
 export type SafetyOperationalStatus = SafetyPositionStatus | Exclude<SafetyInspectionResult, 'not_found'> | 'overdue' | 'due_soon'
 
+export function safetyExpiryLabel(kind: SafetyEquipmentKind) {
+  return kind === 'fire-extinguisher'
+    ? 'วันครบกำหนดเปลี่ยน/เติมสารดับเพลิง'
+    : 'วันครบกำหนดเปลี่ยน/บำรุงรักษา'
+}
+
 export interface SafetyStatusInput {
   positionStatus: SafetyPositionStatus
   latestResult?: SafetyInspectionResult | null
@@ -16,6 +22,7 @@ export interface SafetyStatusInput {
 }
 
 const DAY_MS = 86_400_000
+export const SAFETY_ASSET_DUE_SOON_DAYS = 5
 
 export function deriveSafetyAssetStatus(input: SafetyStatusInput, todayIso: string): SafetyOperationalStatus {
   if (input.positionStatus === 'unverified') return 'unverified'
@@ -27,7 +34,7 @@ export function deriveSafetyAssetStatus(input: SafetyStatusInput, todayIso: stri
     .map(value => Date.parse(`${value}T00:00:00Z`))
     .filter(Number.isFinite)
   if (dueDates.some(date => date < today)) return 'overdue'
-  if (dueDates.some(date => date - today <= 30 * DAY_MS)) return 'due_soon'
+  if (dueDates.some(date => date - today <= SAFETY_ASSET_DUE_SOON_DAYS * DAY_MS)) return 'due_soon'
   if (input.latestResult === 'needs_attention') return 'needs_attention'
   return input.latestResult ?? 'verified'
 }

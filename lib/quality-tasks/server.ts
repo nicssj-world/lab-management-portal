@@ -9,6 +9,7 @@ import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, canView
 import { listQualityTaskHolidays } from './holidays'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import { canApproveTask, nextRollingDueDate, templateRemovalMode } from './safety'
+import { normalizeMeetingTime } from './meeting-time'
 import type {
   AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskActionItem, QualityTaskAttachment, QualityTaskCheckIn,
   QualityTaskEvidenceRequirement, QualityTaskOccurrence, QualityTaskSchedule, QualityTaskTemplate, RecurrenceMode,
@@ -24,6 +25,10 @@ function fail(error: { message: string } | null, fallback = 'Quality task operat
 }
 function str(value: unknown) { return typeof value === 'string' ? value : '' }
 function nullable(value: unknown) { return typeof value === 'string' ? value : null }
+function nullableTime(value: unknown) {
+  const text = nullable(value)
+  return text ? text.slice(0, 5) : null
+}
 function taskStatus(value: unknown): TaskStatus {
   return value === 'in_progress' || value === 'pending_review' || value === 'completed' ? value : 'open'
 }
@@ -169,6 +174,8 @@ export async function getQualityTaskOccurrences(
         const state = deriveTaskState({ status, plannedDate: nullable(row?.planned_date), periodStart: period.start, periodEnd: period.end, dueDayOfMonth: schedule.dueDayOfMonth, reminderDays: template.reminderDays }, today, holidays)
         result.push({ key, instanceId, template, scheduleId: schedule.id, periodStart: period.start, periodEnd: period.end,
           periodLabel: row ? str(row.period_label) : periodLabel(period.start, period.end), ownerTextOverride: nullable(row?.owner_text_override), plannedDate: nullable(row?.planned_date),
+          plannedStartTime: nullableTime(row?.planned_start_time), plannedEndTime: nullableTime(row?.planned_end_time),
+          meetingLocation: nullable(row?.meeting_location), meetingAgenda: nullable(row?.meeting_agenda),
           status, note: nullable(row?.note), completionNote: nullable(row?.completion_note),
           completedBy: nullable(row?.completed_by), completedAt: nullable(row?.completed_at), assignees: assigned,
           submittedBy: nullable(row?.submitted_by), submittedAt: nullable(row?.submitted_at), reviewedBy: nullable(row?.reviewed_by),
@@ -195,6 +202,8 @@ export async function getQualityTaskOccurrences(
     const state = deriveTaskState({ status, plannedDate: nullable(row.planned_date), periodEnd: str(row.period_end), reminderDays: template.reminderDays }, today, holidays)
     result.push({ key: occurrenceKey(null, template.id, str(row.period_start), instanceId), instanceId, template, scheduleId: null,
       periodStart: str(row.period_start), periodEnd: str(row.period_end), periodLabel: str(row.period_label), ownerTextOverride: nullable(row.owner_text_override), plannedDate: nullable(row.planned_date),
+      plannedStartTime: nullableTime(row.planned_start_time), plannedEndTime: nullableTime(row.planned_end_time),
+      meetingLocation: nullable(row.meeting_location), meetingAgenda: nullable(row.meeting_agenda),
       status, note: nullable(row.note), completionNote: nullable(row.completion_note),
       completedBy: nullable(row.completed_by), completedAt: nullable(row.completed_at), assignees: assigned,
       submittedBy: nullable(row.submitted_by), submittedAt: nullable(row.submitted_at), reviewedBy: nullable(row.reviewed_by),
@@ -216,16 +225,31 @@ async function replaceAssignees(instanceId: string, entries: AssigneeEntry[]) {
 }
 
 async function assertTemplateWorkstream(templateId: string, workstream: TaskWorkstream) {
-  const { data, error } = await supabaseAdmin.from('quality_task_templates').select('id').eq('id', templateId).eq('workstream', workstream).maybeSingle()
+  const { data, error } = await supabaseAdmin.from('quality_task_templates').select('id, task_kind').eq('id', templateId).eq('workstream', workstream).maybeSingle()
   fail(error)
   if (!data) throw new Error('Task template not found')
+  return { id: str(data.id), taskKind: str(data.task_kind) as TaskKind }
 }
 
 export async function materializeOccurrence(payload: OccurrenceCreatePayload, actor: Actor, level: PermLevel, workstream: TaskWorkstream = 'quality') {
   if (payload.mode === 'adHoc') {
     if (level !== 'edit') throw new Error('Forbidden')
-    await assertTemplateWorkstream(payload.templateId, workstream)
-    const { data, error } = await supabaseAdmin.from('quality_task_instances').insert({ template_id: payload.templateId, period_start: payload.startDate, period_end: payload.endDate, period_label: payload.label.trim(), owner_text_override: payload.ownerText?.trim() || null, planned_date: payload.startDate, created_by: actor.id, updated_by: actor.id }).select('*').single()
+    const template = await assertTemplateWorkstream(payload.templateId, workstream)
+    const hasMeetingDetails = Boolean(
+      payload.location?.trim() ||
+      payload.agenda?.trim() ||
+      (payload.participantDepts?.length ?? 0) > 0 ||
+      (payload.participantUserIds?.length ?? 0) > 0,
+    )
+    if (template.taskKind !== 'meeting' &&
+      (payload.startTime != null || payload.endTime != null || hasMeetingDetails)) {
+      throw new Error('รายละเอียดการประชุมใช้ได้เฉพาะงานประชุม')
+    }
+    const meetingTime = template.taskKind === 'meeting' ? normalizeMeetingTime(payload.startTime, payload.endTime) : { startTime: null, endTime: null }
+    const meetingDetails = template.taskKind === 'meeting'
+      ? { meeting_location: payload.location?.trim() || null, meeting_agenda: payload.agenda?.trim() || null }
+      : { meeting_location: null, meeting_agenda: null }
+    const { data, error } = await supabaseAdmin.from('quality_task_instances').insert({ template_id: payload.templateId, period_start: payload.startDate, period_end: payload.endDate, period_label: payload.label.trim(), owner_text_override: payload.ownerText?.trim() || null, planned_date: payload.startDate, planned_start_time: meetingTime.startTime, planned_end_time: meetingTime.endTime, ...meetingDetails, participant_depts: template.taskKind === 'meeting' ? payload.participantDepts ?? [] : [], participant_user_ids: template.taskKind === 'meeting' ? payload.participantUserIds ?? [] : [], created_by: actor.id, updated_by: actor.id }).select('*').single()
     fail(error); await replaceAssignees(str(data.id), payload.assignees); audit(actor, 'quality_task.instance.create', str(data.id), payload); return data
   }
   const { data: scheduleRow, error } = await supabaseAdmin.from('quality_task_schedules').select('*').eq('id', payload.scheduleId).single()
@@ -244,7 +268,7 @@ export async function materializeOccurrence(payload: OccurrenceCreatePayload, ac
 }
 
 export async function getOccurrenceAccess(instanceId: string, actor: Actor, level: PermLevel, workstream: TaskWorkstream = 'quality', allowApprover = false) {
-  const { data: instance, error } = await supabaseAdmin.from('quality_task_instances').select('*, quality_task_templates!inner(source_key,evidence_required,approval_mode,approver_id,workstream)').eq('id', instanceId).eq('quality_task_templates.workstream', workstream).single()
+  const { data: instance, error } = await supabaseAdmin.from('quality_task_instances').select('*, quality_task_templates!inner(source_key,evidence_required,approval_mode,approver_id,workstream,task_kind,integration_kind)').eq('id', instanceId).eq('quality_task_templates.workstream', workstream).single()
   fail(error)
   const [{ data: overrides }, { data: defaults }] = await Promise.all([
     supabaseAdmin.from('quality_task_instance_assignees').select('user_id, manual_name').eq('instance_id', instanceId),
@@ -271,6 +295,12 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
   if (workstream === 'safety' && ['CBH-ST-04', 'CBH-ST-26'].includes(str(access.template.source_key))) {
     throw new Error('งานแม่รายเดือนปิดอัตโนมัติจากผลตรวจของทุกจุด กรุณาดำเนินการในแท็บตรวจประจำเดือน')
   }
+  const inspectionTask = workstream === 'safety' && str(access.template.integration_kind) === 'safety_inspection'
+  if (inspectionTask && ['start', 'submit', 'complete'].includes(payload.action)) {
+    throw new Error(payload.action === 'start'
+      ? 'กรุณาเริ่มงานตรวจจากหน้า งานความปลอดภัย เพื่อสร้างรอบตรวจที่เชื่อมกับอุปกรณ์'
+      : 'งานตรวจอุปกรณ์จะปิดอัตโนมัติเมื่อปิด Inspection Round ครบทุกอุปกรณ์')
+  }
   if (payload.action === 'schedule') {
     if ((payload.assignees || payload.participantDepts || payload.participantUserIds) && level !== 'edit') throw new Error('Forbidden')
     if (payload.plannedDate) {
@@ -287,8 +317,22 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
         throw new Error('กรุณาเลือกวันที่ภายในเดือนของรอบกิจกรรม')
       }
     }
+    const hasTimePatch = payload.startTime !== undefined || payload.endTime !== undefined
+    const timePatch: { startTime: string | null; endTime: string | null } | null = hasTimePatch
+      ? (() => {
+          if (str(access.template.task_kind) !== 'meeting') {
+            if (payload.startTime != null || payload.endTime != null) throw new Error('ช่วงเวลาใช้ได้เฉพาะงานประชุม')
+            return { startTime: null, endTime: null }
+          }
+          return normalizeMeetingTime(
+            payload.startTime === undefined ? nullableTime(access.instance.planned_start_time) : payload.startTime,
+            payload.endTime === undefined ? nullableTime(access.instance.planned_end_time) : payload.endTime,
+          )
+        })()
+      : null
     const { error } = await supabaseAdmin.from('quality_task_instances').update({
       planned_date: payload.plannedDate || null, note: payload.note?.trim() || null,
+      ...(timePatch ? { planned_start_time: timePatch.startTime, planned_end_time: timePatch.endTime } : {}),
       updated_by: actor.id, updated_at: new Date().toISOString(),
       ...(payload.participantDepts ? { participant_depts: payload.participantDepts } : {}),
       ...(payload.participantUserIds ? { participant_user_ids: payload.participantUserIds } : {}),

@@ -3,7 +3,8 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { buildStaffLabMapDTO, type StaffMapRepository } from './server-builder'
 import type { LabAssemblyPointDefinition, LabSafetyEquipmentDefinition } from './types'
-import { listSafetyAssets } from './safety-server'
+import { listAssemblyPoints, listSafetyAssets } from './safety-server'
+import { mergeLiveSafetyPositions } from './live-safety-positions'
 
 export interface PublishedLabMapSnapshot {
   versionCode: string
@@ -17,14 +18,22 @@ export async function getPublishedLabMapSnapshot(): Promise<PublishedLabMapSnaps
     .eq('status', 'published').maybeSingle()
   if (error) throw new Error(`lab map release: ${error.message}`)
   if (!data || !Array.isArray(data.asset_snapshot) || data.asset_snapshot.length === 0) return null
-  const workingAssets = await listSafetyAssets(false)
-  const liveStatusByCode = new Map(workingAssets.map(asset => [asset.code, asset.operationalStatus]))
+  const [workingAssets, workingAssemblyPoints] = await Promise.all([
+    listSafetyAssets(false),
+    listAssemblyPoints(false),
+  ])
+  const current = mergeLiveSafetyPositions({
+    snapshotAssets: data.asset_snapshot as LabSafetyEquipmentDefinition[],
+    liveAssets: workingAssets,
+    snapshotAssemblyPoints: Array.isArray(data.assembly_point_snapshot)
+      ? data.assembly_point_snapshot as LabAssemblyPointDefinition[]
+      : [],
+    liveAssemblyPoints: workingAssemblyPoints,
+  })
   return {
     versionCode: data.version_code as string,
-    safetyEquipment: data.asset_snapshot.map((asset: LabSafetyEquipmentDefinition) => ({
-      ...asset, operationalStatus: liveStatusByCode.get(asset.code) ?? asset.operationalStatus,
-    })),
-    assemblyPoints: Array.isArray(data.assembly_point_snapshot) ? data.assembly_point_snapshot : [],
+    safetyEquipment: current.safetyEquipment,
+    assemblyPoints: current.assemblyPoints,
   }
 }
 
@@ -39,21 +48,18 @@ const repository: StaffMapRepository = {
     if (error) throw new Error(`lab map zones: ${error.message}`)
     return (data ?? []).map((row) => row.code as string)
   },
+  async liveSafetySnapshot() {
+    const [safetyEquipment, assemblyPoints] = await Promise.all([
+      listSafetyAssets(false),
+      listAssemblyPoints(false),
+    ])
+    return { safetyEquipment, assemblyPoints }
+  },
   async publishedSnapshots() {
     return getPublishedLabMapSnapshot()
   },
 }
 
 export async function getStaffLabMapDTO() {
-  const map = await buildStaffLabMapDTO(repository)
-  if (map.releaseStatus === 'published') return map
-  const workingAssets = await listSafetyAssets(false)
-  const liveStatusByCode = new Map(workingAssets.map(asset => [asset.code, asset.operationalStatus]))
-  return {
-    ...map,
-    // คง x/y และชนิดจาก published snapshot แต่ผูกสถานะการตรวจล่าสุดแบบสด
-    safetyEquipment: map.safetyEquipment.map(asset => ({
-      ...asset, operationalStatus: liveStatusByCode.get(asset.code) ?? asset.operationalStatus,
-    })),
-  }
+  return buildStaffLabMapDTO(repository)
 }

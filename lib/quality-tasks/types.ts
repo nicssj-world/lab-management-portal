@@ -107,6 +107,10 @@ export interface QualityTaskOccurrence {
   periodLabel: string
   ownerTextOverride: string | null
   plannedDate: string | null
+  plannedStartTime: string | null
+  plannedEndTime: string | null
+  meetingLocation: string | null
+  meetingAgenda: string | null
   status: TaskStatus
   note: string | null
   completionNote: string | null
@@ -159,10 +163,10 @@ export interface SafetyCertificate {
 
 export type OccurrenceCreatePayload =
   | { mode: 'scheduled'; scheduleId: string; periodStart: string }
-  | { mode: 'adHoc'; templateId: string; label: string; ownerText?: string; startDate: string; endDate: string; assignees: AssigneeEntry[] }
+  | { mode: 'adHoc'; templateId: string; label: string; ownerText?: string; startDate: string; endDate: string; startTime?: string | null; endTime?: string | null; location?: string | null; agenda?: string | null; participantDepts?: string[]; participantUserIds?: string[]; assignees: AssigneeEntry[] }
 
 export type OccurrenceActionPayload =
-  | { action: 'schedule'; plannedDate: string | null; note?: string | null; assignees?: AssigneeEntry[]; participantDepts?: string[]; participantUserIds?: string[] }
+  | { action: 'schedule'; plannedDate: string | null; note?: string | null; startTime?: string | null; endTime?: string | null; assignees?: AssigneeEntry[]; participantDepts?: string[]; participantUserIds?: string[] }
   | { action: 'start' }
   | { action: 'submit'; completionNote?: string | null }
   | { action: 'approve'; note?: string | null }

@@ -27,7 +27,7 @@ assert.doesNotMatch(client, /supabase/)
 assert.doesNotMatch(client, /lab-map\/manifest/)
 
 // ── กลุ่ม "ความปลอดภัย" ในแถบเมนูเจ้าหน้าที่ ──
-const safetyGroup = sidebar.match(/\{ href: '\/staff\/lab-map',[\s\S]*?\] \},/)?.[0] ?? ''
+const safetyGroup = sidebar.match(/\{ href: '\/staff\/safety',[\s\S]*?\] \},/)?.[0] ?? ''
 assert.ok(safetyGroup, 'the lab map entry is a sidebar group')
 assert.match(safetyGroup, /th: 'ความปลอดภัย'/, 'the parent is named ความปลอดภัย')
 assert.match(safetyGroup, /children: \[/, 'the parent has children')

@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { qualityTaskContext, qualityTaskError } from '@/lib/quality-tasks/api'
 import { getQualityTaskOccurrences, materializeOccurrence } from '@/lib/quality-tasks/server'
+import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import { assigneeEntrySchema } from '../templates/route'
+
+const timeSchema = z.string().trim().regex(/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/, 'รูปแบบเวลาไม่ถูกต้อง').nullable().optional()
 
 const createSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('scheduled'), scheduleId: z.string().uuid(), periodStart: z.string().date() }),
-  z.object({ mode: z.literal('adHoc'), templateId: z.string().uuid(), label: z.string().trim().min(1), ownerText: z.string().trim().max(200).optional(), startDate: z.string().date(), endDate: z.string().date(), assignees: z.array(assigneeEntrySchema) }),
+  z.object({ mode: z.literal('adHoc'), templateId: z.string().uuid(), label: z.string().trim().min(1), ownerText: z.string().trim().max(200).optional(), startDate: z.string().date(), endDate: z.string().date(), startTime: timeSchema, endTime: timeSchema, location: z.string().trim().max(240).nullable().optional(), agenda: z.string().trim().max(2000).nullable().optional(), participantDepts: z.array(z.enum(DEPARTMENTS)).optional(), participantUserIds: z.array(z.string().uuid()).optional(), assignees: z.array(assigneeEntrySchema) }),
 ])
 
 export async function GET(req: NextRequest) {

@@ -48,11 +48,14 @@ interface ViewTransform {
 
 const RESTRICTED_LIFT_CODES = new Set<string>(EVACUATION_RESTRICTED_SPACE_CODES)
 const SAFETY_DRAG_HOLD_MS = 250
+const SAFETY_DRAG_MOVE_THRESHOLD_PX = 4
 
 interface SafetyDrag {
   id: string
   code: string
   pointerId: number
+  clientX: number
+  clientY: number
   x: number
   y: number
 }
@@ -289,32 +292,50 @@ export function LabMapCanvas({
     setSafetyDragPreview(null)
   }
 
+  function armSafetyDrag(pending: SafetyDrag) {
+    if (pendingSafetyDragRef.current?.pointerId !== pending.pointerId || draggedSafetyRef.current) return
+    if (safetyDragArmTimerRef.current) {
+      clearTimeout(safetyDragArmTimerRef.current)
+      safetyDragArmTimerRef.current = null
+    }
+    const preview: SafetyDragPreview = { code: pending.code, x: pending.x, y: pending.y, spaceCode: null }
+    draggedSafetyRef.current = pending
+    safetyDragPreviewRef.current = preview
+    setDraggedSafetyCode(pending.code)
+    setSafetyDragPreview(preview)
+  }
+
   function startSafetyDrag(event: ReactPointerEvent<SVGGElement>, item: LabSafetyEquipmentDefinition & { id?: string }) {
     const isDraft = item.code === draftSafetyEquipment?.code && !item.id
     if ((!isDraft && (!onMoveSafetyEquipment || !item.id)) || (isDraft && !onMoveDraftSafetyEquipment)) return
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
-    const pending: SafetyDrag = { id: item.id ?? '__draft__', code: item.code, pointerId: event.pointerId, x: item.x, y: item.y }
+    const pending: SafetyDrag = {
+      id: item.id ?? '__draft__', code: item.code, pointerId: event.pointerId,
+      clientX: event.clientX, clientY: event.clientY, x: item.x, y: item.y,
+    }
     pendingSafetyDragRef.current = pending
     setPendingSafetyCode(item.code)
     if (safetyDragArmTimerRef.current) clearTimeout(safetyDragArmTimerRef.current)
     safetyDragArmTimerRef.current = setTimeout(() => {
       safetyDragArmTimerRef.current = null
-      if (pendingSafetyDragRef.current?.pointerId !== pending.pointerId) return
-      const preview: SafetyDragPreview = { code: pending.code, x: pending.x, y: pending.y, spaceCode: null }
-      draggedSafetyRef.current = pending
-      safetyDragPreviewRef.current = preview
-      setDraggedSafetyCode(pending.code)
-      setSafetyDragPreview(preview)
+      armSafetyDrag(pending)
     }, SAFETY_DRAG_HOLD_MS)
   }
 
   function moveSafetyDrag(event: ReactPointerEvent<SVGGElement>) {
+    const pending = pendingSafetyDragRef.current
+    if (!pending || event.pointerId !== pending.pointerId) return
+    event.stopPropagation()
+    if (!draggedSafetyRef.current) {
+      const distance = Math.hypot(event.clientX - pending.clientX, event.clientY - pending.clientY)
+      if (distance < SAFETY_DRAG_MOVE_THRESHOLD_PX) return
+      armSafetyDrag(pending)
+    }
     const dragged = draggedSafetyRef.current
-    if (!dragged || event.pointerId !== dragged.pointerId) return
+    if (!dragged) return
     const svg = event.currentTarget.ownerSVGElement
     if (!svg) return
-    event.stopPropagation()
     const point = resolveSafetyDragPoint(svg, event.clientX, event.clientY)
     if (!point) return
     const preview = { code: dragged.code, ...point }

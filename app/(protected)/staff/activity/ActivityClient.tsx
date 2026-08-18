@@ -30,6 +30,8 @@ const ACTION_LABELS: Record<string, string> = {
   'lab_map.safety_asset.update':                  'แก้ไขอุปกรณ์ความปลอดภัย',
   'lab_map.safety_asset.retire':                  'เลิกใช้อุปกรณ์ความปลอดภัย',
   'lab_map.safety_inspection.create':             'บันทึกผลตรวจอุปกรณ์ความปลอดภัย',
+  'lab_map.safety_inspection.reuse':              'ใช้ผลตรวจเดิมของอุปกรณ์ความปลอดภัย',
+  'lab_map.safety_inspection.expiry_correction':  'แก้ไขกำหนดวันอุปกรณ์ความปลอดภัย',
   'lab_map.assembly_point.create':                'เพิ่มจุดรวมพล',
   'lab_map.assembly_point.update':                'แก้ไขจุดรวมพล',
   'lab_map.assembly_point.retire':                'เลิกใช้จุดรวมพล',

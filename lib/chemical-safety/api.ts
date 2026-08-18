@@ -23,13 +23,22 @@ export async function parseJson<S extends ZodTypeAny>(request: Request, schema: 
   return parsed.success ? { data: parsed.data } : { response: validationError(parsed.error) }
 }
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') return message
+  }
+  return String(error)
+}
+
 export function unexpectedError(error: unknown) {
-  console.error('chemical-safety request failed', error instanceof Error ? error.message : 'unknown error')
+  console.error('chemical-safety request failed', errorMessage(error))
   return NextResponse.json({ error: 'ไม่สามารถดำเนินการได้' }, { status: 500 })
 }
 
 export function transitionError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error)
+  const message = errorMessage(error)
   if (/not_found/i.test(message)) return NextResponse.json({ error: 'ไม่พบรายการ' }, { status: 404 })
   if (/department_sds_wrong_unit|department_sds_unit_not_found|department_sds_file_not_found|chemical_product_(not_found|inactive)/i.test(message)) {
     return NextResponse.json({ error: 'ข้อมูลสารจาก SDS งานไม่ถูกต้องหรือไม่ตรงกับหน่วยงาน' }, { status: 422 })
