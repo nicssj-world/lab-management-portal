@@ -831,15 +831,27 @@ function cachedMonthPair(payload: any, section: string, testName: string, year: 
   }
 }
 
-async function fetchPrecomputedRows(table: string, fiscalYear: number) {
+/**
+ * `keyColumns` must identify a row uniquely, or the pages are cut from an
+ * undefined sequence and rows are silently skipped or counted twice. These
+ * tables carry no id — each has a composite primary key beginning with
+ * fiscal_year, which the filter below already pins, so the remaining key
+ * columns are what makes the order total.
+ */
+async function fetchPrecomputedRows(table: string, fiscalYear: number, keyColumns: string[]) {
   const rows: SummaryRow[] = []
 
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from(table)
       .select('*')
       .eq('fiscal_year', fiscalYear)
-      .range(from, from + PAGE_SIZE - 1)
+
+    for (const column of keyColumns) {
+      query = query.order(column, { ascending: true })
+    }
+
+    const { data, error } = await query.range(from, from + PAGE_SIZE - 1)
 
     if (error) return { data: rows, error }
     rows.push(...((data ?? []) as SummaryRow[]))
@@ -900,10 +912,10 @@ function mapPrecomputedTestRows(rows: SummaryRow[], matchers: ReturnType<typeof 
 
 async function fetchPrecomputedPayload(displayFiscalYear: number, fiscalYear: number, selectedYear: number, selectedMonth: number, months: { year: number; month: number }[]): Promise<Payload | null> {
   const [overallRes, deptRes, testRes, phlebRes, heatmaps, cachedPayloads] = await Promise.all([
-    fetchPrecomputedRows('lab_workload_overall_monthly', fiscalYear),
-    fetchPrecomputedRows('lab_workload_department_monthly', fiscalYear),
-    fetchPrecomputedRows('lab_workload_test_monthly', fiscalYear),
-    fetchPrecomputedRows('lab_workload_phleb_monthly', fiscalYear),
+    fetchPrecomputedRows('lab_workload_overall_monthly', fiscalYear, ['year', 'month']),
+    fetchPrecomputedRows('lab_workload_department_monthly', fiscalYear, ['year', 'month', 'lab_section']),
+    fetchPrecomputedRows('lab_workload_test_monthly', fiscalYear, ['year', 'month', 'lab_section', 'test_name']),
+    fetchPrecomputedRows('lab_workload_phleb_monthly', fiscalYear, ['year', 'month', 'labzone_name']),
     fetchHeatmaps(selectedYear, selectedMonth),
     Promise.all(months.map(ym => readLatestWorkloadCachePayload(ym.year, ym.month))),
   ])

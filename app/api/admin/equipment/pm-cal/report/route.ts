@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
   const [equipment, allPlans, allResults, allGroups] = await Promise.all([
     fetchAllPages(async (from, to) => {
-      let query = supabaseAdmin.from('equipment').select('id, equipment_type, department, classification').range(from, to)
+      let query = supabaseAdmin.from('equipment').select('id, equipment_type, department, classification').order('id', { ascending: true }).range(from, to)
       if (department) query = query.eq('department', department)
       if (classification) query = query.eq('classification', classification)
       const { data, error } = await query
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     fetchAllPages(async (from, to) => {
       const { data, error } = await supabaseAdmin.from('equipment_pm_cal_plans')
         .select('id, equipment_id, fiscal_year, calendar_month, cal_type, due_date, record_status, version, planned_cost, plan_group_id')
-        .eq('fiscal_year', fiscalYear).eq('record_status', 'active').range(from, to)
+        .eq('fiscal_year', fiscalYear).eq('record_status', 'active').order('id', { ascending: true }).range(from, to)
       if (error) throw new Error(error.message)
       return data ?? []
     }),
@@ -36,13 +36,14 @@ export async function GET(req: NextRequest) {
       // them here left completed legacy calibrations reporting as overdue.
       const { data, error } = await supabaseAdmin.from('equipment_calibrations')
         .select('id, plan_id, equipment_id, cal_type, completed_date, result, actual_cost')
+        .order('id', { ascending: true })
         .range(from, to)
       if (error) throw new Error(error.message)
       return data ?? []
     }),
     fetchAllPages(async (from, to) => {
       const { data, error } = await supabaseAdmin.from('equipment_pm_cal_plan_groups')
-        .select('id, planned_amount, actual_amount, record_status').eq('fiscal_year', fiscalYear).eq('record_status', 'active').range(from, to)
+        .select('id, planned_amount, actual_amount, record_status').eq('fiscal_year', fiscalYear).eq('record_status', 'active').order('id', { ascending: true }).range(from, to)
       if (error) throw new Error(error.message)
       return data ?? []
     }),

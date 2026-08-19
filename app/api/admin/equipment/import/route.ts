@@ -248,6 +248,10 @@ async function getExistingEquipment(): Promise<ExistingEquipment[]> {
     const { data, error } = await supabaseAdmin
       .from('equipment')
       .select('id, cbh_code, hospital_asset_no, serial_number, equipment_type, department, area_code')
+      // Paging without an order leaves the page boundaries undefined, so a
+      // record can be skipped between two calls. Here that means an existing
+      // asset goes unseen and the import creates a duplicate of it.
+      .order('id', { ascending: true })
       .range(from, from + pageSize - 1)
     if (error) throw new Error(error.message)
     rows.push(...((data ?? []) as ExistingEquipment[]))

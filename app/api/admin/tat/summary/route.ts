@@ -479,6 +479,9 @@ async function computeTotalTatCutMetrics(
       .eq('year', year)
       .eq('month', month)
       .eq('is_blood_draw', true)
+      // Without an order the pages are cut from an undefined sequence, so rows
+      // can be skipped or counted twice and the cut metrics drift silently.
+      .order('id', { ascending: true })
       .range(from, from + 999)
 
     if (filters.lab_section) query = query.eq('lab_section', filters.lab_section)
@@ -574,6 +577,9 @@ async function computeMonthlyTrend(
         .select('tat_minutes,within_target')
         .eq('year', ym.year)
         .eq('month', ym.month)
+        // Same reason as the cut metrics above: an unordered page boundary
+        // moves between calls, which shifts every month of the trend line.
+        .order('id', { ascending: true })
         .range(from, from + 999)
 
       if (filters.lab_section) query = query.eq('lab_section', filters.lab_section)

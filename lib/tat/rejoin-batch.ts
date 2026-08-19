@@ -115,6 +115,11 @@ async function fetchAll<T>(table: string, select: string, year: number, month: n
       .select(select)
       .eq('year', year)
       .eq('month', month)
+      // Paging without an order is paging an undefined sequence: Postgres may
+      // return the rows in a different order between two range() calls, so a
+      // record can be skipped or read twice. A skipped phlebotomy record here
+      // becomes a false 'no_match' on a TAT row that did have a draw.
+      .order('id', { ascending: true })
       .range(from, from + PAGE_SIZE - 1)
 
     for (const [key, value] of Object.entries(extra ?? {})) {

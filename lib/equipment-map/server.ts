@@ -38,6 +38,7 @@ const repository: EquipmentMapRepository = {
         .from('equipment_survey_records')
         .select('equipment_id')
         .eq('round_id', roundId)
+        .order('id', { ascending: true })
         .range(from, to)
       if (error) throw new Error(`equipment survey records: ${error.message}`)
       return data ?? []
@@ -51,13 +52,14 @@ const repository: EquipmentMapRepository = {
       const { data, error } = await supabaseAdmin
         .from('equipment')
         .select('id, cbh_code, equipment_type, department, classification, area_code, map_x, map_y, map_rotation, status, risk_level, cbh_code_pending, hospital_asset_no_pending, needs_calibration, pm_cal_data, responsible_person')
+        .order('id', { ascending: true })
         .range(from, to)
       if (error) throw new Error(`equipment: ${error.message}`)
       return data ?? []
     }), fetchAllPages(async (from, to) => {
       const { data, error } = await supabaseAdmin.from('equipment_pm_cal_plans')
         .select('id, equipment_id, fiscal_year, calendar_month, cal_type, due_date, record_status, version')
-        .eq('fiscal_year', fiscalYear).eq('record_status', 'active').range(from, to)
+        .eq('fiscal_year', fiscalYear).eq('record_status', 'active').order('id', { ascending: true }).range(from, to)
       if (error) throw new Error(`equipment PM/CAL plans: ${error.message}`)
       return data ?? []
     }), fetchAllPages(async (from, to) => {
@@ -66,6 +68,7 @@ const repository: EquipmentMapRepository = {
       // filtered out here, or a completed legacy CAL/PM never clears the map pin's overdue state.
       const { data, error } = await supabaseAdmin.from('equipment_calibrations')
         .select('id, plan_id, equipment_id, cal_type, completed_date, result')
+        .order('id', { ascending: true })
         .range(from, to)
       if (error) throw new Error(`equipment PM/CAL results: ${error.message}`)
       return data ?? []
