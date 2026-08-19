@@ -110,6 +110,7 @@ export default async function PendingApprovalPage() {
       type: d.type,
       department: d.department,
       revision: d.revision,
+      owner_id: d.owner_id,
       updated_at: d.updated_at,
       hasOfficialPdf: d.hasOfficialPdf,
       hasPendingFile: d.hasPendingFile,

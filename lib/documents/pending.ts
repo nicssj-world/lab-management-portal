@@ -38,6 +38,7 @@ export interface NewDraftDocRow {
   type: string
   department: string | null
   revision: string | null
+  owner_id: string | null
   updated_at: string
   hasOfficialPdf: boolean
   hasPendingFile: boolean
@@ -53,7 +54,7 @@ export interface NewDraftDocRow {
 export async function getNewDraftDocuments(): Promise<NewDraftDocRow[]> {
   const { data, error } = await supabaseAdmin
     .from('documents')
-    .select('id, document_code, title, type, department, revision, updated_at, file_url, source_pdf_url, pending_file_url')
+    .select('id, document_code, title, type, department, revision, owner_id, updated_at, file_url, source_pdf_url, pending_file_url')
     .eq('status', 'Draft')
     .or('word_url.not.is.null,pending_file_url.not.is.null,file_url.not.is.null,source_pdf_url.not.is.null')
     .is('deleted_at', null)
@@ -66,6 +67,7 @@ export async function getNewDraftDocuments(): Promise<NewDraftDocRow[]> {
     type: d.type,
     department: d.department,
     revision: d.revision,
+    owner_id: d.owner_id,
     updated_at: d.updated_at,
     hasOfficialPdf: d.type === 'QP' || d.type === 'WI'
       ? Boolean(d.source_pdf_url || d.file_url)

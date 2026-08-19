@@ -33,6 +33,7 @@ export interface PendingDoc {
   type: string
   department: string | null
   revision: string | null
+  owner_id?: string | null
   updated_at: string
   hasOfficialPdf?: boolean
   /** A ready PDF was uploaded straight to pending_file_url (e.g. a registration-set
@@ -547,6 +548,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
       type: updated.type,
       department: updated.department,
       revision: updated.revision,
+      owner_id: updated.owner_id,
       updated_at: updated.updated_at,
       hasOfficialPdf: updated.type === 'QP' || updated.type === 'WI'
         ? Boolean(updated.source_pdf_url || updated.file_url)
@@ -574,7 +576,8 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   }
 
   async function handleDeletePendingDocument(doc: PendingDoc) {
-    if (pendingDeleteId || !canDeletePendingDocuments) return
+    const canDeleteThisDocument = canDeletePendingDocuments || doc.owner_id === userId
+    if (pendingDeleteId || !canDeleteThisDocument) return
     if (!confirm(`ยืนยันลบ "${doc.title}" (${doc.document_code})?\nการลบนี้ไม่สามารถย้อนกลับได้`)) return
 
     setPendingDeleteId(doc.id)
@@ -1381,7 +1384,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
               <div style={{ flex: 1, minWidth: 0 }}>
                 <DocButton doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
               </div>
-              {canDeletePendingDocuments && (
+              {(canDeletePendingDocuments || d.owner_id === userId) && (
                 <button
                   type="button"
                   onClick={() => void handleDeletePendingDocument(d)}

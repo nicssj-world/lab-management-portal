@@ -850,13 +850,33 @@ export async function DELETE(
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!canDeleteDocument(actor.role, actor.doc_role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   const { id } = await params
 
   try {
+    const roleCanDelete = canDeleteDocument(actor.role, actor.doc_role)
+    const { data: current, error: currentErr } = await supabaseAdmin
+      .from('documents')
+      .select('owner_id, status')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (currentErr) return NextResponse.json({ error: currentErr.message }, { status: 500 })
+    if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    if (!roleCanDelete) {
+      const isOwnerOfDraft = current.status === 'Draft' && current.owner_id === actor.id
+      const ownerActiveSet = isOwnerOfDraft
+        ? await findActiveRegistrationSet(id)
+        : null
+      const ownerActiveSetAsMain = isOwnerOfDraft
+        ? await findActiveSetAsMain(id)
+        : null
+      if (!isOwnerOfDraft || ownerActiveSet || ownerActiveSetAsMain) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+    }
+
     const activeSet = await findActiveRegistrationSet(id)
     if (activeSet) {
       return NextResponse.json({
