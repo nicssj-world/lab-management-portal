@@ -70,7 +70,7 @@ interface Props {
 
 interface SetProgress {
   mainId: string
-  kind: 'download' | 'status'
+  kind: 'download' | 'status' | 'delete'
   currentLabel: string
   completed: number
   total: number
@@ -182,6 +182,7 @@ function SetDocumentRow({
 function RegistrationSetCard({
   set,
   canManage,
+  canDelete,
   controlsBusy,
   progress,
   result,
@@ -191,9 +192,11 @@ function RegistrationSetCard({
   onOpenMember,
   onDownload,
   onAdvance,
+  onDelete,
 }: {
   set: RegistrationSet
   canManage: boolean
+  canDelete: boolean
   controlsBusy: boolean
   progress: SetProgress | null
   result?: string
@@ -203,6 +206,7 @@ function RegistrationSetCard({
   onOpenMember: (member: RegistrationSetMember) => void
   onDownload: () => void
   onAdvance: (next: RegistrationSetNextStatus) => void
+  onDelete: () => void
 }) {
   const plan = planRegistrationSetTransition(set)
   const availableAction = plan.nextStatus && plan.actionLabel && !plan.blocker
@@ -254,6 +258,19 @@ function RegistrationSetCard({
               >
                 <Icon name="arrowRight" size={12} />
                 {availableAction.label}
+              </button>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={controlsBusy}
+                aria-label={`ลบชุดเอกสาร ${set.mainDocument.documentCode}`}
+                title="ลบชุดเอกสารทั้งหมด"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(220,38,38,.35)', background: controlsBusy ? 'var(--surface-2)' : 'rgba(220,38,38,.07)', color: controlsBusy ? 'var(--muted)' : 'var(--danger)', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, cursor: controlsBusy ? 'default' : 'pointer', opacity: controlsBusy ? .7 : 1 }}
+              >
+                <Icon name="trash" size={12} />
+                ลบทั้งชุด
               </button>
             ) : null}
           </div>
@@ -419,6 +436,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   const canBulkReview = isAdmin || userRole === 'Document Controller' || docRole === 'Document Controller'
   const canDccSourceDownload = canBulkReview
   const canManageSets = canInteractWithRegistrationSetRows(userRole, docRole)
+  const canDeletePendingDocuments = isAdmin || ['Laboratory Director', 'Document Controller'].includes(docRole ?? userRole ?? '')
   const setMainDocumentIds = new Set(sets.map((set) => set.mainDocument.id))
   const setMemberDocumentIds = new Set(sets.flatMap((set) => set.memberIds))
 
@@ -459,6 +477,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   const [detailDoc, setDetailDoc] = useState<Document | null>(null)
   const [actionDoc, setActionDoc] = useState<Document | null>(null)
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [readDocIds, setReadDocIds] = useState<Set<string>>(new Set())
   const [pdfViewer, setPdfViewer] = useState<{ url: string; pdfJsUrl?: string | null; title: string; forcePdfJs?: boolean } | null>(null)
 
@@ -552,6 +571,29 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     setNewDocs(dropDoc)
     setReviewDocs(dropDoc)
     setApprovedDocs(dropDoc)
+  }
+
+  async function handleDeletePendingDocument(doc: PendingDoc) {
+    if (pendingDeleteId || !canDeletePendingDocuments) return
+    if (!confirm(`ยืนยันลบ "${doc.title}" (${doc.document_code})?\nการลบนี้ไม่สามารถย้อนกลับได้`)) return
+
+    setPendingDeleteId(doc.id)
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}`, { method: 'DELETE' })
+      const json = await res.json().catch(() => ({} as { error?: string })) as { error?: string }
+      if (!res.ok) throw new Error(json.error ?? `ลบเอกสารไม่สำเร็จ (${res.status})`)
+      setSelectedNewDocIds((prev) => {
+        const next = new Set(prev)
+        next.delete(doc.id)
+        return next
+      })
+      handleDocumentDeleted(doc.id)
+      router.refresh()
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'ลบเอกสารไม่สำเร็จ')
+    } finally {
+      setPendingDeleteId(null)
+    }
   }
 
   async function quickReadDetail(doc: Document) {
@@ -792,6 +834,44 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'ดาวน์โหลด ZIP ไม่สำเร็จ'
       setSetResults((prev) => ({ ...prev, [mainId]: `ดาวน์โหลดไม่สำเร็จ: ${reason}` }))
+    } finally {
+      setSetProgress(null)
+    }
+  }
+
+  async function handleDeleteSet(set: RegistrationSet) {
+    if (setProgress) return
+    const mainId = set.mainDocument.id
+    const memberCount = set.members.length
+    if (!confirm(`ยืนยันลบชุดเอกสาร ${set.mainDocument.documentCode} และเอกสารสนับสนุน ${memberCount} ฉบับ?\nการลบนี้ไม่สามารถย้อนกลับได้`)) return
+
+    setSetResults((prev) => {
+      const next = { ...prev }
+      delete next[mainId]
+      return next
+    })
+    setSetProgress({ mainId, kind: 'delete', currentLabel: 'กำลังลบทั้งชุด...', completed: 0, total: 1, percent: null })
+
+    try {
+      const res = await fetch(`/api/admin/documents/${mainId}`, { method: 'DELETE' })
+      const json = await res.json().catch(() => ({} as { error?: string; deletedMemberCodes?: string[] })) as { error?: string; deletedMemberCodes?: string[] }
+      if (!res.ok) throw new Error(json.error ?? `ลบชุดเอกสารไม่สำเร็จ (${res.status})`)
+
+      setSelectedSetIds((prev) => {
+        const next = new Set(prev)
+        next.delete(mainId)
+        return next
+      })
+      setSetResults((prev) => ({
+        ...prev,
+        [mainId]: `ลบทั้งชุดสำเร็จ · เอกสารสนับสนุน ${json.deletedMemberCodes?.length ?? memberCount} ฉบับ`,
+      }))
+      router.refresh()
+    } catch (error) {
+      setSetResults((prev) => ({
+        ...prev,
+        [mainId]: error instanceof Error ? error.message : 'ลบชุดเอกสารไม่สำเร็จ',
+      }))
     } finally {
       setSetProgress(null)
     }
@@ -1232,6 +1312,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
               key={set.mainDocument.id}
               set={set}
               canManage={canManageSets}
+              canDelete={canDeletePendingDocuments}
               controlsBusy={setProgress !== null}
               progress={setProgress?.mainId === set.mainDocument.id ? setProgress : null}
               result={setResults[set.mainDocument.id]}
@@ -1241,6 +1322,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
               onOpenMember={(member) => openSetMember(member)}
               onDownload={() => handleSetZip(set)}
               onAdvance={(next) => handleSetStatusChange(set, next)}
+              onDelete={() => handleDeleteSet(set)}
             />
           ))}
         </Section>
@@ -1299,6 +1381,19 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
               <div style={{ flex: 1, minWidth: 0 }}>
                 <DocButton doc={d} loading={isLoading(d)} onClick={() => openPending(d)} />
               </div>
+              {canDeletePendingDocuments && (
+                <button
+                  type="button"
+                  onClick={() => void handleDeletePendingDocument(d)}
+                  disabled={newDocsBulkBusy || pendingDeleteId !== null}
+                  aria-label={`ลบเอกสาร ${d.document_code}`}
+                  title="ลบเอกสาร"
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 44, padding: '0 12px', borderRadius: 9, border: '1px solid rgba(220,38,38,.35)', background: pendingDeleteId === d.id ? 'var(--surface-2)' : 'rgba(220,38,38,.07)', color: pendingDeleteId === d.id ? 'var(--muted)' : 'var(--danger)', fontFamily: 'inherit', fontSize: 12, fontWeight: 750, cursor: pendingDeleteId !== null || newDocsBulkBusy ? 'default' : 'pointer', opacity: pendingDeleteId !== null || newDocsBulkBusy ? .7 : 1, flexShrink: 0 }}
+                >
+                  <Icon name="trash" size={13} />
+                  {pendingDeleteId === d.id ? 'กำลังลบ...' : 'ลบ'}
+                </button>
+              )}
             </div>
           ))}
         </Section>
