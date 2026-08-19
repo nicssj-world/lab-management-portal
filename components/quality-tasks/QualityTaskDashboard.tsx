@@ -11,6 +11,8 @@ import type {
   QualityTaskHolidayKind,
   QualityTaskOccurrence,
   QualityTaskTemplate,
+  TaskKind,
+  TaskUrgency,
 } from "@/lib/quality-tasks/types";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -85,6 +87,31 @@ const urgencyText = {
   overdue: "เกินกำหนด",
   completed: "เสร็จแล้ว",
 };
+// ชนิดงานในปฏิทิน — ไอคอน/คลาสของการ์ดผูกไว้ที่เดียว การ์ดกับคำอธิบายสัญลักษณ์จึงไม่มีทางเพี้ยนจากกัน
+const TASK_KIND_META: Record<TaskKind, { label: string; icon: string; cardClass: string }> = {
+  meeting: { label: "การประชุม", icon: "users", cardClass: "qt-card-meeting" },
+  activity: { label: "กิจกรรม", icon: "clipboard", cardClass: "qt-card-activity" },
+};
+type ListSortKey = "title" | "date" | "status";
+// ลำดับที่คนอ่านตารางคาดหวังเมื่อเรียงคอลัมน์สถานะ — เกินกำหนดต้องขึ้นก่อน ไม่ใช่เรียงตามตัวอักษร
+const URGENCY_ORDER: Record<TaskUrgency, number> = {
+  overdue: 0,
+  "due-soon": 1,
+  normal: 2,
+  completed: 3,
+};
+const LIST_COLUMNS: {
+  label: string;
+  sortKey: ListSortKey | null;
+  center: boolean;
+}[] = [
+  { label: "งาน", sortKey: "title", center: false },
+  // "รอบ" กับ "ผู้รับผิดชอบ" ไม่ให้เรียง — เรียงสตริงของทั้งสองคอลัมน์ไม่ได้ความหมายที่ใช้งานจริง
+  { label: "รอบ", sortKey: null, center: true },
+  { label: "วันนัด", sortKey: "date", center: false },
+  { label: "ผู้รับผิดชอบ", sortKey: null, center: true },
+  { label: "สถานะ", sortKey: "status", center: false },
+];
 const CATEGORY_COLOR: Record<string, string> = {
   A: "#1E5FAD",
   B: "#9333EA",
@@ -424,6 +451,31 @@ export function QualityTaskDashboard({
       ),
     [items, category, state, owner, assignee, search],
   );
+  // ลำดับของตาราง/การ์ดด้านล่างปฏิทิน เก็บแยกจาก filtered เพราะปฏิทินจัดลำดับตามเวลานัดในแต่ละวันของตัวเอง
+  const [sort, setSort] = useState<{ key: ListSortKey; dir: "asc" | "desc" }>({
+    key: "date",
+    dir: "asc",
+  });
+  const listRows = useMemo(() => {
+    const factor = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      if (sort.key === "title")
+        return (
+          occurrenceDisplayTitle(a).localeCompare(
+            occurrenceDisplayTitle(b),
+            "th",
+          ) * factor
+        );
+      if (sort.key === "status")
+        return (URGENCY_ORDER[a.urgency] - URGENCY_ORDER[b.urgency]) * factor;
+      // ใช้วันเดียวกับที่คอลัมน์แสดงจริง งานที่ยังไม่กำหนดวันจึงเรียงตามวันครบกำหนดของมัน
+      return (
+        (a.plannedDate ?? a.effectiveDueDate).localeCompare(
+          b.plannedDate ?? b.effectiveDueDate,
+        ) * factor
+      );
+    });
+  }, [filtered, sort]);
   const owners = useMemo(
     () =>
       [...new Set(items.map((o) => occurrenceDisplayOwner(o)).filter(Boolean))].sort(
@@ -601,6 +653,13 @@ export function QualityTaskDashboard({
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
+  }
+  function toggleSort(key: ListSortKey) {
+    setSort((current) =>
+      current.key === key
+        ? { key, dir: current.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "asc" },
+    );
   }
   const canAct =
     selected &&
@@ -1049,11 +1108,14 @@ export function QualityTaskDashboard({
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
-      <style>{`.qt-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:0 8px 28px rgba(15,23,42,.05)}.qt-weekday{padding:9px 8px;text-align:center;font-size:11px;font-weight:800;color:var(--muted);background:var(--surface-2);border-bottom:1px solid var(--border)}.qt-day{position:relative;min-width:0;min-height:152px;padding:9px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--card);transition:background-color .18s ease}.qt-day:nth-child(7n){border-right:0}.qt-day:hover{background:color-mix(in srgb,var(--primary-soft) 35%,var(--card))}.qt-day-empty{background:var(--surface-2);opacity:.65}.qt-day-today{background:color-mix(in srgb,var(--primary-soft) 72%,var(--card))}.qt-date{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 6px;border-radius:999px;color:var(--ink);font-size:11px;font-weight:800;margin-bottom:7px}.qt-day-today .qt-date{background:var(--primary);color:#fff;box-shadow:0 2px 8px rgba(30,95,173,.25)}.qt-event-list{display:grid;gap:5px;min-width:0}.qt-card{width:100%;min-width:0;overflow:hidden;border:1px solid color-mix(in srgb,var(--border) 70%,transparent);border-left:3px solid var(--primary);border-radius:8px;background:color-mix(in srgb,var(--primary-soft) 78%,var(--card));padding:6px 7px;text-align:left;cursor:pointer;color:var(--ink);font-family:inherit;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:background-color .18s,border-color .18s,box-shadow .18s}.qt-card:hover{background:var(--primary-soft);border-color:color-mix(in srgb,var(--primary) 22%,var(--border));box-shadow:0 4px 12px rgba(15,23,42,.1)}.qt-card:focus-visible,.qt-more:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 40%,transparent);outline-offset:2px}.qt-event-title{display:flex;align-items:center;gap:5px;min-width:0;font-size:11.5px;font-weight:750;line-height:1.3}.qt-event-title span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.qt-event-owner{margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:10.5px;line-height:1.25}.qt-more{width:100%;border:1px dashed color-mix(in srgb,var(--primary) 30%,var(--border));border-radius:7px;background:transparent;padding:4px 7px;color:var(--primary);font-family:inherit;font-size:10.5px;font-weight:700;text-align:left;cursor:pointer;transition:background-color .18s,border-color .18s}.qt-more:hover{background:var(--primary-soft);border-style:solid}.qt-overflow-panel{position:absolute;z-index:20;left:8px;right:8px;top:calc(100% - 8px);display:grid;gap:5px;padding:8px;border:1px solid var(--border);border-radius:11px;background:var(--card);box-shadow:0 14px 36px rgba(15,23,42,.18)}.qt-mobile{display:none}@media(prefers-reduced-motion:reduce){.qt-day,.qt-card,.qt-more{transition:none}}@media(max-width:767px){.qt-calendar{grid-template-columns:repeat(7,112px);overflow:auto;border-radius:12px}.qt-day{min-height:132px;padding:6px}.qt-weekday{position:sticky;top:0;z-index:2}.qt-card{padding:5px}.qt-overflow-panel{left:4px;right:4px}.qt-desktop{display:none!important}.qt-mobile{display:grid;gap:9px}}`}</style>
+      <style>{`.qt-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:0 8px 28px rgba(15,23,42,.05)}.qt-weekday{padding:9px 8px;text-align:center;font-size:11px;font-weight:800;color:var(--muted);background:var(--surface-2);border-bottom:1px solid var(--border)}.qt-day{position:relative;min-width:0;min-height:152px;padding:9px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--card);transition:background-color .18s ease}.qt-day:nth-child(7n){border-right:0}.qt-day:hover{background:color-mix(in srgb,var(--primary-soft) 35%,var(--card))}.qt-day-empty{background:var(--surface-2);opacity:.65}.qt-day-today{background:color-mix(in srgb,var(--primary-soft) 72%,var(--card))}.qt-date{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 6px;border-radius:999px;color:var(--ink);font-size:11px;font-weight:800;margin-bottom:7px}.qt-day-today .qt-date{background:var(--primary);color:#fff;box-shadow:0 2px 8px rgba(30,95,173,.25)}.qt-event-list{display:grid;gap:5px;min-width:0}.qt-card{width:100%;min-width:0;overflow:hidden;border:1px solid color-mix(in srgb,var(--border) 70%,transparent);border-left:3px solid var(--primary);border-radius:8px;padding:6px 7px;text-align:left;cursor:pointer;color:var(--ink);font-family:inherit;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:background-color .18s,border-color .18s,box-shadow .18s}.qt-card:hover{border-color:color-mix(in srgb,var(--primary) 22%,var(--border));box-shadow:0 4px 12px rgba(15,23,42,.1)}.qt-card:focus-visible,.qt-more:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 40%,transparent);outline-offset:2px}.qt-event-title{display:flex;align-items:center;gap:5px;min-width:0;font-size:11.5px;font-weight:750;line-height:1.3}.qt-event-title span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.qt-event-owner{margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:10.5px;line-height:1.25}.qt-more{width:100%;border:1px dashed color-mix(in srgb,var(--primary) 30%,var(--border));border-radius:7px;background:transparent;padding:4px 7px;color:var(--primary);font-family:inherit;font-size:10.5px;font-weight:700;text-align:left;cursor:pointer;transition:background-color .18s,border-color .18s}.qt-more:hover{background:var(--primary-soft);border-style:solid}.qt-overflow-panel{position:absolute;z-index:20;left:8px;right:8px;top:calc(100% - 8px);display:grid;gap:5px;padding:8px;border:1px solid var(--border);border-radius:11px;background:var(--card);box-shadow:0 14px 36px rgba(15,23,42,.18)}.qt-mobile{display:none}@media(prefers-reduced-motion:reduce){.qt-day,.qt-card,.qt-more{transition:none}}@media(max-width:767px){.qt-calendar{grid-template-columns:repeat(7,112px);overflow:auto;border-radius:12px}.qt-day{min-height:132px;padding:6px}.qt-weekday{position:sticky;top:0;z-index:2}.qt-card{padding:5px}.qt-overflow-panel{left:4px;right:4px}.qt-desktop{display:none!important}.qt-mobile{display:grid;gap:9px}}`}</style>
       <style>{`.qt-card.qt-range{position:relative;z-index:1;min-height:44px;border-left-width:0;border-radius:0;box-shadow:none}.qt-card.qt-range:hover{z-index:3;box-shadow:0 4px 12px rgba(15,23,42,.1)}.qt-card.qt-range-start{width:calc(100% + 10px);border-left-width:3px;border-radius:8px 0 0 8px}.qt-card.qt-range-middle{width:calc(100% + 20px);margin-left:-10px}.qt-card.qt-range-end{width:calc(100% + 10px);margin-left:-10px;border-radius:0 8px 8px 0}.qt-card.qt-range-start.qt-range-end{width:100%;margin-left:0;border-radius:8px}.qt-range-continuation{height:29px;display:flex;align-items:center}.qt-range-continuation::after{content:"";width:100%;height:2px;border-radius:999px;background:color-mix(in srgb,var(--primary) 22%,transparent)}@media(max-width:767px){.qt-card.qt-range-start{width:calc(100% + 7px)}.qt-card.qt-range-middle{width:calc(100% + 14px);margin-left:-7px}.qt-card.qt-range-end{width:calc(100% + 7px);margin-left:-7px}.qt-card.qt-range-start.qt-range-end{width:100%;margin-left:0}}`}</style>
       <style>{`.qt-card.qt-range{overflow:visible}.qt-range-continuation::after{width:calc(100% + 36px);margin-left:-18px}.qt-event-list-range .qt-range-continuation::after{width:calc(100% + 36px);margin-left:-18px}.qt-card.qt-range-hover{background:var(--primary-soft);border-color:color-mix(in srgb,var(--primary) 22%,var(--border));box-shadow:0 4px 12px rgba(15,23,42,.1);z-index:3}.qt-card.qt-range-hover .qt-range-continuation::after{background:color-mix(in srgb,var(--primary) 45%,transparent)}@media(max-width:767px){.qt-range-continuation::after,.qt-event-list-range .qt-range-continuation::after{width:calc(100% + 24px);margin-left:-12px}}`}</style>
       <style>{`.qt-card-draggable{cursor:grab}.qt-card-dragging{opacity:.45;cursor:grabbing}.qt-day-drag-over{background:var(--primary-soft);outline:2px dashed var(--primary);outline-offset:-2px}@media(prefers-reduced-motion:reduce){.qt-card-draggable{transition:none}}`}</style>
       <style>{`.qt-weekend-header{color:#B91C1C;background:#FEF2F2}.qt-day-weekend:not(.qt-day-today){background:#FFF7F7}.qt-day-weekend:not(.qt-day-today) .qt-date{color:#B91C1C}.qt-day-holiday{box-shadow:inset 0 3px 0 #F59E0B}.qt-holiday{display:flex;align-items:center;gap:4px;margin:-2px 0 6px;padding:4px 6px;border-radius:6px;background:#FFFBEB;color:#92400E;font-size:10px;line-height:1.25;overflow:hidden}.qt-holiday span{flex-shrink:0;font-weight:800}.qt-holiday b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}@media(max-width:767px){.qt-holiday{font-size:9px;padding:3px 4px}}`}</style>
+      {/* แยก "การประชุม" ออกจาก "กิจกรรม" ด้วย 3 ช่องทางพร้อมกัน: พื้นการ์ด (ทึบ/โปร่ง), สไตล์แถบซ้าย (ทึบ/ประ) และไอคอนนำ
+          สีแถบซ้ายถูกใช้สื่อความเร่งด่วน (urgencyColor) อยู่แล้ว จึงห้ามนำสีมาสื่อชนิดงานซ้ำ */}
+      <style>{`.qt-card-meeting{background:color-mix(in srgb,var(--primary-soft) 78%,var(--card))}.qt-card-meeting:hover,.qt-card-meeting.qt-range-hover{background:var(--primary-soft)}.qt-card-activity{background:var(--card);border-color:var(--border);border-left-style:dashed}.qt-card-activity:hover,.qt-card-activity.qt-range-hover{background:var(--surface-2)}.qt-card-activity .qt-range-continuation::after{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--ink) 26%,transparent) 0 5px,transparent 5px 9px)}.qt-card-activity.qt-range-hover .qt-range-continuation::after{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--ink) 46%,transparent) 0 5px,transparent 5px 9px)}.qt-legend-swatch{display:inline-flex;align-items:center;justify-content:center;width:34px;min-width:34px;padding:4px;cursor:default;box-shadow:none}.qt-kind-legend{display:flex;flex-wrap:wrap;align-items:center;gap:5px 14px;margin:9px 2px 0;color:var(--muted);font-size:11.5px}.qt-kind-legend b{color:var(--ink);font-weight:750}.qt-kind-legend span.qt-kind-item{display:inline-flex;align-items:center;gap:6px}.qt-sort{display:inline-flex;align-items:center;gap:5px;border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;border-radius:5px;transition:color .15s}.qt-sort span{color:var(--muted);font-size:9px}.qt-sort:hover{color:var(--primary)}.qt-row-btn{display:block;width:100%;border:0;background:none;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:6px}.qt-sort:focus-visible,.qt-row-btn:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 40%,transparent);outline-offset:2px}@media(prefers-reduced-motion:reduce){.qt-sort{transition:none}}`}</style>
       <div
         style={{
           padding: 18,
@@ -1320,6 +1382,7 @@ export function QualityTaskDashboard({
           const renderEvent = (o: QualityTaskOccurrence) => {
             const catColor =
               CATEGORY_COLOR[o.template.categoryCode] ?? "var(--primary)";
+            const kind = TASK_KIND_META[o.template.taskKind];
             const isMultiDay =
               o.scheduleId === null && o.periodEnd > o.periodStart;
             const weekDay = new Date(`${date}T00:00:00Z`).getUTCDay();
@@ -1345,9 +1408,9 @@ export function QualityTaskDashboard({
               <button
                 key={o.key}
                 type="button"
-                className={`qt-card${rangeClass}${rangeHoverKey === o.key ? " qt-range-hover" : ""}${canDragMeeting ? " qt-card-draggable" : ""}${draggedMeetingKey === o.key ? " qt-card-dragging" : ""}`}
-                title={isVisibleStart ? `${occurrenceDisplayTitle(o)} · ${occurrenceDisplayOwner(o)}` : undefined}
-                aria-label={isVisibleStart ? `${occurrenceDisplayTitle(o)} ${occurrenceDisplayOwner(o)}` : undefined}
+                className={`qt-card ${kind.cardClass}${rangeClass}${rangeHoverKey === o.key ? " qt-range-hover" : ""}${canDragMeeting ? " qt-card-draggable" : ""}${draggedMeetingKey === o.key ? " qt-card-dragging" : ""}`}
+                title={isVisibleStart ? `${kind.label}: ${occurrenceDisplayTitle(o)} · ${occurrenceDisplayOwner(o)}` : undefined}
+                aria-label={isVisibleStart ? `${kind.label} ${occurrenceDisplayTitle(o)} ${occurrenceDisplayOwner(o)}` : undefined}
                 draggable={canDragMeeting}
                 onDragStart={
                   canDragMeeting
@@ -1379,13 +1442,11 @@ export function QualityTaskDashboard({
                 {!isMultiDay || isVisibleStart ? (
                   <>
                     <div className="qt-event-title">
-                      {o.template.taskKind === "meeting" && (
-                        <Icon
-                          name="users"
-                          size={11}
-                          style={{ color: catColor, flexShrink: 0 }}
-                        />
-                      )}
+                      <Icon
+                        name={kind.icon}
+                        size={11}
+                        style={{ color: catColor, flexShrink: 0 }}
+                      />
                       <span>{occurrenceDisplayTitle(o)}</span>
                     </div>
                     <div className="qt-event-owner">
@@ -1480,6 +1541,24 @@ export function QualityTaskDashboard({
           );
         })}
       </div>
+      <div className="qt-kind-legend">
+        {(["meeting", "activity"] as TaskKind[]).map((k) => (
+          <span key={k} className="qt-kind-item">
+            <span
+              className={`qt-card ${TASK_KIND_META[k].cardClass} qt-legend-swatch`}
+              style={{ borderLeftColor: "var(--muted)" }}
+            >
+              <Icon
+                name={TASK_KIND_META[k].icon}
+                size={11}
+                style={{ color: "var(--muted)" }}
+              />
+            </span>
+            <b>{TASK_KIND_META[k].label}</b>
+          </span>
+        ))}
+        <span className="qt-kind-item">สีแถบซ้าย = สถานะของกำหนดส่ง</span>
+      </div>
       {(holidays.length > 0 || isAdmin) && (
         <section
           style={{
@@ -1564,7 +1643,7 @@ export function QualityTaskDashboard({
       )}
       <section>
         <h2 style={{ fontSize: 16, margin: "0 0 10px" }}>
-          กิจกรรมทั้งหมด ({filtered.length})
+          งานทั้งหมด ({listRows.length})
         </h2>
         <div
           className="qt-desktop"
@@ -1580,24 +1659,47 @@ export function QualityTaskDashboard({
           >
             <thead>
               <tr>
-                {["กิจกรรม", "รอบ", "วันนัด", "ผู้รับผิดชอบ", "สถานะ"].map(
-                  (h) => (
+                {LIST_COLUMNS.map((col) => {
+                  const sortKey = col.sortKey;
+                  const active = sortKey !== null && sort.key === sortKey;
+                  return (
                     <th
-                      key={h}
-                      style={
-                        h === "รอบ" || h === "ผู้รับผิดชอบ" ? thCenter : th
+                      key={col.label}
+                      style={col.center ? thCenter : th}
+                      aria-sort={
+                        sortKey === null
+                          ? undefined
+                          : active
+                            ? sort.dir === "asc"
+                              ? "ascending"
+                              : "descending"
+                            : "none"
                       }
                     >
-                      {h}
+                      {sortKey === null ? (
+                        col.label
+                      ) : (
+                        <button
+                          type="button"
+                          className="qt-sort"
+                          onClick={() => toggleSort(sortKey)}
+                        >
+                          {col.label}
+                          <span aria-hidden="true">
+                            {active ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      )}
                     </th>
-                  ),
-                )}
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((o, i) => {
+              {listRows.map((o, i) => {
                 const catColor =
                   CATEGORY_COLOR[o.template.categoryCode] ?? "var(--muted)";
+                const kind = TASK_KIND_META[o.template.taskKind];
                 return (
                   <tr
                     key={o.key}
@@ -1617,33 +1719,42 @@ export function QualityTaskDashboard({
                     }}
                   >
                     <td style={td}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
+                      {/* ปุ่มจริงในเซลล์แรก คือทางเดียวที่ทำให้แถวเข้าถึงด้วยคีย์บอร์ดได้โดยไม่ต้องยัด role
+                          ทับ <tr> จนพัง semantics ของตาราง — คลิกทั้งแถวยังทำงานผ่าน onClick ของ <tr> */}
+                      <button
+                        type="button"
+                        className="qt-row-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelected(o);
                         }}
                       >
                         <span
                           style={{
-                            width: 7,
-                            height: 7,
-                            borderRadius: "50%",
-                            background: catColor,
-                            flexShrink: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
                           }}
-                        />
-                        <b>{occurrenceDisplayTitle(o)}</b>
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "var(--muted)",
-                          marginLeft: 15,
-                        }}
-                      >
-                        หมวด {o.template.categoryCode} · {occurrenceDisplayOwner(o)}
-                      </div>
+                        >
+                          <Icon
+                            name={kind.icon}
+                            size={13}
+                            style={{ color: catColor, flexShrink: 0 }}
+                          />
+                          <b>{occurrenceDisplayTitle(o)}</b>
+                        </span>
+                        <span
+                          style={{
+                            display: "block",
+                            fontSize: 11,
+                            color: "var(--muted)",
+                            marginLeft: 21,
+                          }}
+                        >
+                          {kind.label} · หมวด {o.template.categoryCode} ·{" "}
+                          {occurrenceDisplayOwner(o)}
+                        </span>
+                      </button>
                     </td>
                     <td style={tdCenter}>{o.periodLabel}</td>
                     <td style={td}>
@@ -1653,7 +1764,7 @@ export function QualityTaskDashboard({
                           o.plannedStartTime,
                           o.plannedEndTime,
                         ) && (
-                          <div style={{ fontSize: 10.5, color: "#0E7490" }}>
+                          <div style={{ fontSize: 10.5, color: "var(--primary)" }}>
                             {formatMeetingTimeRange(
                               o.plannedStartTime,
                               o.plannedEndTime,
@@ -1661,7 +1772,7 @@ export function QualityTaskDashboard({
                           </div>
                         )}
                       {!o.plannedDate && (
-                        <div style={{ fontSize: 10.5, color: "#D97706" }}>
+                        <div style={{ fontSize: 10.5, color: "var(--warning)" }}>
                           ยังไม่กำหนดวัน
                         </div>
                       )}
@@ -1682,9 +1793,10 @@ export function QualityTaskDashboard({
           </table>
         </div>
         <div className="qt-mobile">
-          {filtered.map((o, i) => {
+          {listRows.map((o, i) => {
             const catColor =
               CATEGORY_COLOR[o.template.categoryCode] ?? "var(--muted)";
+            const kind = TASK_KIND_META[o.template.taskKind];
             return (
               <button
                 key={o.key}
@@ -1702,14 +1814,10 @@ export function QualityTaskDashboard({
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: catColor,
-                      flexShrink: 0,
-                    }}
+                  <Icon
+                    name={kind.icon}
+                    size={13}
+                    style={{ color: catColor, flexShrink: 0 }}
                   />
                   <b>{occurrenceDisplayTitle(o)}</b>
                 </div>
@@ -1718,10 +1826,10 @@ export function QualityTaskDashboard({
                     fontSize: 11,
                     color: "var(--muted)",
                     margin: "5px 0",
-                    marginLeft: 15,
+                    marginLeft: 21,
                   }}
                 >
-                  หมวด {o.template.categoryCode} · {o.periodLabel} ·{" "}
+                  {kind.label} · หมวด {o.template.categoryCode} · {o.periodLabel} ·{" "}
                   {fmt(o.plannedDate ?? o.effectiveDueDate)}
                   {o.template.taskKind === "meeting" &&
                     formatMeetingTimeRange(

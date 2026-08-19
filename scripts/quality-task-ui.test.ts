@@ -40,4 +40,20 @@ assert.ok(actionItemsRoute.includes('qualityTaskContext') && actionItemRoute.inc
 assert.ok(actionItemsRoute.includes('listActionItems') && actionItemsRoute.includes('createActionItem'), 'action items collection route lists and creates')
 assert.ok(actionItemRoute.includes('updateActionItem') && actionItemRoute.includes('deleteActionItem'), 'action item item route updates and deletes')
 
+
+// การประชุม vs กิจกรรม ต้องแยกกันได้โดยไม่พึ่งสี — พื้นการ์ด, สไตล์แถบซ้าย และไอคอนนำ ต้องคงอยู่ครบ
+assert.ok(dashboard.includes('qt-card-meeting') && dashboard.includes('qt-card-activity'), 'calendar cards carry a task-kind class')
+assert.ok(dashboard.includes('border-left-style:dashed'), 'activity cards differ from meetings by border style, not colour alone')
+assert.match(dashboard, /TASK_KIND_META[\s\S]{0,240}?meeting:[\s\S]{0,120}?icon: "users"/, 'meeting cards keep a distinct leading glyph')
+assert.match(dashboard, /TASK_KIND_META[\s\S]{0,240}?activity:[\s\S]{0,120}?icon: "clipboard"/, 'activity cards carry their own leading glyph')
+assert.ok(dashboard.includes('qt-kind-legend'), 'calendar explains its two card kinds with a legend')
+
+// รายการด้านล่างปฏิทิน: เข้าถึงด้วยคีย์บอร์ดได้ เรียงลำดับได้ และไม่เรียกงานทุกชนิดว่า "กิจกรรม"
+assert.ok(dashboard.includes('งานทั้งหมด ('), 'list heading covers both task kinds, not just activities')
+assert.ok(!dashboard.includes('กิจกรรมทั้งหมด'), 'list heading no longer collides with the activity task kind')
+assert.ok(dashboard.includes('qt-row-btn'), 'table rows are reachable through a real button, not a bare clickable <tr>')
+assert.ok(dashboard.includes('aria-sort'), 'sortable columns announce their sort state')
+assert.ok(dashboard.includes('LIST_COLUMNS') && dashboard.includes('URGENCY_ORDER'), 'list columns and status ordering live in one place')
+assert.ok(!dashboard.includes('#0E7490'), 'list cells use design tokens instead of hardcoded hex')
+
 console.log('scripts/quality-task-ui.test.ts: all assertions passed')
