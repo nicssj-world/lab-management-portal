@@ -605,6 +605,11 @@ export function QualityTaskDashboard({
   const canAct =
     selected &&
     (level === "edit" || selected.assignees.some((e) => e.userId === actorId));
+  // จำนวนแถวในใบลงนาม = ผู้เข้าร่วมที่มีบัญชี + ผู้เช็คอินที่ไม่มีบัญชี (แขก)
+  const signInSheetCount = selected
+    ? selected.participants.length +
+      selected.checkIns.filter((c) => c.userId === null).length
+    : 0;
   const showActionItems = selected
     ? supportsActionItems({
         taskKind: selected.template.taskKind,
@@ -1857,7 +1862,10 @@ export function QualityTaskDashboard({
                 </div>
               )}
             </div>
-            {selected.participants.length > 0 && (
+            {/* QR เช็คอินต้องใช้ได้ตั้งแต่เพิ่งสร้างการประชุม ยังไม่ได้กำหนดผู้เข้าร่วม
+                (คนที่สแกนแล้วไม่อยู่ในรายชื่อจะถูกเพิ่มให้อัตโนมัติโดย recordCheckIn) */}
+            {(selected.template.taskKind === "meeting" ||
+              signInSheetCount > 0) && (
               <div
                 style={{
                   marginTop: 10,
@@ -1867,17 +1875,16 @@ export function QualityTaskDashboard({
                   alignItems: "center",
                 }}
               >
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon="download"
-                  onClick={downloadSignInSheet}
-                >
-                  ดาวน์โหลด PDF ใบลงนาม (
-                  {selected.participants.length +
-                    selected.checkIns.filter((c) => c.userId === null).length}{" "}
-                  คน)
-                </Button>
+                {signInSheetCount > 0 && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="download"
+                    onClick={downloadSignInSheet}
+                  >
+                    ดาวน์โหลด PDF ใบลงนาม ({signInSheetCount} คน)
+                  </Button>
+                )}
                 {canAct && (
                   <Button
                     variant="secondary"
