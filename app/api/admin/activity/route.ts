@@ -61,6 +61,8 @@ const CATEGORY_ACTIONS: Record<string, string[]> = {
     'quality_task.instance.delete',
     'quality_task.template.create', 'quality_task.template.update', 'quality_task.template.delete',
     'quality_task.attachment.upload', 'quality_task.attachment.delete', 'quality_task.check_in',
+    'quality_task.check_in.close',
+    'quality_task.holiday.create', 'quality_task.holiday.update', 'quality_task.holiday.delete',
   ],
   satisfaction: [
     'satisfaction.report.export', 'satisfaction.comments.export', 'satisfaction.kpi.publish', 'satisfaction.draft.discard',

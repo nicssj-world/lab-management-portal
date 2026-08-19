@@ -188,6 +188,10 @@ const ACTION_LABELS: Record<string, string> = {
   'quality_task.template.update':                 'แก้ไขกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   'quality_task.template.delete':                  'ลบกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   'quality_task.check_in':                        'เช็คอินกิจกรรมคุณภาพ',
+  'quality_task.check_in.close':                  'ปิดรับเช็คอินกิจกรรมคุณภาพ',
+  'quality_task.holiday.create':                  'เพิ่มวันหยุด (งานคุณภาพ)',
+  'quality_task.holiday.update':                  'แก้ไขวันหยุด (งานคุณภาพ)',
+  'quality_task.holiday.delete':                  'ลบวันหยุด (งานคุณภาพ)',
   // ความปลอดภัย — แผนที่ห้องปฏิบัติการ
   'lab_map.safety_inspection_round.close':        'ปิดรอบตรวจอุปกรณ์ความปลอดภัย',
   // ความปลอดภัย — ห้องสารเคมี / SDS
