@@ -71,6 +71,12 @@ assert.ok(
   changeRequestSubmitRoute.includes('chemicalRegistryEntryProposalSchema'),
   'registry entries must keep their discriminated schema when edited or submitted',
 )
+const immediateWorkflowMigration = read('supabase/migrations/20260820000000_chemical_safety_remove_approval.sql')
+assert.match(
+  immediateWorkflowMigration,
+  /ALTER TABLE public\.chemical_change_requests[\s\S]*DROP CONSTRAINT IF EXISTS chemical_change_no_self_review/i,
+  'immediate registry writes must remove the obsolete same-actor constraint',
+)
 assert.match(
   migration,
   /entity_type = 'registry_entry'[\s\S]*status = 'approved'[\s\S]*entity_id IS NOT NULL/,
@@ -109,4 +115,3 @@ assert.ok(publicRepository.includes("status', 'active'"), 'public queries must e
 assert.ok(publicRepository.includes('activeRoomPublicationKeys'), 'active room publications must replace matching legacy cards')
 
 console.log('chemical-safety registry v2 implementation contract passed')
-

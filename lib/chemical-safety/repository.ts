@@ -309,16 +309,17 @@ export async function listChemicalRegistryWithSource(
     // Keep the imported total when it exists because a holding can contain
     // mixed package sizes. Derive it for legacy/new rows that do not have a
     // persisted total so the UI never needs a manually entered total.
-    const importedQuantityStatus = jsonObject(importEvidence?.normalized_data).quantityStatus
-    const calculated = importedQuantityStatus === 'unsupported-unit'
-      ? null
-      : calculateRegistryQuantity({
-        packageValue,
-        packageUnit,
-        currentContainerCount,
-        importEvidence,
-        stored: storedCalculated,
-      })
+    // An imported row may have been marked unsupported before an operator
+    // corrected its package fields. Once the current holding has a valid
+    // value/unit/count, calculate from those current fields instead of
+    // letting the stale import warning hide the corrected quantity.
+    const calculated = calculateRegistryQuantity({
+      packageValue,
+      packageUnit,
+      currentContainerCount,
+      importEvidence,
+      stored: storedCalculated,
+    })
     const row: ChemicalRegistryRow = {
       productId: String(product.id),
       holdingId: String(holding.id),

@@ -25,7 +25,17 @@ async function main() {
     'registry packing size must fall back to the survey raw package value',
   )
 
-  assert.match(readFileSync('lib/chemical-safety/repository.ts', 'utf8'), /importedQuantityStatus === 'unsupported-unit'/)
+  const repositorySource = readFileSync('lib/chemical-safety/repository.ts', 'utf8')
+  assert.doesNotMatch(
+    repositorySource,
+    /importedQuantityStatus\s*===\s*['"]unsupported-unit['"]\s*\?\s*null/,
+    'an old unsupported-unit warning must not hide corrected current package fields',
+  )
+  assert.match(
+    repositorySource,
+    /const calculated = calculateRegistryQuantity\(\{/,
+    'registry rows must calculate from the current holding fields',
+  )
   assert.match(
     departmentRepository,
     /lot_number, package_value, package_unit, current_container_count/,

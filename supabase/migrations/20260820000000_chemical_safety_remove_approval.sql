@@ -48,6 +48,12 @@ ALTER TABLE public.chemical_sds_versions
   DROP CONSTRAINT IF EXISTS chemical_sds_no_self_review,
   DROP CONSTRAINT IF EXISTS chemical_sds_workflow_coherent;
 
+-- The registry now applies a submitted change immediately. The old table
+-- constraint still rejected that legitimate same-actor transition after the
+-- review RPC updated reviewed_by, leaving requests stuck in in_review.
+ALTER TABLE public.chemical_change_requests
+  DROP CONSTRAINT IF EXISTS chemical_change_no_self_review;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. แก้ SDS ฉบับที่ใช้งานอยู่ได้โดยตรง ไม่ต้องเปิดฉบับร่างใหม่
 -- ─────────────────────────────────────────────────────────────────────────────
