@@ -33,6 +33,7 @@ npx tsx scripts/activity-log-labels.test.ts      # Every audit_log action has a 
 npx tsx scripts/quality-task-module.test.ts      # Quality task core schema invariants
 npx tsx scripts/quality-task-action-items.test.ts # Meeting action-items schema (cascade, assignee check, RLS)
 npx tsx scripts/quality-task-ui.test.ts          # Quality task dashboard/API contract
+npx tsx scripts/tat-summary-filters.test.ts      # A filtered TAT view must never answer with the whole month
 ```
 
 ## TAT Local Source Files

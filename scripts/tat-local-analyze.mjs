@@ -564,6 +564,26 @@ function normalizeLabSection(name) {
   return section
 }
 
+/**
+ * Display grouping for the TAT dashboard's "แผนก Lab" filter only.
+ *
+ * Deliberately a separate function from normalizeLabSection above, which
+ * feeds Workload's test-to-department matching as a disambiguation hint
+ * (toMatchedTatRows, preferredSection), matched against readWorkloadTestMap().
+ * A rule added here for how the TAT dashboard should group or label a section
+ * has no reason to also change which Workload test-match candidate an
+ * ambiguous test name prefers — keeping the two functions apart means a rule
+ * meant for one display can never silently reach into the other. (POCT2 was
+ * considered for a rename here and deliberately left alone, precisely because
+ * Workload's reference map still spells it that way.)
+ */
+function normalizeTatLabSection(name) {
+  const section = csvSafeKey(name)
+  if (section === 'ธนาคารเลือดหมวด 6') return 'ธนาคารเลือด'
+  if (section === 'อาชีวอนามัย') return 'เคมีคลินิก'
+  return section
+}
+
 function normalizeLabzone(name) {
   const zone = String(name ?? '').trim()
   if (!zone) return null
@@ -900,7 +920,12 @@ function buildWorkloadSummary(records, phlebRows, year, month) {
   }
 }
 
-function buildSummary(allTatRecords, phlebRows, year, month, filters = {}) {
+function buildSummary(rawTatRecords, phlebRows, year, month, filters = {}) {
+  // A new array of new objects — buildWorkloadSummary(records, ...) in main()
+  // is called separately with the same underlying records, and must keep
+  // seeing the raw lab_section values untouched.
+  const allTatRecords = rawTatRecords.map(r => ({ ...r, lab_section: normalizeTatLabSection(r.lab_section) }))
+
   const base = allTatRecords.filter(r =>
     (!filters.priority || r.priority === filters.priority)
     && (!filters.lab_section || r.lab_section === filters.lab_section)
@@ -1076,6 +1101,45 @@ function workloadCacheKey(displayFiscalYear, fiscalYear, selectedYear, selectedM
     String(selectedMonth),
     uploadVersion,
   ].join('|')
+}
+
+/**
+ * One published summary for every value each dashboard filter can take.
+ *
+ * tat:clean-raw deletes the raw rows from Supabase once this has run, so a
+ * filtered view has nothing left to compute from — it can only read what was
+ * published here. Without these entries the API fell back to a rollup that
+ * could not honour the filter and answered with the whole month's numbers
+ * instead, which looked like a real answer.
+ *
+ * Only one filter at a time is published; combinations remain uncovered, and
+ * the API must not invent a number for those.
+ *
+ * filter_options is stripped from each entry: it is the same list every time,
+ * three times larger than the summary itself, and the dashboard reads it from
+ * the unfiltered payload.
+ */
+async function publishFilteredSummaries(supabase, records, phlebRows, year, month, filterOptions) {
+  const dimensions = [
+    ['lab_section', filterOptions?.lab_sections ?? []],
+    ['labzone_name', filterOptions?.labzone_names ?? []],
+    ['priority', unique(records.map(r => r.priority))],
+    ['ward', filterOptions?.wards ?? []],
+    ['test_name', filterOptions?.test_names ?? []],
+  ]
+
+  let published = 0
+  for (const [name, values] of dimensions) {
+    for (const value of values) {
+      const filters = { [name]: value }
+      const { filter_options: _unused, ...payload } = buildSummary(records, phlebRows, year, month, filters)
+      await publishSummary(supabase, year, month, payload, filters)
+      published += 1
+    }
+    console.log(`  ${name.padEnd(13)} ${values.length}`)
+  }
+
+  return published
 }
 
 async function publishSummary(supabase, year, month, payload, filters = {}) {
@@ -1434,11 +1498,13 @@ async function main() {
   await publishSummary(supabase, year, month, mainPayload)
   await publishSummary(supabase, year, month, urgentPayload, { priority: URGENT_PRIORITY })
   const workloadKey = await publishWorkloadSummary(supabase, year, month, uploadVersion, workloadPayload)
+  const filteredCount = await publishFilteredSummaries(supabase, records, phleb.rows, year, month, mainPayload.filter_options)
 
   console.log('Done.')
   console.log(`TAT main cache key:     ${cacheKey(year, month)}`)
   console.log(`TAT urgent cache key:   ${cacheKey(year, month, { priority: URGENT_PRIORITY })}`)
   console.log(`Workload cache key:     ${workloadKey}`)
+  console.log(`Filtered summaries:     ${filteredCount}`)
 }
 
 main().catch(err => {

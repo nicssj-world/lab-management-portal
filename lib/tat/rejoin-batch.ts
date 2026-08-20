@@ -1,7 +1,17 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
-const PAGE_SIZE = 100
-const UPSERT_SIZE = 25
+const PAGE_SIZE = 500
+const UPSERT_SIZE = 500
+
+/**
+ * How many HNs go into one `hn=in.(…)` filter. Every value is spelled out in
+ * the URL, so this bounds the request line rather than the result set; the
+ * reader below keeps requesting until a chunk stops returning full pages.
+ */
+const PHLEB_HN_CHUNK = 200
+
+const PHLEB_SELECT =
+  'hn,register_at,queue_confirmed_at,phleb_done_at,wait_minutes,draw_minutes,labzone_name,phlebotomist,phleb_date'
 
 interface PhlebRow {
   hn: string | null
@@ -221,13 +231,47 @@ function findNearestPhleb(rows: PhlebRow[], spcmMs: number): PhlebRow | null {
   return best
 }
 
-async function buildPhlebIndex(year: number, month: number) {
-  const phlebRows = await fetchAll<PhlebRow>(
-    'phlebotomy_records',
-    'hn,register_at,queue_confirmed_at,phleb_done_at,wait_minutes,draw_minutes,labzone_name,phlebotomist,phleb_date',
-    year,
-    month,
-  )
+/** Every phlebotomy visit in the month belonging to one of `hns`. */
+async function fetchPhlebRowsForHns(year: number, month: number, hns: string[]): Promise<PhlebRow[]> {
+  const rows: PhlebRow[] = []
+
+  for (let start = 0; start < hns.length; start += PHLEB_HN_CHUNK) {
+    const chunk = hns.slice(start, start + PHLEB_HN_CHUNK)
+
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabaseAdmin
+        .from('phlebotomy_records')
+        .select(PHLEB_SELECT)
+        .eq('year', year)
+        .eq('month', month)
+        .in('hn', chunk)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1)
+
+      if (error) throw new Error(error.message)
+
+      rows.push(...((data ?? []) as PhlebRow[]))
+      if (!data || data.length < PAGE_SIZE) break
+    }
+  }
+
+  return rows
+}
+
+/**
+ * Indexes the month's phlebotomy visits by HN.
+ *
+ * `hns` narrows the read to the patients on the page being processed. That
+ * matters because the step-by-step caller rebuilds this index on every step:
+ * reading the whole month each time made the work quadratic — a month with
+ * 30,000 TAT rows and 25,000 phlebotomy rows spent tens of thousands of
+ * requests re-reading the same records. Narrowing by HN keeps the counts
+ * below intact, since every visit belonging to a listed HN is still returned.
+ */
+async function buildPhlebIndex(year: number, month: number, hns?: string[]) {
+  const phlebRows = hns
+    ? hns.length > 0 ? await fetchPhlebRowsForHns(year, month, hns) : []
+    : await fetchAll<PhlebRow>('phlebotomy_records', PHLEB_SELECT, year, month)
 
   const byHn = new Map<string, PhlebRow[]>()
   const duplicateVisit = new Map<string, number>()
@@ -277,7 +321,14 @@ async function processTatRows(
           id: tat.id,
           year: tat.year,
           month: tat.month,
-          register_at: null,
+          // register_at is the lvstdatetime column of the TAT file itself, not
+          // something this join produces — see scripts/tat-pipeline-lvstdatetime.sql
+          // and the reference pipeline in scripts/tat-local-analyze.mjs, which
+          // leaves an unmatched row untouched. Nulling it here deleted source
+          // data on every rejoin, and phleb_wait_minutes/total_tat_minutes are
+          // both measured from it. Written back unchanged rather than dropped
+          // from the payload, so every row in the upsert keeps the same columns.
+          register_at: tat.register_at,
           queue_confirmed_at: null,
           phleb_done_at: null,
           phleb_wait_minutes: null,
@@ -335,8 +386,11 @@ export async function rejoinTatBatchStep(
   cursor: string | null,
   resetUnmatched = false,
 ): Promise<RejoinTatStepResult> {
-  const { byHn, duplicateVisit } = await buildPhlebIndex(year, month)
+  // The page comes first so the phlebotomy read can be narrowed to the
+  // patients it actually contains. One step used to re-read the whole month.
   const tatRows = await fetchTatBloodPage(year, month, PAGE_SIZE, cursor)
+  const hns = [...new Set(tatRows.map((row) => row.hn).filter((hn): hn is string => !!hn))]
+  const { byHn, duplicateVisit } = await buildPhlebIndex(year, month, hns)
   const result = await processTatRows(tatRows, resetUnmatched, byHn, duplicateVisit)
   return {
     ...result,

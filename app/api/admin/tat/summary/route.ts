@@ -706,6 +706,22 @@ function payloadHasData(payload: SummaryPayload | null | undefined): payload is 
   return !!payload && (payloadTotalCount(payload) > 0 || valueRows(payload.by_lab_section).length > 0)
 }
 
+/**
+ * The only filter this can honour is lab_section, which the base payload
+ * breaks down. Anything else — ward, priority, test_name, labzone, or a
+ * combination — has no matching row to read, and the fallbacks below would
+ * then answer with the unfiltered month while the caller believes it is
+ * filtered. Callers must skip the rollup when this returns false and let the
+ * real computation run instead.
+ */
+function canRollupHonourFilters(base: SummaryPayload, filters: SummaryFilters) {
+  const others = [filters.ward, filters.priority, filters.test_name, filters.labzone_name]
+  if (others.some(Boolean)) return false
+  if (!filters.lab_section) return true
+  return valueRows(base.by_lab_section)
+    .some(row => cleanText(row.lab_section) === filters.lab_section)
+}
+
 function buildLabRollupFromBase(
   base: SummaryPayload,
   year: number,
@@ -985,6 +1001,32 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  // Published summaries win over anything this route derived earlier.
+  //
+  // tat:clean-raw removes the raw rows once scripts/tat-local-analyze.mjs has
+  // published a summary per filter value, so those entries are the only real
+  // answer a filtered view has. They are keyed by filters alone, without the
+  // view suffix, because every view reports the same month's figures.
+  //
+  // Checked ahead of the caches below so an earlier rollup written under the
+  // view-suffixed key cannot keep shadowing the real numbers.
+  //
+  // The phlebotomy view is left alone: its zones are the phlebotomy stations,
+  // a different list from the lab zones these entries are filtered on, and the
+  // rollup below reads them from by_labzone_phleb correctly.
+  if (view !== 'phlebotomy' && hasSummaryFilter(requestedFilters)) {
+    const published = await readAnalysisCacheIgnoringExpiry<SummaryPayload>(
+      CACHE_ENDPOINT,
+      summaryKeyFromFilters(year, month, requestedFilters),
+    )
+    if (published && String(published.source) === 'local-etl') {
+      summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: published })
+      return NextResponse.json(published, {
+        headers: { 'X-TAT-Summary-Cache': 'published-filter' },
+      })
+    }
+  }
+
   const persistent = await readAnalysisCache<SummaryPayload>(CACHE_ENDPOINT, key)
   if (persistent) {
     if (!payloadHasData(persistent)) {
@@ -1077,7 +1119,9 @@ export async function GET(req: NextRequest) {
     if (rowCountResult.error) return NextResponse.json({ error: rowCountResult.error }, { status: 500 })
     const basePayloadForLab = await readBaseSummary(year, month)
 
-    if (rowCountResult.count === 0 && payloadHasData(basePayloadForLab)) {
+    if (rowCountResult.count === 0
+      && payloadHasData(basePayloadForLab)
+      && canRollupHonourFilters(basePayloadForLab, requestedFilters)) {
       const rollup = buildLabRollupFromBase(basePayloadForLab, year, month, requestedFilters, rowCountResult.count)
       summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: rollup })
       await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, rollup, PERSISTENT_CACHE_TTL_MS)
@@ -1106,7 +1150,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (rowCountResult.count > 5000) {
-      if (basePayloadForLab) {
+      if (basePayloadForLab && canRollupHonourFilters(basePayloadForLab, requestedFilters)) {
         const rollup = buildLabRollupFromBase(basePayloadForLab, year, month, requestedFilters, rowCountResult.count)
         summaryCache.set(key, { expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS, payload: rollup })
         await writeAnalysisCache(CACHE_ENDPOINT, key, year, month, rollup, PERSISTENT_CACHE_TTL_MS)

@@ -435,6 +435,17 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   const [testName, setTestName]   = useState('')
   const [labzone, setLabzone]     = useState('')
   const [allLabzones, setAllLabzones] = useState<string[]>([])
+  // A response filtered by one of these no longer carries filter_options — see
+  // publishFilteredSummaries in scripts/tat-local-analyze.mjs — so the option
+  // list would otherwise collapse to just "ทั้งหมด" the moment a value is
+  // picked, and the native <select> falls back to displaying that placeholder
+  // since the option matching the current selection has vanished from the DOM.
+  // Snapshotting the list from the last unfiltered response, exactly like
+  // allLabzones below, keeps every option present so the label the user picked
+  // keeps showing.
+  const [allLabSections, setAllLabSections] = useState<string[]>([])
+  const [allWards, setAllWards] = useState<string[]>([])
+  const [allTestNames, setAllTestNames] = useState<string[]>([])
 
   const gregorianYear = month >= 10 ? fiscalYear - 543 - 1 : fiscalYear - 543
 
@@ -524,8 +535,23 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
   }, [data, labzone, activeTab])
 
   useEffect(() => {
+    if (data && !labSection) setAllLabSections(data.filter_options?.lab_sections ?? [])
+  }, [data, labSection])
+
+  useEffect(() => {
+    if (data && !ward) setAllWards(data.filter_options?.wards ?? [])
+  }, [data, ward])
+
+  useEffect(() => {
+    if (data && !testName) setAllTestNames(data.filter_options?.test_names ?? [])
+  }, [data, testName])
+
+  useEffect(() => {
     if (previousTab.current === activeTab) return
     setAllLabzones([])
+    setAllLabSections([])
+    setAllWards([])
+    setAllTestNames([])
     if (activeTab === 'phlebotomy') { setLabSection(''); setWard(''); setPriority(''); setTestName('') }
     else if (activeTab === 'lab')   { setLabzone('') }
     else                      { setWard(''); setTestName('') }
@@ -561,6 +587,9 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
           ? (data?.filter_options?.phleb_labzone_names ?? [])
           : (data?.filter_options?.labzone_names ?? [])
       )
+  const labSectionOptions = allLabSections.length > 0 ? allLabSections : (data?.filter_options?.lab_sections ?? [])
+  const wardOptions = allWards.length > 0 ? allWards : (data?.filter_options?.wards ?? [])
+  const testNameOptions = allTestNames.length > 0 ? allTestNames : (data?.filter_options?.test_names ?? [])
 
   const labzoneData = (data?.by_labzone ?? []).filter(r => !HIDDEN_ZONES.has(r.labzone_name))
   const phlebLabzoneData = aggregatePhlebLabzones(data?.by_labzone_phleb ?? [])
@@ -681,14 +710,14 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
         {activeTab !== 'phlebotomy' && (
           <FilterSelect value={labSection} onChange={handleLabSectionChange}>
             <option value="">แผนก Lab ทั้งหมด</option>
-            {(data?.filter_options?.lab_sections ?? []).map(s => <option key={s} value={s}>{s}</option>)}
+            {labSectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </FilterSelect>
         )}
 
         {activeTab === 'lab' && (
           <FilterSelect value={ward} onChange={handleWardChange}>
             <option value="">หอผู้ป่วยทั้งหมด</option>
-            {(data?.filter_options?.wards ?? []).map(w => <option key={w} value={w}>{w}</option>)}
+            {wardOptions.map(w => <option key={w} value={w}>{w}</option>)}
           </FilterSelect>
         )}
 
@@ -703,7 +732,7 @@ export function TatDashboardClient({ canEdit }: { canEdit: boolean }) {
         {activeTab === 'lab' && (
           <FilterSelect value={testName} onChange={setTestName}>
             <option value="">ทุกประเภทการตรวจ</option>
-            {(data?.filter_options?.test_names ?? []).map(t => <option key={t} value={t}>{t}</option>)}
+            {testNameOptions.map(t => <option key={t} value={t}>{t}</option>)}
           </FilterSelect>
         )}
 
