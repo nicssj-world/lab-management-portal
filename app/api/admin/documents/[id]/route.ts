@@ -22,6 +22,8 @@ import { isXlsxFile, patchXlsxHeaderMetadata } from '@/lib/documents/xlsx-header
 import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
 import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
 import { purgeEphemeralAttachments } from '@/lib/documents/ephemeral-attachments'
+import { uncontrolledDerivativeKeys } from '@/lib/documents/uncontrolled-pdf-cache'
+import { isSetUploadKeyReferenced } from '@/lib/documents/set-upload-cleanup'
 import {
   findRegistrationSetTransitionBlocker,
   validateIncomingSetTransition,
@@ -135,6 +137,182 @@ async function canUploadDocument(role: string, docRole: string | null) {
 function canDeleteDocument(role: string, docRole: string | null) {
   if (role === 'Admin') return true
   return DOC_DELETE_ROLES.includes(docRole ?? role)
+}
+
+type DocumentStorageFields = {
+  file_url?: string | null
+  source_pdf_url?: string | null
+  word_url?: string | null
+  pending_file_url?: string | null
+  title?: string | null
+}
+
+function addStorageKey(keys: Set<string>, key: string | null | undefined) {
+  const clean = key?.trim()
+  if (clean) keys.add(clean)
+}
+
+function addDocumentStorageFields(keys: Set<string>, row: DocumentStorageFields | null | undefined) {
+  if (!row) return
+  addStorageKey(keys, row.file_url)
+  addStorageKey(keys, row.source_pdf_url)
+  addStorageKey(keys, row.word_url)
+  addStorageKey(keys, row.pending_file_url)
+}
+
+async function collectDocumentStorageKeys(documentId: string, current: DocumentStorageFields) {
+  const [revisionsResult, draftsResult, attachmentsResult, draftAttachmentsResult, setUploadsResult] = await Promise.all([
+    supabaseAdmin
+      .from('document_revisions')
+      .select('file_url, source_pdf_url, word_url')
+      .eq('document_id', documentId),
+    supabaseAdmin
+      .from('document_revision_drafts')
+      .select('file_url, source_pdf_url, word_url')
+      .eq('document_id', documentId),
+    supabaseAdmin
+      .from('document_attachments')
+      .select('file_url')
+      .eq('document_id', documentId),
+    supabaseAdmin
+      .from('document_revision_draft_attachments')
+      .select('file_url')
+      .eq('document_id', documentId),
+    supabaseAdmin
+      .from('document_set_uploads')
+      .select('storage_key')
+      .eq('document_id', documentId),
+  ])
+
+  for (const result of [revisionsResult, draftsResult, attachmentsResult, draftAttachmentsResult, setUploadsResult]) {
+    if (result.error) throw result.error
+  }
+
+  const keys = new Set<string>(uncontrolledDerivativeKeys(documentId))
+  addDocumentStorageFields(keys, current)
+  for (const row of revisionsResult.data ?? []) addDocumentStorageFields(keys, row)
+  for (const row of draftsResult.data ?? []) addDocumentStorageFields(keys, row)
+  for (const row of attachmentsResult.data ?? []) addStorageKey(keys, row.file_url)
+  for (const row of draftAttachmentsResult.data ?? []) addStorageKey(keys, row.file_url)
+  for (const row of setUploadsResult.data ?? []) addStorageKey(keys, row.storage_key)
+  return keys
+}
+
+async function cleanupDocumentStorage(keys: ReadonlySet<string>) {
+  const warnings: string[] = []
+  await Promise.all(Array.from(keys, async (key) => {
+    try {
+      // A shared key must remain available to the document/revision/attachment that
+      // still references it. The database row is deleted before this check so the
+      // deleted document's own references do not prevent cleanup.
+      if (await isSetUploadKeyReferenced(key)) return
+      await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+    } catch (error) {
+      warnings.push(`${key}: ${toMsg(error)}`)
+    }
+  }))
+  return warnings
+}
+
+async function collectRevisionDraftStorageKeys(draftId: string) {
+  const [draftResult, attachmentsResult] = await Promise.all([
+    supabaseAdmin
+      .from('document_revision_drafts')
+      .select('file_url, source_pdf_url, word_url')
+      .eq('id', draftId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('document_revision_draft_attachments')
+      .select('file_url')
+      .eq('draft_id', draftId),
+  ])
+
+  if (draftResult.error) throw draftResult.error
+  if (attachmentsResult.error) throw attachmentsResult.error
+
+  const keys = new Set<string>()
+  addDocumentStorageFields(keys, draftResult.data)
+  for (const row of attachmentsResult.data ?? []) addStorageKey(keys, row.file_url)
+  return keys
+}
+
+async function hardDeleteRegistrationSet(
+  mainId: string,
+  current: DocumentStorageFields,
+  activeSetAsMain: {
+    main: { document_code: string }
+    links: Array<{ linked_doc_id: string; set_mode: string | null; set_draft_id: string | null }>
+  },
+) {
+  const registeredMemberIds = Array.from(new Set(
+    activeSetAsMain.links
+      .filter((link) => link.set_mode === 'registered')
+      .map((link) => link.linked_doc_id),
+  ))
+  const revisionDraftIds = Array.from(new Set(
+    activeSetAsMain.links
+      .filter((link) => link.set_mode === 'revision' && link.set_draft_id)
+      .map((link) => link.set_draft_id as string),
+  ))
+
+  const memberDocumentsResult = registeredMemberIds.length > 0
+    ? await supabaseAdmin
+        .from('documents')
+        .select('id, document_code, title, file_url, source_pdf_url, word_url, pending_file_url')
+        .in('id', registeredMemberIds)
+    : { data: [] as Array<DocumentStorageFields & { id: string; document_code: string; title: string }>, error: null }
+  if (memberDocumentsResult.error) throw memberDocumentsResult.error
+
+  const storageKeys = await collectDocumentStorageKeys(mainId, current)
+  const memberStorageKeys = await Promise.all(
+    (memberDocumentsResult.data ?? []).map((member) => collectDocumentStorageKeys(member.id, member)),
+  )
+  const draftStorageKeys = await Promise.all(revisionDraftIds.map((draftId) => collectRevisionDraftStorageKeys(draftId)))
+  for (const keys of [...memberStorageKeys, ...draftStorageKeys]) {
+    for (const key of keys) storageKeys.add(key)
+  }
+
+  // Remove the set links first so the owned revision drafts can be deleted without
+  // leaving a link that points at a missing draft. Linked Published members are not
+  // included in documentIds and therefore remain intact.
+  const linksDeleteResult = await supabaseAdmin
+    .from('document_links')
+    .delete()
+    .eq('document_id', mainId)
+    .eq('link_kind', 'set')
+  if (linksDeleteResult.error) throw linksDeleteResult.error
+
+  if (revisionDraftIds.length > 0) {
+    const draftsDeleteResult = await supabaseAdmin
+      .from('document_revision_drafts')
+      .delete()
+      .in('id', revisionDraftIds)
+    if (draftsDeleteResult.error) throw draftsDeleteResult.error
+  }
+
+  const documentIds = [mainId, ...registeredMemberIds]
+  const documentsDeleteResult = await supabaseAdmin
+    .from('documents')
+    .delete()
+    .in('id', documentIds)
+    .select('id, document_code, title')
+  if (documentsDeleteResult.error) throw documentsDeleteResult.error
+
+  const deletedDocuments = documentsDeleteResult.data ?? []
+  const deletedMemberCodes = deletedDocuments
+    .filter((document) => document.id !== mainId)
+    .map((document) => document.document_code)
+  const cleanupWarnings = await cleanupDocumentStorage(storageKeys)
+
+  return {
+    deletedMain: deletedDocuments.find((document) => document.id === mainId) ?? {
+      id: mainId,
+      document_code: activeSetAsMain.main.document_code,
+      title: current.title ?? activeSetAsMain.main.document_code,
+    },
+    deletedMemberCodes,
+    cleanupWarnings,
+  }
 }
 
 async function getRegistrationSetTransitionBlocker(documentId: string, targetStatus: string) {
@@ -856,7 +1034,7 @@ export async function DELETE(
     const roleCanDelete = canDeleteDocument(actor.role, actor.doc_role)
     const { data: current, error: currentErr } = await supabaseAdmin
       .from('documents')
-      .select('owner_id, status')
+      .select('owner_id, status, document_code, title, file_url, source_pdf_url, word_url, pending_file_url')
       .eq('id', id)
       .is('deleted_at', null)
       .maybeSingle()
@@ -864,15 +1042,18 @@ export async function DELETE(
     if (currentErr) return NextResponse.json({ error: currentErr.message }, { status: 500 })
     if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+    let ownerActiveSetAsMain: Awaited<ReturnType<typeof findActiveSetAsMain>> = null
+    const isOwnerOfDraft = current.status === 'Draft' && current.owner_id === actor.id
     if (!roleCanDelete) {
-      const isOwnerOfDraft = current.status === 'Draft' && current.owner_id === actor.id
       const ownerActiveSet = isOwnerOfDraft
         ? await findActiveRegistrationSet(id)
         : null
-      const ownerActiveSetAsMain = isOwnerOfDraft
+      ownerActiveSetAsMain = isOwnerOfDraft
         ? await findActiveSetAsMain(id)
         : null
-      if (!isOwnerOfDraft || ownerActiveSet || ownerActiveSetAsMain) {
+      // Owners may delete their own pending main document or their own pending
+      // registration set. A member still has to be removed through the set main.
+      if (!isOwnerOfDraft || ownerActiveSet) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
     }
@@ -885,8 +1066,85 @@ export async function DELETE(
     }
 
     const now = new Date().toISOString()
-    const activeSetAsMain = await findActiveSetAsMain(id)
+    const activeSetAsMain = ownerActiveSetAsMain ?? await findActiveSetAsMain(id)
     const deletedMemberCodes: string[] = []
+
+    // A creator may remove only their own new Draft. This is a real cancellation of
+    // an unapproved upload, so remove the row (and its dependent workflow rows) rather
+    // than leaving a soft-deleted document_code that blocks a clean re-upload.
+    const ownerRequestedHardDelete = !roleCanDelete
+      && current.status === 'Draft'
+      && current.owner_id === actor.id
+
+    if (ownerRequestedHardDelete && activeSetAsMain) {
+      const hardDeletedSet = await hardDeleteRegistrationSet(id, current, activeSetAsMain)
+      if (hardDeletedSet.cleanupWarnings.length > 0) {
+        console.error('Owner registration set hard-delete storage cleanup warnings', {
+          documentId: id,
+          documentCode: hardDeletedSet.deletedMain.document_code,
+          warnings: hardDeletedSet.cleanupWarnings,
+        })
+      }
+
+      supabaseAdmin.from('document_access_logs')
+        .insert({ document_id: null, user_id: actor.id, action: 'delete' })
+        .then(undefined, () => {})
+
+      supabaseAdmin.from('audit_log').insert({
+        action: 'document.delete_set',
+        user_id: actor.id,
+        target: hardDeletedSet.deletedMain.document_code,
+        detail: `${hardDeletedSet.deletedMain.document_code} · ${hardDeletedSet.deletedMain.title} · hard delete by owner (supporting documents ${hardDeletedSet.deletedMemberCodes.length}: ${hardDeletedSet.deletedMemberCodes.join(', ') || '-'})`,
+      }).then(undefined, () => {})
+
+      return NextResponse.json({
+        ok: true,
+        hardDeleted: true,
+        deletedSet: true,
+        deletedMemberCodes: hardDeletedSet.deletedMemberCodes,
+        cleanupWarningCount: hardDeletedSet.cleanupWarnings.length,
+      })
+    }
+
+    if (ownerRequestedHardDelete && !activeSetAsMain) {
+      const storageKeys = await collectDocumentStorageKeys(id, current)
+      const { data: deletedDoc, error: dbErr } = await supabaseAdmin
+        .from('documents')
+        .delete()
+        .eq('id', id)
+        .select('document_code, title')
+        .single()
+
+      if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
+
+      const cleanupWarnings = await cleanupDocumentStorage(storageKeys)
+      if (cleanupWarnings.length > 0) {
+        console.error('Owner document hard-delete storage cleanup warnings', {
+          documentId: id,
+          documentCode: deletedDoc.document_code,
+          warnings: cleanupWarnings,
+        })
+      }
+
+      supabaseAdmin.from('document_access_logs')
+        .insert({ document_id: null, user_id: actor.id, action: 'delete' })
+        .then(undefined, () => {})
+
+      supabaseAdmin.from('audit_log').insert({
+        action: 'document.delete',
+        user_id: actor.id,
+        target: deletedDoc.document_code,
+        detail: `${deletedDoc.document_code} · ${deletedDoc.title} · hard delete by owner`,
+      }).then(undefined, () => {})
+
+      return NextResponse.json({
+        ok: true,
+        hardDeleted: true,
+        deletedSet: false,
+        deletedMemberCodes,
+        cleanupWarningCount: cleanupWarnings.length,
+      })
+    }
 
     if (activeSetAsMain) {
       for (const link of activeSetAsMain.links) {

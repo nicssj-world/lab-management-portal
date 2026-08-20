@@ -120,6 +120,7 @@ export interface PendingApprovalDoc {
 
 export interface RegistrationSetDocument {
   id: string
+  ownerId: string | null
   documentCode: string
   title: string
   type: string
@@ -171,6 +172,7 @@ export interface RegistrationSet {
 
 type RegistrationSetDocumentRow = {
   id: string
+  owner_id: string | null
   document_code: string
   title: string
   type: string
@@ -189,6 +191,7 @@ type RegistrationSetDocumentRow = {
 function toRegistrationSetDocument(row: RegistrationSetDocumentRow): RegistrationSetDocument {
   return {
     id: row.id,
+    ownerId: row.owner_id,
     documentCode: row.document_code,
     title: row.title,
     type: row.type,
@@ -232,7 +235,7 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
   const [documentsResult, draftsResult, attachmentsResult] = await Promise.all([
     supabaseAdmin
       .from('documents')
-      .select('id, document_code, title, type, department, revision, status, updated_at, file_url, source_pdf_url, pending_file_url, word_url, deleted_at, set_last_downloaded_at, set_last_downloaded_by_name')
+      .select('id, owner_id, document_code, title, type, department, revision, status, updated_at, file_url, source_pdf_url, pending_file_url, word_url, deleted_at, set_last_downloaded_at, set_last_downloaded_by_name')
       .in('id', allDocumentIds),
     ownedDraftIds.length > 0
       ? supabaseAdmin

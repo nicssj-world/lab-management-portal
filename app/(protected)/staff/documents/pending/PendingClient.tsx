@@ -233,33 +233,37 @@ function RegistrationSetCard({
             </div>
           </div>
         </div>
-        {canManage ? (
+        {canManage || canDelete ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={onDownload}
-              disabled={controlsBusy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid #0F766E', background: controlsBusy ? 'var(--surface-2)' : '#0F766E', color: controlsBusy ? 'var(--muted)' : '#fff', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, cursor: controlsBusy ? 'default' : 'pointer', opacity: controlsBusy ? .7 : 1 }}
-            >
-              <Icon name="download" size={12} />
-              ดาวน์โหลดทั้งชุด (ZIP)
-            </button>
-            {set.mainDocument.setLastDownloadedAt ? (
-              <SetDownloadedBadge
-                downloadedAt={set.mainDocument.setLastDownloadedAt}
-                downloadedByName={set.mainDocument.setLastDownloadedByName}
-              />
-            ) : null}
-            {availableAction ? (
-              <button
-                type="button"
-                onClick={() => onAdvance(availableAction.nextStatus)}
-                disabled={controlsBusy}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid #0F766E', background: controlsBusy ? 'var(--surface-2)' : '#0F766E', color: controlsBusy ? 'var(--muted)' : '#fff', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, cursor: controlsBusy ? 'default' : 'pointer', opacity: controlsBusy ? .7 : 1 }}
-              >
-                <Icon name="arrowRight" size={12} />
-                {availableAction.label}
-              </button>
+            {canManage ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onDownload}
+                  disabled={controlsBusy}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid #0F766E', background: controlsBusy ? 'var(--surface-2)' : '#0F766E', color: controlsBusy ? 'var(--muted)' : '#fff', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, cursor: controlsBusy ? 'default' : 'pointer', opacity: controlsBusy ? .7 : 1 }}
+                >
+                  <Icon name="download" size={12} />
+                  ดาวน์โหลดทั้งชุด (ZIP)
+                </button>
+                {set.mainDocument.setLastDownloadedAt ? (
+                  <SetDownloadedBadge
+                    downloadedAt={set.mainDocument.setLastDownloadedAt}
+                    downloadedByName={set.mainDocument.setLastDownloadedByName}
+                  />
+                ) : null}
+                {availableAction ? (
+                  <button
+                    type="button"
+                    onClick={() => onAdvance(availableAction.nextStatus)}
+                    disabled={controlsBusy}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid #0F766E', background: controlsBusy ? 'var(--surface-2)' : '#0F766E', color: controlsBusy ? 'var(--muted)' : '#fff', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, cursor: controlsBusy ? 'default' : 'pointer', opacity: controlsBusy ? .7 : 1 }}
+                  >
+                    <Icon name="arrowRight" size={12} />
+                    {availableAction.label}
+                  </button>
+                ) : null}
+              </>
             ) : null}
             {canDelete ? (
               <button
@@ -843,7 +847,8 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   }
 
   async function handleDeleteSet(set: RegistrationSet) {
-    if (setProgress) return
+    const canDeleteThisSet = canDeletePendingDocuments || set.mainDocument.ownerId === userId
+    if (setProgress || !canDeleteThisSet) return
     const mainId = set.mainDocument.id
     const memberCount = set.members.length
     if (!confirm(`ยืนยันลบชุดเอกสาร ${set.mainDocument.documentCode} และเอกสารสนับสนุน ${memberCount} ฉบับ?\nการลบนี้ไม่สามารถย้อนกลับได้`)) return
@@ -1315,7 +1320,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
               key={set.mainDocument.id}
               set={set}
               canManage={canManageSets}
-              canDelete={canDeletePendingDocuments}
+              canDelete={canDeletePendingDocuments || set.mainDocument.ownerId === userId}
               controlsBusy={setProgress !== null}
               progress={setProgress?.mainId === set.mainDocument.id ? setProgress : null}
               result={setResults[set.mainDocument.id]}
