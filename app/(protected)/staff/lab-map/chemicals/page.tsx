@@ -9,7 +9,6 @@ import { CHEMICAL_SDS_DEPARTMENTS } from '@/lib/chemical-safety/departments'
 import {
   getChemicalStorageLayout,
   listChemicalRooms,
-  listChemicalChangeRequests,
   listChemicalProductRecords,
   listChemicalRegistry,
   listInternalSds,
@@ -37,12 +36,11 @@ export default async function ChemicalSafetyPage({
     'registry',
   )
 
-  const [locations, rooms, registry, products, changeRequests, unitRows, scopes, sdsItems, roomSdsItems, departmentSds, sdsProductRows] = await Promise.all([
+  const [locations, rooms, registry, products, unitRows, scopes, sdsItems, roomSdsItems, departmentSds, sdsProductRows] = await Promise.all([
     getChemicalStorageLayout('chemical-prep'),
     listChemicalRooms(),
     listChemicalRegistry(),
     listChemicalProductRecords(),
-    listChemicalChangeRequests(),
     supabaseAdmin.from('chemical_units').select('id, code, name_th, active, created_at').eq('active', true).order('name_th'),
     supabaseAdmin.from('chemical_role_scopes').select('unit_id, role').eq('user_id', actor.id),
     listInternalSds(),
@@ -93,12 +91,10 @@ export default async function ChemicalSafetyPage({
         rooms={chemicalRooms}
         registry={registry}
         products={products}
-        changeRequests={changeRequests}
         units={units}
         actorId={actor.id}
         canManageChemicals={canManageChemicals}
-        canProposeUnitIds={rows.filter(row => row.role === 'custodian').map(row => row.unit_id)}
-        canReviewUnitIds={rows.filter(row => row.role === 'reviewer').map(row => row.unit_id)}
+        canProposeUnitIds={rows.map(row => row.unit_id)}
         sdsItems={sdsItems}
         roomSdsItems={roomSdsItems}
         sdsProducts={sdsProducts}

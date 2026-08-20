@@ -134,6 +134,19 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/admin/c
     }
     const { error } = await supabaseAdmin.rpc('submit_chemical_change_request', { p_request_id: id, p_actor_id: guard.actor.id })
     if (error) throw error
+
+    // ไม่มีขั้นตอนรอผู้ทบทวนแล้ว คำขอที่ส่งมาจึงมีผลกับทะเบียนทันทีในคำขอเดียว
+    // ตรรกะการเขียนข้อมูลจริง (สร้าง product/holding, แก้ไข, ลบ) ยังอยู่ใน RPC ชุดเดิมทั้งหมด
+    // เปลี่ยนแค่ว่าไม่ต้องรอคนที่สองมากด — เงื่อนไข self_approval_forbidden ถูกถอดใน
+    // supabase/migrations/20260820000000_chemical_safety_remove_approval.sql
+    const applied = await supabaseAdmin.rpc('review_chemical_change_request', {
+      p_request_id: id,
+      p_actor_id: guard.actor.id,
+      p_decision: 'approved',
+      p_reason: '',
+    })
+    if (applied.error) throw applied.error
+
     return NextResponse.json({ ok: true })
   } catch (error) { return transitionError(error) }
 }

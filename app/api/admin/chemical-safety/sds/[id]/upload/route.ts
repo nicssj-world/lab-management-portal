@@ -8,7 +8,7 @@ import {
   safeChemicalFilename,
   validateChemicalPdf,
 } from '@/lib/chemical-safety/files'
-import { resolveSdsForCustodian } from '@/lib/chemical-safety/sds-workflow'
+import { publishSdsForHolding, resolveSdsForCustodian } from '@/lib/chemical-safety/sds-workflow'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -21,8 +21,9 @@ export async function POST(
   try {
     const resolved = await resolveSdsForCustodian(id)
     if (resolved.response) return resolved.response
-    if (resolved.context.status !== 'draft') {
-      return NextResponse.json({ error: 'แนบไฟล์ได้เฉพาะฉบับร่าง' }, { status: 409 })
+    // เปลี่ยนไฟล์ของฉบับที่ใช้งานอยู่ได้ ฉบับที่ถูกแทนที่ไปแล้วเป็นประวัติ ห้ามแก้
+    if (!['draft', 'approved'].includes(resolved.context.status)) {
+      return NextResponse.json({ error: 'เปลี่ยนไฟล์ของฉบับที่ถูกแทนที่แล้วไม่ได้' }, { status: 409 })
     }
 
     const form = await request.formData().catch(() => null)
@@ -76,15 +77,27 @@ export async function POST(
       fileId = inserted.data.id
     }
 
-    // ผูกไฟล์เข้ากับฉบับร่างทันที เพื่อให้กด "ส่งทบทวน" ได้โดยไม่ต้องบันทึกฟอร์มก่อน
+    // ผูกไฟล์ทันทีโดยไม่ต้องบันทึกฟอร์มก่อน — การอัปโหลดคือการเปลี่ยนตัวเอกสารจริง
     const linked = await supabaseAdmin
       .from('chemical_sds_versions')
       .update({ file_id: fileId, updated_at: new Date().toISOString() })
       .eq('id', id)
-      .eq('status', 'draft')
+      .in('status', ['draft', 'approved'])
       .select('updated_at')
       .single()
     if (linked.error) throw linked.error
+
+    // ไฟล์คือสาระของ SDS แนบเสร็จต้องใช้งานได้เลย ไม่ต้องรออนุมัติ
+    await publishSdsForHolding(resolved.context, resolved.actor.id)
+
+    // publish แตะ updated_at ด้วย ต้องอ่านค่าหลังสุดกลับไป
+    // ไม่งั้นการบันทึกฟอร์มครั้งถัดไปจะชน optimistic lock ของ update_chemical_sds_draft
+    const current = await supabaseAdmin
+      .from('chemical_sds_versions')
+      .select('updated_at')
+      .eq('id', id)
+      .single()
+    if (current.error) throw current.error
 
     supabaseAdmin.from('audit_log').insert({
       action: 'chemical_safety.sds.upload_file',
@@ -93,7 +106,7 @@ export async function POST(
       detail: JSON.stringify({ sha256, sizeBytes: bytes.byteLength }),
     }).then(undefined, () => {})
 
-    return NextResponse.json({ fileId, updatedAt: linked.data.updated_at })
+    return NextResponse.json({ fileId, updatedAt: current.data.updated_at })
   } catch (error) {
     return unexpectedError(error)
   }

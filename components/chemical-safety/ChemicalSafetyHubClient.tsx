@@ -15,9 +15,7 @@ import { CHEMICAL_HUB_VIEWS, type ChemicalHubView } from '@/lib/navigation'
 import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
 import { paginateRegistryItems } from '@/lib/chemical-safety/registry-pagination'
 import { CHEMICAL_GROUP_SUMMARY } from '@/lib/chemical-safety/storage-manifest'
-import { summarizeSdsWorkflow, type SdsWorkflowSummary } from '@/lib/chemical-safety/sds-workflow-summary'
 import type {
-  ChemicalChangeRequestListItemDTO,
   ChemicalProductDTO,
   ChemicalRoomDTO,
   ChemicalRegistryRow,
@@ -25,16 +23,14 @@ import type {
   ChemicalStorageLocationDTO,
   ChemicalUnitDTO,
 } from '@/lib/chemical-safety/types'
-import { ChangeRequestPanel } from './ChangeRequestPanel'
 import { RegistryChangeModal, type RegistryChangeMode } from './RegistryChangeModal'
-import { RegistrySdsWorkflowModal } from './RegistrySdsWorkflowModal'
+import { SdsEditorModal } from './SdsEditorModal'
 import { SdsManagementClient, type SdsProductInfo } from './SdsManagementClient'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
 import { FONT, SPACE, ZONE_META, tabularNums } from './shared/tokens'
 import {
   GhsRow,
   PositionChip,
-  SdsStatusBadge,
   SdsStateBadge,
 } from './shared/ui'
 
@@ -44,12 +40,10 @@ interface Props {
   rooms: ChemicalRoomDTO[]
   registry: ChemicalRegistryRow[]
   products: ChemicalProductDTO[]
-  changeRequests: ChemicalChangeRequestListItemDTO[]
   units: ChemicalUnitDTO[]
   actorId: string
   canManageChemicals: boolean
   canProposeUnitIds: string[]
-  canReviewUnitIds: string[]
   sdsItems: ChemicalSdsDTO[]
   roomSdsItems: ChemicalSdsDTO[]
   sdsProducts: SdsProductInfo[]
@@ -196,33 +190,9 @@ function RegistryHorizontalScroll({ children }: { children: ReactNode }) {
   )
 }
 
-function RegistrySdsWorkflowSummary({ summary }: { summary: SdsWorkflowSummary }) {
-  return (
-    <section aria-label="ศูนย์กลาง workflow SDS" style={{ marginBottom: SPACE.md }}>
-      <Card padding={SPACE.md} style={{ borderLeft: '4px solid var(--primary)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap' }}>
-          <div>
-            <h2 style={{ margin: 0, color: 'var(--ink)', fontSize: FONT.lg }}>ศูนย์กลาง workflow SDS</h2>
-            <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: FONT.sm, lineHeight: 1.5 }}>
-              ทะเบียนสารเคมีคือศูนย์กลางการสร้าง แก้ไข ส่งทบทวน และอนุมัติ SDS ส่วนหน้า SDS ใช้สำหรับดูเอกสารและจัดการการเผยแพร่
-            </p>
-          </div>
-          <Badge color="purple">{summary.total.toLocaleString()} เวอร์ชัน</Badge>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: SPACE.sm, marginTop: SPACE.md }}>
-          <Stat label="ฉบับร่าง" value={summary.draft} icon="edit" color="blue" />
-          <Stat label="รอทบทวน" value={summary.inReview} icon="clock" color="amber" />
-          <Stat label="อนุมัติแล้ว" value={summary.approved} icon="shieldCheck" color="green" />
-          <Stat label="ไม่อนุมัติ" value={summary.rejected} icon="x" color="red" />
-        </div>
-      </Card>
-    </section>
-  )
-}
-
 export function ChemicalSafetyHubClient({
-  view, locations, rooms, registry, products, changeRequests, units, actorId, canManageChemicals,
-  canProposeUnitIds, canReviewUnitIds, sdsItems, roomSdsItems, sdsProducts, departmentSds, publishableDepartmentCodes,
+  view, locations, rooms, registry, products, units, actorId, canManageChemicals,
+  canProposeUnitIds, sdsItems, roomSdsItems, sdsProducts, departmentSds, publishableDepartmentCodes,
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -237,20 +207,73 @@ export function ChemicalSafetyHubClient({
   const [exporting, setExporting] = useState(false)
   const [newChemicalHoldingIds, setNewChemicalHoldingIds] = useState<Set<string>>(new Set())
   const [modal, setModal] = useState<ModalState | null>(null)
-  const [sdsModal, setSdsModal] = useState<ChemicalRegistryRow | null>(null)
+  const [sdsEditor, setSdsEditor] = useState<{ sds: ChemicalSdsDTO; row: ChemicalRegistryRow } | null>(null)
+  const [sdsBusyHoldingId, setSdsBusyHoldingId] = useState<string | null>(null)
   const [busyProductId, setBusyProductId] = useState<string | null>(null)
   const [busyHoldingId, setBusyHoldingId] = useState<string | null>(null)
 
   const canPropose = canManageChemicals || canProposeUnitIds.length > 0
-  const canReview = canManageChemicals || canReviewUnitIds.length > 0
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products])
-  const sdsWorkflowSummary = useMemo(() => summarizeSdsWorkflow(sdsItems), [sdsItems])
   const selectedUnitId = scopeFilter.startsWith('unit:') ? scopeFilter.slice('unit:'.length) : ''
   const selectedRoomId = scopeFilter.startsWith('room:') ? scopeFilter.slice('room:'.length) : ''
 
   function notify(message: string, ok = true) {
     add(message, ok)
     if (ok) router.refresh()
+  }
+
+  /**
+   * เปิดหน้าต่างแก้ไข SDS ของรายการทะเบียนหนึ่ง
+   *
+   * ไม่มีขั้นตอนส่งทบทวน/อนุมัติ/เชื่อมเผยแพร่แล้ว จึงไม่มีหน้าต่างสรุป workflow คั่นอีก
+   * บันทึกหรือแนบไฟล์เสร็จเมื่อไหร่ ฝั่ง API จะทำให้ใช้งานได้และเผยแพร่ให้ทันที
+   *
+   * เลือกเฉพาะฉบับที่ผูกกับรายการทะเบียนนี้โดยตรง ไม่ไปหยิบฉบับของหน่วยงานอื่นที่ใช้สารตัวเดียวกัน
+   * เพราะสิทธิ์แก้ไขผูกกับหน่วยงานของ source holding — หยิบผิดตัวจะได้ 403 ที่อธิบายไม่ได้
+   */
+  async function openSds(row: ChemicalRegistryRow) {
+    const existing = sdsItems.find(item => (
+      item.sourceHoldingId === row.holdingId && item.status !== 'superseded'
+    ))
+    if (existing) {
+      setSdsEditor({ sds: existing, row })
+      return
+    }
+
+    setSdsBusyHoldingId(row.holdingId)
+    try {
+      const response = await fetch('/api/admin/chemical-safety/sds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ holdingId: row.holdingId, language: 'th' }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'เปิดแบบฟอร์ม SDS ไม่สำเร็จ')
+      const product = productById.get(row.productId)
+      const timestamp = new Date().toISOString()
+      setSdsEditor({
+        row,
+        sds: {
+          id: String(payload.id), productId: row.productId, sourceHoldingId: row.holdingId,
+          linkedHoldingIds: [], workflowOrigin: 'registry_v2',
+          fileId: null, sourceUrl: null, fileUrl: null,
+          manufacturer: product?.manufacturer ?? null, supplier: product?.supplier ?? null,
+          productCode: product?.productCode ?? null, concentration: row.concentration,
+          language: 'th', revisionLabel: null, effectiveOn: null, reviewDueOn: null,
+          signalWord: null, pictogramCodes: [], hStatements: [], pStatements: [],
+          storageInstructions: null, incompatibilities: null, emergencySummary: null,
+          status: 'draft', submittedBy: null, submittedAt: null, reviewedBy: null,
+          reviewedAt: null, reviewReason: null, createdBy: actorId,
+          createdAt: String(payload.createdAt ?? timestamp),
+          updatedAt: String(payload.updatedAt ?? timestamp),
+          hazards: [],
+        },
+      })
+    } catch (caught) {
+      notify(caught instanceof Error ? caught.message : 'เปิดแบบฟอร์ม SDS ไม่สำเร็จ', false)
+    } finally {
+      setSdsBusyHoldingId(null)
+    }
   }
 
   // กดตู้บนผังแล้วกระโดดไปทะเบียนที่กรองตู้นั้นไว้ — เปลี่ยน view ผ่าน URL
@@ -381,7 +404,7 @@ export function ChemicalSafetyHubClient({
     if (!product) { notify('ไม่พบข้อมูลสาร กรุณารีเฟรชหน้า', false); return }
     const nextStatus = product.lifecycleStatus === 'active' ? 'retired' : 'active'
     const actionLabel = nextStatus === 'retired' ? 'Inactive' : 'Active'
-    if (!window.confirm(`ยืนยันตั้งสถานะ ${actionLabel} ให้ "${row.canonicalName}"? คำขอจะถูกส่งให้ผู้ทบทวนอนุมัติก่อนมีผลจริง`)) return
+    if (!window.confirm(`ยืนยันตั้งสถานะ ${actionLabel} ให้ "${row.canonicalName}"? การเปลี่ยนแปลงมีผลทันที`)) return
 
     setBusyProductId(row.productId)
     try {
@@ -414,7 +437,7 @@ export function ChemicalSafetyHubClient({
         body: JSON.stringify({}),
       })
       const submittedPayload = await submitted.json().catch(() => ({}))
-      if (!submitted.ok) throw new Error(submittedPayload.error || 'ส่งทบทวนไม่สำเร็จ')
+      if (!submitted.ok) throw new Error(submittedPayload.error || 'บันทึกไม่สำเร็จ')
 
       notify(`ส่งคำขอตั้งสถานะ ${actionLabel} เข้าสู่การทบทวนแล้ว`)
     } catch (caught) {
@@ -425,7 +448,7 @@ export function ChemicalSafetyHubClient({
   }
 
   async function deleteHolding(row: ChemicalRegistryRow) {
-    if (!window.confirm(`ยืนยันส่งคำขอลบรายการ "${row.canonicalName}" ออกจากทะเบียน? คำขอจะถูกส่งให้ผู้ทบทวนอนุมัติก่อนมีผลจริง`)) return
+    if (!window.confirm(`ยืนยันลบรายการ "${row.canonicalName}" ออกจากทะเบียน? การลบมีผลทันที`)) return
 
     setBusyHoldingId(row.holdingId)
     try {
@@ -448,7 +471,7 @@ export function ChemicalSafetyHubClient({
         body: JSON.stringify({}),
       })
       const submittedPayload = await submitted.json().catch(() => ({}))
-      if (!submitted.ok) throw new Error(submittedPayload.error || 'ส่งทบทวนไม่สำเร็จ')
+      if (!submitted.ok) throw new Error(submittedPayload.error || 'บันทึกไม่สำเร็จ')
 
       notify('ส่งคำขอลบเข้าสู่การทบทวนแล้ว')
     } catch (caught) {
@@ -543,7 +566,7 @@ export function ChemicalSafetyHubClient({
       <PageHeader
         eyebrow="ความปลอดภัยสารเคมี"
         title="สารเคมีและ SDS"
-        subtitle="ข้อมูลนำเข้าแยกจากข้อมูลที่อนุมัติ · จำแนกอันตรายตามระบบ GHS · ผู้บันทึกและผู้ทบทวนต้องเป็นคนละคน"
+        subtitle="ข้อมูลนำเข้าแยกจากข้อมูลที่ใช้งานจริง · จำแนกอันตรายตามระบบ GHS · การแก้ไขมีผลทันทีและบันทึกผู้แก้ไขไว้ทุกครั้ง"
         marginBottom={SPACE.md}
       />
 
@@ -569,17 +592,6 @@ export function ChemicalSafetyHubClient({
             </div>
             <span className="chemical-section-count"><Icon name="flask" size={14} /> {visible.length.toLocaleString()} รายการที่แสดง</span>
           </div>
-          <RegistrySdsWorkflowSummary summary={sdsWorkflowSummary} />
-          {canReview && (
-            <ChangeRequestPanel
-              items={changeRequests}
-              actorId={actorId}
-              canPropose={canPropose}
-              canReview={canReview}
-              onDone={notify}
-            />
-          )}
-
           <Card className="chemical-registry-tools" padding={0}>
             <Input
               icon="search"
@@ -633,7 +645,7 @@ export function ChemicalSafetyHubClient({
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1080 }}>
                   <thead>
                     <tr>
-                      {['สารเคมี', 'หน่วยงาน / ตำแหน่ง', 'ปริมาณ', 'สถานะการใช้งาน', 'สถานะ SDS', 'GHS', 'สารเคมีนำเข้าใหม่', ...(canPropose || canReview ? ['จัดการ'] : [])].map(heading => (
+                      {['สารเคมี', 'หน่วยงาน / ตำแหน่ง', 'ปริมาณ', 'สถานะการใช้งาน', 'สถานะ SDS', 'GHS', 'สารเคมีนำเข้าใหม่', ...(canPropose ? ['จัดการ'] : [])].map(heading => (
                         <th key={heading} style={{
                           padding: '11px 14px', textAlign: 'left', fontSize: FONT.xs, fontWeight: 700,
                           letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)',
@@ -656,7 +668,6 @@ export function ChemicalSafetyHubClient({
                       const isNewChemical = newChemicalHoldingIds.has(row.holdingId)
                       const busy = busyProductId === row.productId
                       const canEditRow = canManageChemicals || canProposeUnitIds.includes(row.unitId)
-                      const canReviewRow = canManageChemicals || canReviewUnitIds.includes(row.unitId)
                       return (
                         <tr
                           key={row.holdingId}
@@ -716,11 +727,6 @@ export function ChemicalSafetyHubClient({
                           </td>
                           <td style={cellStyle}>
                             <SdsStateBadge state={row.sdsStatus} />
-                            {row.sdsWorkflowStatus && (
-                              <div style={{ marginTop: 5 }}>
-                                <SdsStatusBadge status={row.sdsWorkflowStatus} />
-                              </div>
-                            )}
                             <div style={{ marginTop: 5, fontSize: FONT.xs, color: row.publicationStatus === 'stale' ? 'var(--warning)' : 'var(--muted)' }}>
                               {row.publicationStatus === 'active' ? 'เผยแพร่แล้ว' : row.publicationStatus === 'ready' ? 'พร้อมเชื่อม' : row.publicationStatus === 'stale' ? 'ต้องเชื่อมฉบับใหม่' : 'ยังไม่เชื่อมเผยแพร่'}
                             </div>
@@ -740,7 +746,7 @@ export function ChemicalSafetyHubClient({
                               <span style={{ fontSize: FONT.sm }}>นำเข้าใหม่</span>
                             </label>
                           </td>
-                          {(canPropose || canReview) && (
+                          {canPropose && (
                             <td style={cellStyle}>
                               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                                 {canEditRow && (
@@ -757,8 +763,9 @@ export function ChemicalSafetyHubClient({
                                   </>
                                 )}
                                 <Button
-                                  variant="ghost" size="sm" icon="upload" title="จัดการ workflow SDS"
-                                  onClick={() => setSdsModal(row)}
+                                  variant="ghost" size="sm" icon="upload" title="แก้ไข SDS / แนบไฟล์"
+                                  disabled={sdsBusyHoldingId === row.holdingId}
+                                  onClick={() => void openSds(row)}
                                 >
                                   SDS
                                 </Button>
@@ -842,16 +849,16 @@ export function ChemicalSafetyHubClient({
         />
       )}
 
-      {sdsModal && (
-        <RegistrySdsWorkflowModal
-          row={sdsModal}
-          product={productById.get(sdsModal.productId)}
-          items={sdsItems}
-          actorId={actorId}
-          canEdit={canManageChemicals || canProposeUnitIds.includes(sdsModal.unitId)}
-          canReview={canManageChemicals || canReviewUnitIds.includes(sdsModal.unitId)}
-          onClose={() => setSdsModal(null)}
-          onDone={notify}
+      {sdsEditor && (
+        <SdsEditorModal
+          sds={sdsEditor.sds}
+          productName={sdsEditor.row.canonicalName}
+          seed={{
+            pictogramCodes: sdsEditor.row.pictogramCodes,
+            hazardClassesTh: sdsEditor.row.hazards.map(hazard => hazard.className),
+          }}
+          onClose={() => setSdsEditor(null)}
+          onSaved={notify}
         />
       )}
 

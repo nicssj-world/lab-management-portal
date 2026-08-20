@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { NextResponse } from 'next/server'
-import { requireChemicalCustodian, requireChemicalReviewer } from './access'
+import { requireChemicalCustodian } from './access'
 import { supabaseAdmin } from './../supabase/admin'
 import type { Actor } from '@/lib/auth/guards'
 import type { chemicalSdsDraftPatchSchema } from './schemas'
@@ -123,8 +123,46 @@ export function resolveSdsForCustodian(id: string) {
   return resolve(id, requireChemicalCustodian)
 }
 
-export function resolveSdsForReviewer(id: string) {
-  return resolve(id, requireChemicalReviewer)
+/**
+ * ทำให้ SDS ฉบับนี้ใช้งานได้และเผยแพร่ทันทีหลังบันทึกหรือแนบไฟล์
+ *
+ * ไม่มีขั้นตอนส่งทบทวน/อนุมัติแล้ว การบันทึกจึงต้องมีผลทันที ไม่งั้นเอกสารจะค้าง
+ * อยู่ในสถานะที่ไม่มีใครปลดให้ได้อีก
+ *
+ * publish_chemical_sds ดึง publication ที่ยัง active ของสารตัวนี้มาชี้ฉบับปัจจุบันให้แล้ว
+ * จึงเหลือแค่กรณีที่รายการทะเบียนนี้ยังไม่เคยเชื่อมเลยที่ต้องสร้าง publication ใหม่ —
+ * ถ้าเรียก link ทุกครั้งที่บันทึก จะได้แถว stale เพิ่มขึ้นเรื่อย ๆ โดยไม่มีประโยชน์
+ */
+export async function publishSdsForHolding(
+  context: SdsVersionContext,
+  actorId: string,
+): Promise<void> {
+  const published = await supabaseAdmin.rpc('publish_chemical_sds', {
+    p_version_id: context.id,
+    p_actor_id: actorId,
+  })
+  if (published.error) throw published.error
+
+  // ฉบับ legacy ไม่มี source holding จึงไม่รู้ว่าต้องเผยแพร่ให้รายการทะเบียนใด
+  if (!context.sourceHoldingId) return
+
+  const active = await supabaseAdmin
+    .from('chemical_sds_publications')
+    .select('id')
+    .eq('product_id', context.productId)
+    .eq('unit_id', context.unitId)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle()
+  if (active.error) throw active.error
+  if (active.data) return
+
+  const linked = await supabaseAdmin.rpc('link_chemical_sds_publication', {
+    p_holding_id: context.sourceHoldingId,
+    p_sds_version_id: context.id,
+    p_actor_id: actorId,
+  })
+  if (linked.error) throw linked.error
 }
 
 /**

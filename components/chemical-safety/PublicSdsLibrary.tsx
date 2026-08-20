@@ -131,7 +131,7 @@ export function PublicSdsLibrary({
 
               <div className="sds-tag-row">
                 <span className={`sds-tag ${item.sdsStatus === 'approved' ? 'is-ok' : 'is-wait'}`}>
-                  {item.sdsStatus === 'approved' ? '✓ เอกสารอนุมัติแล้ว' : '◌ เอกสารอยู่ระหว่างทบทวน'}
+                  {item.sdsStatus === 'approved' ? '✓ มีเอกสาร SDS' : '◌ ยังไม่มีเอกสาร SDS'}
                 </span>
                 {item.positionCode && <span className="sds-tag">ตู้ {item.positionCode}</span>}
                 <span className="sds-tag" title={item.ghsSource === 'sds'

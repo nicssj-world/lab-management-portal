@@ -3,6 +3,7 @@ import { parseJson, transitionError, unexpectedError } from '@/lib/chemical-safe
 import { chemicalSdsDraftPatchSchema } from '@/lib/chemical-safety/schemas'
 import {
   claimOrphanDraft,
+  publishSdsForHolding,
   resolveSdsForCustodian,
   toSdsRpcHazards,
   toSdsRpcMetadata,
@@ -20,8 +21,9 @@ export async function PATCH(
   try {
     const resolved = await resolveSdsForCustodian(id)
     if (resolved.response) return resolved.response
-    if (resolved.context.status !== 'draft') {
-      return NextResponse.json({ error: 'แก้ไขได้เฉพาะฉบับร่าง' }, { status: 409 })
+    // ฉบับที่ใช้งานอยู่แก้ทับได้ ฉบับที่ถูกแทนที่ไปแล้วเป็นประวัติ ห้ามแก้
+    if (!['draft', 'approved'].includes(resolved.context.status)) {
+      return NextResponse.json({ error: 'แก้ไขฉบับที่ถูกแทนที่แล้วไม่ได้' }, { status: 409 })
     }
 
     // ฉบับร่างที่นำเข้ามาไม่มีเจ้าของ ต้องรับเป็นเจ้าของก่อน ไม่งั้น RPC จะปฏิเสธ
@@ -36,6 +38,16 @@ export async function PATCH(
       p_hazards: toSdsRpcHazards(metadata),
     })
     if (error) throw error
+
+    // มีไฟล์แล้วถือว่าเป็นเอกสารที่ใช้งานได้ ต้องมีผลทันทีโดยไม่ต้องรอใครอนุมัติ
+    const saved = await supabaseAdmin
+      .from('chemical_sds_versions')
+      .select('file_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (saved.error) throw saved.error
+    if (saved.data?.file_id) await publishSdsForHolding(resolved.context, resolved.actor.id)
+
     return NextResponse.json({ ok: true })
   } catch (error) {
     return transitionError(error)

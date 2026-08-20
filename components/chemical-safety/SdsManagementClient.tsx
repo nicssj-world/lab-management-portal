@@ -386,7 +386,7 @@ function DepartmentSdsPanel({
       <SdsPanelIntro
         icon="users"
         title="SDS แยกตามงาน"
-        description="รวมเอกสาร SDS ของแต่ละงานให้ตรวจสอบและเผยแพร่เป็นชุดได้จากพื้นที่เดียว การอนุมัติ SDS ให้ทำในทะเบียนสารเคมี"
+        description="รวมเอกสาร SDS ของแต่ละงานให้ตรวจสอบและเผยแพร่เป็นชุดได้จากพื้นที่เดียว การแก้ไข SDS ให้ทำในทะเบียนสารเคมี"
         note="เผยแพร่ทั้งงานพร้อมกัน"
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>

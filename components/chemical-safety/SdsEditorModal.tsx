@@ -47,8 +47,8 @@ export function SdsEditorModal({
   onClose: () => void
   onSaved: (message: string, ok?: boolean) => void
 }) {
-  // ฉบับร่างที่นำเข้ามายังไม่มีใครกรอก GHS จึงเติมค่าจากบัญชีรายการสารเคมีไว้ให้ก่อน
-  // ผู้ทบทวนแค่ยืนยันหรือแก้ ไม่ต้องกรอกใหม่ทั้งหมด
+  // เอกสารที่นำเข้ามายังไม่มีใครกรอก GHS จึงเติมค่าจากบัญชีรายการสารเคมีไว้ให้ก่อน
+  // ผู้บันทึกแค่ยืนยันหรือแก้ ไม่ต้องกรอกใหม่ทั้งหมด
   const seededPictograms = sds.pictogramCodes.length > 0
     ? sds.pictogramCodes
     : seed?.pictogramCodes ?? []
@@ -171,7 +171,7 @@ export function SdsEditorModal({
         }}>
           <div>
             <div style={{ fontSize: FONT.xs, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--primary)' }}>
-              แก้ไขฉบับร่าง SDS
+              แก้ไข SDS
             </div>
             <h2 style={{ margin: '4px 0 0', fontSize: FONT.xl, color: 'var(--ink)' }}>{productName}</h2>
           </div>
@@ -195,7 +195,7 @@ export function SdsEditorModal({
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, flexWrap: 'wrap' }}>
                       <Badge color="green"><Icon name="check" size={11} />แนบไฟล์แล้ว</Badge>
-                      <span style={{ fontSize: FONT.sm, color: 'var(--ink)', fontWeight: 700 }}>ไฟล์ปัจจุบันของฉบับร่าง</span>
+                      <span style={{ fontSize: FONT.sm, color: 'var(--ink)', fontWeight: 700 }}>ไฟล์ SDS ที่ใช้งานอยู่</span>
                     </div>
                     <div style={{ marginTop: 4, fontSize: FONT.xs, color: 'var(--muted)' }}>เปิดดูไฟล์ PDF ที่แนบอยู่ในระบบ</div>
                   </div>
@@ -216,7 +216,7 @@ export function SdsEditorModal({
             <SdsDropzone
               onFile={upload}
               disabled={busy !== null}
-              hint="รับเฉพาะ PDF ขนาดไม่เกิน 50 MB · อัปโหลดใหม่จะแทนที่ไฟล์เดิมของฉบับร่างนี้"
+              hint="รับเฉพาะ PDF ขนาดไม่เกิน 50 MB · อัปโหลดใหม่จะแทนที่ไฟล์เดิมและมีผลทันที"
             />
           </section>
 

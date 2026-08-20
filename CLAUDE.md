@@ -745,12 +745,21 @@ Schema: `scripts/chemical-safety-module.sql`, then `scripts/chemical-safety-ghs-
 |---|---|---|
 | What | 25 pure chemicals from the Unit Chemical Inventory List | ~500 SDS PDFs for commercial reagents/kits, 10 departments |
 | Tables | `chemical_products` + holdings + `chemical_sds_versions` | `chemical_sds_departments` + `chemical_department_sds` |
-| Has | storage position, stock quantity, GHS classification, per-document review workflow | filename-derived display name only |
-| Published by | approving one SDS version at a time (`review_chemical_sds_version`) | หัวหน้างาน publishing the whole department at once |
+| Has | storage position, stock quantity, GHS classification, one editable SDS per chemical | filename-derived display name only |
+| Published by | saving the SDS — it goes live immediately (`publish_chemical_sds`) | หัวหน้างาน publishing the whole department at once |
 
 The reagent SDS are not inventory items — putting them in `chemical_products` would bury the 25 real chemicals under hundreds of reagent files.
 
-**Chemical safety staff access is role- and scope-gated.** Admin and Manager, plus users listed as lab-map safety editors, can manage the whole module. Other users need a `chemical_role_scopes` assignment: a custodian can propose edits for the assigned unit, a reviewer can review them, and any assigned user can view the module. Role-scope administration remains Admin-only.
+**Chemical safety staff access is role- and scope-gated.** Admin and Manager, plus users listed as lab-map safety editors, can manage the whole module. Other users need a `chemical_role_scopes` assignment for the unit they work in; **either scope role (`custodian` or `reviewer`) now grants edit**, and any assigned user can view the module. Role-scope administration remains Admin-only.
+
+**There is no approval step anywhere in this module** (`supabase/migrations/20260820000000_chemical_safety_remove_approval.sql`). Everything below follows from that, so don't reintroduce a review queue without re-reading it:
+
+- Saving or uploading an SDS makes it live at once. `PATCH /sds/[id]` and `POST /sds/[id]/upload` call `publishSdsForHolding` (`sds-workflow.ts`), which runs `publish_chemical_sds` and then links a publication **only if the holding has none yet** — calling `link_chemical_sds_publication` on every save would pile up `stale` rows for nothing.
+- **One chemical = one live SDS**, edited in place. `uq_chemical_sds_one_approved_per_product` enforces it and `publish_chemical_sds` repoints every active publication of that product at the live version. No new version row per edit; existing `superseded` rows are kept as quality records but are no longer surfaced.
+- `publish_chemical_sds` bumps `updated_at`, so any route that publishes must re-read it before returning — the upload route does, and skipping that breaks `update_chemical_sds_draft`'s optimistic lock on the next save.
+- `POST /change-requests/[id]/submit` submits **and** applies in one call. The mutation logic still lives in the `review_chemical_*_request` RPCs; the migration only removed their `self_approval_forbidden` line (one line per function, six functions, bodies otherwise copied verbatim). `review_chemical_change_request` is a dispatcher and had no such guard — do not overwrite it, and note the legacy branch is named `review_chemical_change_request_legacy` after an `ALTER … RENAME`.
+- `chemical_change_requests` is now a write-log, not a queue. Rows left in `draft`/`in_review` from before the cutover are no longer shown anywhere and are never applied.
+- The base scripts in `scripts/` still declare `chemical_sds_workflow_coherent`, `chemical_sds_no_self_review`, and the submit/review RPCs. The migration drops them; the scripts are the historical starting point, not current state.
 
 **The public side is deliberately open.** `/sds`, `/api/public/sds/*` and `/api/public/department-sds/*` have **no guard** — only rate limits. Everything they expose is filtered inside `lib/chemical-safety/public.ts`. The lockdown above had also closed these (the page called `requireChemicalAdmin()` and 404'd anonymous visitors); that was reversed on the public side only. `chemical-safety-ui.test.ts` fails if a guard is reintroduced there.
 
@@ -764,7 +773,7 @@ GHS classification has **two sources with a fixed precedence**:
 Department mapping is **explicit and fail-closed** (`DEPARTMENT_BY_ARCHIVE_FOLDER` in `lib/chemical-safety/departments.ts`). Three archive folders do not match `DEPARTMENTS`: `งานจุลทรรศนศาสตร์`→`…คลินิก`, `งานภูมิคุ้มกันวิทยา`→`…คลินิก`, `ศูนย์สุขภาพชุมชนเมืองชลบุรี`→`ห้องปฏิบัติการ…`. `ห้องสารเคมี` maps to nothing **on purpose** — it goes through the product model.
 
 Other things that bite:
-- `update_chemical_sds_draft` only lets `created_by`/`submitted_by` edit a draft, but materialized drafts have both null. `claimOrphanDraft` in `sds-workflow.ts` assigns ownership to the first custodian who edits — without it those drafts are permanently uneditable. It must not touch `updated_at` or it breaks the caller's optimistic lock.
+- `update_chemical_sds_draft` now accepts `draft` and `approved` rows and no longer checks who created them (the route's `requireChemicalCustodian(unitId)` is the gate). `claimOrphanDraft` in `sds-workflow.ts` still assigns ownership of materialized rows that have `created_by`/`submitted_by` null, and must not touch `updated_at` or it breaks the caller's optimistic lock.
 - `parseJson` infers `output<S>`, not `ZodType<T>`. Inferring from `ZodType<T>` picks zod's *input* type, which makes `.default()` fields optional and `z.preprocess` fields `unknown`.
 - SQL and zod must agree on H/P code shapes. They didn't: SQL demanded `^P[0-9]{3}$` while zod accepted `P301+P310`, so any real combination P-statement failed on insert. Fixed in the GHS migration — keep them in step.
 - `components/chemical-safety/shared/tokens.ts` is the only place meaning→visual is mapped. `chemical-safety-ui.test.ts` fails the build if a component hardcodes a hex colour, re-declares the zone colour map, or drops a `components/ui/` import — the module previously used none of the house components and broke dark mode entirely.

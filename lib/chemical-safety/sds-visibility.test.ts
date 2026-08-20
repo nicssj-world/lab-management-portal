@@ -48,7 +48,6 @@ const createRouteSource = readFileSync('app/api/admin/chemical-safety/sds/route.
 const workflowSource = readFileSync('lib/chemical-safety/sds-workflow.ts', 'utf8')
 const pageSource = readFileSync('app/(protected)/staff/lab-map/chemicals/page.tsx', 'utf8')
 const hubSource = readFileSync('components/chemical-safety/ChemicalSafetyHubClient.tsx', 'utf8')
-const registrySdsModalSource = readFileSync('components/chemical-safety/RegistrySdsWorkflowModal.tsx', 'utf8')
 
 assert.match(
   repositorySource,
@@ -61,8 +60,11 @@ assert.match(workflowSource, /source_holding_id/)
 assert.match(repositorySource, /roomChemicalSdsVersionIds\(snapshot\.sdsVersions, snapshot\.holdings, snapshot\.sdsDepartmentLinks\)/)
 assert.match(repositorySource, /const approved = holdingVersions[\s\S]*?item\.status === 'approved'/)
 assert.doesNotMatch(repositorySource, /const draft = holdingVersions\.find[\s\S]*\?\? versions\.find/)
-assert.match(registrySdsModalSource, /item\.sourceHoldingId === row\.holdingId/)
-assert.match(registrySdsModalSource, /item\.linkedHoldingIds\.includes\(row\.holdingId\)/)
+// เปิด SDS จากทะเบียนต้องหยิบเฉพาะฉบับที่ผูกกับรายการทะเบียนแถวนั้นโดยตรง
+// ถ้าไปหยิบฉบับของหน่วยงานอื่นที่ใช้สารตัวเดียวกัน สิทธิ์แก้ไข (ผูกกับ unit ของ source holding)
+// จะไม่ตรงกัน แล้วผู้ใช้จะเจอ 403 ที่อธิบายไม่ได้
+assert.match(hubSource, /item\.sourceHoldingId === row\.holdingId/)
+assert.match(hubSource, /item\.status !== 'superseded'/)
 assert.match(pageSource, /listInternalSds\(\{\}, 'room'\)/)
 assert.match(hubSource, /roomSdsItems/)
 

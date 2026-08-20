@@ -250,9 +250,9 @@ export function RegistryChangeModal({
         body: JSON.stringify({}),
       })
       const submittedPayload = await submitted.json().catch(() => ({}))
-      if (!submitted.ok) throw new Error(submittedPayload.error || 'ส่งทบทวนไม่สำเร็จ')
+      if (!submitted.ok) throw new Error(submittedPayload.error || 'บันทึกไม่สำเร็จ')
 
-      onSaved('ส่งคำขอเข้าสู่การทบทวนแล้ว รอผู้ทบทวนอนุมัติ')
+      onSaved('บันทึกลงทะเบียนสารเคมีแล้ว')
       onClose()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ')
@@ -438,7 +438,7 @@ export function RegistryChangeModal({
             <section>
               <h3 style={sectionStyle}>GHS เบื้องต้นสำหรับทะเบียน (ถ้าทราบ)</h3>
               <p style={{ margin: `0 0 ${SPACE.sm}px`, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>
-                ใช้แสดงและค้นหาสารระหว่างที่ยังไม่มี SDS ที่อนุมัติแล้ว หากมี SDS ให้ยืนยันรายละเอียดจาก SDS หมวด 2 ในปุ่ม SDS
+                ใช้แสดงและค้นหาสารระหว่างที่ยังไม่มีไฟล์ SDS หากมี SDS ให้ยืนยันรายละเอียดจาก SDS หมวด 2 ในปุ่ม SDS
               </p>
               <label style={{ display: 'block', marginBottom: SPACE.sm }}>
                 <span style={labelStyle}>แหล่งข้อมูลเบื้องต้น</span>
@@ -505,7 +505,7 @@ export function RegistryChangeModal({
         <footer style={{ padding: SPACE.md, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: SPACE.xs }}>
           <Button variant="secondary" size="lg" onClick={onClose} disabled={busy}>ยกเลิก</Button>
           <Button icon="arrowRight" size="lg" onClick={submit} disabled={busy}>
-            {busy ? 'กำลังส่ง…' : 'บันทึกและส่งทบทวน'}
+            {busy ? 'กำลังบันทึก…' : 'บันทึก'}
           </Button>
         </footer>
       </div>

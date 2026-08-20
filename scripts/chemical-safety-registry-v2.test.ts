@@ -95,7 +95,8 @@ assert.ok(departmentPublish.includes("rpc('set_chemical_sds_department_publicati
 assert.doesNotMatch(departmentPublish, /\.from\('chemical_sds_departments'\)\s*\.update/)
 
 const hub = read('components/chemical-safety/ChemicalSafetyHubClient.tsx')
-assert.ok(hub.includes('RegistrySdsWorkflowModal'), 'the registry must own the complete SDS workflow')
+assert.ok(hub.includes('SdsEditorModal'), 'the registry must stay the only place SDS content is edited')
+assert.ok(hub.includes('openSds'), 'the registry must open the SDS editor per holding')
 assert.ok(hub.includes('publicationStatus'), 'registry rows must display publication state')
 
 const departmentSds = read('components/chemical-safety/SdsManagementClient.tsx')

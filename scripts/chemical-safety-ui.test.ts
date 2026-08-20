@@ -49,16 +49,19 @@ assert.ok(!hubSource.includes('กรองตามตำแหน่งจั�
 for (const required of ['@/components/ui/Card', '@/components/ui/PageHeader', '@/components/ui/ViewTabs', '@/components/ui/EmptyState']) {
   assert.ok(hubSource.includes(required), `ChemicalSafetyHubClient ต้อง import ${required}`)
 }
-// เพิ่ม/แก้ไข/เลิกใช้งานสารเคมีต้องผ่าน workflow เสนอ→ทบทวน→อนุมัติเดิม ไม่ใช่แก้ตรงทันที
-assert.ok(hubSource.includes('RegistryChangeModal'), 'ทะเบียนสารเคมีต้องมีฟอร์มเสนอเพิ่ม/แก้ไขผ่าน RegistryChangeModal')
-assert.ok(hubSource.includes('ChangeRequestPanel'), 'ทะเบียนสารเคมีต้องมีแผงรอทบทวนคำขอ')
+// เพิ่ม/แก้ไข/เลิกใช้งานสารเคมียังต้องผ่านฟอร์มเดียวกัน แต่มีผลทันที ไม่มีคิวรอทบทวนแล้ว
+assert.ok(hubSource.includes('RegistryChangeModal'), 'ทะเบียนสารเคมีต้องมีฟอร์มเพิ่ม/แก้ไขผ่าน RegistryChangeModal')
+assert.ok(!hubSource.includes('ChangeRequestPanel'), 'ยกเลิกระบบรออนุมัติแล้ว ต้องไม่มีแผงรอทบทวนคำขอเหลืออยู่')
 // แท็บต้องผูกกับ URL ไม่ใช่ useState ไม่งั้นแชร์ลิงก์และกดย้อนกลับไม่ได้
 assert.ok(hubSource.includes('ViewTabs'), 'แท็บของหน้าห้องสารเคมีต้องใช้ ViewTabs ที่ผูกกับ ?view=')
-assert.ok(hubSource.includes('RegistrySdsWorkflowModal'), 'ทะเบียนสารเคมีต้องเปิด workflow SDS ได้จากแต่ละรายการ')
-assert.ok(hubSource.includes('summarizeSdsWorkflow'), 'ทะเบียนสารเคมีต้องเป็นจุดเดียวที่สรุปสถานะ workflow SDS')
-assert.ok(hubSource.includes('ศูนย์กลาง workflow SDS'), 'ทะเบียนสารเคมีต้องอธิบายว่าเป็นศูนย์กลาง workflow SDS')
-assert.ok(hubSource.includes('ทะเบียนสารเคมีคือศูนย์กลางการสร้าง แก้ไข ส่งทบทวน และอนุมัติ SDS'), 'คำอธิบาย workflow ต้องระบุงานที่ทำในทะเบียนสารเคมีให้ชัดเจน')
-assert.ok(hubSource.includes('หน้า SDS ใช้สำหรับดูเอกสารและจัดการการเผยแพร่'), 'คำอธิบาย workflow ต้องระบุหน้าที่ของหน้า SDS ให้ชัดเจน')
+// กด SDS จากทะเบียนต้องเข้าฟอร์มแก้ไขตรง ๆ ไม่มีหน้าต่างสรุป workflow คั่นอีก
+assert.ok(hubSource.includes('SdsEditorModal'), 'ทะเบียนสารเคมีต้องเปิดฟอร์มแก้ไข SDS ได้จากแต่ละรายการ')
+assert.ok(!hubSource.includes('RegistrySdsWorkflowModal'), 'ยกเลิกระบบรออนุมัติแล้ว ต้องไม่เหลือหน้าต่าง workflow SDS')
+// เจาะจงที่ป้ายปุ่ม/ข้อความที่ผู้ใช้เห็นจริง ไม่ใช่คำว่า "ส่งทบทวน" ลอย ๆ
+// เพราะคอมเมนต์ที่อธิบายว่าขั้นตอนนี้ถูกยกเลิกไปแล้วก็มีคำนั้นอยู่
+for (const gone of ['บันทึกและส่งทบทวน', 'ผู้ทบทวนอนุมัติ', 'summarizeSdsWorkflow', 'ศูนย์กลาง workflow SDS']) {
+  assert.ok(!hubSource.includes(gone), `ทะเบียนสารเคมีต้องไม่เหลือร่องรอยขั้นตอนอนุมัติ: ${gone}`)
+}
 assert.ok(hubSource.includes('roomRegistry'), 'แท็บ SDS ห้องสารเคมีต้องได้รับรายการสารจากทะเบียนโดยตรง')
 assert.ok(hubSource.includes("icon=\"upload\""), 'ทะเบียนสารเคมีต้องมีปุ่มอัปโหลดไฟล์ SDS')
 assert.ok(hubSource.includes('สถานะการใช้งาน'), 'ทะเบียนสารเคมีต้องมีตัวกรอง/คอลัมน์สถานะการใช้งาน')
@@ -108,7 +111,7 @@ assert.ok(
 )
 assert.ok(existsSync(departmentLinkModalPath), 'modal สำหรับผูก SDS กับ holding เดิมต้องมีอยู่')
 assert.ok(sdsSource.includes('DepartmentSdsLinkModal'), 'SDS แยกตามงานต้องเปิด modal ผูกไฟล์กับทะเบียน')
-assert.ok(sdsSource.includes('การอนุมัติ SDS ให้ทำในทะเบียนสารเคมี'), 'แท็บ SDS แยกตามงานต้องแยกการเผยแพร่ออกจากการอนุมัติ SDS')
+assert.ok(sdsSource.includes('การแก้ไข SDS ให้ทำในทะเบียนสารเคมี'), 'แท็บ SDS แยกตามงานต้องแยกการเผยแพร่ออกจากการแก้ไข SDS')
 assert.ok(sdsSource.includes('รอเพิ่มเข้าทะเบียน'), 'คำขอ legacy ของงานต้องไม่ใช้ป้ายรออนุมัติที่สับสนกับ SDS review')
 assert.ok(sdsSource.includes('summarizeRoomSds'), 'SDS ห้องสารเคมีต้องสรุปจำนวนจากทะเบียนและจำนวนเวอร์ชันแยกกัน')
 assert.ok(sdsSource.includes('มี SDS ผูกทะเบียน'), 'SDS ห้องสารเคมีต้องแสดงจำนวนสารที่ผูก SDS แล้วอย่างชัดเจน')
@@ -117,6 +120,15 @@ assert.ok(sdsSource.includes('การนับรายการและเ�
 assert.doesNotMatch(sdsSource, /วิธีอ่านตัวเลข/, 'SDS ห้องสารเคมีไม่ควรใช้คำว่า วิธีอ่านตัวเลข')
 assert.doesNotMatch(sdsSource, /ส่งทบทวน/, 'หน้า SDS ปลายทางต้องไม่เป็นจุดส่ง SDS เข้าทบทวน')
 assert.doesNotMatch(sdsSource, /บันทึกผลไม่อนุมัติแล้ว/, 'หน้า SDS ปลายทางต้องไม่เป็นจุดตัดสินอนุมัติ SDS')
+
+// route ของด่านอนุมัติต้องถูกลบจริง ไม่ใช่แค่ซ่อนปุ่ม
+for (const gone of [
+  'app/api/admin/chemical-safety/sds/[id]/submit/route.ts',
+  'app/api/admin/chemical-safety/sds/[id]/review/route.ts',
+  'app/api/admin/chemical-safety/change-requests/[id]/review/route.ts',
+]) {
+  assert.ok(!existsSync(gone), `ยกเลิกระบบรออนุมัติแล้ว ต้องไม่เหลือ route: ${gone}`)
+}
 assert.match(
   sdsSource,
   /registryLink\.status === 'registered'[\s\S]{0,500}ผูกไฟล์กับทะเบียน/,

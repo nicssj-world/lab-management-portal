@@ -9,7 +9,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 export type ChemicalScope = { unitId: string; role: 'custodian' | 'reviewer' }
 export type ChemicalAction =
   | { action: 'view' }
-  | { action: 'edit' | 'review'; unitId: string }
+  | { action: 'edit'; unitId: string }
   | { action: 'manage_roles' | 'retire' }
 
 type GuardResult = { actor: Actor; response?: undefined } | { actor?: undefined; response: NextResponse }
@@ -23,9 +23,11 @@ export async function chemicalAccessDecision(
   if (request.action === 'manage_roles') return false
   if (await isSafetyEditor(actor)) return true
   if (request.action === 'view') return scopes.length > 0
-  if (request.action !== 'edit' && request.action !== 'review') return false
-  const requiredRole = request.action === 'edit' ? 'custodian' : 'reviewer'
-  return scopes.some(scope => scope.unitId === request.unitId && scope.role === requiredRole)
+  if (request.action !== 'edit') return false
+  // เดิมแยก custodian = เสนอแก้ไข / reviewer = อนุมัติ เมื่อไม่มีขั้นตอนอนุมัติแล้ว
+  // ถ้าเทียบ reviewer เป็นสิทธิ์ดูอย่างเดียว คนที่เคยกดอนุมัติได้จะทำอะไรไม่ได้เลย
+  // จึงให้ทั้งสองบทบาทที่ถูกมอบหมายในหน่วยงานนั้นแก้ไขได้เท่ากัน
+  return scopes.some(scope => scope.unitId === request.unitId)
 }
 
 async function loadScopes(actorId: string): Promise<ChemicalScope[]> {
@@ -55,10 +57,6 @@ export function requireChemicalViewer() {
 
 export function requireChemicalCustodian(unitId: string) {
   return requireAction({ action: 'edit', unitId })
-}
-
-export function requireChemicalReviewer(unitId: string) {
-  return requireAction({ action: 'review', unitId })
 }
 
 export function requireChemicalAdmin() {

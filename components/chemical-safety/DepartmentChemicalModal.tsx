@@ -206,7 +206,7 @@ export function DepartmentChemicalModal({
       const submittedPayload = await submitted.json().catch(() => ({}))
       if (!submitted.ok) throw new Error(submittedPayload.error || 'ส่งคำขอเข้าสู่การทบทวนไม่สำเร็จ')
 
-      onSaved('ส่งสารจาก SDS งานเข้าสู่การทบทวนแล้ว รอผู้ทบทวนอนุมัติ')
+      onSaved('เพิ่มสารจาก SDS งานเข้าทะเบียนแล้ว')
       onClose()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ')
@@ -389,7 +389,7 @@ export function DepartmentChemicalModal({
 
         <footer style={{ padding: SPACE.md, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: SPACE.xs }}>
           <Button variant="secondary" size="lg" onClick={onClose} disabled={busy}>ยกเลิก</Button>
-          <Button icon="arrowRight" size="lg" onClick={() => void submit()} disabled={busy || unlinkedFiles.length === 0}>{busy ? 'กำลังส่ง…' : 'บันทึกและส่งทบทวน'}</Button>
+          <Button icon="arrowRight" size="lg" onClick={() => void submit()} disabled={busy || unlinkedFiles.length === 0}>{busy ? 'กำลังบันทึก…' : 'บันทึก'}</Button>
         </footer>
       </div>
     </div>
