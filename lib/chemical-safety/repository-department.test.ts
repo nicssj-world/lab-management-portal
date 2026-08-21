@@ -68,8 +68,8 @@ async function main() {
   )
   assert.match(
     departmentRepository,
-    /availableToLink:\s*!linkedHoldingIds\.has/,
-    'already-linked holdings must be unavailable in the explicit link workflow',
+    /availableToLink:\s*true/,
+    'a holding may carry multiple department SDS files in the current link workflow',
   )
   console.log('chemical-safety department registry repository: ok')
 }

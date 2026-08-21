@@ -15,6 +15,7 @@ const row = {
   concentration: null,
   storageScope: 'room',
   workflowOrigin: 'current',
+  inventoryCaptureStatus: 'complete',
   roomId: '33333333-3333-4333-8333-333333333333',
   locationId: '44444444-4444-4444-8444-444444444444',
   packageValue: null,

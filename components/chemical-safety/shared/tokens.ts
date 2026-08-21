@@ -15,6 +15,8 @@ export const FONT = { xs: 11, sm: 11.5, base: 12.5, md: 13, lg: 14, xl: 20, xxl:
 
 export const tabularNums: CSSProperties = { fontVariantNumeric: 'tabular-nums' }
 
+export const SDS_ONLY_CAPTURE_LABEL = 'SDS-only — ยังไม่ระบุปริมาณ'
+
 // ── สถานะเอกสาร SDS ─────────────────────────────────────────────────────────
 export type SdsWorkflowStatus = 'draft' | 'in_review' | 'approved' | 'superseded' | 'rejected'
 
@@ -42,7 +44,7 @@ export type SdsRegistryState = 'approved' | 'review_due' | 'draft' | 'mismatch' 
 export const SDS_STATE_META: Record<SdsRegistryState, StatusMeta> = {
   approved: { label: 'มี SDS อนุมัติแล้ว', tone: 'green', icon: 'shieldCheck' },
   review_due: { label: 'ถึงกำหนดทบทวน', tone: 'amber', icon: 'clock' },
-  draft: { label: 'อยู่ระหว่างทบทวน', tone: 'blue', icon: 'edit' },
+  draft: { label: 'ฉบับร่าง — ยังบันทึกไม่เสร็จ', tone: 'blue', icon: 'edit' },
   mismatch: { label: 'ไฟล์ไม่ตรงกับสาร', tone: 'red', icon: 'alert' },
   missing: { label: 'ยังไม่มี SDS', tone: 'gray', icon: 'inbox' },
 }

@@ -10,6 +10,7 @@ export type ChemicalStorageLocationKind = 'cabinet' | 'shelf' | 'table'
 export type ChemicalStorageScope = 'room' | 'department'
 /** Internal provenance only; both values are operationally usable. */
 export type ChemicalWorkflowOrigin = 'current' | 'registry_v2'
+export type ChemicalInventoryCaptureStatus = 'complete' | 'sds_only'
 export type ChemicalSdsDestination = 'room' | 'department'
 export type ChemicalSdsPublicationStatus = 'unlinked' | 'ready' | 'active' | 'stale'
 export type ChemicalPhysicalState = 'solid' | 'liquid' | 'gas' | 'mixture' | 'unknown'
@@ -41,6 +42,7 @@ export interface ChemicalRegistryRow {
   concentration: string | null
   storageScope: ChemicalStorageScope
   workflowOrigin: ChemicalWorkflowOrigin
+  inventoryCaptureStatus: ChemicalInventoryCaptureStatus
   roomId: string | null
   locationId: string | null
   packageValue: number | null
@@ -155,12 +157,13 @@ export interface ChemicalHoldingDTO {
   unitId: string
   storageScope: ChemicalStorageScope
   workflowOrigin: ChemicalWorkflowOrigin
+  inventoryCaptureStatus: ChemicalInventoryCaptureStatus
   locationId: string | null
   lotNumber: string | null
-  packageValue: number
-  packageUnit: QuantityUnit
-  currentContainerCount: number
-  minimumStock: number
+  packageValue: number | null
+  packageUnit: QuantityUnit | null
+  currentContainerCount: number | null
+  minimumStock: number | null
   reportedTotalRaw: string | null
   calculatedTotalValue: number | null
   calculatedTotalUnit: QuantityUnit | null
@@ -279,7 +282,7 @@ export interface ChemicalChangeRequestDTO {
   updatedAt: string
 }
 
-/** ใช้แสดงในแผงรอทบทวนของหน้าทะเบียนสารเคมี — เติมชื่อสาร/หน่วยงานให้พร้อมแสดงผล */
+/** ใช้แสดงในแผงประวัติการเปลี่ยนแปลงของทะเบียนสารเคมี — เติมชื่อสาร/หน่วยงานให้พร้อมแสดงผล */
 export interface ChemicalChangeRequestListItemDTO extends ChemicalChangeRequestDTO {
   productName: string | null
   unitName: string

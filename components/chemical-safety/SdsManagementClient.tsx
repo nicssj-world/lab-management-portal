@@ -12,15 +12,12 @@ import { Stat } from '@/components/ui/Stat'
 import type { ChemicalSdsView } from '@/lib/navigation'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
 import type {
-  ChemicalProductDTO,
   ChemicalRegistryRow,
   ChemicalSdsDTO,
-  ChemicalUnitDTO,
   GhsPictogramCode,
 } from '@/lib/chemical-safety/types'
 import { sdsItemsForHolding, summarizeRoomSds } from '@/lib/chemical-safety/sds-room-summary'
 import { SdsPdfViewerModal } from './SdsPdfViewerModal'
-import { DepartmentChemicalModal } from './DepartmentChemicalModal'
 import { DepartmentSdsLinkModal } from './DepartmentSdsLinkModal'
 import { SdsDropzone } from './shared/SdsDropzone'
 import { FONT, SPACE, tabularNums } from './shared/tokens'
@@ -38,8 +35,6 @@ interface Props {
   items: ChemicalSdsDTO[]
   roomRegistry: ChemicalRegistryRow[]
   products: SdsProductInfo[]
-  chemicalProducts: ChemicalProductDTO[]
-  units: ChemicalUnitDTO[]
   departments: DepartmentSdsGroupDTO[]
   canManage: boolean
   canEditUnitIds: string[]
@@ -59,7 +54,7 @@ function useToast() {
 
 export function SdsManagementClient({
   view, items, products, departments, canManage,
-  roomRegistry, chemicalProducts, units, canEditUnitIds, publishableDepartmentCodes,
+  roomRegistry, canEditUnitIds, publishableDepartmentCodes,
 }: Props) {
   const router = useRouter()
   const { toasts, add } = useToast()
@@ -81,8 +76,6 @@ export function SdsManagementClient({
         <DepartmentSdsPanel
           groups={departments}
           publishableCodes={publishableDepartmentCodes}
-          chemicalProducts={chemicalProducts}
-          units={units}
           canManageChemicals={canManage}
           canEditUnitIds={canEditUnitIds}
           onDone={notify}
@@ -310,20 +303,18 @@ function ChemicalSdsPanel({
 // ── คลังเอกสาร SDS แยกตามงาน ────────────────────────────────────────────────
 
 function DepartmentSdsPanel({
-  groups, publishableCodes, chemicalProducts, units, canManageChemicals, canEditUnitIds, onDone,
+  groups, publishableCodes, canManageChemicals, canEditUnitIds, onDone,
 }: {
   groups: DepartmentSdsGroupDTO[]
   publishableCodes: string[]
-  chemicalProducts: ChemicalProductDTO[]
-  units: ChemicalUnitDTO[]
   canManageChemicals: boolean
   canEditUnitIds: string[]
   onDone: (message: string, ok?: boolean) => void
 }) {
   const [openCode, setOpenCode] = useState<string | null>(null)
   const [busyCode, setBusyCode] = useState<string | null>(null)
+  const [registeringFileId, setRegisteringFileId] = useState<string | null>(null)
   const [replacing, setReplacing] = useState<{ id: string; department: string; displayName: string } | null>(null)
-  const [registering, setRegistering] = useState<{ group: DepartmentSdsGroupDTO; fileId?: string } | null>(null)
   const [linking, setLinking] = useState<{ file: DepartmentSdsGroupDTO['files'][number]; departmentName: string } | null>(null)
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
 
@@ -347,6 +338,22 @@ function DepartmentSdsPanel({
       onDone(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ', false)
     } finally {
       setBusyCode(null)
+    }
+  }
+
+  async function registerSdsOnly(file: DepartmentSdsGroupDTO['files'][number]) {
+    setRegisteringFileId(file.id)
+    try {
+      const response = await fetch(`/api/admin/chemical-safety/department-sds/${file.id}/register-sds-only`, {
+        method: 'POST',
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'เพิ่มรายการ SDS-only ไม่สำเร็จ')
+      onDone('เพิ่มเข้าทะเบียนแล้ว · SDS-only — ยังไม่ระบุปริมาณ')
+    } catch (caught) {
+      onDone(caught instanceof Error ? caught.message : 'เพิ่มรายการ SDS-only ไม่สำเร็จ', false)
+    } finally {
+      setRegisteringFileId(null)
     }
   }
 
@@ -492,10 +499,11 @@ function DepartmentSdsPanel({
                               variant="ghost"
                               icon="flask"
                               size="sm"
-                              title="เพิ่มเข้าทะเบียนสารเคมี"
-                              onClick={() => setRegistering({ group, fileId: file.id })}
+                              disabled={registeringFileId === file.id}
+                              title="เพิ่มเข้าทะเบียนเป็น SDS-only — ยังไม่ระบุปริมาณ"
+                              onClick={() => void registerSdsOnly(file)}
                             >
-                              เพิ่มเข้าทะเบียนสารเคมี
+                              {registeringFileId === file.id ? 'กำลังเพิ่ม…' : 'เพิ่มเข้าทะเบียนสารเคมี · SDS-only'}
                             </Button>
                           )}
                           {file.source === 'current' && canRegister && file.registryLink.status === 'registered' && (
@@ -565,19 +573,6 @@ function DepartmentSdsPanel({
           onSaved={(message) => {
             setReplacing(null)
             onDone(message)
-          }}
-        />
-      )}
-      {registering && (
-        <DepartmentChemicalModal
-          group={registering.group}
-          initialFileId={registering.fileId}
-          products={chemicalProducts}
-          units={units}
-          onClose={() => setRegistering(null)}
-          onSaved={(message, ok) => {
-            setRegistering(null)
-            onDone(message, ok)
           }}
         />
       )}

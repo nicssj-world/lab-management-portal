@@ -101,7 +101,6 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
       .filter(row => row.active === true)
       .map(row => `${String(row.product_id)}:${String(row.unit_id)}`),
   )
-  const linkedHoldingIds = new Set((links.data ?? []).map(row => String(row.holding_id)))
   const registeredByUnit = new Map<string, RegisteredDepartmentChemical[]>()
   for (const holding of holdings.data ?? []) {
     const productId = String(holding.product_id)
@@ -203,7 +202,9 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
               packageValue: candidate.packageValue ?? null,
               packageUnit: candidate.packageUnit ?? null,
               currentContainerCount: candidate.currentContainerCount ?? null,
-              availableToLink: !linkedHoldingIds.has(candidate.holdingId),
+              // One holding may legitimately carry several department SDS
+              // files (duplicate copies or different revisions).
+              availableToLink: true,
             })),
           }
         }

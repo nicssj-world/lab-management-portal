@@ -27,7 +27,7 @@ import { RegistryChangeModal, type RegistryChangeMode } from './RegistryChangeMo
 import { SdsEditorModal } from './SdsEditorModal'
 import { SdsManagementClient, type SdsProductInfo } from './SdsManagementClient'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
-import { FONT, SPACE, ZONE_META, tabularNums } from './shared/tokens'
+import { FONT, SDS_ONLY_CAPTURE_LABEL, SPACE, ZONE_META, tabularNums } from './shared/tokens'
 import {
   GhsRow,
   PositionChip,
@@ -687,6 +687,9 @@ export function ChemicalSafetyHubClient({
                           <td style={cellStyle}>
                             <b style={{ fontSize: FONT.md }}>{row.canonicalName}</b>
                             {isInactive && <span style={{ marginLeft: 6, fontSize: FONT.xs, fontWeight: 700, color: 'var(--muted)' }}>(Inactive)</span>}
+                            {row.inventoryCaptureStatus === 'sds_only' && (
+                              <Badge color="amber" size="sm" style={{ marginLeft: 6 }}>{SDS_ONLY_CAPTURE_LABEL}</Badge>
+                            )}
                             <div style={{ fontSize: FONT.sm, color: 'var(--muted)' }}>
                               {row.casNumber ? `CAS ${row.casNumber}` : 'ไม่ระบุ CAS'}
                               {row.concentration ? ` · ${row.concentration}` : ''}
@@ -832,8 +835,6 @@ export function ChemicalSafetyHubClient({
           items={roomSdsItems}
           roomRegistry={registry.filter(row => row.storageScope === 'room')}
           products={sdsProducts}
-          chemicalProducts={products}
-          units={units}
           departments={departmentSds}
           canManage={canManageChemicals}
           canEditUnitIds={canProposeUnitIds}

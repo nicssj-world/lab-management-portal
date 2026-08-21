@@ -330,6 +330,7 @@ export async function listChemicalRegistryWithSource(
       concentration: text(product.concentration),
       storageScope: placement.storageScope,
       workflowOrigin: holding.workflow_origin === 'registry_v2' ? 'registry_v2' : 'current',
+      inventoryCaptureStatus: holding.inventory_capture_status === 'sds_only' ? 'sds_only' : 'complete',
       roomId: room?.id == null ? null : String(room.id),
       locationId: placement.locationId,
       packageValue,
@@ -444,7 +445,7 @@ export async function listChemicalImportReview(filters: ImportReviewFilters = {}
   }))
 }
 
-/** รายการคำขอแก้ไข/เพิ่ม/เลิกใช้งานสารเคมี สำหรับแผงรอทบทวนของหน้าทะเบียนสารเคมี */
+/** รายการคำขอแก้ไข/เพิ่ม/เลิกใช้งานสารเคมี สำหรับแผงประวัติการเปลี่ยนแปลง */
 export async function listChemicalChangeRequests(): Promise<ChemicalChangeRequestListItemDTO[]> {
   const snapshot = await databaseSource.loadSnapshot()
   const productById = new Map(snapshot.products.map(row => [row.id, row]))
