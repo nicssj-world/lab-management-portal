@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import type { QualityTaskActionItem, QualityTaskHoliday, QualityTaskOccurrence, QualityTaskTemplate, SafetyCertificate, TaskStatus } from '@/lib/quality-tasks/types'
 import { certificateRenewalWindow, isLinkedQualityOccurrence, linkedQualityTaskHref, missingEvidenceRequirements } from '@/lib/quality-tasks/safety'
 import { isWeekendDate } from '@/lib/quality-tasks/logic'
+import { isMonthlySafetySourceKey } from '@/lib/quality-tasks/monthly-safety'
 import { MonthlySafetyInspectionBoard } from './MonthlySafetyInspectionBoard'
 
 type Tab = 'overview' | 'monthly' | 'tasks' | 'calendar' | 'evidence' | 'certificates'
@@ -369,7 +370,7 @@ export function SafetyTaskHub({
 
   async function taskAction(action: 'start' | 'submit' | 'approve' | 'reject') {
     if (!selected) return
-    if (action === 'start' && selected.template.integrationKind === 'safety_inspection' && !['CBH-ST-04', 'CBH-ST-26'].includes(selected.template.sourceKey ?? '')) {
+    if (action === 'start' && selected.template.integrationKind === 'safety_inspection' && !isMonthlySafetySourceKey(selected.template.sourceKey)) {
       await startInspectionRound()
       return
     }
@@ -388,7 +389,7 @@ export function SafetyTaskHub({
   }
 
   function canRescheduleItem(item: QualityTaskOccurrence) {
-    return !isLinkedQualityOccurrence(item) && !['CBH-ST-04', 'CBH-ST-26'].includes(item.template.sourceKey ?? '') && (isEditor || item.assignees.some(entry => entry.userId === actorId))
+    return !isLinkedQualityOccurrence(item) && !isMonthlySafetySourceKey(item.template.sourceKey) && (isEditor || item.assignees.some(entry => entry.userId === actorId))
   }
 
   async function rescheduleItem(item: QualityTaskOccurrence, date: string) {
@@ -433,7 +434,7 @@ export function SafetyTaskHub({
   }
 
   function canUploadTo(item: QualityTaskOccurrence) {
-    return !isLinkedQualityOccurrence(item) && !['CBH-ST-04', 'CBH-ST-26'].includes(item.template.sourceKey ?? '') && item.status !== 'completed' && item.status !== 'pending_review' && (isEditor || item.assignees.some(entry => entry.userId === actorId))
+    return !isLinkedQualityOccurrence(item) && !isMonthlySafetySourceKey(item.template.sourceKey) && item.status !== 'completed' && item.status !== 'pending_review' && (isEditor || item.assignees.some(entry => entry.userId === actorId))
   }
 
   async function addCapa() {
@@ -666,7 +667,7 @@ function TaskDrawer({ item, actorId, isEditor, busy, error, actionItems, integra
   const [dateWarning, setDateWarning] = useState('')
   const missing = missingEvidenceRequirements(item.template.evidenceRequirements, item.attachments)
   const linkedQualityMeeting = isLinkedQualityOccurrence(item)
-  const monthlySafetyTask = ['CBH-ST-04', 'CBH-ST-26'].includes(item.template.sourceKey ?? '')
+  const monthlySafetyTask = isMonthlySafetySourceKey(item.template.sourceKey)
   const inspectionTask = item.template.integrationKind === 'safety_inspection' && !monthlySafetyTask
   const assigned = item.assignees.some(entry => entry.userId === actorId)
   const canOperate = !linkedQualityMeeting && !monthlySafetyTask && (isEditor || assigned)

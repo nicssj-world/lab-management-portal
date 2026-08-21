@@ -35,6 +35,12 @@ assert.match(safetyGroup, /th: 'แผนที่ห้องปฏิบัต
 // แม่ต้องไม่ถือ resource — รูปแบบเดียวกับกลุ่มความเสี่ยงและกลุ่ม IT
 assert.doesNotMatch(safetyGroup.split('\n')[0], /resource:/, 'the safety group parent must not carry a resource gate')
 
+// ทะเบียนอุปกรณ์และจุดรวมพลเคยเข้าถึงได้แค่ผ่านปุ่มบนหัวหน้าแผนที่เท่านั้น
+assert.match(safetyGroup, /href: '\/staff\/lab-map\/safety-assets'/, 'safety assets has its own sidebar entry')
+
 assert.match(topbar, /'\/staff\/lab-map'/)
+for (const route of ['/staff/lab-map/safety-assets', '/staff/lab-map/print', '/staff/lab-map/sds']) {
+  assert.ok(topbar.includes(`'${route}'`), `topbar names ${route} instead of falling back to the module root`)
+}
 
 console.log('lab map staff navigation passed')

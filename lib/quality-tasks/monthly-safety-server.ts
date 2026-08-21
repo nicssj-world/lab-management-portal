@@ -5,7 +5,10 @@ import type { Actor } from '@/lib/auth/guards'
 import { bangkokToday } from './logic'
 import {
   MONTHLY_SAFETY_PROFILES,
+  MONTHLY_SAFETY_SOURCE_KEYS,
   isMonthlySafetyProfile,
+  isMonthlySafetySourceKey,
+  type MonthlySafetySourceKey,
   monthlyPeriod,
   pointStatusForMonth,
   validateNssSubmission,
@@ -27,8 +30,7 @@ type WorkflowPayload =
   | { action: 'skip'; reason: string }
   | { action: 'reassign'; assignments: { userId: string; assignmentRole: 'primary' | 'backup' }[] }
 
-const PARENT_SOURCE_KEYS = ['CBH-ST-04', 'CBH-ST-26'] as const
-const PROFILE_BY_TASK: Record<(typeof PARENT_SOURCE_KEYS)[number], SafetyInspectionProfileKey[]> = {
+const PROFILE_BY_TASK: Record<MonthlySafetySourceKey, SafetyInspectionProfileKey[]> = {
   'CBH-ST-04': ['biohazard_spill_kit', 'chemical_spill_kit'],
   'CBH-ST-26': ['nss_eyewash'],
 }
@@ -69,7 +71,7 @@ function supplySnapshot(row: Row): SafetySupplyRecord {
 
 async function loadMaterializationData(periodStart: string) {
   const { data: taskTemplates, error: taskError } = await supabaseAdmin.from('quality_task_templates').select('*')
-    .eq('workstream', 'safety').in('source_key', ['CBH-ST-04', 'CBH-ST-26']).eq('active', true)
+    .eq('workstream', 'safety').in('source_key', [...MONTHLY_SAFETY_SOURCE_KEYS]).eq('active', true)
   fail(taskError)
   const taskIds = rows(taskTemplates).map(row => str(row.id))
   const { data: schedules, error: scheduleError } = taskIds.length
@@ -159,8 +161,8 @@ export async function materializeMonthlySafetyInspections(month: string, actor: 
   const data = await loadMaterializationData(periodStart)
   let createdItems = 0
   for (const task of data.taskTemplates) {
-    const sourceKey = str(task.source_key) as (typeof PARENT_SOURCE_KEYS)[number]
-    if (!PARENT_SOURCE_KEYS.includes(sourceKey)) continue
+    const sourceKey = str(task.source_key)
+    if (!isMonthlySafetySourceKey(sourceKey)) continue
     const schedule = data.schedules.find(row => str(row.template_id) === str(task.id) && str(row.interval_unit) === 'month'
       && str(row.starts_on) <= periodStart && (!row.ends_on || str(row.ends_on) >= periodStart))
     if (!schedule) continue
@@ -275,6 +277,8 @@ export async function getMonthlySafetyForm(roundItemId: string, actor: Actor, is
     point: mapPoint(row, bangkokToday()),
     template: row.template_snapshot ?? {},
     inspection: row.inspection ?? null,
+    // จุดที่ถูกข้ามไม่มีแถว inspection เหตุผลจึงต้องส่งมาจากตัว round item เอง
+    skip: row.skipped_at ? { reason: str(row.skip_reason), at: str(row.skipped_at) } : null,
   }
 }
 

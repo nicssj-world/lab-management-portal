@@ -171,7 +171,10 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   const assignedEditorCount = assignableStaff.filter(person => editors.has(person.id)).length
 
   useEffect(() => {
-    if (!canEdit || !initialInspectionRoundId) return
+    if (!initialInspectionRoundId) return
+    // ผู้ใช้สิทธิ์ดูอย่างเดียวตามลิงก์ "เปิดอุปกรณ์และรอบตรวจ" มาได้เหมือนกัน
+    // ถ้าเงียบไปเฉย ๆ จะเห็นแค่รายการอุปกรณ์ธรรมดาโดยไม่รู้ว่าทำไมรอบตรวจไม่ขึ้น
+    if (!canEdit) { setError('ต้องเป็น Safety Editor จึงจะเปิดรอบตรวจนี้ได้ กำลังแสดงทะเบียนอุปกรณ์แบบดูอย่างเดียว'); return }
     let active = true
     const roundUrl = `/api/admin/lab-map/safety-inspection-rounds?roundId=${encodeURIComponent(initialInspectionRoundId)}`
     void jsonRequest(roundUrl)

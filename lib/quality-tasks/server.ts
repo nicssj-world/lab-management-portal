@@ -10,6 +10,7 @@ import { listQualityTaskHolidays } from './holidays'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import { canApproveTask, nextRollingDueDate, templateRemovalMode } from './safety'
 import { normalizeMeetingTime } from './meeting-time'
+import { isMonthlySafetySourceKey } from './monthly-safety'
 import type {
   AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskActionItem, QualityTaskAttachment, QualityTaskCheckIn,
   QualityTaskEvidenceRequirement, QualityTaskOccurrence, QualityTaskSchedule, QualityTaskTemplate, RecurrenceMode,
@@ -292,7 +293,7 @@ export async function getOccurrenceReadAccess(instanceId: string, level: PermLev
 export async function updateOccurrence(instanceId: string, payload: OccurrenceActionPayload, actor: Actor, level: PermLevel, workstream: TaskWorkstream = 'quality') {
   const reviewing = payload.action === 'approve' || payload.action === 'reject'
   const access = await getOccurrenceAccess(instanceId, actor, level, workstream, reviewing)
-  if (workstream === 'safety' && ['CBH-ST-04', 'CBH-ST-26'].includes(str(access.template.source_key))) {
+  if (workstream === 'safety' && isMonthlySafetySourceKey(str(access.template.source_key))) {
     throw new Error('งานแม่รายเดือนปิดอัตโนมัติจากผลตรวจของทุกจุด กรุณาดำเนินการในแท็บตรวจประจำเดือน')
   }
   const inspectionTask = workstream === 'safety' && str(access.template.integration_kind) === 'safety_inspection'

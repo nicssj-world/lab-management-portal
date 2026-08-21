@@ -4,10 +4,8 @@ import { isProtectedPath } from '../lib/auth/session-guard'
 
 const read = (path: string) => existsSync(path) ? readFileSync(path, 'utf8') : ''
 const page = read('app/(protected)/staff/lab-map/safety-assets/page.tsx')
-const safetyMapPage = read('app/(protected)/staff/lab-map/safety/page.tsx')
 const client = read('components/lab-map/SafetyAssetsClient.tsx')
 const photoPicker = read('components/lab-map/SafetyPhotoPicker.tsx')
-const safetyMap = read('components/lab-map/SafetyEquipmentMap.tsx')
 const mapPage = read('app/(protected)/staff/lab-map/page.tsx')
 const staffMapClient = read('components/lab-map/LabMapStaffClient.tsx')
 const mapShell = read('components/lab-map/LabMapShell.tsx')
@@ -29,9 +27,13 @@ const assetsApi = read('app/api/admin/lab-map/safety-assets/route.ts')
 assert.match(page, /requireSafetyViewer/)
 assert.match(page, /listSafetyAssets/)
 assert.match(page, /listAssemblyPoints/)
-assert.match(safetyMapPage, /getStaffLabMapDTO/, 'the separate safety-equipment map reads the released map snapshot')
-assert.match(safetyMap, /allowedModes=\{\['safety-assets'\]\}/, 'safety equipment has its own map mode instead of joining evacuation')
-assert.match(safetyMap, /item\.kind !== 'fire-extinguisher'/, 'the equipment map excludes extinguishers reserved for evacuation maps')
+// เคยมีหน้าแยก /staff/lab-map/safety ที่ไม่มีลิงก์เข้าเลย และแสดงอุปกรณ์ไม่ครบ
+// (ตัดถังดับเพลิงออก) โหมด safety-assets บนแผนที่หลักครอบคลุมแทนแล้ว
+assert.ok(!existsSync('app/(protected)/staff/lab-map/safety/page.tsx'),
+  'the orphan safety-equipment map page stays deleted')
+assert.ok(!existsSync('components/lab-map/SafetyEquipmentMap.tsx'),
+  'the orphan safety-equipment map component stays deleted')
+assert.match(staffMapClient, /'safety-assets'/, 'the main staff map still offers the safety-equipment mode')
 assert.match(staffMapClient, /'safety-assets'/, 'the main map exposes safety equipment as a fourth tab')
 assert.doesNotMatch(mapPage, /href="\/staff\/lab-map\/safety"/, 'the main map does not duplicate the safety-equipment tab as a separate primary link')
 assert.match(client, /^'use client'/)

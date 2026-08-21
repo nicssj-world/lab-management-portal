@@ -41,4 +41,21 @@ assert.doesNotMatch(monthlyServer, /snapshot\?\.profile \?\? asset\?\.inspection
 assert.doesNotMatch(board, /profile === 'nss_eyewash' \? 'NSS' : 'SPILL'/, 'the type badge is not a two-way guess')
 assert.match(board, /PROFILE_LABELS\[profile\]\?\.label \?\?/, 'an unknown profile is labelled as unknown, not as a spill kit')
 
+// จุดตรวจที่ส่งผลหรือถูกข้ามแล้วต้องเปิดดูย้อนหลังได้ ไม่ใช่ปุ่มตายจนต้องไปเปิด PDF
+assert.doesNotMatch(board, /disabled=\{!\['pending', 'due_soon', 'overdue'\]\.includes\(point\.status\)\}/,
+  'submitted and skipped points can still be opened')
+assert.match(board, /submittedRows/, 'the board renders what was recorded for a closed point')
+assert.match(monthlyServer, /skip: row\.skipped_at \?/, 'the form endpoint returns the skip reason')
+
+// source key ของงานแม่รายเดือนต้องมีที่เดียว ไม่งั้นปุ่มเริ่มรอบตรวจของหน้าอุปกรณ์
+// จะโผล่กลับมาเชื่อมรอบประจำเดือนเข้าหน้าอุปกรณ์อีก
+assert.match(monthlyDomain, /MONTHLY_SAFETY_SOURCE_KEYS = \['CBH-ST-04', 'CBH-ST-26'\]/, 'the monthly parent task keys live in the pure module')
+for (const file of [
+  'components/safety-tasks/SafetyTaskHub.tsx',
+  'lib/quality-tasks/server.ts',
+  'lib/quality-tasks/monthly-safety-server.ts',
+]) {
+  assert.doesNotMatch(read(file), /\['CBH-ST-04', 'CBH-ST-26'\]/, `${file} does not re-declare the monthly task keys`)
+}
+
 console.log('monthly safety UI/API contract passed')

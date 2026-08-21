@@ -1,5 +1,17 @@
 export type SafetyInspectionProfileKey = 'biohazard_spill_kit' | 'chemical_spill_kit' | 'nss_eyewash'
 
+/**
+ * งานแม่ของรอบตรวจประจำเดือน — ใช้ทั้งฝั่ง server (materializer) และฝั่ง client
+ * (SafetyTaskHub ซ่อนปุ่มเริ่มรอบตรวจของหน้าอุปกรณ์สำหรับงานสองตัวนี้)
+ * ถ้าแยกกันเก็บ ปุ่มจะโผล่กลับมาเชื่อมรอบประจำเดือนเข้าหน้าอุปกรณ์อีกครั้ง
+ */
+export const MONTHLY_SAFETY_SOURCE_KEYS = ['CBH-ST-04', 'CBH-ST-26'] as const
+export type MonthlySafetySourceKey = (typeof MONTHLY_SAFETY_SOURCE_KEYS)[number]
+
+export function isMonthlySafetySourceKey(value: unknown): value is MonthlySafetySourceKey {
+  return MONTHLY_SAFETY_SOURCE_KEYS.includes(value as MonthlySafetySourceKey)
+}
+
 export const MONTHLY_SAFETY_PROFILES: SafetyInspectionProfileKey[] = [
   'biohazard_spill_kit', 'chemical_spill_kit', 'nss_eyewash',
 ]

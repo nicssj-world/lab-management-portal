@@ -15,7 +15,10 @@ for (const name of [
   'updateMonthlySafetyPointWorkflow',
 ]) assert.ok(server.includes(`function ${name}`) || server.includes(`function ${name}<`), `${name} is implemented`)
 
-assert.ok(server.includes("source_key', ['CBH-ST-04', 'CBH-ST-26']") || server.includes("['CBH-ST-04', 'CBH-ST-26']"), 'materialization is limited to the two approved parent tasks')
+// ค่าจริงอยู่ใน MONTHLY_SAFETY_SOURCE_KEYS ของ lib/quality-tasks/monthly-safety.ts
+// (ที่เดียว เพราะฝั่ง client ใช้ค่าเดียวกันซ่อนปุ่มเริ่มรอบตรวจของหน้าอุปกรณ์)
+assert.match(server, /source_key', \[\.\.\.MONTHLY_SAFETY_SOURCE_KEYS\]/, 'materialization is limited to the two approved parent tasks')
+assert.match(read('lib/quality-tasks/monthly-safety.ts'), /MONTHLY_SAFETY_SOURCE_KEYS = \['CBH-ST-04', 'CBH-ST-26'\]/, 'the approved parent tasks are CBH-ST-04 and CBH-ST-26')
 assert.ok(server.includes('assignee_snapshot'), 'round items snapshot point assignees')
 assert.ok(server.includes('template_snapshot'), 'round items snapshot the form version and supplies')
 assert.ok(server.includes('actor.id') && server.includes('isEditor'), 'access uses the authenticated actor and editor flag')
