@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PublicSdsResult } from '@/lib/chemical-safety/public-types'
 import type { GhsPictogramCode } from '@/lib/chemical-safety/types'
 import { GhsPictogram } from './GhsPictogram'
@@ -13,6 +13,7 @@ const ZONES = [
   { code: 'C', label: 'ตำแหน่ง C' },
   { code: 'T', label: 'ตำแหน่ง T (โต๊ะ)' },
 ]
+const PUBLIC_SDS_PAGE_SIZE = 100
 
 export function PublicSdsLibrary({
   initialItems,
@@ -27,7 +28,11 @@ export function PublicSdsLibrary({
   const [ghs, setGhs] = useState('')
   const [zone, setZone] = useState('')
   const [state, setState] = useState<'idle' | 'loading' | 'error' | 'limited'>('idle')
+  const [page, setPage] = useState(() => Math.max(1, Math.ceil(initialItems.length / PUBLIC_SDS_PAGE_SIZE)))
+  const [totalCount, setTotalCount] = useState(initialItems.length)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
+  const initialServerResult = useRef(true)
 
   const units = useMemo(
     () => [...new Map(initialItems.flatMap(item => item.units).map(item => [item.code, item])).values()],
@@ -39,9 +44,63 @@ export function PublicSdsLibrary({
   }, [initialQuery])
 
   useEffect(() => {
+    // The server already rendered the complete unfiltered result. Keep it so
+    // hydration does not replace 120+ cards with the API's first page.
+    if (
+      initialServerResult.current
+      && initialQuery === ''
+      && q === ''
+      && unit === ''
+      && ghs === ''
+      && zone === ''
+    ) {
+      initialServerResult.current = false
+      setTotalCount(initialItems.length)
+      setPage(Math.max(1, Math.ceil(initialItems.length / PUBLIC_SDS_PAGE_SIZE)))
+      return
+    }
+    initialServerResult.current = false
+
     const controller = new AbortController()
     const timer = setTimeout(async () => {
       setState('loading')
+      const urlParams = new URLSearchParams(location.search)
+      if (q) urlParams.set('q', q)
+      else urlParams.delete('q')
+      if (unit) urlParams.set('unit', unit)
+      else urlParams.delete('unit')
+      if (ghs) urlParams.set('ghs', ghs)
+      else urlParams.delete('ghs')
+      if (zone) urlParams.set('zone', zone)
+      else urlParams.delete('zone')
+      urlParams.delete('page')
+      urlParams.delete('pageSize')
+      history.replaceState(null, '', `${location.pathname}${urlParams.size ? `?${urlParams}` : ''}${location.hash}`)
+
+      const params = new URLSearchParams(urlParams)
+      params.set('page', '1')
+      params.set('pageSize', String(PUBLIC_SDS_PAGE_SIZE))
+      try {
+        const response = await fetch(`/api/public/sds?${params}`, { signal: controller.signal })
+        if (response.status === 429) { setState('limited'); return }
+        if (!response.ok) throw new Error('request failed')
+        const payload = await response.json() as { items?: PublicSdsResult[]; count?: number }
+        setItems(payload.items ?? [])
+        setTotalCount(typeof payload.count === 'number' ? payload.count : (payload.items ?? []).length)
+        setPage(1)
+        setState('idle')
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') setState('error')
+      }
+    }, 300)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [q, unit, ghs, zone, initialQuery, initialItems.length])
+
+  async function loadMore() {
+    if (loadingMore || items.length >= totalCount) return
+    const nextPage = page + 1
+    setLoadingMore(true)
+    try {
       const params = new URLSearchParams(location.search)
       if (q) params.set('q', q)
       else params.delete('q')
@@ -51,20 +110,27 @@ export function PublicSdsLibrary({
       else params.delete('ghs')
       if (zone) params.set('zone', zone)
       else params.delete('zone')
-      history.replaceState(null, '', `${location.pathname}${params.size ? `?${params}` : ''}${location.hash}`)
-      try {
-        const response = await fetch(`/api/public/sds?${params}`, { signal: controller.signal })
-        if (response.status === 429) { setState('limited'); return }
-        if (!response.ok) throw new Error('request failed')
-        const payload = await response.json()
-        setItems(payload.items ?? [])
-        setState('idle')
-      } catch (error) {
-        if ((error as Error).name !== 'AbortError') setState('error')
-      }
-    }, 300)
-    return () => { clearTimeout(timer); controller.abort() }
-  }, [q, unit, ghs, zone])
+      params.set('page', String(nextPage))
+      params.set('pageSize', String(PUBLIC_SDS_PAGE_SIZE))
+
+      const response = await fetch(`/api/public/sds?${params}`)
+      if (response.status === 429) { setState('limited'); return }
+      if (!response.ok) throw new Error('request failed')
+      const payload = await response.json() as { items?: PublicSdsResult[]; count?: number }
+      const nextItems = payload.items ?? []
+      setItems(current => {
+        const seen = new Set(current.map(item => item.publicId))
+        return [...current, ...nextItems.filter(item => !seen.has(item.publicId))]
+      })
+      if (typeof payload.count === 'number') setTotalCount(payload.count)
+      setPage(nextPage)
+      setState('idle')
+    } catch {
+      setState('error')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   return (
     <>
@@ -182,6 +248,22 @@ export function PublicSdsLibrary({
               )}
             </article>
           ))}
+        </div>
+      )}
+      {items.length > 0 && items.length < totalCount && state !== 'loading' && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            style={{
+              minHeight: 44, padding: '0 18px', border: '1px solid var(--primary)', borderRadius: 10,
+              background: 'var(--card)', color: 'var(--primary)', font: 'inherit', fontWeight: 800,
+              cursor: loadingMore ? 'wait' : 'pointer',
+            }}
+          >
+            {loadingMore ? 'กำลังโหลด…' : `แสดงรายการเพิ่ม (${totalCount - items.length})`}
+          </button>
         </div>
       )}
       {preview && (

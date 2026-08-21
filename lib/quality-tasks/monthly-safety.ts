@@ -1,5 +1,20 @@
 export type SafetyInspectionProfileKey = 'biohazard_spill_kit' | 'chemical_spill_kit' | 'nss_eyewash'
 
+export const MONTHLY_SAFETY_PROFILES: SafetyInspectionProfileKey[] = [
+  'biohazard_spill_kit', 'chemical_spill_kit', 'nss_eyewash',
+]
+
+/**
+ * A round item belongs to the monthly board only when the materializer stamped a
+ * profile into its template snapshot. Rounds opened from a safety task
+ * (openSafetyInspectionRoundFromTask) share the same table and also carry due_on,
+ * but leave template_snapshot at its '{}' default — never treat those as monthly
+ * points, or a fire extinguisher ends up on the Spill Kit form and in its PDF.
+ */
+export function isMonthlySafetyProfile(value: unknown): value is SafetyInspectionProfileKey {
+  return MONTHLY_SAFETY_PROFILES.includes(value as SafetyInspectionProfileKey)
+}
+
 export type SafetyPointStatus =
   | 'pending'
   | 'due_soon'

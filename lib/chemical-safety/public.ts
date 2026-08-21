@@ -62,7 +62,7 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
     .filter(publication => publication.destination === 'room')
     .map(publication => `${publication.product_id}:${publication.unit_id}`))
   const currentHoldingKeys = new Set(data.holdings
-    .filter(holding => holding.workflow_origin !== 'registry_v2')
+    .filter(holding => holding.storage_scope === 'room' && holding.workflow_origin !== 'registry_v2')
     .map(holding => `${holding.product_id}:${holding.unit_id}`))
   const publishedUnits = new Map<string, Array<{ code: string; name: string }>>()
   for (const link of data.unitProducts) {
@@ -374,6 +374,7 @@ export async function getPublicSdsFile(publicId: string): Promise<PublicSdsFile 
   if (!product) return null
   const { data: currentHolding } = await supabaseAdmin
     .from('chemical_inventory_holdings').select('id').eq('product_id', product.id)
+    .eq('storage_scope', 'room')
     .neq('workflow_origin', 'registry_v2').limit(1).maybeSingle()
   if (!currentHolding) return null
   const { data: links } = await supabaseAdmin

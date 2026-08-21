@@ -145,11 +145,20 @@ export async function publishSdsForHolding(
   // ฉบับที่ไม่มี source holding โดยตรงยังไม่มีปลายทาง publication ที่ระบุแน่ชัด
   if (!context.sourceHoldingId) return
 
+  const holding = await supabaseAdmin
+    .from('chemical_inventory_holdings')
+    .select('storage_scope')
+    .eq('id', context.sourceHoldingId)
+    .maybeSingle()
+  if (holding.error) throw holding.error
+  if (!holding.data) throw new Error('chemical_holding_not_found')
+
   const active = await supabaseAdmin
     .from('chemical_sds_publications')
     .select('id')
     .eq('product_id', context.productId)
     .eq('unit_id', context.unitId)
+    .eq('destination', holding.data.storage_scope)
     .eq('status', 'active')
     .limit(1)
     .maybeSingle()

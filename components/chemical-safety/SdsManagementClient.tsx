@@ -18,7 +18,6 @@ import type {
 } from '@/lib/chemical-safety/types'
 import { sdsItemsForHolding, summarizeRoomSds } from '@/lib/chemical-safety/sds-room-summary'
 import { SdsPdfViewerModal } from './SdsPdfViewerModal'
-import { DepartmentSdsLinkModal } from './DepartmentSdsLinkModal'
 import { SdsDropzone } from './shared/SdsDropzone'
 import { FONT, SPACE, tabularNums } from './shared/tokens'
 import { DepartmentPublishBadge, GhsRow, SdsStateBadge, SdsStatusBadge } from './shared/ui'
@@ -34,6 +33,7 @@ interface Props {
   view: ChemicalSdsView
   items: ChemicalSdsDTO[]
   roomRegistry: ChemicalRegistryRow[]
+  departmentRegistry: ChemicalRegistryRow[]
   products: SdsProductInfo[]
   departments: DepartmentSdsGroupDTO[]
   canManage: boolean
@@ -54,7 +54,7 @@ function useToast() {
 
 export function SdsManagementClient({
   view, items, products, departments, canManage,
-  roomRegistry, canEditUnitIds, publishableDepartmentCodes,
+  roomRegistry, departmentRegistry, canEditUnitIds, publishableDepartmentCodes,
 }: Props) {
   const router = useRouter()
   const { toasts, add } = useToast()
@@ -75,6 +75,7 @@ export function SdsManagementClient({
       ) : (
         <DepartmentSdsPanel
           groups={departments}
+          registry={departmentRegistry}
           publishableCodes={publishableDepartmentCodes}
           canManageChemicals={canManage}
           canEditUnitIds={canEditUnitIds}
@@ -303,9 +304,10 @@ function ChemicalSdsPanel({
 // ── คลังเอกสาร SDS แยกตามงาน ────────────────────────────────────────────────
 
 function DepartmentSdsPanel({
-  groups, publishableCodes, canManageChemicals, canEditUnitIds, onDone,
+  groups, registry, publishableCodes, canManageChemicals, canEditUnitIds, onDone,
 }: {
   groups: DepartmentSdsGroupDTO[]
+  registry: ChemicalRegistryRow[]
   publishableCodes: string[]
   canManageChemicals: boolean
   canEditUnitIds: string[]
@@ -315,13 +317,22 @@ function DepartmentSdsPanel({
   const [busyCode, setBusyCode] = useState<string | null>(null)
   const [registeringFileId, setRegisteringFileId] = useState<string | null>(null)
   const [replacing, setReplacing] = useState<{ id: string; department: string; displayName: string } | null>(null)
-  const [linking, setLinking] = useState<{ file: DepartmentSdsGroupDTO['files'][number]; departmentName: string } | null>(null)
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
 
   const totals = useMemo(() => ({
     files: groups.reduce((sum, group) => sum + group.fileCount, 0),
     published: groups.filter(group => group.status === 'published').length,
   }), [groups])
+
+  const registryByUnitId = useMemo(() => {
+    const result = new Map<string, ChemicalRegistryRow[]>()
+    for (const row of registry) {
+      const list = result.get(row.unitId) ?? []
+      list.push(row)
+      result.set(row.unitId, list)
+    }
+    return result
+  }, [registry])
 
   async function setStatus(code: string, status: 'draft' | 'published') {
     setBusyCode(code)
@@ -416,6 +427,7 @@ function DepartmentSdsPanel({
         {groups.map(group => {
           const canPublish = publishableCodes.includes(group.code)
           const canRegister = canManageChemicals || (group.chemicalUnitId !== null && canEditUnitIds.includes(group.chemicalUnitId))
+          const registryRows = group.chemicalUnitId ? registryByUnitId.get(group.chemicalUnitId) ?? [] : []
           const open = openCode === group.code
           const busy = busyCode === group.code
           return (
@@ -462,6 +474,29 @@ function DepartmentSdsPanel({
                 </div>
               </div>
 
+              {registryRows.length > 0 && (
+                <div style={{ marginTop: SPACE.sm, padding: SPACE.sm, borderRadius: 10, background: 'var(--surface-2)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <strong style={{ fontSize: FONT.base }}>รายการทะเบียนของงาน</strong>
+                    <span style={{ fontSize: FONT.sm, color: 'var(--muted)' }}>{registryRows.length} รายการ · SDS เริ่มจากทะเบียนสารเคมี</span>
+                  </div>
+                  <div style={{ display: 'grid', gap: 4, marginTop: 6 }}>
+                    {registryRows.map(row => (
+                      <div key={row.holdingId} style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ fontSize: FONT.sm }}>{row.canonicalName}</span>
+                        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: FONT.xs, color: row.hasSdsFile ? 'var(--success)' : 'var(--warning)' }}>
+                          {row.hasSdsFile ? 'มีไฟล์ SDS' : 'ยังไม่มีไฟล์ SDS'}
+                          {row.inventoryCaptureStatus === 'sds_only' && <Badge color="amber" size="sm">SDS-only — ยังไม่ระบุปริมาณ</Badge>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ margin: '6px 0 0', fontSize: FONT.xs, color: 'var(--muted)' }}>
+                    แก้ไขข้อมูลและแนบไฟล์ SDS จากหน้าทะเบียนสารเคมีของรายการนั้น
+                  </p>
+                </div>
+              )}
+
               {group.fileCount === 0 && (
                 <p style={{ margin: `${SPACE.xs}px 0 0`, fontSize: FONT.sm, color: 'var(--warning)' }}>
                   <Icon name="alert" size={12} /> ยังไม่มีเอกสาร — กรุณาเพิ่มสารและจัดการ SDS จากหน้าทะเบียนสารเคมี
@@ -485,7 +520,6 @@ function DepartmentSdsPanel({
                           {file.displayNameEdited && <Badge color="blue" size="sm" style={{ marginLeft: 6 }}>แก้ชื่อแล้ว</Badge>}
                           {file.registryLink.status === 'pending' && <Badge color="amber" size="sm" style={{ marginLeft: 6 }}>รอเพิ่มเข้าทะเบียน</Badge>}
                           {file.registryLink.status === 'linked' && <Badge color="green" size="sm" style={{ marginLeft: 6 }}>อยู่ในทะเบียน · ผูกไฟล์แล้ว</Badge>}
-                          {file.registryLink.status === 'registered' && <Badge color="green" size="sm" style={{ marginLeft: 6 }}>พบในทะเบียน · ยังไม่ผูกไฟล์</Badge>}
                         </span>
                         <span style={{ display: 'flex', gap: 4 }}>
                           <Button
@@ -504,17 +538,6 @@ function DepartmentSdsPanel({
                               onClick={() => void registerSdsOnly(file)}
                             >
                               {registeringFileId === file.id ? 'กำลังเพิ่ม…' : 'เพิ่มเข้าทะเบียนสารเคมี · SDS-only'}
-                            </Button>
-                          )}
-                          {file.source === 'current' && canRegister && file.registryLink.status === 'registered' && (
-                            <Button
-                              variant="ghost"
-                              icon="check"
-                              size="sm"
-                              title="เลือกและผูกไฟล์กับรายการเดิมในทะเบียน"
-                              onClick={() => setLinking({ file, departmentName: group.department })}
-                            >
-                              ผูกไฟล์กับทะเบียน
                             </Button>
                           )}
                           {file.source === 'current' && canPublish && (
@@ -572,17 +595,6 @@ function DepartmentSdsPanel({
           onClose={() => setReplacing(null)}
           onSaved={(message) => {
             setReplacing(null)
-            onDone(message)
-          }}
-        />
-      )}
-      {linking && (
-        <DepartmentSdsLinkModal
-          file={linking.file}
-          departmentName={linking.departmentName}
-          onClose={() => setLinking(null)}
-          onLinked={(message) => {
-            setLinking(null)
             onDone(message)
           }}
         />

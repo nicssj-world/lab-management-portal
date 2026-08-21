@@ -37,4 +37,11 @@ assert.match(roundApi, /if \(!requestedRoundId\)/, 'asset map does not silently 
 assert.doesNotMatch(closeRoundApi, /\.eq\('started_by', guard\.actor\.id\)/, 'any authorized Safety Editor can finish the task-linked round')
 assert.match(taskServer, /const inspectionTask[\s\S]{0,500}งานตรวจอุปกรณ์จะปิดอัตโนมัติ/, 'generic task actions protect the inspection workflow')
 
+// Monthly Spill kit / NSS rounds live in the same rounds table. Opening one in the
+// asset map records a photo inspection that marks the round item 'completed' without
+// submitted_at, which strands the point: the monthly board still shows "ยังไม่ส่ง"
+// but neither submit nor skip accepts it any more.
+assert.match(roundApi, /filter_snapshot[\s\S]{0,120}monthly_safety/, 'the asset map refuses to open a monthly inspection round')
+assert.match(hub, /monthlyRound/, 'monthly rounds do not link into the asset-map inspection flow')
+
 console.log('scripts/safety-workflow-single-entry.test.ts: all assertions passed')

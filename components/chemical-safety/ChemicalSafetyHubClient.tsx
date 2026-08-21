@@ -770,13 +770,15 @@ export function ChemicalSafetyHubClient({
                                     />
                                   </>
                                 )}
-                                <Button
-                                  variant="ghost" size="sm" icon="upload" title="แก้ไข SDS / แนบไฟล์"
-                                  disabled={sdsBusyHoldingId === row.holdingId}
-                                  onClick={() => void openSds(row)}
-                                >
-                                  SDS
-                                </Button>
+                                {canEditRow && (
+                                  <Button
+                                    variant="ghost" size="sm" icon="upload" title="แก้ไข SDS / แนบไฟล์"
+                                    disabled={sdsBusyHoldingId === row.holdingId}
+                                    onClick={() => void openSds(row)}
+                                  >
+                                    SDS
+                                  </Button>
+                                )}
                                 {canEditRow && (
                                   <Button
                                     variant="ghost" size="sm" icon={isInactive ? 'check' : 'trash'}
@@ -834,6 +836,7 @@ export function ChemicalSafetyHubClient({
           view={view}
           items={roomSdsItems}
           roomRegistry={registry.filter(row => row.storageScope === 'room')}
+          departmentRegistry={registry.filter(row => row.storageScope === 'department')}
           products={sdsProducts}
           departments={departmentSds}
           canManage={canManageChemicals}

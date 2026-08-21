@@ -38,10 +38,17 @@ async function json<T>(response: Response): Promise<T> {
   if (!response.ok) throw new Error(body.error ?? 'ดำเนินการไม่สำเร็จ')
   return body as T
 }
+const PROFILE_LABELS: Record<string, { badge: string; label: string }> = {
+  biohazard_spill_kit: { badge: 'SPILL', label: 'Biohazard Spill Kit' },
+  chemical_spill_kit: { badge: 'SPILL', label: 'Chemical Spill Kit' },
+  nss_eyewash: { badge: 'NSS', label: 'น้ำยาล้างตา NSS' },
+}
+// อย่า default เป็น Spill Kit — จุดตรวจที่ไม่มี profile จะถูกติดป้ายผิดชนิดเงียบ ๆ
 function profileLabel(profile: string) {
-  if (profile === 'nss_eyewash') return 'น้ำยาล้างตา NSS'
-  if (profile === 'chemical_spill_kit') return 'Chemical Spill Kit'
-  return 'Biohazard Spill Kit'
+  return PROFILE_LABELS[profile]?.label ?? 'ไม่ทราบชนิดจุดตรวจ'
+}
+function profileBadge(profile: string) {
+  return PROFILE_LABELS[profile]?.badge ?? '—'
 }
 
 function ReplacementFields({ draft, defaultLabel, onChange }: { draft: ReplacementDraft; defaultLabel: string; onChange: (patch: ReplacementDraft) => void }) {
@@ -132,7 +139,9 @@ export function MonthlySafetyInspectionBoard({ isEditor, fiscalYear }: { isEdito
       if (!isNss && Object.values(spillDraft).some(answer => !answer.result)) throw new Error('กรุณาเลือกผลตรวจให้ครบทุกข้อ')
       if (isNss && Object.values(nssDraft).some(answer => !answer.clarity || !answer.bottleCondition)) throw new Error('กรุณาตรวจความใสและสภาพขวดให้ครบทุกขวด')
       const replacementDraft = isNss ? nssDraft : spillDraft
-      const replacements = selected.template.supplies.filter(supply => replacementDraft[supply.id]?.replace).map(supply => {
+      const supplies = selected.template.supplies ?? []
+      if (!supplies.length) throw new Error('จุดตรวจนี้ยังไม่มีรายการ inventory กรุณาตั้งค่าใน Safety Asset ก่อน')
+      const replacements = supplies.filter(supply => replacementDraft[supply.id]?.replace).map(supply => {
         const replacement = replacementDraft[supply.id]
         if (!replacement.newCode?.trim()) throw new Error('รายการที่เปลี่ยนต้องระบุรหัส inventory ใหม่')
         return {
@@ -143,12 +152,12 @@ export function MonthlySafetyInspectionBoard({ isEditor, fiscalYear }: { isEdito
         }
       })
       const body = isNss ? {
-        kind: 'nss', activeBottleIds: selected.template.supplies.filter(supply => supply.supplyType === 'nss_bottle').map(supply => supply.id),
+        kind: 'nss', activeBottleIds: supplies.filter(supply => supply.supplyType === 'nss_bottle').map(supply => supply.id),
         bottles: Object.entries(nssDraft).map(([supplyId, answer]) => ({ supplyId, clarity: answer.clarity, bottleCondition: answer.bottleCondition, correctiveAction: answer.correctiveAction || null })),
         replacements,
       } : {
         kind: 'spill_kit', inspectedOn: bangkokToday(),
-        answers: selected.template.supplies.map(supply => ({ supplyId: supply.id, itemKey: String(selected.template.items?.find(item => item.id === supply.templateItemId)?.itemKey ?? supply.internalCode), result: spillDraft[supply.id]?.result, expiresOn: supply.expiresOn, note: spillDraft[supply.id]?.note || null })),
+        answers: supplies.map(supply => ({ supplyId: supply.id, itemKey: String(selected.template.items?.find(item => item.id === supply.templateItemId)?.itemKey ?? supply.internalCode), result: spillDraft[supply.id]?.result, expiresOn: supply.expiresOn, note: spillDraft[supply.id]?.note || null })),
         replacements,
       }
       await json(await fetch(`/api/admin/safety-tasks/monthly-inspections/${selected.point.roundItemId}/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }))
@@ -191,7 +200,7 @@ export function MonthlySafetyInspectionBoard({ isEditor, fiscalYear }: { isEdito
     </div>
     <div className="msb-list" aria-busy={loading}>
       {loading ? <div className="msb-empty">กำลังเตรียมรอบตรวจประจำเดือน…</div> : visible.map(point => <button key={point.roundItemId} className="msb-row" onClick={() => void openPoint(point)} disabled={!['pending', 'due_soon', 'overdue'].includes(point.status)}>
-        <span className="msb-type">{point.profile === 'nss_eyewash' ? 'NSS' : 'SPILL'}</span>
+        <span className="msb-type">{profileBadge(point.profile)}</span>
         <span className="msb-main"><strong>{point.assetCode} · {point.assetName}</strong><small>{profileLabel(point.profile)}{point.department ? ` · ${point.department}` : ''}</small></span>
         <span className="msb-people">{point.assignments.map(item => item.userName ?? 'ไม่ระบุชื่อ').join(', ') || 'ยังไม่มอบหมาย'}</span>
         <time>ครบกำหนด {thaiDate(point.dueOn)}</time><span className={`msb-status is-${STATUS[point.status].tone}`}>{STATUS[point.status].label}</span><Icon name="arrowRight" size={14} />
@@ -205,7 +214,7 @@ export function MonthlySafetyInspectionBoard({ isEditor, fiscalYear }: { isEdito
         <div className="msb-form-body">
           {selected.point.profile !== 'nss_eyewash' ? <>
             <div className="msb-form-intro"><p>ตรวจรายการทุกข้อ ของที่หมดอายุแล้วไม่สามารถบันทึกเป็น “ปกติ” ได้</p><button onClick={markAllNormal}><Icon name="check" size={14} />ปกติทั้งหมด</button></div>
-            <div className="msb-spill-items">{selected.template.supplies.map((supply, index) => {
+            <div className="msb-spill-items">{(selected.template.supplies ?? []).map((supply, index) => {
               const answer = spillDraft[supply.id] ?? { result: '', note: '' }
               const expired = Boolean(supply.expiresOn && supply.expiresOn < bangkokToday())
               return <article key={supply.id} className={answer.result && !['normal', 'na'].includes(answer.result) ? 'is-issue' : ''}>
@@ -214,7 +223,7 @@ export function MonthlySafetyInspectionBoard({ isEditor, fiscalYear }: { isEdito
                 {!['', 'normal', 'na'].includes(answer.result) && <><textarea value={answer.note} onChange={event => setSpillDraft(current => ({ ...current, [supply.id]: { ...answer, note: event.target.value } }))} placeholder="รายละเอียดและการแก้ไขปัญหา" /><ReplacementFields draft={answer} defaultLabel={supply.labelTh} onChange={patch => setSpillDraft(current => ({ ...current, [supply.id]: { ...answer, ...patch } }))} /></>}
               </article>
             })}</div>
-          </> : <div className="msb-nss-items">{selected.template.supplies.filter(supply => supply.supplyType === 'nss_bottle').map((supply, index) => {
+          </> : <div className="msb-nss-items">{(selected.template.supplies ?? []).filter(supply => supply.supplyType === 'nss_bottle').map((supply, index) => {
             const answer = nssDraft[supply.id] ?? { clarity: '', bottleCondition: '', correctiveAction: '' }
             const expired = Boolean(supply.expiresOn && supply.expiresOn < bangkokToday())
             const abnormal = answer.clarity === 'turbid' || answer.bottleCondition === 'cracked' || expired

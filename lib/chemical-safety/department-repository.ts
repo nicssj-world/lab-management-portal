@@ -1,11 +1,7 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { CHEMICAL_SDS_DEPARTMENTS, cleanSdsDisplayName } from './departments'
-import {
-  findRegisteredDepartmentChemicals,
-  type RegisteredDepartmentChemical,
-} from './department-registry'
+import { CHEMICAL_SDS_DEPARTMENTS } from './departments'
 
 export interface DepartmentSdsFileDTO {
   id: string
@@ -19,7 +15,7 @@ export interface DepartmentSdsFileDTO {
 }
 
 export interface DepartmentSdsRegistryLinkDTO {
-  status: 'unlinked' | 'pending' | 'registered' | 'linked'
+  status: 'unlinked' | 'pending' | 'linked'
   productId: string | null
   productName: string | null
   holdingId: string | null
@@ -55,7 +51,7 @@ export interface DepartmentSdsGroupDTO {
  * คืนทุกงานเสมอแม้ยังไม่มีไฟล์ เพื่อให้เห็นว่างานไหนยังไม่ได้นำเข้า
  */
 export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
-  const [departments, entries, publications, links, pendingRequests, units, products, unitProducts, holdings] = await Promise.all([
+  const [departments, entries, publications, links, pendingRequests, units, products] = await Promise.all([
     supabaseAdmin.from('chemical_sds_departments').select('*').order('display_order'),
     supabaseAdmin.from('chemical_department_sds').select('*'),
     supabaseAdmin.from('chemical_sds_publications').select('*').eq('destination', 'department').eq('status', 'active'),
@@ -65,11 +61,6 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
     supabaseAdmin
       .from('chemical_products')
       .select('id, canonical_name, lifecycle_status'),
-    supabaseAdmin.from('chemical_unit_products').select('product_id, unit_id, preferred_name, active'),
-    supabaseAdmin
-      .from('chemical_inventory_holdings')
-      .select('id, product_id, unit_id, storage_scope, lot_number, package_value, package_unit, current_container_count')
-      .eq('storage_scope', 'department'),
   ])
   if (departments.error) throw new Error(`chemical_sds_departments: ${departments.error.message}`)
   if (entries.error) throw new Error(`chemical_department_sds: ${entries.error.message}`)
@@ -78,51 +69,9 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
   if (pendingRequests.error) throw new Error(`chemical_change_requests: ${pendingRequests.error.message}`)
   if (units.error) throw new Error(`chemical_units: ${units.error.message}`)
   if (products.error) throw new Error(`chemical_products: ${products.error.message}`)
-  if (unitProducts.error) throw new Error(`chemical_unit_products: ${unitProducts.error.message}`)
-  if (holdings.error) throw new Error(`chemical_inventory_holdings: ${holdings.error.message}`)
 
   const productNames = new Map((products.data ?? []).map(row => [String(row.id), String(row.canonical_name)]))
-  const activeProductIds = new Set(
-    (products.data ?? [])
-      .filter(row => row.lifecycle_status === 'active')
-      .map(row => String(row.id)),
-  )
   const unitByName = new Map((units.data ?? []).map(row => [String(row.name_th), String(row.id)]))
-  const preferredNames = new Map(
-    (unitProducts.data ?? []).map(row => [
-      `${String(row.product_id)}:${String(row.unit_id)}`,
-      typeof row.preferred_name === 'string' && row.preferred_name.trim() !== ''
-        ? row.preferred_name
-      : null,
-    ]),
-  )
-  const unitProductKeys = new Set(
-    (unitProducts.data ?? [])
-      .filter(row => row.active === true)
-      .map(row => `${String(row.product_id)}:${String(row.unit_id)}`),
-  )
-  const registeredByUnit = new Map<string, RegisteredDepartmentChemical[]>()
-  for (const holding of holdings.data ?? []) {
-    const productId = String(holding.product_id)
-    const unitId = String(holding.unit_id)
-    const unitProductKey = `${productId}:${unitId}`
-    if (!activeProductIds.has(productId)) continue
-    if (!unitProductKeys.has(unitProductKey)) continue
-    const productName = preferredNames.get(unitProductKey) ?? productNames.get(productId)
-    if (!productName) continue
-    const list = registeredByUnit.get(unitId) ?? []
-    list.push({
-      productId,
-      productName,
-      holdingId: String(holding.id),
-      unitId,
-      lotNumber: holding.lot_number == null ? null : String(holding.lot_number),
-      packageValue: holding.package_value == null ? null : Number(holding.package_value),
-      packageUnit: holding.package_unit == null ? null : String(holding.package_unit),
-      currentContainerCount: holding.current_container_count == null ? null : Number(holding.current_container_count),
-    })
-    registeredByUnit.set(unitId, list)
-  }
   const unitIdByDepartmentCode = new Map(
     CHEMICAL_SDS_DEPARTMENTS.map(definition => [
       definition.code,
@@ -179,33 +128,6 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
             holdingId: null,
             sdsVersionId: null,
             candidates: [],
-          }
-        }
-        const registered = findRegisteredDepartmentChemicals(
-          [String(entry.display_name), cleanSdsDisplayName(String(entry.source_path))],
-          unitIdByDepartmentCode.get(String(entry.department_code)) ?? null,
-          registeredByUnit.get(unitIdByDepartmentCode.get(String(entry.department_code)) ?? '') ?? [],
-        )
-        if (registered.length > 0) {
-          const onlyMatch = registered.length === 1 ? registered[0] : null
-          return {
-            status: 'registered' as const,
-            productId: onlyMatch?.productId ?? null,
-            productName: onlyMatch?.productName ?? null,
-            holdingId: onlyMatch?.holdingId ?? null,
-            sdsVersionId: null,
-            candidates: registered.map(candidate => ({
-              productId: candidate.productId,
-              productName: candidate.productName,
-              holdingId: candidate.holdingId,
-              lotNumber: candidate.lotNumber ?? null,
-              packageValue: candidate.packageValue ?? null,
-              packageUnit: candidate.packageUnit ?? null,
-              currentContainerCount: candidate.currentContainerCount ?? null,
-              // One holding may legitimately carry several department SDS
-              // files (duplicate copies or different revisions).
-              availableToLink: true,
-            })),
           }
         }
         return {

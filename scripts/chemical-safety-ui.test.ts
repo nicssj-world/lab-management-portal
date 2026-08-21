@@ -88,18 +88,12 @@ const sdsSource = readFileSync(join(COMPONENT_DIR, 'SdsManagementClient.tsx'), '
 const publicSdsLibrarySource = readFileSync(join(COMPONENT_DIR, 'PublicSdsLibrary.tsx'), 'utf8')
 const publicDepartmentSdsSource = readFileSync(join(COMPONENT_DIR, 'PublicDepartmentSds.tsx'), 'utf8')
 const safetyManualActionsSource = readFileSync(join(COMPONENT_DIR, 'SafetyManualActions.tsx'), 'utf8')
-const departmentLinkModalPath = join(COMPONENT_DIR, 'DepartmentSdsLinkModal.tsx')
-const departmentLinkModalSource = existsSync(departmentLinkModalPath) ? readFileSync(departmentLinkModalPath, 'utf8') : ''
 const sdsPdfViewerPath = join(COMPONENT_DIR, 'SdsPdfViewerModal.tsx')
 assert.ok(existsSync(sdsPdfViewerPath), 'SDS PDF viewer modal must exist')
 const sdsPdfViewerSource = existsSync(sdsPdfViewerPath) ? readFileSync(sdsPdfViewerPath, 'utf8') : ''
 assert.ok(!sdsSource.includes('DepartmentSdsUploadModal'), 'SDS แยกตามงานต้องปิดการเพิ่มเอกสาร legacy ใหม่')
 assert.ok(sdsSource.includes('แก้ไขชื่อ'), 'SDS แยกตามงานต้องมีปุ่มแก้ไขชื่อเอกสาร')
-assert.match(
-  sdsSource,
-  /registryLink\.status === 'registered'[\s\S]{0,200}พบในทะเบียน · ยังไม่ผูกไฟล์/,
-  'SDS ที่พบสารจากการเทียบชื่อต้องบอกว่ายังไม่ได้ผูกไฟล์กับทะเบียน',
-)
+assert.doesNotMatch(sdsSource, /registryLink\.status === 'registered'/, 'SDS แยกตามงานต้องไม่ใช้ workflow เทียบชื่อแบบเดิม')
 assert.equal(
   sdsSource.match(/disabled=\{file\.registryLink\.status === 'linked'\}/g)?.length,
   2,
@@ -109,8 +103,8 @@ assert.ok(
   sdsSource.includes('ไฟล์นี้ผูกกับทะเบียนสารเคมีแล้ว'),
   'ปุ่มที่ปิดใช้งานต้องอธิบายเหตุผลว่ามีการผูกไฟล์กับทะเบียนแล้ว',
 )
-assert.ok(existsSync(departmentLinkModalPath), 'modal สำหรับผูก SDS กับ holding เดิมต้องมีอยู่')
-assert.ok(sdsSource.includes('DepartmentSdsLinkModal'), 'SDS แยกตามงานต้องเปิด modal ผูกไฟล์กับทะเบียน')
+assert.ok(!sdsSource.includes('DepartmentSdsLinkModal'), 'SDS แยกตามงานต้องไม่เปิด modal ของ workflow เดิม')
+assert.ok(sdsSource.includes('departmentRegistry'), 'SDS แยกตามงานต้องรับรายการทะเบียนจาก workflow ใหม่')
 assert.ok(sdsSource.includes('การแก้ไข SDS ให้ทำในทะเบียนสารเคมี'), 'แท็บ SDS แยกตามงานต้องแยกการเผยแพร่ออกจากการแก้ไข SDS')
 assert.ok(sdsSource.includes('รอเพิ่มเข้าทะเบียน'), 'คำขอ legacy ของงานต้องไม่ใช้ป้ายรออนุมัติที่สับสนกับ SDS review')
 assert.ok(sdsSource.includes('summarizeRoomSds'), 'SDS ห้องสารเคมีต้องสรุปจำนวนจากทะเบียนและจำนวนเวอร์ชันแยกกัน')
@@ -129,17 +123,9 @@ for (const gone of [
 ]) {
   assert.ok(!existsSync(gone), `ยกเลิกระบบรออนุมัติแล้ว ต้องไม่เหลือ route: ${gone}`)
 }
-assert.match(
-  sdsSource,
-  /registryLink\.status === 'registered'[\s\S]{0,500}ผูกไฟล์กับทะเบียน/,
-  'ปุ่มผูกไฟล์ต้องแสดงเฉพาะรายการที่พบในทะเบียนแต่ยังไม่ผูกไฟล์',
-)
-assert.ok(departmentLinkModalSource.includes('file.registryLink.candidates'), 'link modal must list every matched holding candidate')
-assert.ok(departmentLinkModalSource.includes('availableToLink'), 'link modal must disable holdings already linked elsewhere')
-assert.ok(departmentLinkModalSource.includes('type="radio"'), 'link modal must require an explicit holding selection')
-assert.ok(departmentLinkModalSource.includes('/link-existing'), 'link modal must call the dedicated atomic endpoint')
-assert.ok(departmentLinkModalSource.includes('role="dialog"'), 'link modal must declare dialog semantics')
-assert.ok(departmentLinkModalSource.includes('aria-modal="true"'), 'link modal must be announced as modal')
+const existingLinkRoute = readFileSync(join(process.cwd(), 'app', 'api', 'admin', 'chemical-safety', 'department-sds', '[code]', 'link-existing', 'route.ts'), 'utf8')
+assert.match(existingLinkRoute, /department_sds_link_existing_closed/, 'old link-existing endpoint must be closed')
+assert.match(existingLinkRoute, /status:\s*410/, 'old link-existing endpoint must return Gone')
 for (const required of ['@/components/ui/Card', '@/components/ui/Button', '@/components/ui/Stat']) {
   assert.ok(sdsSource.includes(required), `SdsManagementClient ต้อง import ${required}`)
 }

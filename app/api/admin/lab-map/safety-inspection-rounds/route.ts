@@ -40,6 +40,12 @@ export async function GET(req: NextRequest) {
   if (!round) return requestedRoundId
     ? NextResponse.json({ error: 'ไม่พบรอบตรวจที่เปิดอยู่ หรือไม่มีสิทธิ์เข้าถึงรอบนี้' }, { status: 404 })
     : NextResponse.json({ data: null })
+  // รอบตรวจประจำเดือน (Spill kit / NSS) ใช้แบบฟอร์มของตัวเองในแท็บ "ตรวจประจำเดือน"
+  // ถ้าปล่อยให้เปิดในหน้าอุปกรณ์ จะบันทึกผลด้วยแบบถ่ายรูปแล้วปิดจุดตรวจค้าง —
+  // แผงประจำเดือนยังเห็นเป็น "ยังไม่ส่ง" แต่ส่งผลหรือข้ามไม่ได้อีกเลย
+  if ((round.filter_snapshot as { source?: string } | null)?.source === 'monthly_safety') {
+    return NextResponse.json({ error: 'รอบตรวจประจำเดือนต้องบันทึกผลในแท็บ “ตรวจประจำเดือน” ของหน้างานความปลอดภัย' }, { status: 409 })
+  }
   try {
     await syncExistingEvidence(String(round.id), guard.actor.id)
     const items = await loadRoundItems(String(round.id))

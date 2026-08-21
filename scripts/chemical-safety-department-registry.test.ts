@@ -18,13 +18,13 @@ const types = read('lib/chemical-safety/types.ts')
 const route = read('app/api/admin/chemical-safety/department-sds/[code]/register/route.ts')
 const sdsOnlyRoute = read('app/api/admin/chemical-safety/department-sds/[code]/register-sds-only/route.ts')
 const sdsOnlyMigration = read('supabase/migrations/20260821130000_chemical_sds_only_registry.sql')
+const workflowHardeningMigration = read('supabase/migrations/20260821150000_chemical_safety_workflow_hardening.sql')
 const changeRequestsRoute = read('app/api/admin/chemical-safety/change-requests/route.ts')
 const changeRequestSubmitRoute = read('app/api/admin/chemical-safety/change-requests/[id]/submit/route.ts')
 const sdsMutationRoute = read('app/api/admin/chemical-safety/department-sds/[code]/route.ts')
 const sdsReplaceRoute = read('app/api/admin/chemical-safety/department-sds/[code]/replace/route.ts')
 const departmentRepository = read('lib/chemical-safety/department-repository.ts')
 const sdsClient = read('components/chemical-safety/SdsManagementClient.tsx')
-const departmentModal = read('components/chemical-safety/DepartmentChemicalModal.tsx')
 const registryClient = read('components/chemical-safety/ChemicalSafetyHubClient.tsx')
 const publicModule = read('lib/chemical-safety/public.ts')
 const chemicalApi = read('lib/chemical-safety/api.ts')
@@ -109,32 +109,22 @@ assert.match(sdsOnlyRoute, /file_id/i, 'SDS-only route requires an uploaded SDS 
 assert.match(sdsOnlyMigration, /inventory_capture_status/i, 'SDS-only migration stores an explicit capture status')
 assert.match(sdsOnlyMigration, /SDS-only/i, 'SDS-only migration carries the user-facing status label')
 assert.match(sdsOnlyMigration, /DROP CONSTRAINT IF EXISTS chemical_department_chemical_links_holding_id_key/i, 'one holding may carry multiple department SDS files')
+assert.match(workflowHardeningMigration, /char_length\(btrim\(current_row\.proposed_data->>'package_unit'\)\) > 20/i, 'review RPCs accept custom quantity units')
+assert.match(workflowHardeningMigration, /target_holding_id[\s\S]{0,260}chemical_sds_versions/i, 'registry approval creates the SDS draft automatically')
 for (const source of [changeRequestsRoute, changeRequestSubmitRoute]) {
   assert.match(source, /proposal-keys/i, 'chemical proposal routes use recursive key conversion')
 }
 assert.match(sdsMutationRoute, /chemical_department_chemical_links/i, 'linked department SDS files cannot be deleted')
 assert.match(sdsReplaceRoute, /chemical_department_chemical_links/i, 'linked department SDS files cannot be replaced')
 assert.ok(existingLinkRoute, 'existing-holding link route must exist')
-assert.match(existingLinkRoute, /holdingId:\s*z\.string\(\)\.uuid\(\)/, 'link route validates a holding UUID')
-assert.match(existingLinkRoute, /requireChemicalCustodian/i, 'link route enforces chemical custodian scope')
-assert.match(existingLinkRoute, /chemical_sds_departments/i, 'link route resolves the SDS department server-side')
-assert.match(existingLinkRoute, /chemical_units/i, 'link route resolves the active chemical unit server-side')
-assert.match(existingLinkRoute, /link_department_sds_to_existing_holding/i, 'link route delegates the atomic mutation to the RPC')
-assert.match(existingLinkRoute, /department_holding_already_linked/i, 'link route maps expected RPC conflicts')
-assert.doesNotMatch(
-  existingLinkRoute,
-  /\.from\(['"]chemical_department_chemical_links['"]\)\s*\.insert/,
-  'link route must not perform a non-atomic direct link insert',
-)
+assert.match(existingLinkRoute, /department_sds_link_existing_closed/i, 'the old link-existing route is explicitly closed')
+assert.match(existingLinkRoute, /status:\s*410/, 'the old link-existing route returns Gone')
 
 assert.match(departmentRepository, /registryLink/i, 'department SDS DTO exposes registry-link state')
 assert.match(sdsClient, /เพิ่มเข้าทะเบียนสารเคมี/i, 'department SDS UI exposes chemical registration')
 assert.doesNotMatch(sdsClient, /onClick=\{\(\) => setRegistering\(\{ group \}\)\}/, 'department-level registration shortcut is removed')
 assert.match(sdsClient, /storageScope|ไม่มีตำแหน่งจัดเก็บ/i, 'department chemical form has no storage location')
 assert.match(sdsClient, /canEditUnitIds/i, 'department registration uses chemical edit scopes')
-assert.match(departmentModal, /ghsPictogramCodes/i, 'department chemical form captures GHS details')
-assert.match(departmentModal, /packageValue/i, 'department chemical form captures holding details')
-assert.match(departmentModal, /locationId:\s*null/i, 'department chemical form submits no storage location')
 assert.match(registryClient, /storageScope/i, 'registry UI distinguishes department-scoped rows')
 assert.match(registryClient, /holdingId/i, 'registry rows use holding identity for stable keys')
 assert.match(publicModule, /storage_scope === 'department'/i, 'public SDS and storage layout skip department holdings')
@@ -149,6 +139,7 @@ const validHolding = {
   minimumStock: 1,
 }
 assert.equal(chemicalHoldingProposalSchema.safeParse(validHolding).success, true, 'department holding schema accepts a null location')
+assert.equal(chemicalHoldingProposalSchema.safeParse({ ...validHolding, packageUnit: 'test' }).success, true, 'custom quantity units remain valid')
 assert.equal(chemicalHoldingProposalSchema.safeParse({ ...validHolding, storageScope: 'room', locationId: null }).success, false, 'room holding schema still requires a location')
 assert.equal(chemicalHoldingProposalSchema.safeParse({ ...validHolding, locationId: '00000000-0000-0000-0000-000000000002' }).success, false, 'department holding schema rejects a location')
 assert.equal(chemicalDepartmentChemicalProposalSchema.safeParse({

@@ -21,7 +21,7 @@ export default async function PublicSdsPage({
   const initialQuery = typeof q === 'string' ? q.trim().slice(0, 200) : ''
   const initialDepartment = typeof department === 'string' ? department : ''
   const [items, departments] = await Promise.all([
-    searchPublicSds(),
+    searchPublicSds(initialQuery ? { q: initialQuery } : {}),
     listPublicDepartmentSds(),
   ])
   const searchHints = [...new Set(

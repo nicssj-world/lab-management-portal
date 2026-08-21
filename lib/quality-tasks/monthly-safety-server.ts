@@ -4,6 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { Actor } from '@/lib/auth/guards'
 import { bangkokToday } from './logic'
 import {
+  MONTHLY_SAFETY_PROFILES,
+  isMonthlySafetyProfile,
   monthlyPeriod,
   pointStatusForMonth,
   validateNssSubmission,
@@ -207,7 +209,7 @@ function mapPoint(row: Row, today: string): MonthlySafetyPoint {
   return {
     roundItemId: str(row.id), taskInstanceId: str(row.task_instance_id), assetId: str(row.asset_id),
     assetCode: str(asset?.code), assetName: str(asset?.name_th),
-    profile: str(snapshot?.profile ?? asset?.inspection_profile) as SafetyInspectionProfileKey,
+    profile: str(snapshot?.profile) as SafetyInspectionProfileKey,
     department: nullable(asset?.department), dueOn: str(row.due_on),
     status: pointStatusForMonth({ submittedAt: nullable(row.submitted_at), issueCount: Number(row.issue_count ?? 0), skippedAt: nullable(row.skipped_at), dueOn: str(row.due_on) }, today),
     issueCount: Number(row.issue_count ?? 0), submittedAt: nullable(row.submitted_at),
@@ -225,10 +227,13 @@ export async function listMonthlySafetyPoints(
   const period = monthlyPeriod(month)
   const { data, error } = await supabaseAdmin.from('lab_map_safety_inspection_round_items')
     .select('*,asset:lab_map_safety_assets(id,code,name_th,space_code,department,inspection_profile),submitter:profiles!lab_map_safety_inspection_round_items_submitted_by_fkey(name)')
-    .gte('due_on', period.start).lte('due_on', period.end).order('due_on').order('sequence_no')
+    .gte('due_on', period.start).lte('due_on', period.end)
+    .in('template_snapshot->>profile', MONTHLY_SAFETY_PROFILES)
+    .order('due_on').order('sequence_no')
   fail(error)
   const today = bangkokToday()
   const points = rows(data).map(row => mapPoint(row, today)).filter(point => {
+    if (!isMonthlySafetyProfile(point.profile)) return false
     if (isEditor && scope === 'all') return true
     return point.assignments.some(assignment => assignment.userId === actor.id)
   })
@@ -248,7 +253,13 @@ async function loadRoundItem(roundItemId: string) {
     .eq('id', roundItemId).maybeSingle()
   fail(error)
   if (!data) throw new Error('Monthly safety point not found')
-  return data as Row
+  const row = data as Row
+  // Items from a task-opened inspection round live in the same table but have no
+  // profile snapshot; opening one as a monthly form would render an empty checklist.
+  if (!isMonthlySafetyProfile((row.template_snapshot as Row)?.profile)) {
+    throw new Error('รายการนี้ไม่ใช่จุดตรวจประจำเดือน กรุณาเปิดจากรอบตรวจอุปกรณ์ในแท็บรายการงาน')
+  }
+  return row
 }
 
 function assertPointAccess(row: Row, actor: Actor, isEditor: boolean) {
@@ -454,6 +465,7 @@ export async function getMonthlySafetyReportRows(
   let query = supabaseAdmin.from('lab_map_safety_inspection_round_items')
     .select('*,asset:lab_map_safety_assets(id,code,name_th,inspection_profile),inspection:lab_map_safety_inspections!lab_map_safety_inspection_round_items_inspection_id_fkey(form_snapshot),submitter:profiles!lab_map_safety_inspection_round_items_submitted_by_fkey(name)')
     .gte('due_on', `${gregorianEndYear - 1}-10-01`).lte('due_on', `${gregorianEndYear}-09-30`)
+    .in('template_snapshot->>profile', MONTHLY_SAFETY_PROFILES)
     .order('due_on').order('sequence_no')
   if (filters.assetId) query = query.eq('asset_id', filters.assetId)
   if (filters.roundItemId) query = query.eq('id', filters.roundItemId)
@@ -464,6 +476,7 @@ export async function getMonthlySafetyReportRows(
   const { data, error } = await query
   fail(error)
   return rows(data).filter(row => {
+    if (!isMonthlySafetyProfile((row.template_snapshot as Row)?.profile)) return false
     if (isEditor) return true
     return ((row.assignee_snapshot ?? []) as SafetyAssetAssignment[]).some(item => item.userId === actor.id)
   }).map((row): MonthlySafetyReportRow => {
@@ -472,7 +485,7 @@ export async function getMonthlySafetyReportRows(
     const submitter = row.submitter as Row | null
     return {
       roundItemId: str(row.id), assetId: str(row.asset_id), assetCode: str(asset?.code), assetName: str(asset?.name_th),
-      profile: str((row.template_snapshot as Row)?.profile ?? asset?.inspection_profile) as SafetyInspectionProfileKey, dueOn: str(row.due_on),
+      profile: str((row.template_snapshot as Row)?.profile) as SafetyInspectionProfileKey, dueOn: str(row.due_on),
       submittedAt: nullable(row.submitted_at), submittedByName: nullable(submitter?.name), status: str(row.status),
       issueCount: Number(row.issue_count ?? 0), templateSnapshot: (row.template_snapshot ?? {}) as Row,
       formSnapshot: (inspection?.form_snapshot ?? {}) as Row,
