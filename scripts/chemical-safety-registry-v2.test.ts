@@ -93,7 +93,7 @@ assert.ok(publicationRoute.includes('requireChemicalCustodian'))
 assert.ok(!publicationRoute.includes('destination:'), 'the route must not accept a client-selected destination')
 
 const legacyUpload = read('app/api/admin/chemical-safety/department-sds/[code]/upload/route.ts')
-assert.ok(legacyUpload.includes('legacy_creation_closed'))
+assert.ok(legacyUpload.includes('department_sds_creation_closed'))
 assert.ok(legacyUpload.includes('{ status: 409 }'))
 
 const departmentPublish = read('app/api/admin/chemical-safety/department-sds/[code]/publish/route.ts')

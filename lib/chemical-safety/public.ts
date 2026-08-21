@@ -61,13 +61,13 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
   const activeRoomPublicationKeys = new Set(data.publications
     .filter(publication => publication.destination === 'room')
     .map(publication => `${publication.product_id}:${publication.unit_id}`))
-  const legacyHoldingKeys = new Set(data.holdings
+  const currentHoldingKeys = new Set(data.holdings
     .filter(holding => holding.workflow_origin !== 'registry_v2')
     .map(holding => `${holding.product_id}:${holding.unit_id}`))
   const publishedUnits = new Map<string, Array<{ code: string; name: string }>>()
   for (const link of data.unitProducts) {
     const productUnitKey = `${link.product_id}:${link.unit_id}`
-    if (!legacyHoldingKeys.has(productUnitKey) || activeRoomPublicationKeys.has(productUnitKey)) continue
+    if (!currentHoldingKeys.has(productUnitKey) || activeRoomPublicationKeys.has(productUnitKey)) continue
     const unit = unitById.get(link.unit_id)
     if (!unit) continue
     const values = publishedUnits.get(link.product_id) ?? []
@@ -77,8 +77,8 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
     publishedUnits.set(link.product_id, values)
   }
 
-  const legacyVersions = data.versions.filter(version => version.workflow_origin !== 'registry_v2')
-  const versionByProduct = new Map(legacyVersions.map(version => [version.product_id, version]))
+  const currentVersions = data.versions.filter(version => version.workflow_origin !== 'registry_v2')
+  const versionByProduct = new Map(currentVersions.map(version => [version.product_id, version]))
   const versionById = new Map(data.versions.map(version => [String(version.id), version]))
 
   // ตำแหน่งจัดเก็บมาจาก holding ไม่ใช่จาก product — สารตัวเดียวอาจถูกเก็บได้หลายที่
@@ -367,21 +367,22 @@ export async function getPublicSdsFile(publicId: string): Promise<PublicSdsFile 
     return { r2Key: file.r2_key, fileName: file.file_name, contentType: 'application/pdf' }
   }
 
-  // Compatibility path: product public_id and legacy approved version keep the old URL.
+  // Product-level current data keeps its existing public URL until a scoped
+  // publication is created from the registry.
   const { data: product } = await supabaseAdmin
     .from('chemical_products').select('id').eq('public_id', publicId).eq('lifecycle_status', 'active').maybeSingle()
   if (!product) return null
-  const { data: legacyHolding } = await supabaseAdmin
+  const { data: currentHolding } = await supabaseAdmin
     .from('chemical_inventory_holdings').select('id').eq('product_id', product.id)
-    .eq('workflow_origin', 'legacy').limit(1).maybeSingle()
-  if (!legacyHolding) return null
+    .neq('workflow_origin', 'registry_v2').limit(1).maybeSingle()
+  if (!currentHolding) return null
   const { data: links } = await supabaseAdmin
     .from('chemical_unit_products').select('unit_id').eq('product_id', product.id).eq('active', true).eq('public_eligible', true)
   if (!links?.length) return null
-  const { data: legacyVersion } = await supabaseAdmin
+  const { data: currentVersion } = await supabaseAdmin
     .from('chemical_sds_versions').select('file_id').eq('product_id', product.id)
-    .eq('workflow_origin', 'legacy').eq('status', 'approved').maybeSingle()
-  let fileId = legacyVersion?.file_id ?? null
+    .neq('workflow_origin', 'registry_v2').eq('status', 'approved').maybeSingle()
+  let fileId = currentVersion?.file_id ?? null
   if (!fileId) {
     const { data: activePublication } = await supabaseAdmin
       .from('chemical_sds_publications').select('sds_version_id').eq('product_id', product.id)

@@ -9,7 +9,7 @@ import {
 
 export interface DepartmentSdsFileDTO {
   id: string
-  source: 'legacy' | 'registry_v2'
+  source: 'current' | 'registry_v2'
   publicId: string
   displayName: string
   displayNameEdited: boolean
@@ -151,7 +151,7 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
     const list = byDepartment.get(String(entry.department_code)) ?? []
     list.push({
       id: String(entry.id),
-      source: 'legacy',
+      source: 'current',
       publicId: String(entry.public_id),
       displayName: String(entry.display_name),
       displayNameEdited: Boolean(entry.display_name_edited),

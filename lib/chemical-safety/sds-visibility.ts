@@ -19,8 +19,8 @@ export interface ChemicalDepartmentSdsVisibilityLinkRow {
 /**
  * Resolve the SDS versions owned by one registry holding.
  *
- * New registry rows point directly at the holding. Legacy department rows
- * point through chemical_department_chemical_links. Deliberately do not fall
+ * New registry rows point directly at the holding. Existing department rows
+ * may point through chemical_department_chemical_links. Deliberately do not fall
  * back to product_id here: one product may be used by both a room and a
  * department, and that fallback is the source of the old cross-scope leak.
  */
@@ -72,9 +72,9 @@ export function roomChemicalProductIds(
 /**
  * คืนเฉพาะ version ที่ควรแสดงในแผง SDS ห้องสารเคมี
  *
- * version รุ่นใหม่ผูกกับ holding โดยตรง ส่วน version legacy อาจไม่มี
+ * version รุ่นใหม่ผูกกับ holding โดยตรง ส่วน version เดิมอาจไม่มี
  * source_holding_id จึงต้องใช้ลิงก์ SDS แยกตามงานก่อน และค่อย fallback ไปยัง
- * product ที่มี holding ในห้องเพื่อรองรับข้อมูลก่อน migration เฉพาะกรณีที่
+ * product ที่มี holding ในห้องเพื่อรองรับข้อมูลเดิมเฉพาะกรณีที่
  * product นั้นไม่มี holding ของงานปนอยู่ด้วย ถ้ามีทั้งสอง scope ต้องรอการผูก
  * source holding อย่าง explicit ก่อน จึงจะนำมาแสดงได้
  */

@@ -283,7 +283,7 @@ export function RegistryChangeModal({
         }}>
           <div>
             <div style={{ fontSize: FONT.xs, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--primary)' }}>
-              คำขอจะเข้าสู่การทบทวนโดยผู้อื่นก่อนมีผลจริง
+              บันทึกแล้วมีผลทันที และเก็บประวัติการเปลี่ยนแปลงไว้
             </div>
             <h2 style={{ margin: '4px 0 0', fontSize: FONT.xl, color: 'var(--ink)' }}>{title}</h2>
           </div>

@@ -131,7 +131,7 @@ assert.match(
   'department SDS files are only served for published departments',
 )
 assert.match(departmentSdsUploadApi, /requireDepartmentSdsPublisher/, 'อัปโหลด SDS แยกตามงานต้องตรวจสิทธิ์ผู้จัดการงาน')
-assert.match(departmentSdsUploadApi, /legacy_creation_closed/, 'endpoint เดิมต้องปิดการสร้างไฟล์ SDS แยกตามงานใหม่')
+assert.match(departmentSdsUploadApi, /department_sds_creation_closed/, 'endpoint เดิมต้องปิดการสร้างไฟล์ SDS แยกตามงานใหม่')
 assert.match(departmentSdsUploadApi, /status:\s*409/, 'การสร้าง legacy entry ใหม่ต้องตอบ conflict')
 assert.doesNotMatch(departmentSdsUploadApi, /PutObjectCommand/, 'endpoint legacy ที่ปิดแล้วต้องไม่อัปโหลดไฟล์ใหม่')
 assert.match(adminDepartmentSdsFileApi, /requireChemicalViewer/, 'เจ้าหน้าที่ต้องเปิดดู SDS แยกตามงานได้แม้งานยังเป็นฉบับร่าง')

@@ -26,7 +26,7 @@ export interface StatusMeta {
 
 export const SDS_STATUS_META: Record<SdsWorkflowStatus, StatusMeta> = {
   draft: { label: 'ฉบับร่าง', tone: 'gray', icon: 'edit' },
-  in_review: { label: 'รอทบทวน', tone: 'amber', icon: 'clock' },
+  in_review: { label: 'รอดำเนินการ', tone: 'amber', icon: 'clock' },
   approved: { label: 'อนุมัติแล้ว', tone: 'green', icon: 'shieldCheck' },
   superseded: { label: 'ถูกแทนที่', tone: 'purple', icon: 'inbox' },
   rejected: { label: 'ไม่อนุมัติ', tone: 'red', icon: 'x' },

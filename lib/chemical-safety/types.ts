@@ -8,7 +8,8 @@ export type SdsMatchStatus = 'candidate' | 'mismatch' | 'missing' | 'unsupported
 export type ChemicalStorageZoneCode = 'A' | 'B' | 'C' | 'T'
 export type ChemicalStorageLocationKind = 'cabinet' | 'shelf' | 'table'
 export type ChemicalStorageScope = 'room' | 'department'
-export type ChemicalWorkflowOrigin = 'legacy' | 'registry_v2'
+/** Internal provenance only; both values are operationally usable. */
+export type ChemicalWorkflowOrigin = 'current' | 'registry_v2'
 export type ChemicalSdsDestination = 'room' | 'department'
 export type ChemicalSdsPublicationStatus = 'unlinked' | 'ready' | 'active' | 'stale'
 export type ChemicalPhysicalState = 'solid' | 'liquid' | 'gas' | 'mixture' | 'unknown'

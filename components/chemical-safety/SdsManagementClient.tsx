@@ -487,7 +487,7 @@ function DepartmentSdsPanel({
                             title="เปิดไฟล์"
                             onClick={() => setPreview({ url: file.fileUrl, title: file.displayName })}
                           />
-                          {file.source === 'legacy' && canRegister && file.registryLink.status === 'unlinked' && (
+                          {file.source === 'current' && canRegister && file.registryLink.status === 'unlinked' && (
                             <Button
                               variant="ghost"
                               icon="flask"
@@ -498,7 +498,7 @@ function DepartmentSdsPanel({
                               เพิ่มเข้าทะเบียนสารเคมี
                             </Button>
                           )}
-                          {file.source === 'legacy' && canRegister && file.registryLink.status === 'registered' && (
+                          {file.source === 'current' && canRegister && file.registryLink.status === 'registered' && (
                             <Button
                               variant="ghost"
                               icon="check"
@@ -509,7 +509,7 @@ function DepartmentSdsPanel({
                               ผูกไฟล์กับทะเบียน
                             </Button>
                           )}
-                          {file.source === 'legacy' && canPublish && (
+                          {file.source === 'current' && canPublish && (
                             <>
                               <Button
                                 variant="ghost"

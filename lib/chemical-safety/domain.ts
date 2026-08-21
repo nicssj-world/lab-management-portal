@@ -80,7 +80,7 @@ export function calculateHoldingTotal(parts: readonly QuantityPart[]): QuantityT
  *
  * Older imports may already have a calculated total (and can contain mixed
  * package sizes), so callers should use this as a fallback when that value is
- * absent. Returning null keeps malformed legacy rows visible instead of
+ * absent. Returning null keeps malformed existing rows visible instead of
  * making the registry query fail.
  */
 export function calculateHoldingTotalFromFields(input: {

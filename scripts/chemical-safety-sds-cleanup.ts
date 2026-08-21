@@ -1,4 +1,4 @@
-// ตรวจและผูก SDS legacy ที่พิสูจน์ได้ว่าเป็นของห้องสารเคมีกับ room holding
+// ตรวจและผูก SDS เดิมที่พิสูจน์ได้ว่าเป็นของห้องสารเคมีกับ room holding
 //
 //   npm run chemical-safety:cleanup-sds            # dry-run (ค่าเริ่มต้น)
 //   npm run chemical-safety:cleanup-sds -- --apply # เขียนเฉพาะ deterministic rows

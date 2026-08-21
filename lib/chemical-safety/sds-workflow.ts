@@ -29,12 +29,12 @@ function notFound() {
 }
 
 /**
- * หา unit ของ SDS ฉบับหนึ่ง
+ * หา unit ของ SDS ฉบับหนึ่งที่ยังไม่มี source_holding_id
  *
- * เฉพาะฉบับ legacy เท่านั้นที่ไม่มี source_holding_id จึงต้องย้อน association เดิม
- * เพื่อคงสิทธิ์ของไฟล์ก่อน migration โดยไม่ขยายสิทธิ์ข้ามหน่วยงาน
+ * ข้อมูลเดิมบางฉบับผูกผ่าน department link หรือมีเพียง product-level
+ * association อยู่แล้ว จึงต้อง resolve association เดิมโดยไม่ขยายสิทธิ์ข้ามหน่วยงาน
  */
-async function unitIdsForLegacyVersion(versionId: string, productId: string): Promise<string[]> {
+async function unitIdsForUnscopedVersion(versionId: string, productId: string): Promise<string[]> {
   const linked = await supabaseAdmin
     .from('chemical_department_chemical_links')
     .select('holding_id')
@@ -91,8 +91,7 @@ async function resolve(
     }
     unitIds = [String(holding.data.unit_id)]
   } else {
-    if (version.workflow_origin !== 'legacy') return { response: notFound() }
-    unitIds = await unitIdsForLegacyVersion(String(version.id), String(version.product_id))
+    unitIds = await unitIdsForUnscopedVersion(String(version.id), String(version.product_id))
   }
   if (unitIds.length === 0) return { response: notFound() }
 
@@ -143,7 +142,7 @@ export async function publishSdsForHolding(
   })
   if (published.error) throw published.error
 
-  // ฉบับ legacy ไม่มี source holding จึงไม่รู้ว่าต้องเผยแพร่ให้รายการทะเบียนใด
+  // ฉบับที่ไม่มี source holding โดยตรงยังไม่มีปลายทาง publication ที่ระบุแน่ชัด
   if (!context.sourceHoldingId) return
 
   const active = await supabaseAdmin

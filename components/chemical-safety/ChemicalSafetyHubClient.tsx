@@ -233,7 +233,12 @@ export function ChemicalSafetyHubClient({
    */
   async function openSds(row: ChemicalRegistryRow) {
     const existing = sdsItems.find(item => (
-      item.sourceHoldingId === row.holdingId && item.status !== 'superseded'
+      item.productId === row.productId
+      && item.status !== 'superseded'
+      && (
+        item.sourceHoldingId === row.holdingId
+        || item.linkedHoldingIds.includes(row.holdingId)
+      )
     ))
     if (existing) {
       setSdsEditor({ sds: existing, row })
@@ -439,7 +444,7 @@ export function ChemicalSafetyHubClient({
       const submittedPayload = await submitted.json().catch(() => ({}))
       if (!submitted.ok) throw new Error(submittedPayload.error || 'บันทึกไม่สำเร็จ')
 
-      notify(`ส่งคำขอตั้งสถานะ ${actionLabel} เข้าสู่การทบทวนแล้ว`)
+      notify(`บันทึกสถานะ ${actionLabel} แล้ว`)
     } catch (caught) {
       notify(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ', false)
     } finally {
@@ -473,7 +478,7 @@ export function ChemicalSafetyHubClient({
       const submittedPayload = await submitted.json().catch(() => ({}))
       if (!submitted.ok) throw new Error(submittedPayload.error || 'บันทึกไม่สำเร็จ')
 
-      notify('ส่งคำขอลบเข้าสู่การทบทวนแล้ว')
+      notify('ลบรายการแล้ว')
     } catch (caught) {
       notify(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ', false)
     } finally {

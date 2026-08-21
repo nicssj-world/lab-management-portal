@@ -182,7 +182,7 @@ function mapSds(row: Row, hazards: Row[], linkedHoldingIds: string[] = []): Chem
     productId: String(row.product_id),
     sourceHoldingId: text(row.source_holding_id),
     linkedHoldingIds,
-    workflowOrigin: row.workflow_origin === 'registry_v2' ? 'registry_v2' : 'legacy',
+    workflowOrigin: row.workflow_origin === 'registry_v2' ? 'registry_v2' : 'current',
     fileId: text(row.file_id),
     sourceUrl: text(row.source_url),
     fileUrl: row.file_id ? `/api/admin/chemical-safety/sds/${row.id}/file` : null,
@@ -307,7 +307,7 @@ export async function listChemicalRegistryWithSource(
       ? { value: storedCalculatedValue, unit: storedCalculatedUnit }
       : null
     // Keep the imported total when it exists because a holding can contain
-    // mixed package sizes. Derive it for legacy/new rows that do not have a
+    // mixed package sizes. Derive it for existing/new rows that do not have a
     // persisted total so the UI never needs a manually entered total.
     // An imported row may have been marked unsupported before an operator
     // corrected its package fields. Once the current holding has a valid
@@ -329,7 +329,7 @@ export async function listChemicalRegistryWithSource(
       casNumber: text(product.cas_number),
       concentration: text(product.concentration),
       storageScope: placement.storageScope,
-      workflowOrigin: holding.workflow_origin === 'registry_v2' ? 'registry_v2' : 'legacy',
+      workflowOrigin: holding.workflow_origin === 'registry_v2' ? 'registry_v2' : 'current',
       roomId: room?.id == null ? null : String(room.id),
       locationId: placement.locationId,
       packageValue,

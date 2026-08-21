@@ -204,7 +204,7 @@ export function DepartmentChemicalModal({
         body: JSON.stringify({}),
       })
       const submittedPayload = await submitted.json().catch(() => ({}))
-      if (!submitted.ok) throw new Error(submittedPayload.error || 'ส่งคำขอเข้าสู่การทบทวนไม่สำเร็จ')
+      if (!submitted.ok) throw new Error(submittedPayload.error || 'บันทึกการนำเข้าทะเบียนไม่สำเร็จ')
 
       onSaved('เพิ่มสารจาก SDS งานเข้าทะเบียนแล้ว')
       onClose()

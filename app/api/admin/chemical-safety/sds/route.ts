@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     }, { status: 201 })
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
-      return NextResponse.json({ error: 'รายการนี้มีฉบับร่างหรือฉบับรอทบทวนอยู่แล้ว' }, { status: 409 })
+      return NextResponse.json({ error: 'รายการนี้มีฉบับร่างหรือกำลังดำเนินการอยู่แล้ว' }, { status: 409 })
     }
     return unexpectedError(error)
   }

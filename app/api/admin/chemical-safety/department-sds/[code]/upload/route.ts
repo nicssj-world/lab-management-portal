@@ -3,8 +3,8 @@ import { requireDepartmentSdsPublisher } from '@/lib/chemical-safety/department-
 import { departmentByCode } from '@/lib/chemical-safety/departments'
 
 /**
- * Compatibility endpoint only. Files that existed before registry-v2 remain
- * maintainable, but creating a new department-file entry is closed.
+ * Existing department-file records remain maintainable, but creating a new
+ * department-file entry is closed; new SDS records start from the registry.
  */
 export async function POST(
   _request: NextRequest,
@@ -18,7 +18,7 @@ export async function POST(
   if (guard.response) return guard.response
 
   return NextResponse.json({
-    error: 'legacy_creation_closed',
+    error: 'department_sds_creation_closed',
     message: 'กรุณาเพิ่มสารเคมีและจัดการ SDS จากทะเบียนสารเคมี',
   }, { status: 409 })
 }
