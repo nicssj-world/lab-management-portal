@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import type { ChemicalHoldingDeleteImpact } from '@/lib/chemical-safety/holding-delete'
-import { FONT, SPACE } from './shared/tokens'
+import { FONT, SPACE, sdsStatusMeta } from './shared/tokens'
 
 interface Props {
   impact: ChemicalHoldingDeleteImpact
@@ -54,8 +54,8 @@ export function HoldingDeleteImpactDialog({ impact, busy, onCancel, onConfirm }:
 
         {blocked ? (
           <div role="alert" style={{ marginTop: SPACE.lg, padding: SPACE.md, borderRadius: 12, border: '1px solid color-mix(in srgb,var(--danger) 28%,var(--border))', background: 'color-mix(in srgb,var(--danger) 7%,var(--card))' }}>
-            <strong style={{ display: 'block', color: 'var(--danger)', fontSize: FONT.base }}>ยังลบไม่ได้ เพราะมีการใช้งาน SDS ร่วม</strong>
-            <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>แก้การเชื่อมโยงของรายการต่อไปนี้ก่อน แล้วกลับมาลบจากทะเบียนอีกครั้ง</p>
+            <strong style={{ display: 'block', color: 'var(--danger)', fontSize: FONT.base }}>ยังลบไม่ได้ เพราะเอกสาร SDS ถูกใช้ร่วมกับรายการอื่น</strong>
+            <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>ตรวจสอบรายการต่อไปนี้และยกเลิกการเชื่อมโยงก่อน แล้วจึงกลับมาลบจากทะเบียนอีกครั้ง</p>
             <ul style={{ margin: '10px 0 0', paddingLeft: 20, color: 'var(--ink)', fontSize: FONT.sm }}>
               {impact.sharedDependencies.map(dependency => (
                 <li key={`${dependency.kind}-${dependency.relatedRowId}`} style={{ marginBottom: 6 }}>
@@ -76,7 +76,7 @@ export function HoldingDeleteImpactDialog({ impact, busy, onCancel, onConfirm }:
               <ul style={{ margin: '9px 0 0', paddingLeft: 20, color: 'var(--ink)', fontSize: FONT.sm }}>
                 {impact.versions.filter(version => version.willDelete).map(version => (
                   <li key={`version-${version.id}`} style={{ marginBottom: 5 }}>
-                    SDS version {version.revisionLabel ?? version.id} ({version.status})
+                    เอกสาร SDS ฉบับ {version.revisionLabel ?? 'ยังไม่ได้ระบุเลขฉบับ'} ({sdsStatusMeta(version.status).label})
                   </li>
                 ))}
                 {impact.publications.map(publication => (
@@ -86,7 +86,7 @@ export function HoldingDeleteImpactDialog({ impact, busy, onCancel, onConfirm }:
                 ))}
                 {impact.departmentSds.map(departmentSds => (
                   <li key={`department-sds-${departmentSds.id}`} style={{ marginBottom: 5 }}>
-                    SDS งาน {departmentSds.departmentCode}: {departmentSds.displayName}
+                    เอกสาร SDS ของงาน {departmentSds.departmentCode}: {departmentSds.displayName}
                   </li>
                 ))}
                 {impact.versions.filter(version => version.willDelete).length === 0 && impact.publications.length === 0 && impact.departmentSds.length === 0 && (
@@ -97,11 +97,11 @@ export function HoldingDeleteImpactDialog({ impact, busy, onCancel, onConfirm }:
 
             {impact.sharedDependencies.length > 0 && (
               <section style={{ marginTop: SPACE.md }} aria-labelledby="holding-delete-shared-sds">
-                <h3 id="holding-delete-shared-sds" style={{ margin: 0, color: 'var(--ink)', fontSize: FONT.base }}>SDS ที่เก็บไว้เพราะยังมีการใช้งาน</h3>
-                <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>ระบบจะตัดเฉพาะการเชื่อมโยงของรายการนี้ ไม่ลบ SDS ที่รายการทะเบียนอื่นยังใช้อยู่</p>
+                <h3 id="holding-delete-shared-sds" style={{ margin: 0, color: 'var(--ink)', fontSize: FONT.base }}>เอกสาร SDS ที่เก็บไว้เพราะรายการอื่นยังใช้อยู่</h3>
+                <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>ระบบจะยกเลิกการเชื่อมโยงของรายการนี้เท่านั้น และจะไม่ลบ SDS ที่รายการทะเบียนอื่นยังใช้อยู่</p>
                 <ul style={{ margin: '7px 0 0', paddingLeft: 20, color: 'var(--muted)', fontSize: FONT.sm }}>
                   {impact.versions.filter(version => !version.willDelete).map(version => (
-                    <li key={`kept-version-${version.id}`}>SDS version {version.revisionLabel ?? version.id} ยังเก็บไว้ให้รายการอื่นใช้งาน</li>
+                    <li key={`kept-version-${version.id}`}>เอกสาร SDS ฉบับ {version.revisionLabel ?? 'ยังไม่ได้ระบุเลขฉบับ'} ยังเก็บไว้ให้รายการอื่นใช้งาน</li>
                   ))}
                   {impact.sharedDependencies.map(dependency => <li key={`kept-${dependency.kind}-${dependency.relatedRowId}`}>{dependency.label}</li>)}
                 </ul>

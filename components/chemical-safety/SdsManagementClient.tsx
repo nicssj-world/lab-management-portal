@@ -17,7 +17,7 @@ import type {
 } from '@/lib/chemical-safety/types'
 import { currentSdsItemsForHolding, summarizeRoomSds } from '@/lib/chemical-safety/sds-room-summary'
 import { SdsPdfViewerModal } from './SdsPdfViewerModal'
-import { FONT, SPACE, tabularNums } from './shared/tokens'
+import { FONT, SDS_ONLY_CAPTURE_LABEL, SPACE, tabularNums } from './shared/tokens'
 import { DepartmentPublishBadge, GhsRow, SdsStateBadge, SdsStatusBadge } from './shared/ui'
 
 export interface SdsProductInfo {
@@ -25,6 +25,14 @@ export interface SdsProductInfo {
   name: string
   pictogramCodes: GhsPictogramCode[]
   hazardClassesTh: string[]
+}
+
+function sdsLanguageLabel(language: string | null) {
+  const normalized = language?.trim().toLowerCase()
+  if (!normalized) return 'ไม่ระบุภาษา'
+  if (normalized === 'th' || normalized === 'thai') return 'ภาษาไทย'
+  if (normalized === 'en' || normalized === 'english') return 'ภาษาอังกฤษ'
+  return normalized
 }
 
 interface Props {
@@ -142,22 +150,22 @@ function ChemicalSdsPanel({
       <SdsPanelIntro
         icon="doc"
         title="SDS ห้องสารเคมี"
-        description="แสดงรายการจากทะเบียนห้องสารเคมีเป็นหลัก แล้วเปิดดูเวอร์ชัน SDS ภายใต้สารเดียวกันเมื่อจำเป็น"
-        note="อ่านอย่างเดียว · จัดการที่ทะเบียนสารเคมี"
+        description="แสดงสารจากทะเบียนห้องสารเคมี และเปิดดูเอกสาร SDS ของแต่ละรายการได้เมื่อจำเป็น"
+        note="ดูได้อย่างเดียว · แก้ไขที่ทะเบียนสารเคมี"
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>
         <Stat label="รายการในทะเบียนห้อง" value={summary.holdingCount} icon="flask" color="blue" />
-        <Stat label="มี SDS ผูกทะเบียน" value={summary.linkedHoldingCount} icon="link" color="green" />
+        <Stat label="มี SDS แล้ว" value={summary.linkedHoldingCount} icon="link" color="green" />
         <Stat label="ยังไม่มี SDS" value={summary.missingHoldingCount} icon="inbox" color="amber" />
-        <Stat label="เวอร์ชัน SDS" value={summary.versionCount} icon="doc" color="purple" />
+        <Stat label="ฉบับ SDS" value={summary.versionCount} icon="doc" color="purple" />
       </div>
 
       <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, background: 'var(--surface-2)' }}>
         <div style={{ display: 'flex', gap: SPACE.xs, alignItems: 'flex-start', fontSize: FONT.md }}>
           <Icon name="info" size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
           <span>
-            <strong>การนับรายการและเวอร์ชัน SDS:</strong> รายการในทะเบียนคือจำนวนสารที่เก็บอยู่ในห้อง ส่วนเวอร์ชัน SDS คือจำนวนเอกสารทั้งหมด
+            <strong>ตัวเลขในหน้านี้:</strong> รายการในทะเบียน = จำนวนสารที่เก็บอยู่ในห้อง · ฉบับ SDS = จำนวนเอกสาร SDS ที่แสดงอยู่
             จึงอาจไม่เท่ากันเมื่อสารหนึ่งรายการมี SDS มากกว่าหนึ่งฉบับ
           </span>
         </div>
@@ -199,11 +207,11 @@ function ChemicalSdsPanel({
         <Card padding={0}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap', alignItems: 'flex-start', padding: SPACE.md, borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
             <div>
-              <strong style={{ fontSize: FONT.base, color: 'var(--ink)' }}>รายการเดียวกับทะเบียนห้องสารเคมี</strong>
-              <p style={{ margin: '3px 0 0', fontSize: FONT.sm, color: 'var(--muted)' }}>กดดูรายละเอียดเพื่อเปิดเวอร์ชัน SDS, GHS และไฟล์ที่ผูกไว้</p>
+              <strong style={{ fontSize: FONT.base, color: 'var(--ink)' }}>รายการจากทะเบียนห้องสารเคมี</strong>
+              <p style={{ margin: '3px 0 0', fontSize: FONT.sm, color: 'var(--muted)' }}>เลือก “ดูรายละเอียด” เพื่อดูข้อมูล GHS และเอกสาร SDS ของรายการนั้น</p>
             </div>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
-              <Icon name="shieldCheck" size={14} style={{ color: 'var(--primary)' }} /> อ่านอย่างเดียว
+              <Icon name="shieldCheck" size={14} style={{ color: 'var(--primary)' }} /> ดูได้อย่างเดียว
             </span>
           </div>
 
@@ -215,7 +223,7 @@ function ChemicalSdsPanel({
                   <div style={{ minWidth: 0, flex: '1 1 300px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                       <strong style={{ fontSize: FONT.lg, color: 'var(--ink)' }}>{registryRow.canonicalName}</strong>
-                      {registryRow.inventoryCaptureStatus === 'sds_only' && <Badge color="amber" size="sm">SDS-only — ยังไม่ระบุปริมาณ</Badge>}
+                      {registryRow.inventoryCaptureStatus === 'sds_only' && <Badge color="amber" size="sm">{SDS_ONLY_CAPTURE_LABEL}</Badge>}
                     </div>
                     <p style={{ margin: '4px 0 0', fontSize: FONT.base, color: 'var(--muted)' }}>
                       {registryRow.unitName} · ตำแหน่ง {registryRow.positionCode || 'ไม่ระบุ'} · {registryRow.casNumber ? `CAS ${registryRow.casNumber}` : 'ไม่ระบุ CAS'}
@@ -223,7 +231,7 @@ function ChemicalSdsPanel({
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, flexWrap: 'wrap' }}>
                     <SdsStateBadge state={registryRow.sdsStatus} />
-                    <span style={{ fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>{versions.length} เวอร์ชัน</span>
+                    <span style={{ fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>{versions.length} ฉบับ</span>
                     <Button
                       variant="secondary"
                       size="sm"
@@ -240,14 +248,14 @@ function ChemicalSdsPanel({
                   <div style={{ padding: `0 ${SPACE.md}px ${SPACE.md}px`, background: 'var(--surface-2)' }}>
                     {versions.length === 0 ? (
                       <div style={{ padding: SPACE.sm, borderRadius: 10, background: 'var(--card)', color: 'var(--muted)', fontSize: FONT.sm }}>
-                        <strong style={{ color: 'var(--ink)' }}>ยังไม่มี SDS ที่ผูกกับรายการนี้</strong>
-                        <div style={{ marginTop: 3 }}>จัดการ SDS จากปุ่ม SDS ในทะเบียนสารเคมี</div>
+                        <strong style={{ color: 'var(--ink)' }}>ยังไม่มีเอกสาร SDS สำหรับรายการนี้</strong>
+                        <div style={{ marginTop: 3 }}>เพิ่มหรือแก้ไข SDS ได้จากปุ่ม “SDS” ในหน้าทะเบียนสารเคมี</div>
                       </div>
                     ) : (
                       <div style={{ display: 'grid', gap: SPACE.xs }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap', alignItems: 'center' }}>
-                          <strong style={{ fontSize: FONT.sm, color: 'var(--ink)' }}>เวอร์ชัน SDS ที่ผูกกับรายการ</strong>
-                          <span style={{ fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>{versions.length} เวอร์ชัน</span>
+                          <strong style={{ fontSize: FONT.sm, color: 'var(--ink)' }}>เอกสาร SDS ของรายการนี้</strong>
+                          <span style={{ fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>{versions.length} ฉบับ</span>
                         </div>
                         {versions.map(item => {
                           const product = productById.get(item.productId)
@@ -255,10 +263,10 @@ function ChemicalSdsPanel({
                             <div key={item.id} style={{ padding: SPACE.sm, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                                 <div style={{ minWidth: 0, flex: '1 1 280px' }}>
-                                  <strong style={{ color: 'var(--ink)' }}>{item.revisionLabel || 'ไม่ระบุฉบับ'}</strong>
-                                  {item.workflowOrigin === 'registry_v2' && <Badge color="purple" size="sm" style={{ marginLeft: 7 }}>จากทะเบียน</Badge>}
+                                  <strong style={{ color: 'var(--ink)' }}>{item.revisionLabel || 'ยังไม่ได้ระบุเลขฉบับ'}</strong>
+                                  {item.workflowOrigin === 'registry_v2' && <Badge color="purple" size="sm" style={{ marginLeft: 7 }}>สร้างจากทะเบียน</Badge>}
                                   <div style={{ marginTop: 3, fontSize: FONT.sm, color: 'var(--muted)' }}>
-                                    {item.manufacturer || 'ไม่ระบุผู้ผลิต'} · {item.language || 'th'} · มีผล {item.effectiveOn || '—'}
+                                    {item.manufacturer || 'ไม่ระบุผู้ผลิต'} · {sdsLanguageLabel(item.language)} · วันที่มีผล {item.effectiveOn || '—'}
                                   </div>
                                 </div>
                                 <SdsStatusBadge status={item.status} />
@@ -272,7 +280,7 @@ function ChemicalSdsPanel({
                                 />
                                 <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, flexWrap: 'wrap' }}>
                                   <span style={{ fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
-                                    H {item.hStatements.length} · P {item.pStatements.length} · {item.fileId ? 'แนบไฟล์แล้ว' : 'ยังไม่แนบไฟล์'}
+                                    ข้อความอันตราย {item.hStatements.length} รายการ · ข้อควรปฏิบัติ {item.pStatements.length} รายการ · {item.fileId ? 'แนบไฟล์แล้ว' : 'ยังไม่แนบไฟล์'}
                                   </span>
                                   {item.fileId && (
                                     <Button
@@ -290,7 +298,7 @@ function ChemicalSdsPanel({
                                 </div>
                               </div>
                               {item.reviewReason && (
-                                <div style={{ marginTop: SPACE.xs, fontSize: FONT.sm, color: 'var(--danger)' }}>เหตุผล: {item.reviewReason}</div>
+                                <div style={{ marginTop: SPACE.xs, fontSize: FONT.sm, color: 'var(--danger)' }}>เหตุผลที่ไม่อนุมัติ: {item.reviewReason}</div>
                               )}
                             </div>
                           )
@@ -384,8 +392,8 @@ function DepartmentSdsPanel({
       <SdsPanelIntro
         icon="users"
         title="SDS แยกตามงาน"
-        description="รวมเอกสาร SDS ของแต่ละงานไว้ตรวจสอบแบบ read-only การแก้ไข SDS ให้ทำในทะเบียนสารเคมี และเผยแพร่ทั้งงานจากทะเบียน"
-        note="ดูอย่างเดียว · จัดการที่ทะเบียนสารเคมี"
+        description="รวมเอกสาร SDS ของแต่ละงานไว้ดูข้อมูลอย่างเดียว · แก้ไข SDS ได้จากทะเบียนสารเคมี และเผยแพร่ทั้งงานจากที่นั่น"
+        note="ดูได้อย่างเดียว · แก้ไขที่ทะเบียนสารเคมี"
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>
         <Stat label="งานทั้งหมด" value={groups.length} icon="users" color="blue" />
@@ -399,10 +407,10 @@ function DepartmentSdsPanel({
           <Icon name="info" size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
           <span>
             รายการด้านล่างยึดทะเบียนสารเคมีเป็นหลัก จึงแสดงสารที่มีและยังไม่มี SDS ในชุดเดียวกัน
-            ส่วนป้ายเผยแพร่เป็นสถานะของงาน และการจัดการทั้งหมดทำจากทะเบียนสารเคมี
+            สถานะเผยแพร่เป็นสถานะของงาน และการจัดการทั้งหมดทำจากทะเบียนสารเคมี
           </span>
           {totals.legacyBacklog > 0 && (
-            <span style={{ color: 'var(--warning)', fontWeight: 700 }}>ไฟล์ legacy รอผูกทะเบียน {totals.legacyBacklog} ฉบับ</span>
+            <span style={{ color: 'var(--warning)', fontWeight: 700 }}>เอกสารเดิมที่ยังไม่เชื่อมกับทะเบียน {totals.legacyBacklog} ฉบับ</span>
           )}
         </div>
       </Card>
@@ -440,11 +448,11 @@ function DepartmentSdsPanel({
                   </p>
                   {group.fileCount > 0 && (
                     <p style={{ margin: '4px 0 0', fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
-                      ไฟล์ในคลังเดิม {group.fileCount} ฉบับ
-                      {legacyFiles.length > 0 && <> · รอผูกทะเบียน {legacyFiles.length} ฉบับ</>}
+                      เอกสารในคลังเดิม {group.fileCount} ฉบับ
+                      {legacyFiles.length > 0 && <> · ยังไม่เชื่อมกับทะเบียน {legacyFiles.length} ฉบับ</>}
                     </p>
                   )}
-                  {group.chemicalUnitId && <span style={{ display: 'inline-flex', marginTop: 6, fontSize: FONT.sm, color: 'var(--primary)', fontWeight: 700 }}>ทะเบียน: storageScope = department · ไม่มีตำแหน่งจัดเก็บ</span>}
+                  {group.chemicalUnitId && <span style={{ display: 'inline-flex', marginTop: 6, fontSize: FONT.sm, color: 'var(--primary)', fontWeight: 700 }}>รายการของงานนี้ไม่ระบุตำแหน่งตู้หรือชั้นจัดเก็บ</span>}
                 </div>
                 <div style={{ display: 'flex', gap: SPACE.xs, alignItems: 'center', flexWrap: 'wrap' }}>
                   <DepartmentPublishBadge status={group.status} />
@@ -462,7 +470,7 @@ function DepartmentSdsPanel({
 
               {group.fileCount === 0 && (
                 <p style={{ margin: `${SPACE.xs}px 0 0`, fontSize: FONT.sm, color: 'var(--warning)' }}>
-                  <Icon name="alert" size={12} /> ยังไม่มีเอกสาร — กรุณาเพิ่มสารและจัดการ SDS จากหน้าทะเบียนสารเคมี
+                   <Icon name="alert" size={12} /> ยังไม่มีเอกสาร SDS — เพิ่มสารและแนบ SDS ได้จากหน้าทะเบียนสารเคมี
                 </p>
               )}
 
@@ -470,13 +478,13 @@ function DepartmentSdsPanel({
                 <div style={{ marginTop: SPACE.md, borderTop: '1px solid var(--border)', paddingTop: SPACE.md }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: FONT.base, color: 'var(--ink)' }}>รายการทะเบียนของงาน</h3>
+                      <h3 style={{ margin: 0, fontSize: FONT.base, color: 'var(--ink)' }}>รายการสารของงานนี้</h3>
                       <p style={{ margin: '3px 0 0', fontSize: FONT.sm, color: 'var(--muted)' }}>
                         รายการเดียวกับทะเบียนสารเคมี · แสดง {filteredRegistryRows.length} จาก {registryRows.length} รายการ
                       </p>
                     </div>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
-                      <Icon name="shieldCheck" size={14} style={{ color: 'var(--primary)' }} /> อ่านอย่างเดียว
+                      <Icon name="shieldCheck" size={14} style={{ color: 'var(--primary)' }} /> ดูได้อย่างเดียว
                     </span>
                   </div>
 
@@ -494,7 +502,7 @@ function DepartmentSdsPanel({
                       />
                     </label>
                     <label style={{ display: 'grid', gap: 4, minWidth: 170, fontSize: FONT.xs, color: 'var(--muted)', fontWeight: 700 }} htmlFor={`department-sds-filter-${group.code}`}>
-                      แสดงสถานะ
+                      กรองตามสถานะ SDS
                       <select
                         id={`department-sds-filter-${group.code}`}
                         value={openFilter}
@@ -522,7 +530,7 @@ function DepartmentSdsPanel({
                             <div style={{ minWidth: 0, flex: '1 1 280px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                 <strong style={{ fontSize: FONT.base, color: 'var(--ink)' }}>{row.canonicalName}</strong>
-                                {row.inventoryCaptureStatus === 'sds_only' && <Badge color="amber" size="sm">SDS-only — ยังไม่ระบุปริมาณ</Badge>}
+                                {row.inventoryCaptureStatus === 'sds_only' && <Badge color="amber" size="sm">{SDS_ONLY_CAPTURE_LABEL}</Badge>}
                               </div>
                               <div style={{ marginTop: 3, fontSize: FONT.xs, color: 'var(--muted)' }}>
                                 {row.casNumber ? `CAS ${row.casNumber}` : 'ไม่ระบุ CAS'} · {row.unitName}
@@ -533,7 +541,7 @@ function DepartmentSdsPanel({
                                 <Icon name={row.hasSdsFile ? 'check' : 'alert'} size={14} />
                                 {row.hasSdsFile ? 'มี SDS' : 'ยังไม่มี SDS'}
                               </span>
-                              {files.length > 1 && <Badge color="purple" size="sm">{files.length} ไฟล์</Badge>}
+                              {files.length > 1 && <Badge color="purple" size="sm">พบเอกสารซ้ำ {files.length} รายการ</Badge>}
                               {file && (
                                 <Button
                                   variant="ghost"
@@ -562,12 +570,12 @@ function DepartmentSdsPanel({
                 <div style={{ marginTop: SPACE.md, borderTop: '1px solid var(--border)', paddingTop: SPACE.md }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: FONT.base, color: 'var(--ink)' }}>ไฟล์ legacy ที่ยังไม่เข้าทะเบียน</h3>
+                      <h3 style={{ margin: 0, fontSize: FONT.base, color: 'var(--ink)' }}>เอกสารเดิมที่ยังไม่เชื่อมกับทะเบียน</h3>
                       <p style={{ margin: '3px 0 0', fontSize: FONT.sm, color: 'var(--muted)' }}>
-                        ไฟล์กลุ่มนี้ยังไม่มี holdingId จึงไม่ถูกนำไปแสดงซ้ำกับรายการทะเบียนด้านบน
+                        เอกสารกลุ่มนี้ยังไม่ได้เชื่อมกับรายการในทะเบียน จึงแสดงแยกไว้ไม่ให้ซ้ำกับรายการด้านบน
                       </p>
                     </div>
-                    <Badge color="amber" size="sm">{legacyFiles.length} ไฟล์</Badge>
+                    <Badge color="amber" size="sm">{legacyFiles.length} ฉบับ</Badge>
                   </div>
                   <div style={{ display: 'grid', gap: 6, marginTop: SPACE.sm }}>
                     {legacyFiles.map(file => (
@@ -576,7 +584,7 @@ function DepartmentSdsPanel({
                           <strong style={{ fontSize: FONT.base, color: 'var(--ink)' }}>{file.displayName}</strong>
                           {file.displayNameEdited && <Badge color="blue" size="sm" style={{ marginLeft: 6 }}>แก้ชื่อแล้ว</Badge>}
                           <div style={{ marginTop: 3, fontSize: FONT.xs, color: 'var(--muted)' }}>
-                            {file.registryLink.status === 'pending' ? 'รอเพิ่มเข้าทะเบียน' : 'ยังไม่ผูกกับรายการทะเบียน'}
+                            {file.registryLink.status === 'pending' ? 'รอเชื่อมกับทะเบียน' : 'ยังไม่เชื่อมกับรายการทะเบียน'}
                           </div>
                         </div>
                         <Button
@@ -596,7 +604,7 @@ function DepartmentSdsPanel({
 
               {open && registryRows.length === 0 && legacyFiles.length === 0 && (
                 <div style={{ marginTop: SPACE.md, padding: SPACE.md, borderTop: '1px solid var(--border)', color: 'var(--muted)', fontSize: FONT.sm }}>
-                  งานนี้ยังไม่มีรายการทะเบียนหรือไฟล์ SDS ให้ตรวจสอบ
+                  งานนี้ยังไม่มีรายการสารหรือเอกสาร SDS ให้ตรวจสอบ
                 </div>
               )}
             </Card>

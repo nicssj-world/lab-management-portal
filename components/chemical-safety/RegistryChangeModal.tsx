@@ -298,8 +298,8 @@ export function RegistryChangeModal({
                 <label>
                   <span style={labelStyle}>วิธีเพิ่มรายการ *</span>
                   <select value={productMode} onChange={(event) => setProductMode(event.target.value as 'new' | 'existing')} style={inputStyle}>
-                    <option value="new">สร้าง product ใหม่</option>
-                    <option value="existing">ใช้ product ที่มีอยู่</option>
+                    <option value="new">สร้างรายการสารใหม่</option>
+                    <option value="existing">ใช้สารที่มีอยู่</option>
                   </select>
                 </label>
                 {productMode === 'existing' && (
@@ -318,7 +318,7 @@ export function RegistryChangeModal({
               </div>
               {productMode === 'existing' && (
                 <p style={{ margin: `${SPACE.xs}px 0 0`, color: 'var(--muted)', fontSize: FONT.xs }}>
-                  ใช้ซ้ำเฉพาะ product เดียวกันจริง ซึ่งรวมผู้ผลิต รหัสผลิตภัณฑ์ และความเข้มข้นของรายการเดิม
+                  ใช้ข้อมูลสารเดิมได้เมื่อเป็นสารชนิดเดียวกันจริง โดยตรวจจากผู้ผลิต รหัสผลิตภัณฑ์ และความเข้มข้น
                 </p>
               )}
             </section>
@@ -355,7 +355,7 @@ export function RegistryChangeModal({
           )}
 
           <section>
-            <h3 style={sectionStyle}>{isProduct ? 'หน่วยงานที่รับผิดชอบ' : isDepartment ? 'หน่วยงานที่รับผิดชอบ (ไม่มีผังจัดเก็บ)' : 'คลังและตำแหน่งจัดเก็บ'}</h3>
+            <h3 style={sectionStyle}>{isProduct ? 'หน่วยงานที่รับผิดชอบ' : isDepartment ? 'หน่วยงานที่รับผิดชอบ (ไม่ระบุตำแหน่ง)' : 'คลังและตำแหน่งจัดเก็บ'}</h3>
             <div style={gridStyle}>
               <label>
                 <span style={labelStyle}>หน่วยงานที่รับผิดชอบ *</span>
@@ -365,7 +365,7 @@ export function RegistryChangeModal({
               </label>
               {isCreate && (
                 <label>
-                  <span style={labelStyle}>ประเภทจัดเก็บ *</span>
+                  <span style={labelStyle}>รูปแบบการจัดเก็บ *</span>
                   <select value={storageScope} onChange={(event) => {
                     const next = event.target.value as 'room' | 'department'
                     setStorageScope(next)
@@ -376,7 +376,7 @@ export function RegistryChangeModal({
                     }
                   }} style={inputStyle}>
                     <option value="room">ห้องเก็บสารเคมี</option>
-                    <option value="department">ตามหน่วยงาน</option>
+                    <option value="department">ตามหน่วยงาน (ไม่ระบุตำแหน่ง)</option>
                   </select>
                 </label>
               )}

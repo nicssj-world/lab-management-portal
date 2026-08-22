@@ -85,6 +85,7 @@ assert.ok(registryModalSource.includes('<option value="active">Active</option>')
 assert.ok(registryModalSource.includes('<option value="retired">Inactive</option>'), 'ฟอร์มทะเบียนต้องเลือกสถานะ Inactive ได้')
 
 const sdsSource = readFileSync(join(COMPONENT_DIR, 'SdsManagementClient.tsx'), 'utf8')
+const tokenSource = readFileSync(join(COMPONENT_DIR, 'shared', 'tokens.ts'), 'utf8')
 const publicSdsLibrarySource = readFileSync(join(COMPONENT_DIR, 'PublicSdsLibrary.tsx'), 'utf8')
 const publicDepartmentSdsSource = readFileSync(join(COMPONENT_DIR, 'PublicDepartmentSds.tsx'), 'utf8')
 const safetyManualActionsSource = readFileSync(join(COMPONENT_DIR, 'SafetyManualActions.tsx'), 'utf8')
@@ -97,25 +98,38 @@ assert.doesNotMatch(sdsSource, /แก้ไขชื่อ|แทนที่�
 assert.doesNotMatch(sdsSource, /registryLink\.status === 'registered'/, 'SDS แยกตามงานต้องไม่ใช้ workflow เทียบชื่อแบบเดิม')
 assert.ok(!sdsSource.includes('DepartmentSdsLinkModal'), 'SDS แยกตามงานต้องไม่เปิด modal ของ workflow เดิม')
 assert.ok(sdsSource.includes('departmentRegistry'), 'SDS แยกตามงานต้องรับรายการทะเบียนจาก workflow ใหม่')
-assert.ok(sdsSource.includes('การแก้ไข SDS ให้ทำในทะเบียนสารเคมี'), 'แท็บ SDS แยกตามงานต้องแยกการเผยแพร่ออกจากการแก้ไข SDS')
-assert.ok(sdsSource.includes('รอเพิ่มเข้าทะเบียน'), 'คำขอ legacy ของงานต้องไม่ใช้ป้ายรออนุมัติที่สับสนกับ SDS review')
+assert.ok(sdsSource.includes('แก้ไข SDS ได้จากทะเบียนสารเคมี'), 'แท็บ SDS แยกตามงานต้องบอกจุดที่ใช้แก้ไข SDS ให้ชัดเจน')
+assert.ok(sdsSource.includes('รอเชื่อมกับทะเบียน'), 'เอกสารที่ยังไม่เชื่อมทะเบียนต้องใช้ข้อความที่ผู้ใช้เข้าใจได้')
 assert.ok(sdsSource.includes('ค้นหารายการในงาน'), 'SDS แยกตามงานต้องค้นหารายการภายในงานที่เปิดดูได้')
-assert.ok(sdsSource.includes('ไฟล์ legacy ที่ยังไม่เข้าทะเบียน'), 'ไฟล์ legacy ที่ไม่ซ้ำกับทะเบียนต้องแยกเป็น backlog ให้เห็นชัดเจน')
+assert.ok(sdsSource.includes('เอกสารเดิมที่ยังไม่เชื่อมกับทะเบียน'), 'เอกสารเดิมที่ไม่ซ้ำกับทะเบียนต้องแยกเป็นรายการรอดำเนินการให้เห็นชัดเจน')
 assert.ok(sdsSource.includes('registryLink.holdingId'), 'รายการ SDS ที่แสดงในงานต้องผูกกลับไปยังรายการทะเบียนด้วย holdingId')
 assert.ok(sdsSource.includes('open && registryRows.length > 0'), 'รายการทะเบียนต้องถูกซ่อนจนกว่าจะกดดูรายการของงาน')
 assert.doesNotMatch(sdsSource, /\{registryRows\.map\(row => \(/, 'SDS แยกตามงานต้องไม่แสดงรายการทะเบียนซ้ำอยู่นอกส่วนที่เปิดดู')
 assert.ok(sdsSource.includes('summarizeRoomSds'), 'SDS ห้องสารเคมีต้องสรุปจำนวนจากทะเบียนและจำนวนเวอร์ชันแยกกัน')
-assert.ok(sdsSource.includes('มี SDS ผูกทะเบียน'), 'SDS ห้องสารเคมีต้องแสดงจำนวนสารที่ผูก SDS แล้วอย่างชัดเจน')
+assert.ok(sdsSource.includes('มี SDS แล้ว'), 'SDS ห้องสารเคมีต้องแสดงจำนวนสารที่มี SDS แล้วอย่างชัดเจน')
 assert.ok(sdsSource.includes('ยังไม่มี SDS'), 'SDS ห้องสารเคมีต้องแสดงสารในทะเบียนที่ยังไม่มี SDS')
 assert.ok(sdsSource.includes('openHoldingId'), 'SDS ห้องสารเคมีต้องซ่อนรายละเอียดเวอร์ชันจนกว่าจะเลือกสาร')
 assert.ok(sdsSource.includes('กรองสถานะ SDS'), 'SDS ห้องสารเคมีต้องกรองรายการตามสถานะ SDS ได้')
 assert.ok(sdsSource.includes('ดูรายละเอียด'), 'SDS ห้องสารเคมีต้องมี progressive disclosure สำหรับรายละเอียดเวอร์ชัน')
-assert.ok(sdsSource.includes('รายการเดียวกับทะเบียนห้องสารเคมี'), 'SDS ห้องสารเคมีต้องสื่อชัดว่ารายการหลักมาจากทะเบียน')
+assert.ok(sdsSource.includes('รายการจากทะเบียนห้องสารเคมี'), 'SDS ห้องสารเคมีต้องสื่อชัดว่ารายการหลักมาจากทะเบียน')
 assert.ok(sdsSource.includes('currentSdsItemsForHolding'), 'SDS ห้องสารเคมีต้องแสดงเฉพาะเวอร์ชันที่ยังใช้งาน ไม่แสดงฉบับถูกแทนที่')
-assert.ok(sdsSource.includes('การนับรายการและเวอร์ชัน SDS'), 'SDS ห้องสารเคมีต้องใช้หัวข้ออธิบายจำนวนที่สื่อความหมายชัดเจน')
+assert.ok(sdsSource.includes('ตัวเลขในหน้านี้'), 'SDS ห้องสารเคมีต้องใช้หัวข้ออธิบายจำนวนที่สื่อความหมายชัดเจน')
 assert.doesNotMatch(sdsSource, /วิธีอ่านตัวเลข/, 'SDS ห้องสารเคมีไม่ควรใช้คำว่า วิธีอ่านตัวเลข')
 assert.doesNotMatch(sdsSource, /ส่งทบทวน/, 'หน้า SDS ปลายทางต้องไม่เป็นจุดส่ง SDS เข้าทบทวน')
 assert.doesNotMatch(sdsSource, /บันทึกผลไม่อนุมัติแล้ว/, 'หน้า SDS ปลายทางต้องไม่เป็นจุดตัดสินอนุมัติ SDS')
+assert.ok(tokenSource.includes('มี SDS แล้ว · ยังไม่ระบุปริมาณ'), 'ป้าย SDS-only ต้องอธิบายสถานะด้วยภาษาที่ผู้ใช้เข้าใจได้')
+assert.ok(sdsSource.includes('ยังไม่ได้ระบุเลขฉบับ'), 'รายการ SDS ที่ไม่มี Revision ต้องบอกให้ชัดว่ายังไม่ได้ระบุเลขฉบับ')
+for (const confusing of [
+  'SDS-only — ยังไม่ระบุปริมาณ',
+  'ไฟล์ legacy ที่ยังไม่เข้าทะเบียน',
+  'ทะเบียน: storageScope = department · ไม่มีตำแหน่งจัดเก็บ',
+  'ไฟล์กลุ่มนี้ยังไม่มี holdingId',
+  'read-only',
+]) {
+  assert.ok(!sdsSource.includes(confusing), `ไม่ควรแสดงศัพท์ระบบที่ทำให้สับสน: ${confusing}`)
+}
+assert.ok(!tokenSource.includes('SDS-only — ยังไม่ระบุปริมาณ'), 'ไม่ควรแสดงป้าย SDS-only แบบเดิม')
+assert.ok(tokenSource.includes('ฉบับเก่า · มีฉบับใหม่แล้ว'), 'สถานะเอกสารเก่าต้องอธิบายว่ามีฉบับใหม่แล้ว')
 
 // route ของด่านอนุมัติต้องถูกลบจริง ไม่ใช่แค่ซ่อนปุ่ม
 for (const gone of [

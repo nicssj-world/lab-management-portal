@@ -216,7 +216,7 @@ export function SdsEditorModal({
             <SdsDropzone
               onFile={upload}
               disabled={busy !== null}
-              hint="รับเฉพาะ PDF ขนาดไม่เกิน 50 MB · อัปโหลดใหม่จะแทนที่ไฟล์เดิมและมีผลทันที"
+              hint="รับเฉพาะไฟล์ PDF ขนาดไม่เกิน 50 MB · หากอัปโหลดใหม่ ไฟล์เดิมจะถูกแทนที่ทันที"
             />
           </section>
 
@@ -227,8 +227,8 @@ export function SdsEditorModal({
               <Field label="ผู้จำหน่าย" value={supplier} onChange={setSupplier} />
               <Field label="รหัสผลิตภัณฑ์" value={productCode} onChange={setProductCode} />
               <Field label="ความเข้มข้น" value={concentration} onChange={setConcentration} />
-              <Field label="ภาษา" value={language} onChange={setLanguage} />
-              <Field label="ฉบับที่ / รุ่น" value={revisionLabel} onChange={setRevisionLabel} />
+              <Field label="ภาษาเอกสาร" value={language} onChange={setLanguage} />
+              <Field label="เลขฉบับ (Revision)" value={revisionLabel} onChange={setRevisionLabel} placeholder="เช่น Rev. 03" />
               <Field label="วันที่มีผล" value={effectiveOn} onChange={setEffectiveOn} type="date" />
               <Field label="กำหนดทบทวนครั้งถัดไป" value={reviewDueOn} onChange={setReviewDueOn} type="date" />
             </div>
@@ -237,7 +237,7 @@ export function SdsEditorModal({
           <section>
             <h3 style={sectionStyle}>GHS ที่ยืนยันจาก SDS หมวด 2</h3>
             <p style={{ margin: `0 0 ${SPACE.sm}px`, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>
-              ข้อมูลนี้ผูกกับ SDS ฉบับนี้โดยตรง ค่าจากทะเบียนอาจถูกเติมไว้ให้เพื่อช่วยเริ่มต้น แต่ต้องตรวจสอบและแก้ตาม SDS หมวด 2 ก่อนบันทึก
+              ข้อมูลนี้เป็นข้อมูลของเอกสาร SDS ฉบับนี้โดยตรง ระบบอาจเติมข้อมูลเบื้องต้นจากทะเบียนให้ แต่ต้องตรวจสอบและแก้ให้ตรงกับ SDS หมวด 2 ก่อนบันทึก
             </p>
             <label style={labelStyle} htmlFor="sds-signal-word">คำสัญญาณ</label>
             <select
@@ -293,7 +293,7 @@ export function SdsEditorModal({
             />
 
             <RowEditor
-              title="ข้อความแสดงความเป็นอันตราย (H)"
+              title="ข้อความแสดงความเป็นอันตราย (รหัส H)"
               rows={hStatements}
               onChange={setHStatements}
               blank={{ code: '', text: '' }}
@@ -304,7 +304,7 @@ export function SdsEditorModal({
             />
 
             <RowEditor
-              title="ข้อควรปฏิบัติ (P)"
+              title="ข้อควรปฏิบัติเพื่อความปลอดภัย (รหัส P)"
               rows={pStatements}
               onChange={setPStatements}
               blank={{ code: '', text: '' }}
@@ -361,8 +361,8 @@ const gridStyle: CSSProperties = {
   display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: SPACE.sm,
 }
 
-function Field({ label, value, onChange, type = 'text' }: {
-  label: string; value: string; onChange: (value: string) => void; type?: string
+function Field({ label, value, onChange, type = 'text', placeholder }: {
+  label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string
 }) {
   return (
     <label style={{ display: 'block' }}>
@@ -370,6 +370,7 @@ function Field({ label, value, onChange, type = 'text' }: {
       <input
         type={type}
         value={value}
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         style={{ ...inputStyle, minHeight: 44 }}
       />

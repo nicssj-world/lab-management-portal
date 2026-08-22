@@ -128,7 +128,7 @@ assert.match(departmentRepository, /registryLink/i, 'department SDS DTO exposes 
 assert.doesNotMatch(sdsClient, /เพิ่มเข้าทะเบียนสารเคมี/i, 'department SDS UI cannot create registry rows')
 assert.doesNotMatch(sdsClient, /fetch\(/, 'department SDS UI is read-only')
 assert.doesNotMatch(sdsClient, /onClick=\{\(\) => setRegistering\(\{ group \}\)\}/, 'department-level registration shortcut is removed')
-assert.match(sdsClient, /storageScope|ไม่มีตำแหน่งจัดเก็บ/i, 'department chemical form has no storage location')
+assert.match(sdsClient, /ไม่ระบุตำแหน่งตู้หรือชั้นจัดเก็บ/i, 'department chemical form has no storage location')
 assert.match(registryClient, /storageScope/i, 'registry UI distinguishes department-scoped rows')
 assert.match(registryClient, /holdingId/i, 'registry rows use holding identity for stable keys')
 assert.match(publicModule, /storage_scope === 'department'/i, 'public SDS and storage layout skip department holdings')

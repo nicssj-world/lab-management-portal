@@ -636,7 +636,7 @@ export function ChemicalSafetyHubClient({
           <div className="chemical-section-lead">
             <div>
               <h2>ทะเบียนสารเคมี</h2>
-              <p>ค้นหา ตรวจสอบสถานะ SDS และจัดการข้อมูลตามตู้จัดเก็บ</p>
+              <p>ค้นหา ตรวจสอบสถานะ SDS และจัดการข้อมูลจากทะเบียนสารเคมี</p>
             </div>
             <span className="chemical-section-count"><Icon name="flask" size={14} /> {visible.length.toLocaleString()} รายการที่แสดง</span>
           </div>
@@ -685,7 +685,7 @@ export function ChemicalSafetyHubClient({
                     <Button
                       icon="globe"
                       disabled={departmentPublicationBusyCode === selectedDepartment.code || selectedDepartment.fileCount === 0}
-                      title={selectedDepartment.fileCount === 0 ? 'งานนี้ยังไม่มี SDS จากทะเบียนสารเคมีให้เผยแพร่' : undefined}
+                      title={selectedDepartment.fileCount === 0 ? 'งานนี้ยังไม่มีเอกสาร SDS จากทะเบียนสารเคมีที่พร้อมเผยแพร่' : undefined}
                       onClick={() => void setDepartmentPublicationStatus('published')}
                     >
                       เผยแพร่ทั้งงาน
@@ -694,7 +694,7 @@ export function ChemicalSafetyHubClient({
                 )}
               </div>
               <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>
-                แก้ไขข้อมูลและแนบ SDS ที่แถวสารเคมีด้านล่าง ส่วนการเผยแพร่ทั้งงานทำจากทะเบียนหน้านี้
+                แก้ไขข้อมูลและแนบ SDS ที่แถวสารเคมีด้านล่าง ส่วนการเผยแพร่ทั้งงานทำจากส่วนนี้
               </p>
             </Card>
           )}
@@ -779,7 +779,7 @@ export function ChemicalSafetyHubClient({
                             <div style={{ fontSize: FONT.base }}>{row.unitName}</div>
                             <div style={{ marginTop: 4 }}>
                               {row.storageScope === 'department' ? (
-                                <Badge color="teal"><Icon name="users" size={12} /> ตามหน่วยงาน · ไม่จัดผัง</Badge>
+                                <Badge color="teal"><Icon name="users" size={12} /> ตามหน่วยงาน · ไม่ระบุตำแหน่ง</Badge>
                               ) : (
                                 <PositionChip code={row.positionCode} zoneCode={zoneOf(row.positionCode, locations)} />
                               )}
@@ -802,7 +802,7 @@ export function ChemicalSafetyHubClient({
                                 <strong style={{ display: 'block', fontSize: FONT.base, ...tabularNums }}>
                                   {row.reportedTotalRaw}
                                 </strong>
-                                <div style={{ marginTop: 2, fontSize: FONT.xs, color: 'var(--muted)' }}>ข้อมูลดิบจากแบบสำรวจ</div>
+                                <div style={{ marginTop: 2, fontSize: FONT.xs, color: 'var(--muted)' }}>ปริมาณตามแบบสำรวจ</div>
                               </>
                             ) : (
                               <span style={tabularNums}>—</span>
@@ -816,7 +816,7 @@ export function ChemicalSafetyHubClient({
                           <td style={cellStyle}>
                             <SdsStateBadge state={row.sdsStatus} />
                             <div style={{ marginTop: 5, fontSize: FONT.xs, color: row.publicationStatus === 'stale' ? 'var(--warning)' : 'var(--muted)' }}>
-                              {row.publicationStatus === 'active' ? 'เผยแพร่แล้ว' : row.publicationStatus === 'ready' ? 'พร้อมเชื่อม' : row.publicationStatus === 'stale' ? 'ต้องเชื่อมฉบับใหม่' : 'ยังไม่เชื่อมเผยแพร่'}
+                              {row.publicationStatus === 'active' ? 'เผยแพร่แล้ว' : row.publicationStatus === 'ready' ? 'พร้อมเผยแพร่' : row.publicationStatus === 'stale' ? 'มีฉบับใหม่ · รอเผยแพร่' : 'ยังไม่มีการเผยแพร่'}
                             </div>
                           </td>
                           <td style={cellStyle}>
@@ -840,7 +840,7 @@ export function ChemicalSafetyHubClient({
                                 {canEditRow && (
                                   <>
                                     <Button
-                                      variant="ghost" size="sm" icon="edit" title="แก้ไขคลัง (ตำแหน่ง/ปริมาณ)"
+                                      variant="ghost" size="sm" icon="edit" title="แก้ไขตำแหน่งและปริมาณ"
                                       onClick={() => setModal({ mode: 'edit-holding', registryRow: row })}
                                     />
                                     <Button
