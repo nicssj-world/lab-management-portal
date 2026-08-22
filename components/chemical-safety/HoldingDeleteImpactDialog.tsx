@@ -68,13 +68,13 @@ export function HoldingDeleteImpactDialog({ impact, busy, onCancel, onConfirm }:
           <>
             <div style={{ marginTop: SPACE.lg, padding: SPACE.md, borderRadius: 12, border: '1px solid color-mix(in srgb,var(--warning) 30%,var(--border))', background: 'color-mix(in srgb,var(--warning) 8%,var(--card))' }}>
               <strong style={{ display: 'block', color: 'var(--warning)', fontSize: FONT.base }}>การลบนี้ถาวรและย้อนคืนไม่ได้</strong>
-              <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>ระบบจะลบรายการจากทะเบียน พร้อม SDS และการเผยแพร่ที่เป็นของรายการนี้ในคำสั่งเดียว</p>
+              <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>ระบบจะลบรายการจากทะเบียน พร้อม SDS และการเผยแพร่ที่เป็นของรายการนี้ในคำสั่งเดียว ส่วน SDS ที่ยังถูกใช้ร่วมกับรายการอื่นจะเก็บไว้</p>
             </div>
 
             <section style={{ marginTop: SPACE.lg }} aria-labelledby="holding-delete-impact-rows">
               <h3 id="holding-delete-impact-rows" style={{ margin: 0, color: 'var(--ink)', fontSize: FONT.base }}>ข้อมูลที่จะลบ</h3>
               <ul style={{ margin: '9px 0 0', paddingLeft: 20, color: 'var(--ink)', fontSize: FONT.sm }}>
-                {impact.versions.map(version => (
+                {impact.versions.filter(version => version.willDelete).map(version => (
                   <li key={`version-${version.id}`} style={{ marginBottom: 5 }}>
                     SDS version {version.revisionLabel ?? version.id} ({version.status})
                   </li>
@@ -89,11 +89,24 @@ export function HoldingDeleteImpactDialog({ impact, busy, onCancel, onConfirm }:
                     SDS งาน {departmentSds.departmentCode}: {departmentSds.displayName}
                   </li>
                 ))}
-                {impact.versions.length === 0 && impact.publications.length === 0 && impact.departmentSds.length === 0 && (
+                {impact.versions.filter(version => version.willDelete).length === 0 && impact.publications.length === 0 && impact.departmentSds.length === 0 && (
                   <li>ข้อมูล SDS ที่เชื่อมโยงกับรายการนี้</li>
                 )}
               </ul>
             </section>
+
+            {impact.sharedDependencies.length > 0 && (
+              <section style={{ marginTop: SPACE.md }} aria-labelledby="holding-delete-shared-sds">
+                <h3 id="holding-delete-shared-sds" style={{ margin: 0, color: 'var(--ink)', fontSize: FONT.base }}>SDS ที่เก็บไว้เพราะยังมีการใช้งาน</h3>
+                <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>ระบบจะตัดเฉพาะการเชื่อมโยงของรายการนี้ ไม่ลบ SDS ที่รายการทะเบียนอื่นยังใช้อยู่</p>
+                <ul style={{ margin: '7px 0 0', paddingLeft: 20, color: 'var(--muted)', fontSize: FONT.sm }}>
+                  {impact.versions.filter(version => !version.willDelete).map(version => (
+                    <li key={`kept-version-${version.id}`}>SDS version {version.revisionLabel ?? version.id} ยังเก็บไว้ให้รายการอื่นใช้งาน</li>
+                  ))}
+                  {impact.sharedDependencies.map(dependency => <li key={`kept-${dependency.kind}-${dependency.relatedRowId}`}>{dependency.label}</li>)}
+                </ul>
+              </section>
+            )}
 
             {impact.filesToKeep.length > 0 && (
               <section style={{ marginTop: SPACE.md }} aria-labelledby="holding-delete-kept-files">

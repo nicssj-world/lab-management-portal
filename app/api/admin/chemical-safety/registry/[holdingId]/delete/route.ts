@@ -8,7 +8,6 @@ import { unexpectedError } from '@/lib/chemical-safety/api'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { deleteChemicalSdsR2Objects } from '@/lib/chemical-safety/holding-delete-storage'
 
-const SHARED_DEPENDENCY_ERROR = 'รายการนี้มี SDS ที่ถูกใช้กับรายการทะเบียนอื่น จึงยังลบไม่ได้'
 type HoldingDeleteRouteContext = { params: Promise<{ holdingId: string }> }
 
 function requiredString(value: unknown, field: string): string {
@@ -27,10 +26,6 @@ function errorMessage(error: unknown): string {
     if (typeof message === 'string') return message
   }
   return String(error)
-}
-
-function isSharedDependencyError(error: unknown): boolean {
-  return /holding_delete_shared_dependency/i.test(errorMessage(error))
 }
 
 function isNotFoundError(error: unknown): boolean {
@@ -140,10 +135,6 @@ async function guardForSnapshot(snapshot: Awaited<ReturnType<typeof loadSnapshot
   return requireChemicalCustodian(snapshot.input.holding.unitId)
 }
 
-function conflictResponse(snapshot: NonNullable<Awaited<ReturnType<typeof loadSnapshot>>>) {
-  return NextResponse.json({ error: SHARED_DEPENDENCY_ERROR, impact: snapshot.impact }, { status: 409 })
-}
-
 async function recordCleanupFailure(actorId: string, holdingId: string, failedKeys: readonly string[]) {
   if (failedKeys.length === 0) return true
   try {
@@ -188,17 +179,12 @@ export async function DELETE(
     if (!snapshot) return NextResponse.json({ error: 'ไม่พบรายการทะเบียนสารเคมี' }, { status: 404 })
     const guard = await guardForSnapshot(snapshot)
     if (guard?.response) return guard.response
-    if (!snapshot.impact.canDelete) return conflictResponse(snapshot)
 
     const deletion = await supabaseAdmin.rpc('delete_chemical_holding_cascade', {
       p_holding_id: holdingId,
       p_actor_id: guard!.actor.id,
     })
     if (deletion.error) {
-      if (isSharedDependencyError(deletion.error)) {
-        const refreshed = await loadSnapshot(holdingId)
-        if (refreshed) return conflictResponse(refreshed)
-      }
       if (isNotFoundError(deletion.error)) {
         return NextResponse.json({ error: 'ไม่พบรายการทะเบียนสารเคมี' }, { status: 404 })
       }

@@ -77,11 +77,35 @@ const sharedImpact = buildChemicalHoldingDeleteImpact({
     },
   ],
 })
-assert.equal(sharedImpact.canDelete, false)
+assert.equal(sharedImpact.canDelete, true)
 assert.ok(sharedImpact.sharedDependencies.some(dependency => dependency.relatedHoldingId === 'holding-other'))
 assert.deepEqual(sharedImpact.deletePlan, {
-  publicationIds: [], departmentLinkIds: [], departmentSdsIds: [], sdsVersionIds: [], fileIds: [], fileKeys: [],
+  publicationIds: ['publication-room'],
+  departmentLinkIds: [],
+  departmentSdsIds: [],
+  sdsVersionIds: [],
+  sdsVersionIdsToDetach: ['version-target'],
+  fileIds: [],
+  fileKeys: [],
 })
+assert.equal(sharedImpact.versions[0]?.willDelete, false)
+assert.equal(sharedImpact.filesToKeep[0]?.r2Key, 'sds/target.pdf')
+
+const otherOwnedVersionImpact = buildChemicalHoldingDeleteImpact({
+  ...baseInput,
+  versions: [{
+    id: 'version-other-owner', productId: 'product-target', sourceHoldingId: 'holding-other',
+    status: 'approved', revisionLabel: '2026-02', fileId: 'file-target',
+  }],
+  publications: [{
+    ...baseInput.publications[0],
+    sdsVersionId: 'version-other-owner',
+  }],
+})
+assert.equal(otherOwnedVersionImpact.canDelete, true)
+assert.deepEqual(otherOwnedVersionImpact.deletePlan.sdsVersionIds, [])
+assert.deepEqual(otherOwnedVersionImpact.deletePlan.sdsVersionIdsToDetach, [])
+assert.equal(otherOwnedVersionImpact.versions[0]?.willDelete, false)
 
 const reusedFileImpact = buildChemicalHoldingDeleteImpact({
   ...baseInput,

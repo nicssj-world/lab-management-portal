@@ -124,6 +124,7 @@ export interface ChemicalHoldingDeletePlan {
   readonly departmentLinkIds: string[]
   readonly departmentSdsIds: string[]
   readonly sdsVersionIds: string[]
+  readonly sdsVersionIdsToDetach: string[]
   readonly fileIds: string[]
   readonly fileKeys: string[]
 }
@@ -232,14 +233,30 @@ export function buildChemicalHoldingDeleteImpact(
     }
   }
 
-  const canDelete = sharedDependencies.length === 0
-  const legacyPublicationOnlyVersionIds = candidateVersions
-    .filter(version => !ownedVersionIds.includes(version.id) && version.sourceHoldingId === null)
-    .map(version => version.id)
-  const plannedVersionIds = canDelete ? unique([...ownedVersionIds, ...legacyPublicationOnlyVersionIds]) : []
-  const plannedDepartmentLinkIds = canDelete ? targetLinks.map(link => link.id) : []
-  const plannedDepartmentSdsIds = canDelete ? targetDepartmentSdsIds : []
-  const plannedPublicationIds = canDelete ? targetPublications.map(publication => publication.id) : []
+  const deletableVersionIds = unique(
+    candidateVersions
+      .filter(version => version.sourceHoldingId === holding.id || version.sourceHoldingId === null)
+      .map(version => version.id),
+  )
+  const hasOtherReference = (versionId: string) => (
+    input.links.some(link => link.sdsVersionId === versionId && link.holdingId !== holding.id)
+    || input.publications.some(publication => (
+      publication.sdsVersionId === versionId && publication.sourceHoldingId !== holding.id
+    ))
+  )
+  const plannedVersionIds = unique(
+    deletableVersionIds
+      .filter(versionId => !hasOtherReference(versionId)),
+  )
+  const detachedVersionIds = unique(
+    candidateVersions
+      .filter(version => version.sourceHoldingId === holding.id)
+      .filter(version => !plannedVersionIds.includes(version.id))
+      .map(version => version.id),
+  )
+  const plannedDepartmentLinkIds = targetLinks.map(link => link.id)
+  const plannedDepartmentSdsIds = targetDepartmentSdsIds
+  const plannedPublicationIds = targetPublications.map(publication => publication.id)
 
   const plannedFileIds = unique([
     ...input.versions
@@ -249,7 +266,14 @@ export function buildChemicalHoldingDeleteImpact(
       .filter(item => plannedDepartmentSdsIds.includes(item.id))
       .map(item => item.fileId),
   ])
-  const plannedFileRows = input.files.filter(file => plannedFileIds.includes(file.id))
+  const preservedCandidateFileIds = unique(
+    candidateVersions
+      .filter(version => !plannedVersionIds.includes(version.id) && version.fileId !== null)
+      .map(version => version.fileId as string),
+  )
+  const plannedFileRows = input.files.filter(file => (
+    plannedFileIds.includes(file.id) || preservedCandidateFileIds.includes(file.id)
+  ))
   const remainingVersionRefs = input.versions.filter(version => !plannedVersionIds.includes(version.id))
   const remainingDepartmentSdsRefs = input.departmentSds.filter(item => !plannedDepartmentSdsIds.includes(item.id))
 
@@ -258,7 +282,7 @@ export function buildChemicalHoldingDeleteImpact(
   for (const file of plannedFileRows) {
     const usedByVersion = remainingVersionRefs.some(version => version.fileId === file.id)
     const usedByDepartmentSds = remainingDepartmentSdsRefs.some(item => item.fileId === file.id)
-    if (!usedByVersion && !usedByDepartmentSds) {
+    if (plannedFileIds.includes(file.id) && !usedByVersion && !usedByDepartmentSds) {
       filesToDelete.push(fileSummary(file))
       continue
     }
@@ -289,7 +313,7 @@ export function buildChemicalHoldingDeleteImpact(
     unitId: holding.unitId,
     productName: input.product?.canonicalName ?? holding.productId,
     unitName: input.unit?.nameTh ?? holding.unitId,
-    canDelete,
+    canDelete: true,
     versions: candidateVersions.map(version => ({
       id: version.id,
       status: version.status,
@@ -328,6 +352,7 @@ export function buildChemicalHoldingDeleteImpact(
       departmentLinkIds: plannedDepartmentLinkIds,
       departmentSdsIds: plannedDepartmentSdsIds,
       sdsVersionIds: plannedVersionIds,
+      sdsVersionIdsToDetach: detachedVersionIds,
       fileIds: filesToDelete.map(file => file.id),
       fileKeys: filesToDelete.map(file => file.r2Key),
     },

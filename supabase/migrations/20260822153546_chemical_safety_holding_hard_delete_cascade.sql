@@ -15,7 +15,8 @@ DECLARE
   department_sds_row public.chemical_department_sds%rowtype;
   file_row public.chemical_sds_files%rowtype;
   candidate_version_ids uuid[] := ARRAY[]::uuid[];
-  owned_version_ids uuid[] := ARRAY[]::uuid[];
+  delete_version_ids uuid[] := ARRAY[]::uuid[];
+  detach_version_ids uuid[] := ARRAY[]::uuid[];
   target_link_ids uuid[] := ARRAY[]::uuid[];
   target_department_sds_ids uuid[] := ARRAY[]::uuid[];
   target_publication_ids uuid[] := ARRAY[]::uuid[];
@@ -34,9 +35,9 @@ BEGIN
     RAISE EXCEPTION 'chemical_holding_not_found';
   END IF;
 
-  -- Lock every direct holding relation before the guard is evaluated. The
-  -- function is called once by the API, so a shared dependency aborts the
-  -- whole call and PostgreSQL rolls back every statement in this function.
+  -- Lock every direct holding relation before calculating the deletion plan.
+  -- Shared SDS rows are retained; only the target holding's publications and
+  -- department links are removed.
   FOR link_row IN
     SELECT *
     FROM public.chemical_department_chemical_links
@@ -48,7 +49,6 @@ BEGIN
     target_department_sds_ids := array_append(target_department_sds_ids, link_row.department_sds_id);
     IF link_row.sds_version_id IS NOT NULL THEN
       candidate_version_ids := array_append(candidate_version_ids, link_row.sds_version_id);
-      owned_version_ids := array_append(owned_version_ids, link_row.sds_version_id);
     END IF;
   END LOOP;
 
@@ -71,16 +71,11 @@ BEGIN
     FOR UPDATE
   LOOP
     candidate_version_ids := array_append(candidate_version_ids, version_row.id);
-    owned_version_ids := array_append(owned_version_ids, version_row.id);
   END LOOP;
 
   candidate_version_ids := ARRAY(
     SELECT DISTINCT value
     FROM unnest(candidate_version_ids) AS array_item(value)
-  );
-  owned_version_ids := ARRAY(
-    SELECT DISTINCT value
-    FROM unnest(owned_version_ids) AS array_item(value)
   );
   target_link_ids := ARRAY(
     SELECT DISTINCT value
@@ -95,9 +90,9 @@ BEGIN
     FROM unnest(target_publication_ids) AS array_item(value)
   );
 
-  -- Publication-only legacy versions are included in candidate_version_ids,
-  -- so a target publication cannot silently remove or detach a version owned
-  -- by another holding. Lock the complete dependency set before checking it.
+  -- Lock the complete dependency set before calculating which versions can be
+  -- removed. This keeps the preflight decision and the destructive call
+  -- consistent when two users act at the same time.
   IF cardinality(candidate_version_ids) > 0 THEN
     FOR version_row IN
       SELECT *
@@ -129,46 +124,41 @@ BEGIN
       NULL;
     END LOOP;
 
-    IF EXISTS (
-      SELECT 1
-      FROM public.chemical_sds_versions AS version
-      WHERE version.id = ANY(candidate_version_ids)
-        AND version.source_holding_id IS NOT NULL
-        AND version.source_holding_id <> p_holding_id
-    )
-    OR EXISTS (
-      SELECT 1
-      FROM public.chemical_department_chemical_links AS link
-      WHERE link.sds_version_id = ANY(candidate_version_ids)
-        AND link.holding_id <> p_holding_id
-    )
-    OR EXISTS (
-      SELECT 1
-      FROM public.chemical_sds_publications AS publication
-      WHERE publication.sds_version_id = ANY(candidate_version_ids)
-        AND publication.source_holding_id <> p_holding_id
-    ) THEN
-      RAISE EXCEPTION 'holding_delete_shared_dependency';
-    END IF;
   END IF;
 
-  -- A legacy publication may be the only relationship to an SDS version and
-  -- therefore has no source_holding_id. Once the shared guard passes, that
-  -- unowned legacy version is safe to remove with the target publication.
-  owned_version_ids := ARRAY(
+  -- Delete only versions owned by this holding (or legacy versions with no
+  -- owner) that have no remaining link/publication for another holding. A
+  -- version used elsewhere stays in place. If this holding was its source,
+  -- clear that source before deleting the holding so the other use remains
+  -- valid.
+  delete_version_ids := ARRAY(
     SELECT DISTINCT version.id
     FROM public.chemical_sds_versions AS version
     WHERE version.id = ANY(candidate_version_ids)
       AND (
         version.source_holding_id = p_holding_id
         OR version.source_holding_id IS NULL
-        OR EXISTS (
-          SELECT 1
-          FROM public.chemical_department_chemical_links AS link
-          WHERE link.holding_id = p_holding_id
-            AND link.sds_version_id = version.id
-        )
       )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.chemical_department_chemical_links AS link
+        WHERE link.sds_version_id = version.id
+          AND link.holding_id <> p_holding_id
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.chemical_sds_publications AS publication
+        WHERE publication.sds_version_id = version.id
+          AND publication.source_holding_id <> p_holding_id
+      )
+  );
+
+  detach_version_ids := ARRAY(
+      SELECT DISTINCT version.id
+      FROM public.chemical_sds_versions AS version
+      WHERE version.id = ANY(candidate_version_ids)
+      AND version.source_holding_id = p_holding_id
+      AND NOT (version.id = ANY(delete_version_ids))
   );
 
   -- Decide which physical files become orphaned before deleting their metadata.
@@ -189,7 +179,7 @@ BEGIN
     WHERE file.id IN (
       SELECT version.file_id
       FROM public.chemical_sds_versions AS version
-      WHERE version.id = ANY(owned_version_ids)
+      WHERE version.id = ANY(delete_version_ids)
         AND version.file_id IS NOT NULL
       UNION
       SELECT department_sds.file_id
@@ -203,7 +193,7 @@ BEGIN
       SELECT 1
       FROM public.chemical_sds_versions AS version
       WHERE version.file_id = file_row.id
-        AND version.id <> ALL(owned_version_ids)
+        AND version.id <> ALL(delete_version_ids)
     )
     AND NOT EXISTS (
       SELECT 1
@@ -223,8 +213,15 @@ BEGIN
   DELETE FROM public.chemical_department_chemical_links
   WHERE id = ANY(target_link_ids);
 
+  UPDATE public.chemical_sds_versions AS version
+  SET source_holding_id = NULL,
+    workflow_origin = 'legacy',
+    updated_at = now()
+  WHERE version.id = ANY(detach_version_ids)
+    AND version.source_holding_id = p_holding_id;
+
   DELETE FROM public.chemical_sds_versions
-  WHERE id = ANY(owned_version_ids);
+  WHERE id = ANY(delete_version_ids);
 
   DELETE FROM public.chemical_department_sds AS department_sds
   WHERE department_sds.id = ANY(target_department_sds_ids)
@@ -256,7 +253,8 @@ BEGIN
     'deletedPublicationIds', to_jsonb(target_publication_ids),
     'deletedDepartmentLinkIds', to_jsonb(target_link_ids),
     'deletedDepartmentSdsIds', to_jsonb(target_department_sds_ids),
-    'deletedSdsVersionIds', to_jsonb(owned_version_ids),
+    'deletedSdsVersionIds', to_jsonb(delete_version_ids),
+    'detachedSdsVersionIds', to_jsonb(detach_version_ids),
     'deletedFileIds', to_jsonb(orphan_file_ids),
     'fileKeys', to_jsonb(orphan_file_keys)
   );
@@ -269,7 +267,7 @@ GRANT EXECUTE ON FUNCTION public.delete_chemical_holding_cascade(uuid, uuid)
   TO service_role;
 
 -- Existing change requests remain callable for compatibility, but approved
--- holding_delete requests must use the same cascade guard and delete behavior.
+-- holding_delete requests must use the same cascade delete behavior.
 CREATE OR REPLACE FUNCTION public.review_chemical_holding_delete_request(
   p_request_id uuid, p_actor_id uuid, p_decision text, p_reason text
 ) RETURNS uuid
@@ -309,15 +307,8 @@ BEGIN
     FOR UPDATE;
     IF NOT FOUND THEN RAISE EXCEPTION 'chemical_holding_not_found'; END IF;
 
-    BEGIN
-      SELECT public.delete_chemical_holding_cascade(current_row.entity_id, p_actor_id)
-      INTO delete_result;
-    EXCEPTION WHEN OTHERS THEN
-      IF SQLERRM = 'holding_delete_shared_dependency' THEN
-        RAISE EXCEPTION 'holding_in_use_cannot_delete';
-      END IF;
-      RAISE;
-    END;
+    SELECT public.delete_chemical_holding_cascade(current_row.entity_id, p_actor_id)
+    INTO delete_result;
   END IF;
 
   UPDATE public.chemical_change_requests AS request
