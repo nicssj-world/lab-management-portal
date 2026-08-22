@@ -330,6 +330,8 @@ export function PublicNav() {
             </button>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
+              aria-label={menuOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
+              aria-expanded={menuOpen}
               className="pub-icon-button"
               style={{
                 width: 38, height: 38, borderRadius: 8, border: '1px solid var(--border)',

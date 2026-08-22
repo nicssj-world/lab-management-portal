@@ -20,7 +20,6 @@ export function LineQrCard() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={`ขยาย QR Code LINE ${LINE_ID}`}
         className="line-card"
         style={{
           display: 'flex', alignItems: 'center', gap: 14,

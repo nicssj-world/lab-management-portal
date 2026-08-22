@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import Image from 'next/image'
 import { SETTINGS_DEFAULTS } from '@/lib/settings'
 import { getCategories } from '@/lib/queries/categories'
 import { getNews } from '@/lib/queries/news'
@@ -543,16 +544,44 @@ export default async function PublicHome() {
 
           <div className="public-photo-stack" aria-label="ภาพห้องปฏิบัติการ">
             <div className="public-photo-card public-photo-sign">
-              <img src="/images/hero-lab/medical-technology-sign.png" alt="ป้ายกลุ่มงานเทคนิคการแพทย์" />
+              <Image
+                src="/images/hero-lab/medical-technology-sign.png"
+                alt="ป้ายกลุ่มงานเทคนิคการแพทย์"
+                fill
+                loading="lazy"
+                quality={70}
+                sizes="(max-width: 520px) 1px, (max-width: 900px) 30vw, 152px"
+              />
             </div>
             <div className="public-photo-card public-photo-central">
-              <img src="/images/hero-lab/central-laboratory.png" alt="Central Laboratory โรงพยาบาลชลบุรี" />
+              <Image
+                src="/images/hero-lab/central-laboratory.png"
+                alt="Central Laboratory โรงพยาบาลชลบุรี"
+                fill
+                loading="lazy"
+                quality={70}
+                sizes="(max-width: 520px) 1px, (max-width: 900px) 56vw, 300px"
+              />
             </div>
             <div className="public-photo-card public-photo-petri">
-              <img src="/images/hero-lab/microbiology-petri.jpg" alt="จานเพาะเชื้อ Microbiology" />
+              <Image
+                src="/images/hero-lab/microbiology-petri.jpg"
+                alt="จานเพาะเชื้อ Microbiology"
+                fill
+                loading="lazy"
+                quality={70}
+                sizes="(max-width: 520px) 1px, (max-width: 900px) 32vw, 158px"
+              />
             </div>
             <div className="public-photo-card public-photo-blood">
-              <img src="/images/hero-lab/blood-tube.webp" alt="หลอดเลือด close-up" />
+              <Image
+                src="/images/hero-lab/blood-tube.webp"
+                alt="หลอดเลือด close-up"
+                fill
+                loading="lazy"
+                quality={70}
+                sizes="(max-width: 520px) 1px, (max-width: 900px) 30vw, 148px"
+              />
             </div>
             
           </div>

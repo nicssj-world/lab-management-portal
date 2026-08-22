@@ -169,9 +169,11 @@ export function PublicHeroSearch() {
             className="public-hero-search-input"
             name="search"
             type="search"
+            role="combobox"
             aria-label="ค้นหารายการตรวจวิเคราะห์"
             aria-expanded={showPanel}
             aria-controls="public-hero-search-results"
+            aria-autocomplete="list"
             autoComplete="off"
             value={query}
             onChange={(event) => {
