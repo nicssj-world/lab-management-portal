@@ -198,6 +198,7 @@ const ACTION_LABELS: Record<string, string> = {
   'chemical_safety.sds.create_draft':             'สร้างฉบับร่าง SDS',
   'chemical_safety.sds.upload_file':              'อัปโหลดไฟล์ SDS',
   'chemical_safety.sds.delete_draft':             'ลบฉบับร่าง SDS',
+  'chemical_safety.sds.cleanup_failure':          'ล้างไฟล์ SDS ไม่สำเร็จ',
   'chemical_safety.department_sds.upload':        'อัปโหลด SDS แยกตามงาน',
   'chemical_safety.department_sds.rename':        'แก้ไขชื่อ SDS แยกตามงาน',
   'chemical_safety.department_sds.delete':        'ลบ SDS แยกตามงาน',

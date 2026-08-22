@@ -48,6 +48,7 @@ const CATEGORY_ACTIONS: Record<string, string[]> = {
     'lab_map.assembly_point.create', 'lab_map.assembly_point.update', 'lab_map.assembly_point.retire',
     'lab_map.assembly_verification.create', 'lab_map.safety_editor.grant', 'lab_map.safety_editor.revoke',
     'chemical_safety.sds.create_draft', 'chemical_safety.sds.upload_file', 'chemical_safety.sds.delete_draft',
+    'chemical_safety.sds.cleanup_failure',
     'chemical_safety.department_sds.upload', 'chemical_safety.department_sds.rename',
     'chemical_safety.department_sds.delete', 'chemical_safety.department_sds.replace_file',
     'chemical_safety.department_sds.publish', 'chemical_safety.registry.export_pdf', 'chemical_safety.registry.export_excel',
