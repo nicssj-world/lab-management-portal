@@ -13,6 +13,7 @@ import { Stat } from '@/components/ui/Stat'
 import { ViewTabs } from '@/components/ui/ViewTabs'
 import { CHEMICAL_HUB_VIEWS, type ChemicalHubView } from '@/lib/navigation'
 import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
+import type { ChemicalHoldingDeleteImpact } from '@/lib/chemical-safety/holding-delete'
 import { paginateRegistryItems } from '@/lib/chemical-safety/registry-pagination'
 import { CHEMICAL_GROUP_SUMMARY } from '@/lib/chemical-safety/storage-manifest'
 import type {
@@ -24,6 +25,7 @@ import type {
   ChemicalUnitDTO,
 } from '@/lib/chemical-safety/types'
 import { RegistryChangeModal, type RegistryChangeMode } from './RegistryChangeModal'
+import { HoldingDeleteImpactDialog } from './HoldingDeleteImpactDialog'
 import { SdsEditorModal } from './SdsEditorModal'
 import { SdsManagementClient, type SdsProductInfo } from './SdsManagementClient'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
@@ -211,6 +213,7 @@ export function ChemicalSafetyHubClient({
   const [sdsBusyHoldingId, setSdsBusyHoldingId] = useState<string | null>(null)
   const [busyProductId, setBusyProductId] = useState<string | null>(null)
   const [busyHoldingId, setBusyHoldingId] = useState<string | null>(null)
+  const [holdingDeleteImpact, setHoldingDeleteImpact] = useState<ChemicalHoldingDeleteImpact | null>(null)
 
   const canPropose = canManageChemicals || canProposeUnitIds.length > 0
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products])
@@ -453,34 +456,47 @@ export function ChemicalSafetyHubClient({
   }
 
   async function deleteHolding(row: ChemicalRegistryRow) {
-    if (!window.confirm(`ยืนยันลบรายการ "${row.canonicalName}" ออกจากทะเบียน? การลบมีผลทันที`)) return
-
     setBusyHoldingId(row.holdingId)
     try {
-      const created = await fetch('/api/admin/chemical-safety/change-requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entityType: 'holding_delete',
-          entityId: row.holdingId,
-          unitId: row.unitId,
-          proposedData: {},
-        }),
+      const response = await fetch(`/api/admin/chemical-safety/registry/${row.holdingId}/delete`, {
+        method: 'GET',
       })
-      const createdPayload = await created.json().catch(() => ({}))
-      if (!created.ok) throw new Error(createdPayload.error || 'สร้างคำขอไม่สำเร็จ')
-
-      const submitted = await fetch(`/api/admin/chemical-safety/change-requests/${createdPayload.data.id}/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      const submittedPayload = await submitted.json().catch(() => ({}))
-      if (!submitted.ok) throw new Error(submittedPayload.error || 'บันทึกไม่สำเร็จ')
-
-      notify('ลบรายการแล้ว')
+      const payload = await response.json().catch(() => ({})) as { impact?: ChemicalHoldingDeleteImpact; error?: string }
+      if (!response.ok && !payload.impact) throw new Error(payload.error || 'โหลดผลกระทบการลบไม่สำเร็จ')
+      if (!payload.impact) throw new Error('ไม่พบผลกระทบการลบ กรุณารีเฟรชหน้า')
+      setHoldingDeleteImpact(payload.impact)
     } catch (caught) {
-      notify(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ', false)
+      notify(caught instanceof Error ? caught.message : 'โหลดผลกระทบการลบไม่สำเร็จ', false)
+    } finally {
+      setBusyHoldingId(null)
+    }
+  }
+
+  async function confirmHoldingDelete() {
+    const impact = holdingDeleteImpact
+    if (!impact || !impact.canDelete || busyHoldingId === impact.holdingId) return
+
+    setBusyHoldingId(impact.holdingId)
+    try {
+      const response = await fetch(`/api/admin/chemical-safety/registry/${impact.holdingId}/delete`, {
+        method: 'DELETE',
+      })
+      const payload = await response.json().catch(() => ({})) as {
+        cleanup?: { ok?: boolean; failedKeys?: string[] }
+        impact?: ChemicalHoldingDeleteImpact
+        error?: string
+      }
+      if (!response.ok) {
+        if (payload.impact) setHoldingDeleteImpact(payload.impact)
+        throw new Error(payload.error || 'ลบรายการไม่สำเร็จ')
+      }
+
+      setHoldingDeleteImpact(null)
+      notify(payload.cleanup?.ok === false
+        ? 'ลบรายการและ SDS แล้ว แต่มีไฟล์บางส่วนรอการล้างจากระบบ'
+        : 'ลบรายการและ SDS ที่เกี่ยวข้องแล้ว')
+    } catch (caught) {
+      notify(caught instanceof Error ? caught.message : 'ลบรายการไม่สำเร็จ', false)
     } finally {
       setBusyHoldingId(null)
     }
@@ -868,6 +884,15 @@ export function ChemicalSafetyHubClient({
           }}
           onClose={() => setSdsEditor(null)}
           onSaved={notify}
+        />
+      )}
+
+      {holdingDeleteImpact && (
+        <HoldingDeleteImpactDialog
+          impact={holdingDeleteImpact}
+          busy={busyHoldingId === holdingDeleteImpact.holdingId}
+          onCancel={() => setHoldingDeleteImpact(null)}
+          onConfirm={() => void confirmHoldingDelete()}
         />
       )}
 
