@@ -29,9 +29,9 @@ export interface StatusMeta {
 export const SDS_STATUS_META: Record<SdsWorkflowStatus, StatusMeta> = {
   draft: { label: 'ฉบับร่าง', tone: 'gray', icon: 'edit' },
   in_review: { label: 'รอตรวจสอบ', tone: 'amber', icon: 'clock' },
-  approved: { label: 'อนุมัติแล้ว', tone: 'green', icon: 'shieldCheck' },
+  approved: { label: 'พร้อมใช้งาน', tone: 'green', icon: 'shieldCheck' },
   superseded: { label: 'ฉบับเก่า · มีฉบับใหม่แล้ว', tone: 'purple', icon: 'inbox' },
-  rejected: { label: 'ไม่อนุมัติ', tone: 'red', icon: 'x' },
+  rejected: { label: 'ต้องแก้ไขข้อมูล', tone: 'red', icon: 'x' },
 }
 
 export function sdsStatusMeta(value?: string | null): StatusMeta {
@@ -42,7 +42,7 @@ export function sdsStatusMeta(value?: string | null): StatusMeta {
 export type SdsRegistryState = 'approved' | 'review_due' | 'draft' | 'mismatch' | 'missing'
 
 export const SDS_STATE_META: Record<SdsRegistryState, StatusMeta> = {
-  approved: { label: 'มี SDS อนุมัติแล้ว', tone: 'green', icon: 'shieldCheck' },
+  approved: { label: 'มี SDS แล้ว', tone: 'green', icon: 'shieldCheck' },
   review_due: { label: 'ถึงกำหนดตรวจทาน', tone: 'amber', icon: 'clock' },
   draft: { label: 'ฉบับร่าง · ยังไม่พร้อมใช้งาน', tone: 'blue', icon: 'edit' },
   mismatch: { label: 'ไฟล์ไม่ตรงกับสาร', tone: 'red', icon: 'alert' },

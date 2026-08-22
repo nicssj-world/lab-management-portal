@@ -298,7 +298,7 @@ function ChemicalSdsPanel({
                                 </div>
                               </div>
                               {item.reviewReason && (
-                                <div style={{ marginTop: SPACE.xs, fontSize: FONT.sm, color: 'var(--danger)' }}>เหตุผลที่ไม่อนุมัติ: {item.reviewReason}</div>
+                                <div style={{ marginTop: SPACE.xs, fontSize: FONT.sm, color: 'var(--danger)' }}>เหตุผลที่ต้องแก้ไข: {item.reviewReason}</div>
                               )}
                             </div>
                           )

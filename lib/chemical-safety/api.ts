@@ -56,7 +56,7 @@ export function transitionError(error: unknown) {
     return NextResponse.json({ error: 'SDS ที่เลือกไม่ใช่ product เดียวกับรายการทะเบียน' }, { status: 422 })
   }
   if (/approved_sds_pdf_required/i.test(message)) {
-    return NextResponse.json({ error: 'ต้องเลือก SDS ที่อนุมัติแล้วและมีไฟล์ PDF' }, { status: 409 })
+    return NextResponse.json({ error: 'ต้องเลือก SDS ที่พร้อมใช้งานและมีไฟล์ PDF' }, { status: 409 })
   }
   if (/holding_delete_shared_dependency/i.test(message)) {
     return NextResponse.json({ error: 'รายการนี้มี SDS ที่ถูกใช้กับรายการทะเบียนอื่น จึงยังลบไม่ได้' }, { status: 409 })

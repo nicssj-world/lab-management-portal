@@ -86,6 +86,7 @@ assert.ok(registryModalSource.includes('<option value="retired">Inactive</option
 
 const sdsSource = readFileSync(join(COMPONENT_DIR, 'SdsManagementClient.tsx'), 'utf8')
 const tokenSource = readFileSync(join(COMPONENT_DIR, 'shared', 'tokens.ts'), 'utf8')
+const chemicalApiSource = readFileSync(join(process.cwd(), 'lib', 'chemical-safety', 'api.ts'), 'utf8')
 const publicSdsLibrarySource = readFileSync(join(COMPONENT_DIR, 'PublicSdsLibrary.tsx'), 'utf8')
 const publicDepartmentSdsSource = readFileSync(join(COMPONENT_DIR, 'PublicDepartmentSds.tsx'), 'utf8')
 const safetyManualActionsSource = readFileSync(join(COMPONENT_DIR, 'SafetyManualActions.tsx'), 'utf8')
@@ -117,6 +118,7 @@ assert.ok(sdsSource.includes('ตัวเลขในหน้านี้'), '
 assert.doesNotMatch(sdsSource, /วิธีอ่านตัวเลข/, 'SDS ห้องสารเคมีไม่ควรใช้คำว่า วิธีอ่านตัวเลข')
 assert.doesNotMatch(sdsSource, /ส่งทบทวน/, 'หน้า SDS ปลายทางต้องไม่เป็นจุดส่ง SDS เข้าทบทวน')
 assert.doesNotMatch(sdsSource, /บันทึกผลไม่อนุมัติแล้ว/, 'หน้า SDS ปลายทางต้องไม่เป็นจุดตัดสินอนุมัติ SDS')
+assert.ok(sdsSource.includes('เหตุผลที่ต้องแก้ไข'), 'ข้อความประกอบเอกสารที่ต้องแก้ไขต้องไม่ใช้คำว่าไม่อนุมัติ')
 assert.ok(tokenSource.includes('มี SDS แล้ว · ยังไม่ระบุปริมาณ'), 'ป้าย SDS-only ต้องอธิบายสถานะด้วยภาษาที่ผู้ใช้เข้าใจได้')
 assert.ok(sdsSource.includes('ยังไม่ได้ระบุเลขฉบับ'), 'รายการ SDS ที่ไม่มี Revision ต้องบอกให้ชัดว่ายังไม่ได้ระบุเลขฉบับ')
 for (const confusing of [
@@ -130,6 +132,11 @@ for (const confusing of [
 }
 assert.ok(!tokenSource.includes('SDS-only — ยังไม่ระบุปริมาณ'), 'ไม่ควรแสดงป้าย SDS-only แบบเดิม')
 assert.ok(tokenSource.includes('ฉบับเก่า · มีฉบับใหม่แล้ว'), 'สถานะเอกสารเก่าต้องอธิบายว่ามีฉบับใหม่แล้ว')
+assert.ok(tokenSource.includes("approved: { label: 'มี SDS แล้ว'"), 'สถานะ approved ภายในต้องแสดงเป็นมี SDS แล้ว ไม่ใช่การอนุมัติ')
+assert.ok(tokenSource.includes("approved: { label: 'พร้อมใช้งาน'"), 'ป้ายสถานะเอกสารต้องใช้พร้อมใช้งาน ไม่ใช่อนุมัติแล้ว')
+assert.doesNotMatch(tokenSource, /อนุมัติแล้ว|ไม่อนุมัติ/, 'ข้อความสถานะ SDS ต้องไม่อ้างถึงการอนุมัติที่ไม่มีใน workflow ปัจจุบัน')
+assert.ok(chemicalApiSource.includes('พร้อมใช้งานและมีไฟล์ PDF'), 'ข้อความ error ของ SDS ต้องอธิบายว่าต้องใช้เอกสารพร้อมไฟล์')
+assert.doesNotMatch(chemicalApiSource, /SDS ที่อนุมัติแล้ว/, 'ข้อความ error ของ SDS ต้องไม่อ้างถึงการอนุมัติ')
 
 // route ของด่านอนุมัติต้องถูกลบจริง ไม่ใช่แค่ซ่อนปุ่ม
 for (const gone of [
