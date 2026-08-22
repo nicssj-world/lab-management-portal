@@ -8,6 +8,7 @@ export async function getSurveyDashboardData(input: {
   campaignId: string
   from?: string | null
   to?: string | null
+  toExclusive?: string | null
   grouping?: 'day' | 'month'
 }): Promise<{ data: SurveyDashboardData; campaign: { id: string; name: string; surveyVersionId: string } }> {
   const { data: campaign, error: campaignError } = await supabaseAdmin
@@ -21,13 +22,14 @@ export async function getSurveyDashboardData(input: {
     .select('id, submitted_at').eq('campaign_id', input.campaignId).order('submitted_at')
   if (input.from) responseQuery = responseQuery.gte('submitted_at', input.from)
   if (input.to) responseQuery = responseQuery.lte('submitted_at', input.to)
+  if (input.toExclusive) responseQuery = responseQuery.lt('submitted_at', input.toExclusive)
   const { data: responses, error: responseError } = await responseQuery
   if (responseError) throw new Error(responseError.message)
 
   const responseIds = (responses ?? []).map((response) => response.id)
   const { data: answers, error: answerError } = responseIds.length
     ? await supabaseAdmin.from('survey_answers')
-      .select('response_id, survey_question_id, survey_option_id, numeric_value, text_value, score')
+      .select('id, response_id, survey_question_id, survey_option_id, numeric_value, text_value, detail_text, score, comment_read_at')
       .in('response_id', responseIds)
     : { data: [], error: null }
   if (answerError) throw new Error(answerError.message)
@@ -35,11 +37,14 @@ export async function getSurveyDashboardData(input: {
   for (const answer of answers ?? []) {
     const list = byResponse.get(answer.response_id) ?? []
     list.push({
+      answerId: answer.id,
       questionId: answer.survey_question_id,
       optionId: answer.survey_option_id,
       numericValue: answer.numeric_value === null ? null : Number(answer.numeric_value),
       textValue: answer.text_value,
+      detailText: answer.detail_text,
       score: answer.score === null ? null : Number(answer.score),
+      commentReadAt: answer.comment_read_at,
     })
     byResponse.set(answer.response_id, list)
   }

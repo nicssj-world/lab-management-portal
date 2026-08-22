@@ -6,12 +6,30 @@ const dashboard = {
   overall: { normalizedPct: 86.5, positivePct: 82, averageScore: 4.33, validAnswerCount: 180, distribution: { 1: 2, 2: 4, 3: 18, 4: 72, 5: 84 } },
   sections: [{ sectionId: 'service', title: 'บริการ', normalizedPct: 86.5, positivePct: 82, averageScore: 4.33, validAnswerCount: 180, distribution: { 1: 2, 2: 4, 3: 18, 4: 72, 5: 84 } }],
   questions: [], trend: [], demographics: {},
+  behavior: {
+    latestResponseAt: null,
+    optionalAnswerRatePct: null,
+    commentRatePct: null,
+    completenessPct: null,
+    commentCount: 0,
+    unreadCommentCount: 0,
+    responsesByWeekday: [],
+    responsesByHour: [],
+    responseScoreDistribution: [],
+    demographicLabels: {},
+  },
+  recentComments: [],
 }
 
 const report = buildAnnualReportModel({
   survey: { code: 'FM-QP-LAB-09-01', title: 'แบบสำรวจบริการด่านหน้า' },
   versionNumber: 2,
-  campaign: { id: 'campaign-1', name: 'ปีงบประมาณ 2569' },
+  campaign: {
+    id: 'campaign-1',
+    name: 'ปีงบประมาณ 2569',
+    department: { id: 20, code: 'OPD', name: 'OPD' },
+    targetResponseCount: 30,
+  },
   fiscalYear: 2569,
   periodStart: '2025-10-01',
   periodEnd: '2026-09-30',
@@ -27,13 +45,16 @@ assert.equal(report.fiscalYear, 2569)
 assert.equal(report.periodLabel, '1 ต.ค. 2568 – 30 ก.ย. 2569')
 assert.match(report.formula, /sum\(score\)/)
 assert.equal(report.responseCount, 20)
+assert.deepEqual(report.department, { id: 20, code: 'OPD', name: 'OPD' })
+assert.equal(report.targetResponseCount, 30)
+assert.equal(report.targetProgressPct, 66.67)
 assert.equal(report.previousYear, null)
 assert.equal(report.comments.included, false)
 assert.equal(report.comments.count, 8)
 
 const compared = buildAnnualReportModel({
   survey: { code: 'F', title: 'Form' }, versionNumber: 1,
-  campaign: { id: 'c', name: 'รอบ' }, fiscalYear: 2570,
+  campaign: { id: 'c', name: 'รอบ', department: { id: 19, code: 'MCL', name: 'ศสม.' }, targetResponseCount: null }, fiscalYear: 2570,
   periodStart: '2026-10-01', periodEnd: '2027-09-30', dashboard,
   previousYear: { fiscalYear: 2569, normalizedPct: 80, responseCount: 12 },
   includeComments: true, commentCount: 2,

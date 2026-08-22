@@ -8,6 +8,8 @@ import { Spinner } from '@/components/ui/Spinner'
 const STATUS: Record<string, { label: string; color: BadgeColor }> = {
   published: { label: 'เผยแพร่แล้ว', color: 'green' },
   open: { label: 'เปิดรับคำตอบ', color: 'green' },
+  scheduled: { label: 'รอเปิด', color: 'blue' },
+  expired_pending_close: { label: 'หมดเวลารอปิดรอบ', color: 'amber' },
   draft: { label: 'ฉบับร่าง', color: 'amber' },
   closed: { label: 'ปิดแล้ว', color: 'gray' },
   archived: { label: 'เก็บถาวร', color: 'gray' },

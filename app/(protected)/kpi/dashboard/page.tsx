@@ -39,12 +39,16 @@ export default function KpiDashboardPage() {
   const [month, setMonth]   = useState(new Date().getMonth() + 1)
   const [deptCode, setDeptCode] = useState('')
   const searchParams = useSearchParams()
-  const tab = normalizeNavigationValue(searchParams.get('view'), TABS.map(item => item.id), 'dashboard')
+  const { canView, canEdit } = usePermission('KPI')
+  const visibleTabs = canView ? TABS : TABS.filter((item) => item.id !== 'satisfaction')
+  const tab = normalizeNavigationValue(searchParams.get('view'), visibleTabs.map(item => item.id), 'dashboard')
+  const satisfactionFiscalYear = Number(searchParams.get('fiscalYear')) || getCurrentThaiFiscalYear()
+  const satisfactionMetricCode = searchParams.get('metricCode') ?? ''
   const [depts, setDepts]   = useState<Department[]>([])
-  const [satAddOpen, setSatAddOpen] = useState(false)
+  const [metricManageOpen, setMetricManageOpen] = useState(false)
+  const [manualValueOpen, setManualValueOpen] = useState(false)
   const [assignedDeptIds, setAssignedDeptIds] = useState<number[]>([])
   const [canViewAll, setCanViewAll] = useState(true)
-  const { canEdit }         = usePermission('KPI')
   // Users assigned as a filler for at least one dept (kpi_dept_assignees) can also
   // reach the input form, even without the global KPI edit permission.
   const canFillAny = canEdit || assignedDeptIds.length > 0
@@ -85,7 +89,7 @@ export default function KpiDashboardPage() {
         ) : undefined}
       />
 
-      <ViewTabs items={TABS} value={tab} label="มุมมอง KPI" />
+      <ViewTabs items={visibleTabs} value={tab} label="มุมมอง KPI" />
 
       {/* Toolbar: selectors (year + dept — visible on annual & compare tabs) */}
       {tab !== 'satisfaction' && (
@@ -145,11 +149,20 @@ export default function KpiDashboardPage() {
       {tab === 'satisfaction' && (
         <Card padding={24}>
           {canEdit && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-              <Button variant="primary" icon="plus" onClick={() => setSatAddOpen(true)}>บันทึกข้อมูล</Button>
+            <div className="kpi-satisfaction-page-actions">
+              <Button variant="secondary" icon="settings" onClick={() => setMetricManageOpen(true)}>จัดการชุดตัวชี้วัด</Button>
+              <Button variant="primary" icon="plus" onClick={() => setManualValueOpen(true)}>เพิ่มค่าจากแหล่งอื่น</Button>
             </div>
           )}
-          <KpiSatisfactionPanel canEdit={canEdit} addOpen={satAddOpen} onAddClose={() => setSatAddOpen(false)} />
+          <KpiSatisfactionPanel
+            canEdit={canEdit}
+            initialFiscalYear={satisfactionFiscalYear}
+            initialMetricCode={satisfactionMetricCode}
+            manageOpen={metricManageOpen}
+            manualOpen={manualValueOpen}
+            onManageClose={() => setMetricManageOpen(false)}
+            onManualClose={() => setManualValueOpen(false)}
+          />
         </Card>
       )}
     </div>

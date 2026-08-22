@@ -6,6 +6,7 @@ import type {
   SatisfactionSurveyListItem,
 } from '@/lib/supabase/types'
 import type { SurveyQuestion, SurveyVersionDefinition } from './types'
+import { campaignEffectiveStatus } from './campaign'
 import { cloneDefinition, validateDefinitionForPublish } from './definition'
 
 const fail = (error: { message: string } | null) => {
@@ -63,17 +64,24 @@ type CampaignRow = {
   status: SatisfactionCampaignListItem['status']
   response_count: number
   response_limit: number | null
+  fiscal_year: number | null
+  department_id: number | null
+  target_response_count: number | null
+  kpi_metric_code: string | null
   opens_at: string | null
   closes_at: string | null
   updated_at: string
   surveys: { code: string; title: string } | null
   survey_versions: { version_number: number } | null
+  departments: { code: string; name_th: string } | null
+  kpi_satisfaction_metrics: { name: string; target: number; is_active: boolean } | null
+  survey_kpi_publications: Array<{ published_at: string }> | null
 }
 
 export async function listCampaigns(): Promise<SatisfactionCampaignListItem[]> {
   const { data, error } = await supabaseAdmin
     .from('survey_campaigns')
-    .select('id, name, survey_id, survey_version_id, public_token, status, response_count, response_limit, opens_at, closes_at, updated_at, surveys(code, title), survey_versions(version_number)')
+    .select('id, name, survey_id, survey_version_id, public_token, status, response_count, response_limit, fiscal_year, department_id, target_response_count, kpi_metric_code, opens_at, closes_at, updated_at, surveys(code, title), survey_versions(version_number), departments(code, name_th), kpi_satisfaction_metrics(name, target, is_active), survey_kpi_publications(published_at)')
     .order('updated_at', { ascending: false })
   fail(error)
 
@@ -87,8 +95,24 @@ export async function listCampaigns(): Promise<SatisfactionCampaignListItem[]> {
     versionNumber: campaign.survey_versions?.version_number ?? 0,
     publicToken: campaign.public_token,
     status: campaign.status,
+    effectiveStatus: campaignEffectiveStatus({
+      status: campaign.status,
+      opensAt: campaign.opens_at,
+      closesAt: campaign.closes_at,
+    }),
     responseCount: campaign.response_count,
     responseLimit: campaign.response_limit,
+    fiscalYear: campaign.fiscal_year,
+    departmentId: campaign.department_id,
+    departmentCode: campaign.departments?.code ?? null,
+    departmentName: campaign.departments?.name_th ?? null,
+    targetResponseCount: campaign.target_response_count,
+    kpiMetricCode: campaign.kpi_metric_code,
+    kpiMetricName: campaign.kpi_satisfaction_metrics?.name ?? null,
+    kpiTarget: campaign.kpi_satisfaction_metrics
+      ? Number(campaign.kpi_satisfaction_metrics.target)
+      : null,
+    kpiPublishedAt: campaign.survey_kpi_publications?.[0]?.published_at ?? null,
     opensAt: campaign.opens_at,
     closesAt: campaign.closes_at,
     updatedAt: campaign.updated_at,

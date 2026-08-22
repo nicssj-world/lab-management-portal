@@ -6,10 +6,13 @@ export type AnnualSurveyReport = {
   versionLabel: string
   campaignId: string
   campaignName: string
+  department: { id: number; code: string; name: string }
   fiscalYear: number
   periodLabel: string
   formula: string
   responseCount: number
+  targetResponseCount: number | null
+  targetProgressPct: number | null
   overall: SurveyDashboardData['overall']
   sections: SurveyDashboardData['sections']
   distribution: SurveyDashboardData['overall']['distribution']
@@ -28,7 +31,12 @@ const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 1
 export function buildAnnualReportModel(input: {
   survey: { code: string; title: string }
   versionNumber: number
-  campaign: { id: string; name: string }
+  campaign: {
+    id: string
+    name: string
+    department: { id: number; code: string; name: string }
+    targetResponseCount: number | null
+  }
   fiscalYear: number
   periodStart: string
   periodEnd: string
@@ -45,10 +53,15 @@ export function buildAnnualReportModel(input: {
     versionLabel: `Version ${input.versionNumber}`,
     campaignId: input.campaign.id,
     campaignName: input.campaign.name,
+    department: input.campaign.department,
     fiscalYear: input.fiscalYear,
     periodLabel: `${thaiDate(input.periodStart)} – ${thaiDate(input.periodEnd)}`,
     formula: 'Normalized satisfaction (%) = sum(score) / sum(max score for each answered scored question) × 100; optional missing answers are excluded.',
     responseCount: input.dashboard.responseCount,
+    targetResponseCount: input.campaign.targetResponseCount,
+    targetProgressPct: input.campaign.targetResponseCount === null
+      ? null
+      : round2((input.dashboard.responseCount / input.campaign.targetResponseCount) * 100),
     overall: input.dashboard.overall,
     sections: input.dashboard.sections,
     distribution: input.dashboard.overall.distribution,

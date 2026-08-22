@@ -16,6 +16,10 @@ const base: SurveyCampaign = {
   opensAt: null,
   closesAt: null,
   responseLimit: null,
+  fiscalYear: 2569,
+  departmentId: 20,
+  targetResponseCount: null,
+  kpiMetricCode: 'outpatient',
   onePerDevice: false,
 }
 const now = new Date('2026-07-17T12:00:00.000Z')
@@ -34,6 +38,7 @@ assert.notEqual(createPublicToken(), token)
 
 assert.doesNotThrow(() => assertCampaignTransition('draft', 'open'))
 assert.doesNotThrow(() => assertCampaignTransition('open', 'closed'))
+assert.throws(() => assertCampaignTransition('open', 'draft'), /ฉบับร่าง/)
 assert.throws(() => assertCampaignTransition('closed', 'open'), /ปิดแล้ว/)
 
 console.log('campaign tests passed')

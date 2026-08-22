@@ -10,6 +10,7 @@ export const SURVEY_QUESTION_TYPES = [
 export type SurveyQuestionType = (typeof SURVEY_QUESTION_TYPES)[number]
 export type SurveyVersionStatus = 'draft' | 'published' | 'archived'
 export type SurveyCampaignStatus = 'draft' | 'open' | 'closed'
+export type SurveyCampaignEffectiveStatus = SurveyCampaignStatus | 'scheduled' | 'expired_pending_close'
 
 export type SurveyOption = {
   id: string
@@ -104,6 +105,10 @@ export type SurveyCampaign = {
   name: string
   publicToken: string
   status: SurveyCampaignStatus
+  fiscalYear: number | null
+  departmentId: number | null
+  targetResponseCount: number | null
+  kpiMetricCode: string | null
   opensAt: string | null
   closesAt: string | null
   responseLimit: number | null

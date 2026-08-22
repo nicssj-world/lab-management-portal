@@ -16,6 +16,7 @@ const definition: SurveyVersionDefinition = {
     ] },
     { id: 'quality', sectionKey: 'quality', title: 'คุณภาพ', sortOrder: 3, questions: [
       { id: 'q2', questionKey: 'q2', sectionId: 'quality', prompt: 'ความเชื่อมั่น', type: 'rating_scale', required: false, sortOrder: 1, positiveThreshold: 4, options: [1,2,3,4,5].map((score) => ({ id: `q2-${score}`, optionKey: `s${score}`, label: String(score), value: String(score), score, sortOrder: score })) },
+      { id: 'comment', questionKey: 'comment', sectionId: 'quality', prompt: 'ข้อเสนอแนะ', type: 'long_text', required: false, sortOrder: 2, maxLength: 1000, isComment: true },
     ] },
   ],
 }
@@ -25,6 +26,7 @@ const result = aggregateSurveyResults(definition, [
     { questionId: 'sex', optionId: 'female', score: null },
     { questionId: 'q1', optionId: 'q1-5', score: 5 },
     { questionId: 'q2', optionId: 'q2-4', score: 4 },
+    { questionId: 'comment', textValue: 'บริการดี', answerId: 'a1', commentReadAt: null },
   ] },
   { responseId: 'r2', submittedAt: '2026-07-02T02:00:00.000Z', answers: [
     { questionId: 'sex', optionId: 'male', score: null },
@@ -42,6 +44,13 @@ assert.equal(result.questions.find((question) => question.questionId === 'q1')?.
 assert.equal(result.questions.find((question) => question.questionId === 'q2')?.answerCount, 1)
 assert.equal(result.trend.length, 2)
 assert.deepEqual(result.demographics.sex, { female: 1, male: 1 })
+assert.equal(result.behavior.latestResponseAt, '2026-07-02T02:00:00.000Z')
+assert.equal(result.behavior.optionalAnswerRatePct, 66.67)
+assert.equal(result.behavior.commentRatePct, 50)
+assert.equal(result.behavior.completenessPct, 75)
+assert.equal(result.behavior.unreadCommentCount, 1)
+assert.equal(result.recentComments[0]?.text, 'บริการดี')
+assert.deepEqual(result.behavior.responseScoreDistribution.map((bucket) => bucket.count), [0, 1, 1])
 
 const monthly = aggregateSurveyResults(definition, [
   { responseId: 'r1', submittedAt: '2026-01-02T00:00:00.000Z', answers: [{ questionId: 'q1', optionId: 'q1-5', score: 5 }] },

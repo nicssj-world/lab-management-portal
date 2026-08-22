@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/Badge'
@@ -48,6 +48,7 @@ export function SatisfactionModule({
   const router = useRouter()
   const activeTab = activeSection
   const [createSurveyOpen, setCreateSurveyOpen] = useState(false)
+  const [campaigns, setCampaigns] = useState(initialCampaigns)
   const canEdit = level === 'edit'
   // Settings holds the editor-assignment list, which only a real Admin may hand out.
   const navItems = useMemo(
@@ -55,13 +56,21 @@ export function SatisfactionModule({
     [isAdmin],
   )
   const openCampaigns = useMemo(
-    () => initialCampaigns.filter((campaign) => campaign.status === 'open'),
-    [initialCampaigns],
+    () => campaigns.filter((campaign) => campaign.effectiveStatus === 'open'),
+    [campaigns],
   )
   const totalResponses = useMemo(
-    () => initialCampaigns.reduce((total, campaign) => total + campaign.responseCount, 0),
-    [initialCampaigns],
+    () => campaigns.reduce((total, campaign) => total + campaign.responseCount, 0),
+    [campaigns],
   )
+  useEffect(() => setCampaigns(initialCampaigns), [initialCampaigns])
+  const updateCampaignResponseCount = useCallback((campaignId: string, responseCount: number) => {
+    setCampaigns((rows) => {
+      const current = rows.find((campaign) => campaign.id === campaignId)
+      if (!current || current.responseCount === responseCount) return rows
+      return rows.map((campaign) => campaign.id === campaignId ? { ...campaign, responseCount } : campaign)
+    })
+  }, [])
 
   return (
     <div className="satisfaction-module satisfaction-page" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -81,13 +90,13 @@ export function SatisfactionModule({
             <div className="satisfaction-summary-grid">
               <SatisfactionSummaryCard label="แบบสำรวจทั้งหมด" value={initialSurveys.length} hint="รวมฉบับร่างและเผยแพร่" icon="clipboard" tone="teal" />
               <SatisfactionSummaryCard label="รอบที่กำลังเปิด" value={openCampaigns.length} hint="รับคำตอบแบบเรียลไทม์" icon="calendar" tone="blue" />
-              <SatisfactionSummaryCard label="คำตอบสะสม" value={totalResponses.toLocaleString('th-TH')} hint="ไม่เก็บชื่อหรือ HN" icon="chart" tone="purple" />
+              <SatisfactionSummaryCard label="จำนวนคำตอบสะสม" value={totalResponses.toLocaleString('th-TH')} hint="ไม่เก็บชื่อหรือ HN" icon="chart" tone="purple" />
             </div>
-            <SatisfactionDashboard campaigns={initialCampaigns} />
-            <SatisfactionExportActions campaigns={initialCampaigns} actorRole={actorRole} />
+            <SatisfactionDashboard campaigns={campaigns} onResponseCountChange={updateCampaignResponseCount} />
+            <SatisfactionExportActions campaigns={campaigns} actorRole={actorRole} />
             <Card padding={0}>
               <SatisfactionSectionHeading title="รอบเก็บข้อมูลล่าสุด" hint="สถานะและจำนวนคำตอบของแต่ละรอบ" />
-              <CampaignTable campaigns={initialCampaigns.slice(0, 5)} />
+              <CampaignTable campaigns={campaigns.slice(0, 5)} />
             </Card>
           </>
         )}
@@ -122,13 +131,13 @@ export function SatisfactionModule({
 
         {activeTab === 'campaigns' && (
           <Card padding={0}>
-            {canEdit ? <CampaignManager campaigns={initialCampaigns} surveys={initialSurveys} /> : <><SatisfactionSectionHeading title="รอบเก็บข้อมูล" hint="แต่ละรอบผูกกับเวอร์ชันและ QR token ของตนเอง" /><CampaignTable campaigns={initialCampaigns} /></>}
+            {canEdit ? <CampaignManager campaigns={campaigns} surveys={initialSurveys} /> : <><SatisfactionSectionHeading title="รอบเก็บข้อมูล" hint="แต่ละรอบผูกกับเวอร์ชันและ QR token ของตนเอง" /><CampaignTable campaigns={campaigns} /></>}
           </Card>
         )}
 
         {activeTab === 'comments' && (
           <Card padding={0}>
-            <SurveyComments actorRole={actorRole} campaigns={initialCampaigns} />
+          <SurveyComments actorRole={actorRole} campaigns={campaigns} />
           </Card>
         )}
 
@@ -186,6 +195,6 @@ function CreateSurveyDialog({ onClose, onCreated }: { onClose: () => void; onCre
 function CampaignTable({ campaigns }: { campaigns: SatisfactionCampaignListItem[] }) {
   if (campaigns.length === 0) return <EmptyState title="ยังไม่มีรอบเก็บข้อมูล" hint="สร้างรอบและ QR หลังเผยแพร่แบบสำรวจแล้ว" icon="calendar" />
   return (
-    <div className="satisfaction-table-wrap"><table className="satisfaction-table satisfaction-campaign-table"><caption className="satisfaction-visually-hidden">รอบเก็บข้อมูลล่าสุด</caption><thead><tr><th scope="col">ชื่อรอบ</th><th scope="col">แบบ / เวอร์ชัน</th><th scope="col">สถานะ</th><th scope="col">คำตอบ</th><th scope="col">ปิดรับ</th></tr></thead><tbody>{campaigns.map((campaign) => <tr key={campaign.id}><td data-label="ชื่อรอบ"><strong>{campaign.name}</strong></td><td data-label="แบบ / เวอร์ชัน">{campaign.surveyCode} · V{campaign.versionNumber}<div className="satisfaction-secondary-text">{campaign.surveyTitle}</div></td><td data-label="สถานะ"><div className="satisfaction-status-cell"><SatisfactionStatusBadge status={campaign.status} /></div></td><td data-label="คำตอบ">{campaign.responseCount.toLocaleString('th-TH')}{campaign.responseLimit ? ` / ${campaign.responseLimit.toLocaleString('th-TH')}` : ''}</td><td data-label="ปิดรับ">{dateLabel(campaign.closesAt)}</td></tr>)}</tbody></table></div>
+    <div className="satisfaction-table-wrap"><table className="satisfaction-table satisfaction-campaign-table"><caption className="satisfaction-visually-hidden">รอบเก็บข้อมูลล่าสุด</caption><thead><tr><th scope="col">ชื่อรอบ</th><th scope="col">แบบ / เวอร์ชัน</th><th scope="col">สถานะ</th><th scope="col">จำนวนคำตอบ</th><th scope="col">ปิดรับ</th></tr></thead><tbody>{campaigns.map((campaign) => <tr key={campaign.id}><td data-label="ชื่อรอบ"><strong>{campaign.name}</strong><div className="satisfaction-secondary-text">{campaign.departmentCode ?? 'ยังไม่ระบุหน่วยงาน'} · ปีงบ {campaign.fiscalYear ?? '—'}</div></td><td data-label="แบบ / เวอร์ชัน">{campaign.surveyCode} · V{campaign.versionNumber}<div className="satisfaction-secondary-text">{campaign.surveyTitle}</div></td><td data-label="สถานะ"><div className="satisfaction-status-cell"><SatisfactionStatusBadge status={campaign.effectiveStatus} /></div></td><td data-label="จำนวนคำตอบ">{campaign.responseCount.toLocaleString('th-TH')}{campaign.targetResponseCount ? ` / ${campaign.targetResponseCount.toLocaleString('th-TH')}` : ''}</td><td data-label="ปิดรับ">{dateLabel(campaign.closesAt)}</td></tr>)}</tbody></table></div>
   )
 }

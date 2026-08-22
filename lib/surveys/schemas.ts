@@ -64,21 +64,23 @@ export const publishSurveySchema = z.object({ versionId: z.string().uuid() })
 export const createCampaignSchema = z.object({
   surveyId: z.string().uuid(),
   surveyVersionId: z.string().uuid(),
-  name: z.string().trim().min(1).max(500),
-  opensAt: z.string().datetime().nullable().optional(),
-  closesAt: z.string().datetime().nullable().optional(),
+  fiscalYear: z.number().int().min(2500).max(3000),
+  departmentId: z.number().int().positive(),
+  targetResponseCount: z.number().int().positive().max(1_000_000).optional(),
+  kpiMetricCode: z.string().trim().min(1).max(100).regex(/^[a-z0-9_]+$/),
   responseLimit: z.number().int().positive().max(1_000_000).nullable().optional(),
   onePerDevice: z.boolean().default(false),
-})
+}).strict()
 
 export const updateCampaignSchema = z.object({
-  name: z.string().trim().min(1).max(500).optional(),
+  fiscalYear: z.number().int().min(2500).max(3000).optional(),
+  departmentId: z.number().int().positive().optional(),
+  targetResponseCount: z.number().int().positive().max(1_000_000).nullable().optional(),
+  kpiMetricCode: z.string().trim().min(1).max(100).regex(/^[a-z0-9_]+$/).optional(),
   status: z.enum(['draft', 'open', 'closed']).optional(),
-  opensAt: z.string().datetime().nullable().optional(),
-  closesAt: z.string().datetime().nullable().optional(),
   responseLimit: z.number().int().positive().max(1_000_000).nullable().optional(),
   onePerDevice: z.boolean().optional(),
-}).refine((value) => Object.keys(value).length > 0, 'ไม่มีข้อมูลที่ต้องแก้ไข')
+}).strict().refine((value) => Object.keys(value).length > 0, 'ไม่มีข้อมูลที่ต้องแก้ไข')
 
 export const rotateCampaignTokenSchema = z.object({ confirm: z.literal(true) })
 export const publicSubmissionSchema = z.object({

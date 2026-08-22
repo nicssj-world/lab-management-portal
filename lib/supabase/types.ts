@@ -945,6 +945,15 @@ export interface KpiSatisfaction {
   created_at: string
 }
 
+export interface KpiSatisfactionMetric {
+  code: string
+  name: string
+  target: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface SatisfactionSurveyListItem {
   id: string
   code: string
@@ -968,8 +977,18 @@ export interface SatisfactionCampaignListItem {
   versionNumber: number
   publicToken: string
   status: 'draft' | 'open' | 'closed'
+  effectiveStatus: 'draft' | 'scheduled' | 'open' | 'expired_pending_close' | 'closed'
   responseCount: number
   responseLimit: number | null
+  fiscalYear: number | null
+  departmentId: number | null
+  departmentCode: string | null
+  departmentName: string | null
+  targetResponseCount: number | null
+  kpiMetricCode: string | null
+  kpiMetricName: string | null
+  kpiTarget: number | null
+  kpiPublishedAt: string | null
   opensAt: string | null
   closesAt: string | null
   updatedAt: string

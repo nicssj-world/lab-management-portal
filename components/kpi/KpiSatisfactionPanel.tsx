@@ -1,386 +1,383 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
+import { SatisfactionDialog } from '@/components/satisfaction/SatisfactionDialog'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
-import { buildMetricCode, getMissingSatisfactionMetrics } from '@/lib/kpi/satisfaction-save'
-import { getLatestSatisfactionTarget } from '@/lib/kpi/satisfaction-display'
-import type { KpiSatisfaction } from '@/lib/supabase/types'
+
+type Source = 'survey' | 'manual'
+type SourceFilter = 'all' | Source
+type ResultStatus = 'pass' | 'below' | 'missing'
+type StatusFilter = 'all' | ResultStatus
+
+interface KpiHistoryValue {
+  fiscalYear: number
+  value: number | null
+  source: Source
+  sourceNote: string | null
+  responseCount: number | null
+  campaignId: string | null
+  publishedAt: string | null
+  publishedByName: string | null
+}
+
+interface KpiCurrentValue extends KpiHistoryValue {
+  campaignName: string | null
+  departmentName: string | null
+  surveyCode: string | null
+}
+
+interface KpiMetricDashboardRow {
+  code: string
+  name: string
+  target: number
+  isActive: boolean
+  status: ResultStatus
+  current: KpiCurrentValue | null
+  previousValue: number | null
+  delta: number | null
+  history: KpiHistoryValue[]
+}
+
+interface KpiDashboardPayload {
+  fiscalYear: number
+  years: number[]
+  summary: { activeMetrics: number; pass: number; below: number; missing: number; pendingPublication: number }
+  metrics: KpiMetricDashboardRow[]
+  permissions: { canViewCampaign: boolean }
+}
+
+interface MetricMasterRow {
+  code: string
+  name: string
+  target: number
+  isActive: boolean
+  campaignCount: number
+  valueCount: number
+}
 
 interface Props {
   canEdit: boolean
-  addOpen?: boolean
-  onAddClose?: () => void
+  initialFiscalYear?: number
+  initialMetricCode?: string
+  manageOpen?: boolean
+  manualOpen?: boolean
+  onManageClose?: () => void
+  onManualClose?: () => void
 }
 
-// default metric order for display
-const DEFAULT_ORDER = ['outpatient', 'inpatient', 'donor']
+const numberFormat = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 })
+const dateTimeFormat = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' })
 
-function passColor(val: number | null, target: number): 'green' | 'red' | 'none' {
-  if (val === null) return 'none'
-  return val >= target ? 'green' : 'red'
+function valueLabel(value: number | null): string {
+  return value === null ? '—' : `${numberFormat.format(value)}%`
 }
 
-type ModalTab = 'metric' | 'year'
+function sourceLabel(source: Source): string {
+  return source === 'survey' ? 'จากแบบสำรวจ' : 'กรอกด้วยตนเอง'
+}
 
-export function KpiSatisfactionPanel({ canEdit, addOpen = false, onAddClose }: Props) {
-  const [data, setData] = useState<KpiSatisfaction[]>([])
+function resultLabel(status: ResultStatus): string {
+  if (status === 'pass') return 'ผ่านเป้าหมาย'
+  if (status === 'below') return 'ต่ำกว่าเป้าหมาย'
+  return 'ยังไม่มีผล'
+}
+
+function normalizeMetricMaster(payload: unknown): MetricMasterRow[] {
+  const root = payload && typeof payload === 'object' && 'metrics' in payload ? (payload as { metrics?: unknown }).metrics : payload
+  if (!Array.isArray(root)) return []
+  return root.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const row = item as Record<string, unknown>
+    const code = String(row.code ?? row.metric_code ?? '')
+    const name = String(row.name ?? row.metric_name ?? '')
+    if (!code || !name) return []
+    return [{
+      code,
+      name,
+      target: Number(row.target ?? row.target_val ?? 80),
+      isActive: Boolean(row.isActive ?? row.is_active ?? true),
+      campaignCount: Number(row.campaignCount ?? row.campaign_count ?? 0),
+      valueCount: Number(row.valueCount ?? row.value_count ?? row.historyCount ?? row.history_count ?? 0),
+    }]
+  })
+}
+
+export function KpiSatisfactionPanel({
+  canEdit,
+  initialFiscalYear = getCurrentThaiFiscalYear(),
+  initialMetricCode = '',
+  manageOpen = false,
+  manualOpen = false,
+  onManageClose = () => undefined,
+  onManualClose = () => undefined,
+}: Props) {
+  const [fiscalYear, setFiscalYear] = useState(initialFiscalYear)
+  const [metricCode, setMetricCode] = useState(initialMetricCode)
+  const [selectedMetricCode, setSelectedMetricCode] = useState(initialMetricCode)
+  const [metricOptions, setMetricOptions] = useState<MetricMasterRow[]>([])
+  const [source, setSource] = useState<SourceFilter>('all')
+  const [status, setStatus] = useState<StatusFilter>('all')
+  const [data, setData] = useState<KpiDashboardPayload | null>(null)
   const [loading, setLoading] = useState(true)
-  const [editCell, setEditCell] = useState<{ code: string; year: number } | null>(null)
-  const [editVal, setEditVal] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [cellError, setCellError] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState('')
+  const requestSequence = useRef(0)
 
-  // modal
-  const [modalTab, setModalTab] = useState<ModalTab>('metric')
-  const [metricName, setMetricName] = useState('')
-  const [metricTarget, setMetricTarget] = useState('80')
-  const [newYear, setNewYear] = useState(getCurrentThaiFiscalYear() + 1)
-  const [modalSaving, setModalSaving] = useState(false)
-  const [modalErr, setModalErr] = useState('')
+  const load = useCallback(async (background = false) => {
+    const sequence = ++requestSequence.current
+    if (background) setRefreshing(true)
+    else setLoading(true)
+    setError('')
+    const params = new URLSearchParams({ fiscalYear: String(fiscalYear) })
+    if (metricCode) params.set('metricCode', metricCode)
+    if (source !== 'all') params.set('source', source)
+    if (status !== 'all') params.set('status', status)
+    try {
+      const response = await fetch(`/kpi/api/satisfaction?${params.toString()}`, { cache: 'no-store' })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'ไม่สามารถโหลด KPI ความพึงพอใจได้')
+      if (sequence !== requestSequence.current) return
+      setData(payload as KpiDashboardPayload)
+    } catch (caught) {
+      if (sequence !== requestSequence.current) return
+      setError(caught instanceof Error ? caught.message : 'ไม่สามารถโหลด KPI ความพึงพอใจได้')
+    } finally {
+      if (sequence === requestSequence.current) {
+        setLoading(false)
+        setRefreshing(false)
+      }
+    }
+  }, [fiscalYear, metricCode, source, status])
+
+  useEffect(() => { void load() }, [load])
 
   useEffect(() => {
-    fetch('/kpi/api/satisfaction')
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setData(d) })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    let active = true
+    fetch('/kpi/api/satisfaction/metrics', { cache: 'no-store' })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((payload) => { if (active) setMetricOptions(normalizeMetricMaster(payload)) })
+      .catch(() => undefined)
+    return () => { active = false }
   }, [])
 
   useEffect(() => {
-    if (editCell) setTimeout(() => inputRef.current?.focus(), 50)
-  }, [editCell])
+    const params = new URLSearchParams(window.location.search)
+    params.set('view', 'satisfaction')
+    params.set('fiscalYear', String(fiscalYear))
+    if (selectedMetricCode) params.set('metricCode', selectedMetricCode)
+    else params.delete('metricCode')
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`)
+  }, [fiscalYear, selectedMetricCode])
 
-  useEffect(() => {
-    if (addOpen) { setModalTab('metric'); setMetricName(''); setMetricTarget('80'); setModalErr(''); setCellError('') }
-  }, [addOpen])
-
-  // derive unique metrics from data (preserve default order, append new ones)
-  const metrics = (() => {
-    const seen = new Map<string, string>() // code → name
-    for (const d of data) seen.set(d.metric_code, d.metric_name)
-    const ordered: { code: string; name: string }[] = []
-    for (const code of DEFAULT_ORDER) {
-      if (seen.has(code)) ordered.push({ code, name: seen.get(code)! })
-    }
-    for (const [code, name] of seen) {
-      if (!DEFAULT_ORDER.includes(code)) ordered.push({ code, name })
-    }
-    return ordered
-  })()
-
-  // derive unique years (data years + current year)
-  const years = [...new Set([...data.map(d => d.fiscal_year), getCurrentThaiFiscalYear()])].sort()
-
-  const existingYears = new Set(years)
-
-  function getVal(code: string, year: number): KpiSatisfaction | undefined {
-    return data.find(d => d.metric_code === code && d.fiscal_year === year)
-  }
-
-  async function handleCellSave() {
-    if (!editCell) return
-    let savedSuccessfully = false
-    setSaving(true)
-    try {
-      const metric = metrics.find(m => m.code === editCell.code)
-      const res = await fetch('/kpi/api/satisfaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          metric_code: editCell.code,
-          metric_name: metric?.name ?? editCell.code,
-          fiscal_year: editCell.year,
-          value: editVal === '' ? null : parseFloat(editVal),
-        }),
-      })
-      const saved = await res.json()
-      if (!res.ok) throw new Error(saved?.error ?? 'บันทึกไม่สำเร็จ')
-      setData(prev => {
-        const idx = prev.findIndex(d => d.metric_code === editCell.code && d.fiscal_year === editCell.year)
-        return idx >= 0 ? prev.map((d, i) => i === idx ? saved : d) : [...prev, saved]
-      })
-      setCellError('')
-      savedSuccessfully = true
-    } catch (error) {
-      setCellError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ')
-    } finally {
-      setSaving(false)
-      if (savedSuccessfully) setEditCell(null)
-    }
-  }
-
-  async function handleAddMetric() {
-    if (!metricName.trim()) { setModalErr('กรุณากรอกชื่อตัวชี้วัด'); return }
-    const normalizedCode = metricName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
-    if (normalizedCode && metrics.some(m => m.code === normalizedCode)) { setModalErr('ตัวชี้วัดนี้มีอยู่แล้ว'); return }
-    const code = buildMetricCode(metricName.trim(), new Set(metrics.map((metric) => metric.code)))
-    const parsedTarget = Number(metricTarget)
-    const target = Number.isFinite(parsedTarget) ? parsedTarget : 80
-    setModalSaving(true); setModalErr('')
-    try {
-      // insert null entries for all existing years so column appears
-      const results: KpiSatisfaction[] = []
-      for (const y of years) {
-        const res = await fetch('/kpi/api/satisfaction', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ metric_code: code, metric_name: metricName.trim(), fiscal_year: y, value: null, target_val: target }),
-        })
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({}))
-          throw new Error(error?.error ?? 'เพิ่มตัวชี้วัดไม่สำเร็จ')
-        }
-        results.push(await res.json())
-      }
-      setData(prev => {
-        let next = [...prev]
-        for (const r of results) {
-          const idx = next.findIndex(d => d.metric_code === r.metric_code && d.fiscal_year === r.fiscal_year)
-          next = idx >= 0 ? next.map((d, i) => i === idx ? r : d) : [...next, r]
-        }
-        return next
-      })
-      onAddClose?.()
-    } catch (error) {
-      setModalErr(error instanceof Error ? error.message : 'เพิ่มตัวชี้วัดไม่สำเร็จ')
-    } finally { setModalSaving(false) }
-  }
-
-  async function handleAddYear() {
-    setModalSaving(true); setModalErr('')
-    try {
-      const results: KpiSatisfaction[] = []
-      const missingMetrics = getMissingSatisfactionMetrics(metrics, newYear, data)
-      for (const m of missingMetrics) {
-        const res = await fetch('/kpi/api/satisfaction', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ metric_code: m.code, metric_name: m.name, fiscal_year: newYear, value: null }),
-        })
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({}))
-          throw new Error(error?.error ?? 'เพิ่มปีงบประมาณไม่สำเร็จ')
-        }
-        results.push(await res.json())
-      }
-      setData(prev => {
-        let next = [...prev]
-        for (const r of results) {
-          const idx = next.findIndex(d => d.metric_code === r.metric_code && d.fiscal_year === r.fiscal_year)
-          next = idx >= 0 ? next.map((d, i) => i === idx ? r : d) : [...next, r]
-        }
-        return next
-      })
-      onAddClose?.()
-    } catch (error) {
-      setModalErr(error instanceof Error ? error.message : 'เพิ่มปีงบประมาณไม่สำเร็จ')
-    } finally { setModalSaving(false) }
-  }
-
-  if (loading) return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {[...Array(3)].map((_, i) => (
-        <div key={i} style={{ height: 44, borderRadius: 8, background: 'var(--surface-2)' }} />
-      ))}
-    </div>
+  const selectedMetric = useMemo(
+    () => data?.metrics.find((metric) => metric.code === selectedMetricCode) ?? data?.metrics[0] ?? null,
+    [data, selectedMetricCode],
   )
-
-  const thStyle: React.CSSProperties = {
-    padding: '9px 16px', fontSize: 11, fontWeight: 700, color: 'var(--muted)',
-    textAlign: 'center', background: 'var(--surface-2)', borderBottom: '2px solid var(--border)',
-    whiteSpace: 'nowrap', letterSpacing: .5,
-  }
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)',
-    fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)',
-    outline: 'none', boxSizing: 'border-box',
-  }
-  const labelStyle: React.CSSProperties = {
-    fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 4, display: 'block',
-  }
-  const tabBtn = (id: ModalTab, label: string) => (
-    <button
-      onClick={() => { setModalTab(id); setModalErr('') }}
-      style={{
-        flex: 1, padding: '8px 12px', border: 'none', borderRadius: 7, cursor: 'pointer',
-        fontFamily: 'inherit', fontSize: 13, fontWeight: modalTab === id ? 700 : 500,
-        background: modalTab === id ? 'var(--primary)' : 'transparent',
-        color: modalTab === id ? '#fff' : 'var(--muted)',
-        transition: 'all .15s',
-      }}
-    >{label}</button>
-  )
+  const years = data?.years?.length ? [...data.years].sort((a, b) => b - a) : [fiscalYear]
 
   return (
-    <>
-      {/* ── Add Modal ────────────────────────────────────────────── */}
-      {addOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,.25)', display: 'flex', flexDirection: 'column' }}>
-            {/* header */}
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>เพิ่มข้อมูลความพึงพอใจ</div>
-              <button onClick={onAddClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}><Icon name="x" size={18} /></button>
-            </div>
-
-            {/* tab switcher */}
-            <div style={{ padding: '12px 24px 0', display: 'flex', gap: 4, background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
-              {tabBtn('metric', '+ ตัวชี้วัดใหม่')}
-              {tabBtn('year',   '+ ปีงบประมาณ')}
-            </div>
-
-            {/* body */}
-            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {modalErr && (
-                <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(220,38,38,.08)', color: 'var(--danger)', fontSize: 13 }}>{modalErr}</div>
-              )}
-
-              {modalTab === 'metric' && (
-                <>
-                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                    เพิ่มตัวชี้วัดใหม่ในตารางความพึงพอใจ — คอลัมน์จะขยายตามปีที่มีอยู่
-                  </div>
-                  <div>
-                    <label style={labelStyle}>ชื่อตัวชี้วัด <span style={{ color: 'var(--danger)' }}>*</span></label>
-                    <input
-                      style={inputStyle} value={metricName}
-                      onChange={e => setMetricName(e.target.value)}
-                      placeholder="เช่น ผู้รับบริการห้องปฏิบัติการ"
-                      autoFocus
-                    />
-                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                      Metric code จะสร้างจากชื่อโดยอัตโนมัติ
-                    </div>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>เป้าหมาย (%)</label>
-                    <div style={{ position: 'relative' }}>
-                      <input type="number" style={{ ...inputStyle, paddingRight: 32 }} value={metricTarget} onChange={e => setMetricTarget(e.target.value)} min="0" max="100" step="0.01" />
-                      <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: 'var(--muted)' }}>%</span>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {modalTab === 'year' && (
-                <>
-                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                    เพิ่มปีงบประมาณใหม่ในตาราง — คอลัมน์จะขยาย พร้อมกรอกค่าภายหลังได้
-                  </div>
-                  <div>
-                    <label style={labelStyle}>ปีงบประมาณ (พ.ศ.) <span style={{ color: 'var(--danger)' }}>*</span></label>
-                    <input
-                      type="number" style={inputStyle} value={newYear}
-                      onChange={e => setNewYear(Number(e.target.value))}
-                      min="2560" max="2999" step="1"
-                      placeholder="เช่น 2575"
-                    />
-                    {existingYears.has(newYear) ? (
-                      <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 4 }}>⚠ ปีงบ {newYear} มีอยู่ในตารางแล้ว — จะอัปเดตค่าที่ว่างอยู่เท่านั้น</div>
-                    ) : (
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>จะเพิ่มคอลัมน์ให้ {metrics.length} ตัวชี้วัด (ค่าเริ่มต้นว่าง)</div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* footer */}
-            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={onAddClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>ยกเลิก</button>
-              <button
-                onClick={modalTab === 'metric' ? handleAddMetric : handleAddYear}
-                disabled={modalSaving}
-                style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: modalSaving ? 'not-allowed' : 'pointer', opacity: modalSaving ? 0.7 : 1 }}
-              >
-                {modalSaving ? 'กำลังบันทึก...' : modalTab === 'metric' ? 'เพิ่มตัวชี้วัด' : 'เพิ่มปีงบประมาณ'}
-              </button>
-            </div>
-          </div>
+    <section className="kpi-satisfaction-dashboard" aria-labelledby="kpi-satisfaction-title">
+      <header className="kpi-satisfaction-heading">
+        <div>
+          <h2 id="kpi-satisfaction-title">KPI ความพึงพอใจ</h2>
+          <p>ผลที่รับรองแล้วจากแบบสำรวจและแหล่งข้อมูลอื่น พร้อมเกณฑ์เป้าหมายเดียวกันทุกปี</p>
         </div>
-      )}
-
-      {/* ── Table ───────────────────────────────────────────────── */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
-          <Icon name="shieldCheck" size={14} />
-          อัตราความพึงพอใจของผู้ใช้บริการ (ผู้ป่วยนอก, ผู้ป่วยใน, ผู้รับบริจาคโลหิต) · เป้าหมาย &gt;80%
-          {canEdit && <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--primary)' }}>· คลิกค่าที่ต้องการแก้ไข</span>}
+        <div className="kpi-satisfaction-refresh" aria-live="polite">
+          {refreshing ? 'กำลังอัปเดตข้อมูล…' : 'ข้อมูลตามปีงบประมาณที่เลือก'}
+          <Button variant="secondary" size="sm" icon="clock" onClick={() => void load(true)} disabled={refreshing}>รีเฟรช</Button>
         </div>
+      </header>
 
-        {cellError && <div style={{ marginBottom: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(220,38,38,.08)', color: 'var(--danger)', fontSize: 12 }}>{cellError}</div>}
-        <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>
-          <table style={{ borderCollapse: 'collapse', fontSize: 13, minWidth: '100%' }}>
-            <thead>
-              <tr>
-                <th style={{ ...thStyle, textAlign: 'left', minWidth: 200 }}>ตัวชี้วัด</th>
-                <th style={{ ...thStyle, minWidth: 60 }}>Target</th>
-                {years.map(y => (
-                  <th key={y} style={{ ...thStyle, minWidth: 80 }}>ปีงบ {y}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.map(metric => (
-                <tr key={metric.code} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '10px 16px', fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
-                    {metric.name}
-                  </td>
-                  <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                    &gt;{getLatestSatisfactionTarget(data, metric.code, 80)}%
-                  </td>
-                  {years.map(year => {
-                    const entry = getVal(metric.code, year)
-                    const val = entry?.value ?? null
-                    const target = entry?.target_val ?? 80
-                    const color = passColor(val, target)
-                    const isEditing = editCell?.code === metric.code && editCell?.year === year
-
-                    if (isEditing) {
-                      return (
-                        <td key={year} style={{ padding: '6px 10px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
-                            <input
-                              ref={inputRef} type="number" min="0" max="100" step="0.01" value={editVal}
-                              onChange={e => setEditVal(e.target.value)}
-                              onKeyDown={e => { if (e.key === 'Enter') handleCellSave(); if (e.key === 'Escape') setEditCell(null) }}
-                              style={{ width: 70, padding: '5px 7px', borderRadius: 6, border: '1px solid var(--primary)', fontSize: 12, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }}
-                            />
-                            <button onClick={handleCellSave} disabled={saving} style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <Icon name="check" size={12} stroke={2.5} />
-                            </button>
-                            <button onClick={() => setEditCell(null)} style={{ width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--muted)' }}>
-                              <Icon name="x" size={12} />
-                            </button>
-                          </div>
-                        </td>
-                      )
-                    }
-
-                    return (
-                      <td
-                        key={year}
-                        onClick={() => { if (!canEdit) return; setEditCell({ code: metric.code, year }); setEditVal(val !== null ? String(val) : '') }}
-                        style={{
-                          padding: '10px 16px', textAlign: 'center', fontWeight: val !== null ? 700 : 400,
-                          color: color === 'green' ? 'var(--success)' : color === 'red' ? 'var(--danger)' : 'var(--muted)',
-                          background: color === 'green' ? 'rgba(22,163,74,.08)' : color === 'red' ? 'rgba(220,38,38,.08)' : 'transparent',
-                          cursor: canEdit ? 'pointer' : 'default', transition: 'background .1s', whiteSpace: 'nowrap',
-                        }}
-                        title={canEdit ? 'คลิกเพื่อแก้ไข' : undefined}
-                      >
-                        {val !== null ? `${val.toFixed(2)}%` : <span style={{ color: 'var(--border)', fontSize: 16 }}>—</span>}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="kpi-satisfaction-toolbar" aria-label="ตัวกรอง KPI ความพึงพอใจ">
+        <label><span>ปีงบประมาณ</span><input type="number" min="2500" max="2999" value={fiscalYear} onChange={(event) => setFiscalYear(Number(event.target.value))} /></label>
+        <label><span>ชุด KPI</span><select value={metricCode} onChange={(event) => { setMetricCode(event.target.value); setSelectedMetricCode(event.target.value) }}><option value="">ทุกชุด</option>{(metricOptions.length ? metricOptions : data?.metrics ?? []).map((metric) => <option key={metric.code} value={metric.code}>{metric.name}</option>)}</select></label>
+        <label><span>แหล่งข้อมูล</span><select value={source} onChange={(event) => setSource(event.target.value as SourceFilter)}><option value="all">ทั้งหมด</option><option value="survey">จากแบบสำรวจ</option><option value="manual">กรอกด้วยตนเอง</option></select></label>
+        <label><span>สถานะ</span><select value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}><option value="all">ทั้งหมด</option><option value="pass">ผ่านเป้าหมาย</option><option value="below">ต่ำกว่าเป้าหมาย</option><option value="missing">ยังไม่มีผล</option></select></label>
       </div>
-    </>
+
+      {error ? <div className="kpi-satisfaction-error" role="alert"><div><strong>โหลดข้อมูลไม่สำเร็จ</strong><span>{error}</span></div><Button variant="secondary" size="sm" onClick={() => void load()}>ลองอีกครั้ง</Button></div> : null}
+
+      {loading && !data ? <KpiLoading /> : data ? (
+        <>
+          <div className="kpi-satisfaction-summary-grid" aria-label={`ภาพรวมปีงบประมาณ ${data.fiscalYear}`}>
+            <SummaryButton label="KPI ที่ใช้งาน" value={data.summary.activeMetrics} active={status === 'all'} onClick={() => setStatus('all')} icon="dash" />
+            <SummaryButton label="ผ่านเป้าหมาย" value={data.summary.pass} active={status === 'pass'} onClick={() => setStatus('pass')} icon="check" tone="pass" />
+            <SummaryButton label="ต่ำกว่าเป้าหมาย" value={data.summary.below} active={status === 'below'} onClick={() => setStatus('below')} icon="alert" tone="below" />
+            <SummaryButton label="ยังไม่มีผล" value={data.summary.missing} active={status === 'missing'} onClick={() => setStatus('missing')} icon="clock" tone="missing" />
+            <div className="kpi-satisfaction-summary-item kpi-satisfaction-summary-pending"><span className="kpi-satisfaction-summary-icon"><Icon name="upload" size={17} /></span><span><strong>{data.summary.pendingPublication.toLocaleString('th-TH')}</strong><small>รอเผยแพร่</small></span></div>
+          </div>
+
+          {data.metrics.length === 0 ? (
+            <div className="kpi-satisfaction-empty"><Icon name="filter" size={24} /><strong>ไม่พบข้อมูลตามตัวกรอง</strong><span>ลองเปลี่ยนปี ชุด KPI แหล่งข้อมูล หรือสถานะ</span><Button variant="secondary" size="sm" onClick={() => { setMetricCode(''); setSelectedMetricCode(''); setSource('all'); setStatus('all') }}>ล้างตัวกรอง</Button></div>
+          ) : (
+            <>
+              <section className="kpi-satisfaction-section" aria-labelledby="kpi-target-comparison">
+                <div className="kpi-satisfaction-section-heading"><div><h3 id="kpi-target-comparison">ผลเทียบเป้าหมาย</h3><p>ค่าปัจจุบันของแต่ละชุด KPI ในปีงบประมาณ {data.fiscalYear}</p></div><span className="kpi-satisfaction-legend"><i /> ค่าผลลัพธ์ <b /> เกณฑ์เป้าหมาย</span></div>
+                <div className="kpi-satisfaction-bullet-list">{data.metrics.map((metric) => <MetricBullet key={metric.code} metric={metric} canViewCampaign={data.permissions.canViewCampaign} selected={selectedMetric?.code === metric.code} onSelect={() => setSelectedMetricCode(metric.code)} />)}</div>
+              </section>
+              {selectedMetric ? <MetricTrend metric={selectedMetric} /> : null}
+              <section className="kpi-satisfaction-section" aria-labelledby="kpi-history-heading">
+                <div className="kpi-satisfaction-section-heading"><div><h3 id="kpi-history-heading">ประวัติรายปี</h3><p>ปีล่าสุดอยู่ก่อน และทุกปีประเมินด้วย target ปัจจุบันของชุด KPI</p></div></div>
+                <HistoryTable metrics={data.metrics} years={years} />
+                <MobileHistory metrics={data.metrics} years={years} />
+              </section>
+            </>
+          )}
+        </>
+      ) : null}
+
+      {manageOpen && canEdit ? <MetricManager onClose={onManageClose} onSaved={() => void load(true)} /> : null}
+      {manualOpen && canEdit ? <ManualValueDialog metrics={metricOptions.length ? metricOptions : data?.metrics ?? []} initialYear={fiscalYear} onClose={onManualClose} onSaved={() => void load(true)} /> : null}
+    </section>
   )
+}
+
+function SummaryButton({ label, value, active, onClick, icon, tone = 'neutral' }: { label: string; value: number; active: boolean; onClick: () => void; icon: string; tone?: 'neutral' | 'pass' | 'below' | 'missing' }) {
+  return <button type="button" className={`kpi-satisfaction-summary-item kpi-satisfaction-summary-${tone}`} aria-pressed={active} onClick={onClick}><span className="kpi-satisfaction-summary-icon"><Icon name={icon} size={17} /></span><span><strong>{value.toLocaleString('th-TH')}</strong><small>{label}</small></span></button>
+}
+
+function MetricBullet({ metric, selected, canViewCampaign, onSelect }: { metric: KpiMetricDashboardRow; selected: boolean; canViewCampaign: boolean; onSelect: () => void }) {
+  const current = metric.current
+  const value = current?.value ?? null
+  const width = value === null ? 0 : Math.max(2, Math.min(100, value))
+  const target = Math.max(0, Math.min(100, metric.target))
+  const pass = value !== null && value >= metric.target
+  return (
+    <article className={`kpi-satisfaction-bullet${selected ? ' is-selected' : ''}`}>
+      <button type="button" className="kpi-satisfaction-bullet-main" aria-pressed={selected} onClick={onSelect}>
+        <span className="kpi-satisfaction-bullet-copy"><span><strong>{metric.name}</strong><code>{metric.code}</code></span><span className={`kpi-satisfaction-result kpi-satisfaction-result-${metric.status}`}><Icon name={pass ? 'check' : metric.status === 'missing' ? 'clock' : 'alert'} size={13} />{resultLabel(metric.status)}</span></span>
+        <span className="kpi-satisfaction-track" aria-label={`${metric.name} ${valueLabel(value)} เป้าหมาย ${valueLabel(metric.target)}`}><span className={`kpi-satisfaction-fill ${pass ? 'is-pass' : 'is-below'}`} style={{ width: `${width}%` }} /><i className="kpi-satisfaction-target" style={{ insetInlineStart: `${target}%` }}><span>≥{numberFormat.format(metric.target)}%</span></i></span>
+      </button>
+      <div className="kpi-satisfaction-bullet-meta">
+        <strong>{valueLabel(value)}</strong>
+        {metric.delta === null ? <span>ยังไม่มีข้อมูลปีก่อน</span> : <span className={metric.delta >= 0 ? 'is-positive' : 'is-negative'}>{metric.delta >= 0 ? '+' : ''}{numberFormat.format(metric.delta)} จุดจากปีก่อน</span>}
+        {current ? <span className={`kpi-satisfaction-source source-${current.source}`}>{sourceLabel(current.source)}</span> : null}
+        {current?.responseCount !== null && current?.responseCount !== undefined ? <span>n = {current.responseCount.toLocaleString('th-TH')}{current.responseCount < 5 ? ' · ข้อมูลยังน้อย' : ''}</span> : null}
+        {current?.departmentName ? <span>{current.departmentName}</span> : null}
+        {current?.surveyCode ? <span>แบบ {current.surveyCode}</span> : null}
+        {current?.publishedByName ? <span>เผยแพร่โดย {current.publishedByName}</span> : null}
+        {current?.publishedAt ? <span>{dateTimeFormat.format(new Date(current.publishedAt))}</span> : null}
+        {current?.campaignId && canViewCampaign ? <Link href={`/staff/satisfaction?campaignId=${encodeURIComponent(current.campaignId)}`}>{current.campaignName ?? 'ดูรอบแบบสำรวจ'}</Link> : null}
+      </div>
+    </article>
+  )
+}
+
+function MetricTrend({ metric }: { metric: KpiMetricDashboardRow }) {
+  const valuedHistory = [...metric.history].filter((row): row is KpiHistoryValue & { value: number } => row.value !== null)
+  const chartData = valuedHistory.sort((a, b) => a.fiscalYear - b.fiscalYear).map((row) => {
+    const previous = valuedHistory.find((candidate) => candidate.fiscalYear === row.fiscalYear - 1)
+    return {
+      year: row.fiscalYear,
+      value: row.value,
+      source: sourceLabel(row.source),
+      delta: previous ? Math.round((row.value - previous.value + Number.EPSILON) * 100) / 100 : null,
+    }
+  })
+  const useLine = chartData.length >= 4
+  return (
+    <section className="kpi-satisfaction-section kpi-satisfaction-trend" aria-labelledby="kpi-trend-heading">
+      <div className="kpi-satisfaction-section-heading"><div><h3 id="kpi-trend-heading">แนวโน้มข้ามปี</h3><p>{metric.name} · เป้าหมาย ≥{numberFormat.format(metric.target)}%</p></div><span className={`kpi-satisfaction-result kpi-satisfaction-result-${metric.status}`}>{resultLabel(metric.status)}</span></div>
+      {chartData.length === 0 ? <div className="kpi-satisfaction-chart-empty">ยังไม่มีผลลัพธ์สำหรับสร้างแนวโน้ม</div> : (
+        <>
+          <div className="kpi-satisfaction-chart" role="img" aria-label={`แนวโน้ม ${metric.name} เทียบเป้าหมาย ${numberFormat.format(metric.target)} เปอร์เซ็นต์`}>
+            <ResponsiveContainer width="100%" height="100%">
+              {useLine ? (
+                <LineChart data={chartData} margin={{ top: 18, right: 20, bottom: 4, left: 0 }}><CartesianGrid stroke="var(--border)" strokeDasharray="3 4" vertical={false} /><XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} /><YAxis domain={[0, 100]} tick={{ fill: 'var(--muted)', fontSize: 11 }} axisLine={false} tickLine={false} width={34} /><Tooltip formatter={(value) => [`${numberFormat.format(Number(value))}%`, 'ผลลัพธ์']} labelFormatter={(year) => `ปีงบประมาณ ${year}`} /><ReferenceLine y={metric.target} stroke="var(--warning)" strokeDasharray="5 4" label={{ value: `เป้าหมาย ${numberFormat.format(metric.target)}%`, fill: 'var(--muted)', fontSize: 11 }} /><Line type="linear" dataKey="value" stroke="var(--primary)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--card)', strokeWidth: 2 }} activeDot={{ r: 6 }} /></LineChart>
+              ) : (
+                <BarChart data={chartData} margin={{ top: 18, right: 20, bottom: 4, left: 0 }}><CartesianGrid stroke="var(--border)" strokeDasharray="3 4" vertical={false} /><XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 12 }} axisLine={false} tickLine={false} /><YAxis domain={[0, 100]} tick={{ fill: 'var(--muted)', fontSize: 11 }} axisLine={false} tickLine={false} width={34} /><Tooltip formatter={(value) => [`${numberFormat.format(Number(value))}%`, 'ผลลัพธ์']} labelFormatter={(year) => `ปีงบประมาณ ${year}`} /><ReferenceLine y={metric.target} stroke="var(--warning)" strokeDasharray="5 4" label={{ value: `เป้าหมาย ${numberFormat.format(metric.target)}%`, fill: 'var(--muted)', fontSize: 11 }} /><Bar dataKey="value" fill="var(--primary)" radius={[7, 7, 0, 0]} maxBarSize={54} /></BarChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+          <table className="satisfaction-chart-table"><caption className="satisfaction-visually-hidden">ตารางแนวโน้ม KPI ความพึงพอใจข้ามปี</caption><thead><tr><th scope="col">ปีงบประมาณ</th><th scope="col">ผลลัพธ์</th><th scope="col">เปลี่ยนจากปีก่อน</th><th scope="col">แหล่งข้อมูล</th></tr></thead><tbody>{[...chartData].reverse().map((point) => <tr key={point.year}><td>{point.year}</td><td>{valueLabel(point.value)}</td><td>{point.delta === null ? '—' : `${point.delta >= 0 ? '+' : ''}${numberFormat.format(point.delta)} จุด`}</td><td>{point.source}</td></tr>)}</tbody></table>
+        </>
+      )}
+    </section>
+  )
+}
+
+function HistoryTable({ metrics, years }: { metrics: KpiMetricDashboardRow[]; years: number[] }) {
+  return <div className="kpi-satisfaction-history-wrap"><table className="kpi-satisfaction-history-table"><caption className="satisfaction-visually-hidden">ประวัติ KPI ความพึงพอใจรายปี</caption><thead><tr><th scope="col">ชุด KPI / Target</th>{years.map((year) => <th scope="col" key={year}>ปีงบ {year}</th>)}</tr></thead><tbody>{metrics.map((metric) => <tr key={metric.code}><th scope="row"><strong>{metric.name}</strong><span>≥{numberFormat.format(metric.target)}%</span></th>{years.map((year) => { const entry = metric.history.find((row) => row.fiscalYear === year); const state: ResultStatus = entry?.value === null || entry?.value === undefined ? 'missing' : entry.value >= metric.target ? 'pass' : 'below'; return <td key={year}><strong>{valueLabel(entry?.value ?? null)}</strong><span className={`kpi-satisfaction-result kpi-satisfaction-result-${state}`}>{resultLabel(state)}</span>{entry ? <small>{sourceLabel(entry.source)}</small> : null}</td> })}</tr>)}</tbody></table></div>
+}
+
+function MobileHistory({ metrics, years }: { metrics: KpiMetricDashboardRow[]; years: number[] }) {
+  return <div className="kpi-satisfaction-mobile-history">{metrics.map((metric) => <article key={metric.code}><header><strong>{metric.name}</strong><span>Target ≥{numberFormat.format(metric.target)}%</span></header><dl>{years.map((year) => { const entry = metric.history.find((row) => row.fiscalYear === year); return <div key={year}><dt>ปีงบ {year}</dt><dd><strong>{valueLabel(entry?.value ?? null)}</strong>{entry ? <span>{sourceLabel(entry.source)}</span> : <span>ยังไม่มีผล</span>}</dd></div> })}</dl></article>)}</div>
+}
+
+function MetricManager({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [metrics, setMetrics] = useState<MetricMasterRow[]>([])
+  const [baselineTargets, setBaselineTargets] = useState<Record<string, number>>({})
+  const [name, setName] = useState('')
+  const [target, setTarget] = useState('80')
+  const [loading, setLoading] = useState(true)
+  const [savingCode, setSavingCode] = useState('')
+  const [error, setError] = useState('')
+
+  const loadMetrics = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const response = await fetch('/kpi/api/satisfaction/metrics', { cache: 'no-store' })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'โหลดชุด KPI ไม่สำเร็จ')
+      const rows = normalizeMetricMaster(payload)
+      setMetrics(rows)
+      setBaselineTargets(Object.fromEntries(rows.map((row) => [row.code, row.target])))
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'โหลดชุด KPI ไม่สำเร็จ') }
+    finally { setLoading(false) }
+  }, [])
+  useEffect(() => { void loadMetrics() }, [loadMetrics])
+
+  async function createMetric(event: React.FormEvent) {
+    event.preventDefault(); setSavingCode('new'); setError('')
+    try {
+      const response = await fetch('/kpi/api/satisfaction/metrics', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim(), target: Number(target) }) })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'สร้างชุด KPI ไม่สำเร็จ')
+      setName(''); setTarget('80'); await loadMetrics(); onSaved()
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'สร้างชุด KPI ไม่สำเร็จ') }
+    finally { setSavingCode('') }
+  }
+
+  async function updateMetric(metric: MetricMasterRow, nextActive = metric.isActive) {
+    if (metric.target < 0 || metric.target > 100) { setError('Target ต้องอยู่ระหว่าง 0–100'); return }
+    if (baselineTargets[metric.code] !== metric.target && !window.confirm('การเปลี่ยน target จะคำนวณสถานะผ่าน/ไม่ผ่านย้อนหลังทุกปี ยืนยันการเปลี่ยนแปลงหรือไม่?')) return
+    setSavingCode(metric.code); setError('')
+    try {
+      const response = await fetch('/kpi/api/satisfaction/metrics', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: metric.code, name: metric.name.trim(), target: metric.target, isActive: nextActive }) })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'แก้ไขชุด KPI ไม่สำเร็จ')
+      await loadMetrics(); onSaved()
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'แก้ไขชุด KPI ไม่สำเร็จ') }
+    finally { setSavingCode('') }
+  }
+
+  return <SatisfactionDialog labelledBy="kpi-metric-manager-title" onClose={onClose} className="kpi-satisfaction-dialog"><div className="kpi-satisfaction-dialog-header"><div><h2 id="kpi-metric-manager-title">จัดการชุดตัวชี้วัด</h2><p>Target หนึ่งค่าใช้ประเมินผลทุกปี</p></div><button type="button" aria-label="ปิดหน้าต่าง" onClick={onClose}><Icon name="x" size={18} /></button></div><form className="kpi-satisfaction-create-metric" onSubmit={createMetric}><label><span>ชื่อชุด KPI</span><input data-dialog-autofocus required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} placeholder="เช่น ผู้รับบริการห้องปฏิบัติการ" /></label><label><span>Target (%)</span><input required type="number" min="0" max="100" step="0.01" value={target} onChange={(event) => setTarget(event.target.value)} /></label><Button type="submit" icon="plus" disabled={savingCode === 'new'}>{savingCode === 'new' ? 'กำลังสร้าง…' : 'สร้างชุด KPI'}</Button></form>{error ? <div className="kpi-satisfaction-dialog-error" role="alert">{error}</div> : null}<div className="kpi-satisfaction-metric-list" aria-busy={loading}>{loading ? <span>กำลังโหลดชุด KPI…</span> : metrics.map((metric, index) => <div className="kpi-satisfaction-metric-editor" key={metric.code}><div><code>{metric.code}</code><small>{metric.campaignCount.toLocaleString('th-TH')} รอบ · {metric.valueCount.toLocaleString('th-TH')} ปีข้อมูล</small></div><label><span className="satisfaction-visually-hidden">ชื่อ {metric.code}</span><input value={metric.name} onChange={(event) => setMetrics((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, name: event.target.value } : row))} /></label><label><span className="satisfaction-visually-hidden">Target {metric.code}</span><input type="number" min="0" max="100" step="0.01" value={metric.target} onChange={(event) => setMetrics((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, target: Number(event.target.value) } : row))} /></label><Button size="sm" variant="secondary" onClick={() => void updateMetric(metric)} disabled={savingCode === metric.code}>บันทึก</Button><Button size="sm" variant={metric.isActive ? 'ghost' : 'soft'} onClick={() => void updateMetric(metric, !metric.isActive)} disabled={savingCode === metric.code}>{metric.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}</Button></div>)}</div></SatisfactionDialog>
+}
+
+function ManualValueDialog({ metrics, initialYear, onClose, onSaved }: { metrics: Array<Pick<MetricMasterRow, 'code' | 'name' | 'isActive'>>; initialYear: number; onClose: () => void; onSaved: () => void }) {
+  const [metricCode, setMetricCode] = useState(metrics[0]?.code ?? '')
+  const [fiscalYear, setFiscalYear] = useState(initialYear)
+  const [value, setValue] = useState('')
+  const [sourceNote, setSourceNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  async function submit(event: React.FormEvent) {
+    event.preventDefault(); setSaving(true); setError('')
+    try {
+      const response = await fetch('/kpi/api/satisfaction/manual-values', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ metricCode, fiscalYear, value: Number(value), sourceNote: sourceNote.trim() }) })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'บันทึกค่าจากแหล่งอื่นไม่สำเร็จ')
+      onSaved(); onClose()
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'บันทึกค่าจากแหล่งอื่นไม่สำเร็จ') }
+    finally { setSaving(false) }
+  }
+  return <SatisfactionDialog labelledBy="kpi-manual-value-title" onClose={onClose} className="kpi-satisfaction-dialog kpi-satisfaction-manual-dialog"><div className="kpi-satisfaction-dialog-header"><div><h2 id="kpi-manual-value-title">เพิ่มค่าจากแหล่งอื่น</h2><p>ใช้ได้เฉพาะปีที่ไม่มี campaign จองชุด KPI นี้</p></div><button type="button" aria-label="ปิดหน้าต่าง" onClick={onClose}><Icon name="x" size={18} /></button></div><form className="kpi-satisfaction-manual-form" onSubmit={submit}><label><span>ชุด KPI</span><select data-dialog-autofocus required value={metricCode} onChange={(event) => setMetricCode(event.target.value)}><option value="" disabled>เลือกชุด KPI</option>{metrics.filter((metric) => metric.isActive).map((metric) => <option key={metric.code} value={metric.code}>{metric.name}</option>)}</select></label><div className="kpi-satisfaction-form-grid"><label><span>ปีงบประมาณ</span><input required type="number" min="2500" max="2999" value={fiscalYear} onChange={(event) => setFiscalYear(Number(event.target.value))} /></label><label><span>ผลลัพธ์ (%)</span><input required type="number" min="0" max="100" step="0.01" value={value} onChange={(event) => setValue(event.target.value)} /></label></div><label><span>หมายเหตุแหล่งข้อมูล</span><textarea required maxLength={500} rows={3} value={sourceNote} onChange={(event) => setSourceNote(event.target.value)} placeholder="ระบุที่มา วิธีรวบรวม หรือเอกสารอ้างอิง" /></label>{error ? <div className="kpi-satisfaction-dialog-error" role="alert">{error}</div> : null}<div className="kpi-satisfaction-dialog-actions"><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button type="submit" icon="check" disabled={saving || !metricCode}>{saving ? 'กำลังบันทึก…' : 'บันทึกค่า'}</Button></div></form></SatisfactionDialog>
+}
+
+function KpiLoading() {
+  return <div className="kpi-satisfaction-loading" aria-live="polite"><span>กำลังโหลด KPI ความพึงพอใจ…</span>{[0, 1, 2].map((item) => <i key={item} />)}</div>
 }

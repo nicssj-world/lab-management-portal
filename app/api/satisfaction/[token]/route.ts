@@ -122,6 +122,15 @@ export async function POST(request: NextRequest, { params }: Context) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'ส่งคำตอบไม่สำเร็จ'
     const duplicate = /survey_response_devices|duplicate|unique/i.test(message)
+    if (/Campaign is not open/i.test(message)) {
+      if (state.campaign.closesAt && new Date(state.campaign.closesAt).getTime() <= Date.now()) {
+        return NextResponse.json({ error: 'รอบนี้สิ้นสุดเวลารับคำตอบแล้ว', code: 'expired' }, { status: 409 })
+      }
+      return NextResponse.json({ error: 'รอบนี้ไม่ได้เปิดรับคำตอบแล้ว', code: 'closed' }, { status: 409 })
+    }
+    if (/Campaign response limit reached/i.test(message)) {
+      return NextResponse.json({ error: 'รอบนี้ได้รับคำตอบครบตามจำนวนที่กำหนดแล้ว', code: 'limit_reached' }, { status: 409 })
+    }
     return NextResponse.json({ error: duplicate ? 'อุปกรณ์นี้ตอบแบบสำรวจแล้ว' : message, code: duplicate ? 'duplicate' : 'submit_failed' }, { status: duplicate ? 409 : 500 })
   }
 }
