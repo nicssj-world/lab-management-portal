@@ -2,6 +2,10 @@ import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { CHEMICAL_SDS_DEPARTMENTS } from './departments'
+import {
+  buildDepartmentSdsDedupPlan,
+  canonicalDepartmentSdsLinkIds,
+} from './department-sds-dedup'
 
 export interface DepartmentSdsFileDTO {
   id: string
@@ -51,11 +55,12 @@ export interface DepartmentSdsGroupDTO {
  * คืนทุกงานเสมอแม้ยังไม่มีไฟล์ เพื่อให้เห็นว่างานไหนยังไม่ได้นำเข้า
  */
 export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
-  const [departments, entries, publications, links, pendingRequests, units, products] = await Promise.all([
+  const [departments, entries, publications, links, versions, pendingRequests, units, products] = await Promise.all([
     supabaseAdmin.from('chemical_sds_departments').select('*').order('display_order'),
     supabaseAdmin.from('chemical_department_sds').select('*'),
     supabaseAdmin.from('chemical_sds_publications').select('*').eq('destination', 'department').eq('status', 'active'),
-    supabaseAdmin.from('chemical_department_chemical_links').select('department_sds_id, product_id, holding_id, sds_version_id'),
+    supabaseAdmin.from('chemical_department_chemical_links').select('id, department_sds_id, product_id, holding_id, sds_version_id, linked_at'),
+    supabaseAdmin.from('chemical_sds_versions').select('id, status, source_holding_id, updated_at'),
     supabaseAdmin.from('chemical_change_requests').select('unit_id, status, proposed_data').eq('entity_type', 'department_chemical').in('status', ['draft', 'in_review']),
     supabaseAdmin.from('chemical_units').select('id, name_th').eq('active', true),
     supabaseAdmin
@@ -66,6 +71,7 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
   if (entries.error) throw new Error(`chemical_department_sds: ${entries.error.message}`)
   if (publications.error) throw new Error(`chemical_sds_publications: ${publications.error.message}`)
   if (links.error) throw new Error(`chemical_department_chemical_links: ${links.error.message}`)
+  if (versions.error) throw new Error(`chemical_sds_versions: ${versions.error.message}`)
   if (pendingRequests.error) throw new Error(`chemical_change_requests: ${pendingRequests.error.message}`)
   if (units.error) throw new Error(`chemical_units: ${units.error.message}`)
   if (products.error) throw new Error(`chemical_products: ${products.error.message}`)
@@ -78,7 +84,43 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
       unitByName.get(definition.department) ?? null,
     ]),
   )
-  const linkBySdsId = new Map((links.data ?? []).map(row => [String(row.department_sds_id), row]))
+  const dedupPlan = buildDepartmentSdsDedupPlan({
+    entries: (entries.data ?? []).map(row => ({
+      id: String(row.id),
+      fileId: row.file_id ? String(row.file_id) : null,
+      departmentCode: String(row.department_code),
+    })),
+    links: (links.data ?? []).map(row => ({
+      id: String(row.id),
+      departmentSdsId: String(row.department_sds_id),
+      holdingId: String(row.holding_id),
+      sdsVersionId: row.sds_version_id ? String(row.sds_version_id) : null,
+      linkedAt: row.linked_at ? String(row.linked_at) : null,
+    })),
+    versions: (versions.data ?? []).map(row => ({
+      id: String(row.id),
+      fileId: null,
+      status: row.status == null ? null : String(row.status),
+      sourceHoldingId: row.source_holding_id ? String(row.source_holding_id) : null,
+      updatedAt: row.updated_at ? String(row.updated_at) : null,
+    })),
+    publications: (publications.data ?? []).map(row => ({
+      id: String(row.id),
+      sourceHoldingId: String(row.source_holding_id),
+      sdsVersionId: String(row.sds_version_id),
+      status: 'active' as const,
+      linkedAt: row.linked_at ? String(row.linked_at) : null,
+    })),
+    files: [],
+  })
+  const canonicalLinkIds = canonicalDepartmentSdsLinkIds(dedupPlan)
+  const linkedEntryIds = new Set((links.data ?? []).map(row => String(row.department_sds_id)))
+  const canonicalEntryIds = new Set((links.data ?? [])
+    .filter(row => canonicalLinkIds.has(String(row.id)))
+    .map(row => String(row.department_sds_id)))
+  const linkBySdsId = new Map((links.data ?? [])
+    .filter(row => canonicalLinkIds.has(String(row.id)))
+    .map(row => [String(row.department_sds_id), row]))
   const pendingBySdsId = new Map<string, any>()
   for (const request of pendingRequests.data ?? []) {
     const sourceId = request.proposed_data?.source_department_sds_id
@@ -96,9 +138,13 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
 
   const byDepartment = new Map<string, DepartmentSdsFileDTO[]>()
   for (const entry of entries.data ?? []) {
+    const entryId = String(entry.id)
+    // A duplicate linked row is retired from the department view. It must not
+    // fall through as an "unlinked legacy" file while cleanup is pending.
+    if (linkedEntryIds.has(entryId) && !canonicalEntryIds.has(entryId)) continue
     const list = byDepartment.get(String(entry.department_code)) ?? []
     list.push({
-      id: String(entry.id),
+      id: entryId,
       source: 'current',
       publicId: String(entry.public_id),
       displayName: String(entry.display_name),

@@ -64,9 +64,10 @@ REVOKE ALL ON FUNCTION public.normalize_chemical_inventory_capture_status()
 GRANT EXECUTE ON FUNCTION public.normalize_chemical_inventory_capture_status()
   TO service_role;
 
--- A holding can have more than one department SDS document (for example,
--- duplicate copies or different revisions). The department SDS row remains
--- unique; only the old one-file-per-holding limitation is removed.
+-- Historical compatibility step: temporarily remove the old uniqueness guard
+-- while promoting existing rows. The corrective migration
+-- 20260822184427_enforce_one_department_sds_per_holding.sql consolidates any
+-- duplicates and restores one department SDS link per holding.
 ALTER TABLE public.chemical_department_chemical_links
   DROP CONSTRAINT IF EXISTS chemical_department_chemical_links_holding_id_key;
 

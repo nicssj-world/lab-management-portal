@@ -8,6 +8,15 @@ export function isProtectedPath(path: string) {
   return PROTECTED_PATH_PATTERN.test(path)
 }
 
+/**
+ * The proxy may skip anonymous public requests, but it must inspect requests
+ * carrying Supabase auth cookies so it can refresh or remove stale sessions
+ * before client-side auth code hydrates.
+ */
+export function shouldRunAuthProxy(path: string, cookieNames: readonly string[]) {
+  return isProtectedPath(path) || cookieNames.some((name) => /^sb-.+-auth-token(?:\.\d+)?$/.test(name))
+}
+
 // /checkin/[token] เป็นหน้าสาธารณะโดยตั้งใจ (ผู้ไม่มีบัญชีในระบบต้องเข้าได้) แต่ผู้ที่
 // เลือก "มีบัญชี" ระหว่างเช็คอินต้องกลับมาที่ QR เดิมได้หลังล็อกอิน — เพิ่มเข้า allowlist
 // ของ safeReturnPath แคบๆ เฉพาะ path รูปแบบนี้ ไม่ใช่การเปิด isProtectedPath ให้กว้างขึ้น

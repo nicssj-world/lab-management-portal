@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { RETURN_PATH_PARAM, isAuthServiceUnavailable, isProtectedPath, safeReturnPath } from '../lib/auth/session-guard'
+import {
+  RETURN_PATH_PARAM,
+  isAuthServiceUnavailable,
+  isProtectedPath,
+  safeReturnPath,
+  shouldRunAuthProxy,
+} from '../lib/auth/session-guard'
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
 
@@ -19,6 +25,14 @@ for (const path of ['/', '/catalog', '/news', '/manual', '/contact', '/login', '
 for (const path of ['/staffing', '/tattoo', '/kpi-report']) {
   assert.ok(!isProtectedPath(path), `${path} ไม่ใช่โมดูลที่ต้องล็อกอิน`)
 }
+
+// public pages still need the proxy when the browser sends an auth cookie:
+// otherwise a dead refresh token reaches client hydration and auth-js logs it.
+assert.equal(shouldRunAuthProxy('/catalog', []), false)
+assert.equal(shouldRunAuthProxy('/catalog', ['sb-demo-auth-token']), true)
+assert.equal(shouldRunAuthProxy('/catalog', ['sb-demo-auth-token.0']), true)
+assert.equal(shouldRunAuthProxy('/auth/callback', ['sb-demo-auth-token-code-verifier']), false)
+assert.equal(shouldRunAuthProxy('/staff/dashboard', []), true)
 
 // คำตอบชัดเจนจาก auth server ว่าไม่มีสิทธิ์ → ล้าง cookie แล้วเด้งได้
 for (const error of [
@@ -55,6 +69,8 @@ assert.ok(
   clientSource.includes('if (event === \'SIGNED_OUT\') redirectToLoginIfProtected()'),
   'SIGNED_OUT เด้งไป /login เฉพาะหน้าที่ต้องล็อกอิน'
 )
+assert.ok(clientSource.includes('isSingleton: false'), 'browser client ต้องไม่ใช้ singleton ซ่อนของ @supabase/ssr')
+assert.ok(proxySource.includes('shouldRunAuthProxy'), 'proxy ตรวจ stale auth cookie บนหน้า public ด้วย')
 
 // ── safeReturnPath: พากลับหน้าเดิมหลังล็อกอิน โดยไม่เปิดช่อง open redirect ──
 

@@ -15,7 +15,7 @@ import type {
   ChemicalSdsDTO,
   GhsPictogramCode,
 } from '@/lib/chemical-safety/types'
-import { sdsItemsForHolding, summarizeRoomSds } from '@/lib/chemical-safety/sds-room-summary'
+import { currentSdsItemsForHolding, summarizeRoomSds } from '@/lib/chemical-safety/sds-room-summary'
 import { SdsPdfViewerModal } from './SdsPdfViewerModal'
 import { FONT, SPACE, tabularNums } from './shared/tokens'
 import { DepartmentPublishBadge, GhsRow, SdsStateBadge, SdsStatusBadge } from './shared/ui'
@@ -84,6 +84,8 @@ function SdsPanelIntro({
   )
 }
 
+type ChemicalSdsFilter = 'all' | 'with-sds' | 'missing'
+
 function ChemicalSdsPanel({
   items, roomRegistry, products,
 }: {
@@ -93,12 +95,18 @@ function ChemicalSdsPanel({
 }) {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [filter, setFilter] = useState<ChemicalSdsFilter>('all')
+  const [openHoldingId, setOpenHoldingId] = useState<string | null>(null)
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), search ? 350 : 0)
     return () => clearTimeout(timer)
   }, [search])
+
+  useEffect(() => {
+    setOpenHoldingId(null)
+  }, [debouncedSearch, filter])
 
   const productById = useMemo(
     () => new Map(products.map(product => [product.productId, product])),
@@ -110,27 +118,32 @@ function ChemicalSdsPanel({
   const rows = useMemo(() => {
     const needle = debouncedSearch.toLocaleLowerCase('th')
     return roomRegistry.map(registryRow => {
-      const versions = sdsItemsForHolding(items, registryRow.holdingId)
+      const versions = currentSdsItemsForHolding(items, registryRow.holdingId)
       return { registryRow, versions }
     }).filter(({ registryRow, versions }) => {
+      const hasCurrentVersion = versions.length > 0
+      const matchesStatus = filter === 'all'
+        || (filter === 'with-sds' && hasCurrentVersion)
+        || (filter === 'missing' && !hasCurrentVersion)
+      if (!matchesStatus) return false
       if (!needle) return true
       const versionText = versions.map(item => {
         const product = productById.get(item.productId)
         return [product?.name, item.manufacturer, item.supplier, item.revisionLabel]
           .filter(Boolean).join(' ')
       }).join(' ')
-      return [registryRow.canonicalName, registryRow.unitName, registryRow.positionCode, versionText]
+      return [registryRow.canonicalName, registryRow.casNumber, registryRow.unitName, registryRow.positionCode, versionText]
         .filter(Boolean).join(' ').toLocaleLowerCase('th').includes(needle)
     })
-  }, [items, roomRegistry, debouncedSearch, productById])
+  }, [items, roomRegistry, debouncedSearch, productById, filter])
 
   return (
     <>
       <SdsPanelIntro
         icon="doc"
         title="SDS ห้องสารเคมี"
-        description="แสดงสารจากทะเบียนห้องสารเคมีเป็นหลัก แล้วรวม SDS ทุกเวอร์ชันไว้ใต้สารเดียวกัน"
-        note="จำนวนรายการอ้างอิงทะเบียน · จัดการ workflow ที่ทะเบียนสารเคมี"
+        description="แสดงรายการจากทะเบียนห้องสารเคมีเป็นหลัก แล้วเปิดดูเวอร์ชัน SDS ภายใต้สารเดียวกันเมื่อจำเป็น"
+        note="อ่านอย่างเดียว · จัดการที่ทะเบียนสารเคมี"
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>
@@ -140,7 +153,7 @@ function ChemicalSdsPanel({
         <Stat label="เวอร์ชัน SDS" value={summary.versionCount} icon="doc" color="purple" />
       </div>
 
-      <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, borderLeft: '4px solid var(--primary)' }}>
+      <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, background: 'var(--surface-2)' }}>
         <div style={{ display: 'flex', gap: SPACE.xs, alignItems: 'flex-start', fontSize: FONT.md }}>
           <Icon name="info" size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
           <span>
@@ -150,99 +163,146 @@ function ChemicalSdsPanel({
         </div>
       </Card>
 
-      <div style={{ marginBottom: SPACE.sm }}>
-        <Input
-          icon="search"
-          size="lg"
-          value={search}
-          onChange={setSearch}
-          placeholder="ค้นหาชื่อสาร หน่วยงาน ตำแหน่ง ผู้ผลิต หรือฉบับที่"
-          style={{ maxWidth: 420 }}
-        />
+      <div style={{ display: 'flex', gap: SPACE.sm, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: SPACE.sm }}>
+        <label style={{ display: 'grid', gap: 4, flex: '1 1 300px', minWidth: 240, fontSize: FONT.xs, color: 'var(--muted)', fontWeight: 700 }} htmlFor="chemical-sds-search">
+          ค้นหาในทะเบียนห้องสารเคมี
+          <Input
+            id="chemical-sds-search"
+            icon="search"
+            size="md"
+            value={search}
+            onChange={setSearch}
+            placeholder="ค้นหาชื่อสาร CAS หน่วยงาน ตำแหน่ง หรือผู้ผลิต"
+            style={{ maxWidth: 520 }}
+          />
+        </label>
+        <label style={{ display: 'grid', gap: 4, minWidth: 180, fontSize: FONT.xs, color: 'var(--muted)', fontWeight: 700 }} htmlFor="chemical-sds-filter">
+          กรองสถานะ SDS
+          <select
+            id="chemical-sds-filter"
+            value={filter}
+            onChange={event => setFilter(event.target.value as ChemicalSdsFilter)}
+            style={{ height: 38, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', color: 'var(--ink)', font: 'inherit', fontSize: 13 }}
+          >
+            <option value="all">ทั้งหมด ({summary.holdingCount})</option>
+            <option value="with-sds">มี SDS ({summary.linkedHoldingCount})</option>
+            <option value="missing">ยังไม่มี SDS ({summary.missingHoldingCount})</option>
+          </select>
+        </label>
+        <span style={{ paddingBottom: 9, fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
+          แสดง {rows.length} จาก {summary.holdingCount} รายการ
+        </span>
       </div>
       {rows.length === 0 ? (
         <Card padding={0}><EmptyState icon="flask" title="ไม่พบสารในทะเบียนห้องสารเคมีที่ตรงกับเงื่อนไข" /></Card>
       ) : (
-        <div style={{ display: 'grid', gap: SPACE.sm }}>
-          {rows.map(({ registryRow, versions }) => {
+        <Card padding={0}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap', alignItems: 'flex-start', padding: SPACE.md, borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+            <div>
+              <strong style={{ fontSize: FONT.base, color: 'var(--ink)' }}>รายการเดียวกับทะเบียนห้องสารเคมี</strong>
+              <p style={{ margin: '3px 0 0', fontSize: FONT.sm, color: 'var(--muted)' }}>กดดูรายละเอียดเพื่อเปิดเวอร์ชัน SDS, GHS และไฟล์ที่ผูกไว้</p>
+            </div>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
+              <Icon name="shieldCheck" size={14} style={{ color: 'var(--primary)' }} /> อ่านอย่างเดียว
+            </span>
+          </div>
+
+          {rows.map(({ registryRow, versions }, index) => {
+            const open = openHoldingId === registryRow.holdingId
             return (
-              <Card key={registryRow.holdingId} padding={SPACE.md}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <h2 style={{ margin: 0, fontSize: FONT.lg, color: 'var(--ink)' }}>
-                      {registryRow.canonicalName}
-                    </h2>
+              <div key={registryRow.holdingId} style={{ borderBottom: index === rows.length - 1 ? undefined : '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, alignItems: 'center', flexWrap: 'wrap', padding: SPACE.md }}>
+                  <div style={{ minWidth: 0, flex: '1 1 300px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: FONT.lg, color: 'var(--ink)' }}>{registryRow.canonicalName}</strong>
+                      {registryRow.inventoryCaptureStatus === 'sds_only' && <Badge color="amber" size="sm">SDS-only — ยังไม่ระบุปริมาณ</Badge>}
+                    </div>
                     <p style={{ margin: '4px 0 0', fontSize: FONT.base, color: 'var(--muted)' }}>
-                      {registryRow.unitName} · ตำแหน่ง {registryRow.positionCode || 'ไม่ระบุ'}
+                      {registryRow.unitName} · ตำแหน่ง {registryRow.positionCode || 'ไม่ระบุ'} · {registryRow.casNumber ? `CAS ${registryRow.casNumber}` : 'ไม่ระบุ CAS'}
                     </p>
                   </div>
-                  <SdsStateBadge state={registryRow.sdsStatus} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, flexWrap: 'wrap' }}>
+                    <SdsStateBadge state={registryRow.sdsStatus} />
+                    <span style={{ fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>{versions.length} เวอร์ชัน</span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={open ? 'chevDown' : 'chevRight'}
+                      onClick={() => setOpenHoldingId(open ? null : registryRow.holdingId)}
+                      title={open ? `ซ่อนรายละเอียด ${registryRow.canonicalName}` : `ดูรายละเอียด ${registryRow.canonicalName}`}
+                    >
+                      {open ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+                    </Button>
+                  </div>
                 </div>
 
-                {versions.length === 0 ? (
-                  <div style={{ marginTop: SPACE.sm, padding: SPACE.sm, borderRadius: 10, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: FONT.sm }}>
-                    <strong style={{ color: 'var(--ink)' }}>ยังไม่มี SDS ที่ผูกกับรายการนี้</strong>
-                    <div style={{ marginTop: 3 }}>เพิ่มหรือผูก SDS จากปุ่ม SDS ในทะเบียนสารเคมี</div>
-                  </div>
-                ) : (
-                  <div style={{ marginTop: SPACE.sm, display: 'grid', gap: SPACE.xs }}>
-                    <div style={{ fontSize: FONT.sm, fontWeight: 800, color: 'var(--ink)' }}>
-                      SDS ที่ผูกกับทะเบียน · {versions.length} เวอร์ชัน
-                    </div>
-                    {versions.map(item => {
-                      const product = productById.get(item.productId)
-                      return (
-                        <div key={item.id} style={{ padding: SPACE.sm, border: '1px solid var(--border)', borderRadius: 10 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap' }}>
-                            <div style={{ minWidth: 0 }}>
-                              <strong style={{ color: 'var(--ink)' }}>{item.revisionLabel || 'ไม่ระบุฉบับ'}</strong>
-                              {item.workflowOrigin === 'registry_v2' && <Badge color="purple" size="sm" style={{ marginLeft: 7 }}>จากทะเบียน</Badge>}
-                              <div style={{ marginTop: 3, fontSize: FONT.sm, color: 'var(--muted)' }}>
-                                {item.manufacturer || 'ไม่ระบุผู้ผลิต'} · {item.language || 'th'} · มีผล {item.effectiveOn || '—'}
-                              </div>
-                            </div>
-                            <SdsStatusBadge status={item.status} />
-                          </div>
-
-                          <div style={{ marginTop: SPACE.xs }}>
-                            <GhsRow
-                              codes={item.pictogramCodes}
-                              hazardClassesTh={product?.hazardClassesTh ?? []}
-                              size={30}
-                            />
-                          </div>
-
-                          <div style={{ marginTop: SPACE.xs, fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
-                            H {item.hStatements.length} รายการ · P {item.pStatements.length} รายการ ·{' '}
-                            {item.fileId ? 'แนบไฟล์แล้ว' : 'ยังไม่แนบไฟล์'}
-                            {item.reviewReason && (
-                              <span style={{ color: 'var(--danger)' }}> · เหตุผล: {item.reviewReason}</span>
-                            )}
-                          </div>
-
-                          {item.fileId && (
-                            <div style={{ marginTop: SPACE.xs, display: 'flex', gap: SPACE.xs, flexWrap: 'wrap' }}>
-                              <Button
-                                variant="secondary"
-                                icon="eye"
-                                onClick={() => setPreview({
-                                  url: `/api/admin/chemical-safety/sds/${item.id}/file`,
-                                  title: registryRow.canonicalName,
-                                })}
-                              >
-                                เปิดไฟล์
-                              </Button>
-                            </div>
-                          )}
+                {open && (
+                  <div style={{ padding: `0 ${SPACE.md}px ${SPACE.md}px`, background: 'var(--surface-2)' }}>
+                    {versions.length === 0 ? (
+                      <div style={{ padding: SPACE.sm, borderRadius: 10, background: 'var(--card)', color: 'var(--muted)', fontSize: FONT.sm }}>
+                        <strong style={{ color: 'var(--ink)' }}>ยังไม่มี SDS ที่ผูกกับรายการนี้</strong>
+                        <div style={{ marginTop: 3 }}>จัดการ SDS จากปุ่ม SDS ในทะเบียนสารเคมี</div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'grid', gap: SPACE.xs }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <strong style={{ fontSize: FONT.sm, color: 'var(--ink)' }}>เวอร์ชัน SDS ที่ผูกกับรายการ</strong>
+                          <span style={{ fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>{versions.length} เวอร์ชัน</span>
                         </div>
-                      )
-                    })}
+                        {versions.map(item => {
+                          const product = productById.get(item.productId)
+                          return (
+                            <div key={item.id} style={{ padding: SPACE.sm, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                                <div style={{ minWidth: 0, flex: '1 1 280px' }}>
+                                  <strong style={{ color: 'var(--ink)' }}>{item.revisionLabel || 'ไม่ระบุฉบับ'}</strong>
+                                  {item.workflowOrigin === 'registry_v2' && <Badge color="purple" size="sm" style={{ marginLeft: 7 }}>จากทะเบียน</Badge>}
+                                  <div style={{ marginTop: 3, fontSize: FONT.sm, color: 'var(--muted)' }}>
+                                    {item.manufacturer || 'ไม่ระบุผู้ผลิต'} · {item.language || 'th'} · มีผล {item.effectiveOn || '—'}
+                                  </div>
+                                </div>
+                                <SdsStatusBadge status={item.status} />
+                              </div>
+
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, alignItems: 'center', flexWrap: 'wrap', marginTop: SPACE.xs }}>
+                                <GhsRow
+                                  codes={item.pictogramCodes}
+                                  hazardClassesTh={product?.hazardClassesTh ?? []}
+                                  size={30}
+                                />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
+                                    H {item.hStatements.length} · P {item.pStatements.length} · {item.fileId ? 'แนบไฟล์แล้ว' : 'ยังไม่แนบไฟล์'}
+                                  </span>
+                                  {item.fileId && (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      icon="eye"
+                                      onClick={() => setPreview({
+                                        url: `/api/admin/chemical-safety/sds/${item.id}/file`,
+                                        title: registryRow.canonicalName,
+                                      })}
+                                    >
+                                      เปิดไฟล์
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                              {item.reviewReason && (
+                                <div style={{ marginTop: SPACE.xs, fontSize: FONT.sm, color: 'var(--danger)' }}>เหตุผล: {item.reviewReason}</div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
-              </Card>
+              </div>
             )
           })}
-        </div>
+        </Card>
       )}
 
       {preview && (
@@ -258,6 +318,24 @@ function ChemicalSdsPanel({
 
 // ── คลังเอกสาร SDS แยกตามงาน ────────────────────────────────────────────────
 
+type DepartmentSdsFilter = 'all' | 'with-sds' | 'missing'
+
+function linkedFilesByHoldingId(files: DepartmentSdsGroupDTO['files']) {
+  const result = new Map<string, DepartmentSdsGroupDTO['files']>()
+  for (const file of files) {
+    const holdingId = file.registryLink.holdingId
+    if (!holdingId) continue
+    const linkedFiles = result.get(holdingId) ?? []
+    linkedFiles.push(file)
+    result.set(holdingId, linkedFiles)
+  }
+  return result
+}
+
+function legacyFilesNotLinkedToRegistry(files: DepartmentSdsGroupDTO['files']) {
+  return files.filter(file => file.source === 'current' && file.registryLink.status !== 'linked')
+}
+
 function DepartmentSdsPanel({
   groups, registry,
 }: {
@@ -265,12 +343,9 @@ function DepartmentSdsPanel({
   registry: ChemicalRegistryRow[]
 }) {
   const [openCode, setOpenCode] = useState<string | null>(null)
+  const [openSearch, setOpenSearch] = useState('')
+  const [openFilter, setOpenFilter] = useState<DepartmentSdsFilter>('all')
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
-
-  const totals = useMemo(() => ({
-    files: groups.reduce((sum, group) => sum + group.fileCount, 0),
-    published: groups.filter(group => group.status === 'published').length,
-  }), [groups])
 
   const registryByUnitId = useMemo(() => {
     const result = new Map<string, ChemicalRegistryRow[]>()
@@ -282,6 +357,28 @@ function DepartmentSdsPanel({
     return result
   }, [registry])
 
+  const totals = useMemo(() => {
+    return groups.reduce((summary, group) => {
+      const rows = group.chemicalUnitId ? registryByUnitId.get(group.chemicalUnitId) ?? [] : []
+      const legacyBacklog = legacyFilesNotLinkedToRegistry(group.files).length
+      summary.registryRows += rows.length
+      summary.withSds += rows.filter(row => row.hasSdsFile).length
+      summary.missingSds += rows.filter(row => !row.hasSdsFile).length
+      summary.legacyBacklog += legacyBacklog
+      return summary
+    }, {
+      registryRows: 0,
+      withSds: 0,
+      missingSds: 0,
+      legacyBacklog: 0,
+    })
+  }, [groups, registryByUnitId])
+
+  useEffect(() => {
+    setOpenSearch('')
+    setOpenFilter('all')
+  }, [openCode])
+
   return (
     <>
       <SdsPanelIntro
@@ -292,35 +389,61 @@ function DepartmentSdsPanel({
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>
         <Stat label="งานทั้งหมด" value={groups.length} icon="users" color="blue" />
-        <Stat label="เผยแพร่แล้ว" value={totals.published} icon="globe" color="green" />
-        <Stat label="เอกสารทั้งหมด" value={totals.files} icon="doc" color="purple" />
+        <Stat label="รายการทะเบียน" value={totals.registryRows} icon="clipboard" color="purple" />
+        <Stat label="มี SDS" value={totals.withSds} icon="check" color="green" />
+        <Stat label="ยังไม่มี SDS" value={totals.missingSds} icon="alert" color="amber" />
       </div>
 
-      <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, borderLeft: '4px solid var(--primary)' }}>
+      <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, background: 'var(--surface-2)' }}>
         <div style={{ display: 'flex', gap: SPACE.xs, alignItems: 'flex-start', fontSize: FONT.md }}>
-          <Icon name="alert" size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+          <Icon name="info" size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
           <span>
-            หน้านี้ใช้ตรวจสอบรายการและสถานะเท่านั้น การแก้ไขหรือแนบ SDS ต้องเปิดจากแถวสารเคมีในทะเบียน
-            และการเผยแพร่ทั้งงานต้องเลือกหน่วยงานในทะเบียนสารเคมีก่อน
+            รายการด้านล่างยึดทะเบียนสารเคมีเป็นหลัก จึงแสดงสารที่มีและยังไม่มี SDS ในชุดเดียวกัน
+            ส่วนป้ายเผยแพร่เป็นสถานะของงาน และการจัดการทั้งหมดทำจากทะเบียนสารเคมี
           </span>
+          {totals.legacyBacklog > 0 && (
+            <span style={{ color: 'var(--warning)', fontWeight: 700 }}>ไฟล์ legacy รอผูกทะเบียน {totals.legacyBacklog} ฉบับ</span>
+          )}
         </div>
       </Card>
 
       <div style={{ display: 'grid', gap: SPACE.sm }}>
         {groups.map(group => {
           const registryRows = group.chemicalUnitId ? registryByUnitId.get(group.chemicalUnitId) ?? [] : []
+          const legacyFiles = legacyFilesNotLinkedToRegistry(group.files)
+          const linkedFiles = linkedFilesByHoldingId(group.files)
           const open = openCode === group.code
+          const searchNeedle = openSearch.trim().toLocaleLowerCase('th')
+          const filteredRegistryRows = registryRows.filter(row => {
+            const matchesStatus = openFilter === 'all'
+              || (openFilter === 'with-sds' && row.hasSdsFile)
+              || (openFilter === 'missing' && !row.hasSdsFile)
+            if (!matchesStatus) return false
+            if (!searchNeedle) return true
+            return [row.canonicalName, row.casNumber, row.unitName, row.positionCode]
+              .filter(Boolean)
+              .join(' ')
+              .toLocaleLowerCase('th')
+              .includes(searchNeedle)
+          })
+          const canOpen = registryRows.length > 0 || group.files.length > 0
           return (
             <Card key={group.code} padding={SPACE.md}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                <div>
+                <div style={{ minWidth: 0, flex: '1 1 360px' }}>
                   <h2 style={{ margin: 0, fontSize: FONT.lg, color: 'var(--ink)' }}>{group.department}</h2>
-                  <p style={{ margin: '4px 0 0', fontSize: FONT.base, color: 'var(--muted)', ...tabularNums }}>
-                    {group.fileCount} ฉบับ
+                  <p style={{ margin: '5px 0 0', fontSize: FONT.base, color: 'var(--muted)', ...tabularNums }}>
+                    {registryRows.length} รายการทะเบียน · {registryRows.filter(row => row.hasSdsFile).length} มี SDS · {registryRows.filter(row => !row.hasSdsFile).length} ยังไม่มี SDS
                     {group.publishedAt && group.publishedByName && (
                       <> · เผยแพร่โดย {group.publishedByName} เมื่อ {new Date(group.publishedAt).toLocaleDateString('th-TH')}</>
                     )}
                   </p>
+                  {group.fileCount > 0 && (
+                    <p style={{ margin: '4px 0 0', fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
+                      ไฟล์ในคลังเดิม {group.fileCount} ฉบับ
+                      {legacyFiles.length > 0 && <> · รอผูกทะเบียน {legacyFiles.length} ฉบับ</>}
+                    </p>
+                  )}
                   {group.chemicalUnitId && <span style={{ display: 'inline-flex', marginTop: 6, fontSize: FONT.sm, color: 'var(--primary)', fontWeight: 700 }}>ทะเบียน: storageScope = department · ไม่มีตำแหน่งจัดเก็บ</span>}
                 </div>
                 <div style={{ display: 'flex', gap: SPACE.xs, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -328,36 +451,14 @@ function DepartmentSdsPanel({
                   <Button
                     variant="secondary"
                     icon={open ? 'chevDown' : 'chevRight'}
-                    disabled={group.fileCount === 0}
+                    disabled={!canOpen}
                     onClick={() => setOpenCode(open ? null : group.code)}
+                    title={open ? `ซ่อนรายการของ ${group.department}` : `ดูรายการของ ${group.department}`}
                   >
-                    {open ? 'ซ่อนรายการ' : 'ดูรายการ'}
+                    {open ? 'ซ่อนรายการ' : `ดูรายการ${registryRows.length > 0 ? ` (${registryRows.length})` : ''}`}
                   </Button>
                 </div>
               </div>
-
-              {registryRows.length > 0 && (
-                <div style={{ marginTop: SPACE.sm, padding: SPACE.sm, borderRadius: 10, background: 'var(--surface-2)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <strong style={{ fontSize: FONT.base }}>รายการทะเบียนของงาน</strong>
-                    <span style={{ fontSize: FONT.sm, color: 'var(--muted)' }}>{registryRows.length} รายการ · SDS เริ่มจากทะเบียนสารเคมี</span>
-                  </div>
-                  <div style={{ display: 'grid', gap: 4, marginTop: 6 }}>
-                    {registryRows.map(row => (
-                      <div key={row.holdingId} style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <span style={{ fontSize: FONT.sm }}>{row.canonicalName}</span>
-                        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: FONT.xs, color: row.hasSdsFile ? 'var(--success)' : 'var(--warning)' }}>
-                          {row.hasSdsFile ? 'มีไฟล์ SDS' : 'ยังไม่มีไฟล์ SDS'}
-                          {row.inventoryCaptureStatus === 'sds_only' && <Badge color="amber" size="sm">SDS-only — ยังไม่ระบุปริมาณ</Badge>}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <p style={{ margin: '6px 0 0', fontSize: FONT.xs, color: 'var(--muted)' }}>
-                    แก้ไขข้อมูลและแนบไฟล์ SDS จากหน้าทะเบียนสารเคมีของรายการนั้น
-                  </p>
-                </div>
-              )}
 
               {group.fileCount === 0 && (
                 <p style={{ margin: `${SPACE.xs}px 0 0`, fontSize: FONT.sm, color: 'var(--warning)' }}>
@@ -365,35 +466,137 @@ function DepartmentSdsPanel({
                 </p>
               )}
 
-              {open && group.files.length > 0 && (
-                <div style={{ marginTop: SPACE.sm, borderTop: '1px solid var(--border)', paddingTop: SPACE.sm }}>
-                  <div style={{ display: 'grid', gap: 4, maxHeight: 420, overflowY: 'auto' }}>
-                    {group.files.map(file => (
-                      <div
-                        key={file.id}
-                        style={{
-                          display: 'flex', justifyContent: 'space-between', gap: SPACE.xs,
-                          alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px', borderRadius: 8,
-                        }}
+              {open && registryRows.length > 0 && (
+                <div style={{ marginTop: SPACE.md, borderTop: '1px solid var(--border)', paddingTop: SPACE.md }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: FONT.base, color: 'var(--ink)' }}>รายการทะเบียนของงาน</h3>
+                      <p style={{ margin: '3px 0 0', fontSize: FONT.sm, color: 'var(--muted)' }}>
+                        รายการเดียวกับทะเบียนสารเคมี · แสดง {filteredRegistryRows.length} จาก {registryRows.length} รายการ
+                      </p>
+                    </div>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: FONT.sm, color: 'var(--muted)', ...tabularNums }}>
+                      <Icon name="shieldCheck" size={14} style={{ color: 'var(--primary)' }} /> อ่านอย่างเดียว
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: SPACE.sm, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: SPACE.sm }}>
+                    <label style={{ display: 'grid', gap: 4, flex: '1 1 260px', minWidth: 220, fontSize: FONT.xs, color: 'var(--muted)', fontWeight: 700 }} htmlFor={`department-sds-search-${group.code}`}>
+                      ค้นหาในรายการนี้
+                      <Input
+                        id={`department-sds-search-${group.code}`}
+                        icon="search"
+                        size="md"
+                        value={openSearch}
+                        onChange={setOpenSearch}
+                        placeholder="ค้นหารายการในงาน"
+                        style={{ maxWidth: 440 }}
+                      />
+                    </label>
+                    <label style={{ display: 'grid', gap: 4, minWidth: 170, fontSize: FONT.xs, color: 'var(--muted)', fontWeight: 700 }} htmlFor={`department-sds-filter-${group.code}`}>
+                      แสดงสถานะ
+                      <select
+                        id={`department-sds-filter-${group.code}`}
+                        value={openFilter}
+                        onChange={event => setOpenFilter(event.target.value as DepartmentSdsFilter)}
+                        style={{ height: 38, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', color: 'var(--ink)', font: 'inherit', fontSize: 13 }}
                       >
-                        <span style={{ fontSize: FONT.base, minWidth: 0 }}>
-                          {file.displayName}
-                          {file.source === 'registry_v2' && <Badge color="purple" size="sm" style={{ marginLeft: 6 }}>จากทะเบียน</Badge>}
+                        <option value="all">ทั้งหมด ({registryRows.length})</option>
+                        <option value="with-sds">มี SDS ({registryRows.filter(row => row.hasSdsFile).length})</option>
+                        <option value="missing">ยังไม่มี SDS ({registryRows.filter(row => !row.hasSdsFile).length})</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  {filteredRegistryRows.length === 0 ? (
+                    <div style={{ marginTop: SPACE.sm, padding: SPACE.md, borderRadius: 10, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: FONT.sm }}>
+                      ไม่พบรายการทะเบียนที่ตรงกับตัวกรองนี้
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 6, maxHeight: 520, overflowY: 'auto', marginTop: SPACE.sm }}>
+                      {filteredRegistryRows.map(row => {
+                        const files = linkedFiles.get(row.holdingId) ?? []
+                        const file = files[0]
+                        return (
+                          <div key={row.holdingId} style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, alignItems: 'center', flexWrap: 'wrap', padding: '9px 10px', border: '1px solid var(--border)', borderRadius: 9, background: 'var(--card)' }}>
+                            <div style={{ minWidth: 0, flex: '1 1 280px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <strong style={{ fontSize: FONT.base, color: 'var(--ink)' }}>{row.canonicalName}</strong>
+                                {row.inventoryCaptureStatus === 'sds_only' && <Badge color="amber" size="sm">SDS-only — ยังไม่ระบุปริมาณ</Badge>}
+                              </div>
+                              <div style={{ marginTop: 3, fontSize: FONT.xs, color: 'var(--muted)' }}>
+                                {row.casNumber ? `CAS ${row.casNumber}` : 'ไม่ระบุ CAS'} · {row.unitName}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, flexWrap: 'wrap' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: FONT.sm, color: row.hasSdsFile ? 'var(--success)' : 'var(--warning)', fontWeight: 700 }}>
+                                <Icon name={row.hasSdsFile ? 'check' : 'alert'} size={14} />
+                                {row.hasSdsFile ? 'มี SDS' : 'ยังไม่มี SDS'}
+                              </span>
+                              {files.length > 1 && <Badge color="purple" size="sm">{files.length} ไฟล์</Badge>}
+                              {file && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  icon="eye"
+                                  title={`เปิดไฟล์ SDS ของ ${row.canonicalName}`}
+                                  onClick={() => setPreview({ url: file.fileUrl, title: row.canonicalName })}
+                                >
+                                  เปิด SDS
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  <p style={{ margin: `${SPACE.sm}px 0 0`, fontSize: FONT.xs, color: 'var(--muted)' }}>
+                    ต้องการแก้ไขข้อมูลหรือแนบไฟล์ ให้เปิดรายการนั้นจากหน้าทะเบียนสารเคมี
+                  </p>
+                </div>
+              )}
+
+              {open && legacyFiles.length > 0 && (
+                <div style={{ marginTop: SPACE.md, borderTop: '1px solid var(--border)', paddingTop: SPACE.md }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: FONT.base, color: 'var(--ink)' }}>ไฟล์ legacy ที่ยังไม่เข้าทะเบียน</h3>
+                      <p style={{ margin: '3px 0 0', fontSize: FONT.sm, color: 'var(--muted)' }}>
+                        ไฟล์กลุ่มนี้ยังไม่มี holdingId จึงไม่ถูกนำไปแสดงซ้ำกับรายการทะเบียนด้านบน
+                      </p>
+                    </div>
+                    <Badge color="amber" size="sm">{legacyFiles.length} ไฟล์</Badge>
+                  </div>
+                  <div style={{ display: 'grid', gap: 6, marginTop: SPACE.sm }}>
+                    {legacyFiles.map(file => (
+                      <div key={file.id} style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.sm, alignItems: 'center', flexWrap: 'wrap', padding: '9px 10px', border: '1px solid var(--border)', borderRadius: 9, background: 'var(--surface-2)' }}>
+                        <div style={{ minWidth: 0, flex: '1 1 280px' }}>
+                          <strong style={{ fontSize: FONT.base, color: 'var(--ink)' }}>{file.displayName}</strong>
                           {file.displayNameEdited && <Badge color="blue" size="sm" style={{ marginLeft: 6 }}>แก้ชื่อแล้ว</Badge>}
-                          {file.registryLink.status === 'pending' && <Badge color="amber" size="sm" style={{ marginLeft: 6 }}>รอเพิ่มเข้าทะเบียน</Badge>}
-                          {file.registryLink.status === 'linked' && <Badge color="green" size="sm" style={{ marginLeft: 6 }}>อยู่ในทะเบียน · ผูกไฟล์แล้ว</Badge>}
-                        </span>
-                        <span style={{ display: 'flex', gap: 4 }}>
-                          <Button
-                            variant="ghost"
-                            icon="eye"
-                            title="เปิดไฟล์"
-                            onClick={() => setPreview({ url: file.fileUrl, title: file.displayName })}
-                          />
-                        </span>
+                          <div style={{ marginTop: 3, fontSize: FONT.xs, color: 'var(--muted)' }}>
+                            {file.registryLink.status === 'pending' ? 'รอเพิ่มเข้าทะเบียน' : 'ยังไม่ผูกกับรายการทะเบียน'}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="eye"
+                          title={`เปิดไฟล์ ${file.displayName}`}
+                          onClick={() => setPreview({ url: file.fileUrl, title: file.displayName })}
+                        >
+                          เปิดไฟล์
+                        </Button>
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {open && registryRows.length === 0 && legacyFiles.length === 0 && (
+                <div style={{ marginTop: SPACE.md, padding: SPACE.md, borderTop: '1px solid var(--border)', color: 'var(--muted)', fontSize: FONT.sm }}>
+                  งานนี้ยังไม่มีรายการทะเบียนหรือไฟล์ SDS ให้ตรวจสอบ
                 </div>
               )}
             </Card>

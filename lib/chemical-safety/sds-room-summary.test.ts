@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict'
-import { sdsItemsForHolding, summarizeRoomSds } from './sds-room-summary'
+import { currentSdsItemsForHolding, sdsItemsForHolding, summarizeRoomSds } from './sds-room-summary'
 
 const items = [
   { sourceHoldingId: 'holding-1', linkedHoldingIds: [], status: 'approved' as const },
   { sourceHoldingId: 'holding-1', linkedHoldingIds: [], status: 'draft' as const },
+  { sourceHoldingId: 'holding-1', linkedHoldingIds: [], status: 'superseded' as const },
   { sourceHoldingId: null, linkedHoldingIds: ['holding-2'], status: 'approved' as const },
 ]
 
-assert.equal(sdsItemsForHolding(items, 'holding-1').length, 2)
+assert.equal(sdsItemsForHolding(items, 'holding-1').length, 3)
+assert.equal(currentSdsItemsForHolding(items, 'holding-1').length, 2)
 assert.equal(sdsItemsForHolding(items, 'holding-2').length, 1)
 assert.equal(sdsItemsForHolding(items, 'holding-3').length, 0)
 

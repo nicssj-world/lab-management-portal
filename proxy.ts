@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { RETURN_PATH_PARAM, isAuthServiceUnavailable, isProtectedPath, safeReturnPath } from '@/lib/auth/session-guard'
+import { RETURN_PATH_PARAM, isAuthServiceUnavailable, isProtectedPath, safeReturnPath, shouldRunAuthProxy } from '@/lib/auth/session-guard'
 import { legacyContractRedirect } from '@/lib/contracts-cutover'
 
 function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) {
@@ -33,7 +33,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  if (!isProtectedPath(path)) {
+  if (!shouldRunAuthProxy(path, request.cookies.getAll().map((cookie) => cookie.name))) {
     return NextResponse.next()
   }
 
@@ -83,6 +83,9 @@ export async function proxy(request: NextRequest) {
       const unauthorizedResponse = NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       response.cookies.getAll().forEach((cookie) => unauthorizedResponse.cookies.set(cookie))
       return unauthorizedResponse
+    }
+    if (!isProtectedPath(path)) {
+      return response
     }
     // ฝากปลายทางเดิมไว้ให้หน้า login พากลับ — ไม่งั้นลิงก์ตรงและ QR ที่แปะไว้ในแล็บ
     // จะพาไป dashboard ทุกครั้งแล้วผู้ใช้ต้องไปหาหน้าที่ต้องการเอง

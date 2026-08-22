@@ -11,12 +11,13 @@ interface InputProps {
   size?: 'sm' | 'md' | 'lg'
   style?: React.CSSProperties
   disabled?: boolean
+  id?: string
   name?: string
   required?: boolean
   rightElement?: React.ReactNode
 }
 
-export function Input({ value, onChange, placeholder, icon, type = 'text', size = 'md', style, disabled, name, required, rightElement }: InputProps) {
+export function Input({ value, onChange, placeholder, icon, type = 'text', size = 'md', style, disabled, id, name, required, rightElement }: InputProps) {
   const heights: Record<string, number> = { sm: 32, md: 38, lg: 44 }
   return (
     <div style={{ position: 'relative', ...style }}>
@@ -25,6 +26,7 @@ export function Input({ value, onChange, placeholder, icon, type = 'text', size 
       )}
       <input
         type={type}
+        id={id}
         name={name}
         value={value ?? ''}
         placeholder={placeholder}

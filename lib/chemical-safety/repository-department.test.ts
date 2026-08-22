@@ -46,6 +46,16 @@ async function main() {
     /status:\s*'unlinked'|status:\s*'pending'|status:\s*'linked'/,
     'department SDS registry-link DTO must retain only the current workflow states',
   )
+  assert.match(
+    departmentRepository,
+    /buildDepartmentSdsDedupPlan/,
+    'department SDS repository must canonicalize duplicate files per holding',
+  )
+  assert.match(
+    departmentRepository,
+    /canonicalDepartmentSdsLinkIds/,
+    'department SDS repository must show only the canonical link',
+  )
   console.log('chemical-safety department registry repository: ok')
 }
 
