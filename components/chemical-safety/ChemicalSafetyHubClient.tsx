@@ -31,6 +31,7 @@ import { SdsManagementClient, type SdsProductInfo } from './SdsManagementClient'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
 import { FONT, SDS_ONLY_CAPTURE_LABEL, SPACE, ZONE_META, tabularNums } from './shared/tokens'
 import {
+  DepartmentPublishBadge,
   GhsRow,
   PositionChip,
   SdsStateBadge,
@@ -214,15 +215,41 @@ export function ChemicalSafetyHubClient({
   const [busyProductId, setBusyProductId] = useState<string | null>(null)
   const [busyHoldingId, setBusyHoldingId] = useState<string | null>(null)
   const [holdingDeleteImpact, setHoldingDeleteImpact] = useState<ChemicalHoldingDeleteImpact | null>(null)
+  const [departmentPublicationBusyCode, setDepartmentPublicationBusyCode] = useState<string | null>(null)
 
   const canPropose = canManageChemicals || canProposeUnitIds.length > 0
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products])
   const selectedUnitId = scopeFilter.startsWith('unit:') ? scopeFilter.slice('unit:'.length) : ''
   const selectedRoomId = scopeFilter.startsWith('room:') ? scopeFilter.slice('room:'.length) : ''
+  const selectedDepartment = useMemo(
+    () => selectedUnitId
+      ? departmentSds.find(group => group.chemicalUnitId === selectedUnitId) ?? null
+      : null,
+    [departmentSds, selectedUnitId],
+  )
 
   function notify(message: string, ok = true) {
     add(message, ok)
     if (ok) router.refresh()
+  }
+
+  async function setDepartmentPublicationStatus(status: 'draft' | 'published') {
+    if (!selectedDepartment) return
+    setDepartmentPublicationBusyCode(selectedDepartment.code)
+    try {
+      const response = await fetch('/api/admin/chemical-safety/registry/department-publication', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ departmentCode: selectedDepartment.code, status }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'ดำเนินการเผยแพร่ทั้งงานไม่สำเร็จ')
+      notify(status === 'published' ? 'เผยแพร่ทั้งงานจากทะเบียนสารเคมีแล้ว' : 'ยกเลิกเผยแพร่ทั้งงานแล้ว')
+    } catch (caught) {
+      notify(caught instanceof Error ? caught.message : 'ดำเนินการเผยแพร่ทั้งงานไม่สำเร็จ', false)
+    } finally {
+      setDepartmentPublicationBusyCode(null)
+    }
   }
 
   /**
@@ -635,6 +662,43 @@ export function ChemicalSafetyHubClient({
             </Button>
           </Card>
 
+          {selectedDepartment && (
+            <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, borderLeft: '4px solid var(--primary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, flexWrap: 'wrap' }}>
+                  <Icon name="globe" size={16} style={{ color: 'var(--primary)' }} />
+                  <strong>การเผยแพร่ทั้งงาน</strong>
+                  <span style={{ color: 'var(--muted)', fontSize: FONT.sm }}>{selectedDepartment.department}</span>
+                  <DepartmentPublishBadge status={selectedDepartment.status} />
+                </div>
+                {publishableDepartmentCodes.includes(selectedDepartment.code) && (
+                  selectedDepartment.status === 'published' ? (
+                    <Button
+                      variant="danger"
+                      icon="lock"
+                      disabled={departmentPublicationBusyCode === selectedDepartment.code}
+                      onClick={() => void setDepartmentPublicationStatus('draft')}
+                    >
+                      ยกเลิกเผยแพร่ทั้งงาน
+                    </Button>
+                  ) : (
+                    <Button
+                      icon="globe"
+                      disabled={departmentPublicationBusyCode === selectedDepartment.code || selectedDepartment.fileCount === 0}
+                      title={selectedDepartment.fileCount === 0 ? 'งานนี้ยังไม่มี SDS จากทะเบียนสารเคมีให้เผยแพร่' : undefined}
+                      onClick={() => void setDepartmentPublicationStatus('published')}
+                    >
+                      เผยแพร่ทั้งงาน
+                    </Button>
+                  )
+                )}
+              </div>
+              <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>
+                แก้ไขข้อมูลและแนบ SDS ที่แถวสารเคมีด้านล่าง ส่วนการเผยแพร่ทั้งงานทำจากทะเบียนหน้านี้
+              </p>
+            </Card>
+          )}
+
           <Card className="chemical-filter-panel" padding={0}>
             <div className="chemical-filter-label"><Icon name="filter" size={13} /> หน่วยงาน</div>
             <label className="chemical-unit-select">
@@ -855,9 +919,6 @@ export function ChemicalSafetyHubClient({
           departmentRegistry={registry.filter(row => row.storageScope === 'department')}
           products={sdsProducts}
           departments={departmentSds}
-          canManage={canManageChemicals}
-          canEditUnitIds={canProposeUnitIds}
-          publishableDepartmentCodes={publishableDepartmentCodes}
         />
       )}
 

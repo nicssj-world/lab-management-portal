@@ -130,9 +130,8 @@ assert.match(
   /getPublicDepartmentSdsFile[\s\S]*?status !== 'published'[\s\S]*?return null/,
   'department SDS files are only served for published departments',
 )
-assert.match(departmentSdsUploadApi, /requireDepartmentSdsPublisher/, 'อัปโหลด SDS แยกตามงานต้องตรวจสิทธิ์ผู้จัดการงาน')
-assert.match(departmentSdsUploadApi, /department_sds_creation_closed/, 'endpoint เดิมต้องปิดการสร้างไฟล์ SDS แยกตามงานใหม่')
-assert.match(departmentSdsUploadApi, /status:\s*409/, 'การสร้าง legacy entry ใหม่ต้องตอบ conflict')
+assert.match(departmentSdsUploadApi, /department_sds_read_only/, 'endpoint เดิมต้องปิดการเขียน SDS แยกตามงาน')
+assert.match(departmentSdsUploadApi, /status:\s*410/, 'endpoint read-only ต้องตอบ Gone')
 assert.doesNotMatch(departmentSdsUploadApi, /PutObjectCommand/, 'endpoint legacy ที่ปิดแล้วต้องไม่อัปโหลดไฟล์ใหม่')
 assert.match(adminDepartmentSdsFileApi, /requireChemicalViewer/, 'เจ้าหน้าที่ต้องเปิดดู SDS แยกตามงานได้แม้งานยังเป็นฉบับร่าง')
 assert.match(adminDepartmentSdsFileApi, /chemical_department_sds/, 'route เปิดไฟล์เจ้าหน้าที่ต้องค้นจากรายการ SDS แยกตามงาน')

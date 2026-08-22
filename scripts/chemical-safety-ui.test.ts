@@ -92,17 +92,9 @@ const sdsPdfViewerPath = join(COMPONENT_DIR, 'SdsPdfViewerModal.tsx')
 assert.ok(existsSync(sdsPdfViewerPath), 'SDS PDF viewer modal must exist')
 const sdsPdfViewerSource = existsSync(sdsPdfViewerPath) ? readFileSync(sdsPdfViewerPath, 'utf8') : ''
 assert.ok(!sdsSource.includes('DepartmentSdsUploadModal'), 'SDS แยกตามงานต้องปิดการเพิ่มเอกสาร legacy ใหม่')
-assert.ok(sdsSource.includes('แก้ไขชื่อ'), 'SDS แยกตามงานต้องมีปุ่มแก้ไขชื่อเอกสาร')
+assert.doesNotMatch(sdsSource, /fetch\(/, 'SDS แยกตามงานต้องเป็น read-only')
+assert.doesNotMatch(sdsSource, /แก้ไขชื่อ|แทนที่ไฟล์|ลบเอกสาร|เพิ่มเข้าทะเบียนสารเคมี/, 'SDS แยกตามงานต้องไม่มีปุ่ม mutation')
 assert.doesNotMatch(sdsSource, /registryLink\.status === 'registered'/, 'SDS แยกตามงานต้องไม่ใช้ workflow เทียบชื่อแบบเดิม')
-assert.equal(
-  sdsSource.match(/disabled=\{file\.registryLink\.status === 'linked'\}/g)?.length,
-  2,
-  'ไฟล์ที่ผูกทะเบียนแล้วต้องยังแสดงปุ่มแทนที่และลบแบบปิดใช้งานทั้งสองปุ่ม',
-)
-assert.ok(
-  sdsSource.includes('ไฟล์นี้ผูกกับทะเบียนสารเคมีแล้ว'),
-  'ปุ่มที่ปิดใช้งานต้องอธิบายเหตุผลว่ามีการผูกไฟล์กับทะเบียนแล้ว',
-)
 assert.ok(!sdsSource.includes('DepartmentSdsLinkModal'), 'SDS แยกตามงานต้องไม่เปิด modal ของ workflow เดิม')
 assert.ok(sdsSource.includes('departmentRegistry'), 'SDS แยกตามงานต้องรับรายการทะเบียนจาก workflow ใหม่')
 assert.ok(sdsSource.includes('การแก้ไข SDS ให้ทำในทะเบียนสารเคมี'), 'แท็บ SDS แยกตามงานต้องแยกการเผยแพร่ออกจากการแก้ไข SDS')

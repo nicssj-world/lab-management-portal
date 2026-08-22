@@ -93,12 +93,16 @@ assert.ok(publicationRoute.includes('requireChemicalCustodian'))
 assert.ok(!publicationRoute.includes('destination:'), 'the route must not accept a client-selected destination')
 
 const legacyUpload = read('app/api/admin/chemical-safety/department-sds/[code]/upload/route.ts')
-assert.ok(legacyUpload.includes('department_sds_creation_closed'))
-assert.ok(legacyUpload.includes('{ status: 409 }'))
+assert.ok(legacyUpload.includes('department_sds_read_only'))
+assert.ok(legacyUpload.includes('{ status: 410 }'))
 
 const departmentPublish = read('app/api/admin/chemical-safety/department-sds/[code]/publish/route.ts')
-assert.ok(departmentPublish.includes("rpc('set_chemical_sds_department_publication_status'"))
-assert.doesNotMatch(departmentPublish, /\.from\('chemical_sds_departments'\)\s*\.update/)
+assert.match(departmentPublish, /department_sds_read_only/)
+assert.match(departmentPublish, /status:\s*410/)
+
+const registryDepartmentPublish = read('app/api/admin/chemical-safety/registry/department-publication/route.ts')
+assert.ok(registryDepartmentPublish.includes("rpc('set_chemical_sds_department_publication_status'"))
+assert.ok(registryDepartmentPublish.includes('requireDepartmentSdsPublisher'))
 
 const hub = read('components/chemical-safety/ChemicalSafetyHubClient.tsx')
 assert.ok(hub.includes('SdsEditorModal'), 'the registry must stay the only place SDS content is edited')
@@ -107,7 +111,8 @@ assert.ok(hub.includes('publicationStatus'), 'registry rows must display publica
 
 const departmentSds = read('components/chemical-safety/SdsManagementClient.tsx')
 assert.ok(!departmentSds.includes('DepartmentSdsUploadModal'), 'direct creation of new legacy files must be removed')
-assert.ok(departmentSds.includes('แก้ไขชื่อ') && departmentSds.includes('แทนที่ไฟล์'), 'legacy maintenance must remain')
+assert.doesNotMatch(departmentSds, /fetch\(/, 'SDS views must not mutate department SDS data')
+assert.doesNotMatch(departmentSds, /แก้ไขชื่อ|แทนที่ไฟล์|ลบเอกสาร|เพิ่มเข้าทะเบียนสารเคมี/)
 
 const publicRepository = read('lib/chemical-safety/public.ts')
 assert.ok(publicRepository.includes('chemical_sds_publications'), 'public SDS results must include registry-v2 publications')

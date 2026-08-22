@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the chemical registry the single operational entry point for every room and department SDS workflow, while keeping the two SDS tabs as filtered/read-only views and publication tools.
+**Goal:** Make the chemical registry the single operational entry point for every room and department SDS workflow, while keeping the two SDS tabs as filtered/read-only views. The whole-work publication action remains available from the registry.
 
-**Architecture:** `chemical_sds_versions` remains the shared version table. A version is resolved to a registry holding through `source_holding_id` or the existing department link, so the registry row is the only place that creates, edits, submits, reviews, and publishes an SDS. The room and department tabs display scoped results; the department tab retains only legacy-linking and department-publication actions needed for cutover.
+**Architecture:** `chemical_sds_versions` remains the shared version table. A version is resolved to a registry holding through `source_holding_id` or the existing department link, so the registry row is the only place that creates, edits, and auto-publishes an SDS. The registry is also the only place that changes whole-work publication status. The room and department tabs display scoped results only; legacy department mutation endpoints remain as explicit read-only 410 responses.
 
 **Tech Stack:** Next.js 16.2.6 App Router, React 19, TypeScript, Supabase repository, Node `assert` + `tsx` tests.
 
@@ -13,7 +13,7 @@
 - Never use product-wide SDS fallback when a holding or department link can identify the source.
 - Keep room SDS and department SDS out of each other's filtered view.
 - Do not delete existing SDS files, versions, department records, or links.
-- Existing legacy department files may still be linked to the registry as a migration operation.
+- Existing legacy department files remain visible for migration/read-only inspection; new linking, replacement, rename, deletion, and upload actions do not originate from the SDS tabs.
 - Workflow status cards and submit/review actions belong on `ทะเบียนสารเคมี` only.
 
 ### Task 1: Add tested holding-to-SDS resolution and workflow summary
@@ -53,7 +53,7 @@
 - [x] **Step 1: Add failing UI contract assertions** for a central workflow summary and for the room SDS panel having no submit/review actions.
 - [x] **Step 2: Run the UI contract test and verify it fails.**
 - [x] **Step 3: Add the registry-only workflow summary** using all central SDS items and point users to the SDS action in the registry table.
-- [x] **Step 4: Make the room SDS panel view-only.** Keep department legacy linking and group publication clearly labelled as cutover/publication operations, not SDS review.
+- [x] **Step 4: Make both SDS panels view-only.** Keep the whole-work publication action in the registry, next to the department filter, and direct all SDS edits/uploads back to the registry row.
 - [x] **Step 5: Run chemical-safety tests and verify the UI contract.**
 
 ### Task 4: Verify and hand off
