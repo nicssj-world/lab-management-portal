@@ -31,18 +31,29 @@ function notFound() {
 /**
  * หา unit ของ SDS ฉบับหนึ่งที่ยังไม่มี source_holding_id
  *
- * ข้อมูลเดิมบางฉบับผูกผ่าน department link หรือมีเพียง product-level
+ * ข้อมูลเดิมบางฉบับผูกผ่าน department link/publication หรือมีเพียง product-level
  * association อยู่แล้ว จึงต้อง resolve association เดิมโดยไม่ขยายสิทธิ์ข้ามหน่วยงาน
  */
 async function unitIdsForUnscopedVersion(versionId: string, productId: string): Promise<string[]> {
-  const linked = await supabaseAdmin
-    .from('chemical_department_chemical_links')
-    .select('holding_id')
-    .eq('sds_version_id', versionId)
+  const [linked, publications] = await Promise.all([
+    supabaseAdmin
+      .from('chemical_department_chemical_links')
+      .select('holding_id')
+      .eq('sds_version_id', versionId),
+    supabaseAdmin
+      .from('chemical_sds_publications')
+      .select('source_holding_id')
+      .eq('sds_version_id', versionId),
+  ])
   if (linked.error) throw linked.error
+  if (publications.error) throw publications.error
 
-  if ((linked.data ?? []).length > 0) {
-    const holdingIds = (linked.data ?? []).map(row => String(row.holding_id))
+  const holdingIds = [
+    ...(linked.data ?? []).map(row => String(row.holding_id)),
+    ...(publications.data ?? []).map(row => String(row.source_holding_id)),
+  ]
+
+  if (holdingIds.length > 0) {
     const holdings = await supabaseAdmin
       .from('chemical_inventory_holdings')
       .select('unit_id')

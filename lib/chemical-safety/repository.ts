@@ -251,7 +251,12 @@ export async function listChemicalRegistryWithSource(
     const room = placement.storageScope === 'room' && location ? roomById.get(location.room_id) : null
     if (!product || !unit || !unitProduct) continue
     const versions = sdsByProduct.get(product.id) ?? []
-    const holdingVersionIds = sdsVersionIdsForHolding(versions, snapshot.sdsDepartmentLinks, String(holding.id))
+    const holdingVersionIds = sdsVersionIdsForHolding(
+      versions,
+      snapshot.sdsDepartmentLinks,
+      String(holding.id),
+      snapshot.sdsPublications,
+    )
     const holdingVersions = versions.filter(item => holdingVersionIds.has(String(item.id)))
     const approved = holdingVersions
       .filter(item => item.status === 'approved')
@@ -525,7 +530,12 @@ export async function listChemicalProductRecords(): Promise<ChemicalProductDTO[]
 export async function listInternalSds(filters: InternalSdsFilters = {}, scope: 'all' | 'room' = 'all'): Promise<ChemicalSdsDTO[]> {
   const snapshot = await databaseSource.loadSnapshot()
   const roomVersionIds = scope === 'room'
-    ? roomChemicalSdsVersionIds(snapshot.sdsVersions, snapshot.holdings, snapshot.sdsDepartmentLinks)
+    ? roomChemicalSdsVersionIds(
+      snapshot.sdsVersions,
+      snapshot.holdings,
+      snapshot.sdsDepartmentLinks,
+      snapshot.sdsPublications,
+    )
     : null
   const linkedHoldingIdsByVersion = new Map<string, string[]>()
   for (const link of snapshot.sdsDepartmentLinks) {
@@ -535,6 +545,14 @@ export async function listInternalSds(filters: InternalSdsFilters = {}, scope: '
       ...(linkedHoldingIdsByVersion.get(versionId) ?? []),
       String(link.holding_id),
     ])
+  }
+  for (const publication of snapshot.sdsPublications) {
+    if (publication.sds_version_id == null || publication.source_holding_id == null) continue
+    const versionId = String(publication.sds_version_id)
+    const holdingId = String(publication.source_holding_id)
+    const relatedHoldingIds = linkedHoldingIdsByVersion.get(versionId) ?? []
+    if (!relatedHoldingIds.includes(holdingId)) relatedHoldingIds.push(holdingId)
+    linkedHoldingIdsByVersion.set(versionId, relatedHoldingIds)
   }
   return snapshot.sdsVersions.filter(row => {
     if (roomVersionIds && !roomVersionIds.has(String(row.id))) return false

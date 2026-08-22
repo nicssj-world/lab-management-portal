@@ -43,6 +43,24 @@ assert.deepEqual(
   'SDS ห้องสารเคมีต้องไม่รวม SDS ที่เป็นของงานหรือยังระบุปลายทางไม่ได้',
 )
 
+assert.deepEqual(
+  [...roomChemicalSdsVersionIds(
+    [
+      { id: 'publication-only-version', product_id: 'mixed-product', source_holding_id: null },
+    ],
+    [
+      { id: 'surviving-room-holding', product_id: 'mixed-product', unit_id: 'unit-a', storage_scope: 'room' },
+      { id: 'surviving-department-holding', product_id: 'mixed-product', unit_id: 'unit-a', storage_scope: 'department' },
+    ],
+    [],
+    [
+      { sds_version_id: 'publication-only-version', source_holding_id: 'surviving-room-holding', destination: 'room' },
+    ],
+  )].sort(),
+  ['publication-only-version'],
+  'SDS ที่ยังมี publication ของ holding ห้องต้องแสดง แม้ source holding เดิมถูกลบและ product มีหลาย scope',
+)
+
 const repositorySource = readFileSync('lib/chemical-safety/repository.ts', 'utf8')
 const createRouteSource = readFileSync('app/api/admin/chemical-safety/sds/route.ts', 'utf8')
 const workflowSource = readFileSync('lib/chemical-safety/sds-workflow.ts', 'utf8')
@@ -57,7 +75,7 @@ assert.match(
 assert.match(createRouteSource, /chemical_inventory_holdings[\s\S]*?holdingId/)
 assert.doesNotMatch(createRouteSource, /\.eq\('storage_scope', 'room'\)/)
 assert.match(workflowSource, /source_holding_id/)
-assert.match(repositorySource, /roomChemicalSdsVersionIds\(snapshot\.sdsVersions, snapshot\.holdings, snapshot\.sdsDepartmentLinks\)/)
+assert.match(repositorySource, /roomChemicalSdsVersionIds\([\s\S]*?snapshot\.sdsPublications/)
 assert.match(repositorySource, /const approved = holdingVersions[\s\S]*?item\.status === 'approved'/)
 assert.doesNotMatch(repositorySource, /const draft = holdingVersions\.find[\s\S]*\?\? versions\.find/)
 // เปิด SDS จากทะเบียนต้องหยิบเฉพาะฉบับที่ผูกกับรายการทะเบียนแถวนั้นโดยตรง

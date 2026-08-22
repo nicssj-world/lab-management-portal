@@ -16,23 +16,39 @@ export interface ChemicalDepartmentSdsVisibilityLinkRow {
   holding_id?: unknown
 }
 
+export interface ChemicalSdsPublicationVisibilityRow {
+  sds_version_id?: unknown
+  source_holding_id?: unknown
+  destination?: unknown
+}
+
 /**
  * Resolve the SDS versions owned by one registry holding.
  *
  * New registry rows point directly at the holding. Existing department rows
- * may point through chemical_department_chemical_links. Deliberately do not fall
- * back to product_id here: one product may be used by both a room and a
- * department, and that fallback is the source of the old cross-scope leak.
+ * may point through chemical_department_chemical_links. A retained shared
+ * version may instead be reachable through an explicit SDS publication after
+ * its original source holding is deleted. Deliberately do not fall back to
+ * product_id here: one product may be used by both a room and a department,
+ * and that fallback is the source of the old cross-scope leak.
  */
 export function sdsVersionIdsForHolding(
   versions: ChemicalSdsVisibilityVersionRow[],
   departmentLinks: ChemicalDepartmentSdsVisibilityLinkRow[],
   holdingId: string,
+  publications: ChemicalSdsPublicationVisibilityRow[] = [],
 ): Set<string> {
   const linkedVersionIds = new Set(
     departmentLinks
       .filter(link => link.holding_id != null && String(link.holding_id) === holdingId && link.sds_version_id != null)
       .map(link => String(link.sds_version_id)),
+  )
+  const publishedVersionIds = new Set(
+    publications
+      .filter(publication => publication.source_holding_id != null
+        && String(publication.source_holding_id) === holdingId
+        && publication.sds_version_id != null)
+      .map(publication => String(publication.sds_version_id)),
   )
 
   return new Set(
@@ -40,6 +56,7 @@ export function sdsVersionIdsForHolding(
       .filter(version => version.id != null && (
         (version.source_holding_id != null && String(version.source_holding_id) === holdingId)
         || linkedVersionIds.has(String(version.id))
+        || publishedVersionIds.has(String(version.id))
       ))
       .map(version => String(version.id)),
   )
@@ -73,8 +90,8 @@ export function roomChemicalProductIds(
  * คืนเฉพาะ version ที่ควรแสดงในแผง SDS ห้องสารเคมี
  *
  * version รุ่นใหม่ผูกกับ holding โดยตรง ส่วน version เดิมอาจไม่มี
- * source_holding_id จึงต้องใช้ลิงก์ SDS แยกตามงานก่อน และค่อย fallback ไปยัง
- * product ที่มี holding ในห้องเพื่อรองรับข้อมูลเดิมเฉพาะกรณีที่
+ * source_holding_id จึงต้องใช้ลิงก์ SDS แยกตามงานหรือ publication ที่ยังอ้างอิง
+ * อยู่ก่อน และค่อย fallback ไปยัง product ที่มี holding ในห้องเพื่อรองรับข้อมูลเดิมเฉพาะกรณีที่
  * product นั้นไม่มี holding ของงานปนอยู่ด้วย ถ้ามีทั้งสอง scope ต้องรอการผูก
  * source holding อย่าง explicit ก่อน จึงจะนำมาแสดงได้
  */
@@ -82,6 +99,7 @@ export function roomChemicalSdsVersionIds(
   versions: ChemicalSdsVisibilityVersionRow[],
   holdings: ChemicalHoldingSdsVisibilityRow[],
   departmentLinks: ChemicalDepartmentSdsVisibilityLinkRow[] = [],
+  publications: ChemicalSdsPublicationVisibilityRow[] = [],
 ): Set<string> {
   const holdingById = new Map(
     holdings
@@ -94,10 +112,19 @@ export function roomChemicalSdsVersionIds(
   for (const link of departmentLinks) {
     if (link.sds_version_id == null || link.holding_id == null) continue
     const versionId = String(link.sds_version_id)
-    linksByVersion.set(versionId, [
-      ...(linksByVersion.get(versionId) ?? []),
-      String(link.holding_id),
-    ])
+    const holdingIds = linksByVersion.get(versionId) ?? []
+    const holdingId = String(link.holding_id)
+    if (!holdingIds.includes(holdingId)) holdingIds.push(holdingId)
+    linksByVersion.set(versionId, holdingIds)
+  }
+
+  for (const publication of publications) {
+    if (publication.sds_version_id == null || publication.source_holding_id == null) continue
+    const versionId = String(publication.sds_version_id)
+    const holdingIds = linksByVersion.get(versionId) ?? []
+    const holdingId = String(publication.source_holding_id)
+    if (!holdingIds.includes(holdingId)) holdingIds.push(holdingId)
+    linksByVersion.set(versionId, holdingIds)
   }
 
   const visible = new Set<string>()
@@ -108,6 +135,9 @@ export function roomChemicalSdsVersionIds(
 
     if (sourceHoldingId) {
       if (holdingById.get(sourceHoldingId)?.storage_scope === 'room') visible.add(versionId)
+      if ((linksByVersion.get(versionId) ?? []).some(holdingId => holdingById.get(holdingId)?.storage_scope === 'room')) {
+        visible.add(versionId)
+      }
       continue
     }
 

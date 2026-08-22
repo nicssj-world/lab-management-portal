@@ -47,4 +47,13 @@ assert.ok(cascadeHoldingDeleteIndex >= 0 && fileDeleteIndex > cascadeHoldingDele
 assert.doesNotMatch(cascadeMigration, /delete\s+from\s+public\.chemical_(products|unit_products)/i)
 assert.match(cascadeMigration, /revoke all on function public\.delete_chemical_holding_cascade\(uuid, uuid\)[\s\S]*?grant execute[\s\S]*?to service_role/i)
 
+const followupMigrationPath = readdirSync('supabase/migrations')
+  .find(name => name.includes('chemical_safety_holding_delete_followup'))
+assert.ok(followupMigrationPath, 'follow-up migration must update publication cleanup and visibility')
+const followupMigration = readFileSync(`supabase/migrations/${followupMigrationPath}`, 'utf8')
+assert.match(followupMigration, /chemical_sds_departments/i, 'follow-up cascade must update department publication state')
+assert.match(followupMigration, /status\s*=\s*'draft'/i, 'last department publication must be unpublished')
+assert.match(followupMigration, /not exists[\s\S]*chemical_department_sds/i, 'department publication reset must respect remaining legacy SDS rows')
+assert.match(followupMigration, /not exists[\s\S]*chemical_sds_publications/i, 'department publication reset must respect remaining registry publications')
+
 console.log('chemical safety holding-delete migration contract passed')
