@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -10,6 +10,7 @@ import { certificateRenewalWindow, isLinkedQualityOccurrence, linkedQualityTaskH
 import { isWeekendDate } from '@/lib/quality-tasks/logic'
 import { isMonthlySafetySourceKey } from '@/lib/quality-tasks/monthly-safety'
 import { MonthlySafetyInspectionBoard } from './MonthlySafetyInspectionBoard'
+import { SafetyCommitteeManager, type SafetyCommitteeEditor, type SafetyCommitteeStaff } from './SafetyCommitteeManager'
 
 type Tab = 'overview' | 'monthly' | 'tasks' | 'calendar' | 'evidence' | 'certificates'
 type Person = { id: string; name: string; dept: string | null; role: string; position_title: string | null }
@@ -235,10 +236,11 @@ function SafetyEvidenceLightbox({ file, onClose }: { file: EvidenceItem; onClose
 }
 
 export function SafetyTaskHub({
-  actorId, isEditor, fiscalYear, range, initialOccurrences, templates, initialEvidence, initialCertificates, initialHolidays, people,
+  actorId, isEditor, isAdmin, fiscalYear, range, initialOccurrences, templates, initialEvidence, initialCertificates, initialHolidays, people, committeeStaff, initialEditors,
 }: {
   actorId: string
   isEditor: boolean
+  isAdmin: boolean
   fiscalYear: number
   range: { from: string; to: string }
   initialOccurrences: QualityTaskOccurrence[]
@@ -247,6 +249,8 @@ export function SafetyTaskHub({
   initialCertificates: SafetyCertificate[]
   initialHolidays: QualityTaskHoliday[]
   people: Person[]
+  committeeStaff: SafetyCommitteeStaff[]
+  initialEditors: SafetyCommitteeEditor[]
 }) {
   const [tab, setTab] = useState<Tab>('overview')
   const [occurrences, setOccurrences] = useState(initialOccurrences)
@@ -275,8 +279,11 @@ export function SafetyTaskHub({
   const [evidencePreview, setEvidencePreview] = useState<EvidenceItem | null>(null)
   const [collapsedEvidenceGroups, setCollapsedEvidenceGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(groupSafetyEvidence(initialEvidence).flatMap(group => [[group.key, true] as [string, boolean], ...group.children.map(child => [child.key, true] as [string, boolean])])))
   const [certificateOpen, setCertificateOpen] = useState(false)
+  const [committeeOpen, setCommitteeOpen] = useState(false)
+  const [committeeEditors, setCommitteeEditors] = useState(initialEditors)
   const [replaceCertificateId, setReplaceCertificateId] = useState<string | null>(null)
   const [certDraft, setCertDraft] = useState({ certificateType: '', documentNo: '', holderName: '', department: '', issuedOn: '', expiresOn: '', noExpiry: false, ownerId: '' })
+  const closeCommittee = useCallback(() => setCommitteeOpen(false), [])
 
   useEffect(() => {
     if (window.matchMedia('(max-width: 767px)').matches) setTab('monthly')
@@ -505,7 +512,7 @@ export function SafetyTaskHub({
           title="งานความปลอดภัยและหลักฐาน"
           subtitle="ติดตามกิจกรรม ข้อกำหนด เอกสารรับรอง และ CAPA ในรอบปีงบประมาณเดียวกัน"
           marginBottom={0}
-          actions={<><div className="safety-fiscal"><span>ปีงบประมาณ {fiscalYear}</span><strong>{thaiDate(range.from)} — {thaiDate(range.to)}</strong></div><Link href="/staff/lab-map/safety-assets" className="safety-link-button"><Icon name="shieldCheck" size={16} />ทะเบียนอุปกรณ์</Link>{isEditor && <Link href="/staff/safety/registry" className="safety-link-button"><Icon name="settings" size={16} />จัดการ Master Task</Link>}</>}
+          actions={<><div className="safety-fiscal"><span>ปีงบประมาณ {fiscalYear}</span><strong>{thaiDate(range.from)} — {thaiDate(range.to)}</strong></div><Link href="/staff/lab-map/safety-assets" className="safety-link-button"><Icon name="shieldCheck" size={16} />ทะเบียนอุปกรณ์</Link><button type="button" className="safety-link-button safety-committee-trigger" onClick={() => setCommitteeOpen(true)} aria-haspopup="dialog"><Icon name="users" size={16} />คณะทำงานความปลอดภัย<span aria-label={`${committeeEditors.length} คน`}>{committeeEditors.length}</span></button>{isEditor && <Link href="/staff/safety/registry" className="safety-link-button"><Icon name="settings" size={16} />จัดการ Master Task</Link>}</>}
         />
       </section>
 
@@ -649,6 +656,7 @@ export function SafetyTaskHub({
       {certificateOpen && <CertificateDialog draft={certDraft} people={people} busy={busy} replacing={Boolean(replaceCertificateId)} onChange={setCertDraft} onClose={() => { setCertificateOpen(false); setReplaceCertificateId(null) }} onSubmit={addCertificate} />}
       {evidenceUploadOpen && <EvidenceUploadDialog occurrences={occurrences.filter(canUploadTo)} busy={busy} onClose={() => setEvidenceUploadOpen(false)} onSubmit={async (item, file, requirementId) => { await uploadEvidence(item, file, requirementId); setEvidenceUploadOpen(false) }} />}
       {evidencePreview && <SafetyEvidenceLightbox file={evidencePreview} onClose={() => setEvidencePreview(null)} />}
+      {committeeOpen && <SafetyCommitteeManager canManage={isAdmin} staff={committeeStaff} initialEditors={committeeEditors} onClose={closeCommittee} onEditorsChange={(userId, enabled) => setCommitteeEditors(current => enabled ? [...current.filter(item => item.user_id !== userId), { user_id: userId }] : current.filter(item => item.user_id !== userId))} />}
 
       <style jsx global>{SAFETY_CSS}</style>
     </main>
@@ -733,8 +741,9 @@ function InspectionResultBlock({ integration }: { integration: SafetyIntegration
 
 function CertificateDialog({ draft, people, busy, replacing, onChange, onClose, onSubmit }: { draft: CertificateDraft; people: Person[]; busy: boolean; replacing: boolean; onChange: (value: CertificateDraft) => void; onClose: () => void; onSubmit: (file: File) => void }) {
   const [file, setFile] = useState<File | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const set = (key: keyof typeof draft, value: string | boolean) => onChange({ ...draft, [key]: value })
-  return <div className="safety-dialog-layer"><button className="safety-drawer-backdrop" aria-label="ปิด" onClick={onClose} /><form className="safety-dialog" onSubmit={event => { event.preventDefault(); if (file) onSubmit(file) }}><header><h2>{replacing ? 'แทนที่ใบรับรอง' : 'เพิ่มใบรับรอง'}</h2><button type="button" onClick={onClose} aria-label="ปิด"><Icon name="x" /></button></header><div className="safety-form-grid"><label><span>ประเภทใบรับรอง *</span><input required value={draft.certificateType} onChange={event => set('certificateType', event.target.value)} /></label><label><span>เลขที่</span><input value={draft.documentNo} onChange={event => set('documentNo', event.target.value)} /></label><label><span>ผู้ถือ/หน่วยงาน *</span><input required value={draft.holderName} onChange={event => set('holderName', event.target.value)} /></label><label><span>แผนก</span><input value={draft.department} onChange={event => set('department', event.target.value)} /></label><label><span>วันที่ออก</span><input type="date" value={draft.issuedOn} onChange={event => set('issuedOn', event.target.value)} /></label><label><span>วันหมดอายุ</span><input type="date" disabled={draft.noExpiry} required={!draft.noExpiry} value={draft.expiresOn} onChange={event => set('expiresOn', event.target.value)} /></label><label className="safety-check"><input type="checkbox" checked={draft.noExpiry} onChange={event => set('noExpiry', event.target.checked)} />ไม่มีวันหมดอายุ</label><label><span>ผู้รับผิดชอบ</span><select value={draft.ownerId} onChange={event => set('ownerId', event.target.value)}><option value="">— ไม่ระบุ —</option>{people.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><label className="safety-file-pick"><span>ไฟล์ใบรับรอง *</span><input required type="file" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx" onChange={event => setFile(event.target.files?.[0] ?? null)} /><small>{replacing ? 'ฉบับเดิมและประวัติจะยังคงอยู่' : 'PDF, JPG, PNG, XLS, XLSX ไม่เกิน 20 MB'}</small></label></div><footer><Button type="button" variant="secondary" onClick={onClose}>ยกเลิก</Button><Button type="submit" icon="upload" disabled={busy || !file}>{replacing ? 'บันทึกฉบับใหม่' : 'บันทึกใบรับรอง'}</Button></footer></form></div>
+  return <div className="safety-dialog-layer"><button className="safety-drawer-backdrop" aria-label="ปิด" onClick={onClose} /><form className="safety-dialog" onSubmit={event => { event.preventDefault(); if (file) onSubmit(file) }}><header><h2>{replacing ? 'แทนที่ใบรับรอง' : 'เพิ่มใบรับรอง'}</h2><button type="button" onClick={onClose} aria-label="ปิด"><Icon name="x" /></button></header><div className="safety-form-grid"><label><span>ประเภทใบรับรอง *</span><input required value={draft.certificateType} onChange={event => set('certificateType', event.target.value)} /></label><label><span>เลขที่</span><input value={draft.documentNo} onChange={event => set('documentNo', event.target.value)} /></label><label><span>ผู้ถือ/หน่วยงาน *</span><input required value={draft.holderName} onChange={event => set('holderName', event.target.value)} /></label><label><span>แผนก</span><input value={draft.department} onChange={event => set('department', event.target.value)} /></label><label><span>วันที่ออก</span><input type="date" value={draft.issuedOn} onChange={event => set('issuedOn', event.target.value)} /></label><label><span>วันหมดอายุ</span><input type="date" disabled={draft.noExpiry} required={!draft.noExpiry} value={draft.expiresOn} onChange={event => set('expiresOn', event.target.value)} /></label><label className="safety-check"><input type="checkbox" checked={draft.noExpiry} onChange={event => set('noExpiry', event.target.checked)} />ไม่มีวันหมดอายุ</label><label><span>ผู้รับผิดชอบ</span><select value={draft.ownerId} onChange={event => set('ownerId', event.target.value)}><option value="">— ไม่ระบุ —</option>{people.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><div className="safety-file-pick"><span>ไฟล์ใบรับรอง *</span><div className={`safety-dropzone${dragOver ? ' is-drag-over' : ''}${file ? ' has-file' : ''}`} onDragEnter={event => { event.preventDefault(); setDragOver(true) }} onDragOver={event => { event.preventDefault(); setDragOver(true) }} onDragLeave={() => setDragOver(false)} onDrop={event => { event.preventDefault(); setDragOver(false); const dropped = event.dataTransfer.files?.[0]; if (dropped) setFile(dropped) }}><input className="safety-dropzone-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx" aria-label="เลือกไฟล์ใบรับรอง" aria-required="true" disabled={busy} onChange={event => { setFile(event.target.files?.[0] ?? null); event.currentTarget.value = '' }} />{file ? <span className="safety-dropzone-file"><Icon name="doc" size={16} /><b>{file.name}</b><small>{(file.size / 1024 / 1024).toFixed(1)} MB</small><button type="button" onClick={event => { event.preventDefault(); event.stopPropagation(); setFile(null) }} aria-label="เอาไฟล์ออก"><Icon name="x" size={13} /></button></span> : <span className="safety-dropzone-empty"><Icon name="upload" size={18} /><b>{dragOver ? 'วางไฟล์ที่นี่' : 'ลากไฟล์มาวาง หรือคลิกเพื่อเลือกไฟล์'}</b><small>{replacing ? 'ฉบับเดิมและประวัติจะยังคงอยู่' : 'PDF, JPG, PNG, XLS, XLSX ไม่เกิน 20 MB'}</small></span>}</div></div></div><footer><Button type="button" variant="secondary" onClick={onClose}>ยกเลิก</Button><Button type="submit" icon="upload" disabled={busy || !file}>{replacing ? 'บันทึกฉบับใหม่' : 'บันทึกใบรับรอง'}</Button></footer></form></div>
 }
 
 function EvidenceUploadDialog({ occurrences, busy, onClose, onSubmit }: { occurrences: QualityTaskOccurrence[]; busy: boolean; onClose: () => void; onSubmit: (item: QualityTaskOccurrence, file: File, requirementId: string | null) => void }) {
@@ -787,7 +796,7 @@ const SAFETY_CSS = `
 .safety-inspection-result{margin-top:12px;border:1px solid color-mix(in srgb,var(--safety) 28%,var(--border));border-radius:8px;overflow:hidden}.safety-inspection-result>header{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:color-mix(in srgb,var(--safety) 7%,var(--card))}.safety-inspection-result>header span{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:750}.safety-inspection-result>header b{color:var(--safety);font-size:8px;letter-spacing:.1em}.safety-inspection-summary{display:flex;align-items:center;gap:14px;padding:7px 10px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:9px;color:var(--muted)}.safety-inspection-summary b{color:var(--ink)}.safety-inspection-summary a{margin-left:auto;color:var(--safety);font-weight:700;text-decoration:none}.safety-inspection-summary .safety-inspection-action{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:36px;padding:0 11px;border:1px solid color-mix(in srgb,var(--safety) 34%,var(--border));border-radius:8px;background:var(--card);color:var(--safety);font-weight:800;white-space:nowrap;transition:background-color .18s ease,border-color .18s ease,box-shadow .18s ease}.safety-inspection-summary .safety-inspection-action:hover{border-color:var(--safety);background:var(--safety-pale);box-shadow:0 3px 10px color-mix(in srgb,var(--safety) 16%,transparent)}.safety-inspection-summary .safety-inspection-action.is-primary{border-color:var(--safety);background:var(--safety);color:#fff}.safety-inspection-summary .safety-inspection-action.is-primary:hover{border-color:color-mix(in srgb,var(--safety) 82%,#000);background:color-mix(in srgb,var(--safety) 88%,#000)}.safety-inspection-summary em{margin-left:auto;font-style:normal;font-weight:700;color:var(--safety)}.safety-inspection-item{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-bottom:1px dashed var(--border)}.safety-inspection-item:last-child{border-bottom:0}.safety-inspection-item>span{display:flex;flex-direction:column}.safety-inspection-item b{font-size:9px}.safety-inspection-item small{font-size:8px;color:var(--muted)}.safety-inspection-item>a{display:flex;align-items:center;gap:4px;color:var(--safety);font-size:8px;text-decoration:none}.safety-inspection-item.is-failed,.safety-inspection-item.is-needs_attention{background:#fff7ed}
 .safety-shell{--safety:var(--primary);--safety-dark:var(--primary);--safety-teal:#047857;--safety-pale:var(--primary-soft);width:100%;padding:0;color:var(--ink);font-size:13px}
 .safety-page-header{padding:18px;border-radius:14px;background:linear-gradient(135deg,var(--card),var(--surface-2));box-shadow:0 10px 28px rgba(15,23,42,.06)}
-.safety-fiscal{display:flex;flex-direction:column;gap:2px;min-height:40px;padding:7px 11px;border:1px solid var(--border);border-radius:8px;background:var(--card)}.safety-fiscal span{font-size:11px;color:var(--muted)}.safety-fiscal strong{font-size:12px}.safety-link-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:0 14px;border-radius:8px;background:var(--primary);color:white;text-decoration:none;font-size:13px;font-weight:650;transition:filter .18s ease}.safety-link-button:hover{filter:brightness(.95)}
+.safety-fiscal{display:flex;flex-direction:column;gap:2px;min-height:40px;padding:7px 11px;border:1px solid var(--border);border-radius:8px;background:var(--card)}.safety-fiscal span{font-size:11px;color:var(--muted)}.safety-fiscal strong{font-size:12px}.safety-link-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 14px;border-radius:8px;background:var(--primary);color:white;text-decoration:none;font-size:13px;font-weight:650;transition:filter .18s ease}.safety-link-button:hover{filter:brightness(.95)}.safety-committee-trigger{border:1px solid var(--primary);font-family:inherit;cursor:pointer}.safety-committee-trigger>span{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:color-mix(in srgb,var(--card) 86%,transparent);color:var(--primary);font-size:11px;font-weight:800}
 .safety-tabs{display:flex;gap:4px;margin:18px 0;border-bottom:1px solid var(--border);overflow-x:auto}.safety-tabs button{position:relative;display:flex;align-items:center;gap:7px;min-height:42px;padding:10px 15px;border:0;background:transparent;color:var(--muted);font-family:inherit;font-size:13px;white-space:nowrap;cursor:pointer}.safety-tabs button[aria-selected=true]{color:var(--primary);font-weight:700}.safety-tabs button[aria-selected=true]:after{content:"";position:absolute;height:3px;left:10px;right:10px;bottom:-1px;background:var(--primary)}.safety-tabs b{min-width:20px;padding:2px 6px;border-radius:10px;background:#dc2626;color:white;font-size:11px}
 .safety-panel{animation:safety-in .2s ease-out}@keyframes safety-in{from{opacity:.4;transform:translateY(3px)}to{opacity:1;transform:none}}
 .safety-error{display:flex;align-items:center;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #fecaca;border-radius:8px;background:#fef2f2;color:#b91c1c;font-size:12px}.safety-error button{margin-left:auto;border:0;background:none;color:inherit;cursor:pointer}

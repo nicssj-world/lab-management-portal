@@ -10,5 +10,5 @@ export default async function EvacuationPage() {
   if (guard.response || !guard.actor) redirect('/login')
   const canEdit = await isSafetyEditor(guard.actor)
   const dashboard = await getEvacuationDashboard(guard.actor.id, canEdit ? 'edit' : 'view')
-  return <EvacuationClient initialDashboard={dashboard} canEdit={canEdit} canManage={isSafetyManager(guard.actor)} />
+  return <EvacuationClient initialDashboard={dashboard} canEdit={canEdit} canManage={await isSafetyManager(guard.actor)} />
 }

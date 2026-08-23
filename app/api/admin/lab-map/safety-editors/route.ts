@@ -12,7 +12,7 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const userIds = (data ?? []).map(row => String(row.user_id))
   const { data: profiles } = userIds.length
-    ? await supabaseAdmin.from('profiles').select('id, name, role').in('id', userIds)
+    ? await supabaseAdmin.from('profiles').select('id, name, role').in('id', userIds).is('deleted_at', null)
     : { data: [] }
   const profileById = new Map((profiles ?? []).map(profile => [String(profile.id), profile]))
   return NextResponse.json({ items: (data ?? []).map(row => ({
@@ -23,10 +23,13 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const guard = await requireSafetyAdmin()
   if (guard.response) return guard.response
-  const parsed = z.object({ userId: z.string().uuid(), enabled: z.boolean() }).safeParse(await req.json().catch(() => null))
+  const parsed = z.object({
+    userId: z.string().uuid(),
+    enabled: z.boolean(),
+  }).safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 422 })
   const { userId, enabled } = parsed.data
-  const { data: profile, error: profileError } = await supabaseAdmin.from('profiles').select('id, role').eq('id', userId).maybeSingle()
+  const { data: profile, error: profileError } = await supabaseAdmin.from('profiles').select('id, role').eq('id', userId).is('deleted_at', null).maybeSingle()
   if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 })
   if (!profile) return NextResponse.json({ error: 'ไม่พบบุคลากรที่ต้องการกำหนดสิทธิ์' }, { status: 404 })
   const automaticEditor = ['Admin', 'Manager'].includes(normalizeRole(profile.role as string | null))
@@ -37,7 +40,9 @@ export async function PATCH(req: NextRequest) {
     ? await supabaseAdmin.from('lab_map_safety_editors').upsert({ user_id: userId, created_by: guard.actor.id })
     : await supabaseAdmin.from('lab_map_safety_editors').delete().eq('user_id', userId)
   if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
-  try { await auditSafety(enabled ? 'lab_map.safety_editor.grant' : 'lab_map.safety_editor.revoke', guard.actor.id, userId) }
+  try {
+    await auditSafety(enabled ? 'lab_map.safety_editor.grant' : 'lab_map.safety_editor.revoke', guard.actor.id, userId)
+  }
   catch (auditError) { return NextResponse.json({ error: (auditError as Error).message }, { status: 500 }) }
   return NextResponse.json({ userId, enabled })
 }
