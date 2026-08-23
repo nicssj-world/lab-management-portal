@@ -29,6 +29,7 @@ import { ChemicalDetailsModal, type ChemicalDetailsTab } from './ChemicalDetails
 import { HoldingDeleteImpactDialog } from './HoldingDeleteImpactDialog'
 import { SdsManagementClient, type SdsProductInfo } from './SdsManagementClient'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
+import { roomPublicationLabel } from '@/lib/chemical-safety/publication-summary'
 import { FONT, SDS_ONLY_CAPTURE_LABEL, SPACE, ZONE_META, tabularNums } from './shared/tokens'
 import {
   DepartmentPublishBadge,
@@ -242,6 +243,7 @@ export function ChemicalSafetyHubClient({
 
   async function setDepartmentPublicationStatus(status: 'draft' | 'published') {
     if (!selectedDepartment) return
+    const publicationAction = selectedDepartment.publicationAction
     setDepartmentPublicationBusyCode(selectedDepartment.code)
     try {
       const response = await fetch('/api/admin/chemical-safety/registry/department-publication', {
@@ -251,7 +253,13 @@ export function ChemicalSafetyHubClient({
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'ดำเนินการเผยแพร่ทั้งงานไม่สำเร็จ')
-      notify(status === 'published' ? 'เผยแพร่ทั้งงานจากทะเบียนสารเคมีแล้ว' : 'ยกเลิกเผยแพร่ทั้งงานแล้ว')
+      notify(
+        status === 'draft'
+          ? 'ยกเลิกเผยแพร่ทั้งงานแล้ว'
+          : publicationAction === 'update'
+            ? 'อัปเดตการเผยแพร่ของงานแล้ว'
+            : 'เผยแพร่ทั้งงานจากทะเบียนสารเคมีแล้ว',
+      )
     } catch (caught) {
       notify(caught instanceof Error ? caught.message : 'ดำเนินการเผยแพร่ทั้งงานไม่สำเร็จ', false)
     } finally {
@@ -705,7 +713,7 @@ export function ChemicalSafetyHubClient({
                   <DepartmentPublishBadge status={selectedDepartment.status} />
                 </div>
                 {publishableDepartmentCodes.includes(selectedDepartment.code) && (
-                  selectedDepartment.status === 'published' ? (
+                  selectedDepartment.publicationAction === 'unpublish' ? (
                     <Button
                       variant="danger"
                       icon="lock"
@@ -721,13 +729,25 @@ export function ChemicalSafetyHubClient({
                       title={selectedDepartment.fileCount === 0 ? 'งานนี้ยังไม่มีเอกสาร SDS จากทะเบียนสารเคมีที่พร้อมเผยแพร่' : undefined}
                       onClick={() => void setDepartmentPublicationStatus('published')}
                     >
-                      เผยแพร่ทั้งงาน
+                      {selectedDepartment.publicationButtonLabel}
                     </Button>
                   )
                 )}
               </div>
               <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>
-                แก้ไขข้อมูลและแนบ SDS ที่แถวสารเคมีด้านล่าง ส่วนการเผยแพร่ทั้งงานทำจากส่วนนี้
+                {selectedDepartment.publicationHelperText ?? 'แก้ไขข้อมูลและแนบ SDS ที่แถวสารเคมีด้านล่าง ส่วนการเผยแพร่ทั้งงานทำจากส่วนนี้'}
+              </p>
+            </Card>
+          )}
+
+          {!selectedUnitId && (
+            <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, borderLeft: '4px solid var(--success)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, color: 'var(--ink)' }}>
+                <Icon name="globe" size={16} style={{ color: 'var(--success)' }} />
+                <strong>สารในห้องเก็บสารเคมีเผยแพร่อัตโนมัติ</strong>
+              </div>
+              <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>
+                แก้ไขแล้วมีผลทันที ไม่ต้องกดเผยแพร่ระดับงาน
               </p>
             </Card>
           )}
@@ -847,7 +867,9 @@ export function ChemicalSafetyHubClient({
                           <td style={cellStyle}>
                             <SdsStateBadge state={row.sdsStatus} />
                             <div style={{ marginTop: 5, fontSize: FONT.xs, color: row.publicationStatus === 'stale' ? 'var(--warning)' : 'var(--muted)' }}>
-                              {row.publicationStatus === 'active' ? 'เผยแพร่แล้ว' : row.publicationStatus === 'ready' ? 'พร้อมเผยแพร่' : row.publicationStatus === 'stale' ? 'มีฉบับใหม่ · รอเผยแพร่' : 'ยังไม่มีการเผยแพร่'}
+                              {row.storageScope === 'room'
+                                ? roomPublicationLabel(row.publicationStatus)
+                                : row.publicationStatus === 'active' ? 'เผยแพร่แล้ว' : row.publicationStatus === 'ready' ? 'พร้อมเผยแพร่' : row.publicationStatus === 'stale' ? 'มีฉบับใหม่ · รอเผยแพร่' : 'ยังไม่มีการเผยแพร่'}
                             </div>
                           </td>
                           <td style={cellStyle}>

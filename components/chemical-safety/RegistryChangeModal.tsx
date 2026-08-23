@@ -67,6 +67,7 @@ export function RegistryChangeModal({
   const isDepartment = isHolding
     ? registryRow?.storageScope === 'department'
     : isCreate && storageScope === 'department'
+  const isRoomHolding = !isProduct && !isDepartment
   const departmentNames = useMemo(
     () => new Set<string>(CHEMICAL_SDS_DEPARTMENTS.map(department => department.department)),
     [],
@@ -135,6 +136,16 @@ export function RegistryChangeModal({
   const [sdsFile, setSdsFile] = useState<File | null>(null)
   const [createdHoldingId, setCreatedHoldingId] = useState<string | null>(null)
   const [createdSdsId, setCreatedSdsId] = useState<string | null>(null)
+
+  function savedMessage(attachedSds: boolean): string {
+    if (isRoomHolding) {
+      return isCreate && !attachedSds
+        ? 'บันทึกทะเบียนสารเคมีแล้ว · รอแนบ SDS เพื่อเผยแพร่'
+        : 'บันทึกสารเคมีในห้องเก็บสารแล้ว · เผยแพร่อัตโนมัติ'
+    }
+    if (attachedSds) return 'บันทึกทะเบียนสารเคมีและแนบ SDS แล้ว · พร้อมใช้งาน'
+    return 'บันทึกลงทะเบียนสารเคมีแล้ว'
+  }
 
   function togglePictogram(code: GhsPictogramCode) {
     setPictograms(current => current.includes(code) ? current.filter(item => item !== code) : [...current, code].sort())
@@ -236,7 +247,7 @@ export function RegistryChangeModal({
       setError(null)
       try {
         await attachSdsToCreatedHolding(createdHoldingId, sdsFile)
-        onSaved('บันทึกทะเบียนสารเคมีและแนบ SDS แล้ว · พร้อมใช้งาน')
+        onSaved(savedMessage(true))
         onClose()
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : 'แนบไฟล์ SDS ไม่สำเร็จ')
@@ -303,9 +314,9 @@ export function RegistryChangeModal({
         if (!holdingId) throw new Error('สร้างทะเบียนแล้ว แต่ไม่พบรายการสำหรับแนบ SDS กรุณาเปิดรายละเอียดสารแล้วลองแนบอีกครั้ง')
         setCreatedHoldingId(holdingId)
         await attachSdsToCreatedHolding(holdingId, sdsFile)
-        onSaved('บันทึกทะเบียนสารเคมีและแนบ SDS แล้ว · พร้อมใช้งาน')
+        onSaved(savedMessage(true))
       } else {
-        onSaved('บันทึกลงทะเบียนสารเคมีแล้ว')
+        onSaved(savedMessage(false))
       }
       onClose()
     } catch (caught) {
@@ -342,7 +353,9 @@ export function RegistryChangeModal({
           }}>
             <div>
               <div style={{ fontSize: FONT.xs, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--primary)' }}>
-                บันทึกแล้วมีผลทันที และเก็บประวัติการเปลี่ยนแปลงไว้
+                {isRoomHolding
+                  ? 'บันทึกแล้วมีผลทันที · ห้องเก็บสารเคมีเผยแพร่อัตโนมัติ และเก็บประวัติการเปลี่ยนแปลงไว้'
+                  : 'บันทึกแล้วมีผลทันที และเก็บประวัติการเปลี่ยนแปลงไว้'}
               </div>
               <h2 style={{ margin: '4px 0 0', fontSize: FONT.xl, color: 'var(--ink)' }}>{title}</h2>
             </div>

@@ -392,7 +392,7 @@ function DepartmentSdsPanel({
       <SdsPanelIntro
         icon="users"
         title="SDS แยกตามงาน"
-        description="รวมเอกสาร SDS ของแต่ละงานไว้ดูข้อมูลอย่างเดียว · แก้ไข SDS ได้จากทะเบียนสารเคมี และเผยแพร่ทั้งงานจากที่นั่น"
+        description="รวมเอกสาร SDS ของแต่ละงานไว้ดูข้อมูลอย่างเดียว · แก้ไข SDS ได้จากทะเบียนสารเคมี และใช้เผยแพร่ทั้งงานหรืออัปเดตการเผยแพร่เฉพาะรายการที่เปลี่ยนจากที่นั่น"
         note="ดูได้อย่างเดียว · แก้ไขที่ทะเบียนสารเคมี"
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: SPACE.sm, marginBottom: SPACE.md }}>

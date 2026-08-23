@@ -6,6 +6,7 @@ import {
   buildDepartmentSdsDedupPlan,
   canonicalDepartmentSdsLinkIds,
 } from './department-sds-dedup'
+import { summarizeDepartmentPublication } from './publication-summary'
 
 export interface DepartmentSdsFileDTO {
   id: string
@@ -44,6 +45,12 @@ export interface DepartmentSdsGroupDTO {
   archiveFolder: string
   status: 'draft' | 'published'
   publishedAt: string | null
+  lastPublishedAt: string | null
+  hasPublishedBefore: boolean
+  pendingCount: number
+  publicationAction: 'publish' | 'update' | 'unpublish'
+  publicationButtonLabel: string
+  publicationHelperText: string | null
   publishedByName: string | null
   fileCount: number
   files: DepartmentSdsFileDTO[]
@@ -77,6 +84,24 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
   if (products.error) throw new Error(`chemical_products: ${products.error.message}`)
 
   const productNames = new Map((products.data ?? []).map(row => [String(row.id), String(row.canonical_name)]))
+  const versionUpdatedAtById = new Map(
+    (versions.data ?? []).map(row => [String(row.id), row.updated_at ? String(row.updated_at) : null]),
+  )
+  const publicationActivitiesByDepartment = new Map<string, {
+    id: string
+    linkedAt: string | null
+    versionUpdatedAt: string | null
+  }[]>()
+  for (const publication of publications.data ?? []) {
+    const departmentCode = String(publication.department_code)
+    const activities = publicationActivitiesByDepartment.get(departmentCode) ?? []
+    activities.push({
+      id: String(publication.id),
+      linkedAt: publication.linked_at ? String(publication.linked_at) : null,
+      versionUpdatedAt: versionUpdatedAtById.get(String(publication.sds_version_id)) ?? null,
+    })
+    publicationActivitiesByDepartment.set(departmentCode, activities)
+  }
   const unitByName = new Map((units.data ?? []).map(row => [String(row.name_th), String(row.id)]))
   const unitIdByDepartmentCode = new Map(
     CHEMICAL_SDS_DEPARTMENTS.map(definition => [
@@ -219,12 +244,26 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
     const row = seeded.get(definition.code)
     const files = (byDepartment.get(definition.code) ?? [])
       .sort((a, b) => a.displayName.localeCompare(b.displayName, 'th', { numeric: true }))
+    const publishedAt = row?.published_at ? String(row.published_at) : null
+    const lastPublishedAt = row?.last_published_at ? String(row.last_published_at) : null
+    const publicationSummary = summarizeDepartmentPublication({
+      status: row?.status === 'published' ? 'published' : 'draft',
+      publishedAt,
+      lastPublishedAt,
+      activePublications: publicationActivitiesByDepartment.get(definition.code) ?? [],
+    })
     return {
       code: definition.code,
       department: definition.department,
       archiveFolder: definition.archiveFolder,
       status: row?.status === 'published' ? 'published' : 'draft',
-      publishedAt: row?.published_at ? String(row.published_at) : null,
+      publishedAt,
+      lastPublishedAt,
+      hasPublishedBefore: Boolean(lastPublishedAt || publishedAt),
+      pendingCount: publicationSummary.pendingCount,
+      publicationAction: publicationSummary.action,
+      publicationButtonLabel: publicationSummary.buttonLabel,
+      publicationHelperText: publicationSummary.helperText,
       publishedByName: row?.published_by ? publishers.get(String(row.published_by)) ?? null : null,
       fileCount: files.length,
       files,
