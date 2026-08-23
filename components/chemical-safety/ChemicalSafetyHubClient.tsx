@@ -16,6 +16,7 @@ import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
 import type { ChemicalHoldingDeleteImpact } from '@/lib/chemical-safety/holding-delete'
 import { paginateRegistryItems } from '@/lib/chemical-safety/registry-pagination'
 import { resetRegistryFiltersForStorageNavigation } from '@/lib/chemical-safety/registry-navigation'
+import { summarizeChemicalRegistry } from '@/lib/chemical-safety/registry-summary'
 import { CHEMICAL_GROUP_SUMMARY } from '@/lib/chemical-safety/storage-manifest'
 import type {
   ChemicalProductDTO,
@@ -432,6 +433,17 @@ export function ChemicalSafetyHubClient({
     sdsAttention: registry.filter(row => row.storageScope === 'room' && ['missing', 'mismatch', 'review_due'].includes(row.sdsStatus)).length,
   }), [locations.length, registry])
 
+  const registrySummary = useMemo(
+    () => summarizeChemicalRegistry(registry),
+    [registry],
+  )
+
+  const productEntryCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of registry) counts.set(row.productId, (counts.get(row.productId) ?? 0) + 1)
+    return counts
+  }, [registry])
+
   function toggleNewChemical(holdingId: string) {
     setNewChemicalHoldingIds(previous => {
       const next = new Set(previous)
@@ -688,6 +700,20 @@ export function ChemicalSafetyHubClient({
             </div>
             <span className="chemical-section-count"><Icon name="flask" size={14} /> {visible.length.toLocaleString()} รายการที่แสดง</span>
           </div>
+          <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, borderLeft: '4px solid var(--primary)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, color: 'var(--ink)' }}>
+                <Icon name="flask" size={16} style={{ color: 'var(--primary)' }} />
+                <strong>แยกสารเคมีหลักกับรายการของงาน/คลัง</strong>
+              </div>
+              <span style={{ color: 'var(--muted)', fontSize: FONT.sm, fontWeight: 700 }}>
+                {registrySummary.productCount.toLocaleString()} สารเคมีหลัก · {registrySummary.registryEntryCount.toLocaleString()} รายการของงาน/คลัง
+              </span>
+            </div>
+            <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm, lineHeight: 1.55 }}>
+              สารเคมีหลักหนึ่งรายการอาจมีหลายรายการของงาน/คลัง โดยจำนวน ล็อต วันหมดอายุ และตำแหน่งจัดเก็บจะแยกกันตามแต่ละรายการ
+            </p>
+          </Card>
           <Card className="chemical-registry-tools" padding={0}>
             <Input
               icon="search"
@@ -790,7 +816,7 @@ export function ChemicalSafetyHubClient({
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1080 }}>
                   <thead>
                     <tr>
-                      {['สารเคมี', 'หน่วยงาน / ตำแหน่ง', 'ปริมาณ', 'สถานะการใช้งาน', 'สถานะ SDS', 'GHS', 'สารเคมีนำเข้าใหม่', ...(canPropose ? ['จัดการ'] : [])].map(heading => (
+                      {['สารเคมีหลัก', 'งาน / รายการของงาน/คลัง', 'ปริมาณ', 'สถานะการใช้งาน', 'สถานะ SDS', 'GHS', 'สารเคมีนำเข้าใหม่', ...(canPropose ? ['จัดการ'] : [])].map(heading => (
                         <th key={heading} style={{
                           padding: '11px 14px', textAlign: 'left', fontSize: FONT.xs, fontWeight: 700,
                           letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)',
@@ -834,9 +860,13 @@ export function ChemicalSafetyHubClient({
                               {row.casNumber ? `CAS ${row.casNumber}` : 'ไม่ระบุ CAS'}
                               {row.concentration ? ` · ${row.concentration}` : ''}
                             </div>
+                            <div style={{ marginTop: 4, fontSize: FONT.xs, color: 'var(--muted)' }}>
+                              สารเคมีหลัก · {productEntryCounts.get(row.productId) ?? 1} รายการของงาน/คลัง
+                            </div>
                           </td>
                           <td style={cellStyle}>
-                            <div style={{ fontSize: FONT.base }}>{row.unitName}</div>
+                            <div style={{ fontSize: FONT.xs, color: 'var(--muted)' }}>รายการของงาน/คลัง</div>
+                            <div style={{ fontSize: FONT.base }}>{row.storageScope === 'room' ? 'ห้องเก็บสารเคมี' : row.unitName}</div>
                             {row.storageScope === 'room' && (
                               <div style={{ marginTop: 4 }}>
                                 <PositionChip code={row.positionCode} zoneCode={zoneOf(row.positionCode, locations)} />

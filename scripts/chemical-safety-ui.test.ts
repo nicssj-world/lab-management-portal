@@ -44,6 +44,11 @@ assert.ok(hubSource.includes('กรองตามหน่วยงาน'), '
 assert.ok(hubSource.includes('<select value={scopeFilter}'), 'department and chemical-room filters must share one select control')
 assert.ok(hubSource.includes('<optgroup label="ห้องสารเคมี">'), 'chemical-room choices must live inside the department filter')
 assert.ok(hubSource.includes('กรองตามหน่วยงาน'), 'combined owner filter must be labelled for screen readers')
+assert.ok(hubSource.includes('summarizeChemicalRegistry(registry)'), 'registry UI must calculate distinct chemical masters separately from scoped entries')
+assert.ok(hubSource.includes('สารเคมีหลัก'), 'registry UI must name the shared chemical identity explicitly')
+assert.ok(hubSource.includes('รายการของงาน/คลัง'), 'registry UI must name the scoped work/storage entry explicitly')
+assert.ok(hubSource.includes('สารเคมีหลักหนึ่งรายการอาจมีหลายรายการของงาน/คลัง'), 'registry UI must explain why one chemical can appear in multiple work/storage entries')
+assert.ok(hubSource.includes('เพิ่มสารเคมีใหม่'), 'registry add button must keep the existing direct wording')
 assert.ok(!hubSource.includes('chemical-position-select'), 'storage position filter must be removed from the registry')
 assert.ok(!hubSource.includes('กรองตามตำแหน่งจัดเก็บ'), 'storage position filter label must be removed from the registry')
 for (const required of ['@/components/ui/Card', '@/components/ui/PageHeader', '@/components/ui/ViewTabs', '@/components/ui/EmptyState']) {
@@ -90,6 +95,10 @@ assert.ok(hubSource.includes('chemical-registry-floating-scroll'), 'ตารา
 assert.ok(hubSource.includes('registryTableScrollRef'), 'scrollbar แบบลอยต้อง sync ตำแหน่งกับตารางทะเบียน')
 
 const registryModalSource = readFileSync(join(COMPONENT_DIR, 'RegistryChangeModal.tsx'), 'utf8')
+assert.ok(registryModalSource.includes('เพิ่มสารเคมีใหม่'), 'create modal must keep the existing direct title')
+assert.ok(registryModalSource.includes('สร้างรายการสารใหม่'), 'new-entry mode must keep the existing direct wording')
+assert.ok(registryModalSource.includes('ใช้สารที่มีอยู่'), 'existing-entry mode must keep the existing direct wording')
+assert.ok(registryModalSource.includes('ใช้ข้อมูลสารเดิมได้เมื่อเป็นสารชนิดเดียวกันจริง โดยตรวจจากผู้ผลิต รหัสผลิตภัณฑ์ และความเข้มข้น'), 'existing-product guidance must keep the existing direct wording')
 assert.ok(registryModalSource.includes("productMode === 'new'"), 'ฟอร์มสร้าง product ใหม่ต้องแสดงส่วนข้อมูลสารและ GHS')
 assert.ok(registryModalSource.includes('SdsDropzone'), 'ฟอร์มเพิ่มสารใหม่ต้องมีช่องแนบ SDS ใน flow เดียวกัน')
 assert.ok(registryModalSource.includes('แนบไฟล์ SDS (ถ้ามีแล้ว)'), 'ฟอร์มเพิ่มสารใหม่ต้องบอกว่าแนบ SDS ได้ทันทีแต่ไม่บังคับ')
@@ -108,6 +117,8 @@ assert.ok(registryModalSource.includes('<option value="retired">Inactive</option
 const detailsModalPath = join(COMPONENT_DIR, 'ChemicalDetailsModal.tsx')
 assert.ok(existsSync(detailsModalPath), 'รายละเอียดสารต้องมีคอมโพเนนต์ modal กลาง')
 const detailsModalSource = existsSync(detailsModalPath) ? readFileSync(detailsModalPath, 'utf8') : ''
+assert.ok(detailsModalSource.includes('ข้อมูลสารเคมีหลัก'), 'details modal must name the shared chemical identity section')
+assert.ok(detailsModalSource.includes('รายการคลังของงาน/ห้องนี้'), 'details modal must name the scoped inventory entry')
 assert.ok(detailsModalSource.includes('ข้อมูลทะเบียน'), 'รายละเอียดสารต้องมีแท็บข้อมูลทะเบียน')
 assert.ok(detailsModalSource.includes('เอกสาร SDS'), 'รายละเอียดสารต้องมีแท็บเอกสาร SDS')
 assert.ok(detailsModalSource.includes('role="tab"'), 'แท็บรายละเอียดสารต้องใช้ semantics ของ tab')

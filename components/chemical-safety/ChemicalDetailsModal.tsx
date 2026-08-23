@@ -77,8 +77,12 @@ export function ChemicalDetailsModal({
           <div className="chemical-details-heading">
             <h2>รายละเอียดสาร</h2>
             <p>
-              <strong style={{ color: 'var(--ink)' }}>{row.canonicalName}</strong>
+              <strong style={{ color: 'var(--ink)' }}>ข้อมูลสารเคมีหลัก: {product?.canonicalName ?? row.canonicalName}</strong>
               {row.casNumber ? ` · CAS ${row.casNumber}` : ''}
+            </p>
+            <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: FONT.xs }}>
+              รายการคลังของงาน/ห้องนี้: {row.storageScope === 'room' ? 'ห้องเก็บสารเคมี' : row.unitName}
+              {row.canonicalName !== (product?.canonicalName ?? row.canonicalName) ? ` · ชื่อที่งานใช้: ${row.canonicalName}` : ''}
             </p>
           </div>
           <div className="chemical-details-header-actions">
