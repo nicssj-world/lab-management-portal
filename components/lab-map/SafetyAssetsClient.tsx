@@ -407,13 +407,12 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   return (
       <div className="safety-page lab-map-shell">
       <LabMapStyles /><SafetyAssetsStyles />
-      <PageHeader eyebrow="SAFETY ASSET CONTROL" title="ตรวจสอบอุปกรณ์และจุดรวมพล"
+      <PageHeader eyebrow="SAFETY ASSET CONTROL" title="ทะเบียนอุปกรณ์ความปลอดภัย"
         subtitle="ข้อมูลหน้างานเป็นฉบับร่างจนกว่าจะยืนยันหลักฐานและเผยแพร่แผนที่ฉบับใหม่" marginBottom={0}
-        actions={<Link href="/staff/safety" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}><Icon name="clipboard" size={15} />งานความปลอดภัย</Link>} />
+        actions={<div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><Link href="/staff/lab-map/evacuation" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', minHeight: 44, borderRadius: 8, border: '1px solid var(--primary)', background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}><Icon name="shield" size={15} />จุดรวมพล / แผนอพยพ</Link><Link href="/staff/safety" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', minHeight: 44, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}><Icon name="clipboard" size={15} />งานความปลอดภัย</Link></div>} />
       {error ? <p role="alert" style={{ margin: 0, padding: 10, borderRadius: 8, background: 'color-mix(in srgb,var(--danger) 10%,transparent)', color: 'var(--danger)' }}>{error}</p> : null}
       <div className="safety-tabs" role="tablist" aria-label="ข้อมูลความปลอดภัย">
         <button role="tab" aria-selected={tab === 'assets'} onClick={() => setTab('assets')}>อุปกรณ์ความปลอดภัย</button>
-        <button role="tab" aria-selected={tab === 'assembly'} onClick={() => setTab('assembly')}>จุดรวมพล</button>
         {isAdmin ? <button role="tab" aria-selected={tab === 'editors'} onClick={() => setTab('editors')}>ผู้รับผิดชอบ</button> : null}
       </div>
 

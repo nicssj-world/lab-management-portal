@@ -33,6 +33,11 @@ function nullableTime(value: unknown) {
 function taskStatus(value: unknown): TaskStatus {
   return value === 'in_progress' || value === 'pending_review' || value === 'completed' ? value : 'open'
 }
+function integrationKind(value: unknown): QualityTaskTemplate['integrationKind'] {
+  return value === 'safety_inspection' || value === 'equipment_reference' || value === 'evacuation_plan_review' || value === 'evacuation_drill'
+    ? value
+    : 'none'
+}
 function rowsToAssigneeEntries(rows: Row[] | null): AssigneeEntry[] {
   return (rows ?? []).map(r => ({ userId: nullable(r.user_id), manualName: nullable(r.manual_name) }))
 }
@@ -86,7 +91,7 @@ export async function getQualityTaskTemplates(activeOnly = false, workstream: Ta
     activityNo: row.activity_no == null ? null : Number(row.activity_no), title: str(row.title), description: nullable(row.description),
     referenceCode: nullable(row.reference_code), frequencyText: str(row.frequency_text), ownerText: str(row.owner_text),
     taskKind: str(row.task_kind) as TaskKind, approvalMode: str(row.approval_mode) === 'required' ? 'required' : 'none',
-    integrationKind: str(row.integration_kind) === 'safety_inspection' ? 'safety_inspection' : str(row.integration_kind) === 'equipment_reference' ? 'equipment_reference' : 'none',
+    integrationKind: integrationKind(row.integration_kind),
     approverId: nullable(row.approver_id), reminderDays: Number(row.reminder_days), evidenceRequired: Boolean(row.evidence_required),
     active: Boolean(row.active), defaultAssignees: defaults.get(str(row.id)) ?? [],
     defaultParticipantDepts: (row.default_participant_depts ?? []) as string[],

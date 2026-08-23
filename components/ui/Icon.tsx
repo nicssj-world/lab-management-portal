@@ -24,6 +24,7 @@ const ICONS: Record<string, string> = {
   x:           'M18 6L6 18M6 6l12 12',
   arrowRight:  'M5 12h14M12 5l7 7-7 7',
   arrowLeft:   'M19 12H5M12 19l-7-7 7-7',
+  route:       'M4 19c0-4 3-7 7-7h2c4 0 7-3 7-7M4 5h4M16 19h4',
   globe:       'M12 22a10 10 0 100-20 10 10 0 000 20zM2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20',
   lock:        'M5 11h14v10H5V11zm2 0V7a5 5 0 0110 0v4',
   menu:        'M3 6h18M3 12h18M3 18h18',

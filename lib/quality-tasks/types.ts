@@ -6,7 +6,12 @@ export type TaskUrgency = 'normal' | 'due-soon' | 'overdue' | 'completed'
 export type TaskSchedulingState = 'unscheduled' | 'scheduled'
 export type TaskKind = 'activity' | 'meeting'
 export type ApprovalMode = 'none' | 'required'
-export type IntegrationKind = 'none' | 'safety_inspection' | 'equipment_reference'
+export type IntegrationKind =
+  | 'none'
+  | 'safety_inspection'
+  | 'equipment_reference'
+  | 'evacuation_plan_review'
+  | 'evacuation_drill'
 
 // A responsible person can be a linked system user OR a manually-typed name (matching the
 // equipment registry's "dropdown or type a name yourself" pattern) — never both meaningfully

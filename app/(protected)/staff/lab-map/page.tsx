@@ -21,7 +21,13 @@ export default async function StaffLabMapPage() {
             href="/staff/lab-map/safety-assets"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}
           >
-            <Icon name="shieldCheck" size={15} /> อุปกรณ์และจุดรวมพล
+            <Icon name="shieldCheck" size={15} /> อุปกรณ์ความปลอดภัย
+          </Link>
+          <Link
+            href="/staff/lab-map/evacuation"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', minHeight: 44, borderRadius: 8, border: '1px solid var(--primary)', background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}
+          >
+            <Icon name="shield" size={15} /> จุดรวมพล / แผนอพยพ
           </Link>
           <Link
             href="/staff/lab-map/print"
