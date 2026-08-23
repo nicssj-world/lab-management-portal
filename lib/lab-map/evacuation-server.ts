@@ -12,7 +12,9 @@ import { getStaffLabMapDTO } from './server'
 import { LAB_ROUTE_PRESETS } from './manifest'
 import {
   calculateEvacuationMetrics,
+  missingEvacuationEvidence,
   projectEvacuationTask,
+  validateEvacuationDrillSession,
   validateEvacuationPlanForPublish,
   type EvacuationDashboardDTO,
   type EvacuationDrillCycleDTO,
@@ -192,7 +194,7 @@ export async function getEvacuationDashboard(actorId: string, level: PermLevel):
   ])
   const cycles = await listCycleData(taskData.taskByInstanceId)
   const metrics = calculateEvacuationMetrics(cycles.flatMap(cycle => cycle.sessions))
-  return { map, releases: planData.releases, plans: planData.plans, assemblyPoints, tasks: taskData.tasks, cycles, metrics }
+  return { map: { ...map, safetyEquipment: [] }, releases: planData.releases, plans: planData.plans, assemblyPoints, tasks: taskData.tasks, cycles, metrics }
 }
 
 export interface PublicEvacuationGuidance {
@@ -208,9 +210,20 @@ export interface PublicEvacuationGuidance {
  */
 export async function getPublishedEvacuationGuidance(): Promise<PublicEvacuationGuidance | null> {
   const { data: plan, error: planError } = await supabaseAdmin.from('evacuation_plan_versions')
-    .select('id,version_code,effective_date,report_point_id').eq('status', 'published').maybeSingle()
+    .select('id,version_code,effective_date,report_point_id,map_release_id')
+    .eq('status', 'published')
+    .not('effective_date', 'is', null)
+    .maybeSingle()
   fail(planError)
   if (!plan) return null
+  const { data: release, error: releaseError } = await supabaseAdmin.from('lab_map_versions')
+    .select('id')
+    .eq('id', plan.map_release_id)
+    .eq('status', 'published')
+    .not('effective_date', 'is', null)
+    .maybeSingle()
+  fail(releaseError)
+  if (!release) return null
   const [{ data: assignmentRows, error: assignmentError }, { data: point, error: pointError }] = await Promise.all([
     supabaseAdmin.from('evacuation_exit_assignments').select('scope_code,route_variant,exit_code,route_code,post_exit_instruction_th').eq('plan_version_id', plan.id).order('scope_code').order('route_variant'),
     plan.report_point_id
@@ -285,6 +298,37 @@ async function linkTask(input: { instanceId: string; integrationKind: Evacuation
   }
   fail(error)
   return data as Row
+}
+
+async function evacuationEvidenceComplete(taskInstanceId: string) {
+  const { data: instance, error: instanceError } = await supabaseAdmin
+    .from('quality_task_instances')
+    .select('template_id')
+    .eq('id', taskInstanceId)
+    .single()
+  fail(instanceError)
+  if (!instance?.template_id) throw new Error('งานซ้อมไม่มีต้นแบบงานสำหรับตรวจข้อกำหนดหลักฐาน')
+
+  const [{ data: requirements, error: requirementError }, { data: attachments, error: attachmentError }] = await Promise.all([
+    supabaseAdmin.from('quality_task_evidence_requirements')
+      .select('id,evidence_kind,label,required,minimum_files')
+      .eq('template_id', instance.template_id)
+      .eq('active', true)
+      .order('sort_order'),
+    supabaseAdmin.from('quality_task_attachments')
+      .select('requirement_id')
+      .eq('instance_id', taskInstanceId),
+  ])
+  fail(requirementError); fail(attachmentError)
+  const activeRequirements = (requirements ?? []) as Row[]
+  if (!activeRequirements.length) return false
+  return missingEvacuationEvidence(
+    activeRequirements.map(requirement => ({
+      id: str(requirement.id), evidenceKind: str(requirement.evidence_kind), label: str(requirement.label),
+      required: Boolean(requirement.required), minimumFiles: Number(requirement.minimum_files ?? 1),
+    })),
+    ((attachments ?? []) as Row[]).map(attachment => ({ requirementId: nullable(attachment.requirement_id) })),
+  ).length === 0
 }
 
 export interface CreateEvacuationPlanInput {
@@ -461,6 +505,8 @@ export async function createDrillSession(input: CreateDrillSessionInput, actor: 
   const { data: cycle, error: cycleError } = await supabaseAdmin.from('evacuation_drill_cycles').select('id,task_instance_id').eq('id', input.cycleId).single()
   fail(cycleError)
   if (!cycle) throw new Error('ไม่พบรอบซ้อม')
+  const validationErrors = validateEvacuationDrillSession(input)
+  if (validationErrors.length) throw new Error(validationErrors.join(' · '))
   const { data, error } = await supabaseAdmin.from('evacuation_drill_sessions').insert({
     cycle_id: input.cycleId, scenario: input.scenario.trim(), started_at: input.startedAt, ended_at: input.endedAt,
     off_hours: input.offHours, scope_codes: input.scopeCodes, route_codes: input.routeCodes,
@@ -493,9 +539,17 @@ export async function updateDrillSession(id: string, input: Partial<CreateDrillS
   const expectedHeadcount = Number(payload.expected_headcount ?? current.expected_headcount ?? 0)
   const checkedHeadcount = Number(payload.checked_headcount ?? current.checked_headcount ?? 0)
   const missingHeadcount = Number(payload.missing_headcount ?? current.missing_headcount ?? 0)
-  if (checkedHeadcount > expectedHeadcount || missingHeadcount > expectedHeadcount || checkedHeadcount + missingHeadcount > expectedHeadcount) {
-    throw new Error('จำนวนที่นับได้รวมกับที่ตามไม่พบต้องไม่มากกว่าจำนวนที่ต้องนับ')
-  }
+  const validationErrors = validateEvacuationDrillSession({
+    status: str(payload.status ?? current.status),
+    startedAt: nullable(payload.started_at ?? current.started_at),
+    endedAt: nullable(payload.ended_at ?? current.ended_at),
+    reportPointId: nullable(payload.report_point_id ?? current.report_point_id),
+    evaluation: nullable(payload.evaluation ?? current.evaluation),
+    expectedParticipants: Number(payload.expected_participants ?? current.expected_participants ?? 0),
+    actualParticipants: Number(payload.actual_participants ?? current.actual_participants ?? 0),
+    expectedHeadcount, checkedHeadcount, missingHeadcount,
+  })
+  if (validationErrors.length) throw new Error(validationErrors.join(' · '))
   const { data, error } = await supabaseAdmin.from('evacuation_drill_sessions').update(payload).eq('id', id).eq('updated_at', input.updatedAt).select('*').maybeSingle()
   fail(error)
   if (!data) throw new Error('ข้อมูลการซ้อมถูกแก้ไขโดยผู้อื่น กรุณาโหลดใหม่')
@@ -512,7 +566,7 @@ export async function updateDrillSession(id: string, input: Partial<CreateDrillS
   const { data: evidence, error: evidenceError } = await supabaseAdmin.from('evacuation_drill_evidence').select('session_id,attachment_id,evidence_role').eq('session_id', id)
   fail(evidenceError)
   const nextCycleStatus = str(data.status) === 'completed'
-    ? (evidence?.length ? 'pending_review' : 'awaiting_evidence')
+    ? (await evacuationEvidenceComplete(str(current.evacuation_drill_cycles.task_instance_id)) ? 'pending_review' : 'awaiting_evidence')
     : 'in_progress'
   fail((await supabaseAdmin.from('evacuation_drill_cycles').update({ status: nextCycleStatus, updated_at: new Date().toISOString() }).eq('id', current.cycle_id)).error)
   await auditSafety('lab_map.evacuation.drill_session.update', actor.id, id)

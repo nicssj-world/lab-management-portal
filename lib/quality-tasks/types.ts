@@ -147,6 +147,8 @@ export interface QualityTaskActionItem {
   dueDate: string | null
   doneAt: string | null
   doneBy: string | null
+  sourceType: string | null
+  sourceId: string | null
 }
 
 export interface SafetyCertificate {

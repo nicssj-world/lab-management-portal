@@ -7,6 +7,8 @@ async function main() {
 
 const {
   calculateEvacuationMetrics,
+  missingEvacuationEvidence,
+  validateEvacuationDrillSession,
   validateEvacuationPlanForPublish,
 } = loaded
 
@@ -78,6 +80,35 @@ assert.deepEqual(calculateEvacuationMetrics([
   complianceRate: 90,
   headcountReadyRate: 50,
 })
+
+assert.deepEqual(
+  missingEvacuationEvidence(
+    [
+      { id: 'req-plan', evidenceKind: 'plan', label: 'แผน', required: true, minimumFiles: 1 },
+      { id: 'req-attendance', evidenceKind: 'attendance', label: 'ผู้เข้าร่วม', required: true, minimumFiles: 1 },
+      { id: 'req-photo', evidenceKind: 'photo', label: 'ภาพ', required: true, minimumFiles: 2 },
+    ],
+    [
+      { requirementId: 'req-plan' },
+      { requirementId: 'req-photo' },
+    ],
+  ),
+  [
+    { id: 'req-attendance', evidenceKind: 'attendance', label: 'ผู้เข้าร่วม', minimumFiles: 1, attachedCount: 0 },
+    { id: 'req-photo', evidenceKind: 'photo', label: 'ภาพ', minimumFiles: 2, attachedCount: 1 },
+  ],
+)
+
+assert.deepEqual(validateEvacuationDrillSession({
+  status: 'completed', startedAt: null, endedAt: null, reportPointId: null,
+  evaluation: null, expectedParticipants: 2, actualParticipants: 3,
+  expectedHeadcount: 2, checkedHeadcount: 0, missingHeadcount: 0,
+}), [
+  'ผู้เข้าร่วมจริงต้องไม่มากกว่าผู้เข้าร่วมคาดหมาย',
+  'ผลการซ้อมที่เสร็จสิ้นต้องมีเวลาเริ่มและเวลาสิ้นสุด',
+  'ผลการซ้อมที่เสร็จสิ้นต้องมีจุดรายงานตัว',
+  'ผลการซ้อมที่เสร็จสิ้นต้องมีผลประเมิน',
+])
 
   console.log('evacuation domain tests passed')
 }

@@ -20,7 +20,19 @@ export interface StaffMapRepository {
   } | null>
 }
 
-export async function buildStaffLabMapDTO(repository: StaffMapRepository): Promise<StaffLabMapDTO> {
+export interface StaffMapBuildOptions {
+  /** Keep the safety-equipment registry out of surfaces that do not own it. */
+  includeSafetyEquipment?: boolean
+  /** Keep assembly points out of surfaces that do not own evacuation data. */
+  includeAssemblyPoints?: boolean
+}
+
+export async function buildStaffLabMapDTO(
+  repository: StaffMapRepository,
+  options: StaffMapBuildOptions = {},
+): Promise<StaffLabMapDTO> {
+  const includeSafetyEquipment = options.includeSafetyEquipment ?? true
+  const includeAssemblyPoints = options.includeAssemblyPoints ?? true
   const [spaceCodes, zoneCodes, published] = await Promise.all([
     repository.activeSpaceCodes(),
     repository.activeZoneCodes(),
@@ -47,11 +59,11 @@ export async function buildStaffLabMapDTO(repository: StaffMapRepository): Promi
     routes: LAB_ROUTE_PRESETS,
     // แผนที่เจ้าหน้าที่ต้องสะท้อนทะเบียนปัจจุบัน แม้ตำแหน่งจะเพิ่งบันทึกและยังรอยืนยัน
     // ส่วน public/print ใช้ getPublishedLabMapSnapshot ซึ่งกรองตามกติกา verified แยกต่างหาก
-    safetyEquipment: live?.safetyEquipment
-      ?? published?.safetyEquipment
-      ?? LAB_SAFETY_EQUIPMENT,
-    assemblyPoints: live?.assemblyPoints
-      ?? published?.assemblyPoints
-      ?? LAB_ASSEMBLY_POINTS,
+    safetyEquipment: includeSafetyEquipment
+      ? live?.safetyEquipment ?? published?.safetyEquipment ?? LAB_SAFETY_EQUIPMENT
+      : [],
+    assemblyPoints: includeAssemblyPoints
+      ? live?.assemblyPoints ?? published?.assemblyPoints ?? LAB_ASSEMBLY_POINTS
+      : [],
   }
 }

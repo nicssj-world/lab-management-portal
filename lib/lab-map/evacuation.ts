@@ -140,6 +140,76 @@ export interface EvacuationTaskLinkRow {
   sync_status: string
 }
 
+export interface EvacuationEvidenceRequirementCheck {
+  id: string
+  evidenceKind: string
+  label: string
+  required: boolean
+  minimumFiles: number
+}
+
+export interface EvacuationEvidenceAttachmentCheck {
+  requirementId: string | null
+}
+
+export interface MissingEvacuationEvidence {
+  id: string
+  evidenceKind: string
+  label: string
+  minimumFiles: number
+  attachedCount: number
+}
+
+/**
+ * Evidence is counted against the requirement id, not merely against a file
+ * existing on the task. This keeps the drill closure gate auditable when a
+ * task has several evidence categories.
+ */
+export function missingEvacuationEvidence(
+  requirements: readonly EvacuationEvidenceRequirementCheck[],
+  attachments: readonly EvacuationEvidenceAttachmentCheck[],
+): MissingEvacuationEvidence[] {
+  return requirements
+    .filter(requirement => requirement.required)
+    .map(requirement => ({
+      id: requirement.id,
+      evidenceKind: requirement.evidenceKind,
+      label: requirement.label,
+      minimumFiles: requirement.minimumFiles,
+      attachedCount: attachments.filter(attachment => attachment.requirementId === requirement.id).length,
+    }))
+    .filter(requirement => requirement.attachedCount < requirement.minimumFiles)
+}
+
+export interface EvacuationDrillValidationInput {
+  status: string
+  startedAt: string | null
+  endedAt: string | null
+  reportPointId: string | null
+  evaluation: string | null
+  expectedParticipants: number
+  actualParticipants: number
+  expectedHeadcount: number
+  checkedHeadcount: number
+  missingHeadcount: number
+}
+
+export function validateEvacuationDrillSession(input: EvacuationDrillValidationInput): string[] {
+  const errors: string[] = []
+  if (input.actualParticipants > input.expectedParticipants) {
+    errors.push('ผู้เข้าร่วมจริงต้องไม่มากกว่าผู้เข้าร่วมคาดหมาย')
+  }
+  if (input.checkedHeadcount > input.expectedHeadcount || input.missingHeadcount > input.expectedHeadcount || input.checkedHeadcount + input.missingHeadcount > input.expectedHeadcount) {
+    errors.push('จำนวนที่นับได้รวมกับที่ตามไม่พบต้องไม่มากกว่าจำนวนที่ต้องนับ')
+  }
+  if (input.status === 'completed') {
+    if (!input.startedAt || !input.endedAt) errors.push('ผลการซ้อมที่เสร็จสิ้นต้องมีเวลาเริ่มและเวลาสิ้นสุด')
+    if (!input.reportPointId) errors.push('ผลการซ้อมที่เสร็จสิ้นต้องมีจุดรายงานตัว')
+    if (!input.evaluation?.trim()) errors.push('ผลการซ้อมที่เสร็จสิ้นต้องมีผลประเมิน')
+  }
+  return errors
+}
+
 export function projectEvacuationTask(item: QualityTaskOccurrence, link: EvacuationTaskLinkRow | null): EvacuationTaskDTO {
   const template = item.template
   const attachments = item.attachments ?? []

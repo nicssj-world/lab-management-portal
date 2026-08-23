@@ -91,7 +91,16 @@ function validateHeadcount(value: { expectedHeadcount?: number; checkedHeadcount
   if (value.checkedHeadcount != null && value.missingHeadcount != null && value.checkedHeadcount + value.missingHeadcount > expected) context.addIssue({ code: z.ZodIssueCode.custom, path: ['missingHeadcount'], message: 'จำนวนที่นับได้รวมกับที่ตามไม่พบห้ามมากกว่าจำนวนที่ต้องนับ' })
 }
 
-export const createDrillSessionSchema = z.object(drillSessionFields).superRefine(validateHeadcount)
+function validateParticipants(value: { expectedParticipants?: number; actualParticipants?: number }, context: z.RefinementCtx) {
+  if (value.expectedParticipants != null && value.actualParticipants != null && value.actualParticipants > value.expectedParticipants) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['actualParticipants'], message: 'ผู้เข้าร่วมจริงต้องไม่มากกว่าผู้เข้าร่วมคาดหมาย' })
+  }
+}
+
+export const createDrillSessionSchema = z.object(drillSessionFields).superRefine((value, context) => {
+  validateHeadcount(value, context)
+  validateParticipants(value, context)
+})
 // The session branch has a cross-field refinement, so it is a ZodEffects value;
 // use a regular union instead of discriminatedUnion (which only accepts raw objects).
 export const createDrillSchema = z.union([createDrillCycleSchema, createDrillSessionSchema])
@@ -114,4 +123,7 @@ export const updateDrillSessionSchema = z.object({
   reportPointId: uuid.nullable().optional(), observerText: nullableText(240), evaluation: nullableText(4000),
   compliancePercent: z.number().min(0).max(100).nullable().optional(), deviationText: nullableText(4000),
   status: z.enum(['planned', 'completed']).optional(), evidence: z.array(drillEvidenceSchema).max(100).optional(),
-}).superRefine(validateHeadcount)
+}).superRefine((value, context) => {
+  validateHeadcount(value, context)
+  validateParticipants(value, context)
+})

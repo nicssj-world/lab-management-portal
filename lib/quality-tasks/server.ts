@@ -564,21 +564,26 @@ function rowToActionItem(row: Row): QualityTaskActionItem {
     assignee: { userId: nullable(row.user_id), manualName: nullable(row.manual_name) },
     description: str(row.description), dueDate: nullable(row.due_date),
     doneAt: nullable(row.done_at), doneBy: nullable(row.done_by),
+    sourceType: nullable(row.source_type), sourceId: nullable(row.source_id),
   }
 }
 
-export async function listActionItems(instanceId: string, level: PermLevel, workstream: TaskWorkstream = 'quality') {
+export async function listActionItems(instanceId: string, level: PermLevel, workstream: TaskWorkstream = 'quality', source?: { sourceType?: string | null; sourceId?: string | null }) {
   await getOccurrenceReadAccess(instanceId, level, workstream)
-  const { data, error } = await supabaseAdmin.from('quality_task_action_items').select('*').eq('instance_id', instanceId)
+  let query = supabaseAdmin.from('quality_task_action_items').select('*').eq('instance_id', instanceId)
+  if (source?.sourceType) query = query.eq('source_type', source.sourceType)
+  if (source?.sourceId) query = query.eq('source_id', source.sourceId)
+  const { data, error } = await query
     .order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true })
   fail(error); return (data ?? []).map(rowToActionItem)
 }
 
-export async function createActionItem(instanceId: string, input: { assignee: AssigneeEntry; description: string; dueDate: string | null }, actor: Actor, level: PermLevel, workstream: TaskWorkstream = 'quality') {
+export async function createActionItem(instanceId: string, input: { assignee: AssigneeEntry; description: string; dueDate: string | null; sourceType?: string | null; sourceId?: string | null }, actor: Actor, level: PermLevel, workstream: TaskWorkstream = 'quality') {
   await getOccurrenceAccess(instanceId, actor, level, workstream)
   const { data, error } = await supabaseAdmin.from('quality_task_action_items').insert({
     instance_id: instanceId, user_id: input.assignee.userId, manual_name: input.assignee.manualName,
-    description: input.description.trim(), due_date: input.dueDate || null, created_by: actor.id,
+    description: input.description.trim(), due_date: input.dueDate || null,
+    source_type: input.sourceType || null, source_id: input.sourceId || null, created_by: actor.id,
   }).select('*').single()
   fail(error)
   audit(actor, 'quality_task.action_item.create', instanceId, { itemId: data.id, ...input })

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { buildStaffLabMapDTO, type StaffMapRepository } from './server-builder'
+import { buildStaffLabMapDTO, type StaffMapBuildOptions, type StaffMapRepository } from './server-builder'
 import type { LabAssemblyPointDefinition, LabSafetyEquipmentDefinition } from './types'
 import { listAssemblyPoints, listSafetyAssets } from './safety-server'
 import { mergeLiveSafetyPositions } from './live-safety-positions'
@@ -15,7 +15,7 @@ export interface PublishedLabMapSnapshot {
 export async function getPublishedLabMapSnapshot(): Promise<PublishedLabMapSnapshot | null> {
   const { data, error } = await supabaseAdmin.from('lab_map_versions')
     .select('version_code, asset_snapshot, assembly_point_snapshot')
-    .eq('status', 'published').maybeSingle()
+    .eq('status', 'published').not('effective_date', 'is', null).maybeSingle()
   if (error) throw new Error(`lab map release: ${error.message}`)
   if (!data || !Array.isArray(data.asset_snapshot) || data.asset_snapshot.length === 0) return null
   const [workingAssets, workingAssemblyPoints] = await Promise.all([
@@ -60,6 +60,6 @@ const repository: StaffMapRepository = {
   },
 }
 
-export async function getStaffLabMapDTO() {
-  return buildStaffLabMapDTO(repository)
+export async function getStaffLabMapDTO(options?: StaffMapBuildOptions) {
+  return buildStaffLabMapDTO(repository, options)
 }

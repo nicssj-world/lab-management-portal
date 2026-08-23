@@ -25,6 +25,12 @@ async function main() {
   assert.ok(map.spaces.some((space) => space.infectionClass), 'staff DTO keeps infection classes')
   assert.ok(map.safetyEquipment.length > 0, 'staff DTO carries fire safety equipment')
   assert.ok(map.assemblyPoints.length > 0, 'staff DTO carries assembly points')
+  const mapWithoutEquipment = await buildStaffLabMapDTO(repository, { includeSafetyEquipment: false })
+  assert.deepEqual(mapWithoutEquipment.safetyEquipment, [], 'surfaces without registry ownership receive no equipment payload')
+  assert.ok(mapWithoutEquipment.assemblyPoints.length > 0, 'the main map can keep evacuation guidance without equipment')
+  const mapWithoutSafetyLayers = await buildStaffLabMapDTO(repository, { includeSafetyEquipment: false, includeAssemblyPoints: false })
+  assert.deepEqual(mapWithoutSafetyLayers.safetyEquipment, [], 'equipment remains absent from the equipment page base map')
+  assert.deepEqual(mapWithoutSafetyLayers.assemblyPoints, [], 'equipment page base map does not carry evacuation records')
   assert.deepEqual(
     map.safetyEquipment.find((item) => item.code === 'extinguisher-2'),
     { code: 'extinguisher-2', kind: 'fire-extinguisher', nameTh: 'ถังดับเพลิง 2', x: 433, y: 153, verified: false },

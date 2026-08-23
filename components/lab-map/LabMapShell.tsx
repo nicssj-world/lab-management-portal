@@ -5,11 +5,10 @@ import type { ReactNode } from 'react'
 import { GoogleMapEmbed } from './GoogleMapEmbed'
 import { LabMapCanvas } from './LabMapCanvas'
 import { LabMapStyles } from './LabMapStyles'
-import { SafetyEquipmentDetailDialog } from './SafetyEquipmentDetailDialog'
 import { FilterChips } from '@/components/ui/FilterChips'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
-import type { LabMapDTO, MapMode, SafetyAssetDTO } from '@/lib/lab-map/types'
+import type { LabMapDTO, MapMode } from '@/lib/lab-map/types'
 
 const MODE_LABELS: Record<MapMode, { th: string; icon: string }> = {
   overview: { th: 'พื้นที่และหน่วยงาน', icon: 'building' },
@@ -37,8 +36,6 @@ export interface LabMapShellProps {
   highlightedCodesForSelection?: (selectedCode: string | null, map: LabMapDTO) => readonly string[]
   /** ปุ่ม/ลิงก์เพิ่มเติมในหัวเพจ วางไว้ข้าง badge เวอร์ชัน — ไม่ใช่ sibling แยกด้านบน (ทำให้หัวข้อไม่ชิดบน) */
   headerActions?: ReactNode
-  /** แผนที่เจ้าหน้าที่เท่านั้น: กดถังดับเพลิงเพื่อดูผลตรวจและรูปหลักฐานล่าสุด */
-  showSafetyInspectionDetails?: boolean
   /** ให้เจ้าของ surface เปิดชั้นข้อมูลอุปกรณ์เอง — แผนที่หลักปิดไว้เพื่อแยกโมดูล */
   showSafetyEquipment?: boolean
 }
@@ -60,7 +57,6 @@ export function LabMapShell({
   searchItems = [],
   highlightedCodesForSelection,
   headerActions,
-  showSafetyInspectionDetails = false,
   showSafetyEquipment = false,
 }: LabMapShellProps) {
   const defaultMode = initialMode && allowedModes.includes(initialMode) ? initialMode : allowedModes[0] ?? 'overview'
@@ -70,10 +66,13 @@ export function LabMapShell({
   const defaultSafetyStation = initialSafetyStationCode ?? map.stationCode
   const [safetyStationCode, setSafetyStationCode] = useState(defaultSafetyStation)
   const [query, setQuery] = useState('')
-  const [inspectionAsset, setInspectionAsset] = useState<SafetyAssetDTO | null>(null)
-  const [inspectionLoading, setInspectionLoading] = useState(false)
-  const [inspectionError, setInspectionError] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  // Surface-level fail-closed guard: callers that do not own the equipment layer
+  // cannot accidentally render it by passing a full staff DTO into the shared shell.
+  const surfaceMap = useMemo<LabMapDTO>(
+    () => showSafetyEquipment ? map : { ...map, safetyEquipment: [] },
+    [map, showSafetyEquipment],
+  )
 
   useEffect(() => setMode(defaultMode), [defaultMode])
   useEffect(() => setActiveRouteCode(initialRouteCode), [initialRouteCode])
@@ -131,36 +130,6 @@ export function LabMapShell({
   const highlightedSpaceCodes = highlightedCodesForSelection?.(selectedCode, map)
     ?? selectedZone?.spaceCodes
     ?? []
-  const selectedExtinguisher = mode === 'safety' && showSafetyEquipment && showSafetyInspectionDetails
-    ? map.safetyEquipment.find((item) => item.code === selectedCode && item.kind === 'fire-extinguisher') ?? null
-    : null
-
-  useEffect(() => {
-    if (!selectedExtinguisher) {
-      setInspectionAsset(null)
-      setInspectionLoading(false)
-      setInspectionError(null)
-      return undefined
-    }
-    const controller = new AbortController()
-    setInspectionAsset(null)
-    setInspectionLoading(true)
-    setInspectionError(null)
-    void fetch(`/api/admin/lab-map/safety-assets?code=${encodeURIComponent(selectedExtinguisher.code)}`, { signal: controller.signal })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({})) as { items?: SafetyAssetDTO[]; error?: string }
-        if (!response.ok) throw new Error(payload.error ?? 'ไม่สามารถโหลดรายละเอียดถังดับเพลิงได้')
-        if (!payload.items?.[0]) throw new Error('ไม่พบทะเบียนถังดับเพลิงนี้')
-        return payload.items[0]
-      })
-      .then((asset) => { if (!controller.signal.aborted) setInspectionAsset(asset) })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) setInspectionError(error instanceof Error ? error.message : 'ไม่สามารถโหลดรายละเอียดถังดับเพลิงได้')
-      })
-      .finally(() => { if (!controller.signal.aborted) setInspectionLoading(false) })
-    return () => controller.abort()
-  }, [selectedExtinguisher])
-
   function selectResult(code: string) {
     setSelectedCode(code)
     setQuery('')
@@ -363,7 +332,7 @@ export function LabMapShell({
 
       <div className="lab-map-workspace">
         <LabMapCanvas
-          map={map}
+          map={surfaceMap}
           mode={mode}
           selectedCode={selectedCode}
           activeRouteCodes={activeRouteCodes}
@@ -398,15 +367,15 @@ export function LabMapShell({
         </div>
       ) : null}
 
-      {mode === 'safety' && showSafetyEquipment ? (
-        <div className="lab-map-legend" aria-label="คำอธิบายสัญลักษณ์ความปลอดภัย">
+      {mode === 'safety' ? (
+        <div className="lab-map-legend" aria-label="คำอธิบายสัญลักษณ์แผนอพยพ">
           <span><i data-class="route-primary" />เส้นทางหลัก</span>
           <span><i data-class="route-alternate" />เส้นทางสำรอง</span>
           <span><i data-class="exit" />ทางออกหนีไฟ</span>
           <span><i data-class="locked" />ประตูล็อคถาวร</span>
           <span><i data-class="station" />คุณอยู่ที่นี่</span>
           <span><i data-class="lift-restricted" />ห้ามใช้ลิฟต์ขณะเกิดเหตุ</span>
-          <span><i data-class="fire-extinguisher" />ถังดับเพลิง</span>
+          {showSafetyEquipment ? <span><i data-class="fire-extinguisher" />ถังดับเพลิง</span> : null}
         </div>
       ) : null}
 
@@ -418,13 +387,6 @@ export function LabMapShell({
           <span><i data-class="controlled" />พื้นที่ควบคุมการเข้าออก</span>
         </div>
       ) : null}
-      <SafetyEquipmentDetailDialog
-        equipment={selectedExtinguisher}
-        asset={inspectionAsset}
-        loading={inspectionLoading}
-        error={inspectionError}
-        onClose={closeDetail}
-      />
     </div>
   )
 }

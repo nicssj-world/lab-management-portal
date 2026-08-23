@@ -29,6 +29,10 @@ async function main() {
     kind: 'session', cycleId: '00000000-0000-0000-0000-000000000001', scenario: 'ซ้อม', expectedHeadcount: 0, checkedHeadcount: 1,
   })
   assert.equal(missingExpectedHeadcount.success, false)
+  const invalidParticipantCount = loaded.createDrillSessionSchema.safeParse({
+    kind: 'session', cycleId: '00000000-0000-0000-0000-000000000001', scenario: 'ซ้อม', expectedParticipants: 2, actualParticipants: 3,
+  })
+  assert.equal(invalidParticipantCount.success, false)
 
   assert.equal(loaded.evacuationPlanTransitionSchema.safeParse({ action: 'publish' }).success, true)
   assert.equal(loaded.evacuationPlanTransitionSchema.safeParse({ action: 'delete' }).success, false)
