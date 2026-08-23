@@ -116,8 +116,8 @@ assert.doesNotMatch(staffSidebar, /href: '\/staff\/lab-map\/sds'/, 'SDS is acces
 
 // ฝั่งสาธารณะเปิดให้ทุกคนตามที่ผู้ใช้ระบุ: ผังการจัดเก็บ การจำแนก GHS และ SDS ของทุกงาน
 // ข้อมูลถูกคัดกรองในชั้น lib/chemical-safety/public.ts ไม่ใช่ด้วย guard ที่ route
-// หน้ายังเปิดสาธารณะอยู่ (เข้าตรง /sds ได้) แต่ผู้ใช้ขอให้เอาออกจากเมนูบนสุดของ public nav
-assert.doesNotMatch(publicNav, /href: '\/sds'/, 'public navigation no longer surfaces the SDS link in the top menu')
+// หน้ายังเปิดสาธารณะอยู่ และเมนูเอกสารที่เกี่ยวข้องรวมทางลัดไปยังคลัง SDS ไว้ด้วย
+assert.match(publicNav, /href: '\/sds'/, 'public navigation surfaces the SDS library from the related-documents menu')
 for (const source of [publicSdsPage, publicSdsApi, publicSdsFileApi, publicDepartmentSdsApi, publicDepartmentSdsFileApi]) {
   assert.doesNotMatch(source, /requireChemical/, 'public SDS entry points must not require a login')
 }

@@ -6,7 +6,7 @@ export type AccessPointStatus =
   | 'permanently_locked'
 
 /** โหมดแผนที่ — ทางหนีไฟและอุปกรณ์ความปลอดภัยเป็นคนละชั้นข้อมูล */
-export type MapMode = 'overview' | 'infection' | 'safety' | 'safety-assets'
+export type MapMode = 'overview' | 'infection' | 'safety'
 
 export type RouteKind = 'visitor' | 'staff_orientation' | 'evacuation'
 

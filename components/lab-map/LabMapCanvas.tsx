@@ -22,6 +22,7 @@ export interface LabMapCanvasProps {
   onSelect: (code: string) => void
   onCoordinateSelect?: (x: number, y: number) => void
   onMoveSafetyEquipment?: (input: { id: string; code: string; x: number; y: number; spaceCode: string | null }) => void
+  showSafetyEquipment?: boolean
   showAllSafetyEquipment?: boolean
   draftSafetyEquipment?: Pick<LabSafetyEquipmentDefinition, 'code' | 'nameTh' | 'kind' | 'x' | 'y'> | null
   onMoveDraftSafetyEquipment?: (input: { x: number; y: number; spaceCode: string | null }) => void
@@ -179,6 +180,7 @@ export function LabMapCanvas({
   onSelect,
   onCoordinateSelect,
   onMoveSafetyEquipment,
+  showSafetyEquipment = false,
   showAllSafetyEquipment = false,
   draftSafetyEquipment = null,
   onMoveDraftSafetyEquipment,
@@ -235,7 +237,6 @@ export function LabMapCanvas({
     [activeRoutes],
   )
   const visiblePoints = map.accessPoints.filter((point) => {
-    if (mode === 'safety-assets') return false
     if (mode !== 'safety' && !stationFocused) return true
     if (point.kind === 'exit' || point.status === 'permanently_locked') return true
     return routePointCodes.has(point.code)
@@ -614,12 +615,12 @@ export function LabMapCanvas({
               </g>
             ) : null}
 
-            {mode === 'safety' || mode === 'safety-assets' ? (
+            {showSafetyEquipment && mode === 'safety' ? (
               <g className="lab-map-safety-equipment">
                 {[...map.safetyEquipment, ...(draftSafetyEquipment ? [{ ...draftSafetyEquipment, verified: false }] : [])]
                   .filter((item) => showAllSafetyEquipment || onMoveSafetyEquipment || draftSafetyEquipment
                     ? true
-                    : mode === 'safety' ? item.kind === 'fire-extinguisher' : item.kind !== 'fire-extinguisher')
+                    : item.kind === 'fire-extinguisher')
                   .map((sourceItem) => {
                   const item = safetyDragPreview?.code === sourceItem.code
                     ? { ...sourceItem, x: safetyDragPreview.x, y: safetyDragPreview.y }

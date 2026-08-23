@@ -34,6 +34,7 @@ export function LabMapPrintSheet({ dto }: { dto: MapPrintDTO }) {
       <div className="lab-map-print-map">
         <LabMapCanvas map={dto.map} mode={dto.mode} selectedCode={null}
           activeRouteCodes={dto.activeRouteCodes} onSelect={() => {}} interactive={false}
+          showSafetyEquipment={dto.kind === 'evacuation'}
           stationFocused={dto.kind === 'visitor_navigation'} />
       </div>
       <footer className="lab-map-print-footer">

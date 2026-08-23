@@ -15,7 +15,6 @@ const MODE_LABELS: Record<MapMode, { th: string; icon: string }> = {
   overview: { th: 'พื้นที่และหน่วยงาน', icon: 'building' },
   infection: { th: 'เขตควบคุมการติดเชื้อ', icon: 'biohazard' },
   safety: { th: 'แผนผังทางหนีไฟ', icon: 'shield' },
-  'safety-assets': { th: 'อุปกรณ์ความปลอดภัย', icon: 'shieldCheck' },
 }
 
 export interface LabMapShellProps {
@@ -40,6 +39,8 @@ export interface LabMapShellProps {
   headerActions?: ReactNode
   /** แผนที่เจ้าหน้าที่เท่านั้น: กดถังดับเพลิงเพื่อดูผลตรวจและรูปหลักฐานล่าสุด */
   showSafetyInspectionDetails?: boolean
+  /** ให้เจ้าของ surface เปิดชั้นข้อมูลอุปกรณ์เอง — แผนที่หลักปิดไว้เพื่อแยกโมดูล */
+  showSafetyEquipment?: boolean
 }
 
 export function LabMapShell({
@@ -60,6 +61,7 @@ export function LabMapShell({
   highlightedCodesForSelection,
   headerActions,
   showSafetyInspectionDetails = false,
+  showSafetyEquipment = false,
 }: LabMapShellProps) {
   const defaultMode = initialMode && allowedModes.includes(initialMode) ? initialMode : allowedModes[0] ?? 'overview'
   const [mode, setMode] = useState<MapMode>(defaultMode)
@@ -129,7 +131,7 @@ export function LabMapShell({
   const highlightedSpaceCodes = highlightedCodesForSelection?.(selectedCode, map)
     ?? selectedZone?.spaceCodes
     ?? []
-  const selectedExtinguisher = mode === 'safety' && showSafetyInspectionDetails
+  const selectedExtinguisher = mode === 'safety' && showSafetyEquipment && showSafetyInspectionDetails
     ? map.safetyEquipment.find((item) => item.code === selectedCode && item.kind === 'fire-extinguisher') ?? null
     : null
 
@@ -367,6 +369,7 @@ export function LabMapShell({
           activeRouteCodes={activeRouteCodes}
           destinationPointCode={mode === 'safety' ? null : destinationPointCode}
           activeStationCode={mode === 'safety' ? safetyStationCode : map.stationCode}
+          showSafetyEquipment={showSafetyEquipment}
           highlightedSpaceCodes={highlightedSpaceCodes}
           onSelect={selectMapItem}
         />
@@ -395,7 +398,7 @@ export function LabMapShell({
         </div>
       ) : null}
 
-      {mode === 'safety' ? (
+      {mode === 'safety' && showSafetyEquipment ? (
         <div className="lab-map-legend" aria-label="คำอธิบายสัญลักษณ์ความปลอดภัย">
           <span><i data-class="route-primary" />เส้นทางหลัก</span>
           <span><i data-class="route-alternate" />เส้นทางสำรอง</span>
@@ -404,19 +407,6 @@ export function LabMapShell({
           <span><i data-class="station" />คุณอยู่ที่นี่</span>
           <span><i data-class="lift-restricted" />ห้ามใช้ลิฟต์ขณะเกิดเหตุ</span>
           <span><i data-class="fire-extinguisher" />ถังดับเพลิง</span>
-        </div>
-      ) : null}
-
-      {mode === 'safety-assets' ? (
-        <div className="lab-map-legend" aria-label="คำอธิบายสัญลักษณ์อุปกรณ์ความปลอดภัย">
-          <span><i data-class="fire-hose" />สายฉีดน้ำดับเพลิง</span>
-          <span><i data-class="manual-call-point" />จุดกดแจ้งเหตุ</span>
-          <span><i data-class="aed" />เครื่อง AED</span>
-          <span><i data-class="first-aid-kit" />ชุดปฐมพยาบาล</span>
-          <span><i data-class="eyewash" />ที่ล้างตา</span>
-          <span><i data-class="emergency-shower" />ฝักบัวฉุกเฉิน</span>
-          <span><i data-class="spill-kit" />ชุดจัดการสารหกรั่วไหล</span>
-          <span><i data-class="emergency-shutoff" />จุดตัดระบบฉุกเฉิน</span>
         </div>
       ) : null}
 

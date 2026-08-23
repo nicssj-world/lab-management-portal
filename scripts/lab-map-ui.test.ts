@@ -71,6 +71,8 @@ assert.match(shell, /เส้นทางสำรอง/)
 assert.match(shell, /ประตูล็อคถาวร/)
 assert.match(shell, /เดินตามป้ายทางหนีไฟจริง/, 'missing presets fail closed with physical-sign guidance')
 assert.match(shell, /evacuationRoutes/, 'evacuation presets are selected automatically by station')
+assert.match(canvas, /showSafetyEquipment = false/, 'safety equipment rendering is opt-in for map surfaces')
+assert.match(canvas, /showSafetyEquipment && mode === 'safety'/, 'safety equipment is not rendered unless the caller explicitly owns that layer')
 
 assert.match(styles, /min-height:\s*44px/)
 assert.match(styles, /min-width:\s*44px/)

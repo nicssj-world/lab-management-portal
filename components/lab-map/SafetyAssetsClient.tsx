@@ -475,7 +475,7 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
               ) : (
                 <>
                   <LabMapCanvas map={workingMap} mode="safety" selectedCode={selectedCode} activeRouteCodes={[]}
-                    showAllSafetyEquipment
+                    showSafetyEquipment showAllSafetyEquipment
                     onSelect={selectMap} onMoveSafetyEquipment={canEdit ? input => void moveSafetyEquipment(input) : undefined}
                     draftSafetyEquipment={assetDraft && !assetDraft.id ? {
                       code: 'draft-safety-equipment', nameTh: assetDraft.nameTh || 'อุปกรณ์ใหม่',
