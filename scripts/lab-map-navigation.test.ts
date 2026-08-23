@@ -35,11 +35,13 @@ assert.match(safetyGroup, /th: 'แผนที่ห้องปฏิบัต
 // แม่ต้องไม่ถือ resource — รูปแบบเดียวกับกลุ่มความเสี่ยงและกลุ่ม IT
 assert.doesNotMatch(safetyGroup.split('\n')[0], /resource:/, 'the safety group parent must not carry a resource gate')
 
-// ทะเบียนอุปกรณ์และจุดรวมพลเคยเข้าถึงได้แค่ผ่านปุ่มบนหัวหน้าแผนที่เท่านั้น
-assert.match(safetyGroup, /href: '\/staff\/lab-map\/safety-assets'/, 'safety assets has its own sidebar entry')
+// แยกเป็นคนละโมดูลในเมนู เพื่อไม่ให้ทะเบียนอุปกรณ์กับแผนอพยพถูกรวมเป็นงานเดียว
+assert.match(safetyGroup, /href: '\/staff\/lab-map\/safety-assets', th: 'อุปกรณ์ความปลอดภัย'/, 'safety equipment has its own sidebar entry')
+assert.match(safetyGroup, /href: '\/staff\/lab-map\/evacuation', th: 'จุดรวมพล \/ แผนอพยพ'/, 'evacuation has its own sidebar entry')
+assert.doesNotMatch(safetyGroup, /อุปกรณ์และจุดรวมพล/, 'the old combined safety navigation label is removed')
 
 assert.match(topbar, /'\/staff\/lab-map'/)
-for (const route of ['/staff/lab-map/safety-assets', '/staff/lab-map/print', '/staff/lab-map/sds']) {
+for (const route of ['/staff/lab-map/safety-assets', '/staff/lab-map/evacuation', '/staff/lab-map/print', '/staff/lab-map/sds']) {
   assert.ok(topbar.includes(`'${route}'`), `topbar names ${route} instead of falling back to the module root`)
 }
 

@@ -100,7 +100,9 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/staff/safety/registry', th: 'Master Task', en: 'Master Tasks', icon: 'settings', color: '#0E7490', safetyEditor: true },
       { href: '/staff/lab-map', th: 'แผนที่ห้องปฏิบัติการ', en: 'Laboratory Map', icon: 'building', color: '#0E7490' },
       // requireSafetyViewer = ทุกคนที่ล็อกอิน จึงไม่ต้องมี resource/safetyEditor
-      { href: '/staff/lab-map/safety-assets', th: 'อุปกรณ์และจุดรวมพล', en: 'Safety Assets', icon: 'shieldCheck', color: '#0E7490' },
+      // แยกทะเบียนอุปกรณ์ออกจากแผนจุดรวมพล/แผนอพยพ เพื่อให้ตรงกับขอบเขตงานและหลักฐานคนละวงจร
+      { href: '/staff/lab-map/safety-assets', th: 'อุปกรณ์ความปลอดภัย', en: 'Safety Equipment', icon: 'shieldCheck', color: '#0E7490' },
+      { href: '/staff/lab-map/evacuation', th: 'จุดรวมพล / แผนอพยพ', en: 'Assembly Points / Evacuation Plan', icon: 'route', color: '#0E7490' },
       { href: '/staff/lab-map/chemicals', th: 'สารเคมีและ SDS', en: 'Chemicals & SDS', icon: 'flask', color: '#0E7490', safetyEditor: true },
     ] },
   { section: 'งาน IT' },
