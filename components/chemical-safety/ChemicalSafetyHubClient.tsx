@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -15,6 +15,7 @@ import { CHEMICAL_HUB_VIEWS, type ChemicalHubView } from '@/lib/navigation'
 import { calculateHoldingTotalFromFields } from '@/lib/chemical-safety/domain'
 import type { ChemicalHoldingDeleteImpact } from '@/lib/chemical-safety/holding-delete'
 import { paginateRegistryItems } from '@/lib/chemical-safety/registry-pagination'
+import { resetRegistryFiltersForStorageNavigation } from '@/lib/chemical-safety/registry-navigation'
 import { CHEMICAL_GROUP_SUMMARY } from '@/lib/chemical-safety/storage-manifest'
 import type {
   ChemicalProductDTO,
@@ -206,7 +207,6 @@ export function ChemicalSafetyHubClient({
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const { toasts, add } = useToast()
   const [position, setPosition] = useState('')
   const [scopeFilter, setScopeFilter] = useState('')
@@ -352,10 +352,17 @@ export function ChemicalSafetyHubClient({
   // กดตู้บนผังแล้วกระโดดไปทะเบียนที่กรองตู้นั้นไว้ — เปลี่ยน view ผ่าน URL
   // เพื่อให้กดย้อนกลับได้เหมือนการกดแท็บ
   function openCabinet(code: string) {
-    setPosition(code)
-    setRegistryPage(1)
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('view', 'registry')
+    const next = resetRegistryFiltersForStorageNavigation(code)
+    setPosition(next.position)
+    setScopeFilter(next.scopeFilter)
+    setLifecycleFilter(next.lifecycleFilter)
+    setRegistryPage(next.registryPage)
+    setSearch(next.search)
+    setDebouncedSearch(next.debouncedSearch)
+
+    // A storage click starts a fresh registry context. Do not preserve stale
+    // q/search/unit/room parameters from an older registry URL either.
+    const params = new URLSearchParams({ view: 'registry' })
     router.push(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
