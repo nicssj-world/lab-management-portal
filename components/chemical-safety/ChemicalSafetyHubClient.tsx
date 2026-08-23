@@ -596,7 +596,6 @@ export function ChemicalSafetyHubClient({
         .chemical-hub .chemical-section-lead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 14px}
         .chemical-hub .chemical-section-lead h2{margin:0;color:var(--ink);font-size:18px;letter-spacing:-.015em}
         .chemical-hub .chemical-section-lead p{margin:4px 0 0;color:var(--muted);font-size:13px}
-        .chemical-hub .chemical-section-count{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--border);border-radius:999px;background:var(--card);font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
         .chemical-hub .chemical-registry-tools{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:12px;background:var(--card);box-shadow:0 4px 16px rgba(15,23,42,.035)}
         .chemical-hub .chemical-registry-tools .input-wrap{margin:0}
         .chemical-hub .chemical-filter-panel{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--card)}
@@ -605,7 +604,6 @@ export function ChemicalSafetyHubClient({
         .chemical-hub .chemical-unit-select select{width:100%;min-height:40px;padding:7px 34px 7px 11px;border:1px solid var(--border);border-radius:7px;outline:0;background:var(--bg);color:var(--ink);font:inherit;font-size:12px;font-weight:600;cursor:pointer;appearance:auto}
         .chemical-hub .chemical-unit-select select:hover{border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
         .chemical-hub .chemical-unit-select select:focus-visible{border-color:var(--primary);outline:3px solid color-mix(in srgb,var(--primary) 22%,transparent)}
-        .chemical-hub .chemical-filter-result{margin-left:auto;color:var(--muted);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
         .chemical-hub .chemical-registry-table-scroll{overflow-x:auto;scrollbar-gutter:stable;overscroll-behavior-x:contain}
         .chemical-hub .chemical-registry-actions{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap}
         .chemical-hub .chemical-registry-action-label-short{display:none}
@@ -667,7 +665,7 @@ export function ChemicalSafetyHubClient({
         .chemical-hub .chemical-storage-summary-code{display:inline-flex;align-items:center;gap:4px;min-height:30px;padding:4px 9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:border-color .18s ease,background .18s ease}
         .chemical-hub .chemical-storage-summary-code:hover{border-color:var(--summary-color);background:color-mix(in srgb,var(--summary-color) 8%,var(--card))}
         .chemical-hub .chemical-storage-summary-code:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
-        @media(max-width:720px){.chemical-hub .chemical-hub-tabs .view-tab{flex:0 0 auto}.chemical-hub .chemical-cabinet-grid{grid-template-columns:1fr 1fr;padding:12px}.chemical-hub .chemical-storage-zone-header{padding-left:16px}.chemical-hub .chemical-storage-zone::before{width:3px}.chemical-hub .chemical-storage-summary-head{padding:14px 16px}.chemical-hub .chemical-storage-summary th,.chemical-hub .chemical-storage-summary td{padding:10px 14px}.chemical-hub .chemical-unit-select{flex:1 1 100%;min-width:0}.chemical-hub .chemical-filter-result{margin-left:0}}
+        @media(max-width:720px){.chemical-hub .chemical-hub-tabs .view-tab{flex:0 0 auto}.chemical-hub .chemical-cabinet-grid{grid-template-columns:1fr 1fr;padding:12px}.chemical-hub .chemical-storage-zone-header{padding-left:16px}.chemical-hub .chemical-storage-zone::before{width:3px}.chemical-hub .chemical-storage-summary-head{padding:14px 16px}.chemical-hub .chemical-storage-summary th,.chemical-hub .chemical-storage-summary td{padding:10px 14px}.chemical-hub .chemical-unit-select{flex:1 1 100%;min-width:0}}
         @media(max-width:460px){.chemical-hub .chemical-cabinet-grid{grid-template-columns:1fr}.chemical-hub .chemical-storage-hero{padding:16px}.chemical-hub .chemical-storage-metrics{width:100%}.chemical-hub .chemical-storage-metric{flex:1}}
         @media(prefers-reduced-motion:reduce){.chemical-hub .chemical-cabinet{transition:none}.chemical-hub .chemical-cabinet:hover{transform:none}}
       `}</style>
@@ -698,21 +696,26 @@ export function ChemicalSafetyHubClient({
               <h2>ทะเบียนสารเคมี</h2>
               <p>ค้นหา ตรวจสอบสถานะ SDS และจัดการข้อมูลจากทะเบียนสารเคมี</p>
             </div>
-            <span className="chemical-section-count"><Icon name="flask" size={14} /> {visible.length.toLocaleString()} รายการที่แสดง</span>
           </div>
-          <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, borderLeft: '4px solid var(--primary)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, color: 'var(--ink)' }}>
-                <Icon name="flask" size={16} style={{ color: 'var(--primary)' }} />
-                <strong>แยกสารเคมีหลักกับรายการของงาน/คลัง</strong>
-              </div>
-              <span style={{ color: 'var(--muted)', fontSize: FONT.sm, fontWeight: 700 }}>
-                {registrySummary.productCount.toLocaleString()} สารเคมีหลัก · {registrySummary.registryEntryCount.toLocaleString()} รายการของงาน/คลัง
-              </span>
+          <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, borderLeft: '1px solid var(--primary)' }}>
+            <div
+              className="chemical-registry-summary-metrics"
+              aria-label="สรุปทะเบียนสารเคมี"
+              style={{
+                display: 'flex', alignItems: 'baseline', justifyContent: 'flex-start', gap: SPACE.xs,
+                flexWrap: 'wrap', color: 'var(--muted)', fontSize: FONT.sm, fontWeight: 600,
+              }}
+            >
+              <strong style={{ color: 'var(--ink)', fontSize: FONT.lg, fontVariantNumeric: 'tabular-nums' }}>
+                {registrySummary.productCount.toLocaleString()}
+              </strong>
+              <span>สารเคมีหลัก</span>
+              <span aria-hidden="true" style={{ margin: `0 ${SPACE.xs}px`, color: 'var(--border)' }}>·</span>
+              <strong style={{ color: 'var(--ink)', fontSize: FONT.lg, fontVariantNumeric: 'tabular-nums' }}>
+                {registrySummary.registryEntryCount.toLocaleString()}
+              </strong>
+              <span>รายการของงาน/คลัง</span>
             </div>
-            <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm, lineHeight: 1.55 }}>
-              สารเคมีหลักหนึ่งรายการอาจมีหลายรายการของงาน/คลัง โดยจำนวน ล็อต วันหมดอายุ และตำแหน่งจัดเก็บจะแยกกันตามแต่ละรายการ
-            </p>
           </Card>
           <Card className="chemical-registry-tools" padding={0}>
             <Input
@@ -773,18 +776,6 @@ export function ChemicalSafetyHubClient({
             </Card>
           )}
 
-          {!selectedUnitId && (
-            <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, borderLeft: '4px solid var(--success)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs, color: 'var(--ink)' }}>
-                <Icon name="globe" size={16} style={{ color: 'var(--success)' }} />
-                <strong>สารในห้องเก็บสารเคมีเผยแพร่อัตโนมัติ</strong>
-              </div>
-              <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: FONT.sm }}>
-                แก้ไขแล้วมีผลทันที ไม่ต้องกดเผยแพร่ระดับงาน
-              </p>
-            </Card>
-          )}
-
           <Card className="chemical-filter-panel" padding={0}>
             <div className="chemical-filter-label"><Icon name="filter" size={13} /> หน่วยงาน</div>
             <label className="chemical-unit-select">
@@ -805,7 +796,6 @@ export function ChemicalSafetyHubClient({
                 <option value="retired">Inactive</option>
               </select>
             </label>
-            <span className="chemical-filter-result">แสดง {visible.length.toLocaleString()} รายการ</span>
           </Card>
 
           {visible.length === 0 ? (
