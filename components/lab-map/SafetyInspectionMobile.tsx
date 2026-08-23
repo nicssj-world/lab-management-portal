@@ -60,7 +60,7 @@ async function jsonRequest(url: string, init?: RequestInit) {
 }
 
 export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, roundItemId, canEdit,
-  roundId, resultCounts, onBack, onPrevious, onShowMap, onSaved, onPositionVerified, onCloseRound }: {
+  roundId, resultCounts, loading, onBack, onPrevious, onShowMap, onSaved, onPositionVerified, onCloseRound }: {
   item: SafetyAssetDTO
   locationLabel: string
   queue: SafetyInspectionQueue
@@ -68,6 +68,7 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
   roundItemId?: string | null
   roundId?: string | null
   resultCounts: SafetyInspectionResultCounts
+  loading?: boolean
   canEdit: boolean
   onBack: () => void
   onPrevious: () => void
@@ -94,7 +95,7 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
 
   const busy = ['signing', 'uploading', 'finalizing'].includes(phase)
   const currentExpiresOn = item.latestInspection?.expiresOn ?? ''
-  const roundComplete = Boolean(roundName && queue.progress.total > 0 && queue.progress.remaining === 0)
+  const roundComplete = Boolean(!loading && roundName && queue.progress.total > 0 && queue.progress.remaining === 0)
   const draftKey = useMemo(() => safetyInspectionDraftKey(roundId, item.id), [item.id, roundId])
 
   useEffect(() => {
@@ -232,7 +233,7 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
       <button type="button" onClick={onBack}>กลับไปรายการ</button>
       <button type="button" onClick={onShowMap}>ดูบนแผนที่</button>
     </header>
-    <SafetyInspectionProgress queue={queue} roundName={roundName} />
+    <SafetyInspectionProgress queue={queue} roundName={roundName} loading={loading} canClose={roundComplete} busy={busy} onClose={onCloseRound} />
     {storedDraft ? <aside className="safety-draft-recovery" role="status">
       <strong>พบแบบตรวจที่บันทึกไว้ในเครื่อง</strong>
       <small>บันทึกล่าสุด {new Date(storedDraft.savedAt).toLocaleString('th-TH')}</small>
@@ -254,7 +255,6 @@ export function SafetyInspectionMobile({ item, locationLabel, queue, roundName, 
         <div><dt>ไม่พร้อมใช้</dt><dd>{resultCounts.failed}</dd></div>
         <div><dt>ไม่พบอุปกรณ์</dt><dd>{resultCounts.notFound}</dd></div>
       </dl>
-      <button type="button" onClick={() => void onCloseRound()}>ปิดรอบตรวจ</button>
     </section> : canEdit ? <div className="safety-inspection-fields">
       <label>ผลตรวจ
         <select value={result} disabled={busy} onChange={event => setResult(event.target.value as InspectionResult)}>

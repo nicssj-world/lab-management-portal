@@ -22,7 +22,7 @@ import { LabMapStyles } from './LabMapStyles'
 import { SafetyAssetsStyles } from './SafetyAssetsStyles'
 import { SafetyPhotoPicker } from './SafetyPhotoPicker'
 import { SafetyInspectionMobile } from './SafetyInspectionMobile'
-import { SafetyInspectionProgress } from './SafetyInspectionProgress'
+import { SafetyInspectionProgress, type SafetyInspectionRoundKindOption } from './SafetyInspectionProgress'
 import { SafetyAssetScanner } from './SafetyAssetScanner'
 import { SafetyAssetStatusBadges } from './SafetyAssetStatusBadges'
 import { SafetyPositionVerification } from './SafetyPositionVerification'
@@ -51,6 +51,9 @@ const KIND_LABELS: Record<string, string> = {
   eyewash: 'อ่างล้างตา', 'nss-eyewash': 'น้ำยาล้างตา NSS', 'emergency-shower': 'ฝักบัวฉุกเฉิน', 'spill-kit': 'Spill Kit',
   'emergency-shutoff': 'จุดตัดฉุกเฉิน',
 }
+const ASSET_FILTER_KIND_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(KIND_LABELS).filter(([value]) => value !== 'emergency-shutoff'),
+)
 const STATUS_LABELS: Record<string, string> = {
   unverified: 'รอยืนยันตำแหน่ง', verified: 'ยืนยันตำแหน่งแล้ว', passed: 'ผ่าน',
   needs_attention: 'ต้องติดตาม', failed: 'ไม่พร้อมใช้', not_found: 'ไม่พบอุปกรณ์', overdue: 'เกินกำหนดตรวจ', due_soon: 'ใกล้ครบกำหนด',
@@ -103,6 +106,9 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   const [spaceCode, setSpaceCode] = useState('')
   const [mobileView, setMobileView] = useState<SafetyMobileView>('list')
   const [activeRound, setActiveRound] = useState<SafetyInspectionRoundDTO | null>(null)
+  const [roundLoading, setRoundLoading] = useState(Boolean(initialInspectionRoundId))
+  const [roundLoadFailed, setRoundLoadFailed] = useState(false)
+  const [selectedRoundKind, setSelectedRoundKind] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [assetDraft, setAssetDraft] = useState<Partial<SafetyAssetDTO> | null>(null)
@@ -127,15 +133,49 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   const completedAssetIds = useMemo(() => new Set(
     activeRound?.items.filter(item => item.status === 'completed').map(item => item.assetId) ?? [],
   ), [activeRound])
+  const roundKindOptions = useMemo<SafetyInspectionRoundKindOption[]>(() => {
+    if (!activeRound) return []
+    const kindByAssetId = new Map(assets.map(asset => [asset.id, asset.kind]))
+    const snapshotKinds = activeRound.filters.kinds ?? []
+    const itemKinds = [...new Set(activeRound.items.map(item => item.kind ?? kindByAssetId.get(item.assetId)).filter((kind): kind is string => Boolean(kind)))]
+    const kinds = itemKinds.length ? itemKinds : snapshotKinds
+    const closedKinds = new Set(activeRound.filters.closedKinds ?? [])
+    return kinds.map(kind => {
+      const items = activeRound.items.filter(item => (item.kind ?? kindByAssetId.get(item.assetId)) === kind)
+      return {
+        kind,
+        label: KIND_LABELS[kind] ?? kind,
+        completed: items.filter(item => item.status === 'completed').length,
+        total: items.length,
+        closed: closedKinds.has(kind),
+      }
+    })
+  }, [activeRound, assets])
+  useEffect(() => {
+    if (!activeRound || !roundKindOptions.length) {
+      setSelectedRoundKind('')
+      return
+    }
+    setSelectedRoundKind(current => {
+      if (roundKindOptions.some(option => option.kind === current && !option.closed)) return current
+      return roundKindOptions.find(option => !option.closed)?.kind ?? roundKindOptions[0].kind
+    })
+  }, [activeRound, roundKindOptions])
+  const selectedRoundKindOption = roundKindOptions.find(option => option.kind === selectedRoundKind) ?? null
   const roundAssetIds = useMemo(() => activeRound
-    ? new Set(activeRound.items.map(item => item.assetId))
-    : null, [activeRound])
-  const queueAssets = roundAssetIds ? assets.filter(item => roundAssetIds.has(item.id)) : assets
+    ? new Set(activeRound.items.filter(item => {
+      if (!selectedRoundKind || !roundKindOptions.length) return true
+      const asset = assets.find(candidate => candidate.id === item.assetId)
+      return (item.kind ?? asset?.kind) === selectedRoundKind
+    }).map(item => item.assetId))
+    : null, [activeRound, assets, roundKindOptions, selectedRoundKind])
+  const queueAssets = roundLoading || roundLoadFailed ? [] : roundAssetIds ? assets.filter(item => roundAssetIds.has(item.id)) : assets
   const inspectionQueue = useMemo(() => buildSafetyInspectionQueue({
     assets: queueAssets,
     filters: { query, status, kind, spaceCode },
     completedAssetIds,
-  }), [queueAssets, completedAssetIds, kind, query, spaceCode, status])
+    countLatestInspections: !activeRound && !roundLoading && !roundLoadFailed,
+  }), [activeRound, queueAssets, completedAssetIds, kind, query, roundLoadFailed, roundLoading, spaceCode, status])
   const filteredAssets = inspectionQueue.items.map(item => item.asset)
   // Keep the map in sync with the sidebar's filters — without this, the canvas always draws
   // every asset regardless of the kind/status/query/space filters, which gets crowded fast as
@@ -171,15 +211,28 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
   const assignedEditorCount = assignableStaff.filter(person => editors.has(person.id)).length
 
   useEffect(() => {
-    if (!initialInspectionRoundId) return
+    if (!initialInspectionRoundId) { setRoundLoading(false); setRoundLoadFailed(false); return }
+    setRoundLoading(true)
+    setRoundLoadFailed(false)
     // ผู้ใช้สิทธิ์ดูอย่างเดียวตามลิงก์ "เปิดอุปกรณ์และรอบตรวจ" มาได้เหมือนกัน
     // ถ้าเงียบไปเฉย ๆ จะเห็นแค่รายการอุปกรณ์ธรรมดาโดยไม่รู้ว่าทำไมรอบตรวจไม่ขึ้น
-    if (!canEdit) { setError('ต้องเป็น Safety Editor จึงจะเปิดรอบตรวจนี้ได้ กำลังแสดงทะเบียนอุปกรณ์แบบดูอย่างเดียว'); return }
+    if (!canEdit) {
+      setRoundLoading(false)
+      setRoundLoadFailed(false)
+      setError('ต้องเป็น Safety Editor จึงจะเปิดรอบตรวจนี้ได้ กำลังแสดงทะเบียนอุปกรณ์แบบดูอย่างเดียว')
+      return
+    }
     let active = true
     const roundUrl = `/api/admin/lab-map/safety-inspection-rounds?roundId=${encodeURIComponent(initialInspectionRoundId)}`
     void jsonRequest(roundUrl)
       .then(result => {
-        if (!active || !result.data) return
+        if (!active || !result.data) {
+          if (active) {
+            setRoundLoadFailed(true)
+            setError('ไม่พบ Inspection Round ของงานนี้ จึงยังไม่แสดงรายการอุปกรณ์รวม')
+          }
+          return
+        }
         const filters = result.data.filters ?? {}
         setActiveRound(result.data)
         setQuery(typeof filters.query === 'string' ? filters.query : '')
@@ -187,7 +240,8 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
         setKind(typeof filters.kind === 'string' ? filters.kind : '')
         setSpaceCode(typeof filters.spaceCode === 'string' ? filters.spaceCode : '')
       })
-      .catch(reason => { if (active) setError((reason as Error).message) })
+      .catch(reason => { if (active) { setRoundLoadFailed(true); setError((reason as Error).message) } })
+      .finally(() => { if (active) setRoundLoading(false) })
     return () => { active = false }
   }, [canEdit, initialInspectionRoundId])
 
@@ -281,10 +335,24 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
 
   async function closeInspectionRound() {
     if (!activeRound) return
-    await jsonRequest(`/api/admin/lab-map/safety-inspection-rounds/${activeRound.id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ close: true }),
+    const result = await jsonRequest(`/api/admin/lab-map/safety-inspection-rounds/${activeRound.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(selectedRoundKind ? { close: true, kind: selectedRoundKind } : { close: true }),
     })
+    if (result.data?.status === 'closed' && result.taskSync?.status === 'pending') {
+      throw new Error(result.taskSync.error
+        ? `ปิดรอบแล้ว แต่ยังส่งงานไม่สำเร็จ: ${result.taskSync.error}`
+        : 'ปิดรอบแล้ว แต่ยังส่งงานไม่สำเร็จ กรุณาลองอีกครั้ง')
+    }
+    if (result.data?.status === 'open') {
+      const refreshed = await jsonRequest(`/api/admin/lab-map/safety-inspection-rounds?roundId=${encodeURIComponent(activeRound.id)}`)
+      if (refreshed.data) setActiveRound(refreshed.data)
+      setSelectedCode(null)
+      setMobileView('list')
+      return
+    }
     setActiveRound(null)
+    setSelectedRoundKind('')
     setSelectedCode(null)
     setMobileView('list')
   }
@@ -437,8 +505,10 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
                   <div className="safety-registry-panel">
                     <SafetyAssetScanner active={mobileView === 'list'} onCode={openAssetByCode} />
                     <SafetyInspectionProgress queue={inspectionQueue} roundName={activeRound?.nameTh}
-                      canStart={false} canClose={Boolean(activeRound && inspectionQueue.progress.remaining === 0)} busy={busy}
-                      startHint="เริ่มงานตรวจจากแท็บ “งานความปลอดภัย” เพื่อเชื่อม Task กับอุปกรณ์"
+                      roundKinds={roundKindOptions} selectedRoundKind={selectedRoundKind} roundKindLabel={selectedRoundKindOption?.label}
+                      loading={roundLoading} canStart={false} canClose={Boolean(activeRound && !roundLoading && !selectedRoundKindOption?.closed && inspectionQueue.progress.remaining === 0)} busy={busy}
+                      startHint="หน้านี้รวมอุปกรณ์ทุกประเภท · เริ่มงานตรวจจากแท็บ “งานความปลอดภัย” เพื่อเชื่อม Task กับอุปกรณ์ และจำกัดเฉพาะอุปกรณ์ในรอบตรวจ"
+                      onRoundKindChange={setSelectedRoundKind}
                       onClose={() => void run(closeInspectionRound)} />
                     <AssetsPanel assets={filteredAssets} selected={selectedAsset} query={query} status={status} kind={kind} spaceCode={spaceCode} canEdit={canEdit} canManage={canManage}
                       busy={busy} draft={assetDraft} map={map} listRef={listContainerRef} onQuery={updateAssetFilter(setQuery)} onStatus={updateAssetFilter(setStatus)} onKind={updateAssetFilter(setKind)} onSpaceCode={updateAssetFilter(setSpaceCode)} onSelect={selectAssetFromList}
@@ -448,7 +518,7 @@ export function SafetyAssetsClient({ map, initialAssets, initialAssemblyPoints, 
                   </div>
                   {selectedAsset ? <SafetyInspectionMobile key={selectedAsset.id} item={selectedAsset} locationLabel={selectedLocationLabel}
                     queue={inspectionQueue} roundName={activeRound?.nameTh} roundId={activeRound?.id} roundItemId={selectedRoundItem?.id}
-                    resultCounts={inspectionResultCounts} canEdit={canEdit}
+                    resultCounts={inspectionResultCounts} canEdit={canEdit} loading={roundLoading}
                     onBack={backToList} onPrevious={() => { const code = adjacentPendingCode('previous'); if (code) setSelectedCode(code) }}
                     onShowMap={() => setMobileView('map')} onSaved={inspectionSaved} onPositionVerified={reload}
                     onCloseRound={() => run(closeInspectionRound)} /> : null}
@@ -487,7 +557,7 @@ function AssetsPanel({ assets, selected, query, status, kind, spaceCode, canEdit
       {canEdit ? <Button size="lg" icon="plus" onClick={onAdd}>เพิ่ม</Button> : null}</div>
     <div className="safety-filter-grid">
       <select value={status} onChange={e => onStatus(e.target.value)} aria-label="กรองสถานะ"><option value="">ทุกสถานะ</option>{Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-      <select value={kind} onChange={e => onKind(e.target.value)} aria-label="กรองประเภท"><option value="">ทุกประเภท</option>{Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+      <select value={kind} onChange={e => onKind(e.target.value)} aria-label="กรองประเภท"><option value="">ทุกประเภท</option>{Object.entries(ASSET_FILTER_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       <select value={spaceCode} onChange={e => onSpaceCode(e.target.value)} aria-label="กรองห้อง"><option value="">ทุกห้อง</option>{map.spaces.map(space => <option key={space.code} value={space.code}>{space.nameTh}</option>)}</select>
     </div>
     <div className="safety-editor-focus" ref={editorRef}>

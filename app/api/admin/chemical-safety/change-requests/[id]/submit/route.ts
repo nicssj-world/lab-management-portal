@@ -147,6 +147,18 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/admin/c
     })
     if (applied.error) throw applied.error
 
+    if (current.data.entity_type === 'registry_entry') {
+      // registry_entry เปลี่ยน entity_id จาก null เป็น holding id ตอน apply
+      // ส่งกลับให้ flow เพิ่มสารใหม่แนบ SDS ต่อได้โดยไม่ต้องค้นหาจากชื่อสารซ้ำ
+      const resolved = await supabaseAdmin
+        .from('chemical_change_requests')
+        .select('entity_id')
+        .eq('id', id)
+        .single()
+      if (resolved.error) throw resolved.error
+      return NextResponse.json({ ok: true, holdingId: resolved.data.entity_id ? String(resolved.data.entity_id) : null })
+    }
+
     return NextResponse.json({ ok: true })
   } catch (error) { return transitionError(error) }
 }

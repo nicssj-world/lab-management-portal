@@ -8,6 +8,7 @@ import {
   CHEMICAL_ROOM_NAME_TH,
   CHEMICAL_ZONE_META,
 } from './storage-manifest'
+import { linkedDepartmentSdsIds, roomChemicalSdsVersionIds } from './sds-visibility'
 import type { GhsPictogramCode } from './types'
 import type {
   PublicDepartmentSdsGroup,
@@ -35,7 +36,7 @@ function pictogramList(value: unknown): GhsPictogramCode[] {
 }
 
 async function loadPublicRows() {
-  const [products, aliases, unitProducts, units, versions, publications, holdings, locations, rooms] = await Promise.all([
+  const [products, aliases, unitProducts, units, versions, publications, holdings, locations, rooms, departmentLinks] = await Promise.all([
     rows('chemical_products', query => query.eq('lifecycle_status', 'active')),
     rows('chemical_product_aliases'),
     rows('chemical_unit_products', query => query.eq('active', true).eq('public_eligible', true)),
@@ -45,8 +46,9 @@ async function loadPublicRows() {
     rows('chemical_inventory_holdings'),
     rows('chemical_storage_locations', query => query.eq('active', true)),
     rows('chemical_rooms', query => query.eq('code', CHEMICAL_ROOM_CODE)),
+    rows('chemical_department_chemical_links'),
   ])
-  return { products, aliases, unitProducts, units, versions, publications, holdings, locations, rooms }
+  return { products, aliases, unitProducts, units, versions, publications, holdings, locations, rooms, departmentLinks }
 }
 
 export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<PublicSdsResult[]> {
@@ -61,13 +63,13 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
   const activeRoomPublicationKeys = new Set(data.publications
     .filter(publication => publication.destination === 'room')
     .map(publication => `${publication.product_id}:${publication.unit_id}`))
-  const currentHoldingKeys = new Set(data.holdings
-    .filter(holding => holding.storage_scope === 'room' && holding.workflow_origin !== 'registry_v2')
+  const roomHoldingKeys = new Set(data.holdings
+    .filter(holding => holding.storage_scope === 'room')
     .map(holding => `${holding.product_id}:${holding.unit_id}`))
   const publishedUnits = new Map<string, Array<{ code: string; name: string }>>()
   for (const link of data.unitProducts) {
     const productUnitKey = `${link.product_id}:${link.unit_id}`
-    if (!currentHoldingKeys.has(productUnitKey) || activeRoomPublicationKeys.has(productUnitKey)) continue
+    if (!roomHoldingKeys.has(productUnitKey) || activeRoomPublicationKeys.has(productUnitKey)) continue
     const unit = unitById.get(link.unit_id)
     if (!unit) continue
     const values = publishedUnits.get(link.product_id) ?? []
@@ -77,15 +79,28 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
     publishedUnits.set(link.product_id, values)
   }
 
-  const currentVersions = data.versions.filter(version => version.workflow_origin !== 'registry_v2')
-  const versionByProduct = new Map(currentVersions.map(version => [version.product_id, version]))
+  const roomVersionIds = roomChemicalSdsVersionIds(
+    data.versions,
+    data.holdings,
+    data.departmentLinks,
+    data.publications,
+  )
+  const versionByProduct = new Map<string, Row>()
+  for (const version of data.versions) {
+    if (!roomVersionIds.has(String(version.id))) continue
+    const productId = String(version.product_id)
+    const current = versionByProduct.get(productId)
+    if (!current || String(version.updated_at ?? '').localeCompare(String(current.updated_at ?? '')) > 0) {
+      versionByProduct.set(productId, version)
+    }
+  }
   const versionById = new Map(data.versions.map(version => [String(version.id), version]))
 
   // ตำแหน่งจัดเก็บมาจาก holding ไม่ใช่จาก product — สารตัวเดียวอาจถูกเก็บได้หลายที่
   const locationById = new Map(data.locations.map(location => [location.id, location]))
   const positionByProduct = new Map<string, { code: string; zoneCode: string }>()
   for (const holding of data.holdings) {
-    if (holding.storage_scope === 'department' || holding.workflow_origin === 'registry_v2') continue
+    if (holding.storage_scope === 'department') continue
     if (activeRoomPublicationKeys.has(`${holding.product_id}:${holding.unit_id}`)) continue
     if (positionByProduct.has(holding.product_id)) continue
     const location = locationById.get(holding.location_id)
@@ -118,7 +133,7 @@ export async function searchPublicSds(filters: PublicSdsFilters = {}): Promise<P
     // เอกสาร SDS ที่อนุมัติแล้วเป็นของแถม ไม่ใช่เงื่อนไข — ข้อมูล GHS มีประโยชน์แม้ไฟล์ยังไม่พร้อม
     if (units.length === 0) continue
 
-    const version = versionByProduct.get(product.id)
+    const version = versionByProduct.get(String(product.id))
     const statements = version && Array.isArray(version.h_statements)
       ? version.h_statements.filter((item: any) => item && typeof item.code === 'string' && typeof item.text === 'string')
       : []
@@ -235,7 +250,17 @@ export async function getPublicStorageLayout(): Promise<PublicStorageLayout> {
 
   const productById = new Map(data.products.map(product => [product.id, product]))
   const eligibleProductIds = new Set(data.unitProducts.map(link => link.product_id))
-  const versionByProduct = new Map(data.versions.map(version => [version.product_id, version]))
+  const roomVersionIds = roomChemicalSdsVersionIds(
+    data.versions,
+    data.holdings,
+    data.departmentLinks,
+    data.publications,
+  )
+  const versionByProduct = new Map(
+    data.versions
+      .filter(version => roomVersionIds.has(String(version.id)))
+      .map(version => [String(version.product_id), version]),
+  )
 
   const cabinets = new Map<string, PublicStorageCabinet>()
   for (const location of data.locations) {
@@ -260,7 +285,7 @@ export async function getPublicStorageLayout(): Promise<PublicStorageLayout> {
     if (seen.has(key)) continue
     seen.add(key)
 
-    const version = versionByProduct.get(product.id)
+    const version = versionByProduct.get(String(product.id))
     const sdsPictograms = version ? pictogramList(version.pictogram_codes) : []
     cabinet.chemicals.push({
       publicId: String(product.public_id),
@@ -298,11 +323,16 @@ export async function listPublicDepartmentSds(): Promise<PublicDepartmentSdsGrou
   if (departments.length === 0) return []
 
   const codes = departments.map(row => String(row.code))
-  const items = await rows('chemical_department_sds', query => query.in('department_code', codes))
-  const publications = await rows('chemical_sds_publications', query => query
-    .eq('status', 'active')
-    .eq('destination', 'department')
-    .in('department_code', codes))
+  const [items, publications, links, holdings] = await Promise.all([
+    rows('chemical_department_sds', query => query.in('department_code', codes)),
+    rows('chemical_sds_publications', query => query
+      .eq('status', 'active')
+      .eq('destination', 'department')
+      .in('department_code', codes)),
+    rows('chemical_department_chemical_links'),
+    rows('chemical_inventory_holdings', query => query.eq('storage_scope', 'department')),
+  ])
+  const linkedEntryIds = linkedDepartmentSdsIds(links, holdings)
   const publicationVersionIds = publications.map(item => String(item.sds_version_id))
   const publicationVersions = publicationVersionIds.length > 0
     ? await rows('chemical_sds_versions', query => query.in('id', publicationVersionIds).eq('status', 'approved'))
@@ -310,9 +340,13 @@ export async function listPublicDepartmentSds(): Promise<PublicDepartmentSdsGrou
   const availableVersionIds = new Set(publicationVersions
     .filter(version => version.file_id != null)
     .map(version => String(version.id)))
+  const holdingById = new Map(holdings.map(holding => [String(holding.id), holding]))
 
   const byDepartment = new Map<string, PublicDepartmentSdsGroup['items']>()
   for (const item of items) {
+    // The old department file table is an archive. Only files linked to a
+    // department registry holding are allowed into the public library.
+    if (!item.file_id || !linkedEntryIds.has(String(item.id))) continue
     const list = byDepartment.get(String(item.department_code)) ?? []
     list.push({ publicId: String(item.public_id), displayName: String(item.display_name) })
     byDepartment.set(String(item.department_code), list)
@@ -320,7 +354,14 @@ export async function listPublicDepartmentSds(): Promise<PublicDepartmentSdsGrou
   for (const publication of publications) {
     if (!availableVersionIds.has(String(publication.sds_version_id))) continue
     const version = publicationVersions.find(item => String(item.id) === String(publication.sds_version_id))
-    if (!version || String(version.product_id) !== String(publication.product_id)) continue
+    const holding = holdingById.get(String(publication.source_holding_id))
+    if (
+      !version
+      || String(version.product_id) !== String(publication.product_id)
+      || !holding
+      || String(holding.product_id) !== String(publication.product_id)
+      || String(holding.unit_id) !== String(publication.unit_id)
+    ) continue
     const list = byDepartment.get(String(publication.department_code)) ?? []
     list.push({ publicId: String(publication.public_id), displayName: String(publication.display_name) })
     byDepartment.set(String(publication.department_code), list)
@@ -374,16 +415,21 @@ export async function getPublicSdsFile(publicId: string): Promise<PublicSdsFile 
   if (!product) return null
   const { data: currentHolding } = await supabaseAdmin
     .from('chemical_inventory_holdings').select('id').eq('product_id', product.id)
-    .eq('storage_scope', 'room')
-    .neq('workflow_origin', 'registry_v2').limit(1).maybeSingle()
+    .eq('storage_scope', 'room').limit(1).maybeSingle()
   if (!currentHolding) return null
   const { data: links } = await supabaseAdmin
     .from('chemical_unit_products').select('unit_id').eq('product_id', product.id).eq('active', true).eq('public_eligible', true)
   if (!links?.length) return null
-  const { data: currentVersion } = await supabaseAdmin
+  const { data: holdingVersion } = await supabaseAdmin
     .from('chemical_sds_versions').select('file_id').eq('product_id', product.id)
-    .neq('workflow_origin', 'registry_v2').eq('status', 'approved').maybeSingle()
-  let fileId = currentVersion?.file_id ?? null
+    .eq('source_holding_id', currentHolding.id).eq('status', 'approved').maybeSingle()
+  let fileId = holdingVersion?.file_id ?? null
+  if (!fileId) {
+    const { data: unscopedVersion } = await supabaseAdmin
+      .from('chemical_sds_versions').select('file_id').eq('product_id', product.id)
+      .is('source_holding_id', null).eq('status', 'approved').maybeSingle()
+    fileId = unscopedVersion?.file_id ?? null
+  }
   if (!fileId) {
     const { data: activePublication } = await supabaseAdmin
       .from('chemical_sds_publications').select('sds_version_id').eq('product_id', product.id)
@@ -406,7 +452,7 @@ export async function getPublicSdsFile(publicId: string): Promise<PublicSdsFile 
 export async function getPublicDepartmentSdsFile(publicId: string): Promise<PublicSdsFile | null> {
   const { data: entry } = await supabaseAdmin
     .from('chemical_department_sds')
-    .select('file_id, department_code')
+    .select('id, file_id, department_code')
     .eq('public_id', publicId)
     .maybeSingle()
   if (!entry) {
@@ -437,6 +483,25 @@ export async function getPublicDepartmentSdsFile(publicId: string): Promise<Publ
     if (!file || file.content_type !== 'application/pdf') return null
     return { r2Key: file.r2_key, fileName: file.file_name, contentType: 'application/pdf' }
   }
+
+  // Legacy department files remain addressable by public_id, but only when
+  // the archive row is linked to the matching department registry holding.
+  const { data: link } = await supabaseAdmin
+    .from('chemical_department_chemical_links')
+    .select('product_id, holding_id')
+    .eq('department_sds_id', entry.id)
+    .maybeSingle()
+  if (!link?.product_id || !link?.holding_id || !entry.file_id) return null
+  const { data: holding } = await supabaseAdmin
+    .from('chemical_inventory_holdings')
+    .select('product_id, storage_scope')
+    .eq('id', link.holding_id)
+    .maybeSingle()
+  if (
+    !holding
+    || holding.storage_scope !== 'department'
+    || String(holding.product_id) !== String(link.product_id)
+  ) return null
 
   const { data: department } = await supabaseAdmin
     .from('chemical_sds_departments')

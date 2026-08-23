@@ -67,6 +67,7 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
   const [error, setError] = useState('')
   const [submitted, setSubmitted] = useState<{ id: number; report_no: string | null } | null>(null)
   const [draftRestored, setDraftRestored] = useState(false)
+  const [pendingDraft, setPendingDraft] = useState<Draft | null>(null)
   const [openGroups, setOpenGroups] = useState<string[]>([])
   const formRef = useRef<HTMLFormElement>(null)
 
@@ -77,8 +78,7 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
     try {
       const parsed = JSON.parse(stored) as Draft
       if (parsed.event_detail?.trim() || parsed.department_found) {
-        setDraft({ ...EMPTY, ...parsed })
-        setDraftRestored(true)
+        setPendingDraft({ ...EMPTY, ...parsed })
       }
     } catch {
       window.localStorage.removeItem(DRAFT_KEY)
@@ -92,15 +92,31 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
   }, [draft.event_category])
 
   useEffect(() => {
-    if (submitted) return
+    if (submitted || pendingDraft) return
     if (JSON.stringify(draft) === JSON.stringify(EMPTY)) return
     window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
-  }, [draft, submitted])
+  }, [draft, pendingDraft, submitted])
 
   const errors = validate(draft)
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch })
   const errorOf = (key: keyof Draft) => (touched[key] ? errors[key] : undefined)
   const blur = (key: keyof Draft) => () => setTouched(prev => ({ ...prev, [key]: true }))
+
+  function useSavedDraft() {
+    if (!pendingDraft) return
+    setDraft(pendingDraft)
+    setPendingDraft(null)
+    setDraftRestored(true)
+  }
+
+  function startNewDraft() {
+    window.localStorage.removeItem(DRAFT_KEY)
+    setPendingDraft(null)
+    setDraft(EMPTY)
+    setTouched({})
+    setOpenGroups([])
+    setDraftRestored(false)
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -170,7 +186,7 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
               ไม่ต้องกรอกซ้ำแม้เพื่อนร่วมงานจะรายงานเรื่องเดียวกัน
             </p>
             <div style={{ display: 'flex', gap: SPACE.xs, flexWrap: 'wrap', justifyContent: 'center' }}>
-              <Button variant="primary" icon="plus" onClick={() => { setSubmitted(null); setDraft(EMPTY); setTouched({}) }}>
+              <Button variant="primary" icon="plus" onClick={() => { setSubmitted(null); startNewDraft() }}>
                 รายงานเรื่องใหม่
               </Button>
               {canSeeQueue && (
@@ -206,6 +222,30 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
         subtitle="เจ้าหน้าที่ทุกคนรายงานได้ ไม่ต้องระบุระดับความรุนแรง — รายงานเพื่อให้ระบบดีขึ้น ไม่ใช่เพื่อหาคนผิด"
         marginBottom={0}
       />
+
+      {pendingDraft && (
+        <div
+          role="region"
+          aria-label="ร่างรายงานที่บันทึกไว้"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md, flexWrap: 'wrap', padding: SPACE.sm, borderRadius: 10, background: 'var(--primary-soft)', color: 'var(--primary)' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, minWidth: 0 }}>
+            <Icon name="clock" size={15} />
+            <div>
+              <p style={{ margin: 0, fontSize: FONT.md, fontWeight: 700 }}>พบร่างรายงานที่บันทึกไว้</p>
+              <p style={{ margin: '2px 0 0', fontSize: FONT.sm }}>เลือกใช้ร่างเดิม หรือเริ่มกรอกแบบฟอร์มใหม่</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: SPACE.xs, flexWrap: 'wrap' }}>
+            <Button variant="primary" size="lg" icon="edit" onClick={useSavedDraft}>
+              ใช้ร่างเดิม
+            </Button>
+            <Button variant="secondary" size="lg" onClick={startNewDraft}>
+              เริ่มรายงานใหม่
+            </Button>
+          </div>
+        </div>
+      )}
 
       {draftRestored && (
         <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 7, padding: SPACE.sm, borderRadius: 10, background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: FONT.md }}>

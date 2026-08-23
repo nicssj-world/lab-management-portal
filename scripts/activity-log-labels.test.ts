@@ -2,7 +2,8 @@
 // (ประวัติ: quality_task.check_in, register.close, incident.close และอีกกว่า 40 action หลุดไปเงียบๆ
 // หลายเดือนก่อนถูกจับได้ — README เคยเตือนไว้แล้วแต่ครอบคลุมแค่ไฟล์เดียวจาก 4 จุดที่ต้องอัปเดตคู่กัน)
 //
-// สแกน source จริงหา action string ทุกตัวที่ถูก insert เข้า audit_log (ทั้งแบบ literal ตรงๆ,
+// สแกน source จริงหา action string ทุกตัวที่ถูก insert เข้า audit_log (ทั้งใน app/lib และ SQL,
+// แบบ literal ตรงๆ,
 // ternary, และผ่าน audit-helper wrapper อย่าง auditRisk/auditIt/auditSafety/auditExternalQuality/
 // auditChild) แล้วเทียบกับ ACTION_LABELS ทั้ง 2 ไฟล์ + CATEGORY_ACTIONS ฝั่ง API + ปุ่มกรองหมวดหมู่
 //
@@ -29,12 +30,24 @@ function walk(dir: string): string[] {
   })
 }
 
-const SOURCE_FILES = [...walk(join(process.cwd(), 'app', 'api')), ...walk(join(process.cwd(), 'lib'))].filter(
+const SOURCE_FILES = [...walk(join(process.cwd(), 'app')), ...walk(join(process.cwd(), 'lib'))].filter(
   (p) => !p.endsWith('.test.ts'),
 )
 assert.ok(SOURCE_FILES.length > 100, `expected to walk a substantial number of source files, found ${SOURCE_FILES.length}`)
 
-const AUDIT_HELPER_NAMES = /\baudit(?:Risk|It|HeadContact|Safety|MapRelease|ExternalQuality|Child|PurgeRetry)\b|\bwritePmCalAudit\b/
+function walkSql(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    if (entry.startsWith('.')) return []
+    const path = join(dir, entry)
+    const stat = statSync(path)
+    if (stat.isDirectory()) return walkSql(path)
+    return path.endsWith('.sql') ? [path] : []
+  })
+}
+
+const SQL_SOURCE_FILES = [walkSql(join(process.cwd(), 'supabase')), walkSql(join(process.cwd(), 'scripts'))].flat()
+
+const AUDIT_HELPER_NAMES = /\baudit(?:Risk|It|HeadContact|Safety|MapRelease|ExternalQuality|Child|PurgeRetry|SatisfactionChange)\b|\bwritePmCalAudit\b/
 
 // action code เข้ารูป "word.word" / "word_word.word" (มี separator อย่างน้อยหนึ่งจุด) หรือคำเดี่ยวที่รู้จัก
 const ACTION_SHAPE = /^[a-z][a-z0-9]*(?:[_.][a-z0-9]+)+$/
@@ -73,6 +86,9 @@ for (const file of SOURCE_FILES) {
     record(m[1], file)
   }
   for (const m of src.matchAll(/writePmCalAudit\(\s*[^,]+,\s*['"]([\w.\-]+)['"]/g)) record(m[1], file)
+  for (const m of src.matchAll(/auditSatisfactionChange\(\s*\{[\s\S]*?\baction:\s*['"]([\w.\-]+)['"]/g)) {
+    record(m[1], file)
+  }
 
   // 5) auditExternalQuality('module', 'action', ...) → module.action
   for (const m of src.matchAll(/auditExternalQuality\(\s*['"](\w+)['"]\s*,\s*['"]([\w.\-]+)['"]/g)) {
@@ -84,6 +100,13 @@ for (const file of SOURCE_FILES) {
   for (const m of src.matchAll(/createChild\(\s*req,\s*['"](\w+)['"]/g)) record(`personnel.${m[1]}.create`, file)
   for (const m of src.matchAll(/updateChild\(\s*req,\s*['"](\w+)['"]/g)) record(`personnel.${m[1]}.update`, file)
   for (const m of src.matchAll(/softDeleteChild\(\s*['"](\w+)['"]/g)) record(`personnel.${m[1]}.delete`, file)
+}
+
+for (const file of SQL_SOURCE_FILES) {
+  const src = readFileSync(file, 'utf8')
+  for (const m of src.matchAll(/INSERT\s+INTO\s+(?:public\.)?audit_log\s*\([\s\S]*?\)\s*VALUES\s*\(\s*['"]([\w.\-]+)['"]/gi)) {
+    record(m[1], file)
+  }
 }
 
 assert.ok(

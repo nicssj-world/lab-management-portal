@@ -13,6 +13,7 @@ import type {
 import { calculateHoldingTotalFromFields, isMeasuredUnit } from '@/lib/chemical-safety/domain'
 import { CHEMICAL_SDS_DEPARTMENTS } from '@/lib/chemical-safety/departments'
 import { GhsPictogram } from './GhsPictogram'
+import { SdsDropzone } from './shared/SdsDropzone'
 import { FONT, SPACE } from './shared/tokens'
 
 const ALL_PICTOGRAMS: GhsPictogramCode[] = [
@@ -42,7 +43,7 @@ interface HazardDraft { classTh: string; classEn: string }
 export type RegistryChangeMode = 'create' | 'edit-product' | 'edit-holding'
 
 export function RegistryChangeModal({
-  mode, locations, units, products, product, registryRow, onClose, onSaved,
+  mode, locations, units, products, product, registryRow, embedded = false, onClose, onSaved,
 }: {
   mode: RegistryChangeMode
   locations: ChemicalStorageLocationDTO[]
@@ -52,6 +53,8 @@ export function RegistryChangeModal({
   product?: ChemicalProductDTO
   /** จำเป็นเมื่อ mode = 'edit-holding' หรือใช้เติมหน่วยงานเริ่มต้นตอน 'create' */
   registryRow?: ChemicalRegistryRow
+  /** ใช้ฝังฟอร์มไว้ใน ChemicalDetailsModal โดยไม่สร้าง overlay ซ้อน */
+  embedded?: boolean
   onClose: () => void
   onSaved: (message: string, ok?: boolean) => void
 }) {
@@ -129,6 +132,9 @@ export function RegistryChangeModal({
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sdsFile, setSdsFile] = useState<File | null>(null)
+  const [createdHoldingId, setCreatedHoldingId] = useState<string | null>(null)
+  const [createdSdsId, setCreatedSdsId] = useState<string | null>(null)
 
   function togglePictogram(code: GhsPictogramCode) {
     setPictograms(current => current.includes(code) ? current.filter(item => item !== code) : [...current, code].sort())
@@ -199,7 +205,47 @@ export function RegistryChangeModal({
     }
   }
 
+  async function attachSdsToCreatedHolding(holdingId: string, file: File) {
+    let sdsId = createdSdsId
+    if (!sdsId) {
+      const createdSds = await fetch('/api/admin/chemical-safety/sds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ holdingId, language: 'th' }),
+      })
+      const createdSdsPayload = await createdSds.json().catch(() => ({}))
+      if (!createdSds.ok) throw new Error(createdSdsPayload.error || 'สร้างเอกสาร SDS ไม่สำเร็จ')
+      sdsId = String(createdSdsPayload.id)
+      setCreatedSdsId(sdsId)
+    }
+
+    const body = new FormData()
+    body.append('file', file)
+    const uploaded = await fetch(`/api/admin/chemical-safety/sds/${sdsId}/upload`, { method: 'POST', body })
+    const uploadedPayload = await uploaded.json().catch(() => ({}))
+    if (!uploaded.ok) throw new Error(uploadedPayload.error || 'แนบไฟล์ SDS ไม่สำเร็จ')
+  }
+
   async function submit() {
+    if (createdHoldingId) {
+      if (!sdsFile) {
+        setError('ทะเบียนถูกบันทึกแล้ว กรุณาเลือกไฟล์ SDS เพื่อดำเนินการต่อ')
+        return
+      }
+      setBusy(true)
+      setError(null)
+      try {
+        await attachSdsToCreatedHolding(createdHoldingId, sdsFile)
+        onSaved('บันทึกทะเบียนสารเคมีและแนบ SDS แล้ว · พร้อมใช้งาน')
+        onClose()
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'แนบไฟล์ SDS ไม่สำเร็จ')
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+
     if ((!isCreate || productMode === 'new') && !canonicalName.trim()) { setError('กรุณาระบุชื่อสาร'); return }
     if (isCreate && productMode === 'existing' && !selectedProductId) { setError('กรุณาเลือกสารเคมีเดิม'); return }
     if ((isCreate || isHolding) && !isDepartment && !locationId) { setError('กรุณาเลือกตำแหน่งจัดเก็บ'); return }
@@ -252,7 +298,15 @@ export function RegistryChangeModal({
       const submittedPayload = await submitted.json().catch(() => ({}))
       if (!submitted.ok) throw new Error(submittedPayload.error || 'บันทึกไม่สำเร็จ')
 
-      onSaved('บันทึกลงทะเบียนสารเคมีแล้ว')
+      const holdingId = typeof submittedPayload.holdingId === 'string' ? submittedPayload.holdingId : null
+      if (isCreate && productMode === 'new' && sdsFile) {
+        if (!holdingId) throw new Error('สร้างทะเบียนแล้ว แต่ไม่พบรายการสำหรับแนบ SDS กรุณาเปิดรายละเอียดสารแล้วลองแนบอีกครั้ง')
+        setCreatedHoldingId(holdingId)
+        await attachSdsToCreatedHolding(holdingId, sdsFile)
+        onSaved('บันทึกทะเบียนสารเคมีและแนบ SDS แล้ว · พร้อมใช้งาน')
+      } else {
+        onSaved('บันทึกลงทะเบียนสารเคมีแล้ว')
+      }
       onClose()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ')
@@ -261,34 +315,40 @@ export function RegistryChangeModal({
     }
   }
 
-  const title = isCreate ? 'เพิ่มสารเคมีใหม่' : isProduct ? 'แก้ไขข้อมูลสาร' : isDepartment ? 'แก้ไขคลัง (ปริมาณ/วันที่)' : 'แก้ไขคลัง (ตำแหน่ง/ปริมาณ)'
+  const title = isCreate ? 'เพิ่มสารเคมีใหม่' : isProduct ? 'แก้ไขข้อมูลสารในทะเบียน' : isDepartment ? 'แก้ไขคลัง (ปริมาณ/วันที่)' : 'แก้ไขคลัง (ตำแหน่ง/ปริมาณ)'
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-      }}
+      role={embedded ? undefined : 'dialog'}
+      aria-modal={embedded ? undefined : 'true'}
+      aria-label={embedded ? undefined : title}
+      style={embedded
+        ? { width: '100%' }
+        : {
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
     >
-      <div style={{
-        background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 720,
-        maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)',
-      }}>
-        <header style={{
-          padding: SPACE.md, borderBottom: '1px solid var(--border)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: SPACE.sm,
-        }}>
-          <div>
-            <div style={{ fontSize: FONT.xs, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--primary)' }}>
-              บันทึกแล้วมีผลทันที และเก็บประวัติการเปลี่ยนแปลงไว้
+      <div style={embedded
+        ? { width: '100%', background: 'transparent', borderRadius: 0, maxWidth: 'none', maxHeight: 'none', overflow: 'visible', boxShadow: 'none' }
+        : {
+            background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 720,
+            maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)',
+          }}>
+        {!embedded && (
+          <header style={{
+            padding: SPACE.md, borderBottom: '1px solid var(--border)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: SPACE.sm,
+          }}>
+            <div>
+              <div style={{ fontSize: FONT.xs, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--primary)' }}>
+                บันทึกแล้วมีผลทันที และเก็บประวัติการเปลี่ยนแปลงไว้
+              </div>
+              <h2 style={{ margin: '4px 0 0', fontSize: FONT.xl, color: 'var(--ink)' }}>{title}</h2>
             </div>
-            <h2 style={{ margin: '4px 0 0', fontSize: FONT.xl, color: 'var(--ink)' }}>{title}</h2>
-          </div>
-          <Button variant="ghost" icon="x" onClick={onClose} title="ปิด" />
-        </header>
+            <Button variant="ghost" icon="x" onClick={onClose} title="ปิด" />
+          </header>
+        )}
 
         <div style={{ padding: SPACE.md, display: 'grid', gap: SPACE.md }}>
           {isCreate && (
@@ -297,7 +357,15 @@ export function RegistryChangeModal({
               <div style={gridStyle}>
                 <label>
                   <span style={labelStyle}>วิธีเพิ่มรายการ *</span>
-                  <select value={productMode} onChange={(event) => setProductMode(event.target.value as 'new' | 'existing')} style={inputStyle}>
+                    <select
+                      value={productMode}
+                      onChange={(event) => {
+                        const next = event.target.value as 'new' | 'existing'
+                        setProductMode(next)
+                        if (next === 'existing') setSdsFile(null)
+                      }}
+                      style={inputStyle}
+                    >
                     <option value="new">สร้างรายการสารใหม่</option>
                     <option value="existing">ใช้สารที่มีอยู่</option>
                   </select>
@@ -326,15 +394,21 @@ export function RegistryChangeModal({
 
           {!isHolding && (!isCreate || productMode === 'new') && (
             <section>
-              <h3 style={sectionStyle}>ข้อมูลสาร</h3>
+              <h3 style={sectionStyle}>{isProduct ? 'ข้อมูลสารในทะเบียน' : 'ข้อมูลสาร'}</h3>
+              {isProduct && (
+                <p style={{ margin: `0 0 ${SPACE.sm}px`, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>
+                  ข้อมูลพื้นฐานของสารที่ใช้แสดงและค้นหาในทะเบียน ไม่ใช่รายละเอียดของเอกสาร SDS
+                  หากต้องการแนบ PDF หรือแก้ข้อมูลตามเอกสาร ให้เลือกแท็บ “เอกสาร SDS” ในหน้ารายละเอียดสาร
+                </p>
+              )}
               <div style={gridStyle}>
                 <Field label="ชื่อสาร *" value={canonicalName} onChange={setCanonicalName} />
                 {isCreate && <Field label="ชื่อพ้อง (คั่นด้วยจุลภาค)" value={aliasesText} onChange={setAliasesText} />}
                 <Field label="เลขทะเบียน CAS" value={casNumber} onChange={setCasNumber} placeholder="64-19-7" />
-                <Field label="ผู้ผลิต" value={manufacturer} onChange={setManufacturer} />
-                <Field label="ผู้จำหน่าย" value={supplier} onChange={setSupplier} />
-                <Field label="รหัสผลิตภัณฑ์" value={productCode} onChange={setProductCode} />
-                <Field label="ความเข้มข้น" value={concentration} onChange={setConcentration} />
+                <Field label={isProduct ? 'ผู้ผลิตในทะเบียน' : 'ผู้ผลิต'} value={manufacturer} onChange={setManufacturer} />
+                <Field label={isProduct ? 'ผู้จำหน่ายในทะเบียน' : 'ผู้จำหน่าย'} value={supplier} onChange={setSupplier} />
+                <Field label={isProduct ? 'รหัสผลิตภัณฑ์ในทะเบียน' : 'รหัสผลิตภัณฑ์'} value={productCode} onChange={setProductCode} />
+                <Field label={isProduct ? 'ความเข้มข้นในทะเบียน' : 'ความเข้มข้น'} value={concentration} onChange={setConcentration} />
                 <label>
                   <span style={labelStyle}>สถานะทางกายภาพ</span>
                   <select value={physicalState} onChange={(e) => setPhysicalState(e.target.value)} style={inputStyle}>
@@ -434,11 +508,34 @@ export function RegistryChangeModal({
             )}
           </section>
 
+          {isCreate && productMode === 'new' && (
+            <section>
+              <h3 style={sectionStyle}>แนบไฟล์ SDS (ถ้ามีแล้ว)</h3>
+              <p style={{ margin: `0 0 ${SPACE.sm}px`, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>
+                มี SDS เป็นไฟล์ PDF อยู่แล้วสามารถแนบได้เลย ระบบจะผูกไฟล์กับสารที่เพิ่งสร้างและทำให้พร้อมใช้งานอัตโนมัติ
+                หากยังไม่มีไฟล์ ให้ข้ามส่วนนี้แล้วแนบภายหลังจากแท็บ “เอกสาร SDS”
+              </p>
+              {sdsFile && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.sm, marginBottom: SPACE.xs, padding: `${SPACE.xs}px ${SPACE.sm}px`, borderRadius: 8, background: 'var(--primary-soft)', color: 'var(--ink)', fontSize: FONT.sm }}>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <Icon name="check" size={13} /> {sdsFile.name}
+                  </span>
+                  <Button variant="ghost" size="sm" icon="x" title="เอาไฟล์ที่เลือกออก" onClick={() => setSdsFile(null)} disabled={busy} />
+                </div>
+              )}
+              <SdsDropzone
+                onFile={(file) => { setSdsFile(file); setError(null) }}
+                disabled={busy}
+                hint="ไฟล์ PDF ขนาดไม่เกิน 50 MB · ไม่แนบก็ได้"
+              />
+            </section>
+          )}
+
           {!isHolding && (!isCreate || productMode === 'new') && (
             <section>
               <h3 style={sectionStyle}>GHS เบื้องต้นสำหรับทะเบียน (ถ้าทราบ)</h3>
               <p style={{ margin: `0 0 ${SPACE.sm}px`, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>
-                ใช้แสดงและค้นหาสารระหว่างที่ยังไม่มีไฟล์ SDS หากมี SDS ให้ยืนยันรายละเอียดจาก SDS หมวด 2 ในปุ่ม SDS
+                ใช้แสดงและค้นหาสารระหว่างที่ยังไม่มีไฟล์ SDS หากมี SDS ให้ยืนยันรายละเอียดจาก SDS หมวด 2 ในแท็บ “เอกสาร SDS”
               </p>
               <label style={{ display: 'block', marginBottom: SPACE.sm }}>
                 <span style={labelStyle}>แหล่งข้อมูลเบื้องต้น</span>

@@ -25,8 +25,8 @@ import type {
   ChemicalUnitDTO,
 } from '@/lib/chemical-safety/types'
 import { RegistryChangeModal, type RegistryChangeMode } from './RegistryChangeModal'
+import { ChemicalDetailsModal, type ChemicalDetailsTab } from './ChemicalDetailsModal'
 import { HoldingDeleteImpactDialog } from './HoldingDeleteImpactDialog'
-import { SdsEditorModal } from './SdsEditorModal'
 import { SdsManagementClient, type SdsProductInfo } from './SdsManagementClient'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
 import { FONT, SDS_ONLY_CAPTURE_LABEL, SPACE, ZONE_META, tabularNums } from './shared/tokens'
@@ -73,6 +73,12 @@ interface ModalState {
   mode: RegistryChangeMode
   product?: ChemicalProductDTO
   registryRow?: ChemicalRegistryRow
+}
+
+interface ChemicalDetailsState {
+  row: ChemicalRegistryRow
+  product?: ChemicalProductDTO
+  tab: ChemicalDetailsTab
 }
 
 interface FloatingScrollbarState {
@@ -210,6 +216,7 @@ export function ChemicalSafetyHubClient({
   const [exporting, setExporting] = useState(false)
   const [newChemicalHoldingIds, setNewChemicalHoldingIds] = useState<Set<string>>(new Set())
   const [modal, setModal] = useState<ModalState | null>(null)
+  const [chemicalDetails, setChemicalDetails] = useState<ChemicalDetailsState | null>(null)
   const [sdsEditor, setSdsEditor] = useState<{ sds: ChemicalSdsDTO; row: ChemicalRegistryRow } | null>(null)
   const [sdsBusyHoldingId, setSdsBusyHoldingId] = useState<string | null>(null)
   const [busyProductId, setBusyProductId] = useState<string | null>(null)
@@ -252,6 +259,26 @@ export function ChemicalSafetyHubClient({
     }
   }
 
+  function openChemicalDetails(row: ChemicalRegistryRow) {
+    setChemicalDetails({ row, product: productById.get(row.productId), tab: 'registry' })
+    setSdsEditor(null)
+  }
+
+  function closeChemicalDetails() {
+    setChemicalDetails(null)
+    setSdsEditor(null)
+  }
+
+  function changeChemicalDetailsTab(tab: ChemicalDetailsTab) {
+    const current = chemicalDetails
+    if (!current) return
+    if (tab === 'registry') {
+      setChemicalDetails({ ...current, tab })
+      return
+    }
+    void openSds(current.row)
+  }
+
   /**
    * เปิดหน้าต่างแก้ไข SDS ของรายการทะเบียนหนึ่ง
    *
@@ -262,6 +289,9 @@ export function ChemicalSafetyHubClient({
    * เพราะสิทธิ์แก้ไขผูกกับหน่วยงานของ source holding — หยิบผิดตัวจะได้ 403 ที่อธิบายไม่ได้
    */
   async function openSds(row: ChemicalRegistryRow) {
+    setChemicalDetails(current => current?.row.holdingId === row.holdingId
+      ? { ...current, tab: 'sds' }
+      : { row, product: productById.get(row.productId), tab: 'sds' })
     const existing = sdsItems.find(item => (
       item.productId === row.productId
       && item.status !== 'superseded'
@@ -550,6 +580,9 @@ export function ChemicalSafetyHubClient({
         .chemical-hub .chemical-unit-select select:focus-visible{border-color:var(--primary);outline:3px solid color-mix(in srgb,var(--primary) 22%,transparent)}
         .chemical-hub .chemical-filter-result{margin-left:auto;color:var(--muted);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
         .chemical-hub .chemical-registry-table-scroll{overflow-x:auto;scrollbar-gutter:stable;overscroll-behavior-x:contain}
+        .chemical-hub .chemical-registry-actions{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap}
+        .chemical-hub .chemical-registry-action-label-short{display:none}
+        @media(max-width:1200px){.chemical-hub .chemical-registry-actions{gap:3px}.chemical-hub .chemical-registry-action-label-long{display:none}.chemical-hub .chemical-registry-action-label-short{display:inline}}
         .chemical-hub .chemical-registry-floating-scroll{position:fixed;z-index:900;bottom:max(0px,env(safe-area-inset-bottom));height:18px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;background:var(--card);border-top:1px solid var(--border);box-shadow:0 -4px 14px rgba(15,23,42,.12)}
         .chemical-hub .chemical-registry-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:11px 14px;border-top:1px solid var(--border);background:var(--surface-2)}
         .chemical-hub .chemical-registry-pagination-info{color:var(--muted);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -777,13 +810,11 @@ export function ChemicalSafetyHubClient({
                           </td>
                           <td style={cellStyle}>
                             <div style={{ fontSize: FONT.base }}>{row.unitName}</div>
-                            <div style={{ marginTop: 4 }}>
-                              {row.storageScope === 'department' ? (
-                                <Badge color="teal"><Icon name="users" size={12} /> ตามหน่วยงาน · ไม่ระบุตำแหน่ง</Badge>
-                              ) : (
+                            {row.storageScope === 'room' && (
+                              <div style={{ marginTop: 4 }}>
                                 <PositionChip code={row.positionCode} zoneCode={zoneOf(row.positionCode, locations)} />
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </td>
                           <td style={cellStyle}>
                             {row.calculatedTotalValue != null && row.calculatedTotalUnit ? (
@@ -836,36 +867,37 @@ export function ChemicalSafetyHubClient({
                           </td>
                           {canPropose && (
                             <td style={cellStyle}>
-                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                              <div className="chemical-registry-actions">
                                 {canEditRow && (
                                   <>
                                     <Button
-                                      variant="ghost" size="sm" icon="edit" title="แก้ไขตำแหน่งและปริมาณ"
+                                      variant="ghost" size="sm" icon="edit" title="แก้ไขคลัง: ตำแหน่งและปริมาณ"
                                       onClick={() => setModal({ mode: 'edit-holding', registryRow: row })}
                                     />
                                     <Button
-                                      variant="ghost" size="sm" icon="doc" title="แก้ไขข้อมูลสาร"
+                                      variant="ghost" size="sm" icon="doc" title="เปิดรายละเอียดสาร: ข้อมูลทะเบียนและเอกสาร SDS"
                                       disabled={!product}
-                                      onClick={() => product && setModal({ mode: 'edit-product', product, registryRow: row })}
-                                    />
+                                      onClick={() => product && openChemicalDetails(row)}
+                                    >
+                                      <span className="chemical-registry-action-label-long">รายละเอียดสาร</span>
+                                      <span className="chemical-registry-action-label-short">รายละเอียด</span>
+                                    </Button>
                                   </>
                                 )}
                                 {canEditRow && (
                                   <Button
-                                    variant="ghost" size="sm" icon="upload" title="แก้ไข SDS / แนบไฟล์"
-                                    disabled={sdsBusyHoldingId === row.holdingId}
-                                    onClick={() => void openSds(row)}
-                                  >
-                                    SDS
-                                  </Button>
-                                )}
-                                {canEditRow && (
-                                  <Button
-                                    variant="ghost" size="sm" icon={isInactive ? 'check' : 'trash'}
-                                    title={isInactive ? 'ตั้งเป็น Active' : 'ตั้งเป็น Inactive'}
+                                    variant="ghost" size="sm" icon={isInactive ? 'eye' : 'eyeOff'}
+                                    title={isInactive ? 'ตั้งสถานะเป็น Active' : 'ตั้งสถานะเป็น Inactive'}
                                     disabled={busy || !product}
                                     onClick={() => void toggleLifecycle(row)}
-                                  />
+                                  >
+                                    <span className="chemical-registry-action-label-long">
+                                      {isInactive ? 'ตั้งเป็น Active' : 'ตั้งเป็น Inactive'}
+                                    </span>
+                                    <span className="chemical-registry-action-label-short">
+                                      {isInactive ? 'เปิดใช้งาน' : 'พักใช้งาน'}
+                                    </span>
+                                  </Button>
                                 )}
                                 {canEditRow && (
                                   <Button
@@ -935,15 +967,18 @@ export function ChemicalSafetyHubClient({
         />
       )}
 
-      {sdsEditor && (
-        <SdsEditorModal
-          sds={sdsEditor.sds}
-          productName={sdsEditor.row.canonicalName}
-          seed={{
-            pictogramCodes: sdsEditor.row.pictogramCodes,
-            hazardClassesTh: sdsEditor.row.hazards.map(hazard => hazard.className),
-          }}
-          onClose={() => setSdsEditor(null)}
+      {chemicalDetails && (
+        <ChemicalDetailsModal
+          activeTab={chemicalDetails.tab}
+          row={chemicalDetails.row}
+          product={chemicalDetails.product}
+          locations={locations}
+          units={units}
+          products={products}
+          sds={sdsEditor?.row.holdingId === chemicalDetails.row.holdingId ? sdsEditor.sds : null}
+          sdsLoading={sdsBusyHoldingId === chemicalDetails.row.holdingId}
+          onTabChange={changeChemicalDetailsTab}
+          onClose={closeChemicalDetails}
           onSaved={notify}
         />
       )}

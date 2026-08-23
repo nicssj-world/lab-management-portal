@@ -12,6 +12,8 @@ export interface ChemicalSdsVisibilityVersionRow {
 }
 
 export interface ChemicalDepartmentSdsVisibilityLinkRow {
+  department_sds_id?: unknown
+  product_id?: unknown
   sds_version_id?: unknown
   holding_id?: unknown
 }
@@ -20,6 +22,36 @@ export interface ChemicalSdsPublicationVisibilityRow {
   sds_version_id?: unknown
   source_holding_id?: unknown
   destination?: unknown
+}
+
+/**
+ * Return department SDS files that are backed by a department registry holding.
+ *
+ * The legacy department file table is still retained for the archive, so its
+ * rows cannot be treated as public merely because a department is published.
+ * A valid link must point to a department holding for the same product.
+ */
+export function linkedDepartmentSdsIds(
+  links: ChemicalDepartmentSdsVisibilityLinkRow[],
+  holdings: ChemicalHoldingSdsVisibilityRow[],
+): Set<string> {
+  const holdingById = new Map(
+    holdings
+      .filter(row => row.id != null)
+      .map(row => [String(row.id), row]),
+  )
+
+  return new Set(
+    links
+      .filter(link => {
+        if (link.department_sds_id == null || link.product_id == null || link.holding_id == null) return false
+        const holding = holdingById.get(String(link.holding_id))
+        return holding?.storage_scope === 'department'
+          && holding.product_id != null
+          && String(holding.product_id) === String(link.product_id)
+      })
+      .map(link => String(link.department_sds_id)),
+  )
 }
 
 /**

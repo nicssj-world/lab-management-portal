@@ -38,12 +38,15 @@ export function SdsEditorModal({
   sds,
   productName,
   seed,
+  embedded = false,
   onClose,
   onSaved,
 }: {
   sds: ChemicalSdsDTO
   productName: string
   seed?: SdsEditorSeed
+  /** ใช้ฝังฟอร์มไว้ใน ChemicalDetailsModal โดยไม่สร้าง overlay ซ้อน */
+  embedded?: boolean
   onClose: () => void
   onSaved: (message: string, ok?: boolean) => void
 }) {
@@ -100,7 +103,7 @@ export function SdsEditorModal({
       setHasFile(true)
       // อัปโหลดแตะ updated_at จึงต้องรับค่าใหม่มา ไม่งั้นการบันทึกถัดไปจะชน optimistic lock
       if (payload.updatedAt) setUpdatedAt(payload.updatedAt)
-      onSaved('แนบไฟล์ SDS แล้ว')
+      onSaved('แนบไฟล์ SDS แล้ว · พร้อมใช้งาน')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'อัปโหลดไม่สำเร็จ')
     } finally {
@@ -141,7 +144,7 @@ export function SdsEditorModal({
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'บันทึกไม่สำเร็จ')
-      onSaved('บันทึกข้อมูล SDS แล้ว')
+      onSaved(hasFile ? 'บันทึกข้อมูล SDS แล้ว · พร้อมใช้งาน' : 'บันทึกข้อมูล SDS แล้ว · รอแนบไฟล์ PDF')
       onClose()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'บันทึกไม่สำเร็จ')
@@ -153,34 +156,50 @@ export function SdsEditorModal({
   return (
     <>
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`แก้ไข SDS ของ ${productName}`}
-        style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-        }}
+        role={embedded ? undefined : 'dialog'}
+        aria-modal={embedded ? undefined : 'true'}
+        aria-label={embedded ? undefined : `แก้ไขเอกสาร SDS ของ ${productName}`}
+        style={embedded
+          ? { width: '100%' }
+          : {
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+            }}
       >
-      <div style={{
-        background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 780,
-        maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)',
-      }}>
-        <header style={{
-          padding: SPACE.md, borderBottom: '1px solid var(--border)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: SPACE.sm,
-        }}>
-          <div>
-            <div style={{ fontSize: FONT.xs, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--primary)' }}>
-              แก้ไข SDS
+      <div style={embedded
+        ? { width: '100%', background: 'transparent', borderRadius: 0, maxWidth: 'none', maxHeight: 'none', overflow: 'visible', boxShadow: 'none' }
+        : {
+            background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 780,
+            maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)',
+          }}>
+        {!embedded && (
+          <header style={{
+            padding: SPACE.md, borderBottom: '1px solid var(--border)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: SPACE.sm,
+          }}>
+            <div>
+              <div style={{ fontSize: FONT.xs, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--primary)' }}>
+                แก้ไขเอกสาร SDS
+              </div>
+              <h2 style={{ margin: '4px 0 0', fontSize: FONT.xl, color: 'var(--ink)' }}>{productName}</h2>
             </div>
-            <h2 style={{ margin: '4px 0 0', fontSize: FONT.xl, color: 'var(--ink)' }}>{productName}</h2>
-          </div>
-          <Button variant="ghost" icon="x" onClick={onClose} title="ปิด" />
-        </header>
+            <Button variant="ghost" icon="x" onClick={onClose} title="ปิด" />
+          </header>
+        )}
 
         <div style={{ padding: SPACE.md, display: 'grid', gap: SPACE.md }}>
+          <div
+            role="note"
+            style={{ padding: `${SPACE.sm}px ${SPACE.md}px`, border: '1px solid color-mix(in srgb,var(--primary) 25%,var(--border))', borderRadius: 10, background: 'var(--primary-soft)', color: 'var(--ink)', fontSize: FONT.sm, lineHeight: 1.55 }}
+          >
+            <strong>ข้อมูลของเอกสาร SDS ฉบับนี้</strong>
+            <div style={{ marginTop: 3, color: 'var(--muted)' }}>
+              แนบไฟล์ PDF และกรอกข้อมูลให้ตรงกับ SDS ฉบับนี้โดยตรง หากต้องการแก้ชื่อสารหรือข้อมูลพื้นฐานของทะเบียน ให้ปิดหน้าต่างนี้แล้วเลือก “ข้อมูลสารในทะเบียน”
+            </div>
+          </div>
+
           <section>
-            <h3 style={sectionStyle}>ไฟล์เอกสาร</h3>
+            <h3 style={sectionStyle}>ไฟล์เอกสาร SDS</h3>
             {hasFile && (
               <>
                 <style>{`
@@ -213,20 +232,26 @@ export function SdsEditorModal({
                 </div>
               </>
             )}
+            {!hasFile && (
+              <div style={{ marginBottom: SPACE.sm, padding: `${SPACE.xs}px ${SPACE.sm}px`, borderRadius: 8, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: FONT.sm }}>
+                <strong style={{ color: 'var(--ink)' }}>ยังไม่มีไฟล์ PDF · SDS ยังไม่พร้อมใช้งาน</strong>
+                <div style={{ marginTop: 2 }}>แนบไฟล์ SDS ทางการก่อน เพื่อให้ระบบเผยแพร่เอกสารนี้</div>
+              </div>
+            )}
             <SdsDropzone
               onFile={upload}
               disabled={busy !== null}
-              hint="รับเฉพาะไฟล์ PDF ขนาดไม่เกิน 50 MB · หากอัปโหลดใหม่ ไฟล์เดิมจะถูกแทนที่ทันที"
+              hint="รับเฉพาะไฟล์ PDF ขนาดไม่เกิน 50 MB · แนบไฟล์สำเร็จแล้วระบบจะเผยแพร่ SDS ให้พร้อมใช้งานทันที · หากอัปโหลดใหม่ ไฟล์เดิมจะถูกแทนที่"
             />
           </section>
 
           <section>
-            <h3 style={sectionStyle}>ข้อมูลเอกสาร</h3>
+            <h3 style={sectionStyle}>ข้อมูลจากเอกสาร SDS ฉบับนี้</h3>
             <div style={gridStyle}>
-              <Field label="ผู้ผลิต" value={manufacturer} onChange={setManufacturer} />
-              <Field label="ผู้จำหน่าย" value={supplier} onChange={setSupplier} />
-              <Field label="รหัสผลิตภัณฑ์" value={productCode} onChange={setProductCode} />
-              <Field label="ความเข้มข้น" value={concentration} onChange={setConcentration} />
+              <Field label="ผู้ผลิตตาม SDS" value={manufacturer} onChange={setManufacturer} />
+              <Field label="ผู้จำหน่ายตาม SDS" value={supplier} onChange={setSupplier} />
+              <Field label="รหัสผลิตภัณฑ์ตาม SDS" value={productCode} onChange={setProductCode} />
+              <Field label="ความเข้มข้นตาม SDS" value={concentration} onChange={setConcentration} />
               <Field label="ภาษาเอกสาร" value={language} onChange={setLanguage} />
               <Field label="เลขฉบับ (Revision)" value={revisionLabel} onChange={setRevisionLabel} placeholder="เช่น Rev. 03" />
               <Field label="วันที่มีผล" value={effectiveOn} onChange={setEffectiveOn} type="date" />
@@ -235,9 +260,10 @@ export function SdsEditorModal({
           </section>
 
           <section>
-            <h3 style={sectionStyle}>GHS ที่ยืนยันจาก SDS หมวด 2</h3>
+            <h3 style={sectionStyle}>GHS ตาม SDS หมวด 2</h3>
             <p style={{ margin: `0 0 ${SPACE.sm}px`, fontSize: FONT.sm, color: 'var(--muted)', lineHeight: 1.55 }}>
               ข้อมูลนี้เป็นข้อมูลของเอกสาร SDS ฉบับนี้โดยตรง ระบบอาจเติมข้อมูลเบื้องต้นจากทะเบียนให้ แต่ต้องตรวจสอบและแก้ให้ตรงกับ SDS หมวด 2 ก่อนบันทึก
+              หากต้องการแก้ GHS เบื้องต้นของทะเบียน ให้ใช้ “ข้อมูลสารในทะเบียน”
             </p>
             <label style={labelStyle} htmlFor="sds-signal-word">คำสัญญาณ</label>
             <select
@@ -338,7 +364,7 @@ export function SdsEditorModal({
         }}>
           <Button variant="secondary" size="lg" onClick={onClose} disabled={busy !== null}>ยกเลิก</Button>
           <Button icon="check" size="lg" onClick={save} disabled={busy !== null}>
-            {busy === 'save' ? 'กำลังบันทึก…' : 'บันทึก'}
+            {busy === 'save' ? 'กำลังบันทึก…' : 'บันทึกเอกสาร SDS'}
           </Button>
         </footer>
         </div>

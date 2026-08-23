@@ -31,6 +31,24 @@ const searchedQueue = buildSafetyInspectionQueue({
 })
 assert.deepEqual(searchedQueue.items.map(item => item.asset.code), ['EXT-1'])
 
+const assetsWithLatestEvidence = assets.map(asset => asset.id === 'a' ? {
+  ...asset,
+  latestInspection: {
+    id: 'inspection-a', assetId: 'a', result: 'passed' as const,
+    inspectedOn: '2026-08-23', nextInspectionDate: '2026-09-22', expiresOn: null,
+    note: null, photoUrl: null, inspectedBy: 'inspector-a', inspectorName: null,
+    createdAt: '2026-08-23T00:00:00.000Z',
+  },
+} : asset) as SafetyAssetDTO[]
+const latestEvidenceQueue = buildSafetyInspectionQueue({
+  assets: assetsWithLatestEvidence,
+  filters: { query: '', status: '', kind: '', spaceCode: '' },
+  completedAssetIds: new Set(),
+  countLatestInspections: true,
+})
+assert.deepEqual(latestEvidenceQueue.progress, { completed: 1, total: 3, remaining: 2 })
+assert.equal(latestEvidenceQueue.items.find(item => item.asset.id === 'a')?.completed, true)
+
 const emptyQueue = buildSafetyInspectionQueue({
   assets,
   filters: { query: 'ไม่พบอุปกรณ์', status: '', kind: '', spaceCode: '' },

@@ -4,9 +4,11 @@ import type { SafetyInspectionRoundItemDTO } from '@/lib/lab-map/types'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function roundItem(row: Record<string, unknown>): SafetyInspectionRoundItemDTO {
+  const asset = row.asset as Record<string, unknown> | null | undefined
   return {
     id: String(row.id),
     assetId: String(row.asset_id),
+    kind: typeof asset?.kind === 'string' ? asset.kind : undefined,
     sequence: Number(row.sequence_no),
     status: row.status as SafetyInspectionRoundItemDTO['status'],
     inspectionId: row.inspection_id == null ? null : String(row.inspection_id),
@@ -24,9 +26,15 @@ async function syncExistingEvidence(roundId: string, actorId: string) {
 
 async function loadRoundItems(roundId: string) {
   const { data, error } = await supabaseAdmin.from('lab_map_safety_inspection_round_items')
-    .select('*').eq('round_id', roundId).order('sequence_no')
+    .select('*,asset:lab_map_safety_assets(kind)').eq('round_id', roundId).order('sequence_no')
   if (error) throw new Error(error.message)
   return (data ?? []).map(roundItem)
+}
+
+function stringList(value: unknown) {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0))]
+    : []
 }
 
 export async function GET(req: NextRequest) {
@@ -49,9 +57,13 @@ export async function GET(req: NextRequest) {
   try {
     await syncExistingEvidence(String(round.id), guard.actor.id)
     const items = await loadRoundItems(String(round.id))
+    const snapshot = (round.filter_snapshot ?? {}) as Record<string, unknown>
+    const itemKinds = [...new Set(items.map(item => item.kind).filter((kind): kind is string => Boolean(kind)))]
+    const kinds = itemKinds.length ? itemKinds : stringList(snapshot.kinds)
+    const closedKinds = stringList(snapshot.closedKinds)
     return NextResponse.json({ data: {
       id: round.id, nameTh: round.name_th, status: round.status,
-      filters: round.filter_snapshot, startedAt: round.started_at,
+      filters: { ...snapshot, kinds, closedKinds }, startedAt: round.started_at,
       items,
     } })
   } catch (syncError) {

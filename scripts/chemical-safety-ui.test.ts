@@ -51,21 +51,34 @@ for (const required of ['@/components/ui/Card', '@/components/ui/PageHeader', '@
 }
 // เพิ่ม/แก้ไข/เลิกใช้งานสารเคมียังต้องผ่านฟอร์มเดียวกัน แต่มีผลทันที ไม่มีคิวรอทบทวนแล้ว
 assert.ok(hubSource.includes('RegistryChangeModal'), 'ทะเบียนสารเคมีต้องมีฟอร์มเพิ่ม/แก้ไขผ่าน RegistryChangeModal')
+assert.ok(hubSource.includes('ChemicalDetailsModal'), 'ทะเบียนสารเคมีต้องมีจุดเข้าใช้งานรายละเอียดสารเพียงจุดเดียว')
+assert.ok(hubSource.includes('รายละเอียดสาร'), 'ปุ่มรวมต้องใช้คำว่า รายละเอียดสาร ที่ผู้ใช้เข้าใจได้')
 assert.ok(!hubSource.includes('ChangeRequestPanel'), 'ยกเลิกระบบรออนุมัติแล้ว ต้องไม่มีแผงรอทบทวนคำขอเหลืออยู่')
 // แท็บต้องผูกกับ URL ไม่ใช่ useState ไม่งั้นแชร์ลิงก์และกดย้อนกลับไม่ได้
 assert.ok(hubSource.includes('ViewTabs'), 'แท็บของหน้าห้องสารเคมีต้องใช้ ViewTabs ที่ผูกกับ ?view=')
-// กด SDS จากทะเบียนต้องเข้าฟอร์มแก้ไขตรง ๆ ไม่มีหน้าต่างสรุป workflow คั่นอีก
-assert.ok(hubSource.includes('SdsEditorModal'), 'ทะเบียนสารเคมีต้องเปิดฟอร์มแก้ไข SDS ได้จากแต่ละรายการ')
+// กดรายละเอียดจากทะเบียนต้องเข้าหน้าต่างเดียว แล้วสลับแท็บข้อมูลทะเบียน/SDS ได้
 assert.ok(!hubSource.includes('RegistrySdsWorkflowModal'), 'ยกเลิกระบบรออนุมัติแล้ว ต้องไม่เหลือหน้าต่าง workflow SDS')
+assert.ok(!hubSource.includes('title="แก้ไขข้อมูลสารในทะเบียน"'), 'ตารางไม่ควรแยกปุ่มข้อมูลทะเบียนออกจากรายละเอียดสาร')
+assert.ok(!hubSource.includes('title="แก้ไขเอกสาร SDS / แนบไฟล์ PDF"'), 'ตารางไม่ควรแยกปุ่ม SDS ออกจากรายละเอียดสาร')
 // เจาะจงที่ป้ายปุ่ม/ข้อความที่ผู้ใช้เห็นจริง ไม่ใช่คำว่า "ส่งทบทวน" ลอย ๆ
 // เพราะคอมเมนต์ที่อธิบายว่าขั้นตอนนี้ถูกยกเลิกไปแล้วก็มีคำนั้นอยู่
 for (const gone of ['บันทึกและส่งทบทวน', 'ผู้ทบทวนอนุมัติ', 'summarizeSdsWorkflow', 'ศูนย์กลาง workflow SDS']) {
   assert.ok(!hubSource.includes(gone), `ทะเบียนสารเคมีต้องไม่เหลือร่องรอยขั้นตอนอนุมัติ: ${gone}`)
 }
 assert.ok(hubSource.includes('roomRegistry'), 'แท็บ SDS ห้องสารเคมีต้องได้รับรายการสารจากทะเบียนโดยตรง')
-assert.ok(hubSource.includes("icon=\"upload\""), 'ทะเบียนสารเคมีต้องมีปุ่มอัปโหลดไฟล์ SDS')
 assert.ok(hubSource.includes('สถานะการใช้งาน'), 'ทะเบียนสารเคมีต้องมีตัวกรอง/คอลัมน์สถานะการใช้งาน')
 assert.ok(hubSource.includes('Active') && hubSource.includes('Inactive'), 'ทะเบียนสารเคมีต้องแสดงสถานะ Active/Inactive')
+assert.ok(hubSource.includes("icon={isInactive ? 'eye' : 'eyeOff'}"), 'ปุ่มเปลี่ยนสถานะต้องใช้ไอคอนเปิด/ปิดการมองเห็น ไม่ใช่ไอคอนถังขยะ')
+assert.ok(hubSource.includes('ตั้งสถานะเป็น Inactive'), 'ปุ่ม Active ต้องบอกผลลัพธ์ว่าจะตั้งเป็น Inactive')
+assert.ok(hubSource.includes('ตั้งสถานะเป็น Active'), 'ปุ่ม Inactive ต้องบอกผลลัพธ์ว่าจะตั้งเป็น Active')
+assert.ok(!hubSource.includes("icon={isInactive ? 'check' : 'trash'}"), 'ปุ่มเปลี่ยนสถานะต้องไม่ใช้ไอคอนถังขยะ')
+assert.ok(!hubSource.includes('ตามหน่วยงาน · ไม่ระบุตำแหน่ง'), 'ทะเบียนไม่ควรแสดงป้ายตามหน่วยงานที่ทำให้ข้อมูลในแถวรก')
+assert.ok(hubSource.includes('chemical-registry-actions'), 'action bar ของทะเบียนต้องมี hook สำหรับจัด layout แบบ responsive')
+assert.ok(hubSource.includes('chemical-registry-action-label-long'), 'action bar ต้องมีป้ายกำกับเต็มบนจอใหญ่')
+assert.ok(hubSource.includes('chemical-registry-action-label-short'), 'action bar ต้องมีป้ายกำกับย่อบนจอเล็ก')
+assert.ok(hubSource.includes('@media(max-width:1200px)'), 'action bar ต้องย่อป้ายกำกับเมื่อพื้นที่หน้าจอจำกัด')
+assert.ok(hubSource.includes('>รายละเอียด</span>'), 'ป้ายย่อของรายละเอียดสารต้องยังสื่อความหมายได้')
+assert.ok(hubSource.includes("'พักใช้งาน'") && hubSource.includes("'เปิดใช้งาน'"), 'ป้ายย่อของการเปลี่ยนสถานะต้องสื่อผลลัพธ์ของ action')
 assert.ok(hubSource.includes('row.reportedTotalRaw'), 'ทะเบียนสารเคมีต้องแสดงปริมาณดิบเมื่อหน่วยจากแบบสำรวจไม่ใช่หน่วยมาตรฐาน')
 assert.ok(hubSource.includes('Export Excel'), 'ทะเบียนสารเคมีต้องเลือก export เป็น Excel ได้')
 assert.ok(hubSource.includes('Export PDF'), 'ทะเบียนสารเคมีต้องเลือก export เป็น PDF ได้')
@@ -78,11 +91,33 @@ assert.ok(hubSource.includes('registryTableScrollRef'), 'scrollbar แบบล�
 
 const registryModalSource = readFileSync(join(COMPONENT_DIR, 'RegistryChangeModal.tsx'), 'utf8')
 assert.ok(registryModalSource.includes("productMode === 'new'"), 'ฟอร์มสร้าง product ใหม่ต้องแสดงส่วนข้อมูลสารและ GHS')
+assert.ok(registryModalSource.includes('SdsDropzone'), 'ฟอร์มเพิ่มสารใหม่ต้องมีช่องแนบ SDS ใน flow เดียวกัน')
+assert.ok(registryModalSource.includes('แนบไฟล์ SDS (ถ้ามีแล้ว)'), 'ฟอร์มเพิ่มสารใหม่ต้องบอกว่าแนบ SDS ได้ทันทีแต่ไม่บังคับ')
+assert.ok(registryModalSource.includes("if (next === 'existing') setSdsFile(null)"), 'เปลี่ยนไปใช้สารเดิมต้องล้างไฟล์ SDS ที่เลือกไว้เพื่อไม่ให้ผู้ใช้เข้าใจว่าจะถูกแนบกับสารเดิม')
+assert.ok(registryModalSource.includes('/api/admin/chemical-safety/sds'), 'ฟอร์มเพิ่มสารใหม่ต้องสร้าง SDS ต่อจาก holding ที่เพิ่งสร้าง')
+assert.ok(registryModalSource.includes('createdHoldingId'), 'ฟอร์มเพิ่มสารใหม่ต้องรองรับ retry การอัปโหลดโดยไม่สร้างทะเบียนซ้ำ')
 assert.ok(registryModalSource.includes('ghsPictogramCodes: pictograms'), 'ฟอร์มแก้ไขสารต้องส่งสัญลักษณ์ GHS ผ่าน workflow')
 assert.ok(registryModalSource.includes('ghsHazardClasses: hazards'), 'ฟอร์มแก้ไขสารต้องส่งหมวดความเป็นอันตรายผ่าน workflow')
+assert.ok(registryModalSource.includes('ข้อมูลสารในทะเบียน'), 'ฟอร์มแก้ไข product ต้องระบุว่าเป็นข้อมูลในทะเบียน')
+assert.ok(registryModalSource.includes('ผู้ผลิตในทะเบียน'), 'ฟอร์มทะเบียนต้องแยกผู้ผลิตออกจากผู้ผลิตตาม SDS')
+assert.ok(registryModalSource.includes('แท็บ “เอกสาร SDS”'), 'ฟอร์มทะเบียนต้องบอกจุดแก้ไขเอกสาร SDS อย่างชัดเจน')
 assert.ok(registryModalSource.includes('GHS เบื้องต้นสำหรับทะเบียน'), 'ฟอร์มทะเบียนต้องระบุว่า GHS เป็นข้อมูลเบื้องต้น')
 assert.ok(registryModalSource.includes('<option value="active">Active</option>'), 'ฟอร์มทะเบียนต้องเลือกสถานะ Active ได้')
 assert.ok(registryModalSource.includes('<option value="retired">Inactive</option>'), 'ฟอร์มทะเบียนต้องเลือกสถานะ Inactive ได้')
+
+const detailsModalPath = join(COMPONENT_DIR, 'ChemicalDetailsModal.tsx')
+assert.ok(existsSync(detailsModalPath), 'รายละเอียดสารต้องมีคอมโพเนนต์ modal กลาง')
+const detailsModalSource = existsSync(detailsModalPath) ? readFileSync(detailsModalPath, 'utf8') : ''
+assert.ok(detailsModalSource.includes('ข้อมูลทะเบียน'), 'รายละเอียดสารต้องมีแท็บข้อมูลทะเบียน')
+assert.ok(detailsModalSource.includes('เอกสาร SDS'), 'รายละเอียดสารต้องมีแท็บเอกสาร SDS')
+assert.ok(detailsModalSource.includes('role="tab"'), 'แท็บรายละเอียดสารต้องใช้ semantics ของ tab')
+assert.ok(detailsModalSource.includes('aria-selected'), 'แท็บรายละเอียดสารต้องประกาศแท็บที่เลือกสำหรับ screen reader')
+assert.ok(detailsModalSource.includes('embedded'), 'ฟอร์มเดิมต้องฝังอยู่ใน modal เดียวได้โดยไม่ซ้อน overlay')
+assert.ok(detailsModalSource.includes('icon="upload"'), 'รายละเอียดสารต้องมีทางไปแนบไฟล์ SDS')
+
+const submitChangeRequestSource = readFileSync(join(process.cwd(), 'app', 'api', 'admin', 'chemical-safety', 'change-requests', '[id]', 'submit', 'route.ts'), 'utf8')
+assert.ok(submitChangeRequestSource.includes('holdingId'), 'submit registry entry ต้องส่ง holdingId กลับเพื่อแนบ SDS ต่อใน flow เดียวกัน')
+assert.ok(submitChangeRequestSource.includes("entity_type === 'registry_entry'"), 'submit route ต้องคืนผลลัพธ์เฉพาะ workflow ทะเบียนสาร')
 
 const sdsSource = readFileSync(join(COMPONENT_DIR, 'SdsManagementClient.tsx'), 'utf8')
 const tokenSource = readFileSync(join(COMPONENT_DIR, 'shared', 'tokens.ts'), 'utf8')
@@ -181,9 +216,12 @@ for (const [name, source] of [
   assert.ok(source.includes('SdsPdfViewerModal'), `${name} must use the in-page SDS PDF viewer`)
   assert.doesNotMatch(source, /window\.open\(|target="_blank"/, `${name} must not open PDF in a new tab`)
 }
-assert.ok(modalSource.includes('role="dialog"'), 'SdsEditorModal ต้องประกาศ role="dialog"')
-assert.ok(modalSource.includes('aria-modal="true"'), 'SdsEditorModal ต้องประกาศ aria-modal')
-assert.ok(modalSource.includes('GHS ที่ยืนยันจาก SDS หมวด 2'), 'ฟอร์ม SDS ต้องระบุว่า GHS มาจาก SDS หมวด 2')
+assert.ok(modalSource.includes("role={embedded ? undefined : 'dialog'}"), 'SdsEditorModal ต้องประกาศ role="dialog" เมื่อใช้เป็น modal เดี่ยว')
+assert.ok(modalSource.includes("aria-modal={embedded ? undefined : 'true'}"), 'SdsEditorModal ต้องประกาศ aria-modal เมื่อใช้เป็น modal เดี่ยว')
+assert.ok(modalSource.includes('เอกสาร SDS ฉบับนี้'), 'ฟอร์ม SDS ต้องระบุว่าข้อมูลผูกกับเอกสารฉบับนี้')
+assert.ok(modalSource.includes('ผู้ผลิตตาม SDS'), 'ฟอร์ม SDS ต้องแยกผู้ผลิตตามเอกสารออกจากข้อมูลทะเบียน')
+assert.ok(modalSource.includes('GHS ตาม SDS หมวด 2'), 'ฟอร์ม SDS ต้องใช้คำที่ชัดว่า GHS มาจาก SDS')
+assert.ok(modalSource.includes('ยังไม่มีไฟล์ PDF · SDS ยังไม่พร้อมใช้งาน'), 'ฟอร์ม SDS ต้องบอกผลของการยังไม่แนบไฟล์')
 assert.ok(modalSource.includes('sds-current-file-action'), 'ลิงก์เปิดไฟล์ปัจจุบันต้องแสดงเป็น action ที่เด่นชัด')
 assert.ok(modalSource.includes('aria-label={`เปิดไฟล์ปัจจุบันของ ${productName}`}'), 'ปุ่มเปิดไฟล์ปัจจุบันต้องมีชื่อสำหรับ screen reader')
 assert.ok(

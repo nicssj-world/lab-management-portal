@@ -129,6 +129,9 @@ const ACTION_LABELS: Record<string, string> = {
   'kpi.definition.create':                        'เพิ่มตัวชี้วัด KPI',
   'kpi.definition.update':                        'แก้ไขตัวชี้วัด KPI',
   'kpi.definition.delete':                        'ลบตัวชี้วัด KPI',
+  'kpi.satisfaction.manual.upsert':               'บันทึกค่า KPI ความพึงพอใจ',
+  'kpi.satisfaction.metric.create':               'เพิ่มตัวชี้วัด KPI ความพึงพอใจ',
+  'kpi.satisfaction.metric.update':               'แก้ไขตัวชี้วัด KPI ความพึงพอใจ',
   // แบบสำรวจความพึงพอใจ
   'satisfaction.report.export':                   'ส่งออกรายงานความพึงพอใจ',
   'satisfaction.comments.export':                 'ส่งออกความคิดเห็นแบบสำรวจ',
@@ -195,7 +198,20 @@ const ACTION_LABELS: Record<string, string> = {
   // ความปลอดภัย — แผนที่ห้องปฏิบัติการ
   'lab_map.safety_inspection_round.close':        'ปิดรอบตรวจอุปกรณ์ความปลอดภัย',
   // ความปลอดภัย — ห้องสารเคมี / SDS
+  'chemical_safety.change_request.submit':        'ส่งคำขอแก้ไขสารเคมี',
+  'chemical_safety.change_request.review':        'ทบทวนคำขอแก้ไขสารเคมี',
+  'chemical_safety.department_change_request.review':
+                                                    'ทบทวนคำขอแก้ไขสารเคมีแยกตามงาน',
+  'chemical_safety.department_holding_change_request.review':
+                                                    'ทบทวนคำขอแก้ไขรายการสารเคมีแยกตามงาน',
+  'chemical_safety.registry_entry.review':        'ทบทวนรายการทะเบียนสารเคมี',
   'chemical_safety.sds.create_draft':             'สร้างฉบับร่าง SDS',
+  'chemical_safety.sds.draft_update':             'แก้ไขฉบับร่าง SDS',
+  'chemical_safety.sds.submit':                   'ส่ง SDS เพื่อตรวจสอบ',
+  'chemical_safety.sds.review':                   'ทบทวน SDS',
+  'chemical_safety.sds.supersede':                'แทนที่ SDS ฉบับเดิม',
+  'chemical_safety.sds.publish':                  'เผยแพร่ SDS',
+  'chemical_safety.sds.publish_link':             'เผยแพร่ลิงก์ SDS',
   'chemical_safety.sds.upload_file':              'อัปโหลดไฟล์ SDS',
   'chemical_safety.sds.delete_draft':             'ลบฉบับร่าง SDS',
   'chemical_safety.sds.cleanup_failure':          'ล้างไฟล์ SDS ไม่สำเร็จ',
@@ -203,6 +219,9 @@ const ACTION_LABELS: Record<string, string> = {
   'chemical_safety.department_sds.rename':        'แก้ไขชื่อ SDS แยกตามงาน',
   'chemical_safety.department_sds.delete':        'ลบ SDS แยกตามงาน',
   'chemical_safety.department_sds.replace_file':  'แทนที่ไฟล์ SDS แยกตามงาน',
+  'chemical_safety.department_sds.link_existing': 'เชื่อมโยง SDS เดิมกับงาน',
+  'chemical_safety.department_sds.register_sds_only':
+                                                    'ลงทะเบียน SDS แยกตามงาน',
   'chemical_safety.department_sds.publish':       'เผยแพร่ SDS แยกตามงาน',
   'chemical_safety.registry.export_pdf':          'ส่งออกทะเบียนสารเคมี (PDF)',
   'chemical_safety.registry.export_excel':        'ส่งออกทะเบียนสารเคมี (Excel)',

@@ -171,6 +171,10 @@ export interface SafetyInspectionFilters {
   status: string
   kind: string
   spaceCode: string
+  /** Equipment kinds included in a task-linked round. */
+  kinds?: readonly string[]
+  /** Equipment kinds that have been closed independently within the round. */
+  closedKinds?: readonly string[]
 }
 
 export interface SafetyInspectionQueueItem {
@@ -187,6 +191,7 @@ export interface SafetyInspectionQueue {
 export interface SafetyInspectionRoundItemDTO {
   id: string
   assetId: string
+  kind?: string
   sequence: number
   status: 'pending' | 'completed' | 'skipped'
   inspectionId: string | null

@@ -15,6 +15,11 @@ function fail(error: { message: string } | null, fallback = 'Safety task operati
 }
 function str(value: unknown) { return typeof value === 'string' ? value : '' }
 function nullable(value: unknown) { return typeof value === 'string' ? value : null }
+function stringList(value: unknown) {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0))]
+    : []
+}
 function isUniqueViolation(error: { code?: string; message?: string } | null) {
   return error?.code === '23505' || /duplicate key|unique constraint/i.test(error?.message ?? '')
 }
@@ -233,13 +238,20 @@ export async function getSafetyTaskIntegrations(instanceId: string, level: PermL
       result.push({ id: str(link.id), kind: str(link.integration_kind), sourceId: str(link.source_id), syncStatus: str(link.sync_status), metadata: link.metadata ?? {} })
       continue
     }
-    const { data: items, error: itemError } = await supabaseAdmin.from('lab_map_safety_inspection_round_items')
-      .select('status,inspection_id,asset:lab_map_safety_assets(code,name_th,kind),inspection:lab_map_safety_inspections!lab_map_safety_inspection_round_items_inspection_id_fkey(id,result,inspected_on,note,photo_file_name)')
-      .eq('round_id', link.source_id).order('sequence_no')
-    fail(itemError)
+    const [{ data: items, error: itemError }, { data: round, error: roundError }] = await Promise.all([
+      supabaseAdmin.from('lab_map_safety_inspection_round_items')
+        .select('status,inspection_id,asset:lab_map_safety_assets(code,name_th,kind),inspection:lab_map_safety_inspections!lab_map_safety_inspection_round_items_inspection_id_fkey(id,result,inspected_on,note,photo_file_name)')
+        .eq('round_id', link.source_id).order('sequence_no'),
+      supabaseAdmin.from('lab_map_safety_inspection_rounds').select('filter_snapshot').eq('id', link.source_id).maybeSingle(),
+    ])
+    fail(itemError); fail(roundError)
+    const snapshot = (round?.filter_snapshot ?? {}) as Row
+    const itemKinds = [...new Set(((items ?? []) as Row[]).map(item => str((item.asset as Row | null)?.kind)).filter(Boolean))]
+    const kinds = itemKinds.length ? itemKinds : stringList(snapshot.kinds)
+    const closedKinds = stringList(snapshot.closedKinds)
     result.push({
       id: str(link.id), kind: 'safety_inspection', sourceId: str(link.source_id), syncStatus: str(link.sync_status),
-      metadata: link.metadata ?? {}, items: (items ?? []).map((item: Row) => ({
+      metadata: { ...(link.metadata ?? {}), kinds, closedKinds }, items: (items ?? []).map((item: Row) => ({
         status: str(item.status), inspectionId: nullable(item.inspection_id), asset: item.asset ?? null,
         inspection: item.inspection ?? null,
       })),
@@ -277,6 +289,9 @@ export async function openSafetyInspectionRoundFromTask(instanceId: string, acto
   const { data: assets, error: assetError } = await assetQuery
   fail(assetError)
   if (!(assets ?? []).length) throw new Error('ไม่พบอุปกรณ์ที่เปิดใช้งานสำหรับรอบตรวจนี้')
+  const roundKinds = kinds?.length
+    ? kinds.filter(kind => (assets ?? []).some((asset: Row) => str(asset.kind) === kind))
+    : [...new Set((assets ?? []).map((asset: Row) => str(asset.kind)).filter(Boolean))]
   const profiles = [...new Set((assets ?? []).map((asset: Row) => str(asset.inspection_profile)).filter(Boolean))]
   const formTemplateByProfile = new Map<string, string>()
   if (profiles.length) {
@@ -291,7 +306,7 @@ export async function openSafetyInspectionRoundFromTask(instanceId: string, acto
   const dueOn = nullable(access.instance.planned_date) ?? nullable(access.instance.period_end)
   const { data: round, error: roundError } = await supabaseAdmin.from('lab_map_safety_inspection_rounds').insert({
     name_th: `${str(template!.title)} — ${bangkokToday()}`, filter_snapshot: {
-      query: '', status: '', kind: '', spaceCode: '', source: 'safety_task', kinds: kinds ?? [],
+      query: '', status: '', kind: '', spaceCode: '', source: 'safety_task', kinds: roundKinds,
       taskInstanceId: instanceId, templateId: access.instance.template_id,
       periodStart: access.instance.period_start, periodEnd: access.instance.period_end, dueOn,
     }, started_by: actor.id,
@@ -305,6 +320,7 @@ export async function openSafetyInspectionRoundFromTask(instanceId: string, acto
     const { error: linkError } = await supabaseAdmin.from('quality_task_links').insert({
       instance_id: instanceId, integration_kind: 'safety_inspection', source_type: 'lab_map_safety_inspection_round',
       source_id: round!.id, sync_status: 'pending', created_by: actor.id,
+      metadata: { source: 'safety_task', kinds: roundKinds, closedKinds: [] },
     })
     if (linkError && isUniqueViolation(linkError)) {
       const { data: raced, error: racedError } = await supabaseAdmin.from('quality_task_links').select('source_id')
@@ -334,18 +350,24 @@ export async function syncSafetyInspectionRoundToTask(roundId: string, actor: Ac
   if (!link) return { linked: false as const }
   if (str(link.sync_status) === 'synced') return { linked: true as const, instanceId: str(link.instance_id), status: 'synced' as const, metadata: link.metadata ?? {} }
   try {
-    const [{ data: instance, error: instanceError }, { data: items, error: itemError }] = await Promise.all([
+    const [{ data: instance, error: instanceError }, { data: items, error: itemError }, { data: round, error: roundError }] = await Promise.all([
       supabaseAdmin.from('quality_task_instances').select('id,quality_task_templates!inner(approval_mode,workstream)').eq('id', link.instance_id).eq('quality_task_templates.workstream', 'safety').single(),
       supabaseAdmin.from('lab_map_safety_inspection_round_items').select('status,inspection_id,inspection:lab_map_safety_inspections!lab_map_safety_inspection_round_items_inspection_id_fkey(id,result,note,photo_r2_key)').eq('round_id', roundId),
+      supabaseAdmin.from('lab_map_safety_inspection_rounds').select('filter_snapshot').eq('id', roundId).maybeSingle(),
     ])
-    fail(instanceError); fail(itemError)
+    fail(instanceError); fail(itemError); fail(roundError)
     const rows = (items ?? []) as Row[]
     const inspections = rows.map(row => row.inspection as Row | null).filter(Boolean) as Row[]
     const abnormal = inspections.filter(row => str(row.result) !== 'passed')
+    const snapshot = (round?.filter_snapshot ?? {}) as Row
+    const itemKinds = [...new Set(rows.map(row => str((row.asset as Row | null)?.kind)).filter(Boolean))]
+    const kinds = itemKinds.length ? itemKinds : stringList(snapshot.kinds)
+    const closedKinds = stringList(snapshot.closedKinds)
     const metadata = {
       total: rows.length, completed: rows.filter(row => str(row.status) === 'completed').length,
       skipped: rows.filter(row => str(row.status) === 'skipped').length, abnormal: abnormal.length,
       inspectionIds: rows.map(row => nullable(row.inspection_id)).filter(Boolean), photoCount: inspections.filter(row => row.photo_r2_key).length,
+      kinds, closedKinds,
     }
     const template = instance!.quality_task_templates as Row
     const requiresReview = str(template.approval_mode) === 'required'

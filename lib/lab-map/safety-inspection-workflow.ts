@@ -4,10 +4,11 @@ import type {
   SafetyInspectionQueue,
 } from './types'
 
-export function buildSafetyInspectionQueue({ assets, filters, completedAssetIds }: {
+export function buildSafetyInspectionQueue({ assets, filters, completedAssetIds, countLatestInspections = false }: {
   assets: readonly SafetyAssetDTO[]
   filters: SafetyInspectionFilters
   completedAssetIds: ReadonlySet<string>
+  countLatestInspections?: boolean
 }): SafetyInspectionQueue {
   const query = filters.query.trim().toLocaleLowerCase('th')
   const filtered = assets.filter(asset => (
@@ -24,7 +25,7 @@ export function buildSafetyInspectionQueue({ assets, filters, completedAssetIds 
   ))
   const items = ordered.map((asset, index) => ({
     asset,
-    completed: completedAssetIds.has(asset.id),
+    completed: completedAssetIds.has(asset.id) || (countLatestInspections && Boolean(asset.latestInspection)),
     sequence: index + 1,
   }))
   const completed = items.filter(item => item.completed).length

@@ -105,9 +105,11 @@ assert.ok(registryDepartmentPublish.includes("rpc('set_chemical_sds_department_p
 assert.ok(registryDepartmentPublish.includes('requireDepartmentSdsPublisher'))
 
 const hub = read('components/chemical-safety/ChemicalSafetyHubClient.tsx')
-assert.ok(hub.includes('SdsEditorModal'), 'the registry must stay the only place SDS content is edited')
+const detailsModal = read('components/chemical-safety/ChemicalDetailsModal.tsx')
+assert.ok(hub.includes('ChemicalDetailsModal'), 'the registry must stay the only place SDS content is edited')
 assert.ok(hub.includes('openSds'), 'the registry must open the SDS editor per holding')
 assert.ok(hub.includes('publicationStatus'), 'registry rows must display publication state')
+assert.ok(detailsModal.includes('SdsEditorModal'), 'the unified chemical details modal must contain the SDS editor')
 
 const departmentSds = read('components/chemical-safety/SdsManagementClient.tsx')
 assert.ok(!departmentSds.includes('DepartmentSdsUploadModal'), 'direct creation of new legacy files must be removed')
