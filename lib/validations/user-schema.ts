@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { namePrefixSchema } from '@/lib/validations/name-prefix'
 
 export const ROLES = ['Admin', 'Manager', 'Medical Technologist', 'Assistant', 'Document Controller', 'Medical Science Technician'] as const
 
@@ -46,6 +47,7 @@ export const createUserSchema = z.object({
     .min(1, 'กรุณากรอก E-Phis')
     .regex(/^\d+$/, 'E-Phis ต้องเป็นตัวเลขเท่านั้น'),
   name: z.string().min(2, 'ชื่อต้องมีอย่างน้อย 2 ตัวอักษร').max(100),
+  name_prefix: namePrefixSchema,
   role: z.enum(ROLES, { errorMap: () => ({ message: 'กรุณาเลือกบทบาท' }) }),
   dept: z.enum(DEPARTMENTS, { errorMap: () => ({ message: 'กรุณาเลือกแผนก' }) }),
   password: z
@@ -63,6 +65,7 @@ export const updateUserSchema = z.object({
     .optional()
     .or(z.literal('')),
   name: z.string().min(2, 'ชื่อต้องมีอย่างน้อย 2 ตัวอักษร').max(100).optional(),
+  name_prefix: namePrefixSchema,
   role: z.enum(ROLES).optional(),
   dept: z.enum(DEPARTMENTS).optional(),
   status: z.enum(['active', 'inactive', 'pending']).optional(),

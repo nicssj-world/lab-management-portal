@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
+import { namePrefixSchema } from '@/lib/validations/name-prefix'
 
 // Empty/whitespace text inputs → null (so an edit that blanks a field clears it under .partial(), not omits it)
 const optStr = z.preprocess(
@@ -23,6 +24,7 @@ const optDigits = z.preprocess(
 // ── Profile personnel fields (PATCH /api/admin/personnel/[id]) ──
 export const PersonnelProfileSchema = z.object({
   ephis_id:          optDigits,
+  name_prefix:       namePrefixSchema,
   position_title:    optStr,
   unit:              optStr,
   dept:              z.enum(DEPARTMENTS).optional().nullable(),

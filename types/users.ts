@@ -1,3 +1,5 @@
+import type { NamePrefix } from '@/lib/personnel/name'
+
 export type UserRole = 'Admin' | 'Manager' | 'Medical Technologist' | 'Assistant' | 'Document Controller' | 'Medical Science Technician'
 export type UserStatus = 'active' | 'inactive' | 'pending'
 export type SortField = 'name' | 'role' | 'dept' | 'status' | 'created_at'
@@ -7,6 +9,7 @@ export interface UserProfile {
   id: string
   ephis_id: string | null
   name: string
+  name_prefix: NamePrefix | null
   role: UserRole
   dept: string | null
   phone: string | null

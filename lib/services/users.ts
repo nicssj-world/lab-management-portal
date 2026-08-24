@@ -127,9 +127,10 @@ export async function createUser(
     .upsert(
       {
         id:         authUserId,
-        ephis_id:   input.ephis_id,
-        name:       input.name,
-        role:       input.role,
+         ephis_id:   input.ephis_id,
+         name:       input.name,
+         name_prefix: input.name_prefix ?? null,
+         role:       input.role,
         dept:       input.dept,
         status:     'active',
         deleted_at: null,

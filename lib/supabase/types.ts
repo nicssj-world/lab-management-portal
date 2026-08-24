@@ -1,4 +1,5 @@
 import type { DocumentAccessMode, DocumentVisibility } from '@/lib/tests/document-access'
+import type { NamePrefix } from '@/lib/personnel/name'
 import type {
   ActivityType, Appointment, BadgeState, OrgType, SafetyAck, VisitType,
 } from '@/lib/it-visitor/constants'
@@ -22,6 +23,7 @@ export type UserStatus = 'active' | 'inactive' | 'pending'
 export interface Profile {
   id: string
   name: string
+  name_prefix?: NamePrefix | null
   role: Role
   dept: string | null
   phone: string | null
