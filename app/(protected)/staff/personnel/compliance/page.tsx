@@ -6,6 +6,7 @@ import {
   getHealthProfileIds, getConfidentialityProfileIds,
 } from '@/lib/queries/personnel'
 import { expiryStatus } from '@/lib/personnel/expiry'
+import { formatProfileName } from '@/lib/personnel/name'
 import { hasMedicalTechnologistLicenseScope, mainPersonnelRole } from '@/lib/personnel/roles'
 import { ComplianceClient, type ComplianceData } from './ComplianceClient'
 
@@ -64,7 +65,7 @@ export default async function CompliancePage() {
     staffRows: roster.map((p) => {
       const hasMtLicenseScope = hasMedicalTechnologistLicenseScope(p.role)
       return {
-        name: p.name, role: mainPersonnelRole(p.role) ?? p.role, position: p.position_title ?? '', unit: p.dept ?? p.unit ?? '',
+        name: formatProfileName(p.name, p.name_prefix), role: mainPersonnelRole(p.role) ?? p.role, position: p.position_title ?? '', unit: p.dept ?? p.unit ?? '',
         license: hasMtLicenseScope ? p.mt_license_no ?? '' : '', licenseExpiry: hasMtLicenseScope ? p.mt_license_expiry ?? '' : '',
         certCount: certs.filter((c) => c.profile_id === p.id).length,
         trainingCount: training.filter((t) => t.profile_id === p.id).length,

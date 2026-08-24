@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getRolePermissions } from '@/lib/permissions'
 import { getStaffRoster, getAllCertifications, getAllCompetencies } from '@/lib/queries/personnel'
 import { expiryStatus } from '@/lib/personnel/expiry'
+import { formatProfileName } from '@/lib/personnel/name'
 import { createStaffSignedUrl } from '@/lib/personnel/storage'
 import { PersonnelClient, type RosterRow } from './PersonnelClient'
 import { hasMedicalTechnologistLicenseScope, canManagePersonnel } from '@/lib/personnel/roles'
@@ -59,7 +60,7 @@ export default async function PersonnelPage({ searchParams }: { searchParams: Pr
     const hasMtLicenseScope = hasMedicalTechnologistLicenseScope(p.role)
     return {
       id: p.id,
-      name: p.name,
+      name: formatProfileName(p.name, p.name_prefix),
       ephis_id: p.ephis_id ?? null,
       role: p.role,
       dept: p.dept,

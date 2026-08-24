@@ -16,6 +16,7 @@ import type {
 } from '@/lib/supabase/types'
 import { expiryStatus, EXPIRY_COLOR, EXPIRY_LABEL_TH, daysLeft } from '@/lib/personnel/expiry'
 import { hasMedicalTechnologistLicenseScope } from '@/lib/personnel/roles'
+import { NAME_PREFIX_OPTIONS, formatProfileName } from '@/lib/personnel/name'
 import { availableTrainingYears, filterAndSortTraining, type TrainingDateSort } from '@/lib/personnel/training-filters'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import { normalizeNavigationValue } from '@/lib/navigation'
@@ -126,7 +127,7 @@ export function StaffDetailClient({ detail, canEdit, canManage, tests, categorie
           <Icon name="arrowLeft" size={16} /> บุคลากร
         </Link>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--ink)' }}>{prof.name}</div>
+          <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--ink)' }}>{formatProfileName(prof.name, prof.name_prefix)}</div>
           <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
             {prof.role}{prof.position_title ? ` · ${prof.position_title}` : ''}{(prof.dept ?? prof.unit) ? ` · ${prof.dept ?? prof.unit}` : ''}
           </div>
@@ -740,6 +741,7 @@ function ProfileTab({ prof, canEdit, officialPhotoUrl, onSaved, onError }: { pro
     } catch (e) { onError(e instanceof Error ? e.message : 'error') } finally { setPhotoBusy(false) }
   }
   const [form, setForm] = useState({
+    name_prefix: prof.name_prefix ?? '',
     ephis_id: licenseDigits(prof.ephis_id),
     position_title: prof.position_title ?? '', dept: prof.dept ?? '', employment_type: prof.employment_type ?? '',
     start_date: prof.start_date ?? '', education: prof.education ?? '',
@@ -755,6 +757,7 @@ function ProfileTab({ prof, canEdit, officialPhotoUrl, onSaved, onError }: { pro
         ? form
         : {
             ephis_id: form.ephis_id,
+            name_prefix: form.name_prefix,
             position_title: form.position_title,
             dept: form.dept,
             employment_type: form.employment_type,
@@ -858,6 +861,12 @@ function ProfileTab({ prof, canEdit, officialPhotoUrl, onSaved, onError }: { pro
       {editing && (
         <Modal title="แก้ไขประวัติบุคลากร" onClose={() => setEditing(false)}
           footer={<><button onClick={() => setEditing(false)} style={ghostBtn}>ยกเลิก</button><button onClick={save} disabled={saving} style={primaryBtn}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button></>}>
+          <Field label="คำนำหน้าชื่อ">
+            <select style={inputStyle} value={form.name_prefix} onChange={(e) => setForm({ ...form, name_prefix: e.target.value })}>
+              <option value="">— ไม่ระบุ —</option>
+              {NAME_PREFIX_OPTIONS.map((prefix) => <option key={prefix} value={prefix}>{prefix}</option>)}
+            </select>
+          </Field>
           <Field label="เลขประจำตัวพนักงาน">
             <input
               style={inputStyle}

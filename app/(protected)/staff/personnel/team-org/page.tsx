@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import { createStaffSignedUrl } from '@/lib/personnel/storage'
+import { formatProfileName } from '@/lib/personnel/name'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Icon } from '@/components/ui/Icon'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
@@ -55,13 +56,13 @@ export default async function TeamOrgPage() {
   if ((perms['บุคลากร'] ?? 'none') === 'none') redirect('/staff/dashboard')
 
   const [{ data: profileData }, { data: groupData }] = await Promise.all([
-    supabaseAdmin.from('profiles').select('id, name, dept, dept_role, is_section_head, position_title, role, avatar_url, official_photo_url').is('deleted_at', null).order('name'),
+    supabaseAdmin.from('profiles').select('id, name, name_prefix, dept, dept_role, is_section_head, position_title, role, avatar_url, official_photo_url').is('deleted_at', null).order('name'),
     supabaseAdmin.from('personnel_work_groups').select('id, name, depts').order('created_at', { ascending: true }),
   ])
   const raw = profileData ?? []
   const photos = await Promise.all(raw.map((p) => (p.official_photo_url ? createStaffSignedUrl(p.official_photo_url) : Promise.resolve(null))))
   const people: Person[] = raw.map((p, i) => ({
-    id: p.id, name: p.name, dept: p.dept, dept_role: p.dept_role, is_section_head: p.is_section_head ?? false,
+    id: p.id, name: formatProfileName(p.name, p.name_prefix), dept: p.dept, dept_role: p.dept_role, is_section_head: p.is_section_head ?? false,
     position_title: p.position_title, role: p.role, photo: photos[i] ?? p.avatar_url ?? null,
   }))
   const groups = (groupData ?? []) as WorkGroup[]

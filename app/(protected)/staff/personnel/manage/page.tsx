@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getStaffRoster, getAllCompetencies } from '@/lib/queries/personnel'
 import { expiryStatus } from '@/lib/personnel/expiry'
+import { formatProfileName } from '@/lib/personnel/name'
 import { canManagePersonnel } from '@/lib/personnel/roles'
 import { normalizeRole } from '@/lib/roles'
 import { ManageClient, type ManageRow, type CompStat, type WorkGroup } from './ManageClient'
@@ -22,7 +23,7 @@ export default async function PersonnelManagePage() {
   ])
   const rows: ManageRow[] = roster.map((p) => ({
     id: p.id,
-    name: p.name,
+    name: formatProfileName(p.name, p.name_prefix),
     dept: p.dept,
     dept_role: p.dept_role ?? null,
     is_section_head: p.is_section_head ?? false,

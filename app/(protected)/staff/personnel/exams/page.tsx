@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getStaffRoster } from '@/lib/queries/personnel'
 import { canManagePersonnel } from '@/lib/personnel/roles'
+import { formatProfileName } from '@/lib/personnel/name'
 import { normalizeRole } from '@/lib/roles'
 import { hydrateExamDefinitionImages } from '@/lib/personnel/exam-image-server'
 import { ExamsClient, type ExamRow, type MyAssignment, type RosterPerson } from './ExamsClient'
@@ -48,7 +49,7 @@ export default async function ExamsPage() {
       return { ...exam, definition: await hydrateExamDefinitionImages(exam.definition) }
     }))
     exams = hydratedExams.map((e) => ({ ...e, assignedCount: counts.get(e.id) ?? 0, gradedCount: graded.get(e.id) ?? 0 }))
-    roster = rosterData.map((p) => ({ id: p.id, name: p.name, dept: p.dept }))
+    roster = rosterData.map((p) => ({ id: p.id, name: formatProfileName(p.name, p.name_prefix), dept: p.dept }))
     categories = (cats ?? []).map((c) => c.th as string)
   }
 
