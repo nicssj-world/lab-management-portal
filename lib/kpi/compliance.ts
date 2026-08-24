@@ -82,6 +82,32 @@ function deadlineEndMs(fiscalYear: number, month: number, deadlineDay: number): 
   return Date.parse(`${getSubmissionDeadline(fiscalYear, month, deadlineDay)}T23:59:59.999+07:00`)
 }
 
+export interface SubmittedAfterDeadlineInput {
+  status: SubmissionStatus
+  deadline: string
+  firstCompletedAt?: string | null
+  lastEntryAt?: string | null
+}
+
+/**
+ * Return the latest relevant late-event timestamp only for a missed period.
+ * On-time baseline history and untracked historical edits can have timestamps
+ * after their date deadline without representing a current compliance miss.
+ */
+export function getSubmittedAfterDeadlineAt(input: SubmittedAfterDeadlineInput): string | null {
+  if (input.status !== 'missed') return null
+
+  const deadlineEnd = Date.parse(`${input.deadline}T23:59:59.999+07:00`)
+  if (!Number.isFinite(deadlineEnd)) return null
+
+  const isAfterDeadline = (value?: string | null) => {
+    if (!value) return null
+    return Date.parse(value) > deadlineEnd ? value : null
+  }
+
+  return isAfterDeadline(input.lastEntryAt) ?? isAfterDeadline(input.firstCompletedAt)
+}
+
 export function isSubmissionComplete(requiredCount: number, filledCount: number): boolean {
   return requiredCount > 0 && filledCount >= requiredCount
 }

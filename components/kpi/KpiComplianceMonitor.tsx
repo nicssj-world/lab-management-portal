@@ -64,6 +64,10 @@ function statusColor(status: SubmissionStatus): 'gray' | 'green' | 'red' | 'ambe
   return 'gray'
 }
 
+function getCellStatusLabel(status: SubmissionStatus): string {
+  return status === 'not_open' ? '--' : getSubmissionStatusLabel(status)
+}
+
 export function KpiComplianceMonitor({ year, deptCode = '', depts = [] }: {
   year: number
   deptCode?: string
@@ -113,6 +117,7 @@ export function KpiComplianceMonitor({ year, deptCode = '', depts = [] }: {
   }, [detailPeriod])
 
   async function openDetail(period: KpiCompliancePeriod) {
+    if (period.status === 'not_open') return
     setDetailPeriod(period)
     setDetail(null)
     setDetailError('')
@@ -146,6 +151,8 @@ export function KpiComplianceMonitor({ year, deptCode = '', depts = [] }: {
         .kpi-compliance-stat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
         .kpi-compliance-matrix-cell{width:100%;min-width:86px;min-height:58px;border:1px solid var(--border);border-radius:8px;padding:6px 5px;background:var(--card);font:inherit;cursor:pointer;text-align:center;transition:border-color .15s ease,background .15s ease,transform .15s ease}
         .kpi-compliance-matrix-cell:hover{border-color:var(--primary);transform:translateY(-1px)}
+        .kpi-compliance-matrix-cell:disabled{cursor:not-allowed;transform:none;opacity:.78}
+        .kpi-compliance-matrix-cell:disabled:hover{border-color:var(--border);transform:none}
         .kpi-compliance-matrix-cell:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
         .kpi-compliance-late-row{cursor:pointer}
         .kpi-compliance-late-row:hover{background:var(--surface-2)}
@@ -276,17 +283,24 @@ export function KpiComplianceMonitor({ year, deptCode = '', depts = [] }: {
 
 function SubmissionStatusCell({ period, onClick }: { period: KpiCompliancePeriod; onClick: () => void }) {
   const style = STATUS_STYLE[period.status]
+  const isNotOpen = period.status === 'not_open'
+  const showProgress = period.required_count > 0
+  const statusLabel = getCellStatusLabel(period.status)
+  const accessibleStatusLabel = isNotOpen ? 'ยังไม่เปิด' : statusLabel
   return (
     <button
       type="button"
       className="kpi-compliance-matrix-cell"
-      onClick={onClick}
-      aria-label={`${period.dept_name} ${getThaiMonthLabel(period.month)}: ${getSubmissionStatusLabel(period.status)}${period.required_count > 0 ? ` ${period.filled_count}/${period.required_count}` : ''}`}
-      style={{ color: style.color, background: style.background }}
+      onClick={isNotOpen ? undefined : onClick}
+      disabled={isNotOpen}
+      aria-disabled={isNotOpen}
+      aria-label={`${period.dept_name} ${getThaiMonthLabel(period.month)}: ${accessibleStatusLabel}${showProgress ? ` ${period.filled_count}/${period.required_count}` : ''}`}
+      title={isNotOpen ? 'งวดนี้ยังไม่เปิดให้กรอก' : undefined}
+      style={{ color: style.color, background: style.background, cursor: isNotOpen ? 'not-allowed' : 'pointer' }}
     >
       <span style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}><Icon name={style.icon} size={15} /></span>
-      <span style={{ display: 'block', fontSize: 10.5, lineHeight: 1.2, fontWeight: 700 }}>{getSubmissionStatusLabel(period.status)}</span>
-      {period.required_count > 0 && <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 10 }}>{period.filled_count}/{period.required_count}</span>}
+      <span style={{ display: 'block', fontSize: 10.5, lineHeight: 1.2, fontWeight: 700 }}>{statusLabel}</span>
+      {showProgress && <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 10 }}>{period.filled_count}/{period.required_count}</span>}
     </button>
   )
 }
@@ -462,4 +476,3 @@ function ComplianceLoading() {
     </div>
   )
 }
-

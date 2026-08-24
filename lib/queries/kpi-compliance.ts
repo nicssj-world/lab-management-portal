@@ -11,6 +11,7 @@ import {
   compareFiscalPeriods,
   getSubmissionDeadline,
   classifySubmissionStatus,
+  getSubmittedAfterDeadlineAt,
   getSubmissionStatusLabel,
   type FiscalPeriod,
   type SubmissionStatus,
@@ -287,27 +288,11 @@ export async function getKpiCompliance(
   const trackingStart = periodFromSettings(settings, 'tracking')
   const baseline = periodFromSettings(settings, 'baseline')
   const now = new Date()
-  const currentPeriod = (() => {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Asia/Bangkok',
-      calendar: 'gregory',
-      year: 'numeric',
-      month: 'numeric',
-    }).formatToParts(now)
-    const calendarYear = Number(parts.find((part) => part.type === 'year')?.value)
-    const calendarMonth = Number(parts.find((part) => part.type === 'month')?.value)
-    return { fiscalYear: calendarMonth >= 10 ? calendarYear + 544 : calendarYear + 543, month: calendarMonth }
-  })()
 
-  // Only reconcile periods that can contribute to the current compliance
-  // window. Future cells are rendered as not_open until their first save.
-  const materializedPeriods = months.filter((month) => {
-    const period = { fiscalYear, month }
-    return compareFiscalPeriods(period, baseline) === 0 || (
-      compareFiscalPeriods(period, trackingStart) >= 0 &&
-      compareFiscalPeriods(period, currentPeriod) <= 0
-    )
-  })
+  // Materialize every fiscal month so the matrix can show filled/required
+  // progress for historical, current, and future cells. Only tracked periods
+  // contribute to compliance; older periods remain not_tracked.
+  const materializedPeriods = months
   await Promise.all(
     visibleDepartments.flatMap((dept) => materializedPeriods.map((month) => reconcilePeriod(supabase, {
       deptId: dept.id,
@@ -425,20 +410,17 @@ export async function getKpiComplianceDetail(
       updated_at: entry?.updated_at ?? null,
     }
   })
-  const deadlineEnd = Date.parse(`${periodRow.deadline}T23:59:59.999+07:00`)
-  const firstAfterDeadline = periodRow.first_completed_at && Date.parse(periodRow.first_completed_at) > deadlineEnd
-    ? periodRow.first_completed_at
-    : null
-  const lastAfterDeadline = periodRow.last_entry_at && Date.parse(periodRow.last_entry_at) > deadlineEnd
-    ? periodRow.last_entry_at
-    : null
-
   return {
     department: department as Pick<Department, 'id' | 'code' | 'name_th'>,
     period: periodRow,
     requirements: detailedRequirements,
     missing: detailedRequirements.filter((requirement) => !requirement.filled),
-    submitted_after_deadline_at: lastAfterDeadline ?? firstAfterDeadline,
+    submitted_after_deadline_at: getSubmittedAfterDeadlineAt({
+      status: periodRow.status,
+      deadline: periodRow.deadline,
+      firstCompletedAt: periodRow.first_completed_at,
+      lastEntryAt: periodRow.last_entry_at,
+    }),
   }
 }
 

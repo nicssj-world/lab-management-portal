@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   classifySubmissionStatus,
   getSubmissionDeadline,
+  getSubmittedAfterDeadlineAt,
   compareFiscalPeriods,
   type FiscalPeriod,
 } from './compliance'
@@ -126,6 +127,34 @@ assert.equal(
     now: new Date('2026-08-24T00:00:00.000Z'),
   }),
   'not_applicable',
+)
+
+assert.equal(
+  getSubmittedAfterDeadlineAt({
+    status: 'on_time',
+    deadline: '2026-08-15',
+    firstCompletedAt: '2026-08-24T13:31:00.000Z',
+  }),
+  null,
+  'an on-time baseline must not show the missed-after-deadline warning',
+)
+assert.equal(
+  getSubmittedAfterDeadlineAt({
+    status: 'not_tracked',
+    deadline: '2026-03-15',
+    lastEntryAt: '2026-08-24T14:12:44.000Z',
+  }),
+  null,
+  'an untracked historical period must not show the missed-after-deadline warning',
+)
+assert.equal(
+  getSubmittedAfterDeadlineAt({
+    status: 'missed',
+    deadline: '2026-08-15',
+    firstCompletedAt: '2026-08-24T13:31:00.000Z',
+  }),
+  '2026-08-24T13:31:00.000Z',
+  'a missed period should expose its first completion after the deadline',
 )
 
 console.log('KPI compliance tests passed')
