@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -17,6 +17,7 @@ import {
 } from '@/lib/it-visitor/constants'
 import type { ActivityType, OrgType } from '@/lib/it-visitor/constants'
 import { buildVisitorRegisterHtml } from '@/lib/it-visitor/register-pdf'
+import { paginateVisitorLogs, prioritizeOpenVisitorLogs } from '@/lib/it-visitor/pagination'
 import type { ItVisitorLogWithRefs } from '@/lib/supabase/types'
 
 interface Settings { public_token: string; is_open: boolean; updated_at: string }
@@ -109,6 +110,7 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
   const [deptFilter, setDeptFilter] = useState('')
   const [insideOnly, setInsideOnly] = useState(false)
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
 
   const [detail, setDetail] = useState<ItVisitorLogWithRefs | null>(null)
   const [form, setForm] = useState<EditForm | null>(null)
@@ -130,7 +132,7 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
     return { inside, todayPeople, monthPeople, declined }
   }, [logs])
 
-  const filtered = useMemo(() => logs.filter((l) => {
+  const filtered = useMemo(() => prioritizeOpenVisitorLogs(logs.filter((l) => {
     if (from && l.visit_date < from) return false
     if (to && l.visit_date > to) return false
     if (typeFilter && l.visit_type !== typeFilter) return false
@@ -143,7 +145,17 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
       if (!hay.includes(q)) return false
     }
     return true
-  }), [logs, from, to, typeFilter, deptFilter, insideOnly, search])
+  })), [logs, from, to, typeFilter, deptFilter, insideOnly, search])
+
+  const pagination = useMemo(() => paginateVisitorLogs(filtered, page), [filtered, page])
+
+  useEffect(() => {
+    setPage(1)
+  }, [from, to, typeFilter, deptFilter, insideOnly, search])
+
+  useEffect(() => {
+    if (page > pagination.pageCount) setPage(pagination.pageCount)
+  }, [page, pagination.pageCount])
 
   const deptOptions = useMemo(() => {
     const used = new Set(logs.map((l) => l.contact_dept))
@@ -329,7 +341,7 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
               </tr>
             </thead>
             <tbody>
-              {filtered.map((l) => (
+              {pagination.items.map((l) => (
                 <tr key={l.id} style={{ borderTop: '1px solid var(--border)', transition: 'background .1s' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
@@ -377,40 +389,136 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
         {filtered.length === 0 && <EmptyState title="ไม่มีบันทึกการเข้า-ออก" hint="ผู้มาติดต่อบันทึกเองผ่าน QR Code หน้าห้องปฏิบัติการ" icon="users" />}
       </Card>
 
+      {pagination.total > 0 && (
+        <nav aria-label="การแบ่งหน้าบันทึกการเข้า-ออก" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: 12 }}>
+          <span aria-live="polite" aria-atomic="true">แสดง {pagination.from}–{pagination.to} จาก {pagination.total} รายการ</span>
+          {pagination.pageCount > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="arrowLeft"
+                title="ไปหน้าก่อนหน้า"
+                onClick={() => setPage(pagination.page - 1)}
+                disabled={pagination.page <= 1}
+              >ก่อนหน้า</Button>
+              <span style={{ minWidth: 76, textAlign: 'center', color: 'var(--ink)', fontWeight: 700 }}>
+                หน้า {pagination.page} / {pagination.pageCount}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                iconRight="arrowRight"
+                title="ไปหน้าถัดไป"
+                onClick={() => setPage(pagination.page + 1)}
+                disabled={pagination.page >= pagination.pageCount}
+              >ถัดไป</Button>
+            </div>
+          )}
+        </nav>
+      )}
+
       {filtered.length !== logs.length && (
-        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>แสดง {filtered.length} จาก {logs.length} รายการ</div>
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>กรองแล้วเหลือ {filtered.length} จาก {logs.length} รายการ</div>
       )}
 
       {/* ── รายละเอียด ── */}
       {detail && (
-        <Modal title="รายละเอียดการเข้า-ออก" onClose={() => setDetail(null)}>
-          <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '9px 16px', margin: 0, fontSize: 13 }}>
-            <DRow label="ประเภท" value={VISIT_TYPE_LABEL[detail.visit_type]} />
-            {detail.group_name && <DRow label="ชื่อคณะ" value={detail.group_name} />}
-            <DRow label={detail.visit_type === 'group' ? 'หัวหน้าคณะ' : 'ชื่อ-สกุล'} value={detail.visitor_name} />
-            <DRow label="เบอร์โทร" value={detail.phone} />
-            {detail.email && <DRow label="อีเมล" value={detail.email} />}
-            <DRow label="ประเภทหน่วยงาน" value={ORG_TYPE_LABEL[detail.org_type]} />
-            <DRow label="หน่วยงาน/บริษัท" value={detail.org_name} />
-            <DRow label="ติดต่อหน่วยงาน" value={detail.contact_dept} />
-            <DRow label="จำนวนคน" value={`${detail.party_size} คน`} />
-            <DRow label="เวลาเข้า" value={fmtDateTime(detail.entered_at)} />
-            <DRow label="เวลาออก" value={detail.exited_at ? `${fmtDateTime(detail.exited_at)} · ${durationLabel(detail.entered_at, detail.exited_at)}` : 'ยังอยู่ในพื้นที่'} />
-            {detail.exited_at && <DRow label="วิธีบันทึกเวลาออก" value={checkoutMethodLabel(detail.checkout_method)} />}
-            {detail.closer?.name && <DRow label="ผู้บันทึกเวลาออก" value={detail.closer.name} />}
-            <DRow label="กิจกรรม" value={detail.activity_type === 'other' && detail.activity_other ? detail.activity_other : ACTIVITY_LABEL[detail.activity_type]} />
-            <DRow label="นัดหมายล่วงหน้า" value={APPOINTMENT_LABEL[detail.appointment]} />
-            <DRow label="แลกบัตร" value={BADGE_LABEL[detail.badge_exchanged]} />
-            <DRow label="นโยบายความปลอดภัย" value={SAFETY_LABEL[detail.safety_ack]} />
-          </dl>
-          {detail.member_names && (
-            <div style={{ marginTop: 14 }}>
-              <div style={labelStyle}>รายชื่อผู้มา</div>
-              <div style={{ padding: 12, borderRadius: 8, background: 'var(--surface-2)', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{detail.member_names}</div>
+        <Modal title="รายละเอียดการเข้า-ออก" maxWidth={760} onClose={() => setDetail(null)}>
+          <div style={{ display: 'grid', gap: 20 }}>
+            <section
+              aria-labelledby="visitor-detail-summary"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
+                padding: 16, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface-2)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <div style={{ width: 44, height: 44, flex: '0 0 auto', display: 'grid', placeItems: 'center', borderRadius: 12, color: 'var(--primary)', background: 'var(--primary-soft)' }}>
+                  <Icon name={detail.visit_type === 'group' ? 'users' : 'user'} size={22} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <h3 id="visitor-detail-summary" style={{ margin: 0, color: 'var(--ink)', fontSize: 16, fontWeight: 800, lineHeight: 1.35, overflowWrap: 'anywhere' }}>
+                    {detail.visit_type === 'group' && detail.group_name ? detail.group_name : detail.visitor_name}
+                  </h3>
+                  <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12.5, lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+                    {detail.visit_type === 'group' ? `หัวหน้าคณะ: ${detail.visitor_name}` : VISIT_TYPE_LABEL[detail.visit_type]} · {detail.party_size} คน · {detail.org_name}
+                  </div>
+                </div>
+              </div>
+              <Badge color={detail.exited_at ? 'green' : 'amber'} dot style={{ flex: '0 0 auto' }}>
+                {detail.exited_at ? 'ออกจากพื้นที่แล้ว' : 'ยังอยู่ในพื้นที่'}
+              </Badge>
+            </section>
+
+            <section aria-labelledby="visitor-detail-status" style={{ display: 'grid', gap: 10 }}>
+              <DetailSectionHeading id="visitor-detail-status" title="สถานะการเข้า-ออก" />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+                <div style={{ padding: 14, border: '1px solid var(--border)', borderLeft: '3px solid var(--primary)', borderRadius: 10, background: 'var(--card)' }}>
+                  <div style={detailTimeLabelStyle}><Icon name="arrowRight" size={14} /> เวลาเข้า</div>
+                  <div style={detailTimeValueStyle}>{fmtDateTime(detail.entered_at)}</div>
+                </div>
+                <div style={{ padding: 14, border: '1px solid var(--border)', borderLeft: `3px solid ${detail.exited_at ? 'var(--success)' : 'var(--warning)'}`, borderRadius: 10, background: 'var(--card)' }}>
+                  <div style={detailTimeLabelStyle}><Icon name="arrowLeft" size={14} /> เวลาออก</div>
+                  <div style={{ ...detailTimeValueStyle, color: detail.exited_at ? 'var(--ink)' : 'var(--warning)' }}>
+                    {detail.exited_at ? fmtDateTime(detail.exited_at) : 'ยังอยู่ในพื้นที่'}
+                  </div>
+                  {detail.exited_at && <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12 }}>ใช้เวลา {durationLabel(detail.entered_at, detail.exited_at)}</div>}
+                </div>
+              </div>
+            </section>
+
+            <section aria-labelledby="visitor-detail-contact" style={{ display: 'grid', gap: 10 }}>
+              <DetailSectionHeading id="visitor-detail-contact" title="ข้อมูลผู้มาติดต่อ" />
+              <dl style={detailGridStyle}>
+                <DetailField label="ประเภท" value={VISIT_TYPE_LABEL[detail.visit_type]} />
+                {detail.group_name && <DetailField label="ชื่อคณะ" value={detail.group_name} />}
+                <DetailField label={detail.visit_type === 'group' ? 'หัวหน้าคณะ' : 'ชื่อ-สกุล'} value={detail.visitor_name} />
+                <DetailField label="จำนวนคน" value={`${detail.party_size} คน`} />
+                <DetailField label="เบอร์โทร" value={detail.phone} />
+                <DetailField label="อีเมล" value={detail.email || 'ไม่ระบุ'} />
+                <DetailField label="ประเภทหน่วยงาน" value={ORG_TYPE_LABEL[detail.org_type]} />
+                <DetailField label="หน่วยงาน/บริษัท" value={detail.org_name} />
+                <DetailField label="ติดต่อหน่วยงาน" value={detail.contact_dept} />
+              </dl>
+            </section>
+
+            <section aria-labelledby="visitor-detail-visit" style={{ display: 'grid', gap: 10 }}>
+              <DetailSectionHeading id="visitor-detail-visit" title="รายละเอียดการเข้าพื้นที่" />
+              <dl style={detailGridStyle}>
+                <DetailField label="กิจกรรม" value={detail.activity_type === 'other' && detail.activity_other ? detail.activity_other : ACTIVITY_LABEL[detail.activity_type]} wide />
+                <DetailField label="นัดหมายล่วงหน้า">
+                  <Badge color={detail.appointment === 'booked' ? 'blue' : 'gray'}>{APPOINTMENT_LABEL[detail.appointment]}</Badge>
+                </DetailField>
+                <DetailField label="แลกบัตร">
+                  <Badge color={detail.badge_exchanged === 'yes' ? 'green' : 'gray'}>{BADGE_LABEL[detail.badge_exchanged]}</Badge>
+                </DetailField>
+                <DetailField label="นโยบายความปลอดภัย">
+                  <Badge color={detail.safety_ack === 'acknowledged' ? 'green' : 'red'}>{SAFETY_LABEL[detail.safety_ack]}</Badge>
+                </DetailField>
+              </dl>
+            </section>
+
+            {detail.member_names && (
+              <section aria-labelledby="visitor-detail-members" style={{ display: 'grid', gap: 10 }}>
+                <DetailSectionHeading id="visitor-detail-members" title="รายชื่อผู้มา" />
+                <div style={{ padding: 12, borderRadius: 8, background: 'var(--surface-2)', color: 'var(--ink)', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7, overflowWrap: 'anywhere' }}>{detail.member_names}</div>
+              </section>
+            )}
+
+            {detail.exited_at && (
+              <section aria-labelledby="visitor-detail-audit" style={{ display: 'grid', gap: 10 }}>
+                <DetailSectionHeading id="visitor-detail-audit" title="การบันทึกเวลาออก" />
+                <dl style={detailGridStyle}>
+                  <DetailField label="วิธีบันทึกเวลาออก" value={checkoutMethodLabel(detail.checkout_method)} />
+                  {detail.closer?.name && <DetailField label="ผู้บันทึกเวลาออก" value={detail.closer.name} />}
+                </dl>
+              </section>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 2 }}>
+              <Button variant="secondary" onClick={() => setDetail(null)}>ปิด</Button>
             </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
-            <Button variant="secondary" onClick={() => setDetail(null)}>ปิด</Button>
           </div>
         </Modal>
       )}
@@ -534,22 +642,38 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
   )
 }
 
-function DRow({ label, value }: { label: string; value: string }) {
+const detailGridStyle: React.CSSProperties = {
+  display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px 18px', margin: 0,
+}
+
+const detailTimeLabelStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 11.5, fontWeight: 700,
+}
+
+const detailTimeValueStyle: React.CSSProperties = {
+  marginTop: 8, color: 'var(--ink)', fontSize: 14, fontWeight: 700, lineHeight: 1.45,
+}
+
+function DetailSectionHeading({ id, title }: { id: string; title: string }) {
+  return <h3 id={id} style={{ margin: 0, paddingBottom: 8, borderBottom: '1px solid var(--border)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 800 }}>{title}</h3>
+}
+
+function DetailField({ label, value, children, wide = false }: { label: string; value?: React.ReactNode; children?: React.ReactNode; wide?: boolean }) {
   return (
-    <>
-      <dt style={{ color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap' }}>{label}</dt>
-      <dd style={{ margin: 0, color: 'var(--ink)' }}>{value}</dd>
-    </>
+    <div style={{ minWidth: 0, gridColumn: wide ? '1 / -1' : undefined }}>
+      <dt style={{ marginBottom: 4, color: 'var(--muted)', fontSize: 11.5, fontWeight: 700 }}>{label}</dt>
+      <dd style={{ margin: 0, color: 'var(--ink)', fontSize: 13.5, lineHeight: 1.55, overflowWrap: 'anywhere' }}>{children ?? value ?? 'ไม่ระบุ'}</dd>
+    </div>
   )
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, children, maxWidth = 620 }: { title: string; onClose: () => void; children: React.ReactNode; maxWidth?: number }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 620, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+      <div role="dialog" aria-modal="true" aria-label={title} style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>{title}</h2>
-          <button onClick={onClose} style={{ border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', width: 30, height: 30, borderRadius: 7, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" size={16} /></button>
+          <button type="button" aria-label="ปิดหน้าต่าง" title="ปิด" onClick={onClose} style={{ border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', width: 32, height: 32, borderRadius: 7, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" size={16} /></button>
         </div>
         <div style={{ padding: 20 }}>{children}</div>
       </div>
