@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
 import { StickyScroll } from '@/components/ui/StickyScroll'
+import { NAME_PREFIX_OPTIONS, formatProfileName } from '@/lib/personnel/name'
 import { createUserSchema, updateUserSchema, ROLES, DEPARTMENTS, DEPT_ABBR, DOC_ROLES } from '@/lib/validations/user-schema'
 import type { UserProfile, UserFilters, PaginationMeta, UserRole, UserStatus } from '@/types/users'
 import type { CreateUserInput, UpdateUserInput } from '@/lib/validations/user-schema'
@@ -130,6 +131,7 @@ function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModa
 
   const [form, setForm] = useState({
     ephis_id: user?.ephis_id ?? '',
+    name_prefix: user?.name_prefix ?? '',
     name:     user?.name     ?? '',
     role:     (user?.role    ?? 'Medical Technologist') as UserRole,
     dept:     (user?.dept    ?? DEPARTMENTS[0]) as typeof DEPARTMENTS[number],
@@ -150,6 +152,7 @@ function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModa
     if (isEdit) {
       const payload: UpdateUserInput = {
         ephis_id: form.ephis_id || undefined,
+        name_prefix: form.name_prefix as UpdateUserInput['name_prefix'] || null,
         name:     form.name     || undefined,
         role:     form.role,
         dept:     form.dept,
@@ -206,6 +209,12 @@ function UserFormModal({ mode, user, onClose, onSaved, showToast }: UserFormModa
         </h2>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Field label="คำนำหน้าชื่อ">
+            <Sel value={form.name_prefix} onChange={set('name_prefix')} placeholder="— ไม่ระบุ —">
+              {NAME_PREFIX_OPTIONS.map((prefix) => <option key={prefix} value={prefix}>{prefix}</option>)}
+            </Sel>
+          </Field>
+
           <Field label="ชื่อ-นามสกุล" error={errors.name}>
             <Input type="text" value={form.name} onChange={set('name')} placeholder="ชื่อเต็ม" required />
           </Field>
@@ -353,7 +362,7 @@ function DocumentProfileModal({ user, onClose, onSaved, showToast }: DocumentPro
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>
             <div>
               <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>ข้อมูลสำหรับเอกสารคุณภาพ</h2>
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>{user.name}</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>{formatProfileName(user.name, user.name_prefix)}</div>
             </div>
             <button
               type="button"
@@ -849,7 +858,7 @@ export function AdminUserClient({ canAdminUsers, canManageDocumentProfiles }: Ad
     const newStatus = user.status === 'active' ? 'inactive' : 'active'
     const label = newStatus === 'active' ? 'เปิดใช้งาน' : 'ปิดใช้งาน'
     setConfirm({
-      msg: `ต้องการ${label}ผู้ใช้ "${user.name}" ใช่หรือไม่?`,
+      msg: `ต้องการ${label}ผู้ใช้ "${formatProfileName(user.name, user.name_prefix)}" ใช่หรือไม่?`,
       onConfirm: async () => {
         setConfirm(null)
         const res = await fetch(`/api/admin/users/${user.id}`, {
@@ -866,7 +875,7 @@ export function AdminUserClient({ canAdminUsers, canManageDocumentProfiles }: Ad
   async function handleDelete(user: UserProfile) {
     if (!canAdminUsers) return
     setConfirm({
-      msg: `ต้องการลบผู้ใช้ "${user.name}" ออกจากระบบ? การลบนี้ไม่สามารถกู้คืนได้`,
+      msg: `ต้องการลบผู้ใช้ "${formatProfileName(user.name, user.name_prefix)}" ออกจากระบบ? การลบนี้ไม่สามารถกู้คืนได้`,
       onConfirm: async () => {
         setConfirm(null)
         const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' })
@@ -1033,7 +1042,7 @@ export function AdminUserClient({ canAdminUsers, canManageDocumentProfiles }: Ad
                 )
                 : users.map((u) => (
                   <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--ink)' }}>{u.name}</td>
+                    <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--ink)' }}>{formatProfileName(u.name, u.name_prefix)}</td>
                     <td style={{ padding: '12px 16px', color: 'var(--muted)', fontFamily: 'monospace', fontSize: 12 }}>
                       {u.ephis_id ?? '—'}
                     </td>
