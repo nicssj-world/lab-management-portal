@@ -172,6 +172,19 @@ async function reconcilePeriod(supabase: SupabaseClient, options: ReconcileOptio
   if (error) throw error
 }
 
+async function reconcilePeriods(
+  supabase: SupabaseClient,
+  fiscalYear: number,
+  departments: Department[],
+): Promise<void> {
+  if (departments.length === 0) return
+  const { error } = await supabase.rpc('reconcile_kpi_submission_periods_bulk', {
+    p_fiscal_year: fiscalYear,
+    p_dept_ids: departments.map((department) => department.id),
+  })
+  if (error) throw error
+}
+
 async function reconcileDetailPeriod(
   supabase: SupabaseClient,
   options: ReconcileOptions,
@@ -288,18 +301,10 @@ export async function getKpiCompliance(
   const trackingStart = periodFromSettings(settings, 'tracking')
   const baseline = periodFromSettings(settings, 'baseline')
   const now = new Date()
-
-  // Materialize every fiscal month so the matrix can show filled/required
-  // progress for historical, current, and future cells. Only tracked periods
-  // contribute to compliance; older periods remain not_tracked.
-  const materializedPeriods = months
-  await Promise.all(
-    visibleDepartments.flatMap((dept) => materializedPeriods.map((month) => reconcilePeriod(supabase, {
-      deptId: dept.id,
-      fiscalYear,
-      month,
-    }))),
-  )
+  // Reconcile every fiscal month in one database round trip. The bulk RPC
+  // still materializes all 12 snapshots, while only tracked statuses affect
+  // compliance totals.
+  await reconcilePeriods(supabase, fiscalYear, visibleDepartments)
 
   const departmentIds = visibleDepartments.map((dept) => dept.id)
   let query = supabase
