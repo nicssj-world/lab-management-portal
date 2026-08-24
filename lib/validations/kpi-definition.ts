@@ -11,6 +11,8 @@ export const definitionSchema = z.object({
   target_val: z.number(),
   sort_order: z.number().int().optional(),
   denominator: z.string().trim().max(200).nullish().transform((v) => v || null),
+  effective_from_fiscal_year: z.number().int().min(2500).max(2999),
+  effective_from_month: z.number().int().min(1).max(12),
 })
 
 // code is the stable key (seeds, exports, presentation dashboard) — not editable after create.

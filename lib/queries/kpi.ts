@@ -19,6 +19,28 @@ export function normalizeKpiDashboardRows(
 ): VwKpiDashboardRow[] {
   const definitionByCode = new Map(definitions.map((definition) => [definition.code, definition]))
   return rows.map((row) => {
+    // A versioned entry already carries the immutable target and denominator
+    // snapshot from the database view. Do not replace it with today's Settings
+    // definition, otherwise a locked fiscal period would silently change.
+    if (row.definition_version_id) {
+      const isCountMetric = row.denominator_label === null
+      const hasNumerator = row.numerator !== null && Number.isFinite(row.numerator)
+      const hasDenominator = row.denominator !== null && Number.isFinite(row.denominator) && row.denominator >= 0
+      const result_pct = !isCountMetric && hasNumerator && hasDenominator
+        ? calcResult(row.numerator!, row.denominator!)
+        : null
+      return {
+        ...row,
+        result_pct,
+        is_pass: isPass(
+          result_pct,
+          row.target_type,
+          row.target_val,
+          hasNumerator ? row.numerator! : undefined,
+          isCountMetric,
+        ),
+      }
+    }
     const definition = definitionByCode.get(row.kpi_code)
     if (!definition) return { ...row, denominator_label: row.denominator_label ?? null }
 
@@ -227,11 +249,19 @@ export async function getAnnualData(
     den: number
     hasDen: boolean
     invalid: boolean
+    isCountMetric: boolean
   }>>()
 
   for (const r of rows) {
     const definition = defMap.get(r.kpi_code)
     if (!definition) continue
+    // Versioned rows keep their denominator semantics even when the current
+    // Settings definition was later changed from percentage to count (or the
+    // other way around). The row's target is still represented by the view;
+    // the annual aggregation below preserves the existing one-row-per-code
+    // report shape for compatibility.
+    const denominatorLabel = r.definition_version_id ? r.denominator_label : definition.denominator
+    const rowIsCountMetric = denominatorLabel === null
     if (!aggMap.has(r.kpi_code)) aggMap.set(r.kpi_code, new Map())
     const monthMap = aggMap.get(r.kpi_code)!
     const existing = monthMap.get(r.month)
@@ -240,10 +270,10 @@ export async function getAnnualData(
     const hasDen = r.denominator !== null && Number.isFinite(r.denominator)
     const den = hasDen ? r.denominator! : 0
     const invalid = !hasNum || (
-      definition.denominator !== null && (!hasDen || den < 0 || (den === 0 && num !== 0))
+      denominatorLabel !== null && (!hasDen || den < 0 || (den === 0 && num !== 0))
     )
     if (!existing) {
-      monthMap.set(r.month, { num, hasNum, den, hasDen, invalid })
+      monthMap.set(r.month, { num, hasNum, den, hasDen, invalid, isCountMetric: rowIsCountMetric })
     } else {
       monthMap.set(r.month, {
         num: existing.num + num,
@@ -251,6 +281,7 @@ export async function getAnnualData(
         den: existing.den + den,
         hasDen: existing.hasDen || hasDen,
         invalid: existing.invalid || invalid,
+        isCountMetric: existing.isCountMetric && rowIsCountMetric,
       })
     }
   }
@@ -265,7 +296,7 @@ export async function getAnnualData(
         months[month] = { numerator: null, denominator: null, result_pct: null, is_pass: null }
         continue
       }
-      const isCountMetric = definition.denominator === null
+      const isCountMetric = agg?.isCountMetric ?? definition.denominator === null
       const result_pct = !isCountMetric && !agg.invalid
         ? calcResult(agg.num, agg.hasDen ? agg.den : null)
         : null

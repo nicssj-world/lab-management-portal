@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getActor, canAccessResource, jsonUnauthorized, jsonForbidden } from '@/lib/auth/guards'
 import { isAdminRole } from '@/lib/roles'
-import { getDashboard, getDefinitions, getDepartments, upsertEntries, deleteEntries, getAssignedDeptIds, getExclusions } from '@/lib/queries/kpi'
+import { getDashboard, getDefinitions, getDepartments, getAssignedDeptIds, getExclusions } from '@/lib/queries/kpi'
+import { saveKpiEntriesAtomic } from '@/lib/queries/kpi-compliance'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { validateKpiEntryPayload } from '@/lib/kpi/entry-validation'
 import { canEditKpiPeriod, isValidKpiFiscalYear, isValidKpiMonth } from '@/lib/kpi/period-validation'
@@ -80,12 +81,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'ตัวชี้วัดนี้ไม่เกี่ยวข้องกับแผนกที่เลือก' }, { status: 422 })
   }
 
-  // Mutation must bypass RLS (kpi_entries write policy uses legacy 'staff'/'admin'
-  // roles; app roles differ). Scope + exclusions already enforced above.
-  // Upsert first so a failed write cannot erase the previous values that the
-  // user is trying to preserve. Clearing is the final step for blank fields.
-  if (entries.length > 0) await upsertEntries(supabaseAdmin, entries)
-  if (clearEntries.length > 0) await deleteEntries(supabaseAdmin, clearEntries)
+  // Scope + exclusions are enforced above. The database RPC performs the
+  // upserts, clears, snapshot-version lookup and period reconciliation in one
+  // transaction, so retries cannot split numeric values from compliance state.
+  await saveKpiEntriesAtomic(supabaseAdmin, entries, clearEntries, actor.id)
   supabaseAdmin.from('audit_log').insert({
     action: 'kpi.entry',
     user_id: actor.id,

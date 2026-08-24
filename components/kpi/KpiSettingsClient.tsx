@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { getKpiTargetLabel } from '@/lib/kpi/annual-labels'
+import { getCurrentKpiPeriod } from '@/lib/kpi/period-validation'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import type { Department, KpiDefinition } from '@/lib/supabase/types'
 
@@ -144,7 +145,7 @@ export function KpiSettingsClient() {
               <Icon name="chart" size={18} />
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>จัดการตัวชี้วัด KPI</h3>
             </div>
-            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--muted)' }}>เพิ่ม แก้ไข หรือลบตัวชี้วัด — การเปลี่ยนแปลงมีผลกับทุกแผนกและทุกหน้าจอทันที</p>
+            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--muted)' }}>เพิ่มหรือแก้ไขตัวชี้วัดพร้อมระบุงวดเริ่มใช้ — งวดที่ล็อกแล้วจะคง snapshot เดิม</p>
           </div>
           <Button variant="primary" size="sm" icon="plus" onClick={() => setDefModal({ mode: 'new' })}>เพิ่มตัวชี้วัด</Button>
         </div>
@@ -300,6 +301,9 @@ function DefinitionModal({ def, onClose, onSave }: {
   const [hasDen, setHasDen] = useState(def ? def.denominator !== null : true)
   const [denLabel, setDenLabel] = useState(def?.denominator ?? 'จำนวนทั้งหมด')
   const [sortOrder, setSortOrder] = useState(def ? String(def.sort_order) : '')
+  const defaultEffective = getCurrentKpiPeriod()
+  const [effectiveFiscalYear, setEffectiveFiscalYear] = useState(String(def?.effective_from_fiscal_year ?? defaultEffective.fiscalYear))
+  const [effectiveMonth, setEffectiveMonth] = useState(String(def?.effective_from_month ?? defaultEffective.month))
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -309,10 +313,17 @@ function DefinitionModal({ def, onClose, onSave }: {
     if (!nameTh.trim()) { setErr('กรุณากรอกชื่อตัวชี้วัด'); return }
     const tv = parseFloat(targetVal)
     if (isNaN(tv)) { setErr('กรุณากรอกค่าเป้าหมายเป็นตัวเลข'); return }
+    const effectiveYear = parseInt(effectiveFiscalYear, 10)
+    const effectivePeriodMonth = parseInt(effectiveMonth, 10)
+    if (!Number.isInteger(effectiveYear) || effectiveYear < 2500 || effectiveYear > 2999 || !Number.isInteger(effectivePeriodMonth) || effectivePeriodMonth < 1 || effectivePeriodMonth > 12) {
+      setErr('กรุณาระบุงวดเริ่มใช้ให้ถูกต้อง'); return
+    }
     const payload: Record<string, unknown> = {
       category, sub_code: subCode.trim() || null, name_th: nameTh.trim(),
       unit: unit.trim() || null, target_type: targetType, target_val: tv,
       denominator: hasDen ? (denLabel.trim() || 'จำนวนทั้งหมด') : null,
+      effective_from_fiscal_year: effectiveYear,
+      effective_from_month: effectivePeriodMonth,
     }
     if (sortOrder.trim() !== '') payload.sort_order = parseInt(sortOrder, 10)
     if (!def) payload.code = code.trim().toUpperCase()
@@ -366,6 +377,30 @@ function DefinitionModal({ def, onClose, onSave }: {
               <label style={labelStyle}>ลำดับการแสดง</label>
               <input type="number" style={inputStyle} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} placeholder="เว้นว่าง = ต่อท้าย" />
             </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>งวดเริ่มใช้ version นี้ <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <input
+                type="number" min="2500" max="2999" style={inputStyle}
+                value={effectiveFiscalYear}
+                onChange={(e) => setEffectiveFiscalYear(e.target.value)}
+                aria-label="ปีงบประมาณเริ่มใช้"
+              />
+              <select
+                style={{ ...inputStyle, cursor: 'pointer' }}
+                value={effectiveMonth}
+                onChange={(e) => setEffectiveMonth(e.target.value)}
+                aria-label="เดือนเริ่มใช้"
+              >
+                {['ต.ค.', 'พ.ย.', 'ธ.ค.', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.'].map((label, index) => {
+                  const month = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9][index]
+                  return <option key={month} value={month}>{label}</option>
+                })}
+              </select>
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>ข้อมูลของงวดที่ล็อกแล้วจะยังใช้ชื่อ/เป้าหมายจาก snapshot เดิม</div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>

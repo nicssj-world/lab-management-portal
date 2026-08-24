@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-24T00:00:00.000Z",
+  "title": "Design System: CBH - Lab Management",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Cool Paper",
+        "canonical": "#F7F9FC",
+        "tonalRamp": ["#111827", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0", "#F7F9FC"]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Card White",
+        "canonical": "#FFFFFF",
+        "tonalRamp": ["#111827", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#F1F5F9", "#FFFFFF"]
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Surface Mist",
+        "canonical": "#F1F4F9",
+        "tonalRamp": ["#111827", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0", "#F1F4F9"]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border Slate",
+        "canonical": "#E5EAF0",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#E5EAF0"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink Slate",
+        "canonical": "#0F172A",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#F8FAFC"]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Slate",
+        "canonical": "#64748B",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#F8FAFC"]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Clinical Blue",
+        "canonical": "#1E5FAD",
+        "tonalRamp": ["#082B55", "#0C3C76", "#12539A", "#1E5FAD", "#3D80C4", "#73A6D8", "#B5D0EA", "#E8F1FA"]
+      },
+      "primary-2": {
+        "role": "primary",
+        "displayName": "Action Blue",
+        "canonical": "#2563EB",
+        "tonalRamp": ["#102A6B", "#173E9A", "#1D4ED8", "#2563EB", "#5284F0", "#86A9F5", "#BDD0FB", "#E8EEFE"]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Danger Red",
+        "canonical": "#DC2626",
+        "tonalRamp": ["#5F0A0A", "#8F1010", "#B91C1C", "#DC2626", "#EF4444", "#F87171", "#FCA5A5", "#FEE2E2"]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Warning Amber",
+        "canonical": "#D97706",
+        "tonalRamp": ["#542000", "#7C2D12", "#B45309", "#D97706", "#F59E0B", "#FBBF24", "#FCD34D", "#FEF3C7"]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Success Green",
+        "canonical": "#16A34A",
+        "tonalRamp": ["#052E16", "#065F46", "#15803D", "#16A34A", "#22C55E", "#4ADE80", "#86EFAC", "#DCFCE7"]
+      },
+      "public-accent": {
+        "role": "secondary",
+        "displayName": "Public Brass",
+        "canonical": "#B08D57",
+        "tonalRamp": ["#3A2811", "#5A3F1B", "#7C5A2A", "#B08D57", "#C9AD7C", "#DCC69F", "#EBDDBF", "#F7F0E2"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Public Display", "purpose": "Hero headlines and service-facing statements." },
+      "headline": { "displayName": "Operational Headline", "purpose": "Page titles and public section headings." },
+      "title": { "displayName": "Module Title", "purpose": "Module headers and compact feature titles." },
+      "body": { "displayName": "Thai UI Body", "purpose": "Default reading, form, and explanatory copy." },
+      "label": { "displayName": "Operational Label", "purpose": "Metadata, table headings, controls, and compact navigation." }
+    },
+    "shadows": [
+      { "name": "protected-low", "value": "0 3px 12px rgba(15,23,42,.035)", "purpose": "Quiet ambient depth for staff data cards." },
+      { "name": "protected-hover", "value": "0 8px 24px rgba(0,0,0,.06)", "purpose": "Interactive card hover lift." },
+      { "name": "public-sm", "value": "0 8px 22px rgba(11,22,38,.055)", "purpose": "Small public card and icon depth." },
+      { "name": "public-md", "value": "0 18px 48px rgba(11,22,38,.10)", "purpose": "Public scope and feature panels." },
+      { "name": "public-lg", "value": "0 28px 74px rgba(11,22,38,.16)", "purpose": "Hero and prominent public composition depth." },
+      { "name": "modal", "value": "0 20px 60px rgba(0,0,0,.25)", "purpose": "Dialog panels only." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": ".15s ease", "purpose": "Button, row, border, and compact hover states." },
+      { "name": "panel-pop", "value": ".22s cubic-bezier(.2,.7,.3,1)", "purpose": "Modal panel entrance from its trigger." },
+      { "name": "fade-in-up", "value": ".35s ease-out", "purpose": "Light content entrance where it improves orientation." },
+      { "name": "reduced-motion", "value": "prefers-reduced-motion: reduce", "purpose": "Disable decorative animation and nearly all transition duration." }
+    ],
+    "breakpoints": [
+      { "name": "public-sm", "value": "520px" },
+      { "name": "staff-mobile", "value": "767px" },
+      { "name": "public-md", "value": "900px" },
+      { "name": "public-content", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Default action button for saving, opening, or progressing an operational task.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">บันทึก</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; min-height:36px; gap:8px; padding:8px 14px; border:1px solid var(--primary); border-radius:8px; background:var(--primary); color:#fff; font:500 13px/1.4 \"Noto Sans Thai\",system-ui,sans-serif; cursor:pointer; white-space:nowrap; transition:filter .15s ease,transform .15s ease,box-shadow .15s ease; } .ds-btn-primary:hover { filter:brightness(.95); transform:translateY(-1px); box-shadow:0 6px 16px rgba(30,95,173,.25); } .ds-btn-primary:active { transform:translateY(0); } .ds-btn-primary:focus-visible { outline:none; box-shadow:0 0 0 3px var(--primary-soft); } .ds-btn-primary:disabled { cursor:not-allowed; opacity:.5; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Low-emphasis bordered action for adjacent or reversible choices.",
+      "html": "<button class=\"ds-btn-secondary\" type=\"button\">ยกเลิก</button>",
+      "css": ".ds-btn-secondary { display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:8px 14px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--ink); font:500 13px/1.4 \"Noto Sans Thai\",system-ui,sans-serif; cursor:pointer; transition:background .15s ease,border-color .15s ease,box-shadow .15s ease; } .ds-btn-secondary:hover { background:var(--surface-2); border-color:var(--primary); } .ds-btn-secondary:focus-visible { outline:none; box-shadow:0 0 0 3px var(--primary-soft); } .ds-btn-secondary:disabled { cursor:not-allowed; opacity:.5; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-default",
+      "description": "Compact field used for search, filters, and structured operational input.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">ค้นหา</span><input class=\"ds-input\" placeholder=\"ค้นหารายการตรวจ\" /></label>",
+      "css": ".ds-field { display:grid; gap:4px; color:var(--muted); font:600 12px/1.4 \"Noto Sans Thai\",system-ui,sans-serif; } .ds-input { width:100%; min-height:38px; padding:0 12px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--ink); font:400 13px/1.4 \"Noto Sans Thai\",system-ui,sans-serif; transition:border-color .15s ease,box-shadow .15s ease,background .15s ease; } .ds-input:hover { border-color:rgba(30,95,173,.42); } .ds-input:focus-visible { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); } .ds-input:disabled { opacity:.6; cursor:not-allowed; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card-default",
+      "description": "Default content container for operational panels and public information blocks.",
+      "html": "<article class=\"ds-card\"><strong class=\"ds-card-title\">รายการตรวจ</strong><p class=\"ds-card-copy\">ข้อมูลล่าสุดของหมวดนี้</p></article>",
+      "css": ".ds-card { padding:16px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--ink); transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease; } .ds-card:hover { border-color:var(--primary); box-shadow:0 8px 24px rgba(0,0,0,.06); } .ds-card-title { display:block; font:700 15px/1.35 \"Noto Sans Thai\",system-ui,sans-serif; } .ds-card-copy { margin:4px 0 0; color:var(--muted); font:400 12.5px/1.5 \"Noto Sans Thai\",system-ui,sans-serif; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "status-badge",
+      "description": "Compact status or metadata signal; replace the color when the semantic state changes.",
+      "html": "<span class=\"ds-badge ds-badge-success\"><span class=\"ds-badge-dot\"></span>สำเร็จ</span>",
+      "css": ".ds-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; background:var(--surface-2); color:var(--muted); font:600 11.5px/1.4 \"Noto Sans Thai\",system-ui,sans-serif; white-space:nowrap; } .ds-badge-dot { width:6px; height:6px; border-radius:999px; background:currentColor; } .ds-badge-success { background:rgba(22,163,74,.10); color:#15803D; } .ds-badge-success:focus-visible { outline:3px solid var(--primary-soft); outline-offset:2px; }"
+    },
+    {
+      "name": "Protected Navigation Link",
+      "kind": "nav",
+      "refersTo": "nav-active",
+      "description": "Permission-filtered staff navigation item with a clear active state.",
+      "html": "<a class=\"ds-nav-link ds-nav-link-active\" href=\"#\"><span class=\"ds-nav-icon\" aria-hidden=\"true\">•</span><span>แดชบอร์ด</span></a>",
+      "css": ".ds-nav-link { display:flex; align-items:center; gap:10px; min-height:44px; padding:8px 12px; border-radius:8px; color:var(--muted); text-decoration:none; font:600 13px/1.4 \"Noto Sans Thai\",system-ui,sans-serif; transition:background .15s ease,color .15s ease,transform .12s ease; } .ds-nav-link:hover { background:var(--surface-2); color:var(--ink); transform:translateX(2px); } .ds-nav-link-active { background:var(--primary-soft); color:var(--primary); font-weight:700; } .ds-nav-link:focus-visible { outline:none; box-shadow:0 0 0 3px var(--primary-soft); } .ds-nav-icon { width:18px; text-align:center; color:currentColor; }"
+    },
+    {
+      "name": "View Tabs",
+      "kind": "nav",
+      "refersTo": "view-tab-active",
+      "description": "Route-backed view switcher for different presentations of the same dataset.",
+      "html": "<nav class=\"ds-view-tabs\" aria-label=\"มุมมอง\"><a class=\"ds-view-tab ds-view-tab-active\" href=\"#\" aria-current=\"page\">ภาพรวม</a><a class=\"ds-view-tab\" href=\"#\">รายปี</a></nav>",
+      "css": ".ds-view-tabs { display:flex; gap:4px; width:max-content; max-width:100%; padding:4px; overflow-x:auto; border-radius:12px; background:var(--surface-2); } .ds-view-tab { display:inline-flex; align-items:center; min-height:44px; flex:0 0 auto; padding:8px 16px; border-radius:9px; color:var(--muted); font:600 13px/1.4 \"Noto Sans Thai\",system-ui,sans-serif; text-decoration:none; white-space:nowrap; transition:color .18s ease,background .18s ease,box-shadow .18s ease; } .ds-view-tab:hover { color:var(--ink); background:var(--card); } .ds-view-tab-active { color:var(--primary); background:var(--card); font-weight:700; box-shadow:inset 0 -2px 0 var(--primary),0 1px 4px rgba(15,23,42,.08); } .ds-view-tab:focus-visible { outline:3px solid var(--primary-soft); outline-offset:-1px; }"
+    },
+    {
+      "name": "Public Service CTA",
+      "kind": "custom",
+      "refersTo": "button-primary",
+      "description": "Welcoming public action that remains touch-friendly and visually anchored in the blue service hero.",
+      "html": "<a class=\"ds-public-cta\" href=\"#\">ค้นหารายการตรวจ <span aria-hidden=\"true\">→</span></a>",
+      "css": ".ds-public-cta { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:10px 18px; border:1px solid rgba(255,255,255,.22); border-radius:14px; background:var(--primary); color:#fff; font:700 14px/1.4 \"Noto Sans Thai\",system-ui,sans-serif; text-decoration:none; transition:transform .16s ease,box-shadow .16s ease,filter .16s ease; } .ds-public-cta:hover { transform:translateY(-1px); filter:brightness(1.04); box-shadow:0 16px 38px rgba(11,22,38,.24); } .ds-public-cta:focus-visible { outline:none; box-shadow:0 0 0 3px rgba(255,255,255,.36),0 0 0 6px var(--primary-soft); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Lab Control Room",
+    "overview": "This is a current-state record of the incumbent implementation. The North Star is a descriptive label inferred from the code, not a new rebrand. The protected portal behaves like a calm clinical control room: information is dense enough for daily work, but hierarchy, cool neutrals, and one clear action color keep the surface legible under operational pressure.\n\nThe public surface shares the same blue institutional foundation but changes posture. It becomes more editorial and welcoming through a blue hero, real laboratory photography, softer layering, and a restrained brass accent. These two modes should feel related, not identical: staff surfaces optimize for operating; public surfaces optimize for finding, understanding, and trust.",
+    "keyCharacteristics": [
+      "Cool blue and blue-gray neutrals with a single action accent.",
+      "Thai-first typography with compact labels and readable data views.",
+      "Tonal layering and quiet borders before heavy decoration.",
+      "Semantic colors reserved for status, urgency, and outcomes.",
+      "Responsive, keyboard-visible, reduced-motion-aware behavior."
+    ],
+    "rules": [
+      { "name": "The Signal Hierarchy Rule", "body": "Blue handles action and navigation; red, amber, and green communicate state. Never use semantic colors as decorative confetti.", "section": "colors" },
+      { "name": "The Brass Boundary Rule", "body": "Public brass belongs to public trust/search emphasis. It should not become a second primary accent inside the staff workspace.", "section": "colors" },
+      { "name": "The Thai-First Rule", "body": "Preserve Noto Sans Thai and make Thai copy the first-class reading path; English is a useful companion label, not the visual hierarchy owner.", "section": "typography" },
+      { "name": "The Data Before Decoration Rule", "body": "Keep metric and table values easy to scan; use tabular numerals where values update in place and never trade numeric clarity for stylistic display type.", "section": "typography" },
+      { "name": "The Flat-at-Rest Rule", "body": "A staff surface should be quiet at rest. Elevation appears in response to hierarchy, hover, focus, or modal state.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use the shared CSS variables and component primitives before introducing a one-off color or radius.",
+      "Do reserve primary blue for action, navigation, focus context, and meaningful data emphasis.",
+      "Do keep Thai copy, metadata, table headings, and error states readable at compact sizes.",
+      "Do preserve 44px touch targets for navigation and route-backed controls, visible focus, and reduced-motion behavior.",
+      "Do use real approved laboratory assets on public service surfaces when imagery materially helps orientation or trust.",
+      "Do let borders and tonal surface shifts carry most of the structure in protected data views."
+    ],
+    "donts": [
+      "Don't introduce unrelated neon palettes, gradients, or decorative shadows into the staff workspace.",
+      "Don't use red, amber, or green as general decoration; they communicate state and urgency.",
+      "Don't turn every table row or filter into a floating rounded card.",
+      "Don't use Rajdhani or DM Mono as a default replacement for Thai body text without a surface-specific reason.",
+      "Don't collapse the public editorial mode and protected operating mode into the same density or hero treatment.",
+      "Don't design a public visual projection that reveals internal safety-map topology, labels, personnel, or protected workflow detail."
+    ]
+  }
+}

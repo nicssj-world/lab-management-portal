@@ -9,6 +9,7 @@ import { MonthSelector } from '@/components/ui/MonthSelector'
 import { KpiOverviewTable } from '@/components/kpi/KpiOverviewTable'
 import { KpiAnnualTable } from '@/components/kpi/KpiAnnualTable'
 import { KpiPresentationDashboard } from '@/components/kpi/KpiPresentationDashboard'
+import { KpiComplianceMonitor } from '@/components/kpi/KpiComplianceMonitor'
 import { KpiSatisfactionPanel } from '@/components/kpi/KpiSatisfactionPanel'
 import { KpiExportButton } from '@/components/kpi/KpiExportButton'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
@@ -19,10 +20,11 @@ import { usePermission } from '@/context/PermissionContext'
 import { normalizeNavigationValue } from '@/lib/navigation'
 import type { Department } from '@/lib/supabase/types'
 
-type Tab = 'dashboard' | 'annual' | 'compare' | 'satisfaction'
+type Tab = 'dashboard' | 'annual' | 'compare' | 'satisfaction' | 'compliance'
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'dashboard',    label: 'Dashboard',        icon: 'chart' },
+  { id: 'compliance',   label: 'ติดตามการส่ง',     icon: 'calendar' },
   { id: 'annual',       label: 'ภาพรวมรายปี',      icon: 'dash' },
   { id: 'compare',      label: 'เปรียบเทียบแผนก',  icon: 'users' },
   { id: 'satisfaction', label: 'ความพึงพอใจ',      icon: 'shieldCheck' },
@@ -105,7 +107,7 @@ export default function KpiDashboardPage() {
               style={{ ...selectStyle, width: 88 }}
               aria-label="ปีงบประมาณ"
             />
-            {(tab === 'annual' || tab === 'dashboard') && (
+            {(tab === 'annual' || tab === 'dashboard' || tab === 'compliance') && (
               <select value={deptCode} onChange={e => setDeptCode(e.target.value)} style={selectStyle} aria-label="แผนก">
                 <option value="">ทุกแผนก (ภาพรวม)</option>
                 {visibleDepts.map(d => <option key={d.id} value={d.code}>{d.name_th}</option>)}
@@ -114,7 +116,7 @@ export default function KpiDashboardPage() {
             {tab === 'compare' && (
               <MonthSelector value={month} onChange={setMonth} />
             )}
-            {tab === 'annual' && (
+            {(tab === 'annual' || tab === 'compliance') && (
               <div style={{ marginLeft: 'auto' }}>
                 <KpiExportButton year={year} depts={visibleDepts} />
               </div>
@@ -126,6 +128,10 @@ export default function KpiDashboardPage() {
       {/* Tab content */}
       {tab === 'dashboard' && (
         <KpiPresentationDashboard year={year} deptCode={deptCode || null} />
+      )}
+
+      {tab === 'compliance' && (
+        <KpiComplianceMonitor year={year} deptCode={deptCode} depts={visibleDepts} />
       )}
 
       {tab === 'annual' && (

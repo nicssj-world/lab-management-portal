@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getDefinitions } from '@/lib/queries/kpi'
+import { createKpiDefinitionVersion, getLatestKpiDefinitionVersions } from '@/lib/queries/kpi-compliance'
 import { definitionSchema } from '@/lib/validations/kpi-definition'
 
 export async function GET() {
@@ -9,8 +10,16 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const data = await getDefinitions(supabase)
-  return NextResponse.json(data)
+  const [definitions, versions] = await Promise.all([
+    getDefinitions(supabase),
+    getLatestKpiDefinitionVersions(supabaseAdmin),
+  ])
+  const latestByKpiId = new Map(versions.map((version) => [version.kpi_id, version]))
+  return NextResponse.json(definitions.map((definition) => ({
+    ...definition,
+    effective_from_fiscal_year: latestByKpiId.get(definition.id)?.effective_from_fiscal_year,
+    effective_from_month: latestByKpiId.get(definition.id)?.effective_from_month,
+  })))
 }
 
 async function requireAdmin() {
@@ -29,7 +38,7 @@ export async function POST(req: NextRequest) {
   const parsed = definitionSchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 422 })
 
-  const body = parsed.data
+  const { effective_from_fiscal_year, effective_from_month, ...body } = parsed.data
   // Auto-assign sort_order (max + 10) when not provided
   let sort_order = body.sort_order
   if (sort_order === undefined) {
@@ -49,9 +58,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  try {
+    await createKpiDefinitionVersion(supabaseAdmin, data, {
+      fiscalYear: effective_from_fiscal_year,
+      month: effective_from_month,
+    }, actor.id)
+  } catch (versionError) {
+    await supabaseAdmin.from('kpi_definitions').delete().eq('id', data.id)
+    return NextResponse.json({ error: versionError instanceof Error ? versionError.message : 'สร้าง version ของ KPI ไม่สำเร็จ' }, { status: 500 })
+  }
+
   supabaseAdmin.from('audit_log').insert({
     action: 'kpi.definition.create', user_id: actor.id, target: body.code, detail: `เพิ่มตัวชี้วัด ${body.name_th}`,
   }).then(undefined, () => {})
 
-  return NextResponse.json(data)
+  return NextResponse.json({ ...data, effective_from_fiscal_year, effective_from_month })
 }

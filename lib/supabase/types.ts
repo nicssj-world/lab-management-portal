@@ -893,6 +893,8 @@ export interface KpiDefinition {
   target_val: number
   sort_order: number
   denominator: string | null
+  effective_from_fiscal_year?: number
+  effective_from_month?: number
 }
 
 export interface KpiEntry {
@@ -904,6 +906,10 @@ export interface KpiEntry {
   numerator: number | null
   denominator: number | null
   result_pct: number | null
+  definition_version_id?: number | null
+  created_at?: string
+  updated_at?: string
+  updated_by?: string | null
 }
 
 export interface VwKpiDashboardRow {
@@ -923,6 +929,59 @@ export interface VwKpiDashboardRow {
   denominator: number | null
   result_pct: number | null
   is_pass: boolean | null
+  definition_version_id?: number | null
+}
+
+export interface KpiDefinitionVersion {
+  id: number
+  kpi_id: number
+  version_no: number
+  code: string
+  category: string
+  sub_code: string | null
+  name_th: string
+  unit: string | null
+  target_type: 'gte' | 'lte' | 'eq'
+  target_val: number
+  sort_order: number
+  denominator: string | null
+  effective_from_fiscal_year: number
+  effective_from_month: number
+  created_at: string
+  created_by: string | null
+}
+
+export interface KpiSubmissionPeriod {
+  id: number
+  dept_id: number
+  fiscal_year: number
+  month: number
+  deadline: string
+  required_count: number
+  filled_count: number
+  first_completed_at: string | null
+  first_completed_by: string | null
+  last_entry_at: string | null
+  last_entry_by: string | null
+  status: 'not_tracked' | 'not_open' | 'pending' | 'on_time' | 'missed' | 'not_applicable'
+  status_source: 'live' | 'baseline'
+  created_at: string
+  updated_at: string
+}
+
+export interface KpiSubmissionRequirement {
+  period_id: number
+  kpi_id: number
+  definition_version_id: number
+  code: string
+  category: string
+  sub_code: string | null
+  name_th: string
+  unit: string | null
+  target_type: 'gte' | 'lte' | 'eq'
+  target_val: number
+  sort_order: number
+  denominator: string | null
 }
 
 export interface KpiDeptAssignee {
