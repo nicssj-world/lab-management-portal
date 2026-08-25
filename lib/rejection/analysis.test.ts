@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   classifyRejectionReason,
   normalizeRejectionReason,
+  resolveExistingRejectRollup,
 } from './analysis'
 
 const cases: Array<[string | null, string]> = [
@@ -28,5 +29,16 @@ for (const [reason, expected] of cases) {
 assert.equal(normalizeRejectionReason('  Repeat.   Na 190  '), 'repeat na 190')
 assert.equal(classifyRejectionReason('ข้อความที่ไม่อยู่ในกฎ').needsReview, true)
 
-console.log(`rejection analysis tests passed (${cases.length + 2} assertions)`)
+const mainRejects = new Set([
+  'Specimen Clot',
+  'specimen Hemolysis',
+  'ตัวอย่างไม่พอ',
+  'ไม่ได้รับสิ่งส่งตรวจ',
+  'Request ผิดคน',
+])
+assert.equal(resolveExistingRejectRollup('clot โทรไปให้เจาะใหม่', mainRejects), 'Specimen Clot')
+assert.equal(resolveExistingRejectRollup('ไม่มีสิ่งส่งตรวจส่งมา', mainRejects), 'ไม่ได้รับสิ่งส่งตรวจ')
+assert.equal(resolveExistingRejectRollup('Request ผิดคน', mainRejects), 'Request ผิดคน')
+assert.equal(resolveExistingRejectRollup('ไม่พบ Hemolysis', mainRejects), null)
 
+console.log(`rejection analysis tests passed (${cases.length + 6} assertions)`)

@@ -10,6 +10,8 @@ export type RejectionAnalysisSummary = {
   categorized_total: number
   no_detail_total: number
   needs_review_total: number
+  merged_to_main_total: number
+  by_main_rollup: Array<{ reject: string; total: number }>
   by_category: Array<{
     category_code: RejectionReasonCategoryCode
     category_label: string
@@ -32,4 +34,3 @@ export type RejectionAnalysisSummary = {
   }>
   last_analyzed_at: string | null
 }
-

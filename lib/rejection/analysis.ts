@@ -1,4 +1,4 @@
-export const REJECTION_ANALYSIS_VERSION = '2026-08-25-v1'
+export const REJECTION_ANALYSIS_VERSION = '2026-08-25-v2'
 
 export const REJECTION_REASON_CATEGORIES = [
   { code: 'no_detail', label: 'ไม่ระบุรายละเอียด' },
@@ -20,6 +20,25 @@ export const REJECTION_REASON_CATEGORIES = [
 
 export type RejectionReasonCategoryCode = typeof REJECTION_REASON_CATEGORIES[number]['code']
 export type RejectionAnalysisSource = 'rule' | 'review' | 'mapping' | 'unclassified'
+
+// These are the canonical Reject values currently present in rejection_logs.
+// A reason from "อื่นๆ" is merged into one of these only when the raw text has
+// a direct, conservative match. Otherwise it remains only in the analysis view.
+export const REJECTION_MAIN_ROLLUP_LABELS = [
+  'Specimen Clot',
+  'specimen Hemolysis',
+  'ตัวอย่างไม่พอ',
+  'ชื่อใบนำส่งตรวจกับ specimen ไม่ตรงกัน',
+  'specimen ผิดชนิด',
+  'ไม่ได้รับสิ่งส่งตรวจ',
+  'Request ผิดคน',
+  'เก็บตัวอย่าง ผิดคน',
+  'ติดสติ๊กเกอร์ชื่อผู้ป่วย, Barcode Lab ID ผิดคน/ผิด',
+  'specimen เก็บไว้นานเกินไปก่อนนำส่ง',
+  'specimen Turbid',
+  'specimen เก็บที่อุณหภูมิไม่เหมาะสม',
+  'specimen Icteric',
+] as const
 
 export type RejectionClassification = {
   normalizedReason: string
@@ -165,6 +184,107 @@ export function categoryLabel(code: RejectionReasonCategoryCode): string {
 
 export function isRejectionReasonCategoryCode(value: unknown): value is RejectionReasonCategoryCode {
   return typeof value === 'string' && REJECTION_REASON_CATEGORIES.some(category => category.code === value)
+}
+
+function hasAnyTerm(normalized: string, terms: string[]): boolean {
+  return terms.some(term => hasTerm(normalized, term))
+}
+
+/**
+ * Resolve an analyzed "อื่นๆ" reason into an existing main Reject label.
+ * The live label set is passed in so a target is used only when that main
+ * category actually exists in the current rejection data.
+ */
+export function resolveExistingRejectRollup(
+  reason: string | null | undefined,
+  existingRejectLabels: ReadonlySet<string>,
+): string | null {
+  const normalized = normalizeRejectionReason(reason)
+  if (!normalized) return null
+
+  const available = (label: string) => existingRejectLabels.has(label)
+  const negatedHemolysis = hasAnyTerm(normalized, [
+    'ไม่พบ hemolysis', 'ไม่มี hemolysis', 'no hemolysis', 'none hemolysis',
+  ])
+
+  // An explicit mention of an existing label is the strongest match.
+  for (const label of [...REJECTION_MAIN_ROLLUP_LABELS]
+    .sort((a, b) => b.length - a.length)) {
+    if (label === 'specimen Hemolysis' && negatedHemolysis) continue
+    if (available(label) && hasTerm(normalized, label)) return label
+  }
+
+  if (available('Specimen Clot') && hasAnyTerm(normalized, ['clot', 'clotted', 'coag', 'เลือดแข็ง', 'ลิ่มเลือด', 'แข็งตัว'])) {
+    return 'Specimen Clot'
+  }
+
+  if (available('specimen Hemolysis') && !negatedHemolysis && hasAnyTerm(normalized, ['hemolysis', 'hemoly', 'เม็ดเลือดแดงแตก'])) {
+    return 'specimen Hemolysis'
+  }
+
+  if (available('ตัวอย่างไม่พอ') && (
+    hasAnyTerm(normalized, ['not enough', 'insufficient', 'ปริมาณไม่พอ', 'ตัวอย่างไม่พอ'])
+    || (hasAnyTerm(normalized, ['ไม่พอ', 'น้อยมาก', 'น้อยเกินไป'])
+      && hasAnyTerm(normalized, ['ตัวอย่าง', 'specimen', 'sample', 'serum', 'เลือด', 'ปริมาณ', 'volume']))
+  )) {
+    return 'ตัวอย่างไม่พอ'
+  }
+
+  if (available('ไม่ได้รับสิ่งส่งตรวจ') && hasAnyTerm(normalized, [
+    'ไม่มีสิ่งส่งตรวจ', 'ไม่ได้รับสิ่งส่งตรวจ', 'ไม่ได้ส่ง specimen', 'ไม่ได้ส่ง sample',
+    'no specimen', 'no sample',
+  ])) {
+    return 'ไม่ได้รับสิ่งส่งตรวจ'
+  }
+
+  if (available('specimen ผิดชนิด') && hasAnyTerm(normalized, [
+    'ผิดชนิด', 'wrong specimen type', 'wrong type', 'ชนิดสิ่งส่งตรวจไม่ถูกต้อง',
+  ])) {
+    return 'specimen ผิดชนิด'
+  }
+
+  const wrongPerson = hasAnyTerm(normalized, ['ผิดคน', 'wrong person', 'wrongpatient', 'ผิดราย'])
+  if (available('Request ผิดคน') && wrongPerson && hasAnyTerm(normalized, ['request', 'req ', 'รีเควช', 'รีเควส'])) {
+    return 'Request ผิดคน'
+  }
+
+  if (available('เก็บตัวอย่าง ผิดคน') && wrongPerson && hasAnyTerm(normalized, ['เจาะ', 'เก็บตัวอย่าง', 'เก็บเลือด', 'เลือดผิด', 'sample'])) {
+    return 'เก็บตัวอย่าง ผิดคน'
+  }
+
+  if (available('ติดสติ๊กเกอร์ชื่อผู้ป่วย, Barcode Lab ID ผิดคน/ผิด') && hasAnyTerm(normalized, [
+    'barcode', 'บาร์โค้ด', 'sticker', 'sticer', 'สติ๊กเกอร์', 'ไม่ติดชื่อ', 'ติดชื่อผู้ป่วย',
+  ])) {
+    return 'ติดสติ๊กเกอร์ชื่อผู้ป่วย, Barcode Lab ID ผิดคน/ผิด'
+  }
+
+  if (available('ชื่อใบนำส่งตรวจกับ specimen ไม่ตรงกัน')
+    && hasAnyTerm(normalized, ['ไม่ตรง', 'ไม่ตรงกัน', 'mismatch'])
+    && hasAnyTerm(normalized, ['ชื่อ', 'patient', 'ผู้ป่วย', 'specimen', 'ใบนำส่ง', 'ใบส่งตรวจ'])) {
+    return 'ชื่อใบนำส่งตรวจกับ specimen ไม่ตรงกัน'
+  }
+
+  if (available('specimen เก็บไว้นานเกินไปก่อนนำส่ง') && hasAnyTerm(normalized, [
+    'เก็บไว้นาน', 'นานเกินไปก่อนนำส่ง', 'old specimen', 'delayed transport', 'เกินเวลานำส่ง',
+  ])) {
+    return 'specimen เก็บไว้นานเกินไปก่อนนำส่ง'
+  }
+
+  if (available('specimen Turbid') && hasAnyTerm(normalized, ['turbid', 'ขุ่น'])) {
+    return 'specimen Turbid'
+  }
+
+  if (available('specimen เก็บที่อุณหภูมิไม่เหมาะสม') && hasAnyTerm(normalized, [
+    'อุณหภูมิ', 'temperature', 'เก็บที่อุณหภูมิ',
+  ])) {
+    return 'specimen เก็บที่อุณหภูมิไม่เหมาะสม'
+  }
+
+  if (available('specimen Icteric') && hasAnyTerm(normalized, ['icteric', 'ตัวอย่างเหลือง'])) {
+    return 'specimen Icteric'
+  }
+
+  return null
 }
 
 export function classifyRejectionReason(reason: string | null | undefined): RejectionClassification {

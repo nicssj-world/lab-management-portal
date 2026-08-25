@@ -4,6 +4,7 @@ import {
   categoryLabel,
   classifyRejectionReason,
   isRejectionReasonCategoryCode,
+  resolveExistingRejectRollup,
   REJECTION_ANALYSIS_VERSION,
   type RejectionClassification,
   type RejectionReasonCategoryCode,
@@ -33,6 +34,7 @@ export type RejectionAnalysisRow = {
   reason_analysis_source: string | null
   reason_analysis_rule: string | null
   reason_analyzed_at: string | null
+  reason_rollup_reject: string | null
 }
 
 type RejectionMapping = {
@@ -42,6 +44,7 @@ type RejectionMapping = {
 
 type ClassifiedRow = RejectionAnalysisRow & {
   classification: RejectionClassification
+  rollupReject: string | null
 }
 
 function dateForYear(year: number, month: number, day: number): string {
@@ -70,7 +73,7 @@ async function fetchAnalysisRows(options: AnalysisOptions): Promise<RejectionAna
   for (let offset = 0; ; offset += PAGE_SIZE) {
     let query = supabaseAdmin
       .from('rejection_logs')
-      .select('id,spcmdate,reason,work,ward,reason_normalized,reason_category,reason_confidence,reason_analysis_source,reason_analysis_rule,reason_analyzed_at')
+      .select('id,spcmdate,reason,work,ward,reason_normalized,reason_category,reason_confidence,reason_analysis_source,reason_analysis_rule,reason_analyzed_at,reason_rollup_reject')
       .eq('reject', 'อื่นๆ')
       .gte('spcmdate', range.fromDate)
       .lte('spcmdate', range.toDate)
@@ -106,9 +109,21 @@ async function loadReasonMappings(): Promise<Map<string, RejectionReasonCategory
   return mappings
 }
 
+async function loadExistingRejectLabels(): Promise<Set<string>> {
+  const labels = new Set<string>()
+  const { data, error } = await supabaseAdmin.rpc('get_rejection_main_labels')
+
+  if (error) throw error
+  for (const row of (data ?? []) as Array<{ reject: string | null }>) {
+    if (row.reject?.trim()) labels.add(row.reject.trim())
+  }
+  return labels
+}
+
 function classifyRows(
   rows: RejectionAnalysisRow[],
-  mappings: Map<string, RejectionReasonCategoryCode>
+  mappings: Map<string, RejectionReasonCategoryCode>,
+  existingRejectLabels: ReadonlySet<string>,
 ): ClassifiedRow[] {
   return rows.map(row => {
     const automatic = classifyRejectionReason(row.reason)
@@ -120,6 +135,7 @@ function classifyRows(
       return {
         ...row,
         classification: applyReviewedCategory(automatic, row.reason_category as RejectionReasonCategoryCode),
+        rollupReject: resolveExistingRejectRollup(row.reason, existingRejectLabels),
       }
     }
 
@@ -129,6 +145,7 @@ function classifyRows(
       classification: mappedCategory
         ? applyReviewedCategory(automatic, mappedCategory, 'review')
         : automatic,
+      rollupReject: resolveExistingRejectRollup(row.reason, existingRejectLabels),
     }
   })
 }
@@ -158,6 +175,7 @@ async function persistClassifications(rows: ClassifiedRow[]): Promise<void> {
       reason_analysis_source: classification.source,
       reason_analysis_rule: stampedRule(classification),
       reason_analyzed_at: now,
+      reason_rollup_reject: row.rollupReject,
     }
 
     const unchanged = row.reason_normalized === fields.reason_normalized
@@ -165,6 +183,7 @@ async function persistClassifications(rows: ClassifiedRow[]): Promise<void> {
       && Number(row.reason_confidence ?? -1) === fields.reason_confidence
       && row.reason_analysis_source === fields.reason_analysis_source
       && row.reason_analysis_rule === fields.reason_analysis_rule
+      && row.reason_rollup_reject === fields.reason_rollup_reject
     if (unchanged && row.reason_analyzed_at) continue
 
     updates.push({ id: row.id, ...fields })
@@ -196,6 +215,7 @@ function buildSummary(
   const yearCounts = new Map<number, number>()
   const yearCategoryCounts = new Map<string, { yr: number; categoryCode: RejectionReasonCategoryCode; total: number }>()
   const workCounts = new Map<string, number>()
+  const mainRollupCounts = new Map<string, number>()
   const reviewGroups = new Map<string, {
     exampleReason: string
     variants: Map<string, number>
@@ -217,6 +237,9 @@ function buildSummary(
     yearCategory.total++
     yearCategoryCounts.set(yearKey, yearCategory)
     workCounts.set(work, (workCounts.get(work) ?? 0) + 1)
+    if (row.rollupReject) {
+      mainRollupCounts.set(row.rollupReject, (mainRollupCounts.get(row.rollupReject) ?? 0) + 1)
+    }
 
     if (classification.needsReview) {
       const key = classification.normalizedReason
@@ -254,6 +277,10 @@ function buildSummary(
     categorized_total: Math.max(total - noDetail - needsReview, 0),
     no_detail_total: noDetail,
     needs_review_total: needsReview,
+    merged_to_main_total: [...mainRollupCounts.values()].reduce((sum, count) => sum + count, 0),
+    by_main_rollup: [...mainRollupCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([reject, count]) => ({ reject, total: count })),
     by_category: categoryOrder.map(([categoryCode, count]) => ({
       category_code: categoryCode,
       category_label: categoryLabel(categoryCode),
@@ -292,15 +319,21 @@ function buildSummary(
 
 export async function getRejectionAnalysisSummary(options: AnalysisOptions = {}): Promise<RejectionAnalysisSummary> {
   const rows = await fetchAnalysisRows(options)
-  const mappings = await loadReasonMappings()
-  const classified = classifyRows(rows, mappings)
+  const [mappings, existingRejectLabels] = await Promise.all([
+    loadReasonMappings(),
+    loadExistingRejectLabels(),
+  ])
+  const classified = classifyRows(rows, mappings, existingRejectLabels)
   return buildSummary(classified, options, rows.every(rowIsReady))
 }
 
 export async function analyzeRejectionData(options: AnalysisOptions = {}): Promise<RejectionAnalysisSummary> {
   const rows = await fetchAnalysisRows(options)
-  const mappings = await loadReasonMappings()
-  const classified = classifyRows(rows, mappings)
+  const [mappings, existingRejectLabels] = await Promise.all([
+    loadReasonMappings(),
+    loadExistingRejectLabels(),
+  ])
+  const classified = classifyRows(rows, mappings, existingRejectLabels)
   await persistClassifications(classified)
   return buildSummary(classified, options, true)
 }

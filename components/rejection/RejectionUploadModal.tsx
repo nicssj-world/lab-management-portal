@@ -17,6 +17,7 @@ interface UploadResult {
     categorized_total: number
     no_detail_total: number
     needs_review_total: number
+    merged_to_main_total: number
   } | null
   analysis_error: string | null
 }
@@ -190,7 +191,7 @@ export default function RejectionUploadModal({ onClose, onSuccess }: Props) {
               {result.analysis && (
                 <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 10, padding: '11px 14px', fontSize: 12, color: '#075985', lineHeight: 1.6 }}>
                   <strong>วิเคราะห์ “อื่นๆ” อัตโนมัติแล้ว</strong><br />
-                  พบ {result.analysis.total_other.toLocaleString()} รายการ · จัดกลุ่มได้ {result.analysis.categorized_total.toLocaleString()} · ไม่มีรายละเอียด {result.analysis.no_detail_total.toLocaleString()} · รอตรวจสอบ {result.analysis.needs_review_total.toLocaleString()}
+                  พบ {result.analysis.total_other.toLocaleString()} รายการ · จัดกลุ่มได้ {result.analysis.categorized_total.toLocaleString()} · รวมเข้า Reject หลัก {result.analysis.merged_to_main_total.toLocaleString()} · ไม่มีรายละเอียด {result.analysis.no_detail_total.toLocaleString()} · รอตรวจสอบ {result.analysis.needs_review_total.toLocaleString()}
                 </div>
               )}
               {result.analysis_error && (

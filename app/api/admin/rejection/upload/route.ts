@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
     })
     .then(undefined, () => {})
 
-  let analysis: { total_other: number; categorized_total: number; no_detail_total: number; needs_review_total: number } | null = null
+  let analysis: { total_other: number; categorized_total: number; no_detail_total: number; needs_review_total: number; merged_to_main_total: number } | null = null
   let analysis_error: string | null = null
   if (dataMonth) {
     const [analysisYear, analysisMonth] = dataMonth.split('-').map(Number)
@@ -236,6 +236,7 @@ export async function POST(req: NextRequest) {
         categorized_total: result.categorized_total,
         no_detail_total: result.no_detail_total,
         needs_review_total: result.needs_review_total,
+        merged_to_main_total: result.merged_to_main_total,
       }
     } catch (error) {
       // The upload remains valid even if the optional derived-analysis migration

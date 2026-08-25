@@ -12,6 +12,7 @@ export type RejectionLog = {
   reason_category?: string | null
   reason_confidence?: number | null
   reason_analysis_source?: string | null
+  reason_rollup_reject?: string | null
   work: string | null
   ward: string | null
   uploaded_at: string
@@ -51,6 +52,10 @@ export type RejectionFilters = {
   limit?: number
 }
 
+function postgrestQuoted(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
 // ⚠️ select only non-PII columns — never select dspname/hn/an/ln
 export async function getRejectionLogs(
   supabase: SupabaseClient,
@@ -59,14 +64,26 @@ export async function getRejectionLogs(
   const { year, month, reject, page = 1, limit = 50 } = filters
   let q = supabase
     .from('rejection_logs')
-    .select('id,spcmdate,labspcmnm,itemno,reject,reason,reason_normalized,reason_category,reason_confidence,reason_analysis_source,work,ward,uploaded_at', { count: 'exact' })
+    .select('id,spcmdate,labspcmnm,itemno,reject,reason,reason_normalized,reason_category,reason_confidence,reason_analysis_source,reason_rollup_reject,work,ward,uploaded_at', { count: 'exact' })
 
   if (year && month) {
     const start = `${year}-${String(month).padStart(2, '0')}-01`
     const end = new Date(year, month, 0).toISOString().split('T')[0]
     q = q.gte('spcmdate', start).lte('spcmdate', end)
   }
-  if (reject) q = q.eq('reject', reject)
+  if (reject) {
+    if (reject === 'อื่นๆ') {
+      // The main summary now shows only unresolved "อื่นๆ" rows. Keep the
+      // monthly table consistent with that normalized count.
+      q = q.eq('reject', 'อื่นๆ').is('reason_rollup_reject', null)
+    } else {
+      // Include both native rows and "อื่นๆ" rows that were conservatively
+      // rolled into this existing main Reject label.
+      const selected = postgrestQuoted(reject)
+      const other = postgrestQuoted('อื่นๆ')
+      q = q.or(`reject.eq.${selected},and(reject.eq.${other},reason_rollup_reject.eq.${selected})`)
+    }
+  }
 
   return q
     .order('spcmdate', { ascending: false })

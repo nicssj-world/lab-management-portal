@@ -766,7 +766,7 @@ export default function RejectionClient({ canEdit }: Props) {
       {/* ══════════════════════════════════════════════════ */}
       {tab === 'reject' && (
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, animation: 'rejFadeUp .2s ease' }}>
-          <SectionHead title="สาเหตุการ Reject" sub={summary ? `${summary.by_reason.length} ประเภท` : undefined} />
+          <SectionHead title="สาเหตุการ Reject" sub={summary ? `${summary.by_reason.length} ประเภท · รวมรายการ “อื่นๆ” ที่จับคู่ได้แล้ว` : undefined} />
           {summaryLoading ? <Skeleton h={300} /> : summary && summary.by_reason.length > 0 ? (() => {
             const spiked = getSpiked(summary)
             return (
@@ -969,6 +969,7 @@ export default function RejectionClient({ canEdit }: Props) {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10, marginBottom: 16 }}>
                   <StatCard label="อื่นๆ ทั้งหมด" value={otherAnalysis.total_other.toLocaleString()} accent="#1E5FAD" />
                   <StatCard label="จัดกลุ่มได้" value={otherAnalysis.categorized_total.toLocaleString()} extra={otherAnalysis.total_other ? `${((otherAnalysis.categorized_total / otherAnalysis.total_other) * 100).toFixed(1)}% ของทั้งหมด` : undefined} extraColor="#15803D" accent="#0D9488" />
+                  <StatCard label="รวมเข้า Reject หลัก" value={otherAnalysis.merged_to_main_total.toLocaleString()} extra="นับเพิ่มในหมวดมาตรฐานแล้ว" extraColor="#6D28D9" accent="#7C3AED" />
                   <StatCard label="ไม่มีรายละเอียด" value={otherAnalysis.no_detail_total.toLocaleString()} extra="ไม่สามารถเดาสาเหตุจากข้อความได้" extraColor="#92400E" accent="#D97706" />
                   <StatCard label="รอตรวจสอบ" value={otherAnalysis.needs_review_total.toLocaleString()} extra={otherAnalysis.needs_review_total ? 'มีข้อความใหม่หรือไม่ตรงกฎ' : 'ไม่พบรายการค้าง'} extraColor={otherAnalysis.needs_review_total ? '#B91C1C' : '#15803D'} accent="#DC2626" />
                 </div>
@@ -1012,6 +1013,20 @@ export default function RejectionClient({ canEdit }: Props) {
                     {otherAnalysis.last_analyzed_at && <div style={{ marginTop: 14, fontSize: 11, color: 'var(--muted)' }}>ประมวลผลล่าสุด {new Date(otherAnalysis.last_analyzed_at).toLocaleString('th-TH')}</div>}
                   </div>
                 </div>
+
+                {otherAnalysis.by_main_rollup.length > 0 && (
+                  <div style={{ border: '1px solid #DDD6FE', background: '#FAF5FF', borderRadius: 12, padding: 16, marginTop: 14 }}>
+                    <SectionHead title="รายการที่รวมเข้า Reject หลัก" sub="จำนวนนี้ถูกบวกในสรุปประเภท Reject แล้ว" />
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 8 }}>
+                      {otherAnalysis.by_main_rollup.map(item => (
+                        <div key={item.reject} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 11px', background: 'var(--card)', border: '1px solid #E9D5FF', borderRadius: 8 }}>
+                          <span style={{ color: 'var(--ink)', fontSize: 12.5, fontWeight: 600 }}>{item.reject}</span>
+                          <span style={{ color: '#6D28D9', fontSize: 12.5, fontWeight: 800, whiteSpace: 'nowrap' }}>+{item.total.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ border: '1px solid #FECACA', background: '#FFFBFB', borderRadius: 12, padding: 16, marginTop: 14 }}>
                   <SectionHead title="รายการที่ระบบยังไม่มั่นใจ" sub={reviewQueue.length ? `แสดงสูงสุด ${reviewQueue.length} กลุ่มข้อความ` : 'ไม่พบรายการ'} />
