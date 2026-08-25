@@ -12,6 +12,13 @@ interface UploadResult {
   total: number
   errors: string[]
   data_month: string | null
+  analysis: {
+    total_other: number
+    categorized_total: number
+    no_detail_total: number
+    needs_review_total: number
+  } | null
+  analysis_error: string | null
 }
 
 interface Props {
@@ -180,6 +187,17 @@ export default function RejectionUploadModal({ onClose, onSuccess }: Props) {
                   </span>
                 )}
               </div>
+              {result.analysis && (
+                <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 10, padding: '11px 14px', fontSize: 12, color: '#075985', lineHeight: 1.6 }}>
+                  <strong>วิเคราะห์ “อื่นๆ” อัตโนมัติแล้ว</strong><br />
+                  พบ {result.analysis.total_other.toLocaleString()} รายการ · จัดกลุ่มได้ {result.analysis.categorized_total.toLocaleString()} · ไม่มีรายละเอียด {result.analysis.no_detail_total.toLocaleString()} · รอตรวจสอบ {result.analysis.needs_review_total.toLocaleString()}
+                </div>
+              )}
+              {result.analysis_error && (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400E' }}>
+                  นำเข้าข้อมูลสำเร็จ แต่ยังวิเคราะห์ “อื่นๆ” ไม่ได้: {result.analysis_error}
+                </div>
+              )}
               {result.errors.length > 0 && (
                 <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px' }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger)', marginBottom: 6 }}>ข้อผิดพลาด</div>

@@ -8,6 +8,10 @@ export type RejectionLog = {
   itemno: number
   reject: string | null
   reason: string | null
+  reason_normalized?: string | null
+  reason_category?: string | null
+  reason_confidence?: number | null
+  reason_analysis_source?: string | null
   work: string | null
   ward: string | null
   uploaded_at: string
@@ -55,7 +59,7 @@ export async function getRejectionLogs(
   const { year, month, reject, page = 1, limit = 50 } = filters
   let q = supabase
     .from('rejection_logs')
-    .select('id,spcmdate,labspcmnm,itemno,reject,reason,work,ward,uploaded_at', { count: 'exact' })
+    .select('id,spcmdate,labspcmnm,itemno,reject,reason,reason_normalized,reason_category,reason_confidence,reason_analysis_source,work,ward,uploaded_at', { count: 'exact' })
 
   if (year && month) {
     const start = `${year}-${String(month).padStart(2, '0')}-01`

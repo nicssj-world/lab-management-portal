@@ -14,6 +14,8 @@ import { ViewTabs } from '@/components/ui/ViewTabs'
 import { normalizeNavigationValue } from '@/lib/navigation'
 import { RejectionLog, RejectionSummary } from '@/lib/queries/rejection'
 import type { RejectionUpload } from '@/lib/queries/rejection'
+import { REJECTION_REASON_CATEGORIES } from '@/lib/rejection/analysis'
+import type { RejectionAnalysisSummary } from '@/lib/rejection/analysis-types'
 import RejectionUploadModal from './RejectionUploadModal'
 import RejectionHistoryModal from './RejectionHistoryModal'
 
@@ -266,9 +268,9 @@ function printReport(summary: RejectionSummary, month: string, work: string) {
 // ─── CSV export ───────────────────────────────────────────────────────────────
 
 function exportCSV(logs: RejectionLog[], month: string) {
-  const header = 'วันที่,Specimen,Reject,Section,Ward'
+  const header = 'วันที่,Specimen,Reject,รายละเอียด,หมวดหมู่,Section,Ward'
   const rows = logs.map(r =>
-    [r.spcmdate, r.labspcmnm ?? '', r.reject ?? '', r.work ?? '', r.ward ?? ''].join(',')
+    [r.spcmdate, r.labspcmnm ?? '', r.reject ?? '', r.reason ?? '', r.reason_category ?? '', r.work ?? '', r.ward ?? ''].join(',')
   )
   const blob = new Blob(['﻿' + [header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -303,6 +305,17 @@ export default function RejectionClient({ canEdit }: Props) {
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [summaryError, setSummaryError] = useState<string | null>(null)
 
+  // ── Other-reason analysis (historical + monthly auto-analysis) ──────────
+  const [otherAnalysis, setOtherAnalysis] = useState<RejectionAnalysisSummary | null>(null)
+  const [otherAnalysisLoading, setOtherAnalysisLoading] = useState(false)
+  const [otherAnalysisError, setOtherAnalysisError] = useState<string | null>(null)
+  const [reviewSelections, setReviewSelections] = useState<Record<string, string>>({})
+  const [reviewingReason, setReviewingReason] = useState<string | null>(null)
+  const [selectedReviewReasons, setSelectedReviewReasons] = useState<Record<string, boolean>>({})
+  const [bulkReviewCategory, setBulkReviewCategory] = useState('')
+  const [bulkReviewing, setBulkReviewing] = useState(false)
+  const [otherAnalysisYear, setOtherAnalysisYear] = useState<string>(YEARS[0])
+
   // ── Monthly data tab ─────────────────────────────────────
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthStr())
   const [monthSummary, setMonthSummary] = useState<RejectionSummary | null>(null)
@@ -322,6 +335,11 @@ export default function RejectionClient({ canEdit }: Props) {
 
   // ── Toast ────────────────────────────────────────────────
   const { toasts, add: addToast } = useToast()
+
+  const reviewQueue = otherAnalysis?.review_queue ?? []
+  const selectedReviewItems = reviewQueue.filter(item => selectedReviewReasons[item.normalized_reason])
+  const selectedReviewRows = selectedReviewItems.reduce((total, item) => total + item.total, 0)
+  const allReviewSelected = reviewQueue.length > 0 && selectedReviewItems.length === reviewQueue.length
 
   // ── Fetch summary for tabs 1-6 ───────────────────────────
   const fetchSummary = useCallback(async () => {
@@ -347,7 +365,141 @@ export default function RejectionClient({ canEdit }: Props) {
     }
   }, [filterYear, filterWork])
 
+  const getOtherAnalysisParams = useCallback(() => {
+    const params = new URLSearchParams()
+    if (otherAnalysisYear !== YEARS[0]) {
+      params.set('from_year', otherAnalysisYear)
+      params.set('to_year', otherAnalysisYear)
+    } else {
+      params.set('from_year', '2023')
+    }
+    if (filterWork !== YEARS[0]) params.set('work', filterWork)
+    return params
+  }, [filterWork, otherAnalysisYear])
+
+  const runOtherAnalysis = useCallback(async () => {
+    setOtherAnalysisLoading(true)
+    setOtherAnalysisError(null)
+    try {
+      const params = getOtherAnalysisParams()
+      const res = await fetch('/api/admin/rejection/analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(params.entries())),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? 'วิเคราะห์รายการอื่นๆ ไม่สำเร็จ')
+      setOtherAnalysis(data as RejectionAnalysisSummary)
+      setReviewSelections({})
+      setSelectedReviewReasons({})
+      setBulkReviewCategory('')
+    } catch (error) {
+      setOtherAnalysisError(error instanceof Error ? error.message : 'วิเคราะห์รายการอื่นๆ ไม่สำเร็จ')
+    } finally {
+      setOtherAnalysisLoading(false)
+    }
+  }, [getOtherAnalysisParams])
+
+  const fetchOtherAnalysis = useCallback(async () => {
+    setOtherAnalysisLoading(true)
+    setOtherAnalysisError(null)
+    try {
+      const params = getOtherAnalysisParams()
+      const res = await fetch(`/api/admin/rejection/analysis?${params.toString()}`)
+      let data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? 'โหลดผลวิเคราะห์ไม่สำเร็จ')
+
+      // The first visit backfills historical rows automatically. Subsequent
+      // visits only read the persisted derived columns.
+      if (!data.analysis_ready) {
+        const runRes = await fetch('/api/admin/rejection/analysis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.fromEntries(params.entries())),
+        })
+        data = await runRes.json()
+        if (!runRes.ok) throw new Error(data?.error ?? 'วิเคราะห์รายการอื่นๆ ไม่สำเร็จ')
+      }
+
+      setOtherAnalysis(data as RejectionAnalysisSummary)
+    } catch (error) {
+      setOtherAnalysisError(error instanceof Error ? error.message : 'โหลดผลวิเคราะห์ไม่สำเร็จ')
+    } finally {
+      setOtherAnalysisLoading(false)
+    }
+  }, [getOtherAnalysisParams])
+
+  const saveOtherReasonReviews = useCallback(async (normalizedReasons: string[], categoryCode: string, bulk = false) => {
+    if (normalizedReasons.length === 0 || !categoryCode) {
+      addToast('กรุณาเลือกหมวดหมู่ก่อนยืนยัน', false)
+      return
+    }
+
+    if (bulk) setBulkReviewing(true)
+    else setReviewingReason(normalizedReasons[0])
+    try {
+      const res = await fetch('/api/admin/rejection/analysis', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ normalized_reasons: normalizedReasons, category_code: categoryCode }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? 'บันทึกหมวดหมู่ไม่สำเร็จ')
+      const mapped = Number(data.mapped ?? normalizedReasons.length)
+      const updated = Number(data.updated ?? 0)
+      addToast(bulk
+        ? `ยืนยัน ${mapped.toLocaleString()} กลุ่มข้อความ · อัปเดต ${updated.toLocaleString()} รายการ`
+        : `ยืนยันหมวดหมู่แล้ว ${updated.toLocaleString()} รายการ`)
+      setReviewSelections(current => {
+        const next = { ...current }
+        normalizedReasons.forEach(reason => delete next[reason])
+        return next
+      })
+      if (bulk) {
+        setSelectedReviewReasons({})
+        setBulkReviewCategory('')
+      }
+      await fetchOtherAnalysis()
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'บันทึกหมวดหมู่ไม่สำเร็จ', false)
+    } finally {
+      if (bulk) setBulkReviewing(false)
+      else setReviewingReason(null)
+    }
+  }, [addToast, fetchOtherAnalysis])
+
+  const saveOtherReasonReview = useCallback(async (normalizedReason: string) => {
+    const categoryCode = reviewSelections[normalizedReason]
+    if (!categoryCode) {
+      addToast('กรุณาเลือกหมวดหมู่ก่อนยืนยัน', false)
+      return
+    }
+    return saveOtherReasonReviews([normalizedReason], categoryCode)
+  }, [addToast, reviewSelections, saveOtherReasonReviews])
+
+  const saveSelectedOtherReasons = useCallback(async () => {
+    if (selectedReviewItems.length === 0 || !bulkReviewCategory) {
+      addToast('กรุณาเลือกรายการและหมวดหมู่ก่อนยืนยัน', false)
+      return
+    }
+    return saveOtherReasonReviews(
+      selectedReviewItems.map(item => item.normalized_reason),
+      bulkReviewCategory,
+      true,
+    )
+  }, [addToast, bulkReviewCategory, saveOtherReasonReviews, selectedReviewItems])
+
   useEffect(() => { fetchSummary() }, [fetchSummary])
+
+  useEffect(() => {
+    setReviewSelections({})
+    setSelectedReviewReasons({})
+    setBulkReviewCategory('')
+  }, [filterWork, otherAnalysisYear])
+
+  useEffect(() => {
+    if (tab === 'other_detail') fetchOtherAnalysis()
+  }, [tab, fetchOtherAnalysis])
 
   // ── Fetch summary for monthly_data tab ───────────────────
   const fetchMonthSummary = useCallback(async () => {
@@ -790,46 +942,227 @@ export default function RejectionClient({ canEdit }: Props) {
       {/* Tab: รายละเอียด อื่นๆ                              */}
       {/* ══════════════════════════════════════════════════ */}
       {tab === 'other_detail' && (
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, animation: 'rejFadeUp .2s ease' }}>
-          <SectionHead title="รายละเอียด สาเหตุ &quot;อื่นๆ&quot;" sub="Top 30" />
-          {summaryLoading ? <Skeleton h={400} /> : summary && summary.by_reason_detail.length > 0 ? (
-            summary.by_reason_detail.map((item, i) => {
-              const max = summary.by_reason_detail[0].total
-              const pct = (item.total / Math.max(max, 1)) * 100
-              const isTop3 = i < 3
-              const barColor = i === 0
-                ? 'linear-gradient(90deg,#EF4444,#DC2626)'
-                : i === 1
-                ? 'linear-gradient(90deg,#F97316,#EA580C)'
-                : i === 2
-                ? 'linear-gradient(90deg,#EAB308,#CA8A04)'
-                : 'linear-gradient(90deg,#3B82F6,#1D4ED8)'
-              return (
-                <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <div style={{
-                    width: 30, height: 30, borderRadius: 8,
-                    background: isTop3 ? ['#FEF2F2','#FFF7ED','#FEFCE8'][i] : 'var(--surface-2)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 13, fontWeight: 800,
-                    color: isTop3 ? ['#DC2626','#EA580C','#CA8A04'][i] : 'var(--muted)',
-                    flexShrink: 0,
-                  }}>{i + 1}</div>
-                  <div style={{ flex: 1, position: 'relative', height: 34, background: 'var(--surface-2)', borderRadius: 8, overflow: 'hidden' }}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${pct}%`, background: barColor, borderRadius: 8, transition: 'width 0.6s cubic-bezier(.34,1.56,.64,1)' }} />
-                    <div style={{ position: 'relative', padding: '0 12px', height: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 1 }}>
-                      <span style={{ fontSize: 12.5, color: pct > 35 ? '#fff' : 'var(--ink)', fontWeight: 600 }}>{item.label}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 11, color: pct > 35 ? 'rgba(255,255,255,.7)' : 'var(--muted)' }}>{pct.toFixed(1)}%</span>
-                        <span style={{ fontSize: 12.5, color: pct > 35 ? '#fff' : 'var(--ink)', fontWeight: 700 }}>{item.total.toLocaleString()}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, animation: 'rejFadeUp .2s ease' }}>
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <SectionHead
+                title="วิเคราะห์สาเหตุ &quot;อื่นๆ&quot;"
+                sub={`ข้อมูล ${otherAnalysisYear === YEARS[0] ? 'ตั้งแต่ปี 2023' : `ปี ${otherAnalysisYear}`} · แยกข้อความซ้ำและจัดกลุ่มตามความหมาย`}
+              />
+              <Button variant="secondary" icon="sparkle" onClick={runOtherAnalysis} disabled={otherAnalysisLoading}>
+                {otherAnalysisLoading ? 'กำลังวิเคราะห์…' : 'วิเคราะห์ใหม่'}
+              </Button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', margin: '0 0 16px 14px' }}>
+              <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>ช่วงวิเคราะห์</span>
+              {YEARS.map(year => <Pill key={year} label={year} active={otherAnalysisYear === year} onClick={() => setOtherAnalysisYear(year)} />)}
+            </div>
+
+            {otherAnalysisError ? (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '11px 14px', color: '#B91C1C', fontSize: 12.5 }}>
+                {otherAnalysisError}
+              </div>
+            ) : otherAnalysisLoading && !otherAnalysis ? (
+              <div style={{ display: 'grid', gap: 10 }}><Skeleton h={70} /><Skeleton h={220} /></div>
+            ) : otherAnalysis ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10, marginBottom: 16 }}>
+                  <StatCard label="อื่นๆ ทั้งหมด" value={otherAnalysis.total_other.toLocaleString()} accent="#1E5FAD" />
+                  <StatCard label="จัดกลุ่มได้" value={otherAnalysis.categorized_total.toLocaleString()} extra={otherAnalysis.total_other ? `${((otherAnalysis.categorized_total / otherAnalysis.total_other) * 100).toFixed(1)}% ของทั้งหมด` : undefined} extraColor="#15803D" accent="#0D9488" />
+                  <StatCard label="ไม่มีรายละเอียด" value={otherAnalysis.no_detail_total.toLocaleString()} extra="ไม่สามารถเดาสาเหตุจากข้อความได้" extraColor="#92400E" accent="#D97706" />
+                  <StatCard label="รอตรวจสอบ" value={otherAnalysis.needs_review_total.toLocaleString()} extra={otherAnalysis.needs_review_total ? 'มีข้อความใหม่หรือไม่ตรงกฎ' : 'ไม่พบรายการค้าง'} extraColor={otherAnalysis.needs_review_total ? '#B91C1C' : '#15803D'} accent="#DC2626" />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.35fr) minmax(280px,1fr)', gap: 14, alignItems: 'start' }}>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+                    <SectionHead title="หมวดหมู่ที่พบ" sub={`${otherAnalysis.by_category.length} กลุ่ม`} />
+                    {otherAnalysis.by_category.length === 0 ? <EmptyChart label="ไม่มีข้อมูล Reject &quot;อื่นๆ&quot;" /> : (() => {
+                      const max = otherAnalysis.by_category[0]?.total ?? 1
+                      return otherAnalysis.by_category.map((item, i) => {
+                        const width = (item.total / Math.max(max, 1)) * 100
+                        const color = item.category_code === 'other_review' ? 'linear-gradient(90deg,#EF4444,#DC2626)' : item.category_code === 'no_detail' ? 'linear-gradient(90deg,#F59E0B,#D97706)' : 'linear-gradient(90deg,#1E5FAD,#0D9488)'
+                        return (
+                          <div key={item.category_code} style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+                            <span style={{ width: 24, color: 'var(--muted)', fontSize: 11.5, fontWeight: 700, textAlign: 'right' }}>{i + 1}</span>
+                            <div style={{ flex: 1, position: 'relative', height: 32, background: 'var(--surface-2)', borderRadius: 7, overflow: 'hidden' }}>
+                              <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${width}%`, background: color, borderRadius: 7 }} />
+                              <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '0 10px' }}>
+                                <span style={{ fontSize: 12, color: width > 42 ? '#fff' : 'var(--ink)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.category_label}</span>
+                                <span style={{ fontSize: 11.5, color: width > 42 ? 'rgba(255,255,255,.82)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{item.total.toLocaleString()} · {item.percent.toFixed(1)}%</span>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    })()}
+                  </div>
+
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+                    <SectionHead title="แนวโน้มจำนวนรายการ" sub="ตามปี" />
+                    {otherAnalysis.by_year.length === 0 ? <EmptyChart label="ไม่มีข้อมูล" /> : (() => {
+                      const max = Math.max(...otherAnalysis.by_year.map(item => item.total), 1)
+                      return otherAnalysis.by_year.map(item => (
+                        <div key={item.yr} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                          <span style={{ width: 42, fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>{item.yr}</span>
+                          <div style={{ flex: 1, height: 10, borderRadius: 10, background: 'var(--surface-2)', overflow: 'hidden' }}><div style={{ height: '100%', width: `${(item.total / max) * 100}%`, background: 'linear-gradient(90deg,#7C3AED,#1E5FAD)', borderRadius: 10 }} /></div>
+                          <span style={{ width: 58, textAlign: 'right', fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>{item.total.toLocaleString()}</span>
+                        </div>
+                      ))
+                    })()}
+                    {otherAnalysis.last_analyzed_at && <div style={{ marginTop: 14, fontSize: 11, color: 'var(--muted)' }}>ประมวลผลล่าสุด {new Date(otherAnalysis.last_analyzed_at).toLocaleString('th-TH')}</div>}
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid #FECACA', background: '#FFFBFB', borderRadius: 12, padding: 16, marginTop: 14 }}>
+                  <SectionHead title="รายการที่ระบบยังไม่มั่นใจ" sub={reviewQueue.length ? `แสดงสูงสุด ${reviewQueue.length} กลุ่มข้อความ` : 'ไม่พบรายการ'} />
+                  {canEdit && reviewQueue.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10, padding: '9px 11px', borderRadius: 9, background: '#FFF7ED', border: '1px solid #FED7AA' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: '#9A3412', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={allReviewSelected}
+                          onChange={event => {
+                            if (event.target.checked) {
+                              setSelectedReviewReasons(Object.fromEntries(reviewQueue.map(item => [item.normalized_reason, true])))
+                            } else {
+                              setSelectedReviewReasons({})
+                            }
+                          }}
+                          style={{ width: 16, height: 16, accentColor: '#EA580C', cursor: 'pointer' }}
+                        />
+                        เลือกทั้งหมด {reviewQueue.length} กลุ่ม
+                      </label>
+                      <span style={{ color: '#9A3412', fontSize: 11.5 }}>
+                        เลือกแล้ว {selectedReviewItems.length} กลุ่ม · {selectedReviewRows.toLocaleString()} รายการ
+                      </span>
+                      {selectedReviewItems.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedReviewReasons({}); setBulkReviewCategory('') }}
+                          style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: '#C2410C', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                        >
+                          ล้างรายการที่เลือก
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {canEdit && selectedReviewItems.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', marginBottom: 10, padding: '10px 11px', borderRadius: 9, background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                      <div style={{ color: '#1E40AF', fontSize: 12, fontWeight: 700, marginRight: 2 }}>
+                        กำหนดหมวดเดียวให้ {selectedReviewItems.length} กลุ่ม
+                      </div>
+                      <select
+                        value={bulkReviewCategory}
+                        onChange={event => setBulkReviewCategory(event.target.value)}
+                        disabled={bulkReviewing}
+                        style={{ flex: 1, minWidth: 220, padding: '7px 10px', borderRadius: 8, border: '1px solid #BFDBFE', background: 'var(--card)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 12 }}
+                      >
+                        <option value="">เลือกหมวดหมู่ที่ถูกต้อง…</option>
+                        {REJECTION_REASON_CATEGORIES.filter(category => !['no_detail', 'other_review'].includes(category.code)).map(category => <option key={category.code} value={category.code}>{category.label}</option>)}
+                      </select>
+                      <Button variant="primary" onClick={saveSelectedOtherReasons} disabled={bulkReviewing || !bulkReviewCategory}>
+                        {bulkReviewing ? 'กำลังบันทึก…' : `ยืนยัน ${selectedReviewItems.length} กลุ่ม`}
+                      </Button>
+                    </div>
+                  )}
+                  {reviewQueue.length === 0 ? (
+                    <div style={{ color: 'var(--muted)', fontSize: 12.5 }}>ทุกข้อความที่มีรายละเอียดถูกจัดเข้าหมวดแล้ว</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {reviewQueue.map(item => {
+                        const isSelected = Boolean(selectedReviewReasons[item.normalized_reason])
+                        return (
+                        <div key={item.normalized_reason} style={{ background: isSelected ? '#F0F9FF' : 'var(--card)', border: `1px solid ${isSelected ? '#93C5FD' : 'var(--border)'}`, borderRadius: 10, padding: canEdit ? '11px 12px 11px 42px' : '11px 12px', position: 'relative' }}>
+                          {canEdit && (
+                            <input
+                              type="checkbox"
+                              aria-label={`เลือกกลุ่ม ${item.example_reason}`}
+                              checked={isSelected}
+                              onChange={event => setSelectedReviewReasons(current => {
+                                const next = { ...current }
+                                if (event.target.checked) next[item.normalized_reason] = true
+                                else delete next[item.normalized_reason]
+                                return next
+                              })}
+                              style={{ position: 'absolute', top: 14, left: 15, width: 16, height: 16, accentColor: '#1E5FAD', cursor: 'pointer' }}
+                            />
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', wordBreak: 'break-word' }}>{item.example_reason}</div>
+                              <div style={{ marginTop: 4, fontSize: 11.5, color: 'var(--muted)' }}>{item.variants.slice(0, 3).join(' · ')} · พบใน {item.work}</div>
+                            </div>
+                            <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 800, color: '#B91C1C' }}>{item.total.toLocaleString()} รายการ</span>
+                          </div>
+                          {canEdit ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 9, flexWrap: 'wrap' }}>
+                              <select
+                                value={reviewSelections[item.normalized_reason] ?? ''}
+                                onChange={event => setReviewSelections(current => ({ ...current, [item.normalized_reason]: event.target.value }))}
+                                disabled={bulkReviewing}
+                                style={{ flex: 1, minWidth: 220, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 12 }}
+                              >
+                                <option value="">เลือกหมวดหมู่ที่ถูกต้อง…</option>
+                                {REJECTION_REASON_CATEGORIES.filter(category => !['no_detail', 'other_review'].includes(category.code)).map(category => <option key={category.code} value={category.code}>{category.label}</option>)}
+                              </select>
+                              <Button variant="primary" onClick={() => saveOtherReasonReview(item.normalized_reason)} disabled={bulkReviewing || reviewingReason === item.normalized_reason || !reviewSelections[item.normalized_reason]}>
+                                {reviewingReason === item.normalized_reason ? 'กำลังบันทึก…' : 'ยืนยันหมวดหมู่'}
+                              </Button>
+                            </div>
+                          ) : (
+                            <div style={{ marginTop: 8, fontSize: 11.5, color: '#B91C1C' }}>ต้องมีสิทธิ์แก้ไขเพื่อยืนยันหมวดหมู่</div>
+                          )}
+                        </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 20 }}>
+            <SectionHead title="รายละเอียดข้อความดิบ &quot;อื่นๆ&quot;" sub="Top 30 ข้อความที่เหมือนกันตรงตัว" />
+            {summaryLoading ? <Skeleton h={400} /> : summary && summary.by_reason_detail.length > 0 ? (
+              summary.by_reason_detail.map((item, i) => {
+                const max = summary.by_reason_detail[0].total
+                const pct = (item.total / Math.max(max, 1)) * 100
+                const isTop3 = i < 3
+                const barColor = i === 0
+                  ? 'linear-gradient(90deg,#EF4444,#DC2626)'
+                  : i === 1
+                  ? 'linear-gradient(90deg,#F97316,#EA580C)'
+                  : i === 2
+                  ? 'linear-gradient(90deg,#EAB308,#CA8A04)'
+                  : 'linear-gradient(90deg,#3B82F6,#1D4ED8)'
+                return (
+                  <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <div style={{
+                      width: 30, height: 30, borderRadius: 8,
+                      background: isTop3 ? ['#FEF2F2','#FFF7ED','#FEFCE8'][i] : 'var(--surface-2)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 13, fontWeight: 800,
+                      color: isTop3 ? ['#DC2626','#EA580C','#CA8A04'][i] : 'var(--muted)',
+                      flexShrink: 0,
+                    }}>{i + 1}</div>
+                    <div style={{ flex: 1, position: 'relative', height: 34, background: 'var(--surface-2)', borderRadius: 8, overflow: 'hidden' }}>
+                      <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${pct}%`, background: barColor, borderRadius: 8, transition: 'width 0.6s cubic-bezier(.34,1.56,.64,1)' }} />
+                      <div style={{ position: 'relative', padding: '0 12px', height: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 1 }}>
+                        <span style={{ fontSize: 12.5, color: pct > 35 ? '#fff' : 'var(--ink)', fontWeight: 600 }}>{item.label}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, color: pct > 35 ? 'rgba(255,255,255,.7)' : 'var(--muted)' }}>{pct.toFixed(1)}%</span>
+                          <span style={{ fontSize: 12.5, color: pct > 35 ? '#fff' : 'var(--ink)', fontWeight: 700 }}>{item.total.toLocaleString()}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )
-            })
-          ) : (
-            <EmptyChart label='ไม่มีข้อมูล Reject "อื่นๆ" ในช่วงที่เลือก' />
-          )}
+                )
+              })
+            ) : (
+              <EmptyChart label='ไม่มีข้อมูล Reject "อื่นๆ" ในช่วงที่เลือก' />
+            )}
+          </div>
         </div>
       )}
 
@@ -946,7 +1279,7 @@ export default function RejectionClient({ canEdit }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: 'var(--surface-2)' }}>
-                    {['วันที่', 'Specimen', 'Reject', 'Section', 'Ward'].map((h, i) => (
+                    {['วันที่', 'Specimen', 'Reject', 'รายละเอียด', 'หมวดหมู่', 'Section', 'Ward'].map((h, i) => (
                       <th key={i} style={{
                         padding: '11px 16px', textAlign: 'left',
                         fontSize: 11, fontWeight: 700, color: 'var(--muted)',
@@ -962,7 +1295,7 @@ export default function RejectionClient({ canEdit }: Props) {
                   {tableLoading ? (
                     Array.from({ length: 8 }).map((_, i) => (
                       <tr key={i}>
-                        {[100, 140, 110, 120, 100].map((w, j) => (
+                        {[100, 140, 110, 160, 150, 120, 100].map((w, j) => (
                           <td key={j} style={{ padding: '12px 16px' }}>
                             <Skeleton h={13} w={w} />
                           </td>
@@ -971,7 +1304,7 @@ export default function RejectionClient({ canEdit }: Props) {
                     ))
                   ) : logs.length === 0 ? (
                     <tr>
-                      <td colSpan={5} style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+                      <td colSpan={7} style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
                         ไม่มีข้อมูลในเดือนที่เลือก
                       </td>
                     </tr>
@@ -994,6 +1327,10 @@ export default function RejectionClient({ canEdit }: Props) {
                           }}>
                             {r.reject ?? '—'}
                           </span>
+                        </td>
+                        <td style={{ padding: '11px 16px', color: 'var(--muted)', fontSize: 12.5, maxWidth: 260 }}>{r.reason ?? '—'}</td>
+                        <td style={{ padding: '11px 16px', color: 'var(--ink)', fontSize: 12, fontWeight: r.reason_category ? 600 : 400, whiteSpace: 'nowrap' }}>
+                          {r.reason_category ? (REJECTION_REASON_CATEGORIES.find(category => category.code === r.reason_category)?.label ?? r.reason_category) : '—'}
                         </td>
                         <td style={{ padding: '11px 16px', color: 'var(--muted)', fontSize: 12.5 }}>{r.work ?? '—'}</td>
                         <td style={{ padding: '11px 16px', color: 'var(--muted)', fontSize: 12.5 }}>{r.ward ?? '—'}</td>

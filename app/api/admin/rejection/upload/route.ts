@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
 import * as XLSX from 'xlsx'
+import { analyzeRejectionData } from '@/lib/rejection/analysis-server'
 
 async function getActor() {
   const supabase = await createClient()
@@ -218,5 +219,40 @@ export async function POST(req: NextRequest) {
     })
     .then(undefined, () => {})
 
-  return NextResponse.json({ inserted, skipped, skipped_in_file: inFileDups, skipped_in_db: skippedDb, total, errors, data_month: dataMonth })
+  let analysis: { total_other: number; categorized_total: number; no_detail_total: number; needs_review_total: number } | null = null
+  let analysis_error: string | null = null
+  if (dataMonth) {
+    const [analysisYear, analysisMonth] = dataMonth.split('-').map(Number)
+    const lastDay = new Date(analysisYear, analysisMonth, 0).getDate()
+    try {
+      const result = await analyzeRejectionData({
+        fromYear: analysisYear,
+        toYear: analysisYear,
+        fromDate: `${dataMonth}-01`,
+        toDate: `${dataMonth}-${String(lastDay).padStart(2, '0')}`,
+      })
+      analysis = {
+        total_other: result.total_other,
+        categorized_total: result.categorized_total,
+        no_detail_total: result.no_detail_total,
+        needs_review_total: result.needs_review_total,
+      }
+    } catch (error) {
+      // The upload remains valid even if the optional derived-analysis migration
+      // has not been installed yet. The analysis tab will show the migration hint.
+      analysis_error = error instanceof Error ? error.message : 'วิเคราะห์รายการอื่นๆ ไม่สำเร็จ'
+    }
+  }
+
+  return NextResponse.json({
+    inserted,
+    skipped,
+    skipped_in_file: inFileDups,
+    skipped_in_db: skippedDb,
+    total,
+    errors,
+    data_month: dataMonth,
+    analysis,
+    analysis_error,
+  })
 }
