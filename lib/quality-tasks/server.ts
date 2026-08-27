@@ -9,7 +9,7 @@ import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, canView
 import { listQualityTaskHolidays } from './holidays'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import { canApproveTask, nextRollingDueDate, templateRemovalMode } from './safety'
-import { normalizeMeetingTime } from './meeting-time'
+import { meetingSlotsOverlap, normalizeMeetingTime } from './meeting-time'
 import { isMonthlySafetySourceKey } from './monthly-safety'
 import type {
   AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskActionItem, QualityTaskAttachment, QualityTaskCheckIn,
@@ -106,6 +106,50 @@ function periodLabel(start: string, end: string) {
   const b = new Date(`${end}T00:00:00+07:00`)
   if (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()) return a.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
   return `${a.toLocaleDateString('th-TH', { month: 'short', year: 'numeric' })} – ${b.toLocaleDateString('th-TH', { month: 'short', year: 'numeric' })}`
+}
+
+async function assertNoMeetingConflict(input: {
+  startDate: string
+  endDate: string
+  startTime: string | null
+  endTime: string | null
+}) {
+  const { data, error } = await supabaseAdmin
+    .from('quality_task_instances')
+    .select('id, schedule_id, period_start, period_end, planned_date, planned_start_time, planned_end_time, note, quality_task_templates!inner(task_kind,workstream)')
+    .eq('quality_task_templates.task_kind', 'meeting')
+    .eq('quality_task_templates.workstream', 'quality')
+  fail(error)
+
+  const conflict = ((data ?? []) as Row[]).some(row => {
+    // Cancelled scheduled occurrences stay in the database for audit history but
+    // no longer occupy a meeting slot.
+    if (nullable(row.note) === CANCELLED_NOTE) return false
+
+    const plannedDate = nullable(row.planned_date)
+    if (!plannedDate) return false
+
+    const existingStartDate = row.schedule_id ? plannedDate : str(row.period_start)
+    const existingEndDate = row.schedule_id ? plannedDate : str(row.period_end)
+    if (!existingStartDate || !existingEndDate) return false
+
+    return meetingSlotsOverlap(
+      {
+        startDate: input.startDate,
+        endDate: input.endDate,
+        startTime: input.startTime,
+        endTime: input.endTime,
+      },
+      {
+        startDate: existingStartDate,
+        endDate: existingEndDate,
+        startTime: nullableTime(row.planned_start_time),
+        endTime: nullableTime(row.planned_end_time),
+      },
+    )
+  })
+
+  if (conflict) throw new Error('ช่วงเวลาดังกล่าวมีประชุมแล้ว')
 }
 
 export async function getQualityTaskOccurrences(
@@ -252,6 +296,14 @@ export async function materializeOccurrence(payload: OccurrenceCreatePayload, ac
       throw new Error('รายละเอียดการประชุมใช้ได้เฉพาะงานประชุม')
     }
     const meetingTime = template.taskKind === 'meeting' ? normalizeMeetingTime(payload.startTime, payload.endTime) : { startTime: null, endTime: null }
+    if (template.taskKind === 'meeting') {
+      await assertNoMeetingConflict({
+        startDate: payload.startDate,
+        endDate: payload.endDate,
+        startTime: meetingTime.startTime,
+        endTime: meetingTime.endTime,
+      })
+    }
     const meetingDetails = template.taskKind === 'meeting'
       ? { meeting_location: payload.location?.trim() || null, meeting_agenda: payload.agenda?.trim() || null }
       : { meeting_location: null, meeting_agenda: null }

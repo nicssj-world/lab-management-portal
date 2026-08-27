@@ -62,3 +62,28 @@ export function formatMeetingTimeRange(
   if (!normalized.startTime || !normalized.endTime) return null
   return `${normalized.startTime}–${normalized.endTime} น.`
 }
+
+export interface MeetingSlot {
+  startDate: string
+  endDate: string
+  startTime: string | null
+  endTime: string | null
+}
+
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.slice(0, 5).split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+/** Returns true when two meetings occupy any of the same date/time. */
+export function meetingSlotsOverlap(a: MeetingSlot, b: MeetingSlot) {
+  if (a.endDate < b.startDate || b.endDate < a.startDate) return false
+
+  // A meeting without an explicit time occupies the whole overlapping day.
+  if (!a.startTime || !a.endTime || !b.startTime || !b.endTime) return true
+
+  return (
+    timeToMinutes(a.startTime) < timeToMinutes(b.endTime) &&
+    timeToMinutes(b.startTime) < timeToMinutes(a.endTime)
+  )
+}

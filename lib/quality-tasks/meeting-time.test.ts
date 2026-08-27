@@ -3,6 +3,7 @@ import {
   formatMeetingTimeRange,
   getMeetingTimePreset,
   MEETING_TIME_PRESETS,
+  meetingSlotsOverlap,
   normalizeMeetingTime,
   shouldShowAdHocTimePicker,
 } from './meeting-time'
@@ -32,5 +33,34 @@ assert.equal(shouldShowAdHocTimePicker('meeting'), true)
 assert.equal(shouldShowAdHocTimePicker('activity'), false)
 assert.equal(formatMeetingTimeRange(null, null), null)
 assert.equal(formatMeetingTimeRange('08:30:00', '12:00:00'), '08:30–12:00 น.')
+
+assert.equal(
+  meetingSlotsOverlap(
+    { startDate: '2026-08-27', endDate: '2026-08-27', startTime: '09:00', endTime: '10:00' },
+    { startDate: '2026-08-27', endDate: '2026-08-27', startTime: '09:30', endTime: '11:00' },
+  ),
+  true,
+)
+assert.equal(
+  meetingSlotsOverlap(
+    { startDate: '2026-08-27', endDate: '2026-08-27', startTime: '09:00', endTime: '10:00' },
+    { startDate: '2026-08-27', endDate: '2026-08-27', startTime: '10:00', endTime: '11:00' },
+  ),
+  false,
+)
+assert.equal(
+  meetingSlotsOverlap(
+    { startDate: '2026-08-27', endDate: '2026-08-27', startTime: null, endTime: null },
+    { startDate: '2026-08-27', endDate: '2026-08-27', startTime: '13:00', endTime: '14:00' },
+  ),
+  true,
+)
+assert.equal(
+  meetingSlotsOverlap(
+    { startDate: '2026-08-27', endDate: '2026-08-28', startTime: '09:00', endTime: '10:00' },
+    { startDate: '2026-08-28', endDate: '2026-08-28', startTime: '09:30', endTime: '11:00' },
+  ),
+  true,
+)
 
 console.log('lib/quality-tasks/meeting-time.test.ts: all assertions passed')

@@ -1859,6 +1859,12 @@ export function QualityTaskDashboard({
                 display: "flex",
                 gap: 10,
                 justifyContent: "space-between",
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+                paddingBottom: 10,
+                borderBottom: "1px solid var(--border)",
+                background: "var(--card)",
               }}
             >
               <div>
@@ -1880,7 +1886,12 @@ export function QualityTaskDashboard({
                   {occurrenceDisplayTitle(selected)}
                 </h2>
               </div>
-              <button onClick={() => setSelected(null)} style={closeStyle}>
+              <button
+                type="button"
+                aria-label="ปิดรายละเอียดการประชุม"
+                onClick={() => setSelected(null)}
+                style={closeStyle}
+              >
                 ×
               </button>
             </div>
