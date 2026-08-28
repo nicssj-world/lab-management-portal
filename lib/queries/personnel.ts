@@ -28,6 +28,7 @@ export async function getStaffRoster(): Promise<Profile[]> {
   const { data, error } = await supabaseAdmin
     .from('profiles')
     .select('*')
+    .eq('status', 'active')
     .is('deleted_at', null)
     .order('name', { ascending: true })
   if (error) throw error
