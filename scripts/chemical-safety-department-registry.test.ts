@@ -11,6 +11,8 @@ const read = (relativePath: string) => readFileSync(join(root, relativePath), 'u
 
 const migration = read('scripts/chemical-safety-department-registry.sql')
 const cliMigration = read('supabase/migrations/20260808154713_chemical_safety_department_registry.sql')
+const variableRepairMigration = read('supabase/migrations/20260827044612_chemical_department_review_variable_ambiguity.sql')
+const sdsProductRepairMigration = read('supabase/migrations/20260827044806_chemical_department_review_sds_product_id_ambiguity.sql')
 const existingLinkMigration = read('supabase/migrations/20260809074220_link_department_sds_existing_holding.sql')
 const dedupMigration = read('supabase/migrations/20260822184427_enforce_one_department_sds_per_holding.sql')
 const registryCrudSql = read('scripts/chemical-safety-registry-crud.sql')
@@ -42,7 +44,14 @@ assert.match(migration, /grant select, insert, update, delete[\s\S]*chemical_dep
 assert.match(migration, /department_chemical/i, 'review RPC handles department chemical approval')
 assert.match(migration, /location_id\s+is null/i, 'department approval persists no storage location')
 assert.match(migration, /chemical_department_sds_file_change_guard/i, 'linked SDS file content cannot be replaced at the database boundary')
-assert.equal(cliMigration, migration, 'Supabase CLI migration stays identical to the documented manual migration')
+assert.match(migration, /product_id_value\s+uuid/i, 'manual migration source keeps product ids distinct from SQL column names')
+assert.match(migration, /canonical_name_value\s+text/i, 'manual migration source keeps canonical names distinct from SQL column names')
+assert.match(migration, /cas_number_value\s+text/i, 'manual migration source keeps CAS numbers distinct from SQL column names')
+assert.match(variableRepairMigration, /review_chemical_department_change_request\(uuid, uuid, text, text\)/i, 'Production repair targets the department review RPC')
+assert.match(variableRepairMigration, /product_id_value/i, 'Production repair disambiguates product ids')
+assert.match(variableRepairMigration, /canonical_name_value/i, 'Production repair disambiguates canonical names')
+assert.match(variableRepairMigration, /cas_number_value/i, 'Production repair disambiguates CAS numbers')
+assert.match(sdsProductRepairMigration, /product_id_value, source_file_id/i, 'follow-up repair disambiguates the SDS version insert')
 assert.match(
   existingLinkMigration,
   /CREATE OR REPLACE FUNCTION public\.link_department_sds_to_existing_holding\s*\(\s*p_department_sds_id uuid,\s*p_holding_id uuid,\s*p_actor_id uuid\s*\)/i,

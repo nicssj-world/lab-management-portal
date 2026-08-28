@@ -117,11 +117,11 @@ DECLARE
   target_after jsonb;
   request_after jsonb;
   product_row public.chemical_products%rowtype;
-  product_id uuid;
+  product_id_value uuid;
   holding_id uuid;
   sds_version_id uuid;
-  canonical_name text;
-  cas_number text;
+  canonical_name_value text;
+  cas_number_value text;
   source_department_sds_id uuid;
   source_file_id uuid;
   source_unit_id uuid;
@@ -264,8 +264,8 @@ BEGIN
       RAISE EXCEPTION 'department_sds_already_linked';
     END IF;
 
-    canonical_name := current_row.proposed_data->>'canonical_name';
-    cas_number := nullif(btrim(current_row.proposed_data->>'cas_number'), '');
+    canonical_name_value := current_row.proposed_data->>'canonical_name';
+    cas_number_value := nullif(btrim(current_row.proposed_data->>'cas_number'), '');
     IF nullif(btrim(current_row.proposed_data->>'product_id'), '') IS NOT NULL THEN
       SELECT * INTO product_row
       FROM public.chemical_products
@@ -273,13 +273,13 @@ BEGIN
       FOR UPDATE;
       IF NOT FOUND THEN RAISE EXCEPTION 'chemical_product_not_found'; END IF;
       IF product_row.lifecycle_status <> 'active' THEN RAISE EXCEPTION 'chemical_product_inactive'; END IF;
-      product_id := product_row.id;
+      product_id_value := product_row.id;
     ELSE
       IF EXISTS (
         SELECT 1
         FROM public.chemical_products AS product
-        WHERE lower(btrim(product.canonical_name)) = lower(btrim(canonical_name))
-          OR (cas_number IS NOT NULL AND product.cas_number = cas_number)
+        WHERE lower(btrim(product.canonical_name)) = lower(btrim(canonical_name_value))
+          OR (cas_number_value IS NOT NULL AND product.cas_number = cas_number_value)
       ) THEN
         RAISE EXCEPTION 'department_product_duplicate';
       END IF;
@@ -289,8 +289,8 @@ BEGIN
         physical_state, lifecycle_status, ghs_source_text, ghs_pictogram_codes,
         ghs_hazard_classes, created_by
       ) VALUES (
-        canonical_name,
-        cas_number,
+        canonical_name_value,
+        cas_number_value,
         current_row.proposed_data->>'manufacturer',
         current_row.proposed_data->>'supplier',
         current_row.proposed_data->>'product_code',
@@ -307,17 +307,17 @@ BEGIN
         COALESCE(current_row.proposed_data->'ghs_hazard_classes', '[]'::jsonb),
         current_row.created_by
       )
-      RETURNING id INTO product_id;
+      RETURNING id INTO product_id_value;
 
       INSERT INTO public.chemical_product_aliases (product_id, alias, normalized_alias)
-      SELECT product_id, alias.value, lower(btrim(alias.value))
+      SELECT product_id_value, alias.value, lower(btrim(alias.value))
       FROM jsonb_array_elements_text(COALESCE(current_row.proposed_data->'aliases', '[]'::jsonb)) AS alias(value)
       WHERE nullif(btrim(alias.value), '') IS NOT NULL
       ON CONFLICT (product_id, normalized_alias) DO NOTHING;
     END IF;
 
     INSERT INTO public.chemical_unit_products (product_id, unit_id, preferred_name, active, public_eligible)
-    VALUES (product_id, current_row.unit_id, canonical_name, true, false)
+    VALUES (product_id_value, current_row.unit_id, canonical_name_value, true, false)
     ON CONFLICT (product_id, unit_id) DO UPDATE SET
       active = true,
       preferred_name = COALESCE(public.chemical_unit_products.preferred_name, EXCLUDED.preferred_name);
@@ -328,7 +328,7 @@ BEGIN
       calculated_total_unit, received_on, opened_on, expires_on, effective_on,
       approved_by, approved_at
     ) VALUES (
-      product_id, current_row.unit_id, 'department', NULL,
+      product_id_value, current_row.unit_id, 'department', NULL,
       current_row.proposed_data->>'lot_number',
       (current_row.proposed_data->>'package_value')::numeric,
       current_row.proposed_data->>'package_unit',
@@ -347,7 +347,7 @@ BEGIN
 
     SELECT version.id INTO sds_version_id
     FROM public.chemical_sds_versions AS version
-    WHERE version.product_id = product_id AND version.file_id = source_file_id
+    WHERE version.product_id = product_id_value AND version.file_id = source_file_id
     ORDER BY version.created_at DESC
     LIMIT 1;
 
@@ -355,7 +355,7 @@ BEGIN
       INSERT INTO public.chemical_sds_versions (
         product_id, file_id, language, status, created_by
       ) VALUES (
-        product_id, source_file_id, 'th', 'draft', current_row.created_by
+        product_id_value, source_file_id, 'th', 'draft', current_row.created_by
       )
       RETURNING id INTO sds_version_id;
     END IF;
@@ -363,7 +363,7 @@ BEGIN
     INSERT INTO public.chemical_department_chemical_links (
       department_sds_id, product_id, holding_id, sds_version_id, linked_by
     ) VALUES (
-      source_department_sds_id, product_id, holding_id, sds_version_id, p_actor_id
+      source_department_sds_id, product_id_value, holding_id, sds_version_id, p_actor_id
     );
   END IF;
 
@@ -381,7 +381,7 @@ BEGIN
     'chemical_safety.department_change_request.review', p_actor_id, p_request_id::text,
     jsonb_build_object(
       'before', to_jsonb(current_row), 'after', request_after, 'reason', p_reason,
-      'entity_type', current_row.entity_type, 'entity_id', product_id,
+      'entity_type', current_row.entity_type, 'entity_id', product_id_value,
       'source_department_sds_id', source_department_sds_id,
       'holding_id', holding_id, 'sds_version_id', sds_version_id,
       'target_after', target_after
