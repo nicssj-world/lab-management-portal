@@ -12,7 +12,7 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const userIds = (data ?? []).map(row => String(row.user_id))
   const { data: profiles } = userIds.length
-    ? await supabaseAdmin.from('profiles').select('id, name, role').in('id', userIds).is('deleted_at', null)
+    ? await supabaseAdmin.from('profiles').select('id, name, role').in('id', userIds).eq('status', 'active').is('deleted_at', null)
     : { data: [] }
   const profileById = new Map((profiles ?? []).map(profile => [String(profile.id), profile]))
   return NextResponse.json({ items: (data ?? []).map(row => ({
@@ -29,9 +29,12 @@ export async function PATCH(req: NextRequest) {
   }).safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 422 })
   const { userId, enabled } = parsed.data
-  const { data: profile, error: profileError } = await supabaseAdmin.from('profiles').select('id, role').eq('id', userId).is('deleted_at', null).maybeSingle()
+  const { data: profile, error: profileError } = await supabaseAdmin.from('profiles').select('id, role, status, deleted_at').eq('id', userId).maybeSingle()
   if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 })
   if (!profile) return NextResponse.json({ error: 'ไม่พบบุคลากรที่ต้องการกำหนดสิทธิ์' }, { status: 404 })
+  if (enabled && (profile.status !== 'active' || profile.deleted_at !== null)) {
+    return NextResponse.json({ error: 'Profile must be active' }, { status: 422 })
+  }
   const automaticEditor = ['Admin', 'Manager'].includes(normalizeRole(profile.role as string | null))
   if (automaticEditor && enabled) {
     return NextResponse.json({ error: 'Admin และ Manager มีสิทธิ์อัตโนมัติอยู่แล้ว ไม่ต้องมอบหมายซ้ำ' }, { status: 422 })

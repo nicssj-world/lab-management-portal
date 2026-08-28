@@ -25,7 +25,7 @@ export async function GET() {
   const [assigneesRes, exclusionsRes, usersRes] = await Promise.all([
     supabaseAdmin.from('kpi_dept_assignees').select('dept_id, user_id'),
     supabaseAdmin.from('kpi_dept_exclusions').select('dept_id, kpi_id'),
-    supabaseAdmin.from('profiles').select('id, name, role').order('name'),
+    supabaseAdmin.from('profiles').select('id, name, role').eq('status', 'active').is('deleted_at', null).order('name'),
   ])
 
   if (assigneesRes.error) return NextResponse.json({ error: assigneesRes.error.message }, { status: 500 })

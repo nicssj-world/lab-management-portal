@@ -33,7 +33,7 @@ export async function getMonthlySafetyAssetConfig(assetId: string, profileOverri
   const [{ data: assignments, error: assignmentError }, { data: supplies, error: supplyError }, { data: people, error: peopleError }] = await Promise.all([
     supabaseAdmin.from('lab_map_safety_asset_assignments').select('*').eq('asset_id', assetId).is('active_to', null).order('assignment_role'),
     supabaseAdmin.from('lab_map_safety_asset_supplies').select('*').eq('asset_id', assetId).is('retired_on', null).order('label_th'),
-    supabaseAdmin.from('profiles').select('id,name,dept,role').order('name'),
+    supabaseAdmin.from('profiles').select('id,name,dept,role').eq('status', 'active').is('deleted_at', null).order('name'),
   ])
   fail(assignmentError); fail(supplyError); fail(peopleError)
   const profile = profileOverride ?? value(asset.inspection_profile)

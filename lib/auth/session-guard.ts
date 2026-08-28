@@ -3,8 +3,10 @@
 
 /** เส้นทางที่ต้องล็อกอิน — นอกจากนี้คือหน้า public ที่การไม่มี session เป็นเรื่องปกติ */
 const PROTECTED_PATH_PATTERN = /^\/(staff|kpi|lab-workload|tat)(?:\/|$)/
+const PUBLIC_TEAM_ORG_PATH = '/staff/personnel/team-org'
 
 export function isProtectedPath(path: string) {
+  if (path === PUBLIC_TEAM_ORG_PATH) return false
   return PROTECTED_PATH_PATTERN.test(path)
 }
 

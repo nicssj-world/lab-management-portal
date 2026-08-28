@@ -20,7 +20,7 @@ export async function GET() {
 
   const [editors, people] = await Promise.all([
     supabaseAdmin.from('satisfaction_editors').select('user_id'),
-    supabaseAdmin.from('profiles').select('id, name, role, dept').order('name'),
+    supabaseAdmin.from('profiles').select('id, name, role, dept').eq('status', 'active').is('deleted_at', null).order('name'),
   ])
   if (editors.error && !missingTable(editors.error.message)) {
     return NextResponse.json({ error: editors.error.message }, { status: 500 })
@@ -43,8 +43,12 @@ export async function PATCH(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: 'กรุณาเลือกบุคลากร' }, { status: 422 })
 
   const { data: profile } = await supabaseAdmin
-    .from('profiles').select('id, name').eq('id', parsed.data.userId).maybeSingle()
+    .from('profiles').select('id, name, status, deleted_at').eq('id', parsed.data.userId).maybeSingle()
   if (!profile) return NextResponse.json({ error: 'ไม่พบบุคลากรในทะเบียน' }, { status: 422 })
+
+  if (parsed.data.enabled && (profile.status !== 'active' || profile.deleted_at !== null)) {
+    return NextResponse.json({ error: 'Profile must be active' }, { status: 422 })
+  }
 
   const result = parsed.data.enabled
     ? await supabaseAdmin.from('satisfaction_editors').upsert(

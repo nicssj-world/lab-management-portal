@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: 'กรุณาเลือกบุคลากร' }, { status: 422 })
 
   const { data: profile } = await supabaseAdmin
-    .from('profiles').select('id, name').eq('id', parsed.data.user_id).maybeSingle()
+    .from('profiles').select('id, name').eq('id', parsed.data.user_id).eq('status', 'active').is('deleted_at', null).maybeSingle()
   if (!profile) return NextResponse.json({ error: 'ไม่พบบุคลากรในทะเบียน' }, { status: 422 })
 
   const { data, error } = await supabaseAdmin

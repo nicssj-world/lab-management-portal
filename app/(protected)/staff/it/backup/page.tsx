@@ -18,7 +18,7 @@ export default async function ItBackupPage() {
   const [logs, systems, profilesRes] = await Promise.all([
     getItBackupLogs(supabaseAdmin),
     getItSystems(supabaseAdmin),
-    supabaseAdmin.from('profiles').select('id, name').is('deleted_at', null).order('name'),
+    supabaseAdmin.from('profiles').select('id, name').eq('status', 'active').is('deleted_at', null).order('name'),
   ])
 
   return <ItBackupClient initialLogs={logs} systems={systems} profiles={profilesRes.data ?? []} canEdit={canEdit} />

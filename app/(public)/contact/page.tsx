@@ -25,20 +25,21 @@ async function loadOrgNodes(): Promise<OrgNode[]> {
   const profileIds = [...new Set(rows.map((n) => n.profile_id).filter(Boolean))] as string[]
   const profileMap = new Map<string, { name: string; avatar_url: string | null; position_title: string | null }>()
   if (profileIds.length) {
-    const { data: profs } = await supabaseAdmin.from('profiles').select('id, name, avatar_url, position_title').in('id', profileIds)
+    const { data: profs } = await supabaseAdmin.from('profiles').select('id, name, avatar_url, position_title').in('id', profileIds).eq('status', 'active').is('deleted_at', null)
     for (const p of profs ?? []) profileMap.set(p.id, { name: p.name, avatar_url: p.avatar_url, position_title: p.position_title ?? null })
   }
 
   return Promise.all(rows.map(async (n) => {
     const linked = n.profile_id ? profileMap.get(n.profile_id) : undefined
-    const photo = n.photo_url ? await createStaffSignedUrl(n.photo_url) : (linked?.avatar_url ?? null)
+    const inactiveProfileLink = Boolean(n.profile_id) && !linked
+    const photo = inactiveProfileLink ? null : n.photo_url ? await createStaffSignedUrl(n.photo_url) : (linked?.avatar_url ?? null)
     return {
       id: n.id,
       parent_id: n.parent_id,
       title: n.title,
       node_type: n.node_type,
-      display_name: n.person_name || linked?.name || null,
-      position: linked?.position_title ?? null,
+      display_name: inactiveProfileLink ? null : n.person_name || linked?.name || null,
+      position: inactiveProfileLink ? null : linked?.position_title ?? null,
       photo,
       photo_position: n.photo_position,
       phone: n.phone,

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   // Person must exist in the personnel register.
   const { data: profile } = await supabaseAdmin
-    .from('profiles').select('id, name').eq('id', input.profile_id).maybeSingle()
+    .from('profiles').select('id, name').eq('id', input.profile_id).eq('status', 'active').is('deleted_at', null).maybeSingle()
   if (!profile) return NextResponse.json({ error: 'ไม่พบบุคลากรในทะเบียน' }, { status: 422 })
 
   // All referenced systems must exist.

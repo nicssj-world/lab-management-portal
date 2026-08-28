@@ -28,6 +28,7 @@ export default async function ItAccessPage() {
     supabaseAdmin
       .from('profiles')
       .select('id, name, position_title, ephis_id')
+      .eq('status', 'active')
       .is('deleted_at', null)
       .order('name'),
   ])

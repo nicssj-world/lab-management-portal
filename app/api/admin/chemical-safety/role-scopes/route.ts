@@ -10,7 +10,7 @@ export async function GET(_request: NextRequest) {
   try {
     const [scopes, profiles, units] = await Promise.all([
       supabaseAdmin.from('chemical_role_scopes').select('user_id, unit_id, role'),
-      supabaseAdmin.from('profiles').select('id, name, role, dept').order('name'),
+      supabaseAdmin.from('profiles').select('id, name, role, dept').eq('status', 'active').is('deleted_at', null).order('name'),
       supabaseAdmin.from('chemical_units').select('id, code, name_th').eq('active', true).order('name_th'),
     ])
     const error = scopes.error || profiles.error || units.error
@@ -26,7 +26,7 @@ export async function PATCH(request: NextRequest) {
   if (input.response) return input.response
   try {
     const [{ data: profile }, { data: unit }] = await Promise.all([
-      supabaseAdmin.from('profiles').select('id').eq('id', input.data.userId).maybeSingle(),
+      supabaseAdmin.from('profiles').select('id').eq('id', input.data.userId).eq('status', 'active').is('deleted_at', null).maybeSingle(),
       supabaseAdmin.from('chemical_units').select('id').eq('id', input.data.unitId).maybeSingle(),
     ])
     if (!profile || !unit) return NextResponse.json({ error: 'ไม่พบบุคลากรหรือหน่วยงาน' }, { status: 404 })

@@ -27,7 +27,7 @@ export default async function StaffDetailPage(ctx: { params: Promise<{ id: strin
   const [{ data: tests }, { data: cats }, { data: staff }, agreementHistory] = await Promise.all([
     supabaseAdmin.from('tests').select('id, code, th, category_id').eq('active', true).order('th'),
     supabaseAdmin.from('categories').select('id, th').order('th'),
-    supabaseAdmin.from('profiles').select('id, name, name_prefix').is('deleted_at', null).order('name'),
+    supabaseAdmin.from('profiles').select('id, name, name_prefix').eq('status', 'active').is('deleted_at', null).order('name'),
     listAgreementHistoryForProfile(id),
   ])
 

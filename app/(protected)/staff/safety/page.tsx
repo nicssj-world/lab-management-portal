@@ -30,16 +30,17 @@ export default async function SafetyTasksPage() {
   ])
   const editorUserIds = (editorRows.data ?? []).map(row => String(row.user_id))
   const { data: committeeStaffRows } = isAdmin
-    ? await supabaseAdmin.from('profiles').select('id, name, role').is('deleted_at', null).order('name')
+    ? await supabaseAdmin.from('profiles').select('id, name, role').eq('status', 'active').is('deleted_at', null).order('name')
     : editorUserIds.length
-      ? await supabaseAdmin.from('profiles').select('id, name, role').in('id', editorUserIds).is('deleted_at', null).order('name')
+      ? await supabaseAdmin.from('profiles').select('id, name, role').in('id', editorUserIds).eq('status', 'active').is('deleted_at', null).order('name')
       : { data: [] }
+  const activeCommitteeIds = new Set((committeeStaffRows ?? []).map(row => String(row.id)))
   const occurrences = await getSafetyCalendarOccurrences(
     { from, to, actorId: actor.id, level: editor ? 'edit' : 'view', scope: 'all' },
     { people, safetyTemplates: templates },
   )
   return <SafetyTaskHub actorId={actor.id} isEditor={editor} isAdmin={isAdmin} fiscalYear={fiscalYear} range={{ from, to }} initialOccurrences={occurrences} templates={templates} initialEvidence={evidence} initialCertificates={certificates} initialHolidays={holidays} people={people as { id: string; name: string; dept: string | null; role: string; position_title: string | null }[]}
     committeeStaff={(committeeStaffRows ?? []).map(row => ({ id: String(row.id), name: row.name as string | null, role: String(row.role) }))}
-    initialEditors={(editorRows.data ?? []).map(row => ({ user_id: String(row.user_id) }))}
+    initialEditors={(editorRows.data ?? []).filter(row => activeCommitteeIds.has(String(row.user_id))).map(row => ({ user_id: String(row.user_id) }))}
   />
 }

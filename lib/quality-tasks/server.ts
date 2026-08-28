@@ -555,7 +555,7 @@ export async function deleteTemplate(
 }
 
 export async function listTaskPeople() {
-  const { data, error } = await supabaseAdmin.from('profiles').select('id,name,dept,role,position_title').is('deleted_at', null).order('name')
+  const { data, error } = await supabaseAdmin.from('profiles').select('id,name,dept,role,position_title').eq('status', 'active').is('deleted_at', null).order('name')
   fail(error); return data ?? []
 }
 

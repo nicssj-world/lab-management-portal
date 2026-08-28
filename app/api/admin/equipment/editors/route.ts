@@ -65,6 +65,16 @@ export async function PATCH(req: NextRequest) {
 
     const { user_id, enabled } = parsed.data
     if (enabled) {
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('id', user_id)
+        .eq('status', 'active')
+        .is('deleted_at', null)
+        .maybeSingle()
+      if (profileError) throw profileError
+      if (!profile) return NextResponse.json({ error: 'Profile must be active' }, { status: 422 })
+
       const { error } = await supabaseAdmin
         .from('equipment_editors')
         .upsert({ user_id, updated_by: actor.id, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })

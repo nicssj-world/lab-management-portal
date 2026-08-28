@@ -17,7 +17,7 @@ for (const path of ['/staff', '/staff/risk/ior', '/staff/lab-map', '/staff/lab-m
 }
 
 // หน้า public — การไม่มี session เป็นเรื่องปกติ ห้ามเด้งไป /login
-for (const path of ['/', '/catalog', '/news', '/manual', '/contact', '/login', '/s/abc123', '/lab-map/office', '/sds']) {
+for (const path of ['/', '/catalog', '/news', '/manual', '/contact', '/staff/personnel/team-org', '/login', '/s/abc123', '/lab-map/office', '/sds']) {
   assert.ok(!isProtectedPath(path), `${path} เป็นหน้า public`)
 }
 

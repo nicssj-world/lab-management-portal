@@ -14,7 +14,7 @@ export default async function OrgChartPage() {
   if ((perms['บุคลากร'] ?? 'none') === 'none') redirect('/staff/dashboard')
   const canEdit = perms['บุคลากร'] === 'edit'
 
-  const { data: staff } = await supabaseAdmin.from('profiles').select('id, name, name_prefix').is('deleted_at', null).order('name')
+  const { data: staff } = await supabaseAdmin.from('profiles').select('id, name, name_prefix').eq('status', 'active').is('deleted_at', null).order('name')
   const staffOptions: StaffOption[] = (staff ?? []).map((s) => ({ id: s.id, name: formatProfileName(s.name, s.name_prefix) }))
 
   return <OrgChartClient canEdit={canEdit} staff={staffOptions} />

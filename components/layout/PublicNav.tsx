@@ -22,6 +22,11 @@ const RELATED_DOCUMENT_ITEMS = [
   { href: '/sds', th: 'คลังเอกสาร SDS', en: 'SDS Document Library', icon: 'shieldCheck' },
 ] as const satisfies readonly PublicNavItem[]
 
+const ORGANIZATION_ITEMS = [
+  { href: '/contact', th: 'ผังโครงสร้างองค์กร', en: 'Organization Chart', icon: 'users' },
+  { href: '/staff/personnel/team-org', th: 'ผังโครงสร้างกลุ่มงานฯ', en: 'Medical Technology Group Structure', icon: 'users' },
+] as const satisfies readonly PublicNavItem[]
+
 const NAV_ITEMS: readonly PublicNavItem[] = [
   { href: '/',        th: 'หน้าแรก',              en: 'Home' },
   { href: '/catalog', th: 'รายการตรวจวิเคราะห์',   en: 'Test Catalog' },
@@ -33,7 +38,12 @@ const NAV_ITEMS: readonly PublicNavItem[] = [
     children: RELATED_DOCUMENT_ITEMS,
   },
   { href: '/news',    th: 'ข่าวสาร',               en: 'News' },
-  { href: '/contact', th: 'โครงสร้างองค์กร',      en: 'Organization' },
+  {
+    href: '/contact',
+    th: 'โครงสร้างองค์กร',
+    en: 'Organization',
+    children: ORGANIZATION_ITEMS,
+  },
 ]
 
 interface SessionUser { name: string; role: string; avatar_url: string | null }
@@ -44,8 +54,10 @@ export function PublicNav() {
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [relatedMenuOpen, setRelatedMenuOpen] = useState(false)
+  const [organizationMenuOpen, setOrganizationMenuOpen] = useState(false)
   const [dark, setDark] = useState(false)
   const relatedMenuRef = useRef<HTMLDivElement>(null)
+  const organizationMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -68,20 +80,28 @@ export function PublicNav() {
   useEffect(() => {
     setMenuOpen(false)
     setRelatedMenuOpen(false)
+    setOrganizationMenuOpen(false)
   }, [pathname])
 
   useEffect(() => {
-    if (!relatedMenuOpen) return
+    if (!relatedMenuOpen && !organizationMenuOpen) return
 
     function closeOnDesktopOutsideClick(event: PointerEvent) {
       // On mobile the full-screen overlay owns dismissal of the menu. The
       // desktop dropdown needs its own outside-click behavior instead.
       if (window.matchMedia('(max-width: 1240px)').matches) return
-      if (!relatedMenuRef.current?.contains(event.target as Node)) setRelatedMenuOpen(false)
+      const activeMenuRef = organizationMenuOpen ? organizationMenuRef : relatedMenuRef
+      if (!activeMenuRef.current?.contains(event.target as Node)) {
+        setRelatedMenuOpen(false)
+        setOrganizationMenuOpen(false)
+      }
     }
 
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setRelatedMenuOpen(false)
+      if (event.key === 'Escape') {
+        setRelatedMenuOpen(false)
+        setOrganizationMenuOpen(false)
+      }
     }
 
     document.addEventListener('pointerdown', closeOnDesktopOutsideClick)
@@ -90,7 +110,7 @@ export function PublicNav() {
       document.removeEventListener('pointerdown', closeOnDesktopOutsideClick)
       document.removeEventListener('keydown', closeOnEscape)
     }
-  }, [relatedMenuOpen])
+  }, [organizationMenuOpen, relatedMenuOpen])
 
   useEffect(() => {
     const saved = localStorage.getItem('theme') === 'dark'
@@ -288,23 +308,38 @@ export function PublicNav() {
                 : item.href === '/' ? pathname === '/' : activeHref.startsWith(item.href)
 
               if (item.children) {
+                const organizationMenu = item.href === '/contact'
+                const dropdownOpen = organizationMenu ? organizationMenuOpen : relatedMenuOpen
+                const dropdownMenuId = organizationMenu ? 'public-organization-menu' : 'public-related-documents-menu'
                 return (
-                  <div key={item.href} className="pub-related-dropdown" ref={relatedMenuRef}>
+                  <div
+                    key={item.href}
+                    className="pub-related-dropdown"
+                    ref={organizationMenu ? organizationMenuRef : relatedMenuRef}
+                  >
                     <button
                       type="button"
                       className="pub-nav-link"
                       data-active={active ? 'true' : 'false'}
-                      data-open={relatedMenuOpen ? 'true' : 'false'}
+                      data-open={dropdownOpen ? 'true' : 'false'}
                       aria-haspopup="menu"
-                      aria-expanded={relatedMenuOpen}
-                      aria-controls="public-related-documents-menu"
-                      onClick={() => setRelatedMenuOpen((open) => !open)}
+                      aria-expanded={dropdownOpen}
+                      aria-controls={dropdownMenuId}
+                      onClick={() => {
+                        if (organizationMenu) {
+                          setOrganizationMenuOpen((open) => !open)
+                          setRelatedMenuOpen(false)
+                        } else {
+                          setRelatedMenuOpen((open) => !open)
+                          setOrganizationMenuOpen(false)
+                        }
+                      }}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 5,
                         padding: '9px 11px 11px', borderRadius: 10,
                         border: 0, textDecoration: 'none',
-                        background: active || relatedMenuOpen ? 'var(--primary-soft)' : 'transparent',
-                        color: active || relatedMenuOpen ? 'var(--primary)' : 'var(--ink)',
+                        background: active || dropdownOpen ? 'var(--primary-soft)' : 'transparent',
+                        color: active || dropdownOpen ? 'var(--primary)' : 'var(--ink)',
                         fontWeight: active ? 600 : 500, fontSize: 13,
                         whiteSpace: 'nowrap', transition: 'all .15s',
                         cursor: 'pointer', fontFamily: 'inherit',
@@ -314,8 +349,8 @@ export function PublicNav() {
                       <Icon name="chevDown" size={13} className="pub-related-chevron" />
                     </button>
 
-                    {relatedMenuOpen && (
-                      <div id="public-related-documents-menu" className="pub-related-menu" role="menu">
+                    {dropdownOpen && (
+                      <div id={dropdownMenuId} className="pub-related-menu" role="menu">
                         {item.children.map((child) => {
                           const childActive = activeHref.startsWith(child.href)
                           return (
@@ -325,7 +360,10 @@ export function PublicNav() {
                               role="menuitem"
                               aria-current={childActive ? 'page' : undefined}
                               className="pub-related-menu-item"
-                              onClick={() => setRelatedMenuOpen(false)}
+                              onClick={() => {
+                                setRelatedMenuOpen(false)
+                                setOrganizationMenuOpen(false)
+                              }}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: 10,
                                 padding: '11px 12px', borderRadius: 10,
@@ -354,7 +392,10 @@ export function PublicNav() {
                   href={item.href}
                   className="pub-nav-link"
                   data-active={active ? 'true' : 'false'}
-                  onClick={() => setRelatedMenuOpen(false)}
+                  onClick={() => {
+                    setRelatedMenuOpen(false)
+                    setOrganizationMenuOpen(false)
+                  }}
                   style={{
                     padding: '9px 11px 11px', borderRadius: 10, textDecoration: 'none',
                     background: active ? 'var(--primary-soft)' : 'transparent',
@@ -477,6 +518,7 @@ export function PublicNav() {
               onClick={() => {
                 setMenuOpen((open) => !open)
                 setRelatedMenuOpen(false)
+                setOrganizationMenuOpen(false)
               }}
               aria-label={menuOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
               aria-expanded={menuOpen}
@@ -503,6 +545,7 @@ export function PublicNav() {
           onClick={() => {
             setMenuOpen(false)
             setRelatedMenuOpen(false)
+            setOrganizationMenuOpen(false)
           }}
         />
       )}
@@ -528,20 +571,33 @@ export function PublicNav() {
                 : item.href === '/' ? pathname === '/' : activeHref.startsWith(item.href)
 
               if (item.children) {
+                const organizationMenu = item.href === '/contact'
+                const dropdownOpen = organizationMenu ? organizationMenuOpen : relatedMenuOpen
+                const dropdownMenuId = organizationMenu
+                  ? 'public-organization-mobile-menu'
+                  : 'public-related-documents-mobile-menu'
                 return (
                   <div key={item.href}>
                     <button
                       type="button"
                       aria-haspopup="menu"
-                      aria-expanded={relatedMenuOpen}
-                      aria-controls="public-related-documents-mobile-menu"
-                      onClick={() => setRelatedMenuOpen((open) => !open)}
+                      aria-expanded={dropdownOpen}
+                      aria-controls={dropdownMenuId}
+                      onClick={() => {
+                        if (organizationMenu) {
+                          setOrganizationMenuOpen((open) => !open)
+                          setRelatedMenuOpen(false)
+                        } else {
+                          setRelatedMenuOpen((open) => !open)
+                          setOrganizationMenuOpen(false)
+                        }
+                      }}
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '14px 20px', textAlign: 'left',
                         fontFamily: 'inherit', fontSize: 15, fontWeight: active ? 700 : 500,
                         color: active ? 'var(--primary)' : 'var(--ink)',
-                        background: active || relatedMenuOpen ? 'var(--primary-soft)' : 'transparent',
+                        background: active || dropdownOpen ? 'var(--primary-soft)' : 'transparent',
                         border: 0, borderLeft: active ? '3px solid var(--primary)' : '3px solid transparent',
                         cursor: 'pointer', transition: 'background .12s',
                       }}
@@ -550,8 +606,8 @@ export function PublicNav() {
                       <Icon name="chevDown" size={16} className="pub-related-chevron" />
                     </button>
 
-                    {relatedMenuOpen && (
-                      <div id="public-related-documents-mobile-menu" role="menu" style={{ background: 'var(--surface-2)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+                    {dropdownOpen && (
+                      <div id={dropdownMenuId} role="menu" style={{ background: 'var(--surface-2)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
                         {item.children.map((child) => {
                           const childActive = activeHref.startsWith(child.href)
                           return (
@@ -564,6 +620,7 @@ export function PublicNav() {
                               onClick={() => {
                                 setMenuOpen(false)
                                 setRelatedMenuOpen(false)
+                                setOrganizationMenuOpen(false)
                               }}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: 10,
@@ -594,6 +651,7 @@ export function PublicNav() {
                   onClick={() => {
                     setMenuOpen(false)
                     setRelatedMenuOpen(false)
+                    setOrganizationMenuOpen(false)
                   }}
                   style={{
                     display: 'flex', alignItems: 'center', padding: '14px 20px',

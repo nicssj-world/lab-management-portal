@@ -83,6 +83,8 @@ async function applyResponsibleUser(body: Record<string, any>) {
     .from('profiles')
     .select('id, name')
     .eq('id', body.responsible_user_id)
+    .eq('status', 'active')
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (error) throw new Error(error.message)

@@ -13,6 +13,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ nodeId: s
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.errors[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
     }
+    if (parsed.data.profile_id) {
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('id', parsed.data.profile_id)
+        .eq('status', 'active')
+        .is('deleted_at', null)
+        .maybeSingle()
+      if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 })
+      if (!profile) return NextResponse.json({ error: 'Profile must be active' }, { status: 422 })
+    }
     const { data, error } = await supabaseAdmin
       .from('org_chart_nodes')
       .update({ ...parsed.data, updated_at: new Date().toISOString() })
