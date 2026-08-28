@@ -73,6 +73,7 @@ const STATUS_BADGE: Record<EquipmentStatus, 'green' | 'gray' | 'red' | 'blue' | 
 }
 
 const EQUIPMENT_PAGE_SIZE = 50
+const EXTERNAL_REFRESH_COOLDOWN_MS = 5_000
 
 type EquipmentListPayload = {
   items?: Equipment[]
@@ -1826,6 +1827,7 @@ export default function EquipmentClient({
   const [areas, setAreas] = useState<EquipmentAreaOption[]>([])
   const [availableDepartments, setAvailableDepartments] = useState<string[]>(departments)
   const [loading, setLoading] = useState(false)
+  const equipmentListRequestRef = useRef<AbortController | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({ '': initialTotal, ...statusCounts })
   const [summaryCounts, setSummaryCounts] = useState<EquipmentSummaryCounts>(initialSummaryCounts)
@@ -1882,9 +1884,12 @@ export default function EquipmentClient({
   }, [area, classification, debouncedSearch, department, duplicateSN, nameSort, needsCal, page, pageSize, pendingReg, riskLevel, sortKey, statusTab, unpositioned])
 
   const loadEquipmentList = useCallback(async () => {
+    equipmentListRequestRef.current?.abort()
+    const controller = new AbortController()
+    equipmentListRequestRef.current = controller
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/equipment?${buildFilterParams(true)}`)
+      const res = await fetch(`/api/admin/equipment?${buildFilterParams(true)}`, { signal: controller.signal })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'โหลดข้อมูลไม่สำเร็จ')
       const parsed = parseEquipmentPayload(json)
@@ -1894,11 +1899,15 @@ export default function EquipmentClient({
       if (parsed.statusCounts) setCounts({ '': Number(parsed.statusCounts[''] ?? 0), ...parsed.statusCounts })
       if (parsed.summaryCounts) setSummaryCounts(parsed.summaryCounts)
       if (parsed.departments) setAvailableDepartments(parsed.departments)
-    } catch {
+    } catch (cause) {
+      if (cause instanceof Error && cause.name === 'AbortError') return
       setItems([])
       setTotal(0)
     } finally {
-      setLoading(false)
+      if (equipmentListRequestRef.current === controller) {
+        equipmentListRequestRef.current = null
+        setLoading(false)
+      }
     }
   }, [buildFilterParams])
 
@@ -1909,6 +1918,7 @@ export default function EquipmentClient({
 
   useEffect(() => {
     void loadEquipmentList()
+    return () => equipmentListRequestRef.current?.abort()
   }, [loadEquipmentList, reloadKey])
 
   useEffect(() => {
@@ -1943,17 +1953,25 @@ export default function EquipmentClient({
 
   useEffect(() => {
     let lastRefreshAt = 0
-    const refreshAfterExternalChange = () => {
-      if (document.visibilityState !== 'visible' || Date.now() - lastRefreshAt < 500) return
+    let refreshInFlight = false
+    let previousVisibility: DocumentVisibilityState = document.visibilityState
+
+    const refreshAfterReturningToPage = () => {
+      const currentVisibility = document.visibilityState
+      const returnedToVisible = previousVisibility === 'hidden' && currentVisibility === 'visible'
+      previousVisibility = currentVisibility
+
+      if (!returnedToVisible || refreshInFlight || Date.now() - lastRefreshAt < EXTERNAL_REFRESH_COOLDOWN_MS) return
       lastRefreshAt = Date.now()
+      refreshInFlight = true
       setDashboardItems(null)
-      void Promise.all([loadEquipmentList(), loadEquipmentAreas()])
+      void Promise.all([loadEquipmentList(), loadEquipmentAreas()]).finally(() => {
+        refreshInFlight = false
+      })
     }
-    window.addEventListener('focus', refreshAfterExternalChange)
-    document.addEventListener('visibilitychange', refreshAfterExternalChange)
+    document.addEventListener('visibilitychange', refreshAfterReturningToPage)
     return () => {
-      window.removeEventListener('focus', refreshAfterExternalChange)
-      document.removeEventListener('visibilitychange', refreshAfterExternalChange)
+      document.removeEventListener('visibilitychange', refreshAfterReturningToPage)
     }
   }, [loadEquipmentAreas, loadEquipmentList])
 
