@@ -273,10 +273,10 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
         .catalog-detail-modal-close {
           min-width: 44px;
           min-height: 44px;
-          border: 1px solid var(--border);
+          border: 1px solid var(--danger);
           border-radius: 10px;
-          background: var(--card);
-          color: var(--muted);
+          background: var(--danger);
+          color: #fff;
           cursor: pointer;
           display: inline-flex;
           align-items: center;
@@ -286,10 +286,11 @@ export function CatalogDetailModal({ testId, fallbackTest, categories, onClose }
         }
         .catalog-detail-modal-close:hover,
         .catalog-detail-modal-close:focus-visible {
-          border-color: var(--primary);
-          background: var(--primary-soft);
-          color: var(--primary);
-          outline: none;
+          border-color: color-mix(in srgb, var(--danger) 84%, black);
+          background: color-mix(in srgb, var(--danger) 84%, black);
+          color: #fff;
+          outline: 3px solid color-mix(in srgb, var(--danger) 30%, transparent);
+          outline-offset: 2px;
         }
         .catalog-detail-modal-body {
           overflow-y: auto;
