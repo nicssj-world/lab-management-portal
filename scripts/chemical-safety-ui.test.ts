@@ -241,6 +241,11 @@ assert.ok(modalSource.includes("aria-modal={embedded ? undefined : 'true'}"), 'S
 assert.ok(modalSource.includes('เอกสาร SDS ฉบับนี้'), 'ฟอร์ม SDS ต้องระบุว่าข้อมูลผูกกับเอกสารฉบับนี้')
 assert.ok(modalSource.includes('ผู้ผลิตตาม SDS'), 'ฟอร์ม SDS ต้องแยกผู้ผลิตตามเอกสารออกจากข้อมูลทะเบียน')
 assert.ok(modalSource.includes('GHS ตาม SDS หมวด 2'), 'ฟอร์ม SDS ต้องใช้คำที่ชัดว่า GHS มาจาก SDS')
+assert.ok(modalSource.includes('GHS_HAZARD_CLASS_OPTIONS'), 'ฟอร์ม SDS ต้องมีตัวเลือกประเภท/หมวด GHS')
+assert.ok(modalSource.includes('GHS_H_STATEMENT_OPTIONS'), 'ฟอร์ม SDS ต้องมี dropdown รหัส H')
+assert.ok(modalSource.includes('GHS_P_STATEMENT_OPTIONS'), 'ฟอร์ม SDS ต้องมี dropdown รหัส P')
+assert.ok(modalSource.includes('อื่น ๆ / กรอกประเภทเอง'), 'ประเภท GHS ต้องรองรับค่าที่ไม่มีใน catalog')
+assert.ok(modalSource.includes('อื่น ๆ / กรอกรหัสเอง'), 'รหัส H/P ต้องรองรับค่าที่ไม่มีใน catalog')
 assert.ok(modalSource.includes('ยังไม่มีไฟล์ PDF · SDS ยังไม่พร้อมใช้งาน'), 'ฟอร์ม SDS ต้องบอกผลของการยังไม่แนบไฟล์')
 assert.ok(modalSource.includes('sds-current-file-action'), 'ลิงก์เปิดไฟล์ปัจจุบันต้องแสดงเป็น action ที่เด่นชัด')
 assert.ok(modalSource.includes('aria-label={`เปิดไฟล์ปัจจุบันของ ${productName}`}'), 'ปุ่มเปิดไฟล์ปัจจุบันต้องมีชื่อสำหรับ screen reader')
@@ -248,6 +253,10 @@ assert.ok(
   !/inset:\s*0[^}]*}\s*}\s*onClick/.test(modalSource),
   'SdsEditorModal ต้องไม่ปิดเมื่อคลิกพื้นหลัง (ข้อตกลงของโปรเจค: ปิดด้วยปุ่ม X เท่านั้น)',
 )
+
+const sdsRouteSource = readFileSync(join(process.cwd(), 'app', 'api', 'admin', 'chemical-safety', 'sds', '[id]', 'route.ts'), 'utf8')
+assert.ok(sdsRouteSource.includes(".select('updated_at')"), 'SDS save route must read back the server timestamp')
+assert.ok(sdsRouteSource.includes('updatedAt: current.data.updated_at'), 'SDS save route must return the latest timestamp to the editor')
 
 // ── ช่องอัปโหลดต้องรองรับลากวางและคีย์บอร์ด ────────────────────────────────
 const dropzoneSource = readFileSync(join(COMPONENT_DIR, 'shared', 'SdsDropzone.tsx'), 'utf8')

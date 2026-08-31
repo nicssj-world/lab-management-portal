@@ -1,9 +1,16 @@
 'use client'
 
-import { useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
+import {
+  GHS_H_STATEMENT_OPTIONS,
+  GHS_HAZARD_CLASS_OPTIONS,
+  GHS_P_STATEMENT_OPTIONS,
+  findGhsHazardClassOption,
+  findGhsStatementOption,
+} from '@/lib/chemical-safety/ghs-catalog'
 import type { ChemicalSdsDTO, GhsPictogramCode } from '@/lib/chemical-safety/types'
 import { GhsPictogram } from './GhsPictogram'
 import { SdsPdfViewerModal } from './SdsPdfViewerModal'
@@ -144,6 +151,7 @@ export function SdsEditorModal({
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'บันทึกไม่สำเร็จ')
+      if (payload.updatedAt) setUpdatedAt(payload.updatedAt)
       onSaved(hasFile ? 'บันทึกข้อมูล SDS แล้ว · พร้อมใช้งาน' : 'บันทึกข้อมูล SDS แล้ว · รอแนบไฟล์ PDF')
       onClose()
     } catch (caught) {
@@ -265,6 +273,10 @@ export function SdsEditorModal({
               ข้อมูลนี้เป็นข้อมูลของเอกสาร SDS ฉบับนี้โดยตรง ระบบอาจเติมข้อมูลเบื้องต้นจากทะเบียนให้ แต่ต้องตรวจสอบและแก้ให้ตรงกับ SDS หมวด 2 ก่อนบันทึก
               หากต้องการแก้ GHS เบื้องต้นของทะเบียน ให้ใช้ “ข้อมูลสารในทะเบียน”
             </p>
+            <p style={{ margin: `0 0 ${SPACE.sm}px`, padding: `${SPACE.xs}px ${SPACE.sm}px`, borderRadius: 8, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: FONT.xs, lineHeight: 1.5 }}>
+              เลือกรหัสหรือประเภทจาก dropdown เพื่อเติมข้อความตั้งต้นได้ทันที หรือเลือก “อื่น ๆ / กรอกเอง” หากไม่พบรายการ
+              ข้อความตั้งต้นเป็นเพียงตัวช่วย ต้องตรวจทานให้ตรงกับ SDS ฉบับจริงก่อนบันทึก
+            </p>
             <label style={labelStyle} htmlFor="sds-signal-word">คำสัญญาณ</label>
             <select
               id="sds-signal-word"
@@ -305,39 +317,29 @@ export function SdsEditorModal({
               </div>
             </fieldset>
 
-            <RowEditor
+            <HazardRowEditor
               title="ประเภทและหมวดความเป็นอันตราย (SDS หมวด 2)"
               rows={hazards}
               onChange={setHazards}
               blank={{ className: '', category: '' }}
-              fields={[
-                { key: 'className', label: 'ประเภท', placeholder: 'เช่น Flammable liquids' },
-                { key: 'category', label: 'หมวด', placeholder: 'เช่น Category 2' },
-              ]}
               invalid={hazardsMissing}
               invalidHint="ต้องระบุอย่างน้อย 1 รายการเมื่อมีสัญลักษณ์หรือรหัส H/P"
             />
 
-            <RowEditor
+            <StatementRowEditor
               title="ข้อความแสดงความเป็นอันตราย (รหัส H)"
+              kind="H"
               rows={hStatements}
               onChange={setHStatements}
               blank={{ code: '', text: '' }}
-              fields={[
-                { key: 'code', label: 'รหัส', placeholder: 'H225' },
-                { key: 'text', label: 'ข้อความ', placeholder: 'ของเหลวและไอไวไฟสูง' },
-              ]}
             />
 
-            <RowEditor
+            <StatementRowEditor
               title="ข้อควรปฏิบัติเพื่อความปลอดภัย (รหัส P)"
+              kind="P"
               rows={pStatements}
               onChange={setPStatements}
               blank={{ code: '', text: '' }}
-              fields={[
-                { key: 'code', label: 'รหัส', placeholder: 'P210 หรือ P301+P310' },
-                { key: 'text', label: 'ข้อความ', placeholder: 'เก็บให้ห่างจากความร้อน' },
-              ]}
             />
           </section>
 
@@ -418,16 +420,24 @@ function TextArea({ label, value, onChange }: { label: string; value: string; on
   )
 }
 
-function RowEditor<T extends Record<string, string>>({
-  title, rows, onChange, blank, fields, invalid, invalidHint,
+const CUSTOM_OPTION = '__custom__'
+
+function remapIndexes(indexes: Set<number>, removedIndex: number): Set<number> {
+  return new Set(
+    [...indexes]
+      .filter(index => index !== removedIndex)
+      .map(index => index > removedIndex ? index - 1 : index),
+  )
+}
+
+function FieldsetShell({
+  title, children, invalid, invalidHint, empty,
 }: {
   title: string
-  rows: T[]
-  onChange: (rows: T[]) => void
-  blank: T
-  fields: Array<{ key: keyof T & string; label: string; placeholder: string }>
+  children: ReactNode
   invalid?: boolean
   invalidHint?: string
+  empty: boolean
 }) {
   return (
     <fieldset style={{
@@ -435,42 +445,267 @@ function RowEditor<T extends Record<string, string>>({
       borderRadius: 10, padding: SPACE.sm, margin: `${SPACE.sm}px 0 0`,
     }}>
       <legend style={{ ...labelStyle, marginBottom: 0, padding: '0 6px' }}>{title}</legend>
-      {rows.length === 0 && (
+      {empty && (
         <p style={{ margin: `0 0 ${SPACE.xs}px`, fontSize: FONT.sm, color: invalid ? 'var(--danger)' : 'var(--muted)' }}>
           {invalid && invalidHint ? invalidHint : 'ยังไม่มีรายการ'}
         </p>
       )}
+      {children}
+    </fieldset>
+  )
+}
+
+function selectStyle(): CSSProperties {
+  return { ...inputStyle, minHeight: 44 }
+}
+
+function HazardRowEditor({
+  title, rows, onChange, blank, invalid, invalidHint,
+}: {
+  title: string
+  rows: HazardDraft[]
+  onChange: (rows: HazardDraft[]) => void
+  blank: HazardDraft
+  invalid?: boolean
+  invalidHint?: string
+}) {
+  const [customClassRows, setCustomClassRows] = useState<Set<number>>(
+    () => new Set(rows.map((row, index) => row.className && !findGhsHazardClassOption(row.className) ? index : -1).filter(index => index >= 0)),
+  )
+  const [customCategoryRows, setCustomCategoryRows] = useState<Set<number>>(
+    () => new Set(rows.map((row, index) => {
+      const option = findGhsHazardClassOption(row.className)
+      return row.category && (!option || !option.categories.includes(row.category)) ? index : -1
+    }).filter(index => index >= 0)),
+  )
+
+  function updateRow(index: number, patch: Partial<HazardDraft>) {
+    const next = [...rows]
+    next[index] = { ...next[index], ...patch }
+    onChange(next)
+  }
+
+  function removeRow(index: number) {
+    onChange(rows.filter((_, position) => position !== index))
+    setCustomClassRows(current => remapIndexes(current, index))
+    setCustomCategoryRows(current => remapIndexes(current, index))
+  }
+
+  return (
+    <FieldsetShell title={title} invalid={invalid} invalidHint={invalidHint} empty={rows.length === 0}>
       <div style={{ display: 'grid', gap: SPACE.xs }}>
-        {rows.map((row, index) => (
-          <div key={index} style={{ display: 'flex', gap: SPACE.xs, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            {fields.map((field, fieldIndex) => (
-              <label key={field.key} style={{ flex: fieldIndex === 0 ? '0 0 140px' : '1 1 200px' }}>
-                <span style={labelStyle}>{field.label}</span>
-                <input
-                  value={row[field.key]}
-                  placeholder={field.placeholder}
-                  onChange={(e) => {
-                    const next = [...rows]
-                    next[index] = { ...row, [field.key]: e.target.value }
-                    onChange(next)
+        {rows.map((row, index) => {
+          const selectedClass = findGhsHazardClassOption(row.className)
+          const categories = selectedClass?.categories ?? []
+          const classIsCustom = customClassRows.has(index)
+          const categoryIsCustom = customCategoryRows.has(index)
+          const classValue = classIsCustom
+            ? CUSTOM_OPTION
+            : selectedClass
+              ? selectedClass.className
+              : row.className ? CUSTOM_OPTION : ''
+          const categoryValue = categoryIsCustom
+            ? CUSTOM_OPTION
+            : categories.includes(row.category)
+              ? row.category
+              : row.category ? CUSTOM_OPTION : ''
+
+          return (
+            <div key={index} style={{ display: 'flex', gap: SPACE.xs, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <label style={{ flex: '1 1 260px', minWidth: 220 }}>
+                <span style={labelStyle}>ประเภท</span>
+                <select
+                  value={classValue}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    if (value === CUSTOM_OPTION) {
+                      setCustomClassRows(current => new Set(current).add(index))
+                      setCustomCategoryRows(current => { const next = new Set(current); next.delete(index); return next })
+                      updateRow(index, { className: classIsCustom ? row.className : '', category: '' })
+                      return
+                    }
+                    const option = GHS_HAZARD_CLASS_OPTIONS.find(item => item.className === value)
+                    setCustomClassRows(current => { const next = new Set(current); next.delete(index); return next })
+                    setCustomCategoryRows(current => { const next = new Set(current); next.delete(index); return next })
+                    updateRow(index, {
+                      className: value,
+                      category: option?.categories.includes(row.category) ? row.category : '',
+                    })
                   }}
-                  style={{ ...inputStyle, minHeight: 44 }}
-                />
+                  aria-label={`${title} ประเภทรายการที่ ${index + 1}`}
+                  style={selectStyle()}
+                >
+                  <option value="">เลือกประเภท…</option>
+                  {GHS_HAZARD_CLASS_OPTIONS.map(option => (
+                    <option key={option.className} value={option.className}>{option.label}</option>
+                  ))}
+                  <option value={CUSTOM_OPTION}>อื่น ๆ / กรอกประเภทเอง</option>
+                </select>
               </label>
-            ))}
-            <Button
-              variant="ghost"
-              icon="trash"
-              size="lg"
-              title="ลบรายการนี้"
-              onClick={() => onChange(rows.filter((_, position) => position !== index))}
-            />
-          </div>
-        ))}
+
+              {classIsCustom && (
+                <label style={{ flex: '1 1 220px', minWidth: 200 }}>
+                  <span style={labelStyle}>ประเภทที่ระบุเอง</span>
+                  <input
+                    value={row.className}
+                    placeholder="เช่น Acute toxicity — low"
+                    onChange={(event) => updateRow(index, { className: event.target.value })}
+                    style={{ ...inputStyle, minHeight: 44 }}
+                  />
+                </label>
+              )}
+
+              <label style={{ flex: '1 1 220px', minWidth: 200 }}>
+                <span style={labelStyle}>หมวด</span>
+                <select
+                  value={categoryValue}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    if (value === CUSTOM_OPTION) {
+                      setCustomCategoryRows(current => new Set(current).add(index))
+                      updateRow(index, { category: categoryIsCustom ? row.category : '' })
+                      return
+                    }
+                    setCustomCategoryRows(current => { const next = new Set(current); next.delete(index); return next })
+                    updateRow(index, { category: value })
+                  }}
+                  aria-label={`${title} หมวดรายการที่ ${index + 1}`}
+                  style={selectStyle()}
+                >
+                  <option value="">เลือกหมวด…</option>
+                  {categories.map(category => <option key={category} value={category}>{category}</option>)}
+                  <option value={CUSTOM_OPTION}>อื่น ๆ / กรอกหมวดเอง</option>
+                </select>
+              </label>
+
+              {categoryIsCustom && (
+                <label style={{ flex: '1 1 180px', minWidth: 170 }}>
+                  <span style={labelStyle}>หมวดที่ระบุเอง</span>
+                  <input
+                    value={row.category}
+                    placeholder="เช่น Category 2"
+                    onChange={(event) => updateRow(index, { category: event.target.value })}
+                    style={{ ...inputStyle, minHeight: 44 }}
+                  />
+                </label>
+              )}
+
+              <Button
+                variant="ghost"
+                icon="trash"
+                size="lg"
+                title="ลบรายการนี้"
+                onClick={() => removeRow(index)}
+              />
+            </div>
+          )
+        })}
       </div>
       <div style={{ marginTop: SPACE.xs }}>
         <Button variant="soft" icon="plus" onClick={() => onChange([...rows, { ...blank }])}>เพิ่มรายการ</Button>
       </div>
-    </fieldset>
+    </FieldsetShell>
+  )
+}
+
+function StatementRowEditor({
+  title, kind, rows, onChange, blank,
+}: {
+  title: string
+  kind: 'H' | 'P'
+  rows: StatementDraft[]
+  onChange: (rows: StatementDraft[]) => void
+  blank: StatementDraft
+}) {
+  const options = kind === 'H' ? GHS_H_STATEMENT_OPTIONS : GHS_P_STATEMENT_OPTIONS
+  const [customCodeRows, setCustomCodeRows] = useState<Set<number>>(
+    () => new Set(rows.map((row, index) => row.code && !findGhsStatementOption(options, row.code) ? index : -1).filter(index => index >= 0)),
+  )
+
+  function updateRow(index: number, patch: Partial<StatementDraft>) {
+    const next = [...rows]
+    next[index] = { ...next[index], ...patch }
+    onChange(next)
+  }
+
+  function removeRow(index: number) {
+    onChange(rows.filter((_, position) => position !== index))
+    setCustomCodeRows(current => remapIndexes(current, index))
+  }
+
+  return (
+    <FieldsetShell title={title} empty={rows.length === 0}>
+      <div style={{ display: 'grid', gap: SPACE.xs }}>
+        {rows.map((row, index) => {
+          const selected = findGhsStatementOption(options, row.code)
+          const isCustom = customCodeRows.has(index)
+          const codeValue = isCustom ? CUSTOM_OPTION : selected ? selected.code : row.code ? CUSTOM_OPTION : ''
+
+          return (
+            <div key={index} style={{ display: 'flex', gap: SPACE.xs, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <label style={{ flex: '0 1 280px', minWidth: 220 }}>
+                <span style={labelStyle}>รหัส</span>
+                <select
+                  value={codeValue}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    if (value === CUSTOM_OPTION) {
+                      setCustomCodeRows(current => new Set(current).add(index))
+                      updateRow(index, { code: isCustom ? row.code : '', text: isCustom ? row.text : '' })
+                      return
+                    }
+                    setCustomCodeRows(current => { const next = new Set(current); next.delete(index); return next })
+                    const option = findGhsStatementOption(options, value)
+                    updateRow(index, { code: value, text: option?.text ?? '' })
+                  }}
+                  aria-label={`${title} รหัสรายการที่ ${index + 1}`}
+                  style={selectStyle()}
+                >
+                  <option value="">เลือกรหัส…</option>
+                  {options.map(option => (
+                    <option key={option.code} value={option.code}>{option.code} — {option.text}</option>
+                  ))}
+                  <option value={CUSTOM_OPTION}>อื่น ๆ / กรอกรหัสเอง</option>
+                </select>
+              </label>
+
+              {isCustom && (
+                <label style={{ flex: '0 1 180px', minWidth: 160 }}>
+                  <span style={labelStyle}>รหัสที่ระบุเอง</span>
+                  <input
+                    value={row.code}
+                    placeholder={kind === 'H' ? 'เช่น H360FD' : 'เช่น P305+P351+P338'}
+                    onChange={(event) => updateRow(index, { code: event.target.value.toUpperCase().replace(/\s+/g, '') })}
+                    style={{ ...inputStyle, minHeight: 44 }}
+                  />
+                </label>
+              )}
+
+              <label style={{ flex: '1 1 320px', minWidth: 240 }}>
+                <span style={labelStyle}>ข้อความ <span style={{ fontWeight: 400 }}>แก้ไขให้ตรงกับ SDS ได้</span></span>
+                <input
+                  value={row.text}
+                  placeholder="ระบบเติมข้อความตั้งต้นเมื่อเลือกรหัส"
+                  onChange={(event) => updateRow(index, { text: event.target.value })}
+                  aria-label={`${title} ข้อความรายการที่ ${index + 1}`}
+                  style={{ ...inputStyle, minHeight: 44 }}
+                />
+              </label>
+
+              <Button
+                variant="ghost"
+                icon="trash"
+                size="lg"
+                title="ลบรายการนี้"
+                onClick={() => removeRow(index)}
+              />
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ marginTop: SPACE.xs }}>
+        <Button variant="soft" icon="plus" onClick={() => onChange([...rows, { ...blank }])}>เพิ่มรายการ</Button>
+      </div>
+    </FieldsetShell>
   )
 }

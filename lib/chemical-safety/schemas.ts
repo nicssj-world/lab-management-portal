@@ -210,7 +210,7 @@ export const chemicalChangeDraftPatchSchema = z.object({
 }).strict()
 
 const statementSchema = z.object({
-  code: z.string().trim().toUpperCase().regex(/^H\d{3}[A-Z]?$/),
+  code: z.string().trim().toUpperCase().regex(/^H\d{3}[A-Z]{0,2}$/),
   text: z.string().trim().min(1).max(1000),
 }).strict()
 const precautionSchema = z.object({

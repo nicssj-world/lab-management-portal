@@ -20,7 +20,12 @@ LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
         )
         OR jsonb_typeof(statement->'code') <> 'string'
         OR jsonb_typeof(statement->'text') <> 'string'
-        OR statement->>'code' !~ ('^' || p_prefix || '[0-9]{3}$')
+        OR statement->>'code' !~ (
+          CASE
+            WHEN p_prefix = 'H' THEN '^H[0-9]{3}[A-Za-z]{0,2}$'
+            ELSE '^P[0-9]{3}(\+P?[0-9]{3})*$'
+          END
+        )
         OR nullif(btrim(statement->>'text'), '') IS NULL
     );
 $$;
@@ -703,7 +708,7 @@ BEGIN
       )
       OR jsonb_typeof(statement->'code') <> 'string'
       OR jsonb_typeof(statement->'text') <> 'string'
-      OR statement->>'code' !~ '^H[0-9]{3}$'
+      OR statement->>'code' !~ '^H[0-9]{3}[A-Za-z]{0,2}$'
       OR nullif(btrim(statement->>'text'), '') IS NULL
   ) THEN RAISE EXCEPTION 'invalid_h_statements'; END IF;
 
@@ -717,7 +722,7 @@ BEGIN
       )
       OR jsonb_typeof(statement->'code') <> 'string'
       OR jsonb_typeof(statement->'text') <> 'string'
-      OR statement->>'code' !~ '^P[0-9]{3}$'
+      OR statement->>'code' !~ '^P[0-9]{3}(\+P?[0-9]{3})*$'
       OR nullif(btrim(statement->>'text'), '') IS NULL
   ) THEN RAISE EXCEPTION 'invalid_p_statements'; END IF;
 

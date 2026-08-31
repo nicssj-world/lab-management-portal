@@ -48,7 +48,16 @@ export async function PATCH(
     if (saved.error) throw saved.error
     if (saved.data?.file_id) await publishSdsForHolding(resolved.context, resolved.actor.id)
 
-    return NextResponse.json({ ok: true })
+    // Return the server timestamp that the editor must use for the next save.
+    // The publish step can update updated_at as well, so read it after publish.
+    const current = await supabaseAdmin
+      .from('chemical_sds_versions')
+      .select('updated_at')
+      .eq('id', id)
+      .single()
+    if (current.error) throw current.error
+
+    return NextResponse.json({ ok: true, updatedAt: current.data.updated_at })
   } catch (error) {
     return transitionError(error)
   }
