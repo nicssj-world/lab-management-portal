@@ -14,6 +14,7 @@ const ICONS: Record<string, string> = {
   search:      'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3',
   filter:      'M3 4h18l-7 9v6l-4 2v-8L3 4',
   plus:        'M12 5v14M5 12h14',
+  refresh:     'M20 11a8 8 0 00-14.9-3M4 4v4h4M4 13a8 8 0 0014.9 3M20 20v-4h-4',
   download:    'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3',
   upload:      'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
   eye:         'M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12zM12 15a3 3 0 100-6 3 3 0 000 6z',

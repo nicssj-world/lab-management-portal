@@ -49,6 +49,8 @@ Run `scripts/quality-task-module.sql` in Supabase Dashboard → SQL Editor befor
 
 Meeting evidence is PDF-only (maximum 20 MB) and is uploaded directly to the existing Cloudflare R2 bucket. Managers administer templates and assignments through the `งานคุณภาพ:edit` permission; assigned staff with `งานคุณภาพ:view` can schedule, attach evidence, and complete their work.
 
+The `วันหยุดเดือนนี้` card on `/staff/quality-tasks` lets Admin sync official Thai holidays from Google's public Thailand holiday calendar. It uses `th.th#holiday@group.v.calendar.google.com` by default; set `GOOGLE_HOLIDAY_CALENDAR_ID` or `GOOGLE_HOLIDAY_CALENDAR_ICS_URL` in the server environment only when a different public calendar is needed. Run `supabase/migrations/202608310002_quality_task_holiday_google_sync.sql` before using the Sync button. Imported rows are tagged as Google holidays, while manually entered rows are preserved.
+
 ## Quality Document Workflow V2
 
 Run the schema script before using the workflow in a real environment:

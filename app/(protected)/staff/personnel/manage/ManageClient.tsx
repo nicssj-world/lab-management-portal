@@ -142,8 +142,8 @@ export function ManageClient({ rows: initialRows, categories, compStats, workGro
         <PageHeader eyebrow="กลุ่มงานเทคนิคการแพทย์" title="จัดการกลุ่มงาน" subtitle="กำหนดหัวหน้างานและมอบหมายงานให้บุคลากรในแต่ละงาน" marginBottom={0} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" onClick={() => setHisImportOpen(true)} style={btn}><Icon name="upload" size={15} /> นำเข้าอบรมจาก HIS</button>
-          <Link href="/staff/personnel/team-org" style={{ ...ghost, textDecoration: 'none' }}>
-            <Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน
+          <Link href="/staff/personnel/team-org" style={{ ...ghost, textDecoration: 'none', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', whiteSpace: 'normal', textAlign: 'left' }}>
+            <Icon name="users" size={15} /> เจ้าหน้าที่กลุ่มงานเทคนิคการแพทย์
           </Link>
         </div>
       </div>

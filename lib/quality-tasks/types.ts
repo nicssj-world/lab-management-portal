@@ -94,12 +94,14 @@ export interface QualityTaskCheckIn {
 }
 
 export type QualityTaskHolidayKind = 'public' | 'special'
+export type QualityTaskHolidaySource = 'manual' | 'google_th_holidays'
 
 export interface QualityTaskHoliday {
   id: string
   holidayDate: string
   name: string
   kind: QualityTaskHolidayKind
+  source: QualityTaskHolidaySource
 }
 
 export interface QualityTaskOccurrence {

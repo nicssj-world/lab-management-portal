@@ -1105,6 +1105,29 @@ export function QualityTaskDashboard({
       setHolidayBusy(false);
     }
   }
+  async function syncHolidays() {
+    if (!isAdmin || holidayBusy) return;
+    const year = Number(month.slice(0, 4));
+    setHolidayBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch("/api/admin/quality-tasks/holidays/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      const manualText = json.skippedManual > 0 ? ` · ข้ามรายการที่คีย์เอง ${json.skippedManual} วัน` : "";
+      setNotice(`Sync วันหยุดปี ${year + 543} สำเร็จ: เพิ่ม ${json.imported} วัน ปรับปรุง ${json.updated} วัน${manualText}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sync วันหยุดไม่สำเร็จ");
+    } finally {
+      setHolidayBusy(false);
+    }
+  }
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -1584,14 +1607,28 @@ export function QualityTaskDashboard({
               </p>
             </div>
             {isAdmin && (
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="plus"
-                onClick={() => openHolidayEditor()}
-              >
-                เพิ่มวันหยุด
-              </Button>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="refresh"
+                  disabled={holidayBusy}
+                  aria-busy={holidayBusy}
+                  title={`นำเข้าวันหยุดราชการของปี ${Number(month.slice(0, 4)) + 543} จาก Google Calendar`}
+                  onClick={() => void syncHolidays()}
+                >
+                  Sync วันหยุด
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="plus"
+                  disabled={holidayBusy}
+                  onClick={() => openHolidayEditor()}
+                >
+                  เพิ่มวันหยุด
+                </Button>
+              </div>
             )}
           </div>
           {holidays.length === 0 ? (
@@ -1620,6 +1657,9 @@ export function QualityTaskDashboard({
                       <span style={{ color: "#B45309", fontSize: 10, fontWeight: 700 }}>
                         {holiday.kind === "public" ? "วันหยุดราชการ" : "วันหยุดพิเศษ"}
                       </span>
+                      {holiday.source === "google_th_holidays" && (
+                        <span style={{ color: "#64748B", fontSize: 10, fontWeight: 700 }}>Google</span>
+                      )}
                     </div>
                     <div style={{ marginTop: 2, color: "#78350F", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {holiday.name}

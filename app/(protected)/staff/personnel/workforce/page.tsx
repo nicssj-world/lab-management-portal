@@ -95,8 +95,8 @@ export default async function WorkforceDashboardPage() {
           />
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <Link href="/staff/personnel/team-org" style={linkBtn}>
-            <Icon name="users" size={15} /> ผังองค์กรกลุ่มงาน
+          <Link href="/staff/personnel/team-org" style={{ ...linkBtn, maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', whiteSpace: 'normal', textAlign: 'left' }}>
+            <Icon name="users" size={15} /> เจ้าหน้าที่กลุ่มงานเทคนิคการแพทย์
           </Link>
           <Link href="/staff/personnel/exams" style={linkBtn}>
             <Icon name="doc" size={15} /> ข้อสอบสมรรถนะ
