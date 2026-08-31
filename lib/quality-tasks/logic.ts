@@ -121,6 +121,21 @@ export function occurrenceKey(scheduleId: string | null, templateId: string, per
   return scheduleId ? `${scheduleId}:${periodStart}` : `${templateId}:adhoc:${instanceId ?? periodStart}`
 }
 
+// The visible calendar date is plannedDate. A moved single-day ad-hoc
+// occurrence still has its original periodEnd, which must not create an
+// inverted range after the move.
+export function occurrenceCalendarRange(input: {
+  scheduleId: string | null
+  periodStart: string
+  periodEnd: string
+  plannedDate: string | null
+}) {
+  const start = input.plannedDate ?? input.periodStart
+  const isMultiDayAdHoc = input.scheduleId === null && input.periodEnd > input.periodStart
+  const end = isMultiDayAdHoc && input.periodEnd >= start ? input.periodEnd : start
+  return { start, end }
+}
+
 // Ad-hoc occurrences (scheduleId === null) store their user-typed subject in periodLabel —
 // there is no separate title column. Scheduled occurrences always use the template's title.
 export function occurrenceDisplayTitle(o: { scheduleId: string | null; periodLabel: string; template: { title: string; categoryName: string } }): string {

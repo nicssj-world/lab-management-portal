@@ -49,6 +49,8 @@ assert.ok(dashboard.includes('border-left-style:dashed'), 'activity cards differ
 assert.match(dashboard, /TASK_KIND_META[\s\S]{0,240}?meeting:[\s\S]{0,120}?icon: "users"/, 'meeting cards keep a distinct leading glyph')
 assert.match(dashboard, /TASK_KIND_META[\s\S]{0,240}?activity:[\s\S]{0,120}?icon: "clipboard"/, 'activity cards carry their own leading glyph')
 assert.ok(dashboard.includes('qt-kind-legend'), 'calendar explains its two card kinds with a legend')
+assert.ok(dashboard.includes('occurrenceCalendarRange'), 'calendar derives a safe visible range after rescheduling')
+assert.ok(qualityServer.includes('planned_date.gte.${input.from}') && qualityServer.includes('planned_date.lte.${input.to}'), 'occurrence query includes explicitly moved dates')
 
 // รายการด้านล่างปฏิทิน: เข้าถึงด้วยคีย์บอร์ดได้ เรียงลำดับได้ และไม่เรียกงานทุกชนิดว่า "กิจกรรม"
 assert.ok(dashboard.includes('งานทั้งหมด ('), 'list heading covers both task kinds, not just activities')

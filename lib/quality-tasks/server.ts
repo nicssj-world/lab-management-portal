@@ -161,7 +161,11 @@ export async function getQualityTaskOccurrences(
   if (!templates.length) return []
   const people = prefetched?.people ?? await listTaskPeople()
   const { data: instanceRows, error } = await supabaseAdmin.from('quality_task_instances').select('*')
-    .in('template_id', templates.map(template => template.id)).lte('period_start', input.to).gte('period_end', input.from)
+    .in('template_id', templates.map(template => template.id))
+    // A manually scheduled occurrence may be moved outside its original period
+    // (for example, an ad-hoc meeting moved from an earlier month). Include it
+    // by planned_date so it remains discoverable in the destination month.
+    .or(`and(period_start.lte.${input.to},period_end.gte.${input.from}),and(planned_date.gte.${input.from},planned_date.lte.${input.to})`)
   fail(error)
   // Widen the holiday lookup a little past `to` since an auto due date near the edge of the
   // range can shift forward past it when it lands on a holiday/weekend.
@@ -204,12 +208,26 @@ export async function getQualityTaskOccurrences(
   const result: QualityTaskOccurrence[] = []
   for (const template of templates) {
     for (const schedule of template.schedules.filter(s => s.active)) {
-      const materializedRollingPeriods = ((instanceRows ?? []) as Row[])
+      const scheduleRows = ((instanceRows ?? []) as Row[])
         .filter(row => str(row.schedule_id) === schedule.id)
+      const materializedRollingPeriods = scheduleRows
         .map(row => ({ start: str(row.period_start), end: str(row.period_end) }))
       const periods = schedule.recurrenceMode === 'rolling_completion'
         ? (materializedRollingPeriods.length ? materializedRollingPeriods : generatePeriods(schedule, scheduledFrom, input.to).slice(0, 1))
-        : generatePeriods(schedule, scheduledFrom, input.to)
+        : (() => {
+            const periodsByStart = new Map(generatePeriods(schedule, scheduledFrom, input.to).map(period => [period.start, period]))
+            // Keep a materialized occurrence visible when its explicit planned
+            // date is in this range but its original recurrence period is not.
+            for (const row of scheduleRows) {
+              const plannedDate = nullable(row.planned_date)
+              const start = str(row.period_start)
+              const end = str(row.period_end)
+              if (plannedDate && plannedDate >= input.from && plannedDate <= input.to && start && end) {
+                periodsByStart.set(start, { start, end })
+              }
+            }
+            return [...periodsByStart.values()].sort((a, b) => a.start.localeCompare(b.start))
+          })()
       for (const period of periods) {
         const key = occurrenceKey(schedule.id, template.id, period.start)
         const row = instanceByKey.get(key)

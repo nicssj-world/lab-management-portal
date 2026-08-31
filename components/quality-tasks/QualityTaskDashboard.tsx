@@ -26,6 +26,7 @@ import {
 import { QUALITY_TASK_CATEGORIES } from "@/lib/quality-tasks/categories";
 import {
   isWeekendDate,
+  occurrenceCalendarRange,
   occurrenceDisplayOwner,
   occurrenceDisplayTitle,
   supportsActionItems,
@@ -496,8 +497,7 @@ export function QualityTaskDashboard({
   const offset = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
   const byDate = new Map<string, QualityTaskOccurrence[]>();
   filtered.forEach((o) => {
-    const eventStart = o.plannedDate ?? o.periodStart;
-    const eventEnd = o.scheduleId === null ? o.periodEnd : eventStart;
+    const { start: eventStart, end: eventEnd } = occurrenceCalendarRange(o);
     if (!eventStart || !eventEnd) return;
     for (let day = 1; day <= days; day++) {
       const date = `${month}-${String(day).padStart(2, "0")}`;
@@ -567,6 +567,7 @@ export function QualityTaskDashboard({
         await (
           await fetch(
             `/api/admin/quality-tasks/occurrences?from=${monthRange(month).from}&to=${monthRange(month).to}&scope=${scope}`,
+            { cache: "no-store" },
           )
         ).json()
       ).occurrences as QualityTaskOccurrence[];

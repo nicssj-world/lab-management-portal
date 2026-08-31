@@ -10,6 +10,7 @@ import {
   canManageQualityTaskHolidays,
   nextBusinessDay,
   occurrenceKey,
+  occurrenceCalendarRange,
   supportsActionItems,
   resolveAssigneeEntries,
 } from './logic'
@@ -114,6 +115,17 @@ assert.equal(
   occurrenceKey('schedule-1', 'template-1', '2026-08-19', 'instance-1'),
   'schedule-1:2026-08-19',
   'scheduled occurrence keys remain schedule-based',
+)
+
+assert.deepEqual(
+  occurrenceCalendarRange({ scheduleId: null, periodStart: '2026-08-20', periodEnd: '2026-08-20', plannedDate: '2026-08-31' }),
+  { start: '2026-08-31', end: '2026-08-31' },
+  'a moved single-day ad-hoc meeting remains visible on its new date',
+)
+assert.deepEqual(
+  occurrenceCalendarRange({ scheduleId: null, periodStart: '2026-08-20', periodEnd: '2026-08-22', plannedDate: null }),
+  { start: '2026-08-20', end: '2026-08-22' },
+  'multi-day ad-hoc occurrences retain their original range',
 )
 
 console.log('lib/quality-tasks/logic.test.ts: all assertions passed')

@@ -92,6 +92,7 @@ create table if not exists public.quality_task_attachments (
 );
 
 create index if not exists quality_task_instances_period on public.quality_task_instances(period_start, period_end);
+create index if not exists quality_task_instances_planned_date on public.quality_task_instances(planned_date);
 create index if not exists quality_task_instances_status on public.quality_task_instances(status);
 create index if not exists quality_task_attachments_instance on public.quality_task_attachments(instance_id);
 

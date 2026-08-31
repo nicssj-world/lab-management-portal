@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const sql = readFileSync(join(process.cwd(), 'scripts/quality-task-module.sql'), 'utf8')
+const plannedDateMigration = readFileSync(join(process.cwd(), 'supabase/migrations/20260831081132_quality_task_planned_date_index.sql'), 'utf8')
 
 for (const table of [
   'quality_task_templates', 'quality_task_schedules', 'quality_task_default_assignees',
@@ -10,6 +11,8 @@ for (const table of [
 ]) assert.ok(sql.includes(`create table if not exists public.${table}`), `creates ${table}`)
 
 assert.ok(sql.includes('unique (schedule_id, period_start)'), 'prevents duplicate scheduled occurrences')
+assert.ok(sql.includes('quality_task_instances_planned_date'), 'fresh installs index explicit planned dates')
+assert.match(plannedDateMigration, /create index if not exists quality_task_instances_planned_date/i, 'migration indexes explicit planned dates')
 assert.ok(sql.includes("'งานคุณภาพ:edit'"), 'seeds edit permission')
 assert.ok(sql.includes("'งานคุณภาพ:view'"), 'seeds view permission')
 
