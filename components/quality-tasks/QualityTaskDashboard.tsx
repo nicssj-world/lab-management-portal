@@ -15,6 +15,7 @@ import type {
   TaskUrgency,
 } from "@/lib/quality-tasks/types";
 import { Button } from "@/components/ui/Button";
+import { PdfViewerModal } from "@/components/documents/PdfViewerModal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Icon } from "@/components/ui/Icon";
 import { DEPARTMENTS } from "@/lib/validations/user-schema";
@@ -265,6 +266,10 @@ export function QualityTaskDashboard({
     url: string;
     dataUrl: string;
     closed: boolean;
+  } | null>(null);
+  const [attachmentViewer, setAttachmentViewer] = useState<{
+    url: string;
+    title: string;
   } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [participantModalOpen, setParticipantModalOpen] = useState(false);
@@ -654,6 +659,12 @@ export function QualityTaskDashboard({
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
+  }
+  function openAttachment(a: { id: string; fileName: string }) {
+    setAttachmentViewer({
+      url: `/api/admin/quality-tasks/attachments/${encodeURIComponent(a.id)}?proxy=1`,
+      title: a.fileName,
+    });
   }
   function toggleSort(key: ListSortKey) {
     setSort((current) =>
@@ -1964,7 +1975,10 @@ export function QualityTaskDashboard({
                 }
                 value={
                   selected.scheduleId === null
-                    ? fmtDateRange(selected.periodStart, selected.periodEnd)
+                    ? (() => {
+                        const { start, end } = occurrenceCalendarRange(selected);
+                        return fmtDateRange(start, end);
+                      })()
                     : fmt(selected.plannedDate)
                 }
               />
@@ -2353,17 +2367,26 @@ export function QualityTaskDashboard({
                           alignItems: "center",
                         }}
                       >
-                        <a
-                          href={`/api/admin/quality-tasks/attachments/${a.id}`}
-                          target="_blank"
+                        <button
+                          type="button"
+                          onClick={() => openAttachment(a)}
                           style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                            border: 0,
+                            padding: 0,
+                            background: "transparent",
                             fontSize: 12,
                             color: "var(--primary)",
                             flex: 1,
+                            textAlign: "left",
+                            cursor: "pointer",
+                            fontFamily: "inherit",
                           }}
                         >
-                          📎 {a.fileName}
-                        </a>
+                          <Icon name="eye" size={12} /> {a.fileName}
+                        </button>
                         {level === "edit" && (
                           <button
                             onClick={() => removeAttachment(a.id)}
@@ -3311,6 +3334,14 @@ export function QualityTaskDashboard({
             </div>
           </div>
         </div>
+      )}
+      {attachmentViewer && (
+        <PdfViewerModal
+          url={attachmentViewer.url}
+          title={attachmentViewer.title}
+          forcePdfJs
+          onClose={() => setAttachmentViewer(null)}
+        />
       )}
     </div>
   );

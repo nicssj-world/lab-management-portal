@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
+import { r2ObjectResponse } from '@/lib/r2/stream-response'
+import { contentDispositionForInline } from '@/lib/documents/download-filename'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { qualityTaskContext, qualityTaskError } from '@/lib/quality-tasks/api'
 
@@ -11,9 +13,25 @@ async function attachment(id: string) {
   return data as any
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await qualityTaskContext('view'); if (ctx.response) return ctx.response
-  try { const row = await attachment((await params).id); const url = await getSignedUrl(r2, new GetObjectCommand({ Bucket: R2_BUCKET, Key: row.r2_key }), { expiresIn: 300 }); return NextResponse.redirect(url) } catch (error) { return qualityTaskError(error) }
+  try {
+    const row = await attachment((await params).id)
+    if (req.nextUrl.searchParams.get('proxy') === '1') {
+      const object = await r2.send(new GetObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: row.r2_key,
+        Range: req.headers.get('range') ?? undefined,
+      }))
+      const fileName = String(row.file_name ?? 'quality-task-evidence.pdf').replace(/[\r\n]/g, '_')
+      return r2ObjectResponse(object, {
+        contentType: row.content_type || 'application/pdf',
+        contentDisposition: contentDispositionForInline(fileName),
+      })
+    }
+    const url = await getSignedUrl(r2, new GetObjectCommand({ Bucket: R2_BUCKET, Key: row.r2_key }), { expiresIn: 300 })
+    return NextResponse.redirect(url)
+  } catch (error) { return qualityTaskError(error) }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
