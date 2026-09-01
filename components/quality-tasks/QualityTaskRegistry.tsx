@@ -11,6 +11,7 @@ import type {
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Icon } from "@/components/ui/Icon";
+import { QualityTaskDialog } from "@/components/quality-tasks/QualityTaskDialog";
 import { DEPARTMENTS } from "@/lib/validations/user-schema";
 import {
   buildReadAudiencePayload,
@@ -181,14 +182,17 @@ export function QualityTaskRegistry({
           </>
         }
       />
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="qt-registry-filter-bar" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input
+          type="search"
+          aria-label="ค้นหาทะเบียนกิจกรรมคุณภาพ"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="ค้นหากิจกรรม ทีม หรือเลขเอกสาร"
           style={{ ...inputStyle, minWidth: 280 }}
         />
         <select
+          aria-label="กรองหมวดกิจกรรมคุณภาพ"
           value={cat}
           onChange={(e) => setCat(e.target.value)}
           style={inputStyle}
@@ -200,6 +204,21 @@ export function QualityTaskRegistry({
             </option>
           ))}
         </select>
+        {(search || cat) && (
+          <button
+            type="button"
+            className="qt-registry-clear-filter"
+            onClick={() => {
+              setSearch("");
+              setCat("");
+            }}
+          >
+            ล้างตัวกรอง
+          </button>
+        )}
+        <span className="qt-filter-count" role="status">
+          แสดง {filtered.length} จาก {items.length} รายการ
+        </span>
       </div>
       <div
         style={{
@@ -210,7 +229,12 @@ export function QualityTaskRegistry({
         }}
       >
         <table
-          style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: 13,
+            display: filtered.length ? "table" : "none",
+          }}
         >
           <thead>
             <tr>
@@ -297,12 +321,16 @@ export function QualityTaskRegistry({
                       }}
                     >
                       <button
+                        type="button"
+                        aria-label={`แก้ไขกิจกรรม ${t.title}`}
                         onClick={() => setDraft(structuredClone(t))}
                         style={iconBtn}
                       >
                         แก้ไข
                       </button>
                       <button
+                        type="button"
+                        aria-label={`ลบกิจกรรม ${t.title}`}
                         onClick={() => remove(t)}
                         disabled={busy}
                         style={{
@@ -321,13 +349,28 @@ export function QualityTaskRegistry({
             ))}
           </tbody>
         </table>
+        {filtered.length === 0 && (
+          <div className="qt-empty-state" role="status">
+            <Icon name="search" size={22} />
+            <strong>{items.length === 0 ? "ยังไม่มีรายการกิจกรรม" : "ไม่พบรายการตามตัวกรอง"}</strong>
+            <span>
+              {items.length === 0
+                ? "เพิ่มกิจกรรมคุณภาพเพื่อเริ่มจัดการทะเบียน"
+                : "ลองเปลี่ยนคำค้นหาหรือเลือกหมวดอื่น"}
+            </span>
+          </div>
+        )}
       </div>
       {error && !draft && (
         <p style={{ color: "#DC2626", fontSize: 12.5, margin: 0 }}>{error}</p>
       )}
       {draft && (
-        <div style={overlay}>
-          <div style={modal} onClick={(e) => e.stopPropagation()}>
+        <QualityTaskDialog
+          labelledBy="quality-task-registry-editor-title"
+          closeLabel="ปิดหน้าต่างแก้ไขกิจกรรม"
+          onClose={() => setDraft(null)}
+          panelStyle={modal}
+        >
             <div
               style={{
                 display: "flex",
@@ -335,14 +378,12 @@ export function QualityTaskRegistry({
                 gap: 10,
               }}
             >
-              <h2 style={{ margin: 0, fontSize: 19 }}>
+              <h2 id="quality-task-registry-editor-title" style={{ margin: 0, fontSize: 19 }}>
                 {draft.id ? "แก้ไขกิจกรรม" : "เพิ่มกิจกรรม"}
               </h2>
-              <button style={closeStyle} onClick={() => setDraft(null)}>
-                ×
-              </button>
             </div>
             <div
+              className="qt-registry-form-grid"
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
@@ -522,6 +563,7 @@ export function QualityTaskRegistry({
               </div>
               {draft.schedules.map((s, i) => (
                 <div
+                  className="qt-registry-schedule-row"
                   key={i}
                   style={{
                     display: "grid",
@@ -580,6 +622,7 @@ export function QualityTaskRegistry({
             </div>
             {error && <p style={{ color: "#DC2626", fontSize: 12 }}>{error}</p>}
             <div
+              className="qt-registry-dialog-actions"
               style={{
                 display: "flex",
                 justifyContent: "flex-end",
@@ -594,8 +637,7 @@ export function QualityTaskRegistry({
                 {busy ? "กำลังบันทึก" : "บันทึก"}
               </Button>
             </div>
-          </div>
-        </div>
+        </QualityTaskDialog>
       )}
       {participantModalOpen && draft && (
         <ParticipantAudienceModal
@@ -642,6 +684,7 @@ function AssigneeListEditor({
     <div style={{ display: "grid", gap: 6 }}>
       {entries.map((e, i) => (
         <div
+          className="qt-registry-assignee-row"
           key={i}
           style={{
             display: "grid",
@@ -680,7 +723,12 @@ function AssigneeListEditor({
             placeholder="ชื่อผู้รับผิดชอบ"
             style={{ ...inputStyle, opacity: e.userId ? 0.65 : 1 }}
           />
-          <button onClick={() => removeEntry(i)} style={iconBtn}>
+          <button
+            type="button"
+            aria-label={`ลบผู้รับผิดชอบลำดับที่ ${i + 1}`}
+            onClick={() => removeEntry(i)}
+            style={iconBtn}
+          >
             ลบ
           </button>
         </div>
@@ -695,11 +743,13 @@ function DeptAudienceCheckbox({
   checked,
   indeterminate,
   disabled,
+  ariaLabel,
   onChange,
 }: {
   checked: boolean;
   indeterminate: boolean;
   disabled?: boolean;
+  ariaLabel: string;
   onChange: (checked: boolean) => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -710,6 +760,7 @@ function DeptAudienceCheckbox({
     <input
       ref={ref}
       type="checkbox"
+      aria-label={ariaLabel}
       checked={checked}
       disabled={disabled}
       onChange={(e) => onChange(e.target.checked)}
@@ -793,12 +844,16 @@ function ParticipantAudienceModal({
     onSave(payload.depts, payload.user_ids);
   }
   return (
-    <div style={overlay}>
-      <div
-        style={{ ...modal, maxWidth: 460, width: "100%" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>
+    <QualityTaskDialog
+      labelledBy="quality-task-registry-participant-title"
+      closeLabel="ปิดหน้าต่างเลือกผู้เข้าร่วม"
+      onClose={onCancel}
+      panelStyle={{ ...modal, maxWidth: 460, width: "100%" }}
+    >
+        <div
+          id="quality-task-registry-participant-title"
+          style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}
+        >
           กำหนดผู้เข้าร่วมประชุม
         </div>
         <div
@@ -884,9 +939,6 @@ function ParticipantAudienceModal({
               return (
                 <div key={group.key}>
                   <div
-                    onClick={() => {
-                      if (!disabled) toggleExpand(group.key);
-                    }}
                     style={{
                       display: "flex",
                       alignItems: "flex-start",
@@ -902,23 +954,47 @@ function ParticipantAudienceModal({
                       checked={checked}
                       indeterminate={indeterminate}
                       disabled={disabled}
+                      ariaLabel={`${group.label} ทั้งหมด`}
                       onChange={() => toggleGroup(group.members)}
                     />
-                    <Icon
-                      name={isExpanded ? "chevDown" : "chevRight"}
-                      size={12}
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      aria-expanded={disabled ? undefined : isExpanded}
+                      aria-label={`${group.label} (${group.members.length} คน)`}
+                      onClick={() => toggleExpand(group.key)}
                       style={{
-                        color: "var(--muted)",
-                        flexShrink: 0,
-                        marginTop: 3,
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 7,
+                        flex: 1,
+                        minWidth: 0,
+                        padding: 0,
+                        border: 0,
+                        background: "transparent",
+                        color: "inherit",
+                        font: "inherit",
+                        textAlign: "left",
+                        cursor: disabled ? "default" : "pointer",
+                        lineHeight: 1.35,
                       }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontWeight: 600 }}>{group.label}</span>
-                      <span style={{ color: "var(--muted)", marginLeft: 5 }}>
-                        ({group.members.length} คน)
+                    >
+                      <Icon
+                        name={isExpanded ? "chevDown" : "chevRight"}
+                        size={12}
+                        style={{
+                          color: "var(--muted)",
+                          flexShrink: 0,
+                          marginTop: 3,
+                        }}
+                      />
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontWeight: 600 }}>{group.label}</span>
+                        <span style={{ color: "var(--muted)", marginLeft: 5 }}>
+                          ({group.members.length} คน)
+                        </span>
                       </span>
-                    </div>
+                    </button>
                   </div>
                   {isExpanded && group.members.length > 0 && (
                     <div
@@ -978,6 +1054,7 @@ function ParticipantAudienceModal({
           </div>
         )}
         <div
+          className="qt-registry-dialog-actions"
           style={{
             display: "flex",
             justifyContent: "flex-end",
@@ -986,6 +1063,7 @@ function ParticipantAudienceModal({
           }}
         >
           <button
+            type="button"
             onClick={onCancel}
             style={{
               padding: "8px 16px",
@@ -1001,6 +1079,7 @@ function ParticipantAudienceModal({
             ยกเลิก
           </button>
           <button
+            type="button"
             onClick={handleSave}
             style={{
               padding: "8px 16px",
@@ -1017,8 +1096,7 @@ function ParticipantAudienceModal({
             บันทึก
           </button>
         </div>
-      </div>
-    </div>
+    </QualityTaskDialog>
   );
 }
 function Badge({ text, color = "#1E5FAD" }: { text: string; color?: string }) {
@@ -1101,16 +1179,6 @@ const tdCenter: React.CSSProperties = {
   textAlign: "center",
   verticalAlign: "middle",
 };
-const overlay: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  zIndex: 100,
-  background: "rgba(15,23,42,.45)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 16,
-};
 const modal: React.CSSProperties = {
   background: "var(--card)",
   borderRadius: 16,
@@ -1119,14 +1187,4 @@ const modal: React.CSSProperties = {
   maxHeight: "92vh",
   overflow: "auto",
   padding: 20,
-};
-const closeStyle: React.CSSProperties = {
-  border: 0,
-  background: "var(--surface-2)",
-  borderRadius: 8,
-  width: 32,
-  height: 32,
-  fontSize: 22,
-  cursor: "pointer",
-  color: "var(--muted)",
 };

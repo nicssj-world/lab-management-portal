@@ -194,10 +194,12 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
   async function handlePreview(path: string, title: string) {
     setActionError('')
     try {
-      const res = await fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
-      const json = await res.json()
+      // Workflow preview is not a read-compliance event. It must remain available
+      // to DCC for Draft/Review/Approved files while the Read action is Published-only.
+      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(path)}&variant=preview`)
+      const json = await res.json().catch(() => ({}))
       if (!res.ok || !json.url) { setActionError(json.error ?? 'เปิดไฟล์ไม่สำเร็จ'); return }
-      setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(path), title, mimeType: json.mime_type ?? null })
+      setPdfViewer({ url: json.url, pdfJsUrl: documentPdfProxyUrl(path), title, mimeType: doc.mime_type ?? null })
     } catch {
       setActionError('เปิดไฟล์ไม่สำเร็จ')
     }

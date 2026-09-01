@@ -12,7 +12,7 @@ export async function GET() {
 
   const { data } = await supabaseAdmin
     .from('document_access_logs')
-    .select('document_id, created_at, documents(published_at)')
+    .select('document_id, created_at, documents(published_at, status)')
     .eq('user_id', user.id)
     .eq('action', 'view')
 
@@ -20,6 +20,7 @@ export async function GET() {
   for (const log of data ?? []) {
     if (!log.document_id) continue
     const doc = Array.isArray(log.documents) ? log.documents[0] : log.documents
+    if (doc?.status !== 'Published') continue
     const publishedAt = doc?.published_at ?? null
     if (publishedAt && log.created_at < publishedAt) continue
     ids.add(log.document_id)

@@ -16,7 +16,7 @@ import { RevisionPanel } from '@/components/documents/RevisionPanel'
 import { QuickUpdateModal } from '@/components/documents/QuickUpdateModal'
 import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
 import { allowedTransitions } from '@/lib/documents/transitions'
-import { canMoveToStatus } from '@/lib/documents/workflow'
+import { canMoveToStatus, isReadableDocument } from '@/lib/documents/workflow'
 import { isReviewTrackedType, reviewWindowState } from '@/lib/documents/review'
 import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
 import { TYPE_ICON_BG, TYPE_ICON_FG, STATUS_LABEL, STATUS_COLOR, fmtSize, fmtDate } from '@/lib/documents/ui-constants'
@@ -339,7 +339,7 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
     if (initialReadId) {
       fetch(`/api/admin/documents/${initialReadId}`)
         .then((r) => r.json())
-        .then((d) => { if (d?.id) setReadDoc(d as Document) })
+        .then((d) => { if (d?.id && isReadableDocument(d)) setReadDoc(d as Document) })
         .catch(() => {})
     }
     if (initialCreate && canUpload) {
@@ -1019,15 +1019,14 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
                         <td style={{ padding: '13px 16px', whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'flex', gap: 4 }}>
                             {/* Read */}
-                            {canRead && (() => {
+                            {canRead && isReadableDocument(doc) && (() => {
                               const hasRead = readDocIds.has(doc.id)
                               return (
                                 <button
-                                  disabled={!doc.file_url}
-                                  onClick={() => doc.file_url ? setReadDoc(doc) : toast('เอกสารนี้ยังไม่มีไฟล์ทางการ', false)}
-                                  title={doc.file_url ? 'อ่านเอกสาร' : 'ยังไม่มีไฟล์ทางการ'}
-                                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px', height: 32, borderRadius: 7, border: `1px solid ${hasRead ? 'var(--success)' : 'var(--border)'}`, background: 'transparent', cursor: doc.file_url ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600, color: hasRead ? 'var(--success)' : 'var(--muted)', fontFamily: 'inherit', transition: 'all .12s', opacity: doc.file_url ? 1 : 0.45 }}
-                                  onMouseEnter={(e) => { if (doc.file_url) { e.currentTarget.style.borderColor = 'var(--success)'; e.currentTarget.style.color = 'var(--success)' } }}
+                                  onClick={() => setReadDoc(doc)}
+                                  title="อ่านเอกสาร"
+                                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px', height: 32, borderRadius: 7, border: `1px solid ${hasRead ? 'var(--success)' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: hasRead ? 'var(--success)' : 'var(--muted)', fontFamily: 'inherit', transition: 'all .12s' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--success)'; e.currentTarget.style.color = 'var(--success)' }}
                                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = hasRead ? 'var(--success)' : 'var(--border)'; e.currentTarget.style.color = hasRead ? 'var(--success)' : 'var(--muted)' }}>
                                   <Icon name="eye" size={13} /> Read
                                 </button>

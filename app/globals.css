@@ -1422,11 +1422,26 @@ button.kpi-satisfaction-summary-item[aria-pressed="true"] {
   .kpi-satisfaction-summary-item { transition: none; }
 }
 
-/* Quality task QR dialog — keep the dismiss action visible at the modal edge. */
-.quality-task-qr-modal-close {
+/* Shared Quality Tasks dialog behavior — keep every modal keyboard-safe and dismissible. */
+.quality-task-dialog-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  padding-right: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  /* Keep the scroll interaction without a persistent rail under the close button. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.quality-task-dialog-body > :first-child { padding-right: 56px; }
+.quality-task-dialog-body::-webkit-scrollbar { display: none; }
+.quality-task-dialog-close {
   position: absolute;
   top: 12px;
   right: 12px;
+  z-index: 3;
   display: grid;
   width: 44px;
   height: 44px;
@@ -1435,21 +1450,149 @@ button.kpi-satisfaction-summary-item[aria-pressed="true"] {
   border: 1px solid var(--danger);
   border-radius: 10px;
   color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 8%, var(--card));
+  background: var(--card);
   cursor: pointer;
   touch-action: manipulation;
-  transition: color .15s ease, background .15s ease, transform .15s ease;
+  transition: color .15s ease, background .15s ease, border-color .15s ease, transform .15s ease;
 }
-.quality-task-qr-modal-close:hover {
+.quality-task-dialog-close:hover {
   color: #fff;
+  border-color: var(--danger);
   background: var(--danger);
 }
-.quality-task-qr-modal-close:active { transform: scale(.96); }
-.quality-task-qr-modal-close:focus-visible {
-  outline: 3px solid var(--primary);
+.quality-task-dialog-close-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--card));
+}
+.quality-task-dialog-close-danger:hover {
+  color: #fff;
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.quality-task-dialog-close:active { transform: scale(.96); }
+.quality-task-dialog-close:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+.quality-task-dialog-close:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--danger) 42%, transparent);
   outline-offset: 3px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .quality-task-qr-modal-close { transition: none; }
-  .quality-task-qr-modal-close:active { transform: none; }
+  .quality-task-dialog-close { transition: none; }
+  .quality-task-dialog-close:active { transform: none; }
+}
+
+/* Quality Tasks filter and result states */
+.qt-filter-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.qt-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 32px 20px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+  text-align: center;
+}
+.qt-empty-state > svg { color: var(--primary); }
+.qt-empty-state strong { color: var(--ink); font-size: 14px; }
+.qt-empty-state span { max-width: 46ch; font-size: 12px; line-height: 1.5; }
+.qt-filter-bar > select { flex: 1 1 150px; min-width: 130px; }
+.qt-search-control { flex: 1 1 180px; min-width: 180px; }
+.qt-summary-grid > div { min-width: 0; }
+.qt-detail-grid > * { min-width: 0; }
+.qt-action-feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+.qt-action-feedback svg { flex: 0 0 auto; }
+.qt-status-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.qt-registry-filter-bar { align-items: center; }
+.qt-registry-filter-bar > input { flex: 1 1 280px; min-width: 220px !important; }
+.qt-registry-filter-bar > select { flex: 0 1 190px; min-width: 160px; }
+.qt-registry-clear-filter {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.qt-registry-clear-filter:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+.qt-registry-form-grid > label,
+.qt-registry-assignee-row > * { min-width: 0; }
+.qt-registry-dialog-actions { flex-wrap: wrap; }
+@media (max-width: 767px) {
+  .qt-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .qt-filter-bar {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch !important;
+  }
+  .qt-filter-bar > button,
+  .qt-filter-bar > select,
+  .qt-filter-bar > .qt-search-control { width: 100%; min-width: 0; }
+  .qt-filter-bar > strong,
+  .qt-filter-bar > .qt-filter-count,
+  .qt-filter-bar > .qt-search-control { grid-column: 1 / -1; }
+  .qt-filter-bar > strong { margin-right: 0 !important; }
+  .qt-detail-grid { grid-template-columns: 1fr !important; }
+  .qt-meeting-time-fields,
+  .qt-adhoc-time-fields,
+  .qt-adhoc-date-grid { grid-template-columns: 1fr !important; }
+  .qt-action-item-form { grid-template-columns: 1fr !important; }
+  .qt-registry-filter-bar {
+    display: grid !important;
+    grid-template-columns: 1fr;
+  }
+  .qt-registry-filter-bar > input,
+  .qt-registry-filter-bar > select,
+  .qt-registry-filter-bar > button,
+  .qt-registry-filter-bar > .qt-filter-count {
+    width: 100%;
+    min-width: 0 !important;
+  }
+  .qt-registry-form-grid { grid-template-columns: 1fr !important; }
+  .qt-registry-form-grid > label { grid-column: 1 / -1 !important; }
+  .qt-registry-assignee-row { grid-template-columns: 1fr !important; }
+  .qt-registry-assignee-row > button,
+  .qt-registry-schedule-row > button { width: 100%; }
+  .qt-registry-schedule-row { grid-template-columns: 1fr !important; }
+  .qt-registry-dialog-actions { flex-direction: column-reverse; }
+  .qt-registry-dialog-actions > button { width: 100%; }
+  .quality-task-dialog-panel {
+    width: min(100%, calc(100vw - 24px)) !important;
+    max-height: calc(100vh - 24px) !important;
+    padding: 16px !important;
+  }
+  .qt-filter-count { width: 100%; margin-left: 0; }
 }

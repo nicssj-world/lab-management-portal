@@ -10,6 +10,7 @@ import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/Docu
 import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
 import { DOCUMENT_DEPARTMENTS } from '@/lib/documents/departments'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
+import { isReadableDocument } from '@/lib/documents/workflow'
 import type { Document } from '@/lib/supabase/types'
 import { DOC_TYPES as TYPE_ORDER, TYPE_LABEL } from '@/lib/documents/type-labels'
 
@@ -94,7 +95,8 @@ export function CategoriesClient({ docs, userRole, docRole, userName, userId = '
     }
   }
 
-  async function quickRead(doc: Pick<CategoryDoc, 'id' | 'title' | 'file_url'>) {
+  async function quickRead(doc: Pick<CategoryDoc, 'id' | 'title' | 'status' | 'file_url'>) {
+    if (!isReadableDocument(doc)) return
     if (readingDocIds.has(doc.id)) return
     setReadingDocIds((prev) => new Set(prev).add(doc.id))
     try {
@@ -298,7 +300,7 @@ export function CategoriesClient({ docs, userRole, docRole, userName, userId = '
                                       {d.revision && <span style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0 }}>Rev.{d.revision}</span>}
                                       <span style={{ fontSize: 10.5, fontWeight: 700, color: tone.color, background: tone.bg, padding: '2px 9px', borderRadius: 99, flexShrink: 0 }}>{d.status}</span>
                                     </button>
-                                    {d.file_url ? (
+                                    {isReadableDocument(d) ? (
                                       <button
                                         onClick={() => quickRead(d)}
                                         disabled={readingDocIds.has(d.id)}

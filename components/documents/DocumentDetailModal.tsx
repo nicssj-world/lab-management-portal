@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
-import { isCoverRequiredType } from '@/lib/documents/workflow'
+import { isCoverRequiredType, isReadableDocument } from '@/lib/documents/workflow'
 import { isReviewOnlyType, reviewWindowState } from '@/lib/documents/review'
 import { TYPE_ICON_BG, TYPE_ICON_FG, STATUS_LABEL, fmtSize, fmtDate } from '@/lib/documents/ui-constants'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
@@ -218,8 +218,8 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
     setTimeout(() => setDownloadingAll(false), 1500)
   }
 
-  async function openLinkedDocRead(docId: string, fileUrl: string | null, fileName: string | null) {
-    if (!fileUrl || !fileName) return
+  async function openLinkedDocRead(docId: string, fileUrl: string | null, fileName: string | null, status: string | null) {
+    if (!isReadableDocument({ status, file_url: fileUrl }) || !fileUrl || !fileName) return
     try {
       const res = await fetch(`/api/admin/documents/${docId}/read`, { method: 'POST' })
       const json = await res.json()
@@ -449,11 +449,12 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
                         {group.items.map(l => {
                           const d = l.documents
                           if (!d) return null
+                          const canReadLinkedDoc = isReadableDocument(d)
                           return (
                             <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
                               <div
-                                onClick={() => openLinkedDocRead(d.id, d.file_url, d.file_name)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, cursor: 'pointer' }}
+                                onClick={canReadLinkedDoc ? () => openLinkedDocRead(d.id, d.file_url, d.file_name, d.status) : undefined}
+                                style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, cursor: canReadLinkedDoc ? 'pointer' : 'default' }}
                               >
                                 <div style={{ width: 28, height: 28, borderRadius: 6, background: TYPE_ICON_BG[d.type] ?? 'rgba(100,116,139,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                   <Icon name="doc" size={13} style={{ color: TYPE_ICON_FG[d.type] ?? '#64748B' }} />
@@ -464,8 +465,8 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
                                   {l.link_kind === 'set' && <div style={{ fontSize: 10.5, color: '#B45309', marginTop: 2 }}>เอกสารสนับสนุนในชุด · อ่านอย่างเดียว</div>}
                                 </div>
                               </div>
-                              {d.file_url && d.file_name?.toLowerCase().endsWith('.pdf') && (
-                                <button onClick={() => openLinkedDocRead(d.id, d.file_url, d.file_name)} title="อ่าน"
+                              {canReadLinkedDoc && d.file_name?.toLowerCase().endsWith('.pdf') && (
+                                <button onClick={() => openLinkedDocRead(d.id, d.file_url, d.file_name, d.status)} title="อ่าน"
                                   style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}
                                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
                                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
@@ -562,11 +563,13 @@ export function DocumentDetailModal({ doc, hasRead, canUpload, userRole, docRole
 
           {/* Footer */}
           <div style={{ padding: '14px 26px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={onRead} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 20px', borderRadius: 10, background: 'var(--primary)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', transition: 'all .12s', boxShadow: '0 2px 10px rgba(30,95,173,.28)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#1750a0'; e.currentTarget.style.boxShadow = '0 4px 18px rgba(30,95,173,.38)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(30,95,173,.28)' }}>
-              <Icon name="eye" size={14} />{hasRead ? 'อ่านอีกครั้ง' : 'Read เอกสาร'}
-            </button>
+            {isReadableDocument(doc) && (
+              <button onClick={onRead} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 20px', borderRadius: 10, background: 'var(--primary)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', transition: 'all .12s', boxShadow: '0 2px 10px rgba(30,95,173,.28)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#1750a0'; e.currentTarget.style.boxShadow = '0 4px 18px rgba(30,95,173,.38)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(30,95,173,.28)' }}>
+                <Icon name="eye" size={14} />{hasRead ? 'อ่านอีกครั้ง' : 'Read เอกสาร'}
+              </button>
+            )}
             <button onClick={onHistory} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--ink)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all .12s' }}
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--ink)' }}>

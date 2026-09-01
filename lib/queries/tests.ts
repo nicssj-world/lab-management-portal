@@ -18,6 +18,20 @@ export interface TestFilters {
 
 const ALLOWED_SORT = ['code', 'cgd', 'th', 'en', 'price', 'tat_minutes', 'service', 'tube', 'updated_at']
 const CUSTOM_SORT = ['display_name_alpha']
+const TEST_SEARCH_COLUMNS = ['th', 'en', 'code', 'cgd', 'loinc'] as const
+
+function quotePostgrestFilterValue(value: string) {
+  const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  return `"${escaped}"`
+}
+
+export function buildTestSearchFilter(search: string) {
+  const trimmed = search.trim()
+  if (!trimmed) return ''
+
+  const pattern = quotePostgrestFilterValue(`%${trimmed}%`)
+  return TEST_SEARCH_COLUMNS.map((column) => `${column}.ilike.${pattern}`).join(',')
+}
 
 function getDisplayNameSortKey(test: Test): { group: number; key: string } {
   const raw = (test.th || test.en || test.code || '').trim()
@@ -63,9 +77,8 @@ export async function getTests(
   if (category) query = query.eq('category_id', category)
   if (tube) query = query.eq('tube', tube)
   if (popular !== undefined) query = query.eq('popular', popular)
-  if (search) {
-    query = query.or(`th.ilike.%${search}%,en.ilike.%${search}%,code.ilike.%${search}%,cgd.ilike.%${search}%,loinc.ilike.%${search}%`)
-  }
+  const searchFilter = buildTestSearchFilter(search ?? '')
+  if (searchFilter) query = query.or(searchFilter)
   if (customSort) query = query.range(0, 9999)
 
   const { data, error, count } = await query

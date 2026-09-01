@@ -47,7 +47,7 @@ export async function POST(
 
   if (docErr || !doc) return NextResponse.json({ error: 'ไม่พบเอกสาร' }, { status: 404 })
   if (!doc.file_url) return NextResponse.json({ error: 'เอกสารนี้ยังไม่มีไฟล์ทางการสำหรับอ่าน' }, { status: 409 })
-  if (actor.doc_role === 'Viewer' && doc.status !== 'Published') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (doc.status !== 'Published') return NextResponse.json({ error: 'เอกสารนี้ยังไม่อยู่ในสถานะ Published สำหรับการอ่าน' }, { status: 403 })
 
   await supabaseAdmin.from('document_access_logs')
     .insert({ document_id: id, user_id: actor.id, action: 'view' })

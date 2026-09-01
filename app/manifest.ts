@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'CBH Lab Management Portal',
     short_name: 'CBH Lab',
     description: 'Laboratory management portal for Chonburi Hospital.',
-    start_url: '/staff/dashboard',
+    start_url: '/',
     scope: '/',
     display: 'standalone',
     display_override: ['standalone', 'minimal-ui', 'browser'],

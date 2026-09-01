@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { PdfViewerModal } from "@/components/documents/PdfViewerModal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Icon } from "@/components/ui/Icon";
+import { QualityTaskDialog } from "@/components/quality-tasks/QualityTaskDialog";
 import { DEPARTMENTS } from "@/lib/validations/user-schema";
 import { buildParticipantSignInHtml } from "@/lib/quality-tasks/participant-sign-in-pdf";
 import {
@@ -92,6 +93,18 @@ const urgencyText = {
   overdue: "เกินกำหนด",
   completed: "เสร็จแล้ว",
 };
+const statusColor: Record<QualityTaskOccurrence["status"], string> = {
+  open: "#64748B",
+  in_progress: "#1E5FAD",
+  pending_review: "#D97706",
+  completed: "#16A34A",
+};
+const statusText: Record<QualityTaskOccurrence["status"], string> = {
+  open: "เปิดงาน",
+  in_progress: "กำลังทำ",
+  pending_review: "รอตรวจทาน",
+  completed: "เสร็จแล้ว",
+};
 // ชนิดงานในปฏิทิน — ไอคอน/คลาสของการ์ดผูกไว้ที่เดียว การ์ดกับคำอธิบายสัญลักษณ์จึงไม่มีทางเพี้ยนจากกัน
 const TASK_KIND_META: Record<TaskKind, { label: string; icon: string; cardClass: string }> = {
   meeting: { label: "การประชุม", icon: "users", cardClass: "qt-card-meeting" },
@@ -150,6 +163,21 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   "quality_task.holiday.delete": "ลบวันหยุด",
 };
 const MAX_VISIBLE_CALENDAR_EVENTS = 2;
+
+function actionBusyLabel(action: OccurrenceActionPayload["action"]) {
+  switch (action) {
+    case "schedule":
+      return "กำลังบันทึกกำหนดการ…";
+    case "save_completion_note":
+      return "กำลังบันทึกสรุป…";
+    case "complete":
+      return "กำลังปิดงาน…";
+    case "reopen":
+      return "กำลังเปิดงานใหม่…";
+    default:
+      return "กำลังบันทึก…";
+  }
+}
 
 function monthRange(month: string) {
   const [y, m] = month.split("-").map(Number);
@@ -297,6 +325,7 @@ export function QualityTaskDashboard({
       : null,
   );
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [holidayDraft, setHolidayDraft] = useState<HolidayDraft | null>(null);
@@ -404,17 +433,6 @@ export function QualityTaskDashboard({
     return () => window.clearInterval(timer);
   }, [qr?.notOpenYet, qr?.opensAt]);
 
-  useEffect(() => {
-    if (!qr) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setQr(null);
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [qr]);
-
   const load = useCallback(async (nextMonth = month, nextScope = scope) => {
     const { from, to } = monthRange(nextMonth);
     const [occurrencesResponse, holidaysResponse] = await Promise.all([
@@ -438,6 +456,7 @@ export function QualityTaskDashboard({
         : current,
     );
     setHolidays(holidaysJson.holidays ?? []);
+    return occurrences;
   }, [month, scope]);
   useEffect(() => {
     if (!selected) return;
@@ -515,15 +534,18 @@ export function QualityTaskDashboard({
       items.filter(
         (o) =>
           (!category || o.template.categoryCode === category) &&
-          (!state || o.urgency === state) &&
+          (!state ||
+            (state === "unscheduled"
+              ? o.scheduling === "unscheduled"
+              : o.urgency === state)) &&
           (!owner || occurrenceDisplayOwner(o) === owner) &&
           (!assignee || o.assignees.some((e) => e.userId === assignee)) &&
           (!search ||
-            `${occurrenceDisplayTitle(o)} ${occurrenceDisplayOwner(o)} ${o.completionNote ?? ""}`
+            `${occurrenceDisplayTitle(o)} ${occurrenceDisplayOwner(o)} ${o.completionNote ?? ""} ${o.note ?? ""} ${o.meetingLocation ?? ""} ${o.meetingAgenda ?? ""} ${o.assignees.map((entry) => assigneeName(entry, people)).join(" ")}`
               .toLowerCase()
               .includes(search.toLowerCase())),
       ),
-    [items, category, state, owner, assignee, search],
+    [items, category, state, owner, assignee, search, people],
   );
   // ลำดับของตาราง/การ์ดด้านล่างปฏิทิน เก็บแยกจาก filtered เพราะปฏิทินจัดลำดับตามเวลานัดในแต่ละวันของตัวเอง
   const [sort, setSort] = useState<{ key: ListSortKey; dir: "asc" | "desc" }>({
@@ -565,6 +587,14 @@ export function QualityTaskDashboard({
     overdue: filtered.filter((o) => o.urgency === "overdue").length,
     completed: filtered.filter((o) => o.urgency === "completed").length,
   };
+  const hasActiveFilters = Boolean(category || state || owner || assignee || search);
+  function clearFilters() {
+    setCategory("");
+    setState("");
+    setOwner("");
+    setAssignee("");
+    setSearch("");
+  }
   const [y, m] = month.split("-").map(Number);
   const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const offset = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
@@ -671,6 +701,7 @@ export function QualityTaskDashboard({
     payload: OccurrenceActionPayload,
   ): Promise<QualityTaskOccurrence | null> {
     setBusy(true);
+    setBusyLabel(actionBusyLabel(payload.action));
     setError("");
     try {
       const id = await ensureInstance(o);
@@ -681,16 +712,7 @@ export function QualityTaskDashboard({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
-      await load();
-      const fresh = (
-        await (
-          await fetch(
-            `/api/admin/quality-tasks/occurrences?from=${monthRange(month).from}&to=${monthRange(month).to}&scope=${scope}`,
-            { cache: "no-store" },
-          )
-        ).json()
-      ).occurrences as QualityTaskOccurrence[];
-      setItems(fresh);
+      const fresh = await load();
       const next = fresh.find((x) => x.key === o.key) ?? null;
       setSelected(next);
       return next;
@@ -699,6 +721,7 @@ export function QualityTaskDashboard({
       return null;
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   }
   async function saveCompletionNote(o: QualityTaskOccurrence) {
@@ -757,6 +780,7 @@ export function QualityTaskDashboard({
   async function upload(file: File) {
     if (!selected) return;
     setBusy(true);
+    setBusyLabel("กำลังอัปโหลด PDF…");
     setError("");
     try {
       const instanceId = await ensureInstance(selected);
@@ -796,6 +820,7 @@ export function QualityTaskDashboard({
       setError(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setBusyLabel("");
       if (fileRef.current) fileRef.current.value = "";
     }
   }
@@ -815,6 +840,8 @@ export function QualityTaskDashboard({
   const canAct =
     selected &&
     (level === "edit" || selected.assignees.some((e) => e.userId === actorId));
+  const selectedCanComplete =
+    selected && (selected.status === "open" || selected.status === "in_progress");
   // จำนวนแถวในใบลงนาม = ผู้เข้าร่วมที่มีบัญชี + ผู้เช็คอินที่ไม่มีบัญชี (แขก)
   const signInSheetCount = selected
     ? selected.participants.length +
@@ -868,6 +895,7 @@ export function QualityTaskDashboard({
   async function addActionItem() {
     if (!selected || !newActionItem.description.trim()) return;
     setBusy(true);
+    setBusyLabel("กำลังเพิ่ม Action Item…");
     setError("");
     try {
       const instanceId = await ensureInstance(selected);
@@ -900,11 +928,13 @@ export function QualityTaskDashboard({
       setError(e instanceof Error ? e.message : "เพิ่ม Action Item ไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   }
   async function toggleActionItemDone(item: QualityTaskActionItem) {
     if (!selected?.instanceId) return;
     setBusy(true);
+    setBusyLabel(item.doneAt ? "กำลังเปิด Action Item…" : "กำลังปิด Action Item…");
     setError("");
     try {
       const res = await fetch(
@@ -922,12 +952,14 @@ export function QualityTaskDashboard({
       setError(e instanceof Error ? e.message : "อัปเดต Action Item ไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   }
   async function removeActionItem(item: QualityTaskActionItem) {
     if (!selected?.instanceId) return;
     if (!confirm("ลบ Action Item นี้?")) return;
     setBusy(true);
+    setBusyLabel("กำลังลบ Action Item…");
     setError("");
     try {
       const res = await fetch(
@@ -941,11 +973,13 @@ export function QualityTaskDashboard({
       setError(e instanceof Error ? e.message : "ลบ Action Item ไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   }
   async function removeAttachment(id: string) {
     if (!confirm("ลบ PDF นี้?")) return;
     setBusy(true);
+    setBusyLabel("กำลังลบ PDF…");
     setError("");
     try {
       const r = await fetch(`/api/admin/quality-tasks/attachments/${id}`, {
@@ -959,6 +993,7 @@ export function QualityTaskDashboard({
       setError(e instanceof Error ? e.message : "ลบไฟล์ไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   }
   async function removeSelectedOccurrence() {
@@ -973,6 +1008,7 @@ export function QualityTaskDashboard({
     const reason = isScheduled ? prompt("เหตุผลที่ยกเลิกรอบนี้") : null;
     if (isScheduled && !reason?.trim()) return;
     setBusy(true);
+    setBusyLabel(isScheduled ? "กำลังยกเลิกรอบงาน…" : "กำลังลบงาน…");
     setError("");
     setNotice("");
     try {
@@ -994,6 +1030,7 @@ export function QualityTaskDashboard({
       setError(e instanceof Error ? e.message : "ดำเนินการไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   }
   async function createAdHoc() {
@@ -1005,6 +1042,7 @@ export function QualityTaskDashboard({
     )
       return;
     setBusy(true);
+    setBusyLabel("กำลังสร้างงาน…");
     setError("");
     try {
       const r = await fetch("/api/admin/quality-tasks/occurrences", {
@@ -1035,6 +1073,7 @@ export function QualityTaskDashboard({
       setError(e instanceof Error ? e.message : "สร้างงานไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   }
   function downloadSignInSheet() {
@@ -1108,6 +1147,7 @@ export function QualityTaskDashboard({
   // เพราะ check_in_token ผูกอยู่กับแถวใน quality_task_instances เท่านั้น
   async function showCheckInQr(o: QualityTaskOccurrence) {
     setBusy(true);
+    setBusyLabel("กำลังสร้าง QR…");
     setError("");
     try {
       const id = await ensureInstance(o);
@@ -1156,6 +1196,7 @@ export function QualityTaskDashboard({
       setError(e instanceof Error ? e.message : "สร้าง QR ไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   }
   async function openCheckIn() {
@@ -1168,6 +1209,7 @@ export function QualityTaskDashboard({
       return;
     const selectedKey = selected.key;
     setBusy(true);
+    setBusyLabel("กำลังเปิดรับ Check-in…");
     setError("");
     try {
       const res = await fetch(
@@ -1210,6 +1252,7 @@ export function QualityTaskDashboard({
       setError(e instanceof Error ? e.message : "เปิดรับ Check-in ไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   }
   async function closeCheckIn() {
@@ -1222,6 +1265,7 @@ export function QualityTaskDashboard({
       return;
     const selectedKey = selected.key;
     setBusy(true);
+    setBusyLabel("กำลังปิดรับ Check-in…");
     setError("");
     try {
       const res = await fetch(
@@ -1249,6 +1293,7 @@ export function QualityTaskDashboard({
       setError(e instanceof Error ? e.message : "ปิดรับ Check-in ไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setBusyLabel("");
     }
   }
   function openHolidayEditor(holiday?: QualityTaskHoliday) {
@@ -1423,6 +1468,7 @@ export function QualityTaskDashboard({
         </div>
       )}
       <div
+        className="qt-summary-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(4,minmax(0,1fr))",
@@ -1486,6 +1532,7 @@ export function QualityTaskDashboard({
         ))}
       </div>
       <div
+        className="qt-filter-bar"
         style={{
           display: "flex",
           gap: 8,
@@ -1497,7 +1544,13 @@ export function QualityTaskDashboard({
           background: "var(--card)",
         }}
       >
-        <Button variant="secondary" size="sm" onClick={() => move(-1)}>
+        <Button
+          variant="secondary"
+          size="sm"
+          aria-label="ไปเดือนก่อนหน้า"
+          title="ไปเดือนก่อนหน้า"
+          onClick={() => move(-1)}
+        >
           ‹
         </Button>
         <Button
@@ -1511,7 +1564,13 @@ export function QualityTaskDashboard({
         >
           วันนี้
         </Button>
-        <Button variant="secondary" size="sm" onClick={() => move(1)}>
+        <Button
+          variant="secondary"
+          size="sm"
+          aria-label="ไปเดือนถัดไป"
+          title="ไปเดือนถัดไป"
+          onClick={() => move(1)}
+        >
           ›
         </Button>
         <strong style={{ marginRight: "auto", fontSize: 14.5 }}>
@@ -1523,6 +1582,7 @@ export function QualityTaskDashboard({
         <select
           value={scope}
           onChange={(e) => changeScope(e.target.value as "mine" | "all")}
+          aria-label="ขอบเขตงาน"
           style={selectStyle}
         >
           <option value="mine">งานของฉัน</option>
@@ -1531,6 +1591,7 @@ export function QualityTaskDashboard({
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
+          aria-label="กรองตามหมวดงาน"
           style={{
             ...selectStyle,
             color: category ? CATEGORY_COLOR[category] : selectStyle.color,
@@ -1547,6 +1608,7 @@ export function QualityTaskDashboard({
         <select
           value={owner}
           onChange={(e) => setOwner(e.target.value)}
+          aria-label="กรองตามทีม/บทบาท"
           style={selectStyle}
         >
           <option value="">ทุกทีม</option>
@@ -1557,6 +1619,7 @@ export function QualityTaskDashboard({
         <select
           value={assignee}
           onChange={(e) => setAssignee(e.target.value)}
+          aria-label="กรองตามผู้รับผิดชอบ"
           style={selectStyle}
         >
           <option value="">ผู้รับผิดชอบทุกคน</option>
@@ -1569,14 +1632,17 @@ export function QualityTaskDashboard({
         <select
           value={state}
           onChange={(e) => setState(e.target.value)}
+          aria-label="กรองตามสถานะและกำหนดส่ง"
           style={selectStyle}
         >
           <option value="">ทุกสถานะ</option>
+          <option value="normal">ปกติ</option>
           <option value="due-soon">ใกล้กำหนด</option>
           <option value="overdue">เกินกำหนด</option>
           <option value="completed">เสร็จแล้ว</option>
+          <option value="unscheduled">ยังไม่กำหนดวัน</option>
         </select>
-        <div style={{ position: "relative" }}>
+        <div className="qt-search-control" style={{ position: "relative" }}>
           <Icon
             name="search"
             size={13}
@@ -1591,10 +1657,19 @@ export function QualityTaskDashboard({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="ค้นหางาน ทีม หรือหมายเหตุ"
             placeholder="ค้นหางาน/ทีม"
             style={{ ...selectStyle, minWidth: 180, paddingLeft: 28 }}
           />
         </div>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" icon="x" onClick={clearFilters}>
+            ล้างตัวกรอง
+          </Button>
+        )}
+        <span className="qt-filter-count" role="status">
+          แสดง {listRows.length} จาก {items.length} งาน
+        </span>
       </div>
       <div className="qt-calendar">
         {DAY_NAMES.map((d, index) => (
@@ -1897,7 +1972,9 @@ export function QualityTaskDashboard({
       )}
       <section>
         <h2 style={{ fontSize: 16, margin: "0 0 10px" }}>
-          งานทั้งหมด ({listRows.length})
+          {hasActiveFilters
+            ? `งานที่แสดง ${listRows.length} จาก ${items.length}`
+            : `งานทั้งหมด (${items.length})`}
         </h2>
         <div
           className="qt-desktop"
@@ -2054,6 +2131,7 @@ export function QualityTaskDashboard({
             return (
               <button
                 key={o.key}
+                type="button"
                 onClick={() => setSelected(o)}
                 className="fade-in-up qd-row"
                 style={{
@@ -2097,17 +2175,35 @@ export function QualityTaskDashboard({
             );
           })}
         </div>
+        {listRows.length === 0 && (
+          <div className="qt-empty-state" role="status">
+            <Icon name={items.length === 0 ? "calendar" : "search"} size={22} />
+            <strong>
+              {items.length === 0 ? "ยังไม่มีงานในเดือนนี้" : "ไม่พบงานตามตัวกรอง"}
+            </strong>
+            <span>
+              {items.length === 0
+                ? "ลองเปลี่ยนเดือน หรือสร้างงานเฉพาะกิจเมื่อมีรายการที่ต้องติดตาม"
+                : "ลองล้างตัวกรองหรือปรับคำค้นหาเพื่อดูรายการอื่น"}
+            </span>
+            {items.length > 0 && hasActiveFilters && (
+              <Button variant="secondary" size="sm" icon="x" onClick={clearFilters}>
+                ล้างตัวกรอง
+              </Button>
+            )}
+          </div>
+        )}
       </section>
       {selected && (
-        <div style={overlay}>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="modal-panel-pop"
-            style={{
-              ...modal,
-              borderTop: `3px solid ${CATEGORY_COLOR[selected.template.categoryCode] ?? "var(--primary)"}`,
-            }}
-          >
+        <QualityTaskDialog
+          labelledBy="quality-task-selected-title"
+          closeLabel="ปิดรายละเอียดงาน"
+          onClose={() => setSelected(null)}
+          panelStyle={{
+            ...modal,
+            borderTop: `3px solid ${CATEGORY_COLOR[selected.template.categoryCode] ?? "var(--primary)"}`,
+          }}
+        >
             <div
               style={{
                 display: "flex",
@@ -2136,18 +2232,10 @@ export function QualityTaskDashboard({
                     ? selected.template.title
                     : selected.template.categoryName}
                 </div>
-                <h2 style={{ margin: "5px 0 0", fontSize: 20 }}>
+                <h2 id="quality-task-selected-title" style={{ margin: "5px 0 0", fontSize: 20 }}>
                   {occurrenceDisplayTitle(selected)}
                 </h2>
               </div>
-              <button
-                type="button"
-                aria-label="ปิดรายละเอียดการประชุม"
-                onClick={() => setSelected(null)}
-                style={closeStyle}
-              >
-                ×
-              </button>
             </div>
             <div
               style={{
@@ -2156,6 +2244,7 @@ export function QualityTaskDashboard({
                 gap: 10,
                 marginTop: 14,
               }}
+              className="qt-detail-grid"
             >
               <Info label="ทีม/บทบาท" value={occurrenceDisplayOwner(selected)} />
               <Info
@@ -2328,8 +2417,18 @@ export function QualityTaskDashboard({
               <Status o={selected} />
             </div>
             {error && (
-              <div style={{ marginTop: 10, color: "#DC2626", fontSize: 12 }}>
+              <div
+                role="alert"
+                aria-live="assertive"
+                style={{ marginTop: 10, color: "#DC2626", fontSize: 12 }}
+              >
                 {error}
+              </div>
+            )}
+            {busy && busyLabel && (
+              <div className="qt-action-feedback" role="status" aria-live="polite">
+                <Icon name="refresh" size={14} />
+                <span>{busyLabel}</span>
               </div>
             )}
             {canAct && (
@@ -2460,6 +2559,7 @@ export function QualityTaskDashboard({
                             gridTemplateColumns: "1fr 1fr",
                             gap: 8,
                           }}
+                          className="qt-meeting-time-fields"
                         >
                           <label style={labelStyle}>
                             เวลาเริ่ม
@@ -2640,6 +2740,8 @@ export function QualityTaskDashboard({
                         </button>
                         {level === "edit" && (
                           <button
+                            type="button"
+                            aria-label={`ลบไฟล์ ${a.fileName}`}
                             onClick={() => removeAttachment(a.id)}
                             style={{
                               ...closeStyle,
@@ -2674,7 +2776,23 @@ export function QualityTaskDashboard({
                     }}
                   />
                 </div>
-                {selected.status === "open" ? (
+                {selectedCanComplete && selected.template.evidenceRequired && selected.attachments.length === 0 && (
+                  <div
+                    role="status"
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: "#FEF3C7",
+                      color: "#92400E",
+                      fontSize: 11.5,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    ต้องแนบ PDF หลักฐานก่อนกด “ทำแล้ว”
+                  </div>
+                )}
+                {selectedCanComplete ? (
                   <div style={{ display: "grid", gap: 8 }}>
                     {selected.template.taskKind === "meeting" && (
                       <div style={{ display: "grid", gap: 8 }}>
@@ -2745,7 +2863,7 @@ export function QualityTaskDashboard({
                           })
                         }
                       >
-                        ทำแล้ว
+                        {busy && busyLabel === "กำลังปิดงาน…" ? "กำลังปิดงาน…" : "ทำแล้ว"}
                       </Button>
                     </div>
                   </div>
@@ -2884,6 +3002,8 @@ export function QualityTaskDashboard({
                               {canAct && (
                                 <td style={{ padding: "6px" }}>
                                   <button
+                                    type="button"
+                                    aria-label={`ลบ Action Item ${item.description}`}
                                     onClick={() => removeActionItem(item)}
                                     disabled={busy}
                                     style={{
@@ -2914,6 +3034,7 @@ export function QualityTaskDashboard({
                       marginTop: 10,
                       minWidth: 0,
                     }}
+                    className="qt-action-item-form"
                   >
                     <select
                       value={newActionItem.userId ?? ""}
@@ -3049,8 +3170,7 @@ export function QualityTaskDashboard({
                 </div>
               )}
             </div>
-          </div>
-        </div>
+        </QualityTaskDialog>
       )}
       {participantModalOpen && selected && (
         <ParticipantAudienceModal
@@ -3070,22 +3190,19 @@ export function QualityTaskDashboard({
         />
       )}
       {adHoc && (
-        <div style={overlay}>
-          <div
-            style={{ ...modal, maxWidth: 560 }}
-            onClick={(e) => e.stopPropagation()}
-          >
+        <QualityTaskDialog
+          labelledBy="quality-task-adhoc-title"
+          closeLabel="ปิดหน้าต่างสร้างงานเฉพาะกิจ"
+          onClose={() => {
+            setAdHocParticipantModalOpen(false);
+            setAdHoc(null);
+          }}
+          panelStyle={{ ...modal, maxWidth: 560 }}
+        >
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <h2 style={{ margin: 0, fontSize: 19 }}>สร้างงานเฉพาะกิจ</h2>
-              <button
-                style={closeStyle}
-                onClick={() => {
-                  setAdHocParticipantModalOpen(false);
-                  setAdHoc(null);
-                }}
-              >
-                ×
-              </button>
+              <h2 id="quality-task-adhoc-title" style={{ margin: 0, fontSize: 19 }}>
+                สร้างงานเฉพาะกิจ
+              </h2>
             </div>
             <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
               <label style={labelStyle}>
@@ -3193,6 +3310,7 @@ export function QualityTaskDashboard({
                   gridTemplateColumns: adHoc.isMultiDay ? "1fr 1fr" : "1fr",
                   gap: 10,
                 }}
+                className="qt-adhoc-date-grid"
               >
                 <label style={labelStyle}>
                   {adHoc.isMultiDay ? "วันเริ่มต้น" : adHocDateLabel}
@@ -3275,6 +3393,7 @@ export function QualityTaskDashboard({
                         gridTemplateColumns: "1fr 1fr",
                         gap: 8,
                       }}
+                      className="qt-adhoc-time-fields"
                     >
                       <label style={labelStyle}>
                         เวลาเริ่ม
@@ -3431,8 +3550,7 @@ export function QualityTaskDashboard({
                 </Button>
               </div>
             </div>
-          </div>
-        </div>
+        </QualityTaskDialog>
       )}
       {adHocParticipantModalOpen && adHoc && (
         <ParticipantAudienceModal
@@ -3455,29 +3573,14 @@ export function QualityTaskDashboard({
         />
       )}
       {qr && (
-        <div style={overlay} role="presentation">
-          <div
-            style={{
-              ...modal,
-              position: "relative",
-              maxWidth: 380,
-              textAlign: "center",
-            }}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="quality-task-qr-title"
-            aria-describedby="quality-task-qr-description"
-          >
-            <button
-              type="button"
-              className="quality-task-qr-modal-close"
-              aria-label="ปิดหน้าต่าง QR เช็คอิน"
-              title="ปิด"
-              onClick={() => setQr(null)}
-              autoFocus
-            >
-              <Icon name="x" size={22} stroke={2.2} />
-            </button>
+        <QualityTaskDialog
+          labelledBy="quality-task-qr-title"
+          describedBy="quality-task-qr-description"
+          closeLabel="ปิดหน้าต่าง QR เช็คอิน"
+          closeTone="danger"
+          onClose={() => setQr(null)}
+          panelStyle={{ ...modal, maxWidth: 380, textAlign: "center" }}
+        >
             <h2 id="quality-task-qr-title" style={{ margin: 0, fontSize: 16 }}>
               QR เช็คอินการประชุม
             </h2>
@@ -3575,18 +3678,19 @@ export function QualityTaskDashboard({
             >
               {qr.url}
             </code>
-          </div>
-        </div>
+        </QualityTaskDialog>
       )}
       {holidayDraft && (
-        <div
-          style={overlay}
-          onClick={() => !holidayBusy && setHolidayDraft(null)}
+        <QualityTaskDialog
+          labelledBy="quality-task-holiday-title"
+          closeLabel="ปิดหน้าต่างวันหยุด"
+          closeDisabled={holidayBusy}
+          closeOnBackdrop
+          onClose={() => {
+            if (!holidayBusy) setHolidayDraft(null);
+          }}
+          panelStyle={{ ...modal, maxWidth: 480 }}
         >
-          <div
-            style={{ ...modal, maxWidth: 480 }}
-            onClick={(event) => event.stopPropagation()}
-          >
             <div
               style={{
                 display: "flex",
@@ -3595,18 +3699,9 @@ export function QualityTaskDashboard({
                 gap: 12,
               }}
             >
-              <h2 style={{ margin: 0, fontSize: 17 }}>
+              <h2 id="quality-task-holiday-title" style={{ margin: 0, fontSize: 17 }}>
                 {holidayDraft.id ? "แก้ไขวันหยุด" : "เพิ่มวันหยุด"}
               </h2>
-              <button
-                type="button"
-                aria-label="ปิดหน้าต่าง"
-                style={closeStyle}
-                disabled={holidayBusy}
-                onClick={() => setHolidayDraft(null)}
-              >
-                ×
-              </button>
             </div>
             <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
               <label style={labelStyle}>
@@ -3681,8 +3776,7 @@ export function QualityTaskDashboard({
                 </Button>
               </div>
             </div>
-          </div>
-        </div>
+        </QualityTaskDialog>
       )}
       {attachmentViewer && (
         <PdfViewerModal
@@ -3763,6 +3857,8 @@ function AssigneeListEditor({
             }}
           />
           <button
+            type="button"
+            aria-label={`ลบผู้รับผิดชอบลำดับที่ ${i + 1}`}
             onClick={() => removeEntry(i)}
             style={{ ...closeStyle, width: 36, height: 36, fontSize: 16 }}
           >
@@ -3780,11 +3876,13 @@ function DeptAudienceCheckbox({
   checked,
   indeterminate,
   disabled,
+  ariaLabel,
   onChange,
 }: {
   checked: boolean;
   indeterminate: boolean;
   disabled?: boolean;
+  ariaLabel: string;
   onChange: (checked: boolean) => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -3797,6 +3895,7 @@ function DeptAudienceCheckbox({
       type="checkbox"
       checked={checked}
       disabled={disabled}
+      aria-label={ariaLabel}
       onChange={(e) => onChange(e.target.checked)}
       onClick={(e) => e.stopPropagation()}
       style={{
@@ -3878,12 +3977,16 @@ function ParticipantAudienceModal({
     onSave(payload.depts, payload.user_ids);
   }
   return (
-    <div style={overlay}>
-      <div
-        style={{ ...modal, maxWidth: 460, width: "100%" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>
+    <QualityTaskDialog
+      labelledBy="quality-task-participant-title"
+      closeLabel="ปิดหน้าต่างเลือกผู้เข้าร่วม"
+      onClose={onCancel}
+      panelStyle={{ ...modal, maxWidth: 460, width: "100%" }}
+    >
+        <div
+          id="quality-task-participant-title"
+          style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}
+        >
           กำหนดผู้เข้าร่วมประชุม
         </div>
         <div
@@ -3969,9 +4072,6 @@ function ParticipantAudienceModal({
               return (
                 <div key={group.key}>
                   <div
-                    onClick={() => {
-                      if (!disabled) toggleExpand(group.key);
-                    }}
                     style={{
                       display: "flex",
                       alignItems: "flex-start",
@@ -3987,23 +4087,47 @@ function ParticipantAudienceModal({
                       checked={checked}
                       indeterminate={indeterminate}
                       disabled={disabled}
+                      ariaLabel={`${group.label} ทั้งหมด`}
                       onChange={() => toggleGroup(group.members)}
                     />
-                    <Icon
-                      name={isExpanded ? "chevDown" : "chevRight"}
-                      size={12}
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      aria-expanded={disabled ? undefined : isExpanded}
+                      aria-label={`${group.label} (${group.members.length} คน)`}
+                      onClick={() => toggleExpand(group.key)}
                       style={{
-                        color: "var(--muted)",
-                        flexShrink: 0,
-                        marginTop: 3,
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 7,
+                        flex: 1,
+                        minWidth: 0,
+                        padding: 0,
+                        border: 0,
+                        background: "transparent",
+                        color: "inherit",
+                        font: "inherit",
+                        textAlign: "left",
+                        cursor: disabled ? "default" : "pointer",
+                        lineHeight: 1.35,
                       }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontWeight: 600 }}>{group.label}</span>
-                      <span style={{ color: "var(--muted)", marginLeft: 5 }}>
-                        ({group.members.length} คน)
+                    >
+                      <Icon
+                        name={isExpanded ? "chevDown" : "chevRight"}
+                        size={12}
+                        style={{
+                          color: "var(--muted)",
+                          flexShrink: 0,
+                          marginTop: 3,
+                        }}
+                      />
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontWeight: 600 }}>{group.label}</span>
+                        <span style={{ color: "var(--muted)", marginLeft: 5 }}>
+                          ({group.members.length} คน)
+                        </span>
                       </span>
-                    </div>
+                    </button>
                   </div>
                   {isExpanded && group.members.length > 0 && (
                     <div
@@ -4071,6 +4195,7 @@ function ParticipantAudienceModal({
           }}
         >
           <button
+            type="button"
             onClick={onCancel}
             style={{
               padding: "8px 16px",
@@ -4086,6 +4211,7 @@ function ParticipantAudienceModal({
             ยกเลิก
           </button>
           <button
+            type="button"
             onClick={handleSave}
             style={{
               padding: "8px 16px",
@@ -4102,25 +4228,46 @@ function ParticipantAudienceModal({
             บันทึก
           </button>
         </div>
-      </div>
-    </div>
+    </QualityTaskDialog>
   );
 }
 function Status({ o }: { o: QualityTaskOccurrence }) {
+  const urgencyLabel = o.urgency === "normal" || o.urgency === "completed"
+    ? null
+    : urgencyText[o.urgency];
   return (
     <span
-      style={{
-        display: "inline-flex",
-        border: `1px solid ${urgencyColor[o.urgency]}55`,
-        background: `${urgencyColor[o.urgency]}12`,
-        color: urgencyColor[o.urgency],
-        padding: "3px 8px",
-        borderRadius: 99,
-        fontSize: 10.5,
-        fontWeight: 800,
-      }}
+      className="qt-status-group"
+      aria-label={`สถานะ ${statusText[o.status]}${urgencyLabel ? ` · ${urgencyLabel}` : ""}`}
     >
-      {urgencyText[o.urgency]}
+      <span
+        style={{
+          border: `1px solid ${statusColor[o.status]}55`,
+          background: `${statusColor[o.status]}12`,
+          color: statusColor[o.status],
+          padding: "3px 8px",
+          borderRadius: 99,
+          fontSize: 10.5,
+          fontWeight: 800,
+        }}
+      >
+        {statusText[o.status]}
+      </span>
+      {urgencyLabel && (
+        <span
+          style={{
+            border: `1px solid ${urgencyColor[o.urgency]}55`,
+            background: `${urgencyColor[o.urgency]}12`,
+            color: urgencyColor[o.urgency],
+            padding: "3px 8px",
+            borderRadius: 99,
+            fontSize: 10.5,
+            fontWeight: 800,
+          }}
+        >
+          {urgencyLabel}
+        </span>
+      )}
     </span>
   );
 }
@@ -4164,16 +4311,6 @@ const tdCenter: React.CSSProperties = {
   textAlign: "center",
   verticalAlign: "middle",
 };
-const overlay: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  zIndex: 100,
-  background: "rgba(15,23,42,.45)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 16,
-};
 const modal: React.CSSProperties = {
   background: "var(--card)",
   borderRadius: 16,
@@ -4185,14 +4322,14 @@ const modal: React.CSSProperties = {
   boxShadow: "0 24px 70px rgba(0,0,0,.25)",
 };
 const closeStyle: React.CSSProperties = {
-  border: 0,
-  background: "var(--surface-2)",
+  border: "1px solid var(--danger)",
+  background: "color-mix(in srgb, var(--danger) 8%, var(--card))",
   borderRadius: 8,
   width: 32,
   height: 32,
   fontSize: 22,
   cursor: "pointer",
-  color: "var(--muted)",
+  color: "var(--danger)",
 };
 const labelStyle: React.CSSProperties = {
   fontSize: 12,

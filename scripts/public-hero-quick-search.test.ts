@@ -8,6 +8,7 @@ import {
   buildTestDetailHref,
   canQuickSearch,
 } from '../lib/catalog/quick-search'
+import { buildTestSearchFilter } from '../lib/queries/tests'
 
 assert.equal(canQuickSearch(''), false)
 assert.equal(canQuickSearch('a'), false)
@@ -22,6 +23,13 @@ assert.equal(apiUrl.searchParams.get('search'), 'CBC')
 assert.equal(apiUrl.searchParams.get('page'), '0')
 assert.equal(apiUrl.searchParams.get('pageSize'), '6')
 assert.equal(apiUrl.searchParams.get('sortBy'), 'th')
+
+const fullTestName = 'Mycobacteria AST for Slow growing non-tuberculous mycobacteria (MIC for 13 drugs)'
+const expectedSearchFilter = ['th', 'en', 'code', 'cgd', 'loinc']
+  .map((column) => `${column}.ilike."%${fullTestName}%"`)
+  .join(',')
+assert.equal(buildTestSearchFilter(`  ${fullTestName}  `), expectedSearchFilter)
+assert.equal(buildTestSearchFilter('   '), '')
 
 assert.equal(buildTestDetailHref({ id: 42 }), '/catalog/42')
 assert.equal(buildCatalogOpenUrl({ id: 42 }, '  CBC  '), '/catalog?search=CBC&open=42')

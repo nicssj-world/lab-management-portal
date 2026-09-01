@@ -17,6 +17,7 @@ interface ButtonProps {
   type?: 'button' | 'submit' | 'reset'
   style?: React.CSSProperties
   title?: string
+  'aria-label'?: string
   'aria-pressed'?: React.AriaAttributes['aria-pressed']
   'aria-busy'?: React.AriaAttributes['aria-busy']
 }
@@ -37,7 +38,7 @@ const VARIANTS: Record<Variant, React.CSSProperties> = {
 
 export function Button({
   children, variant = 'primary', size = 'md', icon, iconRight,
-  onClick, disabled, full, type = 'button', style, title, 'aria-pressed': ariaPressed, 'aria-busy': ariaBusy,
+  onClick, disabled, full, type = 'button', style, title, 'aria-label': ariaLabel, 'aria-pressed': ariaPressed, 'aria-busy': ariaBusy,
 }: ButtonProps) {
   const s = SIZES[size]
   const v = VARIANTS[variant]
@@ -47,6 +48,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-label={ariaLabel}
       aria-pressed={ariaPressed}
       aria-busy={ariaBusy}
       style={{

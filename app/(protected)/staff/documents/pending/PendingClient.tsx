@@ -10,6 +10,7 @@ import { DocumentActionPanel } from '@/components/documents/DocumentActionPanel'
 import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
 import { TYPE_ICON_BG, TYPE_ICON_FG, fmtDate } from '@/lib/documents/ui-constants'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
+import { isReadableDocument } from '@/lib/documents/workflow'
 import {
   canInteractWithRegistrationSetRows,
   classifyRegistrationSetDocument,
@@ -604,6 +605,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   }
 
   async function quickReadDetail(doc: Document) {
+    if (!isReadableDocument(doc)) return
     try {
       const res = await fetch(`/api/admin/documents/${doc.id}/read`, { method: 'POST' })
       const json = await res.json()

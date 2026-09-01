@@ -41,6 +41,14 @@ export function isReviewOrLater(status: string | null | undefined) {
   return status === 'Review' || status === 'Approved' || status === 'Published'
 }
 
+// The Read action is the read-compliance flow, so only the currently published
+// official file is eligible. Draft/review/approved files may still be previewed
+// by workflow tooling through the download/preview route, but must not create a
+// read log or appear as a staff Read action.
+export function isReadableDocument(doc: Pick<DocumentFileFields, 'status' | 'file_url'>) {
+  return doc.status === 'Published' && Boolean(doc.file_url)
+}
+
 export function fileExt(filename: string | null | undefined) {
   const clean = filename?.split(/[?#]/)[0] ?? ''
   const last = clean.split('/').pop() ?? ''

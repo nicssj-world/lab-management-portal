@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/Icon'
 import { PdfViewer } from '@/components/documents/PdfViewer'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import { buildReadLogSummaryHtml } from '@/lib/documents/read-log-summary'
+import { isReadableDocument } from '@/lib/documents/workflow'
 import { TYPE_ICON_BG, TYPE_ICON_FG } from '@/lib/documents/ui-constants'
 import type { Document } from '@/lib/supabase/types'
 
@@ -38,8 +39,8 @@ export function ReadModal({ doc, userRole, canViewLog, onClose, onResetReadIds, 
   useEffect(() => {
     if (didLog.current) return
     didLog.current = true
-    if (!doc.file_url) {
-      setErrMsg('เอกสารนี้ยังไม่มีไฟล์ทางการสำหรับอ่าน')
+    if (!isReadableDocument(doc)) {
+      setErrMsg(doc.status === 'Published' ? 'เอกสารนี้ยังไม่มีไฟล์ทางการสำหรับอ่าน' : 'เอกสารนี้ยังไม่อยู่ในสถานะ Published สำหรับการอ่าน')
       setLoading(false)
       return
     }

@@ -124,11 +124,11 @@ export function QualityTaskGuestCheckInClient({ token }: { token: string }) {
         )}
 
         {state.phase === 'error' && (
-          <>
+          <div role="alert" aria-live="assertive">
             <Icon name="alert" size={32} style={{ color: 'var(--danger)' }} />
             <h1 style={{ fontSize: 17, margin: '10px 0 4px', color: 'var(--ink)' }}>เช็คอินไม่สำเร็จ</h1>
             <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13.5 }}>{state.message}</p>
-          </>
+          </div>
         )}
 
         {(state.phase === 'choice' || state.phase === 'guest-form') && (
