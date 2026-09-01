@@ -404,6 +404,17 @@ export function QualityTaskDashboard({
     return () => window.clearInterval(timer);
   }, [qr?.notOpenYet, qr?.opensAt]);
 
+  useEffect(() => {
+    if (!qr) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setQr(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [qr]);
+
   const load = useCallback(async (nextMonth = month, nextScope = scope) => {
     const { from, to } = monthRange(nextMonth);
     const [occurrencesResponse, holidaysResponse] = await Promise.all([
@@ -3444,10 +3455,36 @@ export function QualityTaskDashboard({
         />
       )}
       {qr && (
-        <div style={overlay}>
-          <div style={{ ...modal, maxWidth: 380, textAlign: "center" }}>
-            <h2 style={{ margin: 0, fontSize: 16 }}>QR เช็คอินการประชุม</h2>
-            <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
+        <div style={overlay} role="presentation">
+          <div
+            style={{
+              ...modal,
+              position: "relative",
+              maxWidth: 380,
+              textAlign: "center",
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quality-task-qr-title"
+            aria-describedby="quality-task-qr-description"
+          >
+            <button
+              type="button"
+              className="quality-task-qr-modal-close"
+              aria-label="ปิดหน้าต่าง QR เช็คอิน"
+              title="ปิด"
+              onClick={() => setQr(null)}
+              autoFocus
+            >
+              <Icon name="x" size={22} stroke={2.2} />
+            </button>
+            <h2 id="quality-task-qr-title" style={{ margin: 0, fontSize: 16 }}>
+              QR เช็คอินการประชุม
+            </h2>
+            <p
+              id="quality-task-qr-description"
+              style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}
+            >
               {qr.closed
                 ? "ปิดรับ Check-in แล้ว QR นี้ไม่รับเช็คอินใหม่"
                 : qr.notOpenYet
@@ -3523,9 +3560,6 @@ export function QualityTaskDashboard({
                   ปิดรับแล้ว
                 </span>
               )}
-              <Button variant="ghost" onClick={() => setQr(null)}>
-                ปิด
-              </Button>
             </div>
             <code
               style={{

@@ -1421,3 +1421,35 @@ button.kpi-satisfaction-summary-item[aria-pressed="true"] {
   .kpi-satisfaction-bullet,
   .kpi-satisfaction-summary-item { transition: none; }
 }
+
+/* Quality task QR dialog — keep the dismiss action visible at the modal edge. */
+.quality-task-qr-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--card));
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color .15s ease, background .15s ease, transform .15s ease;
+}
+.quality-task-qr-modal-close:hover {
+  color: #fff;
+  background: var(--danger);
+}
+.quality-task-qr-modal-close:active { transform: scale(.96); }
+.quality-task-qr-modal-close:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .quality-task-qr-modal-close { transition: none; }
+  .quality-task-qr-modal-close:active { transform: none; }
+}
