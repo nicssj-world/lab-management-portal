@@ -259,7 +259,9 @@ export async function getQualityTaskOccurrences(
           participantDepts: rowDepts, participantUserIds: rowUserIds,
           participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), positionTitle: nullable((p as Row).position_title) })),
           attachments: instanceId ? attachments.get(instanceId) ?? [] : [],
-          checkInToken: nullable(row?.check_in_token), checkInClosedAt: nullable(row?.check_in_closed_at), checkIns: instanceId ? checkIns.get(instanceId) ?? [] : [], ...state })
+          checkInToken: nullable(row?.check_in_token), checkInClosedAt: nullable(row?.check_in_closed_at),
+          checkInOpenedAt: nullable(row?.check_in_opened_at), checkInOpenedBy: nullable(row?.check_in_opened_by),
+          checkIns: instanceId ? checkIns.get(instanceId) ?? [] : [], ...state })
       }
     }
   }
@@ -288,7 +290,9 @@ export async function getQualityTaskOccurrences(
       participantDepts: rowDepts, participantUserIds: rowUserIds,
       participants: resolvedParticipants.map(p => ({ id: str(p.id), name: str(p.name), positionTitle: nullable((p as Row).position_title) })),
       attachments: attachments.get(instanceId) ?? [],
-      checkInToken: nullable(row.check_in_token), checkInClosedAt: nullable(row.check_in_closed_at), checkIns: checkIns.get(instanceId) ?? [], ...state })
+      checkInToken: nullable(row.check_in_token), checkInClosedAt: nullable(row.check_in_closed_at),
+      checkInOpenedAt: nullable(row.check_in_opened_at), checkInOpenedBy: nullable(row.check_in_opened_by),
+      checkIns: checkIns.get(instanceId) ?? [], ...state })
   }
   const scoped = input.scope === 'mine' && input.level !== 'edit' ? result.filter(o => o.assignees.some(e => e.userId === input.actorId)) : result
   const bounded = workstream === 'safety' ? scoped.filter(item => item.effectiveDueDate >= input.from && item.effectiveDueDate <= input.to) : scoped

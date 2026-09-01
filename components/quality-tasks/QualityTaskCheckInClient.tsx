@@ -12,6 +12,20 @@ function fmt(value: string | null) {
     : null
 }
 
+function fmtDateTime(value: string | null) {
+  return value
+    ? new Intl.DateTimeFormat('th-TH', {
+        timeZone: 'Asia/Bangkok',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).format(new Date(value))
+    : null
+}
+
 type LoadState =
   | { phase: 'loading' }
   | { phase: 'error'; message: string }
@@ -41,6 +55,19 @@ export function QualityTaskCheckInClient({ token }: { token: string }) {
       .catch(() => { if (!cancelled) setState({ phase: 'error', message: 'เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่' }) })
     return () => { cancelled = true }
   }, [token])
+
+  useEffect(() => {
+    if (state.phase !== 'ready' || !state.context.notOpenYet) return
+    const opensAt = state.context.checkInOpensAt ? Date.parse(state.context.checkInOpensAt) : NaN
+    if (!Number.isFinite(opensAt)) return
+    const delay = Math.min(Math.max(opensAt - Date.now() + 500, 1_000), 24 * 60 * 60 * 1_000)
+    const timer = window.setTimeout(() => window.location.reload(), delay)
+    return () => window.clearTimeout(timer)
+  }, [
+    state.phase,
+    state.phase === 'ready' ? state.context.notOpenYet : false,
+    state.phase === 'ready' ? state.context.checkInOpensAt : null,
+  ])
 
   async function confirm() {
     if (state.phase !== 'ready') return
@@ -87,6 +114,20 @@ export function QualityTaskCheckInClient({ token }: { token: string }) {
               <p style={{ marginTop: 16, padding: '10px 12px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: 13 }}>
                 <Icon name="lock" size={14} /> การประชุมนี้ปิดรับเช็คอินแล้ว ไม่รับเช็คอินเพิ่ม
               </p>
+            ) : state.context.notOpenYet ? (
+              <div
+                aria-live="polite"
+                style={{ marginTop: 16, padding: '12px 14px', borderRadius: 10, background: 'color-mix(in srgb, var(--warning) 12%, var(--card))', color: 'var(--warning-ink, #92400E)', fontSize: 13, display: 'grid', gap: 4, justifyItems: 'center' }}
+              >
+                <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Icon name="clock" size={15} /> ยังไม่เปิดรับเช็คอิน
+                </strong>
+                <span>
+                  {state.context.checkInOpensAt
+                    ? `เปิดรับเช็คอินเวลา ${fmtDateTime(state.context.checkInOpensAt)} น.`
+                    : 'ยังไม่ได้กำหนดวันประชุม'}
+                </span>
+              </div>
             ) : state.context.alreadyCheckedIn ? (
               <p style={{ marginTop: 16, padding: '10px 12px', borderRadius: 10, background: 'color-mix(in srgb, var(--success) 10%, var(--card))', color: 'var(--success)', fontSize: 13.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <Icon name="check" size={15} /> คุณเช็คอินการประชุมนี้แล้ว

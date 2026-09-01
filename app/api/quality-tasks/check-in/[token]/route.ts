@@ -107,6 +107,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     })
     if (result.status === 'not_found') return NextResponse.json({ error: 'ไม่พบ QR สำหรับการประชุมนี้' }, { status: 404 })
     if (result.status === 'closed') return NextResponse.json({ error: 'การประชุมนี้ปิดรับเช็คอินแล้ว ไม่รับเช็คอินเพิ่ม' }, { status: 409 })
+    if (result.status === 'not_open') return NextResponse.json({
+      error: result.opensAt ? 'ยังไม่ถึงเวลาเปิดรับเช็คอิน' : 'ยังไม่ได้กำหนดวันประชุม จึงยังไม่เปิดรับเช็คอิน',
+      opensAt: result.opensAt,
+    }, { status: 425 })
     return NextResponse.json({ ok: true })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'เช็คอินไม่สำเร็จ' }, { status: 500 })

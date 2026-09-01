@@ -12,6 +12,20 @@ function fmt(value: string | null) {
     : null
 }
 
+function fmtDateTime(value: string | null) {
+  return value
+    ? new Intl.DateTimeFormat('th-TH', {
+        timeZone: 'Asia/Bangkok',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).format(new Date(value))
+    : null
+}
+
 type LoadState =
   | { phase: 'loading' }
   | { phase: 'error'; message: string }
@@ -41,6 +55,7 @@ export function QualityTaskGuestCheckInClient({ token }: { token: string }) {
   const [lastName, setLastName] = useState('')
   const [department, setDepartment] = useState('')
   const honeypotRef = useRef<HTMLInputElement>(null)
+  const waitingContext = state.phase === 'choice' || state.phase === 'guest-form' ? state.context : null
 
   useEffect(() => {
     let cancelled = false
@@ -59,6 +74,15 @@ export function QualityTaskGuestCheckInClient({ token }: { token: string }) {
       .catch(() => { if (!cancelled) setState({ phase: 'error', message: 'เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่' }) })
     return () => { cancelled = true }
   }, [token])
+
+  useEffect(() => {
+    if (!waitingContext?.notOpenYet) return
+    const opensAt = waitingContext.checkInOpensAt ? Date.parse(waitingContext.checkInOpensAt) : NaN
+    if (!Number.isFinite(opensAt)) return
+    const delay = Math.min(Math.max(opensAt - Date.now() + 500, 1_000), 24 * 60 * 60 * 1_000)
+    const timer = window.setTimeout(() => window.location.reload(), delay)
+    return () => window.clearTimeout(timer)
+  }, [waitingContext?.notOpenYet, waitingContext?.checkInOpensAt])
 
   function goToLogin() {
     window.location.href = `/login?next=${encodeURIComponent(`/checkin/${token}`)}`
@@ -119,6 +143,20 @@ export function QualityTaskGuestCheckInClient({ token }: { token: string }) {
               <p style={{ marginTop: 16, padding: '10px 12px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: 13 }}>
                 <Icon name="lock" size={14} /> การประชุมนี้ปิดรับเช็คอินแล้ว ไม่รับเช็คอินเพิ่ม
               </p>
+            ) : state.context.notOpenYet ? (
+              <div
+                aria-live="polite"
+                style={{ marginTop: 16, padding: '12px 14px', borderRadius: 10, background: 'color-mix(in srgb, var(--warning) 12%, var(--card))', color: 'var(--warning-ink, #92400E)', fontSize: 13, display: 'grid', gap: 4, justifyItems: 'center' }}
+              >
+                <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Icon name="clock" size={15} /> ยังไม่เปิดรับเช็คอิน
+                </strong>
+                <span>
+                  {state.context.checkInOpensAt
+                    ? `เปิดรับเช็คอินเวลา ${fmtDateTime(state.context.checkInOpensAt)} น.`
+                    : 'ยังไม่ได้กำหนดวันประชุม'}
+                </span>
+              </div>
             ) : state.phase === 'choice' ? (
               <div style={{ marginTop: 18, display: 'grid', gap: 10 }}>
                 <p style={{ margin: 0, color: 'var(--ink)', fontSize: 13.5, fontWeight: 700 }}>คุณมีบัญชีผู้ใช้ในระบบนี้หรือไม่?</p>

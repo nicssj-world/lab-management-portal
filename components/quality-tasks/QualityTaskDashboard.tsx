@@ -41,6 +41,7 @@ import {
   shouldShowAdHocTimePicker,
   type MeetingTimePreset,
 } from "@/lib/quality-tasks/meeting-time";
+import { getCheckInWindow } from "@/lib/quality-tasks/check-in-window";
 import {
   QUALITY_TASK_POLL_INTERVAL_MS,
   shouldPollQualityTaskDashboard,
@@ -139,6 +140,7 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   "quality_task.attachment.upload": "แนบไฟล์หลักฐาน",
   "quality_task.attachment.delete": "ลบไฟล์หลักฐาน",
   "quality_task.check_in": "เช็คอิน",
+  "quality_task.check_in.open": "เปิดรับเช็คอินก่อนเวลา",
   "quality_task.check_in.close": "ปิดรับเช็คอิน",
   "quality_task.action_item.create": "เพิ่ม Action Item",
   "quality_task.action_item.update": "แก้ไข Action Item",
@@ -196,6 +198,19 @@ function fmtSavedAt(value: string | null) {
         hourCycle: "h23",
       }).format(new Date(value))
     : "—";
+}
+function fmtDateTime(value: string | null) {
+  return value
+    ? new Intl.DateTimeFormat("th-TH", {
+        timeZone: "Asia/Bangkok",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).format(new Date(value))
+    : null;
 }
 function personName(id: string | null, people: Person[]) {
   return id ? people.find((person) => person.id === id)?.name ?? "ผู้ใช้ระบบ" : "ผู้ใช้ระบบ";
@@ -291,6 +306,10 @@ export function QualityTaskDashboard({
     url: string;
     dataUrl: string;
     closed: boolean;
+    notOpenYet: boolean;
+    opensAt: string | null;
+    openedAt: string | null;
+    openedBy: string | null;
   } | null>(null);
   const [attachmentViewer, setAttachmentViewer] = useState<{
     url: string;
@@ -371,6 +390,19 @@ export function QualityTaskDashboard({
     selected?.plannedEndTime,
     selected?.template.taskKind,
   ]);
+
+  useEffect(() => {
+    if (!qr?.notOpenYet || !qr.opensAt) return;
+    const timer = window.setInterval(() => {
+      setQr((current) => {
+        if (!current?.notOpenYet || !current.opensAt) return current;
+        return Date.now() >= Date.parse(current.opensAt)
+          ? { ...current, notOpenYet: false }
+          : current;
+      });
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [qr?.notOpenYet, qr?.opensAt]);
 
   const load = useCallback(async (nextMonth = month, nextScope = scope) => {
     const { from, to } = monthRange(nextMonth);
@@ -1081,11 +1113,20 @@ export function QualityTaskDashboard({
         errorCorrectionLevel: "M",
         color: { dark: "#0F172A", light: "#FFFFFF" },
       });
+      const checkInWindow = getCheckInWindow(
+        o.plannedDate,
+        o.plannedStartTime,
+        o.checkInOpenedAt,
+      );
       setQr({
         instanceId: id,
         url,
         dataUrl,
         closed: Boolean(o.checkInClosedAt) || o.status === "completed",
+        notOpenYet: checkInWindow.notOpenYet,
+        opensAt: checkInWindow.opensAt,
+        openedAt: o.checkInOpenedAt,
+        openedBy: o.checkInOpenedBy,
       });
       setSelected((current) =>
         current?.key === o.key
@@ -1102,6 +1143,60 @@ export function QualityTaskDashboard({
       if (!o.instanceId) await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "สร้าง QR ไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function openCheckIn() {
+    if (!selected || !qr || !canAct || qr.closed || !qr.notOpenYet) return;
+    if (
+      !confirm(
+        "เปิดรับ Check-in ตอนนี้? ผู้เข้าร่วมจะสามารถใช้ QR นี้เช็คอินได้ทันที",
+      )
+    )
+      return;
+    const selectedKey = selected.key;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/admin/quality-tasks/occurrences/${qr.instanceId}/check-in-token`,
+        { method: "PUT" },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      const openedAt = String(json.openedAt ?? new Date().toISOString());
+      const openedBy = String(json.openedBy ?? actorId);
+      setQr((current) =>
+        current
+          ? { ...current, notOpenYet: false, opensAt: openedAt, openedAt, openedBy }
+          : current,
+      );
+      setSelected((current) =>
+        current?.key === selectedKey
+          ? {
+              ...current,
+              instanceId: qr.instanceId,
+              checkInOpenedAt: openedAt,
+              checkInOpenedBy: openedBy,
+            }
+          : current,
+      );
+      setItems((current) =>
+        current.map((item) =>
+          item.key === selectedKey
+            ? {
+                ...item,
+                instanceId: qr.instanceId,
+                checkInOpenedAt: openedAt,
+                checkInOpenedBy: openedBy,
+              }
+            : item,
+        ),
+      );
+      setNotice("เปิดรับ Check-in แล้ว");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "เปิดรับ Check-in ไม่สำเร็จ");
     } finally {
       setBusy(false);
     }
@@ -3355,8 +3450,17 @@ export function QualityTaskDashboard({
             <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
               {qr.closed
                 ? "ปิดรับ Check-in แล้ว QR นี้ไม่รับเช็คอินใหม่"
+                : qr.notOpenYet
+                  ? qr.opensAt
+                    ? `ยังไม่เปิดรับเช็คอิน · เปิดเวลา ${fmtDateTime(qr.opensAt)} น.`
+                    : "ยังไม่ได้กำหนดวันประชุม · กดเปิดรับ Check-in ตอนนี้ได้"
                 : "ให้ผู้เข้าร่วมสแกนเพื่อเช็คอิน (ต้องล็อกอินอยู่)"}
             </p>
+            {qr.openedAt && (
+              <p style={{ color: "var(--primary)", fontSize: 11.5, margin: "8px 0 0" }}>
+                เปิดรับก่อนกำหนดเมื่อ {fmtDateTime(qr.openedAt)} น. โดย {personName(qr.openedBy, people)}
+              </p>
+            )}
             <img
               src={qr.dataUrl}
               alt="QR เช็คอินการประชุม"
@@ -3390,6 +3494,15 @@ export function QualityTaskDashboard({
               >
                 คัดลอกลิงก์
               </Button>
+              {canAct && !qr.closed && qr.notOpenYet && (
+                <Button
+                  icon="clock"
+                  disabled={busy}
+                  onClick={() => void openCheckIn()}
+                >
+                  เปิดรับ Check-in ตอนนี้
+                </Button>
+              )}
               {canAct && !qr.closed && (
                 <Button
                   variant="danger"

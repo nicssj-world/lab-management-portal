@@ -137,6 +137,8 @@ export interface QualityTaskOccurrence {
   attachments: QualityTaskAttachment[]
   checkInToken: string | null
   checkInClosedAt: string | null
+  checkInOpenedAt: string | null
+  checkInOpenedBy: string | null
   checkIns: QualityTaskCheckIn[]
   scheduling: TaskSchedulingState
   urgency: TaskUrgency

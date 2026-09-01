@@ -24,6 +24,11 @@ ALTER TABLE public.quality_task_instances
 ALTER TABLE public.quality_task_instances
   ADD COLUMN IF NOT EXISTS check_in_closed_at timestamptz;
 
+-- null = ใช้เวลาเปิดอัตโนมัติตามกำหนดการ · timestamp = ผู้มีสิทธิ์เปิดรับก่อนเวลา
+ALTER TABLE public.quality_task_instances
+  ADD COLUMN IF NOT EXISTS check_in_opened_at timestamptz,
+  ADD COLUMN IF NOT EXISTS check_in_opened_by uuid REFERENCES public.profiles(id);
+
 -- ── 2. บันทึกการเช็คอิน ──
 -- PK (instance_id, user_id) = idempotent โดยธรรมชาติ สแกนซ้ำไม่เกิดแถวซ้ำ
 CREATE TABLE IF NOT EXISTS public.quality_task_check_ins (
