@@ -4,6 +4,7 @@ import { Icon } from '@/components/ui/Icon'
 import { DOC_TYPES } from '@/lib/validations/document'
 import type { Document } from '@/lib/supabase/types'
 import { fileSizeLabel, type DocType, type DuplicateChoice, type Group, type UploadEntry } from './document-set-upload-model'
+import { MAX_DOCUMENT_CODE_LENGTH, MAX_DOCUMENT_TITLE_LENGTH } from '@/lib/validations/document-set'
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)',
@@ -57,11 +58,11 @@ export function DocumentSetUploadRow({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 9 }}>
             <div>
               <label htmlFor={`code-${entry.id}`} style={labelStyle}>รหัสเอกสาร</label>
-              <input id={`code-${entry.id}`} value={entry.code} onChange={(event) => onCodeChange(entry.id, event.target.value)} style={{ ...inputStyle, fontFamily: 'monospace' }} />
+              <input id={`code-${entry.id}`} value={entry.code} maxLength={MAX_DOCUMENT_CODE_LENGTH} onChange={(event) => onCodeChange(entry.id, event.target.value)} style={{ ...inputStyle, fontFamily: 'monospace' }} />
             </div>
             <div>
               <label htmlFor={`title-${entry.id}`} style={labelStyle}>ชื่อเอกสาร</label>
-              <input id={`title-${entry.id}`} value={entry.title} onChange={(event) => onTitleChange(entry.id, event.target.value)} style={inputStyle} />
+              <input id={`title-${entry.id}`} value={entry.title} maxLength={MAX_DOCUMENT_TITLE_LENGTH} onChange={(event) => onTitleChange(entry.id, event.target.value)} style={inputStyle} />
             </div>
             <div>
               <label htmlFor={`type-${entry.id}`} style={labelStyle}>ประเภท</label>

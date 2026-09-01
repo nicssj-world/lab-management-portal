@@ -12,6 +12,7 @@ import {
   entryLabel,
   failedEntryIds,
   inferredType,
+  mapRegisterSetValidationOutcomes,
   mapRegisterSetOutcomes,
   parseRegisterSetResponse,
   registrationError,
@@ -306,8 +307,15 @@ export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: prepared.map((item) => item.payload) }),
         })
         const result = await parseRegisterSetResponse(response)
-        if (!response.ok) throw new Error(result.error ?? 'บันทึกชุดเอกสารไม่สำเร็จ')
-        for (const [id, outcome] of mapRegisterSetOutcomes(prepared.map((item) => item.id), result)) outcomes.set(id, outcome)
+        if (!response.ok) {
+          if (result.validationIssues?.length) {
+            for (const [id, outcome] of mapRegisterSetValidationOutcomes(prepared.map((item) => item.id), result.validationIssues)) outcomes.set(id, outcome)
+          } else {
+            throw new Error(result.error ?? 'บันทึกชุดเอกสารไม่สำเร็จ')
+          }
+        } else {
+          for (const [id, outcome] of mapRegisterSetOutcomes(prepared.map((item) => item.id), result)) outcomes.set(id, outcome)
+        }
       } catch (error) {
         const reason = error instanceof Error ? error.message : 'บันทึกชุดเอกสารไม่สำเร็จ'
         for (const item of prepared) outcomes.set(item.id, { status: 'failed', reason })

@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict'
-import { createUploadEntry, failedEntryIds, mapRegisterSetOutcomes, retainedUpload, type UploadedFile } from './document-set-upload-model'
+import {
+  createUploadEntry,
+  failedEntryIds,
+  mapRegisterSetOutcomes,
+  mapRegisterSetValidationOutcomes,
+  registrationError,
+  retainedUpload,
+  type UploadedFile,
+} from './document-set-upload-model'
 import type { Document } from '@/lib/supabase/types'
 
 const mapped = mapRegisterSetOutcomes(['entry-a', 'entry-b', 'entry-c'], {
@@ -34,3 +42,16 @@ const mainDoc = {
 } as Document
 const entry = createUploadEntry(new File(['x'], 'Fm-BB-01.pdf', { type: 'application/pdf' }), mainDoc)
 assert.equal(entry.department, 'Main department', 'member department must default to the main document before code-derived fallback')
+
+const validEntry = { ...entry, code: 'FM-BB-01', title: 'Form title', duplicate: { status: 'none' as const } }
+assert.equal(registrationError(validEntry), '', 'a separated code and title must remain valid')
+assert.match(registrationError({ ...validEntry, code: 'X'.repeat(51) }), /รหัสเอกสารยาวเกิน 50/, 'the upload form must catch an overlong document code before submit')
+assert.match(registrationError({ ...validEntry, code: 'FM-BB-01', title: 'FM-BB-01' }), /เว้นวรรค/, 'the upload form must explain the required filename separator')
+
+const validationOutcomes = mapRegisterSetValidationOutcomes(['entry-valid', 'entry-invalid'], [{
+  index: 1,
+  field: 'document_code',
+  message: 'String must contain at most 50 character(s)',
+}])
+assert.match(validationOutcomes.get('entry-invalid')?.reason ?? '', /รหัสเอกสารยาวเกิน 50/, 'the invalid row must receive the field-specific error')
+assert.match(validationOutcomes.get('entry-valid')?.reason ?? '', /รายการอื่นในชุดไม่ผ่าน/, 'valid rows must explain that the batch was not saved')

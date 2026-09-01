@@ -800,7 +800,20 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const parsed = RegisterSetSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
+    const validationIssues = parsed.error.issues.map((issue) => {
+      const indexPosition = issue.path.findIndex((part) => typeof part === 'number')
+      const indexPart = indexPosition >= 0 ? issue.path[indexPosition] : null
+      const fieldPart = indexPosition >= 0 ? issue.path[indexPosition + 1] : issue.path[0]
+      return {
+        index: typeof indexPart === 'number' ? indexPart : null,
+        field: typeof fieldPart === 'string' ? fieldPart : null,
+        message: issue.message,
+      }
+    })
+    return NextResponse.json({
+      error: validationIssues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง',
+      validationIssues,
+    }, { status: 422 })
   }
 
   const mainResult = await supabaseAdmin

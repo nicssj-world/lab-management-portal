@@ -6,6 +6,7 @@ import {
   typeFromCode,
 } from '@/lib/documents/code-parse'
 import { DOC_TYPES } from '@/lib/validations/document'
+import { MAX_DOCUMENT_CODE_LENGTH, MAX_DOCUMENT_TITLE_LENGTH } from '@/lib/validations/document-set'
 import type { Document } from '@/lib/supabase/types'
 
 export type DocType = (typeof DOC_TYPES)[number]
@@ -62,8 +63,15 @@ export type RegisterPayloadItem =
 
 export type RegisterSetResponse = {
   error?: string
+  validationIssues?: RegisterSetValidationIssue[]
   succeeded?: Array<{ index: number }>
   failed?: Array<{ index: number; error?: string }>
+}
+
+export type RegisterSetValidationIssue = {
+  index: number | null
+  field: string | null
+  message: string
 }
 
 export type SubmissionOutcome = { status: 'success' | 'failed'; reason: string }
@@ -110,10 +118,25 @@ export function entryLabel(entry: UploadEntry) {
     : entry.file.name
 }
 
+export function documentCodeTooLongMessage() {
+  return `รหัสเอกสารยาวเกิน ${MAX_DOCUMENT_CODE_LENGTH} ตัวอักษร ระบบอ่านรหัสถึงช่องว่างแรก กรุณาตั้งชื่อไฟล์เป็น [รหัส] [ชื่อเอกสาร].นามสกุล เช่น FM-WI-G-LM01-01 แบบบันทึก.xlsx`
+}
+
+export function documentTitleTooLongMessage() {
+  return `ชื่อเอกสารยาวเกิน ${MAX_DOCUMENT_TITLE_LENGTH} ตัวอักษร กรุณาย่อชื่อเอกสารก่อนลงทะเบียน`
+}
+
+export const documentFileNameFormatMessage = 'ชื่อไฟล์ต้องอยู่ในรูปแบบ [รหัส] [ชื่อเอกสาร].นามสกุล โดยต้องเว้นวรรคระหว่างรหัสกับชื่อเอกสาร'
+
 export function registrationError(entry: UploadEntry) {
   if (entry.group !== 'register') return ''
-  if (!entry.code.trim()) return 'กรุณาระบุรหัสเอกสาร'
-  if (!entry.title.trim()) return 'กรุณาระบุชื่อเอกสาร'
+  const code = entry.code.trim()
+  const title = entry.title.trim()
+  if (!code) return 'กรุณาระบุรหัสเอกสาร'
+  if (!title) return 'กรุณาระบุชื่อเอกสาร'
+  if (code.length > MAX_DOCUMENT_CODE_LENGTH) return documentCodeTooLongMessage()
+  if (title.length > MAX_DOCUMENT_TITLE_LENGTH) return documentTitleTooLongMessage()
+  if (code.toUpperCase() === title.toUpperCase()) return documentFileNameFormatMessage
   if (entry.duplicate.status === 'checking' || entry.duplicate.status === 'idle') return 'กำลังตรวจสอบรหัสเอกสาร'
   if (entry.duplicate.status === 'error') return entry.duplicate.message
   if (entry.duplicate.status === 'found') {
@@ -123,6 +146,32 @@ export function registrationError(entry: UploadEntry) {
     if (!entry.duplicateChoice) return 'กรุณาเลือกวิธีจัดการเอกสาร Published ที่มีอยู่แล้ว'
   }
   return ''
+}
+
+export function formatRegisterSetValidationIssue(issue: RegisterSetValidationIssue) {
+  if (issue.field === 'document_code' && issue.message.toLowerCase().includes('at most 50')) return documentCodeTooLongMessage()
+  if (issue.field === 'title' && issue.message.toLowerCase().includes('at most 200')) return documentTitleTooLongMessage()
+  if (issue.field === 'document_code') return 'รหัสเอกสารไม่ถูกต้อง กรุณาตรวจสอบรหัสและเว้นวรรคระหว่างรหัสกับชื่อไฟล์'
+  if (issue.field === 'title') return 'ชื่อเอกสารไม่ถูกต้อง กรุณาตรวจสอบชื่อเอกสาร'
+  if (issue.field) return `ข้อมูล ${issue.field} ไม่ถูกต้อง กรุณาตรวจสอบรายการนี้`
+  return 'ข้อมูลชุดเอกสารไม่ถูกต้อง กรุณาตรวจสอบรายการอีกครั้ง'
+}
+
+const batchValidationFailureMessage = 'รายการนี้ยังไม่ได้บันทึก เนื่องจากมีรายการอื่นในชุดไม่ผ่านการตรวจสอบ กรุณาแก้ไขรายการที่แจ้งแล้วลองใหม่'
+
+export function mapRegisterSetValidationOutcomes(preparedIds: string[], issues: RegisterSetValidationIssue[]) {
+  const messagesByIndex = new Map<number, string[]>()
+  for (const issue of issues) {
+    if (typeof issue.index !== 'number' || issue.index < 0 || issue.index >= preparedIds.length) continue
+    const messages = messagesByIndex.get(issue.index) ?? []
+    messages.push(formatRegisterSetValidationIssue(issue))
+    messagesByIndex.set(issue.index, messages)
+  }
+
+  return new Map(preparedIds.map((id, index) => [id, {
+    status: 'failed' as const,
+    reason: messagesByIndex.get(index)?.join(' · ') ?? batchValidationFailureMessage,
+  }]))
 }
 
 export function parseRegisterSetResponse(response: Response) {

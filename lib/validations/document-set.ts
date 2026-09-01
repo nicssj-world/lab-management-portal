@@ -2,6 +2,8 @@ import { z } from 'zod'
 import { DOC_TYPES, DOC_VISIBILITIES } from '@/lib/validations/document'
 
 const MAX_SET_FILE_SIZE = 50 * 1024 * 1024
+export const MAX_DOCUMENT_CODE_LENGTH = 50
+export const MAX_DOCUMENT_TITLE_LENGTH = 200
 const boundedText = (max: number) => z.string().trim().max(max)
 const requiredText = (max: number) => boundedText(max).min(1)
 const isoDateOrEmpty = z.string().trim().refine((value) => {
@@ -27,8 +29,8 @@ const RegisterSetItemSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('register'),
     file: FileSchema,
-    document_code: requiredText(50),
-    title: requiredText(200),
+    document_code: requiredText(MAX_DOCUMENT_CODE_LENGTH),
+    title: requiredText(MAX_DOCUMENT_TITLE_LENGTH),
     type: z.enum(DOC_TYPES),
     department: boundedText(100),
     revision: requiredText(30),
