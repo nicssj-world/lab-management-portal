@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
-import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, canViewOccurrence, completionBlockReason, deriveTaskState, generatePeriods, isWeekendDate, occurrenceKey, resolveAssigneeEntries } from './logic'
+import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, canViewOccurrence, completionBlockReason, deriveTaskState, generatePeriods, isWeekendDate, occurrenceCalendarRange, occurrenceKey, resolveAssigneeEntries } from './logic'
 import { listQualityTaskHolidays } from './holidays'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import { canApproveTask, nextRollingDueDate, templateRemovalMode } from './safety'
@@ -109,6 +109,7 @@ function periodLabel(start: string, end: string) {
 }
 
 async function assertNoMeetingConflict(input: {
+  excludeInstanceId?: string
   startDate: string
   endDate: string
   startTime: string | null
@@ -122,6 +123,8 @@ async function assertNoMeetingConflict(input: {
   fail(error)
 
   const conflict = ((data ?? []) as Row[]).some(row => {
+    if (input.excludeInstanceId && str(row.id) === input.excludeInstanceId) return false
+
     // Cancelled scheduled occurrences stay in the database for audit history but
     // no longer occupy a meeting slot.
     if (nullable(row.note) === CANCELLED_NOTE) return false
@@ -129,8 +132,12 @@ async function assertNoMeetingConflict(input: {
     const plannedDate = nullable(row.planned_date)
     if (!plannedDate) return false
 
-    const existingStartDate = row.schedule_id ? plannedDate : str(row.period_start)
-    const existingEndDate = row.schedule_id ? plannedDate : str(row.period_end)
+    const { start: existingStartDate, end: existingEndDate } = occurrenceCalendarRange({
+      scheduleId: nullable(row.schedule_id),
+      periodStart: str(row.period_start),
+      periodEnd: str(row.period_end),
+      plannedDate,
+    })
     if (!existingStartDate || !existingEndDate) return false
 
     return meetingSlotsOverlap(
@@ -245,6 +252,7 @@ export async function getQualityTaskOccurrences(
           plannedStartTime: nullableTime(row?.planned_start_time), plannedEndTime: nullableTime(row?.planned_end_time),
           meetingLocation: nullable(row?.meeting_location), meetingAgenda: nullable(row?.meeting_agenda),
           status, note: nullable(row?.note), completionNote: nullable(row?.completion_note),
+          completionNoteUpdatedBy: nullable(row?.completion_note_updated_by), completionNoteUpdatedAt: nullable(row?.completion_note_updated_at),
           completedBy: nullable(row?.completed_by), completedAt: nullable(row?.completed_at), assignees: assigned,
           submittedBy: nullable(row?.submitted_by), submittedAt: nullable(row?.submitted_at), reviewedBy: nullable(row?.reviewed_by),
           reviewedAt: nullable(row?.reviewed_at), reviewNote: nullable(row?.review_note),
@@ -273,6 +281,7 @@ export async function getQualityTaskOccurrences(
       plannedStartTime: nullableTime(row.planned_start_time), plannedEndTime: nullableTime(row.planned_end_time),
       meetingLocation: nullable(row.meeting_location), meetingAgenda: nullable(row.meeting_agenda),
       status, note: nullable(row.note), completionNote: nullable(row.completion_note),
+      completionNoteUpdatedBy: nullable(row.completion_note_updated_by), completionNoteUpdatedAt: nullable(row.completion_note_updated_at),
       completedBy: nullable(row.completed_by), completedAt: nullable(row.completed_at), assignees: assigned,
       submittedBy: nullable(row.submitted_by), submittedAt: nullable(row.submitted_at), reviewedBy: nullable(row.reviewed_by),
       reviewedAt: nullable(row.reviewed_at), reviewNote: nullable(row.review_note),
@@ -393,10 +402,11 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
         throw new Error('กรุณาเลือกวันที่ภายในเดือนของรอบกิจกรรม')
       }
     }
+    const isMeeting = str(access.template.task_kind) === 'meeting'
     const hasTimePatch = payload.startTime !== undefined || payload.endTime !== undefined
     const timePatch: { startTime: string | null; endTime: string | null } | null = hasTimePatch
       ? (() => {
-          if (str(access.template.task_kind) !== 'meeting') {
+          if (!isMeeting) {
             if (payload.startTime != null || payload.endTime != null) throw new Error('ช่วงเวลาใช้ได้เฉพาะงานประชุม')
             return { startTime: null, endTime: null }
           }
@@ -406,6 +416,25 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
           )
         })()
       : null
+    if (isMeeting && payload.plannedDate) {
+      const meetingTime = timePatch ?? {
+        startTime: nullableTime(access.instance.planned_start_time),
+        endTime: nullableTime(access.instance.planned_end_time),
+      }
+      const meetingRange = occurrenceCalendarRange({
+        scheduleId: nullable(access.instance.schedule_id),
+        periodStart: str(access.instance.period_start),
+        periodEnd: str(access.instance.period_end),
+        plannedDate: payload.plannedDate,
+      })
+      await assertNoMeetingConflict({
+        excludeInstanceId: instanceId,
+        startDate: meetingRange.start,
+        endDate: meetingRange.end,
+        startTime: meetingTime.startTime,
+        endTime: meetingTime.endTime,
+      })
+    }
     const { error } = await supabaseAdmin.from('quality_task_instances').update({
       planned_date: payload.plannedDate || null, note: payload.note?.trim() || null,
       ...(timePatch ? { planned_start_time: timePatch.startTime, planned_end_time: timePatch.endTime } : {}),
@@ -418,21 +447,37 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
     if (taskStatus(access.instance.status) === 'open') {
       fail((await supabaseAdmin.from('quality_task_instances').update({ status: 'in_progress', updated_by: actor.id, updated_at: new Date().toISOString() }).eq('id', instanceId)).error)
     }
+  } else if (payload.action === 'save_completion_note') {
+    if (str(access.template.task_kind) !== 'meeting') throw new Error('สรุปมติใช้ได้เฉพาะงานประชุม')
+    const currentStatus = taskStatus(access.instance.status)
+    if (currentStatus === 'completed' || currentStatus === 'pending_review') throw new Error('ไม่สามารถแก้ไขสรุปมติหลังส่งงานแล้ว')
+    const completionNote = payload.completionNote?.trim() || null
+    const now = new Date().toISOString()
+    fail((await supabaseAdmin.from('quality_task_instances').update({
+      completion_note: completionNote,
+      completion_note_updated_by: actor.id,
+      completion_note_updated_at: now,
+      updated_by: actor.id, updated_at: now,
+    }).eq('id', instanceId)).error)
   } else if (payload.action === 'complete' || payload.action === 'submit') {
     if (access.instance.status === 'completed') return access.instance
     await assertRequiredEvidenceComplete(instanceId, str(access.instance.template_id), access.evidenceRequired)
     const now = new Date().toISOString()
     const requiresReview = payload.action === 'submit' && str(access.template.approval_mode) === 'required'
     const nextStatus: TaskStatus = requiresReview ? 'pending_review' : 'completed'
+    const completionNote = payload.completionNote === undefined
+      ? nullable(access.instance.completion_note)
+      : payload.completionNote?.trim() || null
     fail((await supabaseAdmin.from('quality_task_instances').update({
-      status: nextStatus, completion_note: payload.completionNote?.trim() || null,
+      status: nextStatus, completion_note: completionNote,
+      ...(payload.completionNote !== undefined ? { completion_note_updated_by: actor.id, completion_note_updated_at: now } : {}),
       submitted_by: actor.id, submitted_at: now,
       completed_by: nextStatus === 'completed' ? actor.id : null, completed_at: nextStatus === 'completed' ? now : null,
       reviewed_by: null, reviewed_at: null, review_note: null,
       updated_by: actor.id, updated_at: now,
     }).eq('id', instanceId)).error)
     if (payload.action === 'submit') {
-      fail((await supabaseAdmin.from('quality_task_reviews').insert({ instance_id: instanceId, action: 'submitted', actor_id: actor.id, note: payload.completionNote?.trim() || null, created_at: now })).error)
+      fail((await supabaseAdmin.from('quality_task_reviews').insert({ instance_id: instanceId, action: 'submitted', actor_id: actor.id, note: completionNote, created_at: now })).error)
     }
     if (nextStatus === 'completed') await materializeNextRollingOccurrence(access.instance, actor.id, now.slice(0, 10))
   } else if (payload.action === 'approve' || payload.action === 'reject') {
@@ -451,7 +496,7 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
     if (approved) await materializeNextRollingOccurrence(access.instance, actor.id, now.slice(0, 10))
   } else {
     if (level !== 'edit' || !payload.reason.trim()) throw new Error('ต้องระบุเหตุผลและมีสิทธิ์ edit')
-    fail((await supabaseAdmin.from('quality_task_instances').update({ status: 'open', completed_by: null, completed_at: null, completion_note: null, submitted_by: null, submitted_at: null, reviewed_by: null, reviewed_at: null, review_note: null, updated_by: actor.id, updated_at: new Date().toISOString() }).eq('id', instanceId)).error)
+    fail((await supabaseAdmin.from('quality_task_instances').update({ status: 'open', completed_by: null, completed_at: null, completion_note: null, completion_note_updated_by: null, completion_note_updated_at: null, submitted_by: null, submitted_at: null, reviewed_by: null, reviewed_at: null, review_note: null, updated_by: actor.id, updated_at: new Date().toISOString() }).eq('id', instanceId)).error)
     fail((await supabaseAdmin.from('quality_task_reviews').insert({ instance_id: instanceId, action: 'reopened', actor_id: actor.id, note: payload.reason.trim() })).error)
   }
   audit(actor, `quality_task.instance.${payload.action}`, instanceId, payload)

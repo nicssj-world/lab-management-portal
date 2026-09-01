@@ -417,21 +417,21 @@ function EquipmentModal({
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 760, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)', display: 'flex', flexDirection: 'column' }}>
+    <div className="eq-modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div className="eq-modal-panel" style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 760, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <div className="eq-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>{isEdit ? 'แก้ไขเครื่องมือ' : 'เพิ่มเครื่องมือ'}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}><Icon name="x" size={18} /></button>
         </div>
 
         {/* Body */}
-        <div style={{ padding: 24, overflow: 'auto', flex: 1 }}>
+        <div className="eq-modal-body" style={{ padding: 24, overflow: 'auto', flex: 1 }}>
           {err && <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(220,38,38,.08)', color: 'var(--danger)', fontSize: 13, marginBottom: 16 }}>{err}</div>}
 
           {/* Section: ข้อมูลทั่วไป */}
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>ข้อมูลทั่วไป</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+          <div className="eq-modal-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={labelStyle}>ชื่อ / ประเภทเครื่องมือ <span style={{ color: 'var(--danger)' }}>*</span></label>
               <input style={inputStyle} value={form.equipment_type ?? ''} onChange={e => set('equipment_type', e.target.value)} placeholder="Equipment Type" />
@@ -527,7 +527,7 @@ function EquipmentModal({
 
           {/* Section: ผู้ผลิต/จำหน่าย */}
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>ผู้ผลิต / จำหน่าย</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+          <div className="eq-modal-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
             <div>
               <label style={labelStyle}>Manufacturer</label>
               <input style={inputStyle} value={form.manufacturer ?? ''} onChange={e => set('manufacturer', e.target.value || null)} />
@@ -560,7 +560,7 @@ function EquipmentModal({
 
           {/* Section: การจัดซื้อ */}
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>การจัดซื้อ</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
+          <div className="eq-modal-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
             <div>
               <label style={labelStyle}>วันที่ซื้อ</label>
               <DateInput style={inputStyle} value={form.purchase_date} onChange={v => set('purchase_date', v)} />
@@ -727,7 +727,7 @@ function EquipmentModal({
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
+        <div className="eq-modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
           <button onClick={onClose} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)' }}>ยกเลิก</button>
           <button onClick={handleSave} disabled={saving || photoPreparing} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', cursor: saving || photoPreparing ? 'not-allowed' : 'pointer', fontSize: 13, fontFamily: 'inherit', opacity: saving || photoPreparing ? 0.7 : 1 }}>
             {photoPreparing ? 'กำลังเตรียมรูป...' : saving ? 'กำลังบันทึก...' : isEdit ? 'บันทึก' : 'เพิ่มเครื่องมือ'}
@@ -1178,7 +1178,7 @@ function EquipmentDashboard({ data, lastCalDates }: { data: Equipment[]; lastCal
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Row 1: dept + status */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16 }}>
+      <div className="eq-dashboard-row eq-dashboard-row-primary" style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16 }}>
         <div style={card}>
           <div style={lbl}>เครื่องมือตามแผนก</div>
           <ResponsiveContainer width="100%" height={Math.max(240, deptData.length * 30)}>
@@ -1217,7 +1217,7 @@ function EquipmentDashboard({ data, lastCalDates }: { data: Equipment[]; lastCal
       </div>
 
       {/* Row 2: risk + calibration */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="eq-dashboard-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div style={card}>
           <div style={lbl}>ระดับความเสี่ยง</div>
           <ResponsiveContainer width="100%" height={160}>
@@ -1483,7 +1483,7 @@ function EquipmentQrTab({ classifications, departments }: { classifications: str
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
           {filtered.map(eq => (
-            <div key={eq.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <div key={eq.id} className="eq-qr-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
               {qrMap[eq.id]
                 ? <img src={qrMap[eq.id]} alt={`QR ${eq.equipment_type}`} style={{ width: '100%', maxWidth: 150, borderRadius: 8, border: '1px solid var(--border)', background: '#fff' }} />
                 : <div style={{ width: 150, height: 150, borderRadius: 8, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 12 }}>กำลังสร้าง…</div>}
@@ -2312,7 +2312,7 @@ export default function EquipmentClient({
         @keyframes spin { to { transform: rotate(360deg) } }
         @keyframes eqFadeUp { from { opacity: 0; transform: translateY(5px) } to { opacity: 1; transform: translateY(0) } }
         @keyframes toastIn { from { opacity: 0; transform: translateX(12px) } to { opacity: 1; transform: translateX(0) } }
-        .eq-page-shell { position: relative; isolation: isolate; }
+        .eq-page-shell { position: relative; isolation: isolate; min-width: 0; max-width: 100%; }
         .eq-page-shell::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: -1; background:
           radial-gradient(circle at 12% 4%, rgba(37,99,235,.10), transparent 26rem),
           radial-gradient(circle at 86% 12%, rgba(14,165,233,.10), transparent 24rem);
@@ -2360,9 +2360,97 @@ export default function EquipmentClient({
         .eq-risk-hint-popover::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; transform: translateX(-50%) rotate(45deg); background: var(--card); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
         .eq-risk-hint:hover .eq-risk-hint-popover,
         .eq-risk-hint:focus-within .eq-risk-hint-popover { opacity: 1; pointer-events: auto; visibility: visible; transform: translateX(-50%) translateY(0); }
+        .eq-page-header { width: 100%; min-width: 0; }
+        .eq-page-header > div { min-width: 0; max-width: 100%; }
+        .eq-page-header > div > div:first-child,
+        .eq-page-header > div > div:last-child { min-width: 0; max-width: 100%; }
+        .eq-header-actions { min-width: 0; max-width: 100%; align-items: stretch; }
+        .eq-header-actions > a,
+        .eq-header-actions > div,
+        .eq-header-actions > button { min-width: 0; max-width: 100%; }
+        .eq-header-actions > a { display: flex; }
+        .eq-header-actions > a > button { max-width: 100%; }
+        .eq-view-switcher { max-width: 100%; min-width: 0; }
+        .eq-view-button { min-width: 0; min-height: 44px; touch-action: manipulation; }
+        .eq-filter-panel { min-width: 0; }
+        .eq-search-box { min-width: 0; }
+        .eq-search-box input { width: 100%; min-height: 44px; box-sizing: border-box; }
+        .eq-filter-select,
+        .eq-pending-toggle { min-height: 44px; touch-action: manipulation; }
+        .eq-pagination-actions { min-width: 0; flex-wrap: wrap; }
+        .eq-pagination-actions > button { min-height: 44px; height: auto !important; touch-action: manipulation; }
+        .eq-page-chip { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; }
+        .eq-dashboard-row,
+        .eq-dashboard-row > * { min-width: 0; }
+        .eq-table-scroll-region { min-width: 0; max-width: 100%; }
+        .eq-mobile-table-hint { display: none; }
+        .eq-table .eq-actions { align-items: center; flex-wrap: wrap; }
+        .eq-selection-bar { min-width: 0; }
+        .eq-modal-panel,
+        .eq-modal-header,
+        .eq-modal-body,
+        .eq-modal-footer { min-width: 0; }
+        .eq-modal-body input:not([type='checkbox']),
+        .eq-modal-body select { min-height: 44px; max-width: 100%; box-sizing: border-box; }
+        .eq-calplan-root { min-width: 0; max-width: 100%; }
+        .eq-calplan-root > * { min-width: 0; max-width: 100%; }
+        .eq-calplan-root [style*='overflow-x'] { max-width: 100%; }
+        .eq-qr-card button { touch-action: manipulation; }
         @media (max-width: 920px) {
           .eq-stat-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
           .eq-header-actions { justify-content: flex-start; }
+          .eq-dashboard-row { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 767px) {
+          .eq-page-header > div { width: 100%; flex-direction: column !important; align-items: stretch !important; gap: 12px !important; }
+          .eq-page-header > div > div { width: 100%; }
+          .eq-header-actions { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; justify-content: stretch; }
+          .eq-header-actions > a,
+          .eq-header-actions > div,
+          .eq-header-actions > button { width: 100%; }
+          .eq-header-actions > a > button,
+          .eq-header-actions > button { width: 100%; min-height: 44px; height: auto !important; justify-content: flex-start; text-align: left; white-space: normal !important; }
+          .eq-header-actions > div > div:first-child { width: 100%; min-height: 44px; }
+          .eq-header-actions > div > div:first-child > button { min-height: 44px; }
+          .eq-header-actions > div > div:first-child > button:first-child { flex: 1 1 auto; min-width: 0; justify-content: flex-start; text-align: left; white-space: normal; }
+          .eq-header-actions > div > div:first-child > button:last-child { flex: 0 0 44px; padding: 0 !important; justify-content: center; }
+          .eq-filter-panel { align-items: stretch; }
+          .eq-filter-panel > .eq-search-box,
+          .eq-filter-panel > .eq-filter-select,
+          .eq-filter-panel > .eq-pending-toggle,
+          .eq-filter-panel > button { width: 100%; max-width: none; min-width: 0 !important; flex: 1 1 100%; }
+          .eq-filter-panel > .eq-pending-toggle,
+          .eq-filter-panel > button { justify-content: flex-start; }
+          .eq-filter-panel > svg { align-self: flex-start; margin-top: 3px; }
+          .eq-filter-panel > span { align-self: flex-start; }
+          .eq-filter-panel > div:empty { display: none; }
+          .eq-pagination-actions { width: 100%; justify-content: center; }
+          .eq-pagination-actions > button,
+          .eq-page-chip { min-height: 44px; }
+          .eq-mobile-table-hint { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--surface-2); color: var(--muted); font-size: 11.5px; font-weight: 600; text-align: center; }
+          .eq-table .eq-actions { gap: 8px !important; }
+          .eq-table .eq-actions > button { min-width: 44px; min-height: 44px; height: auto !important; padding: 0 10px !important; }
+          .eq-table input[type='checkbox'] { width: 20px !important; height: 20px !important; }
+          .eq-selection-bar { flex-wrap: wrap; align-items: flex-start !important; }
+          .eq-selection-bar > div:empty { display: none; }
+          .eq-selection-bar button { min-height: 44px; }
+          .eq-selection-delete { margin-left: auto; }
+          .eq-calplan-root button { min-height: 44px !important; touch-action: manipulation; }
+          .eq-calplan-root [style*='grid-template-columns'] { grid-template-columns: 1fr !important; }
+          .eq-calplan-root > section { align-items: stretch !important; }
+          .eq-calplan-root > section label { width: 100%; }
+          .eq-calplan-root > section label input,
+          .eq-calplan-root > section button { width: 100% !important; min-height: 44px !important; }
+          .eq-qr-card button { min-height: 44px; height: auto !important; }
+          .eq-modal-overlay { padding: 12px !important; align-items: flex-start !important; overflow-y: auto; }
+          .eq-modal-panel { max-height: calc(100svh - 24px) !important; border-radius: 14px !important; }
+          .eq-modal-header,
+          .eq-modal-footer { padding-left: 16px !important; padding-right: 16px !important; }
+          .eq-modal-body { padding: 16px !important; }
+          .eq-modal-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+          .eq-modal-footer { flex-direction: column; align-items: stretch; }
+          .eq-modal-footer button { width: 100%; min-height: 44px; }
+          .eq-modal-header > button { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
         }
         @media (max-width: 620px) {
           .eq-stat-grid { grid-template-columns: 1fr; }
@@ -2371,8 +2459,15 @@ export default function EquipmentClient({
           .eq-pagination { justify-content: center; }
           .eq-pagination-info { width: 100%; text-align: center; }
         }
+        @media (max-width: 480px) {
+          .eq-header-actions { grid-template-columns: 1fr; }
+          .eq-view-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .eq-view-button { justify-content: center; }
+          .eq-selection-delete { width: 100%; justify-content: center; margin-left: 0; }
+        }
       `}</style>
 
+      <div className="eq-page-header">
       <PageHeader
         title="ทะเบียนเครื่องมือ"
         eyebrow={lastUpdated ? `${total.toLocaleString('th-TH')} รายการ · อัปเดตล่าสุด ${new Date(lastUpdated).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}` : `${total.toLocaleString('th-TH')} รายการ`}
@@ -2480,6 +2575,7 @@ export default function EquipmentClient({
           </div>
         }
       />
+      </div>
 
       {/* View switcher */}
       <div className="eq-view-switcher">
@@ -2600,12 +2696,13 @@ export default function EquipmentClient({
 
       {/* Bulk selection bar */}
       {canEdit && selectedIds.size > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.20)', borderRadius: 10, marginBottom: 10 }}>
+        <div className="eq-selection-bar" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.20)', borderRadius: 10, marginBottom: 10 }}>
           <Icon name="check" size={14} style={{ color: 'var(--danger)', flexShrink: 0 }} />
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>เลือก {selectedIds.size} รายการ</span>
           <button onClick={() => setSelectedIds(new Set())} style={{ fontSize: 12, color: 'var(--muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '0 4px', fontFamily: 'inherit' }}>ล้างการเลือก</button>
           <div style={{ flex: 1 }} />
           <button
+            className="eq-selection-delete"
             onClick={() => setBulkDeleteOpen(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 7, border: '1px solid rgba(220,38,38,.35)', background: 'rgba(220,38,38,.08)', color: 'var(--danger)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(220,38,38,.14)')}
@@ -2641,6 +2738,13 @@ export default function EquipmentClient({
           </div>
         )}
         {!loading && items.length > 0 && (
+          <>
+          <div className="eq-mobile-table-hint" role="note">
+            <Icon name="arrowLeft" size={13} />
+            <span>เลื่อนตารางซ้าย–ขวาเพื่อดูข้อมูลเพิ่มเติม</span>
+            <Icon name="arrowRight" size={13} />
+          </div>
+          <div className="eq-table-scroll-region">
           <StickyScroll>
             <table className="eq-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -2815,6 +2919,8 @@ export default function EquipmentClient({
               </tbody>
             </table>
           </StickyScroll>
+          </div>
+          </>
         )}
       </Card>
 

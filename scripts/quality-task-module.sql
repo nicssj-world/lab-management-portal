@@ -55,6 +55,8 @@ create table if not exists public.quality_task_instances (
   status text not null default 'open' check (status in ('open', 'completed')),
   note text,
   completion_note text,
+  completion_note_updated_by uuid references public.profiles(id),
+  completion_note_updated_at timestamptz,
   completed_by uuid references public.profiles(id),
   completed_at timestamptz,
   created_by uuid references public.profiles(id),

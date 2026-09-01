@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
-import { isCheckInClosed } from './logic'
+import { isCheckInClosed, occurrenceDisplayTitle } from './logic'
 import { getOccurrenceAccess, listTaskPeople } from './server'
 import { addParticipantToSelection, resolveParticipantSelection, resolveParticipants } from './participants'
 import type { QualityTaskCheckIn } from './types'
@@ -106,7 +106,7 @@ export async function getCheckInContext(token: string, actorId: string | null): 
 
   const { data: instance, error } = await supabaseAdmin
     .from('quality_task_instances')
-    .select('*, quality_task_templates(title, task_kind, default_participant_depts, default_participant_user_ids)')
+    .select('*, quality_task_templates(title, category_name, task_kind, default_participant_depts, default_participant_user_ids)')
     .eq('check_in_token', token)
     .maybeSingle()
   if (error) throw new Error(error.message)
@@ -133,7 +133,15 @@ export async function getCheckInContext(token: string, actorId: string | null): 
 
   return {
     instanceId: str(instance.id),
-    title: str(template.title) || str(instance.period_label),
+    // งานเฉพาะกิจเก็บชื่อประชุมที่ผู้ใช้กรอกไว้ใน period_label ส่วนงานตามตารางใช้ชื่อ template
+    title: occurrenceDisplayTitle({
+      scheduleId: nullable(instance.schedule_id),
+      periodLabel: str(instance.period_label),
+      template: {
+        title: str(template.title),
+        categoryName: str(template.category_name),
+      },
+    }),
     periodLabel: str(instance.period_label),
     plannedDate: nullable(instance.planned_date),
     closed: checkInClosed(instance),

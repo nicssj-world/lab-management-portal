@@ -173,22 +173,77 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
   }), [rows])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="pc-page" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <style>{`
         @keyframes pc-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .pc-rise { opacity: 0; animation: pc-rise .42s cubic-bezier(.22,.68,0,1) forwards; }
         .pc-card:hover { transform: translateY(-3px); }
         .pc-card:hover .pc-arrow { transform: translateX(3px); opacity: 1; }
         .pc-stat-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+        .pc-header { overflow: visible !important; }
+        .pc-header-title {
+          flex: 1 1 300px;
+          min-width: 0;
+          position: relative;
+          z-index: 1;
+        }
+        .pc-header-actions {
+          display: flex;
+          flex: 0 1 760px;
+          min-width: 0;
+          align-items: stretch;
+          justify-content: flex-end;
+          gap: 8px;
+          flex-wrap: wrap;
+          position: relative;
+          z-index: 1;
+        }
+        .pc-header-action {
+          min-width: 0;
+          max-width: 100%;
+          min-height: 38px;
+          white-space: normal;
+          overflow-wrap: anywhere;
+          touch-action: manipulation;
+          transition: box-shadow .15s ease, filter .15s ease;
+        }
+        .pc-header-action:hover { box-shadow: 0 4px 12px rgba(15,23,42,.08); filter: brightness(.985); }
+        .pc-header-action:active { filter: brightness(.96); }
+        .pc-search-input { touch-action: manipulation; }
+        .pc-role-filter, .pc-clear-filter { touch-action: manipulation; }
+        @media (max-width: 1150px) {
+          .pc-header { gap: 16px !important; padding: 18px !important; }
+          .pc-header-title { flex-basis: 100%; }
+          .pc-header-actions {
+            width: 100%;
+            flex-basis: 100%;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            justify-content: stretch;
+          }
+          .pc-header-action { width: 100%; justify-content: flex-start; text-align: left; }
+        }
+        @media (max-width: 767px) {
+          .pc-header-action { min-height: 44px; padding: 10px 12px !important; }
+          .pc-search-input { min-height: 44px; }
+          .pc-role-filter { min-height: 44px; padding-block: 8px !important; }
+          .pc-dept-select, .pc-clear-filter { min-height: 44px; }
+        }
+        @media (max-width: 520px) {
+          .pc-page { gap: 16px !important; }
+          .pc-header { padding: 16px !important; border-radius: 14px !important; }
+          .pc-header-actions { grid-template-columns: 1fr; }
+        }
         @media (prefers-reduced-motion: reduce) {
           .pc-rise { animation: none; opacity: 1; }
           .pc-card:hover, .pc-card:hover .pc-arrow, .pc-stat-card:hover { transform: none; }
+          .pc-header-action { transition: none; }
         }
       `}</style>
 
       {/* ── Header ── */}
-      <div style={{
-        position: 'relative', overflow: 'hidden',
+      <div className="pc-header" style={{
+        position: 'relative', overflow: 'visible',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
         padding: 22, borderRadius: 16, border: '1px solid var(--border)',
         background: 'linear-gradient(135deg, var(--card) 0%, var(--surface-2) 100%)',
@@ -198,39 +253,41 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
           position: 'absolute', top: -60, right: -40, width: 220, height: 220, borderRadius: '50%',
           background: 'radial-gradient(circle, var(--primary-soft) 0%, transparent 70%)', pointerEvents: 'none',
         }} />
-        <PageHeader
-          eyebrow="กลุ่มงานเทคนิคการแพทย์"
-          title="ทะเบียนบุคลากร"
-          subtitle={`บุคลากรทั้งหมด ${rows.length} คน`}
-          marginBottom={0}
-        />
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0, position: 'relative' }}>
-          <Link href="/staff/agreements" style={linkBtn}>
+        <div className="pc-header-title">
+          <PageHeader
+            eyebrow="กลุ่มงานเทคนิคการแพทย์"
+            title="ทะเบียนบุคลากร"
+            subtitle={`บุคลากรทั้งหมด ${rows.length} คน`}
+            marginBottom={0}
+          />
+        </div>
+        <div className="pc-header-actions" role="group" aria-label="ทางลัดทะเบียนบุคลากร">
+          <Link href="/staff/agreements" className="pc-header-action" style={linkBtn}>
             <Icon name="shieldCheck" size={15} /> ข้อตกลงของฉัน
           </Link>
           {canManage && (
             <>
-              <Link href="/staff/personnel/manage" style={linkBtn}>
+              <Link href="/staff/personnel/manage" className="pc-header-action" style={linkBtn}>
                 <Icon name="settings" size={15} /> จัดการกลุ่มงาน
               </Link>
-              <Link href="/staff/personnel/agreements" style={linkBtn}>
+              <Link href="/staff/personnel/agreements" className="pc-header-action" style={linkBtn}>
                 <Icon name="shieldCheck" size={15} /> จัดการข้อตกลงประจำปี
               </Link>
             </>
           )}
           {canApproveAgreements && (
-            <Link href="/staff/personnel/agreements" style={linkBtn}>
+            <Link href="/staff/personnel/agreements" className="pc-header-action" style={linkBtn}>
               <Icon name="check" size={15} /> รับรองข้อตกลงประจำปี
             </Link>
           )}
-          <Link href="/staff/personnel/team-org" style={{ ...linkBtn, maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', whiteSpace: 'normal', textAlign: 'left' }}>
+          <Link href="/staff/personnel/team-org" className="pc-header-action" style={linkBtn}>
             <Icon name="users" size={15} /> เจ้าหน้าที่กลุ่มงานเทคนิคการแพทย์
           </Link>
-          <Link href="/staff/personnel/exams" style={linkBtn}>
+          <Link href="/staff/personnel/exams" className="pc-header-action" style={linkBtn}>
             <Icon name="doc" size={15} /> ข้อสอบสมรรถนะ
           </Link>
           {hasOwnRecord && (
-            <Link href={`/staff/personnel/${currentUserId}`} style={linkBtn}>
+            <Link href={`/staff/personnel/${currentUserId}`} className="pc-header-action" style={linkBtn}>
               <Icon name="user" size={15} /> โปรไฟล์ของฉัน
             </Link>
           )}
@@ -258,6 +315,7 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
             <Icon name="search" size={15} />
           </span>
           <input
+            className="pc-search-input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาชื่อ / เลขพนักงาน / ตำแหน่ง / หน่วยงาน / เลขใบอนุญาต"
@@ -272,7 +330,7 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
             const active = roleFilter === r
             const count = r === 'All' ? rows.length : roleCounts[r as MainPersonnelRole]
             return (
-              <button key={r} onClick={() => setRoleFilter(r)} style={{
+              <button key={r} className="pc-role-filter" onClick={() => setRoleFilter(r)} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 7,
                 padding: '5px 13px', borderRadius: 20, border: '1px solid var(--border)',
                 background: active ? 'var(--surface-2)' : 'var(--card)',
@@ -299,6 +357,7 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, flexShrink: 0 }}>หน่วยงาน</span>
             <select
+              className="pc-dept-select"
               value={deptFilter}
               onChange={(e) => setDeptFilter(e.target.value)}
               style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', cursor: 'pointer', outline: 'none' }}
@@ -307,7 +366,7 @@ export function PersonnelClient({ rows, currentUserId, initialSummaryFilter = 'a
               {depts.filter((d) => d !== 'All').map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
             {deptFilter !== 'All' && (
-              <button onClick={() => setDeptFilter('All')} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <button className="pc-clear-filter" onClick={() => setDeptFilter('All')} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                 ล้าง
               </button>
             )}

@@ -121,6 +121,8 @@ export interface QualityTaskOccurrence {
   status: TaskStatus
   note: string | null
   completionNote: string | null
+  completionNoteUpdatedBy: string | null
+  completionNoteUpdatedAt: string | null
   completedBy: string | null
   completedAt: string | null
   submittedBy: string | null
@@ -177,6 +179,7 @@ export type OccurrenceCreatePayload =
 export type OccurrenceActionPayload =
   | { action: 'schedule'; plannedDate: string | null; note?: string | null; startTime?: string | null; endTime?: string | null; assignees?: AssigneeEntry[]; participantDepts?: string[]; participantUserIds?: string[] }
   | { action: 'start' }
+  | { action: 'save_completion_note'; completionNote: string | null }
   | { action: 'submit'; completionNote?: string | null }
   | { action: 'approve'; note?: string | null }
   | { action: 'reject'; reason: string }

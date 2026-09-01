@@ -11,6 +11,7 @@ import type {
   QualityTaskHolidayKind,
   QualityTaskOccurrence,
   QualityTaskTemplate,
+  OccurrenceActionPayload,
   TaskKind,
   TaskUrgency,
 } from "@/lib/quality-tasks/types";
@@ -36,6 +37,7 @@ import {
   formatMeetingTimeRange,
   getMeetingTimePreset,
   MEETING_TIME_PRESETS,
+  meetingSlotsOverlap,
   shouldShowAdHocTimePicker,
   type MeetingTimePreset,
 } from "@/lib/quality-tasks/meeting-time";
@@ -129,6 +131,7 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   "quality_task.instance.materialize": "ระบบสร้างงานรอบนี้",
   "quality_task.instance.create": "สร้างงานเฉพาะกิจ",
   "quality_task.instance.schedule": "กำหนดวัน/แก้ไขรายละเอียด",
+  "quality_task.instance.save_completion_note": "บันทึกสรุปมติที่ประชุม",
   "quality_task.instance.complete": "ทำเสร็จ",
   "quality_task.instance.reopen": "เปิดงานใหม่",
   "quality_task.instance.cancel": "ยกเลิกรอบนี้",
@@ -180,6 +183,28 @@ function fmtDateRange(start: string, end: string) {
     year: "numeric",
   });
   return `${a} – ${b}`;
+}
+function fmtSavedAt(value: string | null) {
+  return value
+    ? new Intl.DateTimeFormat("th-TH", {
+        timeZone: "Asia/Bangkok",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).format(new Date(value))
+    : "—";
+}
+function personName(id: string | null, people: Person[]) {
+  return id ? people.find((person) => person.id === id)?.name ?? "ผู้ใช้ระบบ" : "ผู้ใช้ระบบ";
+}
+function meetingPresetTimes(preset: MeetingTimePreset) {
+  if (preset === "morning") return MEETING_TIME_PRESETS.morning;
+  if (preset === "lunch") return MEETING_TIME_PRESETS.lunch;
+  if (preset === "afternoon") return MEETING_TIME_PRESETS.afternoon;
+  return { startTime: null, endTime: null };
 }
 function assigneeName(e: AssigneeEntry, people: Person[]) {
   return e.userId
@@ -540,6 +565,49 @@ export function QualityTaskDashboard({
     [holidays],
   );
 
+  function selectedMeetingSlotConflicts(
+    startTime: string | null,
+    endTime: string | null,
+  ) {
+    if (!selected || selected.template.taskKind !== "meeting" || !selected.plannedDate) {
+      return false;
+    }
+    // Let the server return the precise validation message for an incomplete
+    // custom range instead of treating a half-filled range as all-day.
+    if ((startTime === null) !== (endTime === null)) return false;
+    const selectedRange = occurrenceCalendarRange(selected);
+    return items.some((candidate) => {
+      if (
+        candidate.key === selected.key ||
+        candidate.template.taskKind !== "meeting" ||
+        !candidate.plannedDate
+      ) {
+        return false;
+      }
+      const candidateRange = occurrenceCalendarRange(candidate);
+      return meetingSlotsOverlap(
+        {
+          startDate: selectedRange.start,
+          endDate: selectedRange.end,
+          startTime,
+          endTime,
+        },
+        {
+          startDate: candidateRange.start,
+          endDate: candidateRange.end,
+          startTime: candidate.plannedStartTime,
+          endTime: candidate.plannedEndTime,
+        },
+      );
+    });
+  }
+
+  function isSelectedMeetingPresetOccupied(preset: MeetingTimePreset) {
+    if (preset === "custom") return false;
+    const times = meetingPresetTimes(preset);
+    return selectedMeetingSlotConflicts(times.startTime, times.endTime);
+  }
+
   async function ensureInstance(o: QualityTaskOccurrence) {
     if (o.instanceId) return o.instanceId;
     const res = await fetch("/api/admin/quality-tasks/occurrences", {
@@ -555,7 +623,10 @@ export function QualityTaskDashboard({
     if (!res.ok) throw new Error(json.error);
     return json.instance.id as string;
   }
-  async function mutate(o: QualityTaskOccurrence, payload: unknown) {
+  async function mutate(
+    o: QualityTaskOccurrence,
+    payload: OccurrenceActionPayload,
+  ): Promise<QualityTaskOccurrence | null> {
     setBusy(true);
     setError("");
     try {
@@ -577,42 +648,67 @@ export function QualityTaskDashboard({
         ).json()
       ).occurrences as QualityTaskOccurrence[];
       setItems(fresh);
-      setSelected(fresh.find((x) => x.key === o.key) ?? null);
+      const next = fresh.find((x) => x.key === o.key) ?? null;
+      setSelected(next);
+      return next;
     } catch (e) {
       setError(e instanceof Error ? e.message : "ดำเนินการไม่สำเร็จ");
+      return null;
     } finally {
       setBusy(false);
     }
+  }
+  async function saveCompletionNote(o: QualityTaskOccurrence) {
+    const saved = await mutate(o, {
+      action: "save_completion_note",
+      completionNote: completeNote.trim() || null,
+    });
+    if (saved) setCompleteNote(saved.completionNote ?? "");
   }
   async function rescheduleMeeting(o: QualityTaskOccurrence, date: string) {
     if (busy || (o.plannedDate ?? o.periodStart) === date) return;
     await mutate(o, { action: "schedule", plannedDate: date });
   }
-  async function saveSelectedMeetingTime(startTime: string, endTime: string) {
+  async function saveSelectedMeetingTime(
+    startTime: string | null,
+    endTime: string | null,
+  ) {
     if (!selected || selected.template.taskKind !== "meeting") return;
     if (!selected.plannedDate) {
       setError("กรุณาเลือกวันนัดก่อนระบุช่วงเวลา");
       return;
     }
-    await mutate(selected, {
+    const saved = await mutate(selected, {
       action: "schedule",
       plannedDate: selected.plannedDate,
       startTime: startTime || null,
       endTime: endTime || null,
     });
+    if (!saved) {
+      setMeetingTimeDraft({
+        startTime: selected.plannedStartTime ?? "",
+        endTime: selected.plannedEndTime ?? "",
+      });
+      setMeetingTimePresetDraft(
+        getMeetingTimePreset(selected.plannedStartTime, selected.plannedEndTime),
+      );
+    }
   }
   async function applySelectedMeetingPreset(preset: MeetingTimePreset) {
+    if (preset !== "custom") {
+      const times = meetingPresetTimes(preset);
+      if (selectedMeetingSlotConflicts(times.startTime, times.endTime)) {
+        setError("ช่วงเวลานี้มีประชุมอื่นจองแล้ว กรุณาเลือกช่วงเวลาอื่น");
+        return;
+      }
+    }
     setMeetingTimePresetDraft(preset);
     if (preset === "custom") return;
-    const times =
-      preset === "morning"
-        ? MEETING_TIME_PRESETS.morning
-        : preset === "lunch"
-          ? MEETING_TIME_PRESETS.lunch
-        : preset === "afternoon"
-          ? MEETING_TIME_PRESETS.afternoon
-          : { startTime: "", endTime: "" };
-    setMeetingTimeDraft(times);
+    const times = meetingPresetTimes(preset);
+    setMeetingTimeDraft({
+      startTime: times.startTime ?? "",
+      endTime: times.endTime ?? "",
+    });
     await saveSelectedMeetingTime(times.startTime, times.endTime);
   }
   async function upload(file: File) {
@@ -702,7 +798,7 @@ export function QualityTaskDashboard({
       .catch(() => setHistory([]));
   }, [selected?.instanceId]);
   useEffect(() => {
-    setCompleteNote("");
+    setCompleteNote(selected?.completionNote ?? "");
   }, [selected?.key]);
   async function refreshActionItems(instanceId: string) {
     const res = await fetch(
@@ -2147,7 +2243,7 @@ export function QualityTaskDashboard({
                     lang="th"
                     min={selectedDateRange?.from}
                     max={selectedDateRange?.to}
-                    defaultValue={selected.plannedDate ?? ""}
+                    value={selected.plannedDate ?? ""}
                     onChange={(e) =>
                       mutate(selected, {
                         action: "schedule",
@@ -2199,10 +2295,42 @@ export function QualityTaskDashboard({
                         disabled={busy || !selected.plannedDate}
                         style={inputStyle}
                       >
-                        <option value="all_day">ทั้งวัน</option>
-                        <option value="morning">ช่วงเช้า (08:30–12:00 น.)</option>
-                        <option value="lunch">พักเที่ยง (12:00–13:00 น.)</option>
-                        <option value="afternoon">ช่วงบ่าย (13:00–16:00 น.)</option>
+                        <option
+                          value="all_day"
+                          disabled={isSelectedMeetingPresetOccupied("all_day")}
+                        >
+                          ทั้งวัน
+                          {isSelectedMeetingPresetOccupied("all_day")
+                            ? " · มีประชุมแล้ว"
+                            : ""}
+                        </option>
+                        <option
+                          value="morning"
+                          disabled={isSelectedMeetingPresetOccupied("morning")}
+                        >
+                          ช่วงเช้า (08:30–12:00 น.)
+                          {isSelectedMeetingPresetOccupied("morning")
+                            ? " · มีประชุมแล้ว"
+                            : ""}
+                        </option>
+                        <option
+                          value="lunch"
+                          disabled={isSelectedMeetingPresetOccupied("lunch")}
+                        >
+                          พักเที่ยง (12:00–13:00 น.)
+                          {isSelectedMeetingPresetOccupied("lunch")
+                            ? " · มีประชุมแล้ว"
+                            : ""}
+                        </option>
+                        <option
+                          value="afternoon"
+                          disabled={isSelectedMeetingPresetOccupied("afternoon")}
+                        >
+                          ช่วงบ่าย (13:00–16:00 น.)
+                          {isSelectedMeetingPresetOccupied("afternoon")
+                            ? " · มีประชุมแล้ว"
+                            : ""}
+                        </option>
                         <option value="custom">กำหนดเวลาเอง</option>
                       </select>
                       {!selected.plannedDate && (
@@ -2275,6 +2403,23 @@ export function QualityTaskDashboard({
                         </div>
                       </>
                     )}
+                    {meetingTimeDraft.startTime &&
+                      meetingTimeDraft.endTime &&
+                      selectedMeetingSlotConflicts(
+                        meetingTimeDraft.startTime,
+                        meetingTimeDraft.endTime,
+                      ) && (
+                        <span
+                          role="alert"
+                          style={{
+                            color: "#B91C1C",
+                            fontSize: 11,
+                            fontWeight: 700,
+                          }}
+                        >
+                          ช่วงเวลานี้มีประชุมอื่นจองแล้ว กรุณาเลือกช่วงเวลาใหม่
+                        </span>
+                      )}
                   </div>
                 )}
                 <Button
@@ -2426,21 +2571,60 @@ export function QualityTaskDashboard({
                 {selected.status === "open" ? (
                   <div style={{ display: "grid", gap: 8 }}>
                     {selected.template.taskKind === "meeting" && (
-                      <label style={labelStyle}>
-                        สรุปมติที่ประชุม
-                        <textarea
-                          value={completeNote}
-                          onChange={(e) => setCompleteNote(e.target.value)}
-                          placeholder="พิมพ์สรุปมติ/ประเด็นสำคัญของการประชุมครั้งนี้"
-                          disabled={busy}
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <label style={labelStyle}>
+                          สรุปมติที่ประชุม
+                          <textarea
+                            value={completeNote}
+                            onChange={(e) => setCompleteNote(e.target.value)}
+                            placeholder="พิมพ์สรุปมติ/ประเด็นสำคัญของการประชุมครั้งนี้"
+                            disabled={busy}
+                            style={{
+                              ...inputStyle,
+                              height: 80,
+                              padding: 9,
+                              resize: "vertical",
+                            }}
+                          />
+                        </label>
+                        <div
                           style={{
-                            ...inputStyle,
-                            height: 80,
-                            padding: 9,
-                            resize: "vertical",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 8,
+                            flexWrap: "wrap",
                           }}
-                        />
-                      </label>
+                        >
+                          <span
+                            style={{
+                              color: selected.completionNoteUpdatedAt
+                                ? "var(--muted)"
+                                : "var(--warning)",
+                              fontSize: 11.5,
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {selected.completionNoteUpdatedAt
+                              ? `บันทึกเมื่อ ${fmtSavedAt(selected.completionNoteUpdatedAt)} น. โดย ${personName(selected.completionNoteUpdatedBy, people)}`
+                              : "ยังไม่ได้บันทึกสรุปมติ"}
+                          </span>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon="save"
+                            disabled={
+                              busy ||
+                              completeNote.trim() ===
+                                (selected.completionNote ?? "").trim()
+                            }
+                            aria-busy={busy}
+                            onClick={() => void saveCompletionNote(selected)}
+                          >
+                            บันทึกสรุปมติ
+                          </Button>
+                        </div>
+                      </div>
                     )}
                     <div
                       style={{ display: "flex", justifyContent: "flex-end" }}
@@ -2833,14 +3017,32 @@ export function QualityTaskDashboard({
                 </select>
               </label>
               <label style={labelStyle}>
-                ชื่อรอบ/เหตุการณ์
+                {adHocIsMeeting ? "ชื่อประชุม" : "ชื่อรอบ/เหตุการณ์"}
                 <input
                   value={adHoc.label}
                   onChange={(e) =>
                     setAdHoc({ ...adHoc, label: e.target.value })
                   }
+                  placeholder={
+                    adHocIsMeeting
+                      ? "เช่น ประชุมทบทวนผลการดำเนินงาน"
+                      : undefined
+                  }
                   style={inputStyle}
                 />
+                {adHocIsMeeting && (
+                  <span
+                    style={{
+                      display: "block",
+                      marginTop: 4,
+                      color: "var(--muted)",
+                      fontSize: 11,
+                      fontWeight: 500,
+                    }}
+                  >
+                    ชื่อนี้จะแสดงบนหน้า QR เช็คอิน
+                  </span>
+                )}
               </label>
               <label style={labelStyle}>
                 ทีม/บทบาท (ถ้าไม่ตรงกับแม่แบบ)

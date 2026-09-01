@@ -11,6 +11,7 @@ import {
   nextBusinessDay,
   occurrenceKey,
   occurrenceCalendarRange,
+  occurrenceDisplayTitle,
   supportsActionItems,
   resolveAssigneeEntries,
 } from './logic'
@@ -126,6 +127,24 @@ assert.deepEqual(
   occurrenceCalendarRange({ scheduleId: null, periodStart: '2026-08-20', periodEnd: '2026-08-22', plannedDate: null }),
   { start: '2026-08-20', end: '2026-08-22' },
   'multi-day ad-hoc occurrences retain their original range',
+)
+assert.equal(
+  occurrenceDisplayTitle({
+    scheduleId: null,
+    periodLabel: 'ประชุมทบทวนผลการดำเนินงาน',
+    template: { title: 'อื่นๆ/ประชุมทั่วไป', categoryName: 'การประชุมและการสื่อสารภายใน' },
+  }),
+  'ประชุมทบทวนผลการดำเนินงาน',
+  'ad-hoc meeting titles use the subject entered for that occurrence',
+)
+assert.equal(
+  occurrenceDisplayTitle({
+    scheduleId: 'schedule-1',
+    periodLabel: 'กันยายน 2569',
+    template: { title: 'การประชุมคณะกรรมการ', categoryName: 'การประชุมและการสื่อสารภายใน' },
+  }),
+  'การประชุมคณะกรรมการ',
+  'scheduled meeting titles continue to use the template title',
 )
 
 console.log('lib/quality-tasks/logic.test.ts: all assertions passed')

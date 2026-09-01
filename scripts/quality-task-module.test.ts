@@ -11,6 +11,7 @@ for (const table of [
 ]) assert.ok(sql.includes(`create table if not exists public.${table}`), `creates ${table}`)
 
 assert.ok(sql.includes('unique (schedule_id, period_start)'), 'prevents duplicate scheduled occurrences')
+assert.ok(sql.includes('completion_note_updated_by') && sql.includes('completion_note_updated_at'), 'base schema tracks meeting-summary save metadata')
 assert.ok(sql.includes('quality_task_instances_planned_date'), 'fresh installs index explicit planned dates')
 assert.match(plannedDateMigration, /create index if not exists quality_task_instances_planned_date/i, 'migration indexes explicit planned dates')
 assert.ok(sql.includes("'งานคุณภาพ:edit'"), 'seeds edit permission')
