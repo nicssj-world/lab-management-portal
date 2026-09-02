@@ -926,7 +926,7 @@ const ACTION_LABELS: Record<string, string> = {
   'personnel.agreements.certify_batch':           'รับรองข้อตกลงประจำปี (หลายคน)',
   'personnel.dept_role.set':                      'กำหนดบทบาทในผังกลุ่มงาน',
   'personnel.team_org.assign':                   'จัดบุคลากรลงกล่องผังกลุ่มงาน',
-  'personnel.team_org.remove':                   'นำบุคลากรออกจากผังกลุ่มงาน',
+  'personnel.team_org.remove':                   'นำบุคลากรออกจากกล่องผังกลุ่มงาน',
   'personnel.work_group.create':                  'รวมงานเป็นกลุ่มในผังองค์กร',
   'personnel.bulk.authorizations':                'มอบสิทธิทำการตรวจ (หลายคน)',
   'personnel.bulk.training-plan':                 'กำหนดแผนอบรม (หลายคน)',

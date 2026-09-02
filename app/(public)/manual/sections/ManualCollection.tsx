@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 import { H2, Section } from '../_primitives'
 import { COLLECTION_TABS, type Lang } from '../data'
 import { CollectionOverview } from './collection/CollectionOverview'
@@ -11,11 +11,35 @@ import { CollectionCoag } from './collection/CollectionCoag'
 import { CollectionMicro } from './collection/CollectionMicro'
 import { CollectionUrine } from './collection/CollectionUrine'
 import { CollectionStool } from './collection/CollectionStool'
+import { CollectionSemen } from './collection/CollectionSemen'
 
 interface Props { lang: Lang }
 
 export function ManualCollection({ lang }: Props) {
   const [tab, setTab] = useState('overview')
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  function moveTab(index: number, direction: -1 | 1 | 0) {
+    const nextIndex = direction === 0
+      ? index
+      : (index + direction + COLLECTION_TABS.length) % COLLECTION_TABS.length
+    const nextId = COLLECTION_TABS[nextIndex]?.id
+    if (!nextId) return
+    setTab(nextId)
+    tabRefs.current[nextIndex]?.focus()
+  }
+
+  function handleTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault(); moveTab(index, 1)
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault(); moveTab(index, -1)
+    } else if (event.key === 'Home') {
+      event.preventDefault(); moveTab(0, 0)
+    } else if (event.key === 'End') {
+      event.preventDefault(); moveTab(COLLECTION_TABS.length - 1, 0)
+    }
+  }
 
   return (
     <Section>
@@ -24,8 +48,8 @@ export function ManualCollection({ lang }: Props) {
       </H2>
 
       {/* Collection tab switcher */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6, marginBottom: 22,
+      <div role="tablist" aria-label={lang === 'th' ? 'หัวข้อการเก็บตัวอย่าง' : 'Specimen collection topics'} style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 132px), 1fr))', gap: 6, marginBottom: 22,
         padding: 6, background: 'linear-gradient(180deg, var(--surface-2), rgba(241,245,249,.72))',
         borderRadius: 12, border: '1px solid var(--border)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,.75)',
@@ -33,7 +57,7 @@ export function ManualCollection({ lang }: Props) {
         {COLLECTION_TABS.map((t) => {
           const active = t.id === tab
           return (
-            <button key={t.id} onClick={() => setTab(t.id)} aria-pressed={active}
+            <button key={t.id} id={`collection-tab-${t.id}`} role="tab" aria-selected={active} aria-controls="collection-panel" tabIndex={active ? 0 : -1} ref={node => { tabRefs.current[indexOfTab(t.id)] = node }} onClick={() => setTab(t.id)} onKeyDown={event => handleTabKey(event, indexOfTab(t.id))}
               style={{
                 position: 'relative',
                 minWidth: 0,
@@ -71,14 +95,21 @@ export function ManualCollection({ lang }: Props) {
         })}
       </div>
 
-      {tab === 'overview'     && <CollectionOverview lang={lang} />}
-      {tab === 'venipuncture' && <CollectionVenipuncture lang={lang} />}
-      {tab === 'skin'         && <CollectionSkin lang={lang} />}
-      {tab === 'abg'          && <CollectionBloodGas lang={lang} />}
-      {tab === 'coag'         && <CollectionCoag lang={lang} />}
-      {tab === 'micro'        && <CollectionMicro lang={lang} />}
-      {tab === 'urine'        && <CollectionUrine lang={lang} />}
-      {tab === 'stool'        && <CollectionStool lang={lang} />}
+      <div id="collection-panel" role="tabpanel" aria-labelledby={`collection-tab-${tab}`} tabIndex={0}>
+        {tab === 'overview'     && <CollectionOverview lang={lang} />}
+        {tab === 'venipuncture' && <CollectionVenipuncture lang={lang} />}
+        {tab === 'skin'         && <CollectionSkin lang={lang} />}
+        {tab === 'abg'          && <CollectionBloodGas lang={lang} />}
+        {tab === 'coag'         && <CollectionCoag lang={lang} />}
+        {tab === 'micro'        && <CollectionMicro lang={lang} />}
+        {tab === 'urine'        && <CollectionUrine lang={lang} />}
+        {tab === 'stool'        && <CollectionStool lang={lang} />}
+        {tab === 'semen'        && <CollectionSemen lang={lang} />}
+      </div>
     </Section>
   )
+}
+
+function indexOfTab(id: string) {
+  return COLLECTION_TABS.findIndex(tab => tab.id === id)
 }

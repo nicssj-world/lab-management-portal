@@ -7,51 +7,28 @@ interface Props { lang: Lang }
 export function CollectionUrine({ lang }: Props) {
   return (
     <div>
-      {URINE_SECTIONS.map((sec, i) => (
-        <div key={sec.id} style={{ marginBottom: i < URINE_SECTIONS.length - 1 ? 20 : 0 }}>
-          {/* Section header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 13px', background: sec.bg, border: `1px solid ${sec.color}25`, borderRadius: '8px 8px 0 0', borderBottom: 'none' }}>
-            <span style={{ padding: '2px 8px', borderRadius: 5, background: sec.color, color: '#fff', fontSize: 11, fontWeight: 800 }}>{sec.id}</span>
-            <span style={{ fontSize: 13.5, fontWeight: 700, color: sec.color }}>{lang === 'th' ? sec.titleTh : sec.titleEn}</span>
+      {URINE_SECTIONS.map((section, index) => (
+        <section key={section.id} style={{ marginBottom: index < URINE_SECTIONS.length - 1 ? 20 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 13px', background: section.bg, border: `1px solid ${section.color}25`, borderRadius: '8px 8px 0 0', borderBottom: 'none' }}>
+            <span style={{ padding: '2px 8px', borderRadius: 5, background: section.color, color: '#fff', fontSize: 11, fontWeight: 800 }}>{section.id}</span>
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: section.color }}>{lang === 'th' ? section.titleTh : section.titleEn}</span>
           </div>
-          {/* Content */}
-          <div style={{ border: `1px solid ${sec.color}20`, borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
-            <div style={{ padding: '10px 14px', background: 'var(--card)', borderBottom: sec.stepsTh ? `1px solid ${sec.color}15` : 'none', fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
-              {lang === 'th' ? sec.noteTh : sec.noteEn}
+          <div style={{ border: `1px solid ${section.color}20`, borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', background: 'var(--card)', borderBottom: `1px solid ${section.color}15`, fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
+              {lang === 'th' ? section.noteTh : section.noteEn}
             </div>
-            {(lang === 'th' ? sec.stepsTh : sec.stepsEn) && (
-              <div style={{ padding: '12px 14px', background: 'var(--bg)' }}>
-                <StepList steps={(lang === 'th' ? sec.stepsTh! : sec.stepsEn!)} color={sec.color} />
-              </div>
-            )}
+            <div style={{ padding: '12px 14px', background: 'var(--bg)' }}>
+              <StepList steps={lang === 'th' ? section.stepsTh : section.stepsEn} color={section.color} />
+            </div>
           </div>
-
-          {sec.id === '6.1' && (
-            <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center' }}>
-              <img
-                src="/images/Rurine.png"
-                alt={lang === 'th' ? 'อินโฟกราฟิกวิธีการเก็บปัสสาวะแบบ Random urine' : 'Random urine collection infographic'}
-                style={{
-                  maxWidth: 400,
-                  width: '100%',
-                  borderRadius: 14,
-                  boxShadow: '0 4px 20px rgba(15,23,42,.12)',
-                  border: '1px solid var(--border)',
-                  display: 'block',
-                }}
-              />
-            </div>
-          )}
-        </div>
+        </section>
       ))}
 
-      <div style={{ marginTop: 14 }}>
-        <Callout tone="info" icon="alert">
-          {lang === 'th'
-            ? <span>กรณีส่งตรวจ <strong>Creatinine Clearance</strong> ต้องเจาะเลือดใส่หลอด Li-heparin 3 mL ส่งคู่กับปัสสาวะ 24 ชม. เพื่อใช้คำนวณค่า · หากเก็บไม่ครบ หรือทำหก → ผลผิดพลาด · หากผู้ป่วยมีรอบเดือน ให้เลื่อนการตรวจ</span>
-            : <span>For <strong>Creatinine Clearance</strong>: also draw 3 mL Li-Heparin blood concurrent with the 24-hr urine for calculation. Incomplete or spilled collection invalidates results. Defer testing during menstruation.</span>}
-        </Callout>
-      </div>
+      <Callout tone="info" icon="clock">
+        {lang === 'th'
+          ? <span><strong>หมายเหตุ:</strong> กรณีการส่งตรวจ Creatinine Clearance ต้องเจาะเลือดใส่หลอด Li-heparin 3 mL นำส่งพร้อมปัสสาวะ 24 ชั่วโมง เพื่อใช้ในการคำนวณค่า Creatinine Clearance หากเก็บปัสสาวะไม่ครบหรือทำหก จะทำให้ผลการตรวจวิเคราะห์ไม่ถูกต้อง และหากผู้ป่วยมีรอบเดือน ให้เลื่อนการตรวจวิเคราะห์ไปจนกว่ารอบเดือนจะหมด</span>
+          : <span><strong>Note:</strong> For Creatinine Clearance, draw 3 mL of blood into a Li-heparin tube and send it with the 24-hour urine for calculation. If the urine is incomplete or spilled, the analytical result will be incorrect. If the patient is menstruating, defer analysis until menstruation has ended.</span>}
+      </Callout>
     </div>
   )
 }

@@ -509,7 +509,6 @@ export function ChemicalSafetyHubClient({
           unitId: row.unitId,
           proposedData: {
             canonicalName: product.canonicalName,
-            aliases: row.aliases,
             casNumber: product.casNumber,
             manufacturer: product.manufacturer,
             supplier: product.supplier,
@@ -517,6 +516,11 @@ export function ChemicalSafetyHubClient({
             concentration: product.concentration,
             physicalState: product.physicalState,
             lifecycleStatus: nextStatus,
+            // Product lifecycle requests do not accept aliases. Keep the
+            // current GHS fields so a status-only change cannot clear them.
+            ghsSourceText: product.ghsSourceText,
+            ghsPictogramCodes: product.ghsPictogramCodes,
+            ghsHazardClasses: product.ghsHazardClasses,
           },
         }),
       })

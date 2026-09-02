@@ -66,26 +66,26 @@ export interface Container {
 }
 
 export const CONTAINERS: Container[] = [
-  { color: '#fbbf24', cap: 'ขวด aerobic',        use: 'Hemoculture (aerobic) ผู้ใหญ่ — เลือด 8–10 mL คว่ำเบาๆ 5–10 ครั้ง',                                  req: 'คลังพัสดุ รพ.' },
-  { color: '#60a5fa', cap: 'ขวด aerobic (เด็ก)', use: 'Hemoculture (aerobic) เด็ก — เลือด 1–3 mL',                                                        req: 'คลังพัสดุ รพ.' },
-  { color: '#a3a3a3', cap: 'ขวด anaerobic',      use: 'Hemoculture (anaerobic) — เลือด 8–10 mL',                                                          req: 'คลังพัสดุ รพ.' },
-  { color: '#fb923c', cap: 'ขวด fungal/TB',      use: 'Hemoculture สำหรับเชื้อรา / TB',                                                                   req: 'คลังพัสดุ รพ.' },
-  { color: '#0891b2', cap: 'ฟ้า · Citrate',      use: 'PT · PTT · TT · INR · D-dimer (3.2% Sodium citrate, 9:1)',                                          req: 'สำนักงาน · 1455' },
-  { color: '#dc2626', cap: 'แดง · SST',          use: 'Chemistry · Thyroid · ระดับยา · Anti-HIV · HBsAg · Anti-HCV · Syphilis',                          req: 'สำนักงาน · 1455' },
-  { color: '#16a34a', cap: 'เขียว · Li Heparin', use: 'BUN · Creatinine · Electrolyte · SGOT · SGPT',                                                     req: 'สำนักงาน · 1455' },
-  { color: '#7c3aed', cap: 'ม่วง · EDTA',        use: 'CBC · ESR · Hb typing · CD4 · Pharmacogenetics · Viral Load · Drug resistant (6 mL ให้ถึงขีด)',  req: 'สำนักงาน · 1455' },
-  { color: '#6b7280', cap: 'เทา · NaF',          use: 'Glucose · Lactate · Blood alcohol',                                                                req: 'สำนักงาน · 1455' },
-  { color: '#facc15', cap: 'กระป๋อง · เหลือง',  use: 'Urinalysis · UPT · สารเสพติด · Urine Protein · Urine Cr · Urine electrolyte',                    req: 'สำนักงาน · 1455' },
-  { color: '#e5e7eb', cap: 'กระป๋องเทา · ใส',   use: 'Stool exam · Stool Parasite · Occult Blood · Rota / Adenovirus Ag (≈ 5 g)',                       req: 'สำนักงาน · 1455' },
-  { color: '#1e5fad', cap: 'Blood gas syringe',  use: 'ABG · ABG with Electrolyte (Li-heparin, 0.5–1 mL)',                                                req: 'คลังพัสดุ รพ.' },
-  { color: '#1e5fad', cap: 'Blood gas capillary',use: 'ABG เด็กเล็ก (120 µL Li-heparin)',                                                                req: 'งานเคมีคลินิก · 1469' },
-  { color: '#dc2626', cap: 'Sterile · แดง',      use: 'Urine culture · Fluid culture · Sputum culture',                                                   req: 'คลังพัสดุ รพ.' },
-  { color: '#94a3b8', cap: 'ขวด Sterile',        use: 'CSF · body fluid (cell count, Diff, Protein, Glucose, culture)',                                   req: 'คลังพัสดุ รพ.' },
-  { color: '#dc2626', cap: 'Cary & Blair',       use: 'Rectal swab · Stool swab (เพาะเชื้อ)',                                                             req: 'งานจุลชีววิทยา · 1463' },
-  { color: '#1e40af', cap: 'Amies · น้ำเงิน',   use: 'Wound · Genital · Throat swab',                                                                    req: 'งานจุลชีววิทยา · 1463' },
-  { color: '#94a3b8', cap: 'Nasopharyngeal',     use: 'COVID-19 Rapid Ag · Influenza A/B · RSV (Rapid)',                                                  req: 'งานภูมิคุ้มกัน · 1469' },
-  { color: '#0891b2', cap: 'VTM',                use: 'PCR COVID-19 · Xpert COVID-19',                                                                    req: 'งานอณูชีววิทยา · 1467' },
-  { color: '#9333ea', cap: 'Cowin tube',         use: 'NGS NIPT คัดกรองดาวน์ซินโดรม',                                                                    req: 'งานอณูชีววิทยา · 1467' },
+  { color: '#fbbf24', cap: 'ขวด aerobic',        use: 'Hemoculture ชนิด aerobic (ผู้ใหญ่): ใส่เลือดตามปริมาตรที่ระบุข้างขวด 8–10 mL แล้วคว่ำขวดเบา ๆ 5–10 ครั้ง',                                  req: 'เบิกที่คลังพัสดุ รพ.' },
+  { color: '#60a5fa', cap: 'ขวด aerobic (เด็ก)', use: 'Hemoculture ชนิด aerobic (เด็ก): ใส่เลือดตามปริมาตรที่ระบุข้างขวด 1–3 mL แล้วคว่ำขวดเบา ๆ 5–10 ครั้ง',                              req: 'เบิกที่คลังพัสดุ รพ.' },
+  { color: '#a3a3a3', cap: 'ขวด anaerobic',      use: 'Hemoculture ชนิด anaerobic: ใส่เลือดตามปริมาตรที่ระบุข้างขวด 8–10 mL แล้วคว่ำขวดเบา ๆ 5–10 ครั้ง',                                  req: 'เบิกที่คลังพัสดุ รพ.' },
+  { color: '#fb923c', cap: 'ขวด fungal/TB',      use: 'ขวดเพาะเชื้อจากเลือดสำหรับเชื้อรา/TB: ใส่เลือดตามปริมาตรที่ระบุข้างขวด 8–10 mL และ Mix ตามฉลากขวด/วิธีตรวจ',                        req: 'เบิกที่คลังพัสดุ รพ.' },
+  { color: '#0891b2', cap: 'ฟ้า · Citrate',      use: '3.2% Sodium citrate: ใส่เลือดตามปริมาตรที่ระบุข้างหลอด อัตราส่วน citrate:blood 1:9 แล้ว Mix เบา ๆ 3–4 ครั้ง เหมาะสำหรับ PT, PTT, TT, INR', req: 'เบิกที่สำนักงานกลุ่มงานเทคนิคการแพทย์ โทร.1455' },
+  { color: '#dc2626', cap: 'แดง · Clotted blood',use: 'ไม่มีสารกันเลือดแข็ง มีตัวกระตุ้นการแข็งตัว: ใส่เลือดตามปริมาตร Mix เบา ๆ 5–10 ครั้ง แล้วตั้งทิ้งไว้ เหมาะสำหรับ Chemistry, Thyroid, ระดับยา และ Immunology', req: 'เบิกที่สำนักงานกลุ่มงานเทคนิคการแพทย์ โทร.1455' },
+  { color: '#16a34a', cap: 'เขียว · Li Heparin', use: 'Lithium heparin: ใส่เลือดตามปริมาตรที่ระบุข้างหลอด แล้ว Mix เบา ๆ 5–10 ครั้ง เหมาะสำหรับ BUN, Creatinine, Electrolyte, SGOT, SGPT',       req: 'เบิกที่สำนักงานกลุ่มงานเทคนิคการแพทย์ โทร.1455' },
+  { color: '#7c3aed', cap: 'ม่วง · EDTA',        use: 'K2 EDTA: มีขนาด 0.5, 2 และ 6 mL ใส่เลือดตามขีดแล้ว Mix 5–10 ครั้ง เหมาะสำหรับ CBC, ESR, Hb typing, CD4, Pharmacogenetics; ขนาด 6 mL ต้องถึงขีดสำหรับ Viral Load และ Drug resistant', req: 'เบิกที่สำนักงานกลุ่มงานเทคนิคการแพทย์ โทร.1455' },
+  { color: '#6b7280', cap: 'เทา · NaF',          use: 'NaF: ใส่เลือดตามปริมาตรที่ระบุข้างหลอด แล้ว Mix เบา ๆ 5–10 ครั้ง เหมาะสำหรับ Glucose, Lactate และ Blood alcohol',                     req: 'เบิกที่สำนักงานกลุ่มงานเทคนิคการแพทย์ โทร.1455' },
+  { color: '#facc15', cap: 'กระป๋อง · เหลือง',  use: 'กระป๋องเก็บปัสสาวะฝาเหลือง: เก็บปัสสาวะตามปริมาตรที่ระบุ เหมาะสำหรับ Urine analysis, Urine pregnancy test, สารเสพติด, Urine Protein, Urine creatinine และ Urine electrolyte (Na, K)', req: 'เบิกที่สำนักงานกลุ่มงานเทคนิคการแพทย์ โทร.1455' },
+  { color: '#e5e7eb', cap: 'กระป๋องเทา · ใส',   use: 'กระป๋องเก็บอุจจาระฝาใส/ตัวกระป๋องสีเทา: เก็บอุจจาระประมาณ 5 g เหมาะสำหรับ Stool Exam, Stool Parasite, Occult Blood, Rota virus Ag และ Adenovirus Ag', req: 'เบิกที่สำนักงานกลุ่มงานเทคนิคการแพทย์ โทร.1455' },
+  { color: '#1e5fad', cap: 'Blood gas syringe',  use: 'Blood gas syringe ขนาด 1 mL มี Lithium heparin: ดูดเลือดประมาณ 0.5–1.0 mL แล้ว Mix เบา ๆ 5–10 ครั้ง เหมาะสำหรับ Blood gas และ Blood gas with Electrolyte', req: 'เบิกที่คลังพัสดุ รพ.' },
+  { color: '#1e5fad', cap: 'Blood gas capillary',use: 'Blood gas capillary tube ขนาด 120 µL สำหรับเด็กเล็ก มี Lithium heparin: ดูดเลือดเกือบเต็ม ปิดจุก ใส่แท่งเหล็ก ปิดอีกด้าน แล้ว Mix 5–10 ครั้ง', req: 'เบิกที่งานเคมีคลินิก โทร.1469' },
+  { color: '#dc2626', cap: 'กระป๋อง Sterile',      use: 'กระป๋องเก็บปัสสาวะ Sterile (โดยทั่วไปฝาแดง): เก็บตามปริมาตรที่ระบุ เหมาะสำหรับ Urine culture, Fluid culture และ Sputum culture',         req: 'เบิกที่คลังพัสดุ รพ.' },
+  { color: '#94a3b8', cap: 'ขวด Sterile',        use: 'ขวด Sterile: เก็บ CSF และ body fluid สำหรับ Cell count, Cell Diff, Protein, Glucose และการเพาะเชื้อ',                                 req: 'เบิกที่คลังพัสดุ รพ.' },
+  { color: '#dc2626', cap: 'Cary & Blair',       use: 'Cary & Blair transport medium (มักพบสีแดง): เก็บ Rectal swab และ Stool swab เพื่อส่งตรวจงานจุลชีววิทยา',                               req: 'เบิกที่งานจุลชีววิทยาคลินิก โทร.1463' },
+  { color: '#1e40af', cap: 'Amies · น้ำเงิน',   use: 'Amies transport media (มักพบสีน้ำเงิน): เหมาะสำหรับเก็บ Swab เพื่อส่งตรวจงานจุลชีววิทยา',                                          req: 'เบิกที่งานจุลชีววิทยาคลินิก โทร.1463' },
+  { color: '#94a3b8', cap: 'Nasopharyngeal swab', use: 'Nasopharyngeal swab: เหมาะสำหรับ SARS-CoV-2 (COVID-19) Rapid Antigen, Influenza Ag A/B และ RSV Rapid test',                    req: 'เบิกที่งานภูมิคุ้มกันวิทยาคลินิก โทร.1469' },
+  { color: '#0891b2', cap: 'VTM',                use: 'Nasopharyngeal swab in VTM: ชุดเก็บตัวอย่างสำหรับ PCR COVID-19 virus และ Xpert-COVID-19',                                        req: 'เบิกที่งานอณูชีววิทยาคลินิก โทร.1467' },
+  { color: '#9333ea', cap: 'Cowin tube',         use: 'Cowin tube: ใช้ตรวจคัดกรองกลุ่มอาการดาวน์ด้วย Next Generation Sequencing: Non-Invasive Prenatal Testing (NGS: NIPT)',        req: 'เบิกที่งานอณูชีววิทยาคลินิก และงานตรวจพิเศษและห้องปฏิบัติการตรวจต่อ โทร.1467' },
 ]
 
 export interface CollectionTab {
@@ -103,6 +103,7 @@ export const COLLECTION_TABS: CollectionTab[] = [
   { id: 'micro',        th: 'จุลชีววิทยา',        en: 'Microbiology' },
   { id: 'urine',        th: 'ปัสสาวะ',            en: 'Urine collection' },
   { id: 'stool',        th: 'อุจจาระ',            en: 'Stool collection' },
+  { id: 'semen',        th: 'น้ำอสุจิ',           en: 'Semen collection' },
 ]
 
 export interface CriticalValue {

@@ -1,31 +1,33 @@
-import { Callout, StepList } from '../../_primitives'
+import { Callout, H3, StepList } from '../../_primitives'
 import { type Lang } from '../../data'
-import { VENIPUNCTURE_SITES, VENIPUNCTURE_STEPS_TH, VENIPUNCTURE_STEPS_EN } from '../collection-data'
+import { VENIPUNCTURE_SITES, VENIPUNCTURE_STEPS_EN, VENIPUNCTURE_STEPS_TH } from '../collection-data'
 
 interface Props { lang: Lang }
 
 export function CollectionVenipuncture({ lang }: Props) {
   return (
     <div>
-      <h3 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-        {lang === 'th' ? 'ตำแหน่งที่เหมาะสม' : 'Suitable Sites'}
-      </h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: 8, marginBottom: 20 }}>
-        {VENIPUNCTURE_SITES.map((s) => (
-          <div key={s.num} style={{ padding: '13px 14px', border: `1px solid ${s.border}`, borderTop: `3px solid ${s.color}`, borderRadius: 9, background: s.bg }}>
+      <H3 mt={0}>{lang === 'th' ? 'ตำแหน่งที่เหมาะสม' : 'Suitable Sites'}</H3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 8, marginBottom: 20 }}>
+        {VENIPUNCTURE_SITES.map(site => (
+          <article key={site.num} style={{ padding: '13px 14px', border: `1px solid ${site.border}`, borderTop: `3px solid ${site.color}`, borderRadius: 9, background: site.bg }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 7 }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{s.num}</div>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: s.color, letterSpacing: '.04em', textTransform: 'uppercase' }}>{lang === 'th' ? s.priority : s.priorityEn}</span>
+              <div aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', background: site.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{site.num}</div>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: site.color, letterSpacing: '.04em', textTransform: 'uppercase' }}>{lang === 'th' ? site.priority : site.priorityEn}</span>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>{lang === 'th' ? s.th : s.en}</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.55 }}>{lang === 'th' ? s.detail : s.detailEn}</div>
-          </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>{lang === 'th' ? site.th : site.en}</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.55 }}>{lang === 'th' ? site.detail : site.detailEn}</div>
+          </article>
         ))}
       </div>
 
-      <h3 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-        {lang === 'th' ? 'วิธีการเจาะเก็บเลือด' : 'Procedure'}
-      </h3>
+      <Callout tone="info" icon="syringe">
+        {lang === 'th'
+          ? 'บริเวณข้อพับแขนให้เลือก Median cubital ก่อน ตามด้วย Cephalic และ Basilic หากจำเป็นจึงพิจารณาหลังมือ และหลังเท้าเป็นทางเลือกสุดท้ายเมื่อไม่สามารถเจาะแขนได้'
+          : 'In the antecubital fossa, use the median cubital vein first, followed by cephalic and basilic. Consider the dorsal hand when needed; the dorsal foot is a last resort when arm access is unavailable.'}
+      </Callout>
+
+      <H3>{lang === 'th' ? 'วิธีการเจาะเก็บเลือด' : 'Venipuncture Procedure'}</H3>
       <StepList steps={lang === 'th' ? VENIPUNCTURE_STEPS_TH : VENIPUNCTURE_STEPS_EN} />
 
       <div style={{ marginTop: 14 }}>

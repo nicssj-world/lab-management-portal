@@ -11,8 +11,8 @@ export function CollectionCoag({ lang }: Props) {
         <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 9 }}>
           <p style={{ margin: 0, fontSize: 13, color: 'var(--ink)', lineHeight: 1.75 }}>
             {lang === 'th'
-              ? 'การเก็บตัวอย่างเลือดสำหรับการตรวจระบบการแข็งตัวของเลือด ใช้สิ่งส่งตรวจคือ Sodium citrate Blood ในหลอด 3.2% Sodium citrate (จุกสีฟ้า)'
-              : 'Coagulation specimens use Sodium citrate whole blood in 3.2% Sodium citrate tubes (blue cap).'}
+              ? '4.1 สิ่งส่งตรวจ: Sodium citrate Blood  ·  4.2 ภาชนะบรรจุ: 3.2% Sodium citrate Tube (จุกสีฟ้า) อัตราส่วนสารกันเลือดแข็งตัวต่อเลือดเท่ากับ 1:9'
+              : '4.1 Specimen: Sodium citrate blood. 4.2 Container: 3.2% sodium citrate tube (blue cap), with an anticoagulant-to-blood ratio of 1:9.'}
           </p>
         </div>
         <div style={{ padding: '12px 16px', background: 'rgba(8,145,178,.07)', border: '1.5px solid rgba(8,145,178,.25)', borderRadius: 9, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 100 }}>

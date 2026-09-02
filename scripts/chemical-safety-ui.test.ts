@@ -85,6 +85,10 @@ assert.ok(hubSource.includes('Active') && hubSource.includes('Inactive'), 'ท�
 assert.ok(hubSource.includes("icon={isInactive ? 'eye' : 'eyeOff'}"), 'ปุ่มเปลี่ยนสถานะต้องใช้ไอคอนเปิด/ปิดการมองเห็น ไม่ใช่ไอคอนถังขยะ')
 assert.ok(hubSource.includes('ตั้งสถานะเป็น Inactive'), 'ปุ่ม Active ต้องบอกผลลัพธ์ว่าจะตั้งเป็น Inactive')
 assert.ok(hubSource.includes('ตั้งสถานะเป็น Active'), 'ปุ่ม Inactive ต้องบอกผลลัพธ์ว่าจะตั้งเป็น Active')
+assert.doesNotMatch(hubSource, /aliases:\s*row\.aliases/, 'การเปลี่ยนสถานะ product ต้องไม่ส่ง aliases ที่ product schema ไม่รองรับ')
+for (const preserved of ['ghsSourceText: product.ghsSourceText', 'ghsPictogramCodes: product.ghsPictogramCodes', 'ghsHazardClasses: product.ghsHazardClasses']) {
+  assert.ok(hubSource.includes(preserved), `การเปลี่ยนสถานะต้องรักษาข้อมูลเดิม: ${preserved}`)
+}
 assert.ok(!hubSource.includes("icon={isInactive ? 'check' : 'trash'}"), 'ปุ่มเปลี่ยนสถานะต้องไม่ใช้ไอคอนถังขยะ')
 assert.ok(!hubSource.includes('ตามหน่วยงาน · ไม่ระบุตำแหน่ง'), 'ทะเบียนไม่ควรแสดงป้ายตามหน่วยงานที่ทำให้ข้อมูลในแถวรก')
 assert.ok(hubSource.includes('chemical-registry-actions'), 'action bar ของทะเบียนต้องมี hook สำหรับจัด layout แบบ responsive')

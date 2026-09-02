@@ -73,6 +73,43 @@ export function TeamOrgAssignmentButton({ people, sections, initialSectionId, la
   )
 }
 
+export function TeamOrgRemoveButton({ personId, personName }: { personId: string; personName: string }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+
+  async function remove() {
+    if (!window.confirm(`นำ ${personName} ออกจากกล่องงานหรือไม่?`)) return
+    setBusy(true)
+    try {
+      const response = await fetch('/api/admin/personnel/manage/dept-role', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: personId, teamOrgVisible: false }),
+      })
+      const json = await response.json()
+      if (!response.ok) throw new Error(json?.error ?? 'นำบุคลากรออกจากผังไม่สำเร็จ')
+      router.refresh()
+    } catch (caught) {
+      window.alert(caught instanceof Error ? caught.message : 'นำบุคลากรออกจากผังไม่สำเร็จ')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={remove}
+      disabled={busy}
+      title="นำออกจากกล่องงาน"
+      aria-label={`นำ ${personName} ออกจากกล่องงาน`}
+      style={{ width: 32, height: 32, display: 'grid', placeItems: 'center', flexShrink: 0, padding: 0, border: '1px solid color-mix(in srgb, var(--danger) 32%, var(--border))', borderRadius: 8, background: 'var(--card)', color: 'var(--danger)', cursor: busy ? 'default' : 'pointer', opacity: busy ? .55 : 1 }}
+    >
+      <Icon name="eyeOff" size={14} />
+    </button>
+  )
+}
+
 function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved }: Props & { onClose: () => void; onSaved: () => void }) {
   const titleId = useId()
   const firstFieldRef = useRef<HTMLSelectElement>(null)
@@ -96,7 +133,7 @@ function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved
     if (selectedPerson && !filteredPeople.some((person) => person.id === selectedPerson.id)) return [selectedPerson, ...filteredPeople]
     return filteredPeople
   }, [filteredPeople, selectedPerson])
-  const currentSection = selectedPerson?.team_org_visible && selectedPerson.dept
+  const currentSection = selectedPerson?.dept
     ? sections.find((section) => section.depts.includes(selectedPerson.dept!))
     : null
 
@@ -147,7 +184,7 @@ function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved
 
   async function removeFromChart() {
     if (!selectedPerson || !selectedPerson.team_org_visible) return
-    if (!window.confirm(`นำ ${selectedPerson.name} ออกจากผังกลุ่มงานหรือไม่?`)) return
+    if (!window.confirm(`นำ ${selectedPerson.name} ออกจากกล่องงานหรือไม่?`)) return
     setSaving(true)
     setError('')
     try {
@@ -193,7 +230,7 @@ function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved
             <label htmlFor={`${titleId}-person`} style={fieldLabel}>บุคลากร</label>
             <select ref={firstFieldRef} id={`${titleId}-person`} value={personId} onChange={(event) => selectPerson(event.target.value)} style={inputStyle}>
               <option value="">— เลือกบุคลากร —</option>
-              {visiblePeople.map((person) => <option key={person.id} value={person.id}>{person.name}{person.dept ? ` · ${person.dept}` : ''}{!person.team_org_visible ? ' · ไม่แสดงในผัง' : ''}</option>)}
+              {visiblePeople.map((person) => <option key={person.id} value={person.id}>{person.name}{person.dept ? ` · ${person.dept}` : ''}{!person.team_org_visible ? ' · ไม่แสดงในกล่องงาน' : ''}</option>)}
             </select>
             {filteredPeople.length === 0 && <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 12 }}>ไม่พบรายชื่อที่ค้นหา</div>}
           </div>
@@ -203,7 +240,7 @@ function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved
               <strong style={{ color: 'var(--ink)' }}>{selectedPerson.name}</strong>
               {selectedPerson.team_org_visible
                 ? <><br />อยู่ในขณะนี้: {currentSection?.title ?? selectedPerson.dept ?? 'ยังไม่ได้ระบุหน่วยงาน'}</>
-                : <><br />สถานะผัง: <strong style={{ color: 'var(--danger)' }}>ไม่แสดงในผัง</strong>{selectedPerson.dept ? ` · หน่วยงานเดิม: ${selectedPerson.dept}` : ''}</>}
+                : <><br />สถานะกล่องงาน: <strong style={{ color: 'var(--danger)' }}>ไม่แสดงในกล่องงาน</strong>{selectedPerson.dept ? ` · หน่วยงานเดิม: ${selectedPerson.dept}` : ''}</>}
             </div>
           )}
 
@@ -234,11 +271,11 @@ function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved
 
         <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 9, padding: '14px 20px', borderTop: '1px solid var(--border)' }}>
           {selectedPerson?.team_org_visible && <button type="button" onClick={removeFromChart} disabled={saving} style={{ ...buttonStyle, marginRight: 'auto', color: 'var(--danger)', borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))', opacity: saving ? .7 : 1 }}>
-            <Icon name="eyeOff" size={14} /> นำออกจากผัง
+            <Icon name="eyeOff" size={14} /> นำออกจากกล่องงาน
           </button>}
           <button type="button" onClick={onClose} style={{ ...buttonStyle, color: 'var(--ink)', borderColor: 'var(--border)' }}>ยกเลิก</button>
           <button type="button" onClick={save} disabled={saving} style={{ ...buttonStyle, borderColor: 'var(--primary)', background: 'var(--primary)', color: '#fff', opacity: saving ? .7 : 1 }}>
-            <Icon name="check" size={14} /> {saving ? 'กำลังบันทึก…' : selectedPerson?.team_org_visible ? 'บันทึกการจัดคน' : 'นำกลับเข้าผัง'}
+            <Icon name="check" size={14} /> {saving ? 'กำลังบันทึก…' : selectedPerson?.team_org_visible ? 'บันทึกการจัดคน' : 'นำกลับเข้ากล่อง'}
           </button>
         </footer>
       </section>

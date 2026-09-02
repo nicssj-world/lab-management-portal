@@ -10,7 +10,7 @@ import { Icon } from '@/components/ui/Icon'
 import { PersonPreview } from '@/components/personnel/PersonPreview'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import type { DeptRole } from '@/lib/supabase/types'
-import { TeamOrgAssignmentButton, type TeamOrgAssignmentPerson, type TeamOrgAssignmentSection } from './TeamOrgAssignmentDialog'
+import { TeamOrgAssignmentButton, TeamOrgRemoveButton, type TeamOrgAssignmentPerson, type TeamOrgAssignmentSection } from './TeamOrgAssignmentDialog'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,10 +54,15 @@ const CSS = `
 @media(prefers-reduced-motion:reduce){.to-rise{animation:none;opacity:1}.to-card:hover{transform:none}.team-person-avatar-button>span,.team-person-preview{animation:none;transition:none}}
 `
 
-function PersonBox({ person, tone, roleLabel }: { person: Person; tone?: string; roleLabel?: string }) {
+function PersonBox({ person, tone, roleLabel, canManage }: { person: Person; tone?: string; roleLabel?: string; canManage?: boolean }) {
   const accent = tone ?? 'var(--border)'
   const sub = roleLabel ?? (person.dept_role ? ROLE_LABEL[person.dept_role] : person.is_section_head ? 'หัวหน้างาน' : (person.position_title ?? person.role ?? ''))
-  return <PersonPreview name={person.name} photo={person.photo} accent={accent} sub={sub} />
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      <div style={{ minWidth: 0, flex: '1 1 auto' }}><PersonPreview name={person.name} photo={person.photo} accent={accent} sub={sub} /></div>
+      {canManage && <TeamOrgRemoveButton personId={person.id} personName={person.name} />}
+    </div>
+  )
 }
 
 async function canManageTeamOrg() {
@@ -82,15 +87,18 @@ export default async function TeamOrgPage() {
   }))
   const groups = (groupData ?? []) as WorkGroup[]
 
-  const chartPeople = people.filter((p) => p.team_org_visible && p.dept)
-  const groupLeads = chartPeople.filter((p) => p.dept_role === 'group_lead')
-  const groupDeputies = chartPeople.filter((p) => p.dept_role === 'group_deputy')
+  // Visibility applies to a person's department box only. Group leadership is
+  // a separate placement, so hiding a leader from their own box must not hide
+  // the leadership card above the chart.
+  const sectionPeople = people.filter((p) => p.team_org_visible && p.dept)
+  const groupLeads = people.filter((p) => p.dept && p.dept_role === 'group_lead')
+  const groupDeputies = people.filter((p) => p.dept && p.dept_role === 'group_deputy')
 
   // A section = one or more งาน displayed together. heads = anyone flagged หัวหน้างาน
   // (incl. a รองหัวหน้ากลุ่มงาน who also leads their งาน); members = the rest of the งาน.
   const sectionFrom = (depts: string[]) => ({
-    heads: chartPeople.filter((p) => p.dept && depts.includes(p.dept) && p.is_section_head),
-    members: chartPeople.filter((p) => p.dept && depts.includes(p.dept) && !p.is_section_head && p.dept_role == null),
+    heads: sectionPeople.filter((p) => p.dept && depts.includes(p.dept) && p.is_section_head),
+    members: sectionPeople.filter((p) => p.dept && depts.includes(p.dept) && !p.is_section_head && p.dept_role == null),
   })
   const inGroup = new Set(groups.flatMap((g) => g.depts))
   const groupSections = groups.map((g) => ({ id: `group:${g.id}`, title: g.name ?? g.depts.join(' และ '), depts: g.depts, ...sectionFrom(g.depts) }))
@@ -147,12 +155,12 @@ export default async function TeamOrgPage() {
               </div>
               {s.heads.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: s.members.length ? 10 : 0 }}>
-                  {s.heads.map((p) => <PersonBox key={p.id} person={p} tone="#D97706" roleLabel="หัวหน้างาน" />)}
+                  {s.heads.map((p) => <PersonBox key={p.id} person={p} tone="#D97706" roleLabel="หัวหน้างาน" canManage={canManage} />)}
                 </div>
               )}
               {s.members.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: s.heads.length ? 14 : 0, borderLeft: s.heads.length ? '2px solid var(--border)' : 'none' }}>
-                  {s.members.map((p) => <PersonBox key={p.id} person={p} />)}
+                  {s.members.map((p) => <PersonBox key={p.id} person={p} canManage={canManage} />)}
                 </div>
               )}
               {s.heads.length === 0 && s.members.length === 0 && (

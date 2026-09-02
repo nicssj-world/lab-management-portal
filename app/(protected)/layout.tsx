@@ -11,6 +11,7 @@ import { ensureOwnProfile, isProfileNotProvisionedError } from '@/lib/auth/profi
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAssignedDeptIds } from '@/lib/queries/kpi'
 import { isSafetyEditor } from '@/lib/lab-map/safety-access'
+import { AutoLogout } from '@/components/auth/AutoLogout'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -75,6 +76,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <SidebarProvider>
+      <AutoLogout />
       <style>{`
         .protected-shell { display: flex; min-height: 100vh; background: var(--bg); }
         .protected-main { flex: 1; padding: 28px; min-width: 0; overflow-x: auto; }

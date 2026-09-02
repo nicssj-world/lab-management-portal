@@ -1,39 +1,54 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { Icon } from '@/components/ui/Icon'
-import { H2, Callout, Section } from '../_primitives'
+import { H2, H3, Callout, Section } from '../_primitives'
 import { type Lang } from '../data'
+import type { CollectionFigure } from './collection-data'
+import { TRANSPORT_WORD_FIGURES, TRANSPORT_WORD_SECTION } from './transport-data'
 
 interface Props { lang: Lang }
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 
 const REJECTION_RULES = [
-  { th: 'ฉลากไม่ครบหรือไม่ชัดเจน',              en: 'Missing or illegible label',       bodyTh: 'ตัวชี้บ่งอย่างน้อย 2 รายการ: (1) ชื่อ-สกุล และ (2) วันเดือนปีเกิด / HN. / Lab ID', bodyEn: 'At least 2 identifiers: (1) full name and (2) DOB or HN or Lab ID.' },
-  { th: 'ข้อมูลใบนำส่งกับภาชนะไม่ตรงกัน',       en: 'Form ↔ container mismatch',        bodyTh: 'ชื่อ-สกุล HN. หรือ LAB ID ของใบนำส่งกับภาชนะบรรจุไม่ตรงกัน',                     bodyEn: 'Patient name, HN, or LAB ID differs between request form and container.' },
-  { th: 'ปริมาตรไม่ได้ตามเกณฑ์',                en: 'Volume off-spec',                  bodyTh: 'เช่น PT/PTT/ESR ต้องใส่เลือดให้ถึงขีดข้างหลอดพอดี',                               bodyEn: 'e.g., PT, PTT, ESR must fill exactly to the tube indicator line.' },
-  { th: 'ใช้ภาชนะผิดประเภท',                    en: 'Wrong container type',             bodyTh: 'เช่น ส่ง Electrolyte ในหลอด Clotted แทน Li-Heparin หรือ Urine culture ในกระป๋องไม่ Sterile', bodyEn: 'e.g., Electrolyte in Clotted (red) instead of Li-Heparin (green).' },
-  { th: 'ตัวอย่างไม่เหมาะสมสำหรับการตรวจวิเคราะห์', en: 'Specimen unsuitable for analysis', bodyTh: 'Hemolyzed ≥ 3+ · Fibrin clot (CBC/PT/PTT/ABG) · เก็บผิดวิธี · หกปนเปื้อน · ข้นหนืดเกินดูดวัด', bodyEn: 'Hemolysis ≥ 3+, fibrin clot, wrong material, leaked, too viscous.' },
-  { th: 'นำส่งไม่ถูกวิธี',                        en: 'Improper transport',               bodyTh: 'เช่น ABG ที่ไม่ใช้ ice pack · Microbilirubin (เด็ก) ที่ไม่ห่อกระดาษทึบ',           bodyEn: 'e.g., ABG without ice pack, pediatric microbilirubin not light-protected.' },
+  { th: 'ไม่มีฉลากหรือรายละเอียดตัวอย่างไม่ครบ', en: 'Missing or incomplete label', bodyTh: 'สิ่งส่งตรวจที่ไม่มีฉลาก (Label) หรือมีรายละเอียดของตัวอย่างไม่ชัดเจน ไม่ครบตามข้อกำหนดในคู่มือการส่งตรวจของแต่ละรายการทดสอบ สำหรับงานเพาะเชื้อ ห้องปฏิบัติการจะรายงานว่า “Unacceptable Specimen for C/S (IMPROPER COLLECTION)” และระบุเหตุผลเพิ่มเติมว่า “ไม่ระบุ ชื่อ-นามสกุล (ข้างขวด)” หอผู้ป่วยต้องทำการเก็บตัวอย่างใหม่', bodyEn: 'A specimen without a label, or with unclear or incomplete details required by the test manual, is unacceptable. For culture, report “Unacceptable Specimen for C/S (IMPROPER COLLECTION)” with the additional reason “ไม่ระบุ ชื่อ-นามสกุล (ข้างขวด)” and request a new specimen.' },
+  { th: 'ข้อมูลในใบส่งตรวจกับภาชนะไม่ตรงกัน', en: 'Request-form/container mismatch', bodyTh: 'ชื่อ-สกุลผู้ป่วย และวันเดือนปีเกิดหรือ HN. หรือ LAB ID ของใบนำส่งตรวจกับภาชนะบรรจุสิ่งตัวอย่างส่งตรวจไม่ตรงกัน สำหรับงานเพาะเชื้อ ห้องปฏิบัติการจะรายงานว่า “Unacceptable Specimen for C/S (IMPROPER COLLECTION)” และระบุเหตุผลเพิ่มเติมว่า “ชื่อบนใบนำส่งกับชื่อข้างขวดไม่ตรงกัน” หอผู้ป่วยต้องทำการเก็บตัวอย่างใหม่', bodyEn: 'The patient name and DOB, HN, or LAB ID on the request form does not match the specimen container. For culture, report “Unacceptable Specimen for C/S (IMPROPER COLLECTION)” with “ชื่อบนใบนำส่งกับชื่อข้างขวดไม่ตรงกัน” and request a new specimen.' },
+  { th: 'ตัวอย่างหก เลอะ หรือรั่วซึม', en: 'Spilled, soiled, or leaking specimen', bodyTh: 'สิ่งส่งตรวจที่มีการหก เลอะ หรือรั่วซึม และห้องปฏิบัติการพิจารณาแล้วว่าไม่สามารถทำการเพาะเชื้อได้ ห้องปฏิบัติการจะรายงานว่า “Unacceptable Specimen for C/S (IMPROPER COLLECTION)” และระบุเหตุผลเพิ่มเติมว่า “Leaked Specimen.” หอผู้ป่วยต้องทำการเก็บตัวอย่างใหม่', bodyEn: 'If a specimen is spilled, soiled, or leaking and the laboratory determines that culture cannot be performed, report “Unacceptable Specimen for C/S (IMPROPER COLLECTION)” with “Leaked Specimen.” A new specimen is required.' },
+  { th: 'ใช้ภาชนะไม่เหมาะสม', en: 'Inappropriate container', bodyTh: 'สิ่งส่งตรวจที่ใส่ในภาชนะไม่เหมาะสม เช่น ภาชนะที่ไม่ sterile, transport media ผิดชนิด หรือชิ้นเนื้อที่ใส่ formalin เป็นต้น ห้องปฏิบัติการจะรายงานว่า “Unacceptable Specimen for C/S (IMPROPER COLLECTION)” และระบุเหตุผลเพิ่มเติมว่า “Not appropriate sample, Not process for culture” หอผู้ป่วยต้องทำการเก็บตัวอย่างใหม่', bodyEn: 'Examples include a non-sterile container, the wrong transport medium, or tissue placed in formalin. For culture, report “Unacceptable Specimen for C/S (IMPROPER COLLECTION)” with “Not appropriate sample, Not process for culture” and request a new specimen.' },
+  { th: 'ไม่ระบุตำแหน่งเก็บตัวอย่าง', en: 'Collection site not stated', bodyTh: 'สิ่งส่งตรวจทุกชนิดต้องระบุตำแหน่งในการเก็บให้ชัดเจน หากไม่ระบุตำแหน่ง ห้องปฏิบัติการจะระบุในรายงานผลการเพาะเชื้อว่า “ไม่ระบุตำแหน่งการเก็บสิ่งส่งตรวจ”', bodyEn: 'Every specimen must state the collection site. If the site is missing, report “ไม่ระบุตำแหน่งการเก็บสิ่งส่งตรวจ”.' },
+  { th: 'ไม่ระบุเวลาเก็บตัวอย่าง', en: 'Collection time not stated', bodyTh: 'สิ่งส่งตรวจทุกชนิดต้องระบุเวลาในการเก็บสิ่งส่งตรวจ ซึ่งเป็นคนละเวลาที่ทำการบันทึกขอส่งตรวจใน HIS หากไม่ระบุเวลา ห้องปฏิบัติการจะระบุในรายงานผลการเพาะเชื้อว่า “ไม่ระบุเวลาในการเก็บสิ่งส่งตรวจ”', bodyEn: 'Every specimen must state the collection time, which may differ from the time the test request was entered in HIS. If missing, report “ไม่ระบุเวลาในการเก็บสิ่งส่งตรวจ”.' },
+  { th: 'ระยะเวลานำส่งเกินกำหนด', en: 'Transport delay', bodyTh: 'หากห้องปฏิบัติการตรวจสอบพบว่าสิ่งส่งตรวจมีระยะเวลาการนำส่งเกินกว่ากำหนด จะระบุในรายงานผลการเพาะเชื้อว่า “Delay Transportation” เนื่องจากการส่งตัวอย่างช้าอาจมีผลต่อการแปลผลการเพาะเชื้อ', bodyEn: 'If the delivery time exceeds the specified limit, report “Delay Transportation”; delayed delivery may affect interpretation of the culture result.' },
+  { th: 'ปริมาตรต่ำกว่าหรือไม่ตามเกณฑ์', en: 'Insufficient or incorrect volume', bodyTh: 'ปริมาตรของสิ่งตัวอย่างส่งตรวจไม่ได้ตามเกณฑ์ที่กำหนด เช่น การส่งตรวจ PT, PTT หรือ ESR ต้องใส่เลือดให้ได้ปริมาตรตามข้าง tube หากปริมาตรต่ำกว่าเกณฑ์ที่กำหนดให้ปฏิเสธสิ่งส่งตรวจ', bodyEn: 'The specimen volume does not meet the defined criterion. For example, PT, PTT, and ESR tubes must be filled to the volume marked on the tube; below-specification volume is rejected.' },
+  { th: 'ตัวอย่างมี Hemolysis', en: 'Hemolyzed specimen', bodyTh: 'มีการแตกของเม็ดเลือดแดง (Hemolyzed) ที่ 3+ ขึ้นไป', bodyEn: 'Red-cell hemolysis of 3+ or greater.' },
+  { th: 'พบ Fibrin clot', en: 'Fibrin clot present', bodyTh: 'ตัวอย่างที่มี Fibrin clot เช่น การส่งตรวจ CBC, PT, INR, PTT และ Blood gas เป็นต้น', bodyEn: 'A specimen containing a fibrin clot, such as a CBC, PT, INR, PTT, or blood-gas specimen.' },
+  { th: 'เก็บสิ่งส่งตรวจไม่ถูกต้อง', en: 'Incorrectly collected specimen', bodyTh: 'สิ่งตัวอย่างส่งตรวจที่เก็บไม่ถูกต้อง เช่น การเก็บเสมหะแต่เก็บเป็นน้ำลาย', bodyEn: 'A specimen collected incorrectly, such as submitting saliva instead of sputum.' },
+  { th: 'สิ่งส่งตรวจปนเปื้อนนอกภาชนะ', en: 'Contaminated outside the container', bodyTh: 'สิ่งตัวอย่างส่งตรวจที่หกปนเปื้อนอยู่นอกภาชนะบรรจุ', bodyEn: 'A specimen that has spilled or contaminated the outside of the container.' },
+  { th: 'นำส่งไม่ถูกวิธี', en: 'Improper transport condition', bodyTh: 'สิ่งตัวอย่างส่งตรวจที่นำส่งไม่ถูกวิธี ได้แก่ ตัวอย่างส่งตรวจ Blood gas ที่ควรใช้ ice pack ในการรักษาอุณหภูมิตัวอย่างตลอดเวลาในการนำส่ง หรือตัวอย่างส่งตรวจ Microbilirubin เด็กที่ควรห่อตัวอย่างส่งตรวจด้วยกระดาษทึบแสงหรือกระดาษฟอยล์ขณะนำส่งตรวจ', bodyEn: 'A specimen transported incorrectly, such as Blood gas without an ice pack throughout transport or pediatric Microbilirubin without opaque paper or foil protection.' },
+  { th: 'ตัวอย่างข้นหรือหนืดมาก', en: 'Specimen too viscous', bodyTh: 'สิ่งตัวอย่างส่งตรวจที่มีลักษณะข้นหรือหนืดมาก ไม่สามารถดูดวัดได้', bodyEn: 'A specimen that is too thick or viscous to aspirate and measure.' },
 ]
 
 const REJECTION_GROUPS = [
   {
     th: 'การชี้บ่งและข้อมูล', en: 'Identification and information',
-    descriptionTh: 'ตรวจสอบข้อมูลผู้ป่วยและความสอดคล้องระหว่างภาชนะกับใบนำส่ง', descriptionEn: 'Verify patient information and consistency between the container and request form.',
-    rules: REJECTION_RULES.slice(0, 2),
+    descriptionTh: 'ตรวจสอบฉลาก ตัวชี้บ่ง ตำแหน่ง และเวลาเก็บให้ครบถ้วนและสอดคล้องกับใบนำส่ง', descriptionEn: 'Verify labels, identifiers, collection site, and collection time against the request.',
+    rules: [REJECTION_RULES[0], REJECTION_RULES[1], REJECTION_RULES[4], REJECTION_RULES[5], REJECTION_RULES[6]],
   },
   {
-    th: 'ภาชนะและคุณภาพสิ่งตัวอย่าง', en: 'Container and specimen quality',
-    descriptionTh: 'ตรวจสอบชนิดภาชนะ ปริมาตร และสภาพของสิ่งตัวอย่างก่อนรับตรวจ', descriptionEn: 'Verify the container, volume, and specimen condition before acceptance.',
-    rules: REJECTION_RULES.slice(2, 5),
+    th: 'ภาชนะและปริมาตร', en: 'Container and volume',
+    descriptionTh: 'ใช้ภาชนะให้ถูกชนิดและเก็บตัวอย่างให้ได้ปริมาตรตามที่กำหนด', descriptionEn: 'Use the correct container and collect the specified volume.',
+    rules: [REJECTION_RULES[3], REJECTION_RULES[7]],
+  },
+  {
+    th: 'คุณภาพสิ่งตัวอย่าง', en: 'Specimen quality',
+    descriptionTh: 'ปฏิเสธตัวอย่างที่ไม่เหมาะสมต่อการตรวจวิเคราะห์หรือการเพาะเชื้อ', descriptionEn: 'Reject specimens unsuitable for analysis or culture.',
+    rules: [REJECTION_RULES[2], REJECTION_RULES[8], REJECTION_RULES[9], REJECTION_RULES[10], REJECTION_RULES[11], REJECTION_RULES[13]],
   },
   {
     th: 'การนำส่ง', en: 'Transport',
-    descriptionTh: 'ตรวจสอบวิธีการนำส่งและการควบคุมสภาวะของสิ่งตัวอย่าง', descriptionEn: 'Verify the transport method and required specimen conditions.',
-    rules: REJECTION_RULES.slice(5),
+    descriptionTh: 'นำส่งทันทีหรือควบคุมสภาวะตามข้อกำหนดของการตรวจ', descriptionEn: 'Deliver immediately or maintain the conditions required for the test.',
+    rules: [REJECTION_RULES[12]],
   },
 ]
 
@@ -70,10 +85,28 @@ const SPECIMEN_STORAGE_OVERVIEW = [
   },
 ]
 
+const TRANSPORT_GUIDANCE = [
+  {
+    th: 'แปะสติ๊กเกอร์ barcode LAB ID ตามแนวนอนของหลอดเก็บตัวอย่างหรือภาชนะบรรจุ โดยให้ตัวเลข LAB ID อยู่ทางด้านบนของหลอดหรือภาชนะบรรจุ และไม่ควรแปะสติ๊กเกอร์ทับขีดบอกปริมาตรข้างหลอด',
+    en: 'Place the LAB ID barcode sticker horizontally on the specimen tube or container, with the LAB ID numbers at the top. Do not cover the volume markings on the tube.',
+  },
+  {
+    th: 'การชี้บ่งสิ่งตัวอย่างส่งตรวจ: ตัวชี้บ่งที่ 1 คือ ชื่อ-สกุลของผู้ป่วย และตัวชี้บ่งที่ 2 คือ วันเดือนปีเกิดผู้ป่วย หรือ HN. หรือ Lab ID โดยต้องระบุให้ตรวจสอบย้อนกลับได้',
+    en: 'Specimen identification: identifier 1 is the patient name and surname; identifier 2 is the patient date of birth, HN, or Lab ID. The identifiers must support traceability.',
+  },
+  {
+    th: 'หอผู้ป่วยที่ไม่มีเครื่องพิมพ์ barcode LAB ID ให้ใช้สติ๊กเกอร์ของหอผู้ป่วยติดหลอดเก็บตัวอย่างหรือภาชนะบรรจุ และต้องมีใบส่งตรวจทางห้องปฏิบัติการกำกับมาด้วย',
+    en: 'A ward without a LAB ID barcode printer must use the ward sticker on the specimen tube or container and send the laboratory request form with it.',
+  },
+  {
+    th: 'นำตัวอย่างส่งตรวจใส่ซองบรรจุที่มีสัญลักษณ์ และควรนำส่งห้องปฏิบัติการทันที หรือเก็บไว้ตามคำแนะนำของการทดสอบแต่ละ Test',
+    en: 'Place the specimen in a labeled protective bag. Deliver it to the laboratory immediately or store it according to the instructions for each test.',
+  },
+]
+
 const STAT_STEPS = [
-  { th: 'แพทย์ พยาบาล หรือผู้รับบริการ โทรประสานกับนักเทคนิคการแพทย์ พร้อมบันทึก Request Lab ในระบบ HIS', en: 'Physician, nurse, or submitter phones the on-duty MT and submits the Lab Request in HIS.' },
-  { th: 'จัดเก็บและนำส่งสิ่งตัวอย่างยังห้องปฏิบัติการเทคนิคการแพทย์โดยเร็ว', en: 'Collect and deliver the specimen to the Medical Technology lab without delay.' },
-  { th: 'นักเทคนิคการแพทย์ลงทะเบียนรับ ตรวจสอบ และดำเนินการตรวจวิเคราะห์ + รายงานผลกรณีเร่งด่วนก่อน', en: 'MT registers, verifies, and performs analysis + reporting as STAT priority.' },
+  { th: 'แพทย์ พยาบาลหรือผู้รับบริการ โทรประสานกับนักเทคนิคการแพทย์ทราบกรณีขอส่งสิ่งตัวอย่างส่งตรวจ กรณีเร่งด่วน พร้อมกับบันทึกรายการขอตรวจ(Request Lab) ในระบบสารสนเทศ HIS และดำเนินการจัดเก็บ นำส่งสิ่งตัวอย่างส่งตรวจยังห้องปฏิบัติการเทคนิคการแพทย์โดยเร็ว', en: 'The physician, nurse, or service user contacts the medical technologist about the urgent specimen request, records the Request Lab in the HIS information system, then collects and delivers the specimen to the Medical Technology laboratory as quickly as possible.' },
+  { th: 'นักเทคนิคการแพทย์ พิจารณาดำเนินการตรวจสอบ ลงทะเบียนรับสิ่งตัวอย่างส่งตรวจ ตรวจวิเคราะห์และรายงานผลการตรวจวิเคราะห์กรณีเร่งด่วนก่อน', en: 'The medical technologist reviews and verifies the specimen, registers receipt, performs the analysis, and reports the urgent result first.' },
 ]
 
 const NIPT_TUBE_RULES = [
@@ -167,6 +200,192 @@ function NiptSection({ title, badge, badgeColor, badgeBg, items, note }: {
   )
 }
 
+function WordSourceImage({ figure, lang, className, style }: {
+  figure: CollectionFigure
+  lang: Lang
+  className?: string
+  style?: CSSProperties
+}) {
+  return (
+    <img
+      src={figure.src}
+      alt={lang === 'th' ? figure.titleTh : figure.titleEn}
+      loading="lazy"
+      decoding="async"
+      className={className}
+      style={{ display: 'block', height: 'auto', ...style }}
+    />
+  )
+}
+
+function IdentifierExamples({ examples, lang }: {
+  examples: readonly { id: string; title: { th: string; en: string }; items: readonly { th: string; en: string }[]; figures?: readonly CollectionFigure[] }[]
+  lang: Lang
+}) {
+  return (
+    <div className="word-identifier-examples">
+      {examples.map(example => {
+        const figures = example.figures ?? []
+        const photograph = figures.find(sourceFigure => !sourceFigure.id.includes('-check-'))
+        const check = figures.find(sourceFigure => sourceFigure.id.includes('-check-'))
+        const figureVariant = photograph?.id.includes('ward-request') ? ' word-identifier-figure--request' : ''
+        return (
+          <div key={example.id} className={`word-identifier-figure${figureVariant}`}>
+            <div className="word-identifier-photo">
+              {photograph && <WordSourceImage figure={photograph} lang={lang} />}
+            </div>
+            <div className="word-identifier-copy">
+              <h5>{lang === 'th' ? example.title.th : example.title.en}</h5>
+              {example.items.map((item, index) => (
+                <p key={`${example.id}-${index}`}>{lang === 'th' ? item.th : item.en}</p>
+              ))}
+            </div>
+            {check && (
+              <div className="word-identifier-check">
+                <WordSourceImage figure={check} lang={lang} />
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function WordTransportSection({ lang }: { lang: Lang }) {
+  const source = TRANSPORT_WORD_SECTION
+  const renderText = (item: { th: string; en: string }) => lang === 'th' ? item.th : item.en
+  const renderBarcodeParagraph = (item: { th: string; en: string }, index: number) => {
+    const paragraphText = renderText(item)
+    return index === 0 ? paragraphText.replace(/^1\.1\s*/, '') : paragraphText
+  }
+  const paragraphStyle = { margin: 0, fontSize: 16, color: 'var(--ink)', lineHeight: 1.7 }
+  const splitUnsuitableItem = (item: { th: string; en: string }) => {
+    const itemText = renderText(item)
+    const separator = itemText.indexOf(' ')
+    return separator > 0
+      ? { marker: itemText.slice(0, separator), copy: itemText.slice(separator + 1) }
+      : { marker: '', copy: itemText }
+  }
+  const bagText = renderText(source.bag.paragraph)
+  const bagMarker = lang === 'th' ? 'ที่มีสัญลักษณ์' : 'bearing the symbol'
+  const bagMarkerStart = bagText.indexOf(bagMarker)
+  const bagMarkerEnd = bagMarkerStart >= 0 ? bagMarkerStart + bagMarker.length : -1
+
+  return (
+    <div className="word-source-section">
+      <h3 className="word-source-heading">{renderText(source.title)}</h3>
+
+      <section className="word-source-block">
+        <h4 className="word-source-top-heading">{renderText(source.barcodeWard.title)}</h4>
+        {source.barcodeWard.paragraphs.map((item, index) => (
+          <p key={index} style={{ ...paragraphStyle, marginBottom: index < source.barcodeWard.paragraphs.length - 1 ? 8 : 0 }}>{renderBarcodeParagraph(item, index)}</p>
+        ))}
+        <IdentifierExamples examples={source.barcodeWard.examples} lang={lang} />
+      </section>
+
+      <section className="word-source-block">
+        <h4 className="word-source-top-heading">{renderText(source.nonBarcodeWard.title)}</h4>
+        {source.nonBarcodeWard.leading && <p className="word-source-label">{renderText(source.nonBarcodeWard.leading)}</p>}
+        <IdentifierExamples examples={source.nonBarcodeWard.examples} lang={lang} />
+        {source.nonBarcodeWard.trailing && <p className="word-source-label">{renderText(source.nonBarcodeWard.trailing)}</p>}
+      </section>
+
+      <section className="word-source-block word-transport-block">
+        <div className="word-transport-sentence">
+          <p style={paragraphStyle}>
+            {bagMarkerEnd >= 0 ? (
+              <>
+                {bagText.slice(0, bagMarkerEnd)}
+                <WordSourceImage
+                  figure={TRANSPORT_WORD_FIGURES.biohazard}
+                  lang={lang}
+                  className="word-biohazard-image"
+                  style={{ display: 'inline-block', verticalAlign: 'middle', margin: '0 8px' }}
+                />
+                {bagText.slice(bagMarkerEnd)}
+              </>
+            ) : bagText}
+          </p>
+        </div>
+        <div className="word-transport-photo-row">
+          {source.bag.figures.filter(sourceFigure => sourceFigure.id !== TRANSPORT_WORD_FIGURES.biohazard.id).map(sourceFigure => (
+            <WordSourceImage key={sourceFigure.id} figure={sourceFigure} lang={lang} />
+          ))}
+        </div>
+      </section>
+
+      <h3 className="word-source-heading">{renderText(source.rejection.title)}</h3>
+      <div className="word-rejection-list">
+        {source.rejection.tables.map(table => (
+          <section key={table.id} className="word-rejection-item">
+            <p style={{ ...paragraphStyle, marginBottom: 10 }}>{renderText(table.intro)}</p>
+            <div className="word-source-table-scroll">
+              <table className="word-source-table">
+                <tbody>
+                  {table.rows.map((row, rowIndex) => (
+                    <tr key={`${table.id}-${rowIndex}`}>
+                      {row.map(cell => {
+                        const cellFigures = ('figures' in cell && cell.figures
+                          ? cell.figures
+                          : 'figure' in cell && cell.figure
+                            ? [cell.figure]
+                            : []) as unknown as readonly CollectionFigure[]
+                        const statusFigure = cellFigures.find(sourceFigure => sourceFigure.id.includes('-rejected-mark-') || sourceFigure.id.includes('-accepted-mark-'))
+                        const contentFigures = cellFigures.filter(sourceFigure => sourceFigure.id !== statusFigure?.id)
+                        return (
+                          <td key={cell.id} style={{ width: `${100 / row.length}%` }}>
+                            <div className="word-table-media">
+                              {contentFigures.map(sourceFigure => (
+                                <WordSourceImage key={sourceFigure.id} figure={sourceFigure} lang={lang} className="word-table-photo" />
+                              ))}
+                              {statusFigure && cell.status && (
+                                <div className="word-table-status">
+                                  <WordSourceImage figure={statusFigure} lang={lang} />
+                                  <span>{cell.status}</span>
+                                </div>
+                              )}
+                            </div>
+                            {cell.paragraphs.map((paragraph, index) => (
+                              <p key={index} style={{ ...paragraphStyle, marginBottom: index < cell.paragraphs.length - 1 ? 6 : 0 }}>{renderText(paragraph)}</p>
+                            ))}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <section className="word-unsuitable-block" aria-labelledby="word-unsuitable-heading">
+        <div className="word-unsuitable-header">
+          <span className="word-unsuitable-header-icon" aria-hidden="true">
+            <Icon name="alert" size={18} stroke={1.8} />
+          </span>
+          <h4 id="word-unsuitable-heading" className="word-unsuitable-heading">{renderText(source.rejection.unsuitable.title)}</h4>
+        </div>
+        <ol className="word-unsuitable-list">
+          {source.rejection.unsuitable.items.map((item, index) => {
+            const itemParts = splitUnsuitableItem(item)
+            return (
+              <li key={index} className="word-unsuitable-item">
+                {itemParts.marker && <span className="word-unsuitable-number">{itemParts.marker}</span>}
+                <p style={{ ...paragraphStyle, margin: 0 }}>{itemParts.copy}</p>
+              </li>
+            )
+          })}
+        </ol>
+      </section>
+
+      <p className="word-source-note" role="note">{renderText(source.rejection.note)}</p>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ManualTransport({ lang }: Props) {
@@ -179,6 +398,96 @@ export function ManualTransport({ lang }: Props) {
       </H2>
       <style>{`
         .manual-storage-cards { display: none; }
+        .word-source-section { color: var(--ink); }
+        .word-source-heading {
+          margin: 0 0 22px; padding: 7px 10px; background: #e9e2ed; color: #111827;
+          font-size: 20px; font-weight: 800; line-height: 1.45;
+        }
+        .word-source-block { margin: 0 0 28px; }
+        .word-source-top-heading {
+          margin: 0 0 9px; color: var(--ink); font-size: 17px; font-weight: 400; line-height: 1.55;
+        }
+        .word-identifier-examples { margin: 22px 0 30px; }
+        .word-identifier-figure {
+          display: grid; grid-template-columns: minmax(180px, .9fr) minmax(275px, 1.35fr) 58px;
+          align-items: center; gap: 22px; max-width: 790px; margin: 0 auto;
+        }
+        .word-identifier-figure--request {
+          max-width: 900px; grid-template-columns: minmax(340px, 1.3fr) minmax(270px, .95fr) 58px;
+        }
+        .word-identifier-photo { display: flex; justify-content: center; min-width: 0; }
+        .word-identifier-photo img { width: 100%; max-width: 330px; }
+        .word-identifier-figure--request .word-identifier-photo img { max-width: 520px; }
+        .word-identifier-copy { min-width: 0; }
+        .word-identifier-copy h5 {
+          margin: 0 0 5px; color: var(--ink); font-size: 18px; font-weight: 700; line-height: 1.5;
+        }
+        .word-identifier-copy p { margin: 2px 0; color: var(--ink); font-size: 16px; line-height: 1.65; }
+        .word-identifier-check { display: flex; justify-content: center; }
+        .word-identifier-check img { width: 48px; }
+        .word-source-label {
+          display: inline-block; margin: 12px 0 0; padding: 5px 11px; border: 2px solid #ed6c00;
+          color: var(--ink); background: var(--card); font-size: 16px; line-height: 1.55;
+        }
+        .word-transport-sentence { margin: 0; }
+        .word-biohazard-image { display: inline-block; width: 47px; vertical-align: middle; margin: 0 8px; }
+        .word-transport-photo-row {
+          display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(120px, .8fr);
+          align-items: center; gap: 18px; margin: 22px 0 0;
+        }
+        .word-transport-photo-row img { width: 100%; max-height: 220px; object-fit: contain; }
+        .word-rejection-list { display: flex; flex-direction: column; gap: 20px; }
+        .word-rejection-item { margin: 0; }
+        .word-source-table-scroll { overflow-x: auto; }
+        .word-source-table {
+          width: 100%; min-width: 680px; border-collapse: collapse; table-layout: fixed;
+          color: var(--ink); background: var(--card);
+        }
+        .word-source-table td {
+          padding: 12px 16px; vertical-align: top; border: 1px solid #111; background: var(--card);
+        }
+        .word-table-media {
+          display: flex; align-items: center; justify-content: center; gap: 22px;
+          min-height: 140px; margin-bottom: 12px;
+        }
+        .word-table-photo { width: auto; max-width: 58%; max-height: 220px; object-fit: contain; }
+        .word-table-status { display: flex; align-items: center; gap: 8px; color: #111; font-size: 18px; line-height: 1.35; white-space: nowrap; }
+        .word-table-status img { width: 48px; max-width: none; }
+        .word-unsuitable-block { margin: 20px 0 0; }
+        .word-unsuitable-header {
+          display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+          border: 1px solid rgba(217,119,6,.28); border-bottom: 0; border-radius: 12px 12px 0 0;
+          background: rgba(217,119,6,.08);
+        }
+        .word-unsuitable-header-icon {
+          display: inline-flex; flex: 0 0 34px; width: 34px; height: 34px;
+          align-items: center; justify-content: center; border: 1px solid rgba(217,119,6,.3);
+          border-radius: 9px; color: #B45309; background: rgba(217,119,6,.16);
+        }
+        .word-unsuitable-heading { margin: 0; color: var(--ink); font-size: 18px; font-weight: 800; line-height: 1.5; }
+        .word-unsuitable-list {
+          display: flex; flex-direction: column; gap: 0; margin: 0; padding: 6px 0;
+          list-style: none; border: 1px solid rgba(217,119,6,.28); border-radius: 0 0 12px 12px;
+          background: var(--card);
+        }
+        .word-unsuitable-item {
+          display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 14px;
+          align-items: start; min-width: 0; padding: 14px 18px;
+        }
+        .word-unsuitable-item:nth-child(even) { background: var(--surface-2); }
+        .word-unsuitable-number {
+          display: inline-flex; width: 42px; min-height: 30px;
+          align-items: center; justify-content: center; box-sizing: border-box;
+          border: 1px solid rgba(217,119,6,.35); border-radius: 8px;
+          color: #B45309; background: var(--card); font-size: 13px; font-weight: 800;
+          line-height: 1; font-variant-numeric: tabular-nums;
+        }
+        .word-unsuitable-item p { min-width: 0; }
+        .word-urgent-copy { min-width: 0; margin: 0; color: var(--ink); font-size: 16px; font-weight: 400; line-height: 1.7; }
+        .word-source-note {
+          margin: 12px 0 0; padding: 10px 14px; border-top: 1px solid var(--border);
+          color: var(--ink); background: var(--surface-2); font-size: 16px; line-height: 1.7;
+        }
         .manual-catalog-link {
           min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
           padding: 8px 13px; border: 1px solid var(--primary); border-radius: 8px;
@@ -189,6 +498,24 @@ export function ManualTransport({ lang }: Props) {
           background: var(--primary-hover, var(--primary)); box-shadow: 0 0 0 3px var(--primary-soft); outline: none;
         }
         @media (max-width: 640px) {
+          .word-source-heading { font-size: 18px; }
+          .word-source-top-heading { font-size: 16px; }
+          .word-identifier-figure, .word-identifier-figure--request { grid-template-columns: minmax(0, 1fr); gap: 10px; max-width: none; }
+          .word-identifier-photo { justify-content: flex-start; }
+          .word-identifier-photo img { max-width: 330px; }
+          .word-identifier-copy h5 { font-size: 17px; }
+          .word-identifier-copy p, .word-source-label, .word-source-note { font-size: 15px; }
+          .word-identifier-check { justify-content: flex-start; }
+          .word-transport-sentence { align-items: flex-start; }
+          .word-transport-photo-row { grid-template-columns: 1fr; gap: 12px; }
+          .word-transport-photo-row img { max-height: none; }
+          .word-source-table { min-width: 620px; }
+          .word-source-table td { padding: 10px 12px; }
+          .word-unsuitable-header { gap: 10px; padding: 12px; }
+          .word-unsuitable-header-icon { flex-basis: 32px; width: 32px; height: 32px; }
+          .word-unsuitable-heading { font-size: 17px; }
+          .word-unsuitable-item { grid-template-columns: 48px minmax(0, 1fr); gap: 10px; padding: 12px; }
+          .word-unsuitable-number { width: 38px; min-height: 28px; font-size: 12px; }
           .manual-storage-table-wrap { display: none; }
           .manual-storage-cards { display: grid; gap: 8px; margin-bottom: 10px; }
           .manual-storage-card { padding: 12px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
@@ -227,6 +554,9 @@ export function ManualTransport({ lang }: Props) {
       {/* ════════════════════════ GENERAL TAB ════════════════════════════ */}
       {tab === 'general' && (
         <>
+          <WordTransportSection lang={lang} />
+          {false && (
+            <>
           {/* Biohazard notice */}
           <div style={{ display: 'flex', gap: 10, padding: '11px 14px', background: 'rgba(22,163,74,.05)', border: '1px solid rgba(22,163,74,.2)', borderRadius: 9, marginBottom: 20 }}>
             <Icon name="biohazard" size={18} style={{ color: 'var(--success)', flexShrink: 0, marginTop: 2 }} />
@@ -235,6 +565,16 @@ export function ManualTransport({ lang }: Props) {
                 ? 'สิ่งตัวอย่างส่งตรวจทุกชนิดต้องบรรจุในถุง biohazard ปิดสนิท ใบส่งตรวจอยู่ในช่องด้านนอกของถุง ไม่ปะปนกับตัวอย่าง และจัดส่งห้องปฏิบัติการโดยเร็วที่สุดในสภาวะที่เหมาะสม'
                 : 'All specimens are sealed in biohazard bags; request forms travel in the outer pocket. Deliver to the lab as quickly as possible under the appropriate temperature condition.'}
             </p>
+          </div>
+
+          <H3 mt={0}>{lang === 'th' ? 'ข้อแนะนำในการเก็บและวิธีการนำส่งสิ่งตัวอย่างส่งตรวจ' : 'Specimen Collection and Transport Guidance'}</H3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 22 }}>
+            {TRANSPORT_GUIDANCE.map((item, index) => (
+              <div key={index} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 13px', border: '1px solid var(--border)', borderLeft: '3px solid var(--primary)', borderRadius: 9, background: index % 2 === 0 ? 'var(--card)' : 'var(--bg)' }}>
+                <span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 11, fontWeight: 800 }}>{index + 1}</span>
+                <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.7 }}>{lang === 'th' ? item.th : item.en}</span>
+              </div>
+            ))}
           </div>
 
           {/* Specimen storage overview */}
@@ -289,7 +629,7 @@ export function ManualTransport({ lang }: Props) {
 
           {/* Rejection criteria */}
           <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-            {lang === 'th' ? 'เกณฑ์การปฏิเสธสิ่งตัวอย่างส่งตรวจ' : 'Specimen Rejection Criteria'}
+            {lang === 'th' ? 'เกณฑ์การรับ–ปฏิเสธสิ่งตัวอย่างส่งตรวจ' : 'Specimen Acceptance and Rejection Criteria'}
           </h3>
           <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--muted)', lineHeight: 1.65 }}>
             {lang === 'th'
@@ -325,26 +665,30 @@ export function ManualTransport({ lang }: Props) {
             ))}
           </div>
 
+            </>
+          )}
+
           {/* STAT workflow */}
-          <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: 'var(--ink)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-            {lang === 'th' ? 'แนวทางการรับสิ่งตัวอย่างกรณีเร่งด่วน (STAT)' : 'Urgent (STAT) Specimen Flow'}
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {STAT_STEPS.map((s, i) => {
-              const isLast = i === STAT_STEPS.length - 1
-              return (
-                <div key={i} style={{ display: 'flex', gap: 0, alignItems: 'stretch' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 38, flexShrink: 0 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12.5, flexShrink: 0, zIndex: 1 }}>{i + 1}</div>
-                    {!isLast && <div style={{ width: 2, flex: 1, minHeight: 10, background: 'var(--border)', margin: '3px 0' }} />}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0, marginLeft: 10, marginBottom: isLast ? 0 : 8, padding: '9px 13px', background: 'var(--card)', border: '1px solid var(--border)', borderLeft: '3px solid var(--primary)', borderRadius: 9, fontSize: 13, color: 'var(--ink)', lineHeight: 1.65 }}>
+          <section className="word-unsuitable-block word-urgent-block" aria-labelledby="word-urgent-heading">
+            <div className="word-unsuitable-header">
+              <span className="word-unsuitable-header-icon" aria-hidden="true">
+                <Icon name="clock" size={18} stroke={1.8} />
+              </span>
+              <h3 id="word-urgent-heading" className="word-unsuitable-heading">
+                {lang === 'th' ? 'แนวทางการรับสิ่งตัวอย่างส่งตรวจกรณีเร่งด่วน' : 'Guidance for receiving urgent specimens'}
+              </h3>
+            </div>
+            <ol className="word-unsuitable-list">
+              {STAT_STEPS.map((s, i) => (
+                <li key={i} className="word-unsuitable-item">
+                  <span className="word-unsuitable-number">{i + 1}</span>
+                  <p className="word-urgent-copy">
                     {lang === 'th' ? s.th : s.en}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </section>
         </>
       )}
 
