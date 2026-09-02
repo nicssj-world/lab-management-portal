@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { findPmCalGroupConflicts, getPmCalActor, writePmCalAudit } from '@/lib/equipment/pm-cal-server'
 import { parsePmCalFiscalYear, pmCalPlanGroupReplaceSchema } from '@/lib/equipment/pm-cal-validation'
 import { fiscalYearForDate, lastDayOfFiscalMonth } from '@/lib/equipment/pm-cal-domain'
+import { canonicalEquipmentDepartment } from '@/lib/equipment/departments'
 
 export async function GET(req: NextRequest) {
   const actor = await getPmCalActor('read')
@@ -27,7 +28,10 @@ export async function GET(req: NextRequest) {
     ? await supabaseAdmin.from('equipment').select('id, cbh_code, equipment_type, department, classification, needs_calibration, status').in('id', staleEquipmentIds)
     : { data: [], error: null }
   if (staleError) return NextResponse.json({ error: staleError.message }, { status: 500 })
-  const allEquipment = [...(equipment ?? []), ...(staleEquipment ?? [])]
+  const allEquipment = [...(equipment ?? []), ...(staleEquipment ?? [])].map((row) => ({
+    ...row,
+    department: canonicalEquipmentDepartment(row.department),
+  }))
 
   // Fetched by equipment_id, not plan_id: legacy-imported results are intentionally unlinked
   // (plan_id null) and computePmCalPlanState matches them to a plan by fiscal_year/month/cal_type

@@ -19,6 +19,7 @@ import {
   type SetUploadClaimContract,
   type SetUploadKind,
 } from '@/lib/documents/registration-set-contracts'
+import { SetMutationJournal } from '@/lib/documents/set-upload-transaction'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 
 type Params = { params: Promise<{ id: string }> }
@@ -34,13 +35,6 @@ type ItemSuccess = {
   data: unknown
 }
 
-type ItemFailure = {
-  index: number
-  kind: RegisterSetItem['kind']
-  item: RegisterSetItem
-  error: string
-}
-
 function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
@@ -51,6 +45,55 @@ function errorMessage(error: unknown) {
 
 function throwIfError(error: unknown) {
   if (error) throw error
+}
+
+type SetLinkRow = {
+  id: string
+  document_id: string
+  linked_doc_id: string
+  link_kind: string
+  set_mode: string | null
+  set_draft_id: string | null
+}
+
+async function deleteSetLinkIfCurrent(
+  link: SetLinkRow,
+  journal: SetMutationJournal,
+) {
+  journal.add(`ลบ set link ${link.id}`, async () => {
+    const query = supabaseAdmin
+      .from('document_links')
+      .delete()
+      .eq('id', link.id)
+      .eq('link_kind', 'set')
+      .eq('set_mode', link.set_mode)
+    const guardedQuery = link.set_draft_id === null
+      ? query.is('set_draft_id', null)
+      : query.eq('set_draft_id', link.set_draft_id)
+    const result = await guardedQuery.select('id').maybeSingle()
+    throwIfError(result.error)
+  })
+}
+
+async function restoreRelatedLinkIfCurrent(
+  link: SetLinkRow,
+  mode: RegistrationSetMode,
+  draftId: string | null,
+  journal: SetMutationJournal,
+) {
+  journal.add(`คืนค่า related link ${link.id}`, async () => {
+    const query = supabaseAdmin
+      .from('document_links')
+      .update({ link_kind: link.link_kind, set_mode: link.set_mode, set_draft_id: link.set_draft_id })
+      .eq('id', link.id)
+      .eq('link_kind', 'set')
+      .eq('set_mode', mode)
+    const guardedQuery = draftId === null
+      ? query.is('set_draft_id', null)
+      : query.eq('set_draft_id', draftId)
+    const result = await guardedQuery.select('id').maybeSingle()
+    throwIfError(result.error)
+  })
 }
 
 function fileKind(file: { name: string; mime: string }) {
@@ -88,6 +131,7 @@ async function setLink(
   actor: Actor,
   mode: RegistrationSetMode,
   draftId: string | null = null,
+  journal?: SetMutationJournal,
 ) {
   if (documentId === linkedDocumentId) throw new Error('ไม่สามารถลิงก์เอกสารตัวเองได้')
 
@@ -113,6 +157,7 @@ async function setLink(
       }
       throw new Error('ลิงก์เอกสารถูกแก้ไขพร้อมกันด้วยโหมดอื่น กรุณาลองใหม่')
     }
+    if (converted.data && journal) await restoreRelatedLinkIfCurrent(existing, mode, draftId, journal)
     return converted.data ?? reread
   }
 
@@ -129,14 +174,17 @@ async function setLink(
     .select()
     .single()
 
-  if (!inserted.error) return inserted.data
+  if (!inserted.error) {
+    if (journal) await deleteSetLinkIfCurrent(inserted.data, journal)
+    return inserted.data
+  }
   if (inserted.error.code !== '23505') throw inserted.error
   const raced = await findLink(documentId, linkedDocumentId)
   if (!raced) {
     if (draftId) throw new Error(`working revision ${draftId} เป็นสมาชิกของชุดเอกสารอื่นอยู่แล้ว`)
     throw inserted.error
   }
-  if (raced.link_kind !== 'set') return setLink(documentId, linkedDocumentId, actor, mode, draftId)
+  if (raced.link_kind !== 'set') return setLink(documentId, linkedDocumentId, actor, mode, draftId, journal)
   assertMatchingSetLink(raced, mode, draftId)
   return raced
 }
@@ -156,7 +204,12 @@ async function requireDraftMainDocument(documentId: string) {
   return result.data
 }
 
-async function linkExistingDocument(mainDocumentId: string, existingDocumentId: string, actor: Actor) {
+async function linkExistingDocument(
+  mainDocumentId: string,
+  existingDocumentId: string,
+  actor: Actor,
+  journal: SetMutationJournal,
+) {
   const targetResult = await supabaseAdmin
     .from('documents')
     .select('id, document_code, title, status')
@@ -183,7 +236,7 @@ async function linkExistingDocument(mainDocumentId: string, existingDocumentId: 
 
   return {
     document: targetResult.data,
-    link: await setLink(mainDocumentId, existingDocumentId, actor, 'linked'),
+    link: await setLink(mainDocumentId, existingDocumentId, actor, 'linked', null, journal),
   }
 }
 
@@ -205,6 +258,7 @@ async function reuseRegisteredDocument(
   item: Extract<RegisterSetItem, { kind: 'register' }>,
   actor: Actor,
   kind: 'pdf' | 'source',
+  journal?: SetMutationJournal,
 ) {
   const links = await supabaseAdmin
     .from('document_links')
@@ -230,7 +284,7 @@ async function reuseRegisteredDocument(
   if (classification === 'stranded-retry') {
     return {
       document,
-      link: await setLink(mainDocumentId, document.id, actor, 'registered'),
+      link: await setLink(mainDocumentId, document.id, actor, 'registered', null, journal),
       reused: true,
       completedStranded: true,
     }
@@ -261,11 +315,16 @@ async function findDraftAttachment(draftId: string, fileKey: string) {
   return result.data
 }
 
-async function registerDocument(mainDocumentId: string, item: Extract<RegisterSetItem, { kind: 'register' }>, actor: Actor) {
+async function registerDocument(
+  mainDocumentId: string,
+  item: Extract<RegisterSetItem, { kind: 'register' }>,
+  actor: Actor,
+  journal: SetMutationJournal,
+) {
   const documentCode = item.document_code.trim().toUpperCase()
   const kind = fileKind(item.file)
   const duplicate = await findDocumentByCode(documentCode)
-  if (duplicate) return reuseRegisteredDocument(mainDocumentId, duplicate, item, actor, kind)
+  if (duplicate) return reuseRegisteredDocument(mainDocumentId, duplicate, item, actor, kind, journal)
 
   const fileFields = kind === 'source'
     ? {
@@ -303,45 +362,30 @@ async function registerDocument(mainDocumentId: string, item: Extract<RegisterSe
     .single()
   if (inserted.error?.code === '23505') {
     const racedDocument = await findDocumentByCode(documentCode)
-    if (racedDocument) return reuseRegisteredDocument(mainDocumentId, racedDocument, item, actor, kind)
+    if (racedDocument) return reuseRegisteredDocument(mainDocumentId, racedDocument, item, actor, kind, journal)
   }
   throwIfError(inserted.error)
   const document = inserted.data
-
-  try {
-    await setLink(mainDocumentId, document.id, actor, 'registered')
-  } catch (error) {
-    // Keep this item retryable if its follow-up link fails. R2 objects are intentionally untouched.
-    const cleanup = await supabaseAdmin.from('documents').delete().eq('id', document.id)
-    if (cleanup.error) {
-      throw new Error(
-        `${errorMessage(error)}; ล้างเอกสารที่สร้างค้างไม่สำเร็จ (document_id: ${document.id}): ${cleanup.error.message}`,
-      )
-    }
-    throw error
-  }
-
-  supabaseAdmin.from('document_access_logs')
-    .insert({ document_id: document.id, user_id: actor.id, action: 'upload' })
-    .then(undefined, () => {})
-  supabaseAdmin.from('audit_log').insert({
-    action: 'document.upload',
-    user_id: actor.id,
-    target: document.document_code,
-    detail: `${document.document_code} · ${document.title}`,
-  }).then(undefined, () => {})
-  supabaseAdmin.from('document_status_history').insert({
-    document_id: document.id,
-    from_status: null,
-    to_status: 'Draft',
-    changed_by: actor.id,
-    changed_at: document.created_at,
-  }).then(undefined, () => {})
+  journal.add(`ลบเอกสารใหม่ ${document.id}`, async () => {
+    const cleanup = await supabaseAdmin
+      .from('documents')
+      .delete()
+      .eq('id', document.id)
+      .select('id')
+      .maybeSingle()
+    throwIfError(cleanup.error)
+  })
+  await setLink(mainDocumentId, document.id, actor, 'registered', null, journal)
 
   return { document }
 }
 
-async function attachFile(mainDocumentId: string, item: Extract<RegisterSetItem, { kind: 'attach' }>, actor: Actor) {
+async function attachFile(
+  mainDocumentId: string,
+  item: Extract<RegisterSetItem, { kind: 'attach' }>,
+  actor: Actor,
+  journal: SetMutationJournal,
+) {
   const existing = await findDocumentAttachment(mainDocumentId, item.file.key)
   if (hasMatchingFileKey(existing, item.file.key)) {
     return { attachment: existing, reused: true }
@@ -367,10 +411,26 @@ async function attachFile(mainDocumentId: string, item: Extract<RegisterSetItem,
     }
   }
   throwIfError(inserted.error)
+  journal.add(`ลบไฟล์แนบใหม่ ${inserted.data.id}`, async () => {
+    const cleanup = await supabaseAdmin
+      .from('document_attachments')
+      .delete()
+      .eq('id', inserted.data.id)
+      .eq('document_id', mainDocumentId)
+      .eq('file_url', item.file.key)
+      .select('id')
+      .maybeSingle()
+    throwIfError(cleanup.error)
+  })
   return { attachment: inserted.data }
 }
 
-async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetItem, { kind: 'revise-existing' }>, actor: Actor) {
+async function reviseExisting(
+  mainDocumentId: string,
+  item: Extract<RegisterSetItem, { kind: 'revise-existing' }>,
+  actor: Actor,
+  journal: SetMutationJournal,
+) {
   const currentResult = await supabaseAdmin
     .from('documents')
     .select('id, document_code, title, type, department, description, status, visibility, revision, owner_name, reviewer_name, approver_name, reviewer_id, approver_id, audience_text')
@@ -387,7 +447,13 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
     throw new Error(`เอกสาร ${current.document_code} เป็นสมาชิกชุดนี้ด้วยโหมด ${existingLink.set_mode ?? 'ไม่ทราบ'} อยู่แล้ว`)
   }
 
-  let draft = null
+  let draft: {
+    id: string
+    revision: string
+    word_url: string | null
+    word_name: string | null
+    word_size: number | null
+  } | null = null
   if (existingLink?.link_kind === 'set' && existingLink.set_mode === 'revision') {
     if (!existingLink.set_draft_id) throw new Error('ลิงก์ revision ของชุดไม่มี draft ownership')
     const ownedDraft = await supabaseAdmin
@@ -446,28 +512,23 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
     created = true
   }
 
-  // Bind ownership before applying the uploaded file. A newly-created draft is removed
-  // if ownership cannot be established, so no unrelated active draft is left behind.
-  try {
-    await setLink(mainDocumentId, current.id, actor, 'revision', draft.id)
-  } catch (error) {
-    if (created) {
-      const cleanup = await supabaseAdmin.from('document_revision_drafts').delete().eq('id', draft.id)
-      if (cleanup.error) {
-        throw new Error(`${errorMessage(error)}; ล้าง working revision ที่สร้างค้างไม่สำเร็จ (${draft.id}): ${cleanup.error.message}`)
-      }
-    }
-    throw error
-  }
+  if (!draft) throw new Error('ไม่พบ working revision ของเอกสารนี้')
+  const draftId = draft.id
 
+  // Bind ownership before applying the uploaded file. The journal removes a newly
+  // created draft, or restores the previous link, if a later item fails.
   if (created) {
-    supabaseAdmin.from('audit_log').insert({
-      action: 'document.revision_draft_create',
-      user_id: actor.id,
-      target: current.document_code ?? current.id,
-      detail: `Rev. ${draft.revision}`,
-    }).then(undefined, () => {})
+    journal.add(`ลบ working revision ใหม่ ${draftId}`, async () => {
+      const cleanup = await supabaseAdmin
+        .from('document_revision_drafts')
+        .delete()
+        .eq('id', draftId)
+        .select('id')
+        .maybeSingle()
+      throwIfError(cleanup.error)
+    })
   }
+  await setLink(mainDocumentId, current.id, actor, 'revision', draftId, journal)
 
   const kind = fileKind(item.file)
   let fileResult: unknown
@@ -475,6 +536,11 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
     if (hasMatchingSourceKey(draft, item.file.key)) {
       fileResult = draft
     } else {
+      const previousSource = {
+        word_url: draft.word_url,
+        word_name: draft.word_name,
+        word_size: draft.word_size,
+      }
       const updated = await supabaseAdmin
         .from('document_revision_drafts')
         .update({
@@ -486,18 +552,27 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
         .select()
         .single()
       throwIfError(updated.error)
+      journal.add(`คืนค่า source ของ working revision ${draftId}`, async () => {
+        const cleanup = await supabaseAdmin
+          .from('document_revision_drafts')
+          .update(previousSource)
+          .eq('id', draftId)
+          .select('id')
+          .maybeSingle()
+        throwIfError(cleanup.error)
+      })
       draft = updated.data
       fileResult = updated.data
     }
   } else {
-    const existingFile = await findDraftAttachment(draft.id, item.file.key)
+    const existingFile = await findDraftAttachment(draftId, item.file.key)
     if (hasMatchingFileKey(existingFile, item.file.key)) {
       fileResult = existingFile
     } else {
       const inserted = await supabaseAdmin
         .from('document_revision_draft_attachments')
         .insert({
-          draft_id: draft.id,
+          draft_id: draftId,
           document_id: current.id,
           file_url: item.file.key,
           file_name: item.file.name,
@@ -508,7 +583,7 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
         .select()
         .single()
       if (inserted.error?.code === '23505') {
-        const racedFile = await findDraftAttachment(draft.id, item.file.key)
+        const racedFile = await findDraftAttachment(draftId, item.file.key)
         if (hasMatchingFileKey(racedFile, item.file.key)) {
           fileResult = racedFile
         } else {
@@ -516,6 +591,17 @@ async function reviseExisting(mainDocumentId: string, item: Extract<RegisterSetI
         }
       } else {
         throwIfError(inserted.error)
+        journal.add(`ลบไฟล์แนบของ working revision ใหม่ ${inserted.data.id}`, async () => {
+          const cleanup = await supabaseAdmin
+            .from('document_revision_draft_attachments')
+            .delete()
+            .eq('id', inserted.data.id)
+            .eq('draft_id', draftId)
+            .eq('file_url', item.file.key)
+            .select('id')
+            .maybeSingle()
+          throwIfError(cleanup.error)
+        })
         fileResult = inserted.data
       }
     }
@@ -770,18 +856,157 @@ async function markSetUploadClaimed(uploadId: string, leaseToken: string) {
     .maybeSingle()
   throwIfError(result.error)
   if (!result.data) throw new Error('ไม่สามารถยืนยันการใช้ upload ticket เพราะ lease เปลี่ยนแปลง')
+  return now
 }
 
-async function processItem(mainDocumentId: string, item: RegisterSetItem, actor: Actor) {
+async function unclaimSetUpload(uploadId: string, claimedAt: string) {
+  const result = await supabaseAdmin
+    .from('document_set_uploads')
+    .update({ claimed_at: null, updated_at: new Date().toISOString() })
+    .eq('id', uploadId)
+    .eq('claimed_at', claimedAt)
+    .is('lease_token', null)
+    .select('id')
+    .maybeSingle()
+  throwIfError(result.error)
+}
+
+async function releaseSetUploadLeases(uploads: readonly VerifiedSetUpload[]) {
+  const failures: string[] = []
+  await Promise.all(uploads.map(async (upload) => {
+    if (!upload.leaseToken) return
+    try {
+      await releaseSetUploadLease(upload.uploadId, upload.leaseToken)
+    } catch (error) {
+      failures.push(`${upload.uploadId}: ${errorMessage(error)}`)
+    }
+  }))
+  return failures
+}
+
+const batchRollbackMessage = 'ชุดเอกสารนี้ยังไม่ได้บันทึก เนื่องจากมีรายการหนึ่งไม่ผ่านการตรวจสอบหรือบันทึกไม่สำเร็จ'
+
+function batchFailureResponse(
+  items: readonly RegisterSetItem[],
+  error: unknown,
+  status = 409,
+  failedIndex: number | null = null,
+) {
+  const message = errorMessage(error)
+  const detailIndex = failedIndex ?? 0
+  return NextResponse.json({
+    error: message,
+    succeeded: [],
+    failed: items.map((item, index) => ({
+      index,
+      kind: item.kind,
+      error: index === detailIndex ? message : batchRollbackMessage,
+    })),
+  }, { status })
+}
+
+async function processItem(
+  mainDocumentId: string,
+  item: RegisterSetItem,
+  actor: Actor,
+  journal: SetMutationJournal,
+) {
   switch (item.kind) {
     case 'register':
-      return registerDocument(mainDocumentId, item, actor)
+      return registerDocument(mainDocumentId, item, actor, journal)
     case 'attach':
-      return attachFile(mainDocumentId, item, actor)
+      return attachFile(mainDocumentId, item, actor, journal)
     case 'link-existing':
-      return linkExistingDocument(mainDocumentId, item.existing_document_id, actor)
+      return linkExistingDocument(mainDocumentId, item.existing_document_id, actor, journal)
     case 'revise-existing':
-      return reviseExisting(mainDocumentId, item, actor)
+      return reviseExisting(mainDocumentId, item, actor, journal)
+  }
+}
+
+type RegisterSuccessData = {
+  document?: {
+    id: string
+    document_code: string
+    title: string
+    created_at: string
+  }
+  reused?: boolean
+}
+
+type RevisionSuccessData = {
+  document?: { id: string; document_code: string }
+  draft?: { revision: string }
+  reused?: boolean
+}
+
+async function recordSetSuccessLogs(
+  mainDocumentId: string,
+  succeeded: readonly ItemSuccess[],
+  actor: Actor,
+) {
+  const operations: Array<{ label: string; run: () => Promise<unknown> }> = []
+  const add = (label: string, run: () => Promise<unknown>) => operations.push({ label, run })
+
+  for (const success of succeeded) {
+    if (success.kind === 'register') {
+      const data = success.data as RegisterSuccessData
+      if (!data.reused && data.document) {
+        const document = data.document
+        add(`document access log ${document.id}`, async () => supabaseAdmin.from('document_access_logs').insert({
+          document_id: document.id,
+          user_id: actor.id,
+          action: 'upload',
+        }))
+        add(`document upload audit ${document.id}`, async () => supabaseAdmin.from('audit_log').insert({
+          action: 'document.upload',
+          user_id: actor.id,
+          target: document.document_code,
+          detail: `${document.document_code} · ${document.title}`,
+        }))
+        add(`document status history ${document.id}`, async () => supabaseAdmin.from('document_status_history').insert({
+          document_id: document.id,
+          from_status: null,
+          to_status: 'Draft',
+          changed_by: actor.id,
+          changed_at: document.created_at,
+        }))
+      }
+      continue
+    }
+
+    if (success.kind === 'revise-existing') {
+      const data = success.data as RevisionSuccessData
+      if (!data.reused && data.document && data.draft) {
+        const document = data.document
+        const draft = data.draft
+        add(`revision draft audit ${document.id}`, async () => supabaseAdmin.from('audit_log').insert({
+          action: 'document.revision_draft_create',
+          user_id: actor.id,
+          target: document.document_code,
+          detail: `Rev. ${draft.revision}`,
+        }))
+      }
+    }
+  }
+
+  const results = await Promise.allSettled(operations.map((operation) => (
+    Promise.resolve().then(operation.run)
+  )))
+  const failures = results.flatMap((result, index) => {
+    if (result.status === 'rejected') {
+      return [`${operations[index].label}: ${errorMessage(result.reason)}`]
+    }
+    const value = result.value
+    if (value && typeof value === 'object' && 'error' in value && value.error) {
+      return [`${operations[index].label}: ${errorMessage(value.error)}`]
+    }
+    return []
+  })
+  if (failures.length > 0) {
+    console.error('Document set success logging was incomplete', {
+      mainDocumentId,
+      failures,
+    })
   }
 }
 
@@ -828,32 +1053,57 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'ลงทะเบียนชุดเอกสารได้เฉพาะเอกสารหลักสถานะ Draft' }, { status: 409 })
   }
 
-  const succeeded: ItemSuccess[] = []
-  const failed: ItemFailure[] = []
-  for (const [index, item] of parsed.data.items.entries()) {
-    let verifiedUpload: VerifiedSetUpload | null = null
-    try {
-      await requireDraftMainDocument(id)
-      verifiedUpload = await verifySetUpload(id, item, actor)
-      const data = await processItem(id, item, actor)
-      if (verifiedUpload?.leaseToken) {
-        await markSetUploadClaimed(verifiedUpload.uploadId, verifiedUpload.leaseToken)
-      }
-      succeeded.push({ index, kind: item.kind, item, data })
-    } catch (error) {
-      if (verifiedUpload?.leaseToken) {
-        try {
-          await releaseSetUploadLease(verifiedUpload.uploadId, verifiedUpload.leaseToken)
-        } catch (releaseError) {
-          console.error('Set upload register lease release failed', {
-            uploadId: verifiedUpload.uploadId,
-            error: errorMessage(releaseError),
-          })
-        }
-      }
-      failed.push({ index, kind: item.kind, item, error: errorMessage(error) })
+  const items = parsed.data.items
+  const verifiedUploads: VerifiedSetUpload[] = []
+  let failedIndex: number | null = null
+  try {
+    await requireDraftMainDocument(id)
+    for (const [index, item] of items.entries()) {
+      failedIndex = index
+      const verifiedUpload = await verifySetUpload(id, item, actor)
+      if (verifiedUpload) verifiedUploads.push(verifiedUpload)
     }
+  } catch (error) {
+    const releaseFailures = await releaseSetUploadLeases(verifiedUploads)
+    if (releaseFailures.length > 0) {
+      console.error('Set upload verification lease cleanup failed', { releaseFailures })
+    }
+    return batchFailureResponse(items, error, 409, failedIndex)
   }
 
-  return NextResponse.json({ succeeded, failed })
+  const journal = new SetMutationJournal()
+  const succeeded: ItemSuccess[] = []
+  failedIndex = null
+  try {
+    for (const [index, item] of items.entries()) {
+      failedIndex = index
+      const data = await processItem(id, item, actor, journal)
+      succeeded.push({ index, kind: item.kind, item, data })
+    }
+
+    for (const verifiedUpload of verifiedUploads) {
+      if (!verifiedUpload.leaseToken) continue
+      const claimedAt = await markSetUploadClaimed(verifiedUpload.uploadId, verifiedUpload.leaseToken)
+      journal.add(`ยกเลิกการ claim upload ticket ${verifiedUpload.uploadId}`, async () => {
+        await unclaimSetUpload(verifiedUpload.uploadId, claimedAt)
+      })
+    }
+  } catch (error) {
+    const rollbackFailures = await journal.rollback()
+    const releaseFailures = await releaseSetUploadLeases(verifiedUploads)
+    if (rollbackFailures.length > 0 || releaseFailures.length > 0) {
+      console.error('Atomic document set rollback was incomplete', {
+        mainDocumentId: id,
+        rollbackFailures,
+        releaseFailures,
+      })
+    }
+    const rollbackError = rollbackFailures.length > 0
+      ? new Error(`${errorMessage(error)}; rollback failed for ${rollbackFailures.length} mutation(s)`)
+      : error
+    return batchFailureResponse(items, rollbackError, 409, failedIndex)
+  }
+
+  await recordSetSuccessLogs(id, succeeded, actor)
+  return NextResponse.json({ succeeded, failed: [] })
 }

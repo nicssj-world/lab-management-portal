@@ -10,17 +10,20 @@ import { Badge } from '@/components/ui/Badge'
 import { Icon } from '@/components/ui/Icon'
 import { Stat } from '@/components/ui/Stat'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { VisitorFormOptionsEditor } from '@/components/it-visitor/VisitorFormOptionsEditor'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import {
-  ACTIVITY_LABEL, ACTIVITY_TYPES, APPOINTMENT_LABEL, BADGE_LABEL,
-  ORG_TYPE_LABEL, ORG_TYPES, SAFETY_LABEL, VISIT_TYPE_LABEL,
+  ACTIVITY_LABEL, ACTIVITY_TYPES, APPOINTMENT_LABEL, APPOINTMENTS,
+  BADGE_LABEL, BADGE_STATES, ORG_TYPE_LABEL, ORG_TYPES, SAFETY_LABEL,
+  SAFETY_ACKS, VISIT_TYPE_LABEL,
 } from '@/lib/it-visitor/constants'
-import type { ActivityType, OrgType } from '@/lib/it-visitor/constants'
+import type { ActivityType, Appointment, BadgeState, OrgType, SafetyAck } from '@/lib/it-visitor/constants'
 import { buildVisitorRegisterHtml } from '@/lib/it-visitor/register-pdf'
 import { paginateVisitorLogs, prioritizeOpenVisitorLogs } from '@/lib/it-visitor/pagination'
+import type { VisitorFormConfig } from '@/lib/it-visitor/form-config'
 import type { ItVisitorLogWithRefs } from '@/lib/supabase/types'
 
-interface Settings { public_token: string; is_open: boolean; updated_at: string }
+interface Settings { public_token: string; is_open: boolean; updated_at: string; form_config: VisitorFormConfig }
 interface Props {
   initialLogs: ItVisitorLogWithRefs[]
   initialSettings: Settings | null
@@ -68,6 +71,11 @@ function durationLabel(entered: string, exited: string | null): string {
   const h = Math.floor(mins / 60)
   return h > 0 ? `${h} ชม. ${mins % 60} นาที` : `${mins} นาที`
 }
+
+function safetyOptionLabel(value: SafetyAck, other: string | null | undefined, config?: VisitorFormConfig) {
+  if (other) return other
+  return config?.safety_options.find((option) => option.id === value)?.label ?? SAFETY_LABEL[value]
+}
 function todayValue() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
 
 function useToast() {
@@ -97,6 +105,10 @@ type EditForm = {
   exited_at: string
   activity_type: ActivityType
   activity_other: string
+  appointment: Appointment
+  badge_exchanged: BadgeState
+  safety_ack: SafetyAck
+  safety_ack_other: string
 }
 
 export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmin }: Props) {
@@ -119,6 +131,8 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
   const [qrOpen, setQrOpen] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState('')
   const [rotateConfirm, setRotateConfirm] = useState(false)
+  const [formEditorOpen, setFormEditorOpen] = useState(false)
+  const [formConfigSaving, setFormConfigSaving] = useState(false)
 
   const publicUrl = settings ? `${typeof window === 'undefined' ? '' : window.location.origin}/v/${settings.public_token}` : ''
 
@@ -193,6 +207,10 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
       exited_at: toLocalInput(l.exited_at),
       activity_type: l.activity_type,
       activity_other: l.activity_other ?? '',
+      appointment: l.appointment,
+      badge_exchanged: l.badge_exchanged,
+      safety_ack: l.safety_ack,
+      safety_ack_other: l.safety_ack_other ?? '',
     })
   }
 
@@ -200,29 +218,45 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
     if (!form) return
     if (!form.visitor_name.trim()) { add('กรุณากรอกชื่อ', false); return }
     if (!form.phone.trim()) { add('กรุณากรอกเบอร์โทรศัพท์', false); return }
+    if (!form.visit_date) { add('กรุณาระบุวันที่', false); return }
+
+    const enteredAt = new Date(form.entered_at)
+    if (Number.isNaN(enteredAt.getTime())) { add('กรุณาระบุเวลาเข้าให้ถูกต้อง', false); return }
+    const exitedAt = form.exited_at ? new Date(form.exited_at) : null
+    if (exitedAt && Number.isNaN(exitedAt.getTime())) { add('กรุณาระบุเวลาออกให้ถูกต้อง', false); return }
+
     setSaving(true)
-    const payload = {
-      visit_date: form.visit_date,
-      visitor_name: form.visitor_name,
-      group_name: form.group_name || null,
-      member_names: form.member_names || null,
-      party_size: Number(form.party_size) || 1,
-      phone: form.phone,
-      email: form.email || null,
-      org_type: form.org_type,
-      org_name: form.org_name,
-      contact_dept: form.contact_dept,
-      entered_at: new Date(form.entered_at).toISOString(),
-      exited_at: form.exited_at ? new Date(form.exited_at).toISOString() : null,
-      activity_type: form.activity_type,
-      activity_other: form.activity_other || null,
+    try {
+      const payload = {
+        visit_date: form.visit_date,
+        visitor_name: form.visitor_name,
+        group_name: form.group_name || null,
+        member_names: form.member_names || null,
+        party_size: Number(form.party_size) || 1,
+        phone: form.phone,
+        email: form.email || null,
+        org_type: form.org_type,
+        org_name: form.org_name,
+        contact_dept: form.contact_dept,
+        entered_at: enteredAt.toISOString(),
+        exited_at: exitedAt ? exitedAt.toISOString() : null,
+        activity_type: form.activity_type,
+        activity_other: form.activity_other || null,
+        appointment: form.appointment,
+        badge_exchanged: form.badge_exchanged,
+        safety_ack: form.safety_ack,
+        safety_ack_other: form.safety_ack_other || null,
+      }
+      const res = await fetch(`/api/admin/it-visitors/${form.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      if (res.ok) { add('บันทึกการแก้ไขแล้ว'); setForm(null); await refetch() }
+      else { const j = await res.json().catch(() => ({})); add(j.error ?? 'บันทึกไม่สำเร็จ', false) }
+    } catch {
+      add('ไม่สามารถเชื่อมต่อเพื่อบันทึกการแก้ไขได้', false)
+    } finally {
+      setSaving(false)
     }
-    const res = await fetch(`/api/admin/it-visitors/${form.id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-    })
-    setSaving(false)
-    if (res.ok) { add('บันทึกการแก้ไขแล้ว'); setForm(null); await refetch() }
-    else { const j = await res.json().catch(() => ({})); add(j.error ?? 'บันทึกไม่สำเร็จ', false) }
   }
 
   async function confirmDelete() {
@@ -243,20 +277,46 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
     setQrOpen(true)
   }
 
-  async function patchSettings(body: Record<string, unknown>, okMsg: string) {
-    const res = await fetch('/api/admin/it-visitors/settings', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    })
-    if (res.ok) {
-      const next = await res.json()
-      setSettings(next)
-      setQrDataUrl('')
-      add(okMsg)
-      return next as Settings
+  function openFormEditor() {
+    if (!settings) {
+      add('ยังไม่ได้ตั้งค่าฟอร์ม — กรุณารัน migration ก่อน', false)
+      return
     }
-    const j = await res.json().catch(() => ({}))
-    add(j.error ?? 'บันทึกไม่สำเร็จ', false)
+    setFormEditorOpen(true)
+  }
+
+  async function patchSettings(body: Record<string, unknown>, okMsg: string) {
+    try {
+      const res = await fetch('/api/admin/it-visitors/settings', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        const next = await res.json()
+        setSettings(next)
+        if (body.rotateToken === true) setQrDataUrl('')
+        add(okMsg)
+        return next as Settings
+      }
+      const j = await res.json().catch(() => ({}))
+      add(j.error ?? 'บันทึกไม่สำเร็จ', false)
+    } catch {
+      add('ไม่สามารถเชื่อมต่อเพื่อบันทึกการตั้งค่าได้', false)
+    }
     return null
+  }
+
+  async function saveFormConfig(config: VisitorFormConfig) {
+    setFormConfigSaving(true)
+    try {
+      const next = await patchSettings({ formConfig: config }, 'บันทึกตัวเลือกฟอร์มสาธารณะแล้ว')
+      if (next) {
+        setFormEditorOpen(false)
+        return true
+      }
+      return false
+    } finally {
+      setFormConfigSaving(false)
+    }
   }
 
   function printRegister() {
@@ -274,6 +334,7 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Button variant="secondary" icon="download" onClick={printRegister}>พิมพ์ทะเบียน</Button>
+            {isAdmin && <Button variant="secondary" icon="settings" onClick={openFormEditor} disabled={!settings}>แก้ไขฟอร์มสาธารณะ</Button>}
             <Button variant="primary" icon="globe" onClick={showQr}>ลิงก์ / QR Code</Button>
           </div>
         }
@@ -494,7 +555,7 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
                   <Badge color={detail.badge_exchanged === 'yes' ? 'green' : 'gray'}>{BADGE_LABEL[detail.badge_exchanged]}</Badge>
                 </DetailField>
                 <DetailField label="นโยบายความปลอดภัย">
-                  <Badge color={detail.safety_ack === 'acknowledged' ? 'green' : 'red'}>{SAFETY_LABEL[detail.safety_ack]}</Badge>
+                  <Badge color={detail.safety_ack === 'acknowledged' ? 'green' : 'red'}>{safetyOptionLabel(detail.safety_ack, detail.safety_ack_other, settings?.form_config)}</Badge>
                 </DetailField>
               </dl>
             </section>
@@ -516,7 +577,8 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
               </section>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 2 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 2 }}>
+              {canEdit && <Button variant="primary" icon="edit" onClick={() => { openEdit(detail); setDetail(null) }}>แก้ไขรายการ</Button>}
               <Button variant="secondary" onClick={() => setDetail(null)}>ปิด</Button>
             </div>
           </div>
@@ -567,6 +629,22 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
               <div><label style={labelStyle}>ระบุกิจกรรม</label>
                 <input style={inputStyle} value={form.activity_other} onChange={(e) => setForm({ ...form, activity_other: e.target.value })} /></div>
             )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+              <div><label style={labelStyle}>นัดหมายล่วงหน้า</label>
+                <select style={inputStyle} value={form.appointment} onChange={(e) => setForm({ ...form, appointment: e.target.value as Appointment })}>
+                  {APPOINTMENTS.map((v) => <option key={v} value={v}>{APPOINTMENT_LABEL[v]}</option>)}
+                </select></div>
+              <div><label style={labelStyle}>การแลกบัตร</label>
+                <select style={inputStyle} value={form.badge_exchanged} onChange={(e) => setForm({ ...form, badge_exchanged: e.target.value as BadgeState })}>
+                  {BADGE_STATES.map((v) => <option key={v} value={v}>{BADGE_LABEL[v]}</option>)}
+                </select></div>
+              <div><label style={labelStyle}>นโยบายความปลอดภัย</label>
+                <select style={inputStyle} value={form.safety_ack} onChange={(e) => setForm({ ...form, safety_ack: e.target.value as SafetyAck, safety_ack_other: '' })}>
+                  {SAFETY_ACKS.map((v) => <option key={v} value={v}>{safetyOptionLabel(v, null, settings?.form_config)}</option>)}
+                </select>
+                {form.safety_ack_other && <input style={{ ...inputStyle, marginTop: 7 }} value={form.safety_ack_other} onChange={(e) => setForm({ ...form, safety_ack_other: e.target.value })} placeholder="ชื่อตัวเลือกที่ผู้ใช้เลือก" />}
+              </div>
+            </div>
             <div><label style={labelStyle}>รายชื่อผู้มา</label>
               <textarea style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} value={form.member_names} onChange={(e) => setForm({ ...form, member_names: e.target.value })} /></div>
           </div>
@@ -600,6 +678,7 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
           </div>
           {isAdmin && (
             <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'grid', gap: 12 }}>
+              <Button variant="secondary" icon="settings" onClick={openFormEditor}>แก้ไขตัวเลือกในฟอร์ม</Button>
               <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, cursor: 'pointer' }}>
                 <input type="checkbox" checked={settings.is_open}
                   onChange={(e) => patchSettings({ is_open: e.target.checked }, e.target.checked ? 'เปิดรับแบบฟอร์มแล้ว' : 'ปิดรับแบบฟอร์มแล้ว')} />
@@ -621,6 +700,15 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
             </div>
           )}
         </Modal>
+      )}
+
+      {formEditorOpen && settings && isAdmin && (
+        <VisitorFormOptionsEditor
+          initialConfig={settings.form_config}
+          saving={formConfigSaving}
+          onClose={() => { if (!formConfigSaving) setFormEditorOpen(false) }}
+          onSave={saveFormConfig}
+        />
       )}
 
       {deleteId && (

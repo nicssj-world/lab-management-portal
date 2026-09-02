@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/Button'
@@ -16,7 +16,7 @@ import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
 import { EquipmentDetailModal } from '@/components/equipment/EquipmentDetailModal'
 import { EquipmentPmCalModal } from '@/components/equipment/EquipmentPmCalModal'
 import { PmCalPlanWorkspace } from '@/components/equipment/PmCalPlanWorkspace'
-import { mergeEquipmentDepartments } from '@/lib/equipment/departments'
+import { equipmentDepartmentsInUse, mergeEquipmentDepartments } from '@/lib/equipment/departments'
 import { getLabCodeInfo, LAB_CODE_CLASSIFICATIONS } from '@/lib/equipment-lab-code'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
@@ -45,7 +45,6 @@ type EquipmentAreaOption = {
   parentCode: string | null
   isActive: boolean
 }
-
 function openPdfOrNewTab(url: string, filePath: string | null | undefined, title: string, setViewer: (viewer: ViewerState) => void, pdfJsUrl?: string | null) {
   if (isPdfLike({ fileName: filePath })) {
     setViewer({ url, pdfJsUrl, title })
@@ -1400,11 +1399,13 @@ function EquipmentQrTab({ classifications, departments }: { classifications: str
     if (classification && eq.classification !== classification) return false
     if (search.trim()) {
       const q = search.trim().toLowerCase()
-      const hay = [eq.equipment_type, eq.cbh_code, eq.serial_number, eq.responsible_person].filter(Boolean).join(' ').toLowerCase()
+      const hay = [eq.equipment_type, eq.model, eq.cbh_code, eq.serial_number, eq.responsible_person].filter(Boolean).join(' ').toLowerCase()
       if (!hay.includes(q)) return false
     }
     return true
   })
+
+  const readyCount = filtered.reduce((count, eq) => count + (qrMap[eq.id] ? 1 : 0), 0)
 
   // สร้าง QR data URL สำหรับรายการที่ผ่าน filter (เฉพาะที่ยังไม่มี)
   useEffect(() => {
@@ -1427,22 +1428,34 @@ function EquipmentQrTab({ classifications, departments }: { classifications: str
     const ready = list.filter(eq => qrMap[eq.id])
     if (ready.length === 0) return
     const cells = ready.map(eq => `
-      <div class="cell">
-        <img src="${qrMap[eq.id]}" alt="QR" />
+      <article class="cell">
+        <div class="hospital">CHONBURI HOSPITAL</div>
+        <h2 class="name">${escapeHtmlQr(qrMetaValue(eq.model))}</h2>
         <div class="code">${escapeHtmlQr(labCodeLabel(eq))}</div>
-        <div class="name">${escapeHtmlQr(eq.equipment_type)}</div>
-      </div>`).join('')
+        <div class="qr-box">
+          <div class="qr-label">QR เครื่องมือ</div>
+          <img src="${escapeHtmlQr(qrMap[eq.id])}" alt="QR รายละเอียดเครื่องมือ ${escapeHtmlQr(eq.equipment_type)}" />
+          <div class="qr-caption">รายละเอียดเครื่องมือ / PM / Calibration</div>
+        </div>
+        <div class="meta"><span class="meta-label">S/N</span> ${escapeHtmlQr(qrMetaValue(eq.serial_number))}</div>
+      </article>`).join('')
     const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>QR เครื่องมือ</title><style>
       @page{size:A4 portrait;margin:10mm}
       *{font-family:Sarabun,"TH Sarabun New","Noto Sans Thai",sans-serif;box-sizing:border-box}
       body{margin:0;color:#0f172a}
-      .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm}
-      .cell{border:1px solid #cbd5e1;border-radius:8px;padding:8px;text-align:center;page-break-inside:avoid}
-      .cell img{width:100%;max-width:150px;height:auto;display:block;margin:0 auto 4px}
-      .code{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;color:#0f172a;word-break:break-all}
-      .name{font-size:12px;color:#334155;line-height:1.3;margin-top:2px}
+      .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:132mm;gap:5mm;align-items:stretch}
+      .cell{display:flex;flex-direction:column;align-items:center;min-width:0;height:100%;border:2px solid #0f172a;border-radius:10px;padding:5mm 4mm 4mm;text-align:center;page-break-inside:avoid;break-inside:avoid}
+      .hospital{color:#1e5fad;font-size:9px;font-weight:800;letter-spacing:.2em;line-height:1.2}
+      .name{display:flex;align-items:center;justify-content:center;width:100%;min-height:15mm;margin:4mm 0 1.5mm;color:#0f172a;font-size:16px;font-weight:800;line-height:1.25;overflow-wrap:anywhere}
+      .code{margin-bottom:4mm;color:#1e5fad;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;font-weight:800;line-height:1.3;overflow-wrap:anywhere}
+      .qr-box{display:flex;flex-direction:column;align-items:center;width:100%;max-width:56mm;border:1px solid #d7e3e5;border-radius:8px;background:#f1f4f9;padding:3mm 2.5mm 2.5mm}
+      .qr-label{margin-bottom:1mm;color:#1e5fad;font-size:9px;font-weight:800;line-height:1.2}
+      .qr-box img{display:block;width:46mm;height:46mm;max-width:100%;object-fit:contain;background:#fff}
+      .qr-caption{margin-top:1.5mm;color:#64748b;font-size:8px;line-height:1.3;overflow-wrap:anywhere}
+      .meta{width:100%;margin-top:auto;padding-top:3mm;color:#64748b;font-size:8.5px;line-height:1.35;overflow-wrap:anywhere}
+      .meta-label{color:#315763;font-weight:800}
       @media print{button{display:none}}
-    </style></head><body><div class="grid">${cells}</div><script>window.onload=()=>window.print()</script></body></html>`
+    </style></head><body><main class="grid">${cells}</main><script>window.addEventListener('load',()=>window.setTimeout(()=>window.print(),80))</script></body></html>`
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank', 'noopener,noreferrer')
@@ -1475,21 +1488,27 @@ function EquipmentQrTab({ classifications, departments }: { classifications: str
         </select>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: 'var(--muted)' }}>{filtered.length} รายการ</span>
-        <Button variant="primary" icon="download" onClick={() => printCards(filtered)} disabled={filtered.length === 0} style={{ fontWeight: 600 }}>พิมพ์ทั้งหมด / PDF</Button>
+        <Button variant="primary" icon="download" onClick={() => printCards(filtered)} disabled={readyCount === 0} style={{ fontWeight: 600 }}>พิมพ์ทั้งหมด / PDF</Button>
       </div>
 
       {filtered.length === 0 ? (
         <div style={{ padding: 42, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>ไม่พบเครื่องมือตามเงื่อนไข</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
+        <div className="eq-qr-grid">
           {filtered.map(eq => (
-            <div key={eq.id} className="eq-qr-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              {qrMap[eq.id]
-                ? <img src={qrMap[eq.id]} alt={`QR ${eq.equipment_type}`} style={{ width: '100%', maxWidth: 150, borderRadius: 8, border: '1px solid var(--border)', background: '#fff' }} />
-                : <div style={{ width: 150, height: 150, borderRadius: 8, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 12 }}>กำลังสร้าง…</div>}
-              <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12.5, fontWeight: 700, color: 'var(--primary)', wordBreak: 'break-all' }}>{labCodeLabel(eq)}</div>
-              <div style={{ fontSize: 12.5, color: 'var(--ink)', lineHeight: 1.35, minHeight: 34 }}>{eq.equipment_type}</div>
-              <div style={{ display: 'flex', gap: 6, marginTop: 'auto', width: '100%' }}>
+            <article key={eq.id} className="eq-qr-card">
+              <div className="eq-qr-hospital">CHONBURI HOSPITAL</div>
+              <h2 className="eq-qr-name">{qrMetaValue(eq.model)}</h2>
+              <div className="eq-qr-code">{labCodeLabel(eq)}</div>
+              <div className="eq-qr-box">
+                <div className="eq-qr-box-title">QR เครื่องมือ</div>
+                {qrMap[eq.id]
+                  ? <img className="eq-qr-image" src={qrMap[eq.id]} alt={`QR รายละเอียดเครื่องมือ ${eq.equipment_type}`} />
+                  : <div className="eq-qr-placeholder">กำลังสร้าง…</div>}
+                <div className="eq-qr-box-caption">รายละเอียดเครื่องมือ / PM / Calibration</div>
+              </div>
+              <div className="eq-qr-meta"><span className="eq-qr-meta-label">S/N</span> {qrMetaValue(eq.serial_number)}</div>
+              <div className="eq-qr-actions">
                 <Button size="sm" variant="secondary" icon="doc" onClick={() => printCards([eq])} disabled={!qrMap[eq.id]} style={{ flex: 1, justifyContent: 'center' }}>พิมพ์</Button>
                 {qrMap[eq.id] && (
                   <a href={qrMap[eq.id]} download={`${(eq.cbh_code || eq.equipment_type).replace(/[\\/:*?"<>|]/g, '-')}-qr.png`} style={{ textDecoration: 'none', flex: 1 }}>
@@ -1497,7 +1516,7 @@ function EquipmentQrTab({ classifications, departments }: { classifications: str
                   </a>
                 )}
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
@@ -1507,6 +1526,10 @@ function EquipmentQrTab({ classifications, departments }: { classifications: str
 
 function escapeHtmlQr(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]!))
+}
+
+function qrMetaValue(value: string | null | undefined): string {
+  return value?.trim() || '—'
 }
 
 type CurrentPmCalReport = {
@@ -2011,11 +2034,18 @@ export default function EquipmentClient({
       .finally(() => setDashboardLoading(false))
   }, [dashboardItems, view])
 
-  // Keep canonical departments and imported/historical name variants available.
-  const allDepts = mergeEquipmentDepartments([
+  // Filter options only show departments represented by equipment rows. The
+  // add/edit form receives the full catalog below so an empty department can
+  // still receive its first registered item.
+  const activeDepts = useMemo(() => equipmentDepartmentsInUse([
     ...availableDepartments,
     ...items.map(i => i.department),
-  ])
+  ]), [availableDepartments, items])
+  const catalogDepts = useMemo(() => mergeEquipmentDepartments(), [])
+
+  useEffect(() => {
+    if (department && !activeDepts.includes(department)) setDepartment('')
+  }, [activeDepts, department])
 
   const areaNameByCode = new Map(areas.map(a => [a.code, a.nameTh]))
 
@@ -2352,6 +2382,20 @@ export default function EquipmentClient({
         .eq-row:hover { background: linear-gradient(90deg, rgba(30,95,173,.10), var(--card)) !important; box-shadow: inset 3px 0 0 var(--primary); }
         .eq-actions { opacity: 1; }
         .eq-code-badge { display: inline-flex; align-items: center; font-size: 10.5px; padding: 3px 9px; border-radius: 999px; font-weight: 800; box-shadow: inset 0 0 0 1px rgba(255,255,255,.5); }
+        .eq-qr-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+        .eq-qr-card { display: flex; flex-direction: column; align-items: center; min-width: 0; height: 100%; padding: 18px 16px 14px; border: 2px solid var(--ink); border-radius: 12px; background: var(--card); text-align: center; }
+        .eq-qr-hospital { color: var(--primary); font-size: 10px; font-weight: 800; letter-spacing: .18em; line-height: 1.25; }
+        .eq-qr-name { width: 100%; margin: 10px 0 3px; color: var(--ink); font-size: 18px; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere; }
+        .eq-qr-code { width: 100%; margin-bottom: 12px; color: var(--primary); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+        .eq-qr-box { display: flex; flex-direction: column; align-items: center; width: min(100%, 240px); padding: 12px 10px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+        .eq-qr-box-title { margin-bottom: 5px; color: var(--primary); font-size: 11px; font-weight: 800; line-height: 1.25; }
+        .eq-qr-image, .eq-qr-placeholder { display: block; width: 190px; height: 190px; max-width: 100%; border-radius: 4px; }
+        .eq-qr-image { object-fit: contain; background: #fff; }
+        .eq-qr-placeholder { display: flex; align-items: center; justify-content: center; background: var(--card); color: var(--muted); font-size: 12px; }
+        .eq-qr-box-caption { margin-top: 6px; color: var(--muted); font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+        .eq-qr-meta { width: 100%; min-height: 18px; margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+        .eq-qr-meta-label { color: var(--ink); font-weight: 800; }
+        .eq-qr-actions { display: flex; gap: 6px; width: 100%; margin-top: auto; padding-top: 12px; }
         .eq-toast { animation: toastIn .22s ease both; }
         .eq-risk-hint { position: relative; display: inline-flex; align-items: center; }
         .eq-risk-hint-btn { width: 17px; height: 17px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 800; line-height: 1; cursor: help; font-family: inherit; padding: 0; }
@@ -2400,6 +2444,7 @@ export default function EquipmentClient({
           .eq-stat-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
           .eq-header-actions { justify-content: flex-start; }
           .eq-dashboard-row { grid-template-columns: 1fr !important; }
+          .eq-qr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 767px) {
           .eq-page-header > div { width: 100%; flex-direction: column !important; align-items: stretch !important; gap: 12px !important; }
@@ -2441,6 +2486,7 @@ export default function EquipmentClient({
           .eq-calplan-root > section label { width: 100%; }
           .eq-calplan-root > section label input,
           .eq-calplan-root > section button { width: 100% !important; min-height: 44px !important; }
+          .eq-qr-grid { grid-template-columns: 1fr; }
           .eq-qr-card button { min-height: 44px; height: auto !important; }
           .eq-modal-overlay { padding: 12px !important; align-items: flex-start !important; overflow-y: auto; }
           .eq-modal-panel { max-height: calc(100svh - 24px) !important; border-radius: 14px !important; }
@@ -2598,7 +2644,7 @@ export default function EquipmentClient({
 
       {view === 'calplan' && <CalibrationPlanTab canEdit={canEdit} />}
 
-      {view === 'qr' && <EquipmentQrTab classifications={classifications} departments={allDepts} />}
+      {view === 'qr' && <EquipmentQrTab classifications={classifications} departments={activeDepts} />}
 
       {view === 'list' && <>
 
@@ -2633,7 +2679,7 @@ export default function EquipmentClient({
         </div>
         <select value={department} onChange={e => setDepartment(e.target.value)} className="eq-filter-select" style={{ minWidth: 148 }}>
           <option value="">ทุกแผนก</option>
-          {allDepts.map(d => <option key={d} value={d}>{d}</option>)}
+          {activeDepts.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
         <select value={classification} onChange={e => setClassification(e.target.value)} className="eq-filter-select" style={{ minWidth: 148 }}>
           <option value="">ทุก Classification</option>
@@ -2934,7 +2980,7 @@ export default function EquipmentClient({
           item={editItem ?? null}
           onClose={() => { setAddModal(false); setEditItem(null) }}
           onSaved={handleSaved}
-          departments={allDepts}
+          departments={catalogDepts}
           responsibleUsers={responsibleUsers}
           areas={areas}
         />

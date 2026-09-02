@@ -14,4 +14,12 @@ assert.match(source, /ไม่ระบุ/, 'detail modal should handle missin
 assert.match(source, /aria-label="ปิดหน้าต่าง"/, 'modal close action should be announced to assistive technology')
 assert.match(source, /detail\.badge_exchanged === 'yes'/, 'badge status should distinguish yes from no')
 
+// The staff edit form must preserve and allow correcting every editable field
+// from the public visitor form, including the three compliance/status flags.
+for (const field of ['appointment', 'badge_exchanged', 'safety_ack']) {
+  assert.match(source, new RegExp(`${field}: l\\.${field}`), `${field} is loaded into the edit form`)
+  assert.match(source, new RegExp(`${field}: form\\.${field}`), `${field} is sent by the edit form`)
+}
+assert.match(source, /แก้ไขรายการ/, 'detail modal should provide an edit action for authorized staff')
+
 console.log('IT visitor detail UI checks passed')

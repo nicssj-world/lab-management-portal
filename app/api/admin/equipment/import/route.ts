@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
+import { canonicalEquipmentDepartment } from '@/lib/equipment/departments'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 
@@ -254,7 +255,10 @@ async function getExistingEquipment(): Promise<ExistingEquipment[]> {
       .order('id', { ascending: true })
       .range(from, from + pageSize - 1)
     if (error) throw new Error(error.message)
-    rows.push(...((data ?? []) as ExistingEquipment[]))
+    rows.push(...((data ?? []) as ExistingEquipment[]).map((row) => ({
+      ...row,
+      department: canonicalEquipmentDepartment(row.department),
+    })))
     if (!data || data.length < pageSize) break
   }
 
@@ -670,7 +674,7 @@ export async function POST(req: NextRequest) {
       __rowNumber: headerRowIdx + i + 2,
       created_by: actor.id,
       equipment_type: eqType || 'ไม่ระบุ',
-      department: dept || labInfo.department || 'ไม่ระบุ',
+      department: canonicalEquipmentDepartment(dept || labInfo.department || 'ไม่ระบุ'),
       cbh_code_pending: false,
       hospital_asset_no_pending: false,
     }
@@ -710,6 +714,7 @@ export async function POST(req: NextRequest) {
       record['responsible_person'] = responsibleUser.name
     }
     if (labInfo.department) record.department = labInfo.department
+    else record.department = canonicalEquipmentDepartment(record.department)
     if (labInfo.classification) record['classification'] = labInfo.classification
 
     if ('purchase_date' in colIdx) record['purchase_date'] = parseDate(row[colIdx['purchase_date']])

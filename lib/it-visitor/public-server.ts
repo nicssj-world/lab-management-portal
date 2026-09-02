@@ -4,6 +4,11 @@ import { randomBytes } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createPublicChallenge, verifyPublicChallenge } from '@/lib/security/public-challenge'
 import { createCheckoutSecret, hashCheckoutSecret } from './checkout'
+import {
+  DEFAULT_VISITOR_FORM_CONFIG,
+  normalizeVisitorFormConfig,
+} from './form-config'
+import type { VisitorFormConfig } from './form-config'
 import { resolveVisitorDestination } from '@/lib/lab-map/visitor'
 import type {
   ActiveVisitorDTO,
@@ -27,6 +32,13 @@ export function createVisitorToken() {
   return randomBytes(32).toString('base64url')
 }
 
+function isMissingFormConfigColumn(error: { code?: string; message?: string } | null) {
+  return Boolean(error && (
+    error.code === '42703'
+    || /form_config/i.test(error.message ?? '')
+  ))
+}
+
 /**
  * สถานะฟอร์มสาธารณะ — คืน DTO แคบที่สุด ไม่คืน public_token กลับไปหาเบราว์เซอร์
  * คืน null = ไม่พบ (token ผิด) ซึ่ง caller แปลงเป็น 404
@@ -37,13 +49,30 @@ export async function getPublicVisitorFormState(token: string): Promise<PublicVi
 
   const { data, error } = await supabaseAdmin
     .from('it_visitor_form_settings')
-    .select('is_open')
+    .select('is_open, form_config')
     .eq('public_token', token)
     .maybeSingle()
-  if (error) throw new Error(error.message)
-  if (!data) return null
+  if (error && !isMissingFormConfigColumn(error)) throw new Error(error.message)
 
-  return data.is_open ? { available: true } : { available: false, reason: 'closed' }
+  if (error && isMissingFormConfigColumn(error)) {
+    const legacy = await supabaseAdmin
+      .from('it_visitor_form_settings')
+      .select('is_open')
+      .eq('public_token', token)
+      .maybeSingle()
+    if (legacy.error) throw new Error(legacy.error.message)
+    if (!legacy.data) return null
+    return legacy.data.is_open
+      ? { available: true, formConfig: { ...DEFAULT_VISITOR_FORM_CONFIG } }
+      : { available: false, reason: 'closed', formConfig: { ...DEFAULT_VISITOR_FORM_CONFIG } }
+  }
+
+  if (!data) return null
+  const formConfig = normalizeVisitorFormConfig((data as { form_config?: unknown }).form_config)
+
+  return data.is_open
+    ? { available: true, formConfig }
+    : { available: false, reason: 'closed', formConfig }
 }
 
 /** idempotency — กดส่งซ้ำ/เน็ตหลุดแล้วยิงใหม่ ต้องได้บันทึกเดิม ไม่ใช่แถวใหม่ */
@@ -164,16 +193,48 @@ export async function selfCheckoutVisitor(secret: string): Promise<SelfCheckoutR
 export async function getVisitorFormSettings() {
   const { data, error } = await supabaseAdmin
     .from('it_visitor_form_settings')
-    .select('public_token, is_open, updated_at')
+    .select('public_token, is_open, form_config, updated_at')
     .maybeSingle()
-  if (error) throw new Error(error.message)
-  return data as { public_token: string; is_open: boolean; updated_at: string } | null
+  if (error && !isMissingFormConfigColumn(error)) throw new Error(error.message)
+
+  if (error && isMissingFormConfigColumn(error)) {
+    const legacy = await supabaseAdmin
+      .from('it_visitor_form_settings')
+      .select('public_token, is_open, updated_at')
+      .maybeSingle()
+    if (legacy.error) throw new Error(legacy.error.message)
+    if (!legacy.data) return null
+    return {
+      ...(legacy.data as { public_token: string; is_open: boolean; updated_at: string }),
+      form_config: { ...DEFAULT_VISITOR_FORM_CONFIG },
+    }
+  }
+
+  if (!data) return null
+  return {
+    public_token: data.public_token as string,
+    is_open: data.is_open as boolean,
+    updated_at: data.updated_at as string,
+    form_config: normalizeVisitorFormConfig((data as { form_config?: unknown }).form_config),
+  }
 }
 
 export async function setVisitorFormOpen(isOpen: boolean, actorId: string) {
   const { error } = await supabaseAdmin
     .from('it_visitor_form_settings')
     .update({ is_open: isOpen, updated_at: new Date().toISOString(), updated_by: actorId })
+    .eq('singleton', true)
+  if (error) throw new Error(error.message)
+}
+
+export async function setVisitorFormConfig(config: VisitorFormConfig, actorId: string) {
+  const { error } = await supabaseAdmin
+    .from('it_visitor_form_settings')
+    .update({
+      form_config: normalizeVisitorFormConfig(config),
+      updated_at: new Date().toISOString(),
+      updated_by: actorId,
+    })
     .eq('singleton', true)
   if (error) throw new Error(error.message)
 }

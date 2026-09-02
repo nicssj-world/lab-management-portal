@@ -404,6 +404,7 @@ export interface ItVisitorLog {
   appointment: Appointment
   badge_exchanged: BadgeState
   safety_ack: SafetyAck
+  safety_ack_other: string | null
   submission_key: string
   created_at: string
   closed_by: string | null

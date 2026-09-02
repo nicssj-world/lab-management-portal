@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
+import { canonicalEquipmentDepartment, equipmentDepartmentVariants } from '@/lib/equipment/departments'
 import { resolveEquipmentAreaAssignment } from '@/lib/equipment-map/area-assignment'
 import { areaAndDescendantCodes } from '@/lib/equipment-map/manifest'
 import { NextRequest, NextResponse } from 'next/server'
@@ -116,7 +117,7 @@ function applyEquipmentFilters(query: any, searchParams: URLSearchParams) {
       `responsible_person.ilike.${pattern}`,
     ].join(','))
   }
-  if (department) query = query.eq('department', department)
+  if (department) query = query.in('department', equipmentDepartmentVariants(department))
   if (status) query = query.eq('status', status)
   if (risk_level) query = query.eq('risk_level', risk_level)
   if (needs_calibration === 'true') query = query.eq('needs_calibration', true)
@@ -197,7 +198,11 @@ export async function GET(req: NextRequest) {
 
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  const total = all ? (data?.length ?? 0) : (count ?? 0)
+  const normalizedItems = (data ?? []).map((row: Record<string, unknown>) => ({
+    ...row,
+    department: canonicalEquipmentDepartment(row.department as string | null | undefined),
+  }))
+  const total = all ? normalizedItems.length : (count ?? 0)
   const { data: statusRows } = await supabaseAdmin.from('equipment').select('status, department')
   let summaryQuery: any = supabaseAdmin
     .from('equipment')
@@ -212,13 +217,13 @@ export async function GET(req: NextRequest) {
     return acc
   }, {})
   const departments = [...new Set((statusRows ?? [])
-    .map((row) => String(row.department ?? '').trim())
+    .map((row) => canonicalEquipmentDepartment(row.department))
     .filter(Boolean))]
     .sort((left, right) => left.localeCompare(right, 'th'))
   const summaryCounts = summarizeEquipmentRows(summaryRows ?? [])
 
   return NextResponse.json({
-    items: data ?? [],
+    items: normalizedItems,
     count: total,
     page,
     pageSize,
@@ -257,6 +262,7 @@ export async function POST(req: NextRequest) {
   }
   const labInfo = getLabCodeInfo(body.cbh_code)
   if (labInfo.department) body.department = labInfo.department
+  else if (typeof body.department === 'string') body.department = canonicalEquipmentDepartment(body.department)
   if (labInfo.classification) body.classification = labInfo.classification
   if (body.status === 'Inactive') body.needs_calibration = false
   const { data, error } = await supabaseAdmin

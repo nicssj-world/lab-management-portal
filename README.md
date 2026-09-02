@@ -2,6 +2,14 @@
 
 Internal laboratory management portal for Chonburi Hospital. The app includes the staff portal, quality document control, test catalog, equipment, workload, TAT, risk/rejection, contracts, user/role management, and personnel modules.
 
+## Stock-BM equipment integration
+
+The Portal exposes a read-only, server-to-server single-equipment lookup at
+`/api/integrations/stock-bm/equipment`. Configure `STOCK_BM_INTEGRATION_TOKEN`
+and `PORTAL_PUBLIC_BASE_URL` in the server environment only. Stock-BM sends one
+exact `lab_code` (for example `LAB-BM-15-002`); the LAB code is the integration
+key and the endpoint does not load the whole Portal equipment registry.
+
 ## TAT Local Analysis Workflow
 
 TAT source files are stored locally under `E:\TAT\<fiscal-year>`, for example `E:\TAT\2569`. Use the matching fiscal-year folder as new years are added.
@@ -232,9 +240,10 @@ Focused verification commands are listed in `docs/superpowers/plans/2026-07-17-s
 Before deploying the visitor same-link checkout flow, apply the visitor migrations to Supabase in this order:
 
 1. `scripts/it-visitor-log.sql`
-2. `scripts/it-visitor-self-checkout.sql`
+2. `scripts/it-visitor-form-options.sql`
+3. `scripts/it-visitor-self-checkout.sql`
 
-The second migration adds the one-time hashed checkout credential and records whether the visitor or a staff member closed the visit. Application builds do not apply either migration automatically.
+The third migration adds the one-time hashed checkout credential and records whether the visitor or a staff member closed the visit. Application builds do not apply these migrations automatically.
 
 Staff/personnel rollout order:
 

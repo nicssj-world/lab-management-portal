@@ -5,6 +5,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import type { Equipment } from '@/lib/queries/equipment'
+import { canonicalEquipmentDepartment } from '@/lib/equipment/departments'
 import { computeEquipmentPmCalState, fiscalYearForDate, type EquipmentPmCalState, type PmCalPlanRecord, type PmCalResultRecord } from '@/lib/equipment/pm-cal-domain'
 
 // คอลัมน์ที่ยอมให้ปรากฏบนหน้า public — แหล่งความจริงเดียวของ "อะไรเปิดเผยได้"
@@ -66,7 +67,10 @@ export async function getPublicEquipment(id: string): Promise<PublicEquipment | 
     .maybeSingle()
 
   if (error || !data) return null
-  const row = data as unknown as Equipment
+  const row = {
+    ...(data as unknown as Equipment),
+    department: canonicalEquipmentDepartment((data as { department?: string | null }).department),
+  }
 
   const fiscalYear = fiscalYearForDate(new Date())
   const [{ data: plans }, { data: results }, photoSignedUrl, manualSignedUrl] = await Promise.all([

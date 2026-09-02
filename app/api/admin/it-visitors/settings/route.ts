@@ -4,6 +4,7 @@ import { canManageVisitorFormSettings, requireVisitorLog } from '@/lib/it-visito
 import {
   getVisitorFormSettings,
   rotateVisitorToken,
+  setVisitorFormConfig,
   setVisitorFormOpen,
 } from '@/lib/it-visitor/public-server'
 import { ItVisitorSettingsSchema } from '@/lib/validations/it-visitor'
@@ -42,6 +43,10 @@ export async function PATCH(req: NextRequest) {
     if (parsed.data.rotateToken) {
       await rotateVisitorToken(actor.id)
       auditIt('it_visitor.rotate_token', actor.id, 'form', 'เปลี่ยนลิงก์/QR ของแบบฟอร์ม')
+    }
+    if (parsed.data.formConfig !== undefined) {
+      await setVisitorFormConfig(parsed.data.formConfig, actor.id)
+      auditIt('it_visitor.settings', actor.id, 'form', 'แก้ไขตัวเลือกของแบบฟอร์มสาธารณะ')
     }
     const settings = await getVisitorFormSettings()
     return NextResponse.json(settings, { headers: { 'Cache-Control': 'no-store' } })

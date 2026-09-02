@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS it_visitor_form_settings (
   singleton    boolean PRIMARY KEY DEFAULT true CHECK (singleton),
   public_token text NOT NULL UNIQUE CHECK (length(public_token) >= 32),
   is_open      boolean NOT NULL DEFAULT true,          -- สวิตช์เปิด/ปิดรับฟอร์ม
+  form_config  jsonb NOT NULL DEFAULT '{}'::jsonb,      -- ตัวเลือกที่ Admin ปรับได้ในฟอร์มสาธารณะ
   updated_at   timestamptz NOT NULL DEFAULT now(),
   updated_by   uuid REFERENCES profiles(id)
 );
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS it_visitor_logs (
   appointment     text NOT NULL CHECK (appointment IN ('booked', 'walk_in')),
   badge_exchanged text NOT NULL CHECK (badge_exchanged IN ('yes', 'no')),
   safety_ack      text NOT NULL CHECK (safety_ack IN ('acknowledged', 'declined')),
+  safety_ack_other text,                               -- ชื่อตัวเลือกนโยบายความปลอดภัยที่ Admin เพิ่มเอง
   submission_key  uuid NOT NULL UNIQUE,                -- idempotency — กดส่งซ้ำไม่เกิดแถวซ้ำ
   created_at      timestamptz DEFAULT now(),
   closed_by       uuid REFERENCES profiles(id),        -- ใครกดบันทึกเวลาออก

@@ -3,6 +3,7 @@ import {
   ACTIVITY_TYPES, APPOINTMENTS, BADGE_STATES,
   ORG_TYPES, SAFETY_ACKS, VISIT_TYPES,
 } from '@/lib/it-visitor/constants'
+import { visitorFormConfigSchema } from '@/lib/it-visitor/form-config'
 
 // Empty/whitespace text inputs → null (so a blanked field clears under .partial())
 const optStr = z.preprocess(
@@ -34,6 +35,7 @@ export const visitorSubmissionSchema = z.object({
     appointment:     z.enum(APPOINTMENTS),
     badge_exchanged: z.enum(BADGE_STATES),
     safety_ack:      z.enum(SAFETY_ACKS),
+    safety_ack_other: optStr,
   }),
 })
 
@@ -57,6 +59,7 @@ export const ItVisitorUpdateSchema = z.object({
   appointment:     z.enum(APPOINTMENTS),
   badge_exchanged: z.enum(BADGE_STATES),
   safety_ack:      z.enum(SAFETY_ACKS),
+  safety_ack_other: optStr,
 }).partial().refine(
   (v) => Object.keys(v).length > 0,
   { message: 'ไม่มีข้อมูลที่ต้องแก้ไข' },
@@ -66,7 +69,8 @@ export const ItVisitorUpdateSchema = z.object({
 export const ItVisitorSettingsSchema = z.object({
   is_open:     z.boolean().optional(),
   rotateToken: z.literal(true).optional(),
+  formConfig:  visitorFormConfigSchema.optional(),
 }).refine(
-  (v) => v.is_open !== undefined || v.rotateToken === true,
+  (v) => v.is_open !== undefined || v.rotateToken === true || v.formConfig !== undefined,
   { message: 'ไม่มีข้อมูลที่ต้องแก้ไข' },
 )

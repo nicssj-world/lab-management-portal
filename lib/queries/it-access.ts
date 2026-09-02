@@ -16,10 +16,24 @@ export const IT_VISITOR_LOG_SELECT = [
   'id', 'visit_type', 'visit_date', 'visitor_name', 'group_name', 'member_names',
   'party_size', 'phone', 'email', 'org_type', 'org_name', 'contact_dept',
   'entered_at', 'exited_at', 'activity_type', 'activity_other', 'appointment',
+  'badge_exchanged', 'safety_ack', 'safety_ack_other', 'submission_key', 'created_at', 'closed_by',
+  'closed_at', 'checkout_method',
+  'closer:profiles!it_visitor_logs_closed_by_fkey(id, name)',
+].join(', ')
+
+// Allows the staff list to keep working while an existing deployment is being migrated.
+export const IT_VISITOR_LOG_SELECT_LEGACY = [
+  'id', 'visit_type', 'visit_date', 'visitor_name', 'group_name', 'member_names',
+  'party_size', 'phone', 'email', 'org_type', 'org_name', 'contact_dept',
+  'entered_at', 'exited_at', 'activity_type', 'activity_other', 'appointment',
   'badge_exchanged', 'safety_ack', 'submission_key', 'created_at', 'closed_by',
   'closed_at', 'checkout_method',
   'closer:profiles!it_visitor_logs_closed_by_fkey(id, name)',
 ].join(', ')
+
+export function isMissingVisitorOptionalColumn(error: { code?: string; message?: string } | null) {
+  return Boolean(error && (error.code === '42703' || /safety_ack_other/i.test(error.message ?? '')))
+}
 
 // Whole register, ordered like the paper form (manual display_order first, then name).
 export async function getItAccessRecords(supabase: SupabaseClient): Promise<ItAccessRecordWithProfile[]> {
@@ -76,10 +90,18 @@ export async function getItVisitorLogs(
   supabase: SupabaseClient,
   options: { limit?: number } = {},
 ): Promise<ItVisitorLogWithRefs[]> {
-  const { data } = await supabase
+  const primary = await supabase
     .from('it_visitor_logs')
     .select(IT_VISITOR_LOG_SELECT)
     .order('entered_at', { ascending: false })
     .limit(options.limit ?? 1000)
-  return (data ?? []) as unknown as ItVisitorLogWithRefs[]
+  if (!primary.error) return (primary.data ?? []) as unknown as ItVisitorLogWithRefs[]
+
+  if (!isMissingVisitorOptionalColumn(primary.error)) return []
+  const legacy = await supabase
+    .from('it_visitor_logs')
+    .select(IT_VISITOR_LOG_SELECT_LEGACY)
+    .order('entered_at', { ascending: false })
+    .limit(options.limit ?? 1000)
+  return (legacy.data ?? []).map((row) => ({ ...(row as unknown as Record<string, unknown>), safety_ack_other: null })) as unknown as ItVisitorLogWithRefs[]
 }

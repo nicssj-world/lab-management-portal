@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
+import { canonicalEquipmentDepartment, equipmentDepartmentVariants } from '@/lib/equipment/departments'
 import { areaAndDescendantCodes } from '@/lib/equipment-map/manifest'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
@@ -39,7 +40,7 @@ function applyFilters(query: any, searchParams: URLSearchParams) {
       `responsible_person.ilike.${pattern}`,
     ].join(','))
   }
-  if (department) query = query.eq('department', department)
+  if (department) query = query.in('department', equipmentDepartmentVariants(department))
   if (status) query = query.eq('status', status)
   if (risk_level) query = query.eq('risk_level', risk_level)
   if (needs_calibration === 'true') query = query.eq('needs_calibration', true)
@@ -124,7 +125,7 @@ export async function GET(req: NextRequest) {
   const rows = (data ?? []).map(eq => [
     eq.cbh_code_pending ? 'รอขึ้นทะเบียน' : (eq.cbh_code ?? ''),
     eq.hospital_asset_no_pending ? 'รอขึ้นทะเบียน' : (eq.hospital_asset_no ?? ''),
-    eq.department ?? '',
+    canonicalEquipmentDepartment(eq.department),
     eq.area_code ?? '',
     eq.area_code ? (areaNameByCode.get(eq.area_code) ?? eq.area_code) : '',
     eq.equipment_type ?? '',

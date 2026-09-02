@@ -1,6 +1,7 @@
 import type {
   ActivityType, Appointment, BadgeState, OrgType, SafetyAck, VisitType,
 } from './constants'
+import type { VisitorFormConfig } from './form-config'
 
 /** สิ่งที่ฟอร์มสาธารณะส่งมา — ยังไม่ผ่านการตรวจ semantic */
 export interface VisitorSubmissionInput {
@@ -22,6 +23,7 @@ export interface VisitorSubmissionInput {
   appointment: Appointment
   badge_exchanged: BadgeState
   safety_ack: SafetyAck
+  safety_ack_other?: string | null
 }
 
 export interface VisitorValidationIssue {
@@ -48,6 +50,7 @@ export interface NormalizedVisitorLog {
   appointment: Appointment
   badge_exchanged: BadgeState
   safety_ack: SafetyAck
+  safety_ack_other: string | null
 }
 
 export type VisitorValidationResult =
@@ -57,6 +60,7 @@ export type VisitorValidationResult =
 export interface PublicVisitorFormState {
   available: boolean
   reason?: 'closed'
+  formConfig: VisitorFormConfig
 }
 
 export interface ActiveVisitorDTO {

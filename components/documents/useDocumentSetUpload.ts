@@ -10,8 +10,8 @@ import {
   MAX_FILE_SIZE,
   createUploadEntry,
   entryLabel,
-  failedEntryIds,
   inferredType,
+  mapBatchUploadFailureOutcomes,
   mapRegisterSetValidationOutcomes,
   mapRegisterSetOutcomes,
   parseRegisterSetResponse,
@@ -298,8 +298,11 @@ export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
       if (mounted.current) setOverallProgress(Math.round((completed / selected.length) * 100))
     }
     const outcomes = new Map<string, { status: 'success' | 'failed'; reason: string }>()
-    for (const [id, reason] of uploadFailures) outcomes.set(id, { status: 'failed', reason })
-    if (prepared.length > 0) {
+    if (uploadFailures.size > 0) {
+      for (const [id, outcome] of mapBatchUploadFailureOutcomes(selected.map((entry) => entry.id), uploadFailures)) {
+        outcomes.set(id, outcome)
+      }
+    } else if (prepared.length > 0) {
       setCurrentLabel('กำลังบันทึกข้อมูลชุดเอกสาร')
       setCurrentProgress(100)
       try {
@@ -342,7 +345,7 @@ export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
     showConfirm: () => setPhase('confirm'),
     showIntake: () => setPhase('intake'),
     submitAll: () => void submitEntries(entries.map((entry) => entry.id)),
-    retryFailed: () => void submitEntries(failedEntryIds(entries)),
+    retryFailed: () => void submitEntries(entries.map((entry) => entry.id)),
   }
 }
 

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { canonicalEquipmentDepartment } from '@/lib/equipment/departments'
 
 export type ExternalQualityPerson = {
   id: string
@@ -56,7 +57,10 @@ export async function listEqaAnalyzers(): Promise<EqaAnalyzer[]> {
     .eq('status', 'Active')
     .order('cbh_code')
   if (error) throw error
-  return (data ?? []).map(({ status: _status, ...analyzer }) => analyzer) as EqaAnalyzer[]
+  return (data ?? []).map(({ status: _status, ...analyzer }) => ({
+    ...analyzer,
+    department: canonicalEquipmentDepartment(analyzer.department),
+  })) as EqaAnalyzer[]
 }
 
 export async function listExternalQualityCatalogTests(): Promise<ExternalQualityCatalogTest[]> {

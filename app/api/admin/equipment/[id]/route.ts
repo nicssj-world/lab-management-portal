@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
 import { getLabCodeInfo } from '@/lib/equipment-lab-code'
+import { canonicalEquipmentDepartment } from '@/lib/equipment/departments'
 import { resolveEquipmentAreaAssignment } from '@/lib/equipment-map/area-assignment'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -67,7 +68,10 @@ export async function GET(
   const { data, error } = await supabaseAdmin.from('equipment').select('*').eq('id', id).maybeSingle()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'ไม่พบเครื่องมือนี้' }, { status: 404 })
-  return NextResponse.json(data)
+  return NextResponse.json({
+    ...data,
+    department: canonicalEquipmentDepartment(data.department),
+  })
 }
 
 export async function PATCH(
@@ -109,6 +113,7 @@ export async function PATCH(
     .single()
   const labInfo = getLabCodeInfo(body.cbh_code !== undefined ? body.cbh_code : existing?.cbh_code)
   if (labInfo.department) body.department = labInfo.department
+  else if (typeof body.department === 'string') body.department = canonicalEquipmentDepartment(body.department)
   if (labInfo.classification) body.classification = labInfo.classification
   if (body.status === 'Inactive') body.needs_calibration = false
   const { data, error } = await supabaseAdmin

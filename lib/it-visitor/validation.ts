@@ -67,6 +67,9 @@ export function validateVisitorSubmission(
   }
   if (activityOther.length > 300) add('activity_other', 'ข้อความยาวเกิน 300 ตัวอักษร')
 
+  const safetyAckOther = clean(input.safety_ack_other)
+  if (safetyAckOther.length > 300) add('safety_ack_other', 'ข้อความตัวเลือกนโยบายความปลอดภัยยาวเกิน 300 ตัวอักษร')
+
   const groupName = clean(input.group_name)
   const memberNames = clean(input.member_names)
   if (input.visit_type === 'group') {
@@ -124,6 +127,7 @@ export function validateVisitorSubmission(
     appointment: input.appointment,
     badge_exchanged: input.badge_exchanged,
     safety_ack: input.safety_ack,
+    safety_ack_other: safetyAckOther || null,
   }
   return { ok: true, row }
 }

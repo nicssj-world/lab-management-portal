@@ -56,4 +56,7 @@ const revisionRoute = section(route, 'async function reviseExisting', 'async fun
 assert.match(attachmentRoute, /findDocumentAttachment\(mainDocumentId, item\.file\.key\)/)
 assert.match(attachmentRoute, /inserted\.error\?\.code === '23505'[\s\S]*findDocumentAttachment\(mainDocumentId, item\.file\.key\)/)
 assert.match(revisionRoute, /inserted\.error\?\.code === '23505'[\s\S]*findDraftAttachment\(draft\.id, item\.file\.key\)/)
-assert.doesNotMatch(route, /duplicates\.map|from\('document_attachments'\)\.delete|from\('document_revision_draft_attachments'\)\.delete/)
+assert.match(route, /const journal = new SetMutationJournal\(\)/)
+assert.match(route, /await journal\.rollback\(\)/)
+assert.match(route, /from\('document_attachments'\)[\s\S]*?\.delete\(/)
+assert.match(route, /from\('document_revision_draft_attachments'\)[\s\S]*?\.delete\(/)

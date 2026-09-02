@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { areaAndDescendantCodes } from '@/lib/equipment-map/manifest'
+import { canonicalEquipmentDepartment, equipmentDepartmentVariants } from '@/lib/equipment/departments'
 
 export interface Equipment {
   id: string
@@ -111,7 +112,7 @@ function applyEquipmentFilters(query: any, filters: EquipmentFilters) {
       `responsible_person.ilike.${pattern}`,
     ].join(','))
   }
-  if (filters.department) query = query.eq('department', filters.department)
+  if (filters.department) query = query.in('department', equipmentDepartmentVariants(filters.department))
   if (filters.status) query = query.eq('status', filters.status)
   if (filters.risk_level) query = query.eq('risk_level', filters.risk_level)
   if (filters.needs_calibration !== undefined)
@@ -152,7 +153,10 @@ export async function getEquipment(
 
   const { data, error } = await query
   if (error) throw new Error(error.message)
-  return (data ?? []) as Equipment[]
+  return (data ?? []).map((row) => ({
+    ...row,
+    department: canonicalEquipmentDepartment(row.department),
+  })) as Equipment[]
 }
 
 export async function getEquipmentPage(
@@ -177,7 +181,10 @@ export async function getEquipmentPage(
   if (error) throw new Error(error.message)
   const total = count ?? 0
   return {
-    items: (data ?? []) as Equipment[],
+    items: (data ?? []).map((row: Record<string, unknown>) => ({
+      ...row,
+      department: canonicalEquipmentDepartment(row.department as string | null | undefined),
+    })) as Equipment[],
     count: total,
     page,
     pageSize,
@@ -206,7 +213,11 @@ export async function getEquipmentDepartments(supabase: SupabaseClient): Promise
     .select('department')
     .order('department')
   if (error) throw new Error(error.message)
-  const unique = Array.from(new Set((data ?? []).map((r: { department: string }) => r.department)))
+  const unique = Array.from(new Set(
+    (data ?? [])
+      .map((r: { department: string }) => canonicalEquipmentDepartment(r.department))
+      .filter(Boolean),
+  ))
   return unique
 }
 

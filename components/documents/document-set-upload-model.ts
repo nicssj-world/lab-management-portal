@@ -178,6 +178,18 @@ export function parseRegisterSetResponse(response: Response) {
   return response.json().catch(() => ({ error: response.statusText || 'เกิดข้อผิดพลาด' })) as Promise<RegisterSetResponse>
 }
 
+export const batchNotSavedMessage = 'ชุดเอกสารนี้ยังไม่ได้บันทึก เนื่องจากมีรายการหนึ่งไม่ผ่านการอัปโหลดหรือการตรวจสอบ'
+
+export function mapBatchUploadFailureOutcomes(
+  entryIds: readonly string[],
+  failures: ReadonlyMap<string, string>,
+) {
+  return new Map(entryIds.map((id) => [id, {
+    status: 'failed' as const,
+    reason: failures.get(id) ?? batchNotSavedMessage,
+  }]))
+}
+
 export function mapRegisterSetOutcomes(preparedIds: string[], result: RegisterSetResponse) {
   const outcomes = new Map<string, SubmissionOutcome>()
   for (const success of result.succeeded ?? []) {

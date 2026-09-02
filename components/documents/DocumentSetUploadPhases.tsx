@@ -96,7 +96,7 @@ function ConfirmPhase({ controller }: { controller: DocumentSetUploadController 
   return (
     <div>
       <div style={{ padding: '12px 14px', borderRadius: 9, background: 'var(--primary-soft)', color: 'var(--ink)', fontSize: 12.5 }}>
-        กรุณาตรวจสอบก่อนเริ่มอัปโหลด การดำเนินการนี้จะลงทะเบียน {controller.registrationCount} รายการ และแนบไฟล์อ้างอิง {controller.attachmentCount} รายการกับเอกสารหลัก
+        กรุณาตรวจสอบก่อนเริ่มอัปโหลด การดำเนินการนี้จะลงทะเบียน {controller.registrationCount} รายการ และแนบไฟล์อ้างอิง {controller.attachmentCount} รายการกับเอกสารหลัก โดยจะบันทึกทั้งชุดพร้อมกัน หากมีรายการใดผิดพลาดจะไม่บันทึกรายการใดเลย
       </div>
       <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {controller.entries.map((entry) => {
@@ -123,7 +123,7 @@ function ConfirmPhase({ controller }: { controller: DocumentSetUploadController 
 function SubmittingPhase({ controller }: { controller: DocumentSetUploadController }) {
   return (
     <div aria-live="polite" style={{ padding: '34px 12px', textAlign: 'center' }}>
-      <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 700 }}>กำลังดำเนินการทีละไฟล์</div>
+      <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 700 }}>กำลังอัปโหลดและบันทึกทั้งชุด</div>
       <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 12, wordBreak: 'break-word' }}>{controller.currentLabel || 'กำลังเตรียมรายการ…'}</div>
       <div style={{ maxWidth: 560, margin: '22px auto 0', textAlign: 'left' }}>
         <Progress label="ไฟล์ปัจจุบัน" value={controller.currentProgress} />
@@ -164,7 +164,7 @@ function ResultsPhase({ controller }: { controller: DocumentSetUploadController 
           </div>
         ))}
       </div>
-      {controller.failedCount > 0 ? <div style={{ marginTop: 12, color: 'var(--muted)', fontSize: 11.5 }}>ระบบจะใช้ไฟล์ที่อัปโหลดขึ้น R2 สำเร็จแล้วซ้ำในการลองใหม่ และจะไม่สร้างรายการที่สำเร็จไปแล้วอีกครั้ง</div> : null}
+      {controller.failedCount > 0 ? <div style={{ marginTop: 12, color: 'var(--muted)', fontSize: 11.5 }}>ไม่มีรายการใดถูกบันทึก ไฟล์ที่อัปโหลดสำเร็จแล้วจะถูกใช้ซ้ำเมื่อกดลองใหม่ทั้งชุด</div> : null}
     </div>
   )
 }

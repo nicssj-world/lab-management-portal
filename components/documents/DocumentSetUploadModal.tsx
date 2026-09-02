@@ -155,7 +155,7 @@ export function DocumentSetUploadModal({ mainDoc, onClose, onDone }: Props) {
             {controller.phase === 'submitting' ? <Button variant="secondary" disabled>กำลังดำเนินการ…</Button> : null}
             {controller.phase === 'results' ? (
               <>
-                {controller.failedCount > 0 ? <Button variant="secondary" onClick={controller.retryFailed}>ลองใหม่เฉพาะรายการไม่สำเร็จ</Button> : null}
+                {controller.failedCount > 0 ? <Button variant="secondary" onClick={controller.retryFailed}>ลองใหม่ทั้งชุด</Button> : null}
                 <Button variant="primary" onClick={onDone}>ปิด</Button>
               </>
             ) : null}

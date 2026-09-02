@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { buildEquipmentMapDTO, type EquipmentMapRepository, type EquipmentMapRow } from './server-builder'
 import { fetchAllPages } from './pagination'
 import { fiscalYearForDate, type PmCalPlanRecord, type PmCalResultRecord } from '@/lib/equipment/pm-cal-domain'
+import { canonicalEquipmentDepartment } from '@/lib/equipment/departments'
 
 const repository: EquipmentMapRepository = {
   async areaOverrides() {
@@ -87,7 +88,7 @@ const repository: EquipmentMapRepository = {
       id: row.id as string,
       cbhCode: row.cbh_code as string | null,
       equipmentType: row.equipment_type as string,
-      department: row.department as string,
+      department: canonicalEquipmentDepartment(row.department as string | null | undefined),
       classification: row.classification as string | null,
       areaCode: row.area_code as string | null,
       mapX: row.map_x === null ? null : Number(row.map_x),

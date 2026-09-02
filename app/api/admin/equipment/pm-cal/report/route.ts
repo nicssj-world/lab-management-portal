@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPmCalActor } from '@/lib/equipment/pm-cal-server'
 import { fiscalYearForDate } from '@/lib/equipment/pm-cal-domain'
+import { canonicalEquipmentDepartment, equipmentDepartmentVariants } from '@/lib/equipment/departments'
 import { buildPmCalReport, type PmCalReportEquipment, type PmCalReportGroup, type PmCalReportPlan, type PmCalReportResult } from '@/lib/equipment/pm-cal-report'
 import { fetchAllPages } from '@/lib/equipment-map/pagination'
 import { parsePmCalFiscalYear } from '@/lib/equipment/pm-cal-validation'
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
   const [equipment, allPlans, allResults, allGroups] = await Promise.all([
     fetchAllPages(async (from, to) => {
       let query = supabaseAdmin.from('equipment').select('id, equipment_type, department, classification').order('id', { ascending: true }).range(from, to)
-      if (department) query = query.eq('department', department)
+      if (department) query = query.in('department', equipmentDepartmentVariants(department))
       if (classification) query = query.eq('classification', classification)
       const { data, error } = await query
       if (error) throw new Error(error.message)
@@ -49,11 +50,15 @@ export async function GET(req: NextRequest) {
     }),
   ]).catch(error => { throw error })
 
-  const equipmentIds = new Set(equipment.map(item => item.id as string))
+  const normalizedEquipment = equipment.map(item => ({
+    ...item,
+    department: canonicalEquipmentDepartment(item.department),
+  }))
+  const equipmentIds = new Set(normalizedEquipment.map(item => item.id as string))
   const plans = (allPlans as unknown as PmCalReportPlan[]).filter(plan => equipmentIds.has(plan.equipment_id))
   // Scoped by equipment_id, not plan_id: unlinked legacy results have no plan_id to match against,
   // and computePmCalPlanState's own equipment_id guard is what keeps this from crossing equipment.
   const results = (allResults as unknown as PmCalReportResult[]).filter(result => equipmentIds.has(result.equipment_id))
-  const report = buildPmCalReport({ equipment: equipment as unknown as PmCalReportEquipment[], plans, results, groups: allGroups as unknown as PmCalReportGroup[] })
+  const report = buildPmCalReport({ equipment: normalizedEquipment as unknown as PmCalReportEquipment[], plans, results, groups: allGroups as unknown as PmCalReportGroup[] })
   return NextResponse.json({ fiscal_year: fiscalYear, filters: { department, classification }, ...report })
 }

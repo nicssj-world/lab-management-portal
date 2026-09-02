@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   createUploadEntry,
   failedEntryIds,
+  mapBatchUploadFailureOutcomes,
   mapRegisterSetOutcomes,
   mapRegisterSetValidationOutcomes,
   registrationError,
@@ -24,6 +25,16 @@ const missing = mapRegisterSetOutcomes(['entry-a', 'entry-b'], { succeeded: [{ i
 assert.deepEqual(missing.get('entry-b'), {
   status: 'failed', reason: 'เซิร์ฟเวอร์ไม่ส่งผลลัพธ์ของรายการนี้กลับมา',
 }, 'an omitted server result must remain safely retryable')
+
+const batchUploadFailures = mapBatchUploadFailureOutcomes(
+  ['entry-a', 'entry-b', 'entry-c'],
+  new Map([['entry-b', 'network error']]),
+)
+assert.deepEqual(Array.from(batchUploadFailures.entries()), [
+  ['entry-a', { status: 'failed', reason: 'ชุดเอกสารนี้ยังไม่ได้บันทึก เนื่องจากมีรายการหนึ่งไม่ผ่านการอัปโหลดหรือการตรวจสอบ' }],
+  ['entry-b', { status: 'failed', reason: 'network error' }],
+  ['entry-c', { status: 'failed', reason: 'ชุดเอกสารนี้ยังไม่ได้บันทึก เนื่องจากมีรายการหนึ่งไม่ผ่านการอัปโหลดหรือการตรวจสอบ' }],
+], 'one upload failure must make every selected entry retryable and unsaved')
 
 assert.deepEqual(failedEntryIds([
   { id: 'success', submitStatus: 'success' },

@@ -8,8 +8,9 @@ import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import {
   ACTIVITY_TYPES, ACTIVITY_LABEL, APPOINTMENTS, APPOINTMENT_LABEL,
   BADGE_STATES, BADGE_LABEL, CONTACT_DEPT_OTHER, GROUP_HEAD_CONTACT_DEPT, ORG_TYPES, ORG_TYPE_LABEL,
-  SAFETY_ACKS, SAFETY_LABEL, SAFETY_POLICY_PROMPT,
+  SAFETY_ACKS,
 } from '@/lib/it-visitor/constants'
+import { customActivityValue } from '@/lib/it-visitor/form-config'
 import type {
   ActivityType, Appointment, BadgeState, OrgType, SafetyAck, VisitType,
 } from '@/lib/it-visitor/constants'
@@ -37,11 +38,11 @@ type FormValues = {
   contact_dept: string
   contact_dept_other: string
   entered_at: string
-  activity_type: ActivityType | ''
+  activity_type: string
   activity_other: string
   appointment: Appointment | ''
   badge_exchanged: BadgeState | ''
-  safety_ack: SafetyAck | ''
+  safety_ack: string
 }
 
 function pad(n: number) { return String(n).padStart(2, '0') }
@@ -84,6 +85,18 @@ export function PublicVisitorForm({ token, initialState, challenge, initialActiv
   }
 
   const isGroup = mode === 'group'
+  const customActivity = initialState.formConfig.activity_options.find(
+    (option) => values.activity_type === customActivityValue(option.id),
+  )
+  const selectedSafetyOption = initialState.formConfig.safety_options.find(
+    (option) => values.safety_ack === option.id,
+  )
+  const activityOptions = [
+    ...ACTIVITY_TYPES.map((value) => ({ value, label: ACTIVITY_LABEL[value] })),
+    ...initialState.formConfig.activity_options.map((option) => ({
+      value: customActivityValue(option.id), label: option.label,
+    })),
+  ]
 
   const toInput = useMemo(() => (): VisitorSubmissionInput => ({
     visit_type: (mode ?? 'individual') as VisitType,
@@ -98,12 +111,17 @@ export function PublicVisitorForm({ token, initialState, challenge, initialActiv
     org_name: values.org_name,
     contact_dept: values.contact_dept === CONTACT_DEPT_OTHER ? values.contact_dept_other : values.contact_dept,
     entered_at: values.entered_at ? new Date(values.entered_at).toISOString() : '',
-    activity_type: values.activity_type as ActivityType,
-    activity_other: values.activity_other,
+    // Custom activity choices are stored through the existing "other" column
+    // so old reports and the database CHECK constraint remain compatible.
+    activity_type: customActivity ? 'other' : values.activity_type as ActivityType,
+    activity_other: customActivity?.label ?? values.activity_other,
     appointment: values.appointment as Appointment,
     badge_exchanged: values.badge_exchanged as BadgeState,
-    safety_ack: values.safety_ack as SafetyAck,
-  }), [mode, isGroup, values])
+    safety_ack: (selectedSafetyOption?.outcome ?? values.safety_ack) as SafetyAck,
+    safety_ack_other: selectedSafetyOption && !SAFETY_ACKS.includes(selectedSafetyOption.id as SafetyAck)
+      ? selectedSafetyOption.label
+      : null,
+  }), [mode, isGroup, values, customActivity, selectedSafetyOption])
 
   if (!initialState.available) {
     return <TerminalState title="ปิดรับแบบฟอร์มชั่วคราว" detail="ขณะนี้ยังไม่เปิดรับการบันทึกผ่านแบบฟอร์มนี้ กรุณาติดต่อเจ้าหน้าที่กลุ่มงานเทคนิคการแพทย์" />
@@ -180,7 +198,12 @@ export function PublicVisitorForm({ token, initialState, challenge, initialActiv
     }
   }
 
-  const deptOptions = [...DEPARTMENTS, GROUP_HEAD_CONTACT_DEPT, CONTACT_DEPT_OTHER]
+  const deptOptions = Array.from(new Set([
+    ...DEPARTMENTS,
+    ...initialState.formConfig.contact_dept_options.map((option) => option.label),
+    GROUP_HEAD_CONTACT_DEPT,
+    CONTACT_DEPT_OTHER,
+  ]))
 
   return (
     <form className="pv-form" onSubmit={submit} noValidate>
@@ -293,8 +316,8 @@ export function PublicVisitorForm({ token, initialState, challenge, initialActiv
 
         <Field label="ประเภทกิจกรรมที่เข้ามาดำเนินการ" required name="activity_type" error={errors.activity_type}>
           <RadioGroup name="activity_type" value={values.activity_type}
-            options={ACTIVITY_TYPES.map((v) => ({ value: v, label: ACTIVITY_LABEL[v] }))}
-            onChange={(v) => set('activity_type', v as ActivityType)} />
+            options={activityOptions}
+            onChange={(v) => set('activity_type', v)} />
         </Field>
 
         {values.activity_type === 'other' && (
@@ -315,10 +338,10 @@ export function PublicVisitorForm({ token, initialState, challenge, initialActiv
             onChange={(v) => set('badge_exchanged', v as BadgeState)} />
         </Field>
 
-        <Field label={SAFETY_POLICY_PROMPT} required name="safety_ack" error={errors.safety_ack}>
+        <Field label={initialState.formConfig.safety_policy_prompt} required name="safety_ack" error={errors.safety_ack}>
           <RadioGroup name="safety_ack" value={values.safety_ack}
-            options={SAFETY_ACKS.map((v) => ({ value: v, label: SAFETY_LABEL[v] }))}
-            onChange={(v) => set('safety_ack', v as SafetyAck)} />
+            options={initialState.formConfig.safety_options.map((option) => ({ value: option.id, label: option.label }))}
+            onChange={(v) => set('safety_ack', v)} />
         </Field>
       </Section>
 

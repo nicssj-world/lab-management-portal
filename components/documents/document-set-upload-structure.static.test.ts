@@ -13,4 +13,7 @@ assert.match(modal, /document\.removeEventListener\('keydown', onDocumentKeyDown
 assert.match(modal, /previousFocus\?\.focus\(\)/)
 assert.match(modal, /useDocumentSetUpload/)
 assert.match(phases, /function IntakePhase/)
+assert.match(controller, /if \(uploadFailures\.size > 0\)/)
+assert.match(controller, /mapBatchUploadFailureOutcomes/)
+assert.match(controller, /else if \(prepared\.length > 0\)/)
 assert.doesNotMatch(modal, /function IntakePhase|function DocumentSetUploadRow/)
