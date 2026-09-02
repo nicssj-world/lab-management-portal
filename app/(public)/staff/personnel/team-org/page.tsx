@@ -10,6 +10,7 @@ import { Icon } from '@/components/ui/Icon'
 import { PersonPreview } from '@/components/personnel/PersonPreview'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import type { DeptRole } from '@/lib/supabase/types'
+import { TeamOrgAssignmentButton, type TeamOrgAssignmentPerson, type TeamOrgAssignmentSection } from './TeamOrgAssignmentDialog'
 
 export const dynamic = 'force-dynamic'
 
@@ -91,9 +92,15 @@ export default async function TeamOrgPage() {
     members: people.filter((p) => p.dept && depts.includes(p.dept) && !p.is_section_head && p.dept_role == null),
   })
   const inGroup = new Set(groups.flatMap((g) => g.depts))
-  const groupSections = groups.map((g) => ({ title: g.name ?? g.depts.join(' และ '), ...sectionFrom(g.depts) }))
-  const standaloneSections = DEPARTMENTS.filter((d) => !inGroup.has(d)).map((d) => ({ title: d, ...sectionFrom([d]) }))
-  const sections = [...groupSections, ...standaloneSections].filter((s) => s.heads.length > 0 || s.members.length > 0)
+  const groupSections = groups.map((g) => ({ id: `group:${g.id}`, title: g.name ?? g.depts.join(' และ '), depts: g.depts, ...sectionFrom(g.depts) }))
+  const standaloneSections = DEPARTMENTS.filter((d) => !inGroup.has(d)).map((d) => ({ id: `dept:${d}`, title: d, depts: [d], ...sectionFrom([d]) }))
+  const allSections = [...groupSections, ...standaloneSections]
+  const sections = allSections.filter((s) => s.heads.length > 0 || s.members.length > 0)
+  const displaySections = canManage ? allSections : sections
+  const assignmentPeople: TeamOrgAssignmentPerson[] = people.map(({ id, name, dept, position_title, dept_role, is_section_head }) => ({
+    id, name, dept, position_title, dept_role, is_section_head,
+  }))
+  const assignmentSections: TeamOrgAssignmentSection[] = allSections.map(({ id, title, depts }) => ({ id, title, depts }))
 
   const connector = <div style={{ width: 2, height: 18, background: 'var(--border)', margin: '0 auto' }} />
 
@@ -107,9 +114,12 @@ export default async function TeamOrgPage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <PageHeader eyebrow="กลุ่มงานเทคนิคการแพทย์" title="เจ้าหน้าที่กลุ่มงานเทคนิคการแพทย์" subtitle="ตามหัวหน้างานและบุคลากรในแต่ละงาน" marginBottom={0} />
           {canManage && (
-            <Link href="/staff/personnel/manage" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-              <Icon name="settings" size={15} /> จัดการกลุ่มงาน
-            </Link>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <TeamOrgAssignmentButton people={assignmentPeople} sections={assignmentSections} />
+              <Link href="/staff/personnel/manage" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 34, boxSizing: 'border-box', padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                <Icon name="settings" size={15} /> จัดการกลุ่มงาน
+              </Link>
+            </div>
           )}
         </div>
 
@@ -128,9 +138,12 @@ export default async function TeamOrgPage() {
 
         {/* sections */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
-          {sections.map((s, i) => (
-            <div key={s.title} className="to-rise" style={{ ...card, animationDelay: `${i * 45}ms` }}>
-              <div className="team-section-title">{s.title}</div>
+          {displaySections.map((s, i) => (
+            <div key={s.id} className="to-rise" style={{ ...card, animationDelay: `${i * 45}ms` }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+                <div className="team-section-title" style={{ marginBottom: 0 }}>{s.title}</div>
+                {canManage && <TeamOrgAssignmentButton people={assignmentPeople} sections={assignmentSections} initialSectionId={s.id} label="เพิ่มคน" />}
+              </div>
               {s.heads.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: s.members.length ? 10 : 0 }}>
                   {s.heads.map((p) => <PersonBox key={p.id} person={p} tone="#D97706" roleLabel="หัวหน้างาน" />)}
@@ -140,6 +153,9 @@ export default async function TeamOrgPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: s.heads.length ? 14 : 0, borderLeft: s.heads.length ? '2px solid var(--border)' : 'none' }}>
                   {s.members.map((p) => <PersonBox key={p.id} person={p} />)}
                 </div>
+              )}
+              {s.heads.length === 0 && s.members.length === 0 && (
+                <div style={{ padding: '16px 10px', borderRadius: 9, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: 12, textAlign: 'center' }}>ยังไม่มีบุคลากรในกล่องนี้</div>
               )}
             </div>
           ))}
