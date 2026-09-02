@@ -8,7 +8,7 @@ import { RevisionPanel } from '@/components/documents/RevisionPanel'
 import { DocumentDetailModal, PdfViewerModal } from '@/components/documents/DocumentDetailModal'
 import { DocumentActionPanel } from '@/components/documents/DocumentActionPanel'
 import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
-import { TYPE_ICON_BG, TYPE_ICON_FG, fmtDate } from '@/lib/documents/ui-constants'
+import { TYPE_ICON_BG, TYPE_ICON_FG, fmtDate, fmtSize } from '@/lib/documents/ui-constants'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import { isReadableDocument } from '@/lib/documents/workflow'
 import {
@@ -21,6 +21,7 @@ import {
 import type {
   RegistrationSet,
   RegistrationSetActiveDraft,
+  RegistrationSetAttachment,
   RegistrationSetDocument,
   RegistrationSetMember,
 } from '@/lib/documents/pending'
@@ -181,6 +182,66 @@ function SetDocumentRow({
   return <button type="button" onClick={onClick} disabled={disabled} style={rowStyle}>{content}</button>
 }
 
+function SetAttachmentRow({
+  attachment,
+  disabled,
+  onPreview,
+  onDownload,
+}: {
+  attachment: RegistrationSetAttachment
+  disabled: boolean
+  onPreview: () => void
+  onDownload: () => void
+}) {
+  const isPdf = attachment.mimeType === 'application/pdf' || /\.pdf$/i.test(attachment.fileName)
+  const rowStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 11px',
+    border: '1px solid rgba(217,119,6,.24)', borderRadius: 9, background: 'rgba(217,119,6,.06)',
+    color: 'var(--ink)', opacity: disabled ? .62 : 1,
+  }
+  return (
+    <div style={rowStyle}>
+      <span style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(249,115,22,.12)', color: '#EA580C', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon name="doc" size={14} />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+          <span style={{ fontSize: 10.5, color: '#B45309', fontWeight: 800, whiteSpace: 'nowrap' }}>เอกสารสนับสนุนไม่ขึ้นทะเบียน</span>
+          <span title={attachment.fileName} style={{ fontSize: 12.5, color: 'var(--ink)', fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attachment.fileName}</span>
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, color: 'var(--muted)', fontSize: 11, flexWrap: 'wrap' }}>
+          <span>{fmtSize(attachment.fileSize)}</span>
+          <span>· {fmtDate(attachment.createdAt)}</span>
+        </span>
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flexShrink: 0 }}>
+        {isPdf ? (
+          <button
+            type="button"
+            onClick={onPreview}
+            disabled={disabled}
+            aria-label={`เปิดดู ${attachment.fileName}`}
+            title="เปิดดู"
+            style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid rgba(217,119,6,.35)', background: 'rgba(255,255,255,.55)', cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B45309', flexShrink: 0 }}
+          >
+            <Icon name="eye" size={14} />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={disabled}
+          aria-label={`ดาวน์โหลด ${attachment.fileName}`}
+          title="ดาวน์โหลด"
+          style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid rgba(217,119,6,.35)', background: 'rgba(255,255,255,.55)', cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B45309', flexShrink: 0 }}
+        >
+          <Icon name="download" size={14} />
+        </button>
+      </span>
+    </div>
+  )
+}
+
 function RegistrationSetCard({
   set,
   canManage,
@@ -192,6 +253,8 @@ function RegistrationSetCard({
   onToggleSelect,
   onOpenMain,
   onOpenMember,
+  onPreviewAttachment,
+  onDownloadAttachment,
   onDownload,
   onAdvance,
   onDelete,
@@ -206,6 +269,8 @@ function RegistrationSetCard({
   onToggleSelect: () => void
   onOpenMain: () => void
   onOpenMember: (member: RegistrationSetMember) => void
+  onPreviewAttachment: (attachment: RegistrationSetAttachment) => void
+  onDownloadAttachment: (attachment: RegistrationSetAttachment) => void
   onDownload: () => void
   onAdvance: (next: RegistrationSetNextStatus) => void
   onDelete: () => void
@@ -215,6 +280,7 @@ function RegistrationSetCard({
     ? { nextStatus: plan.nextStatus, label: plan.actionLabel }
     : null
   const isThisSetBusy = progress?.mainId === set.mainDocument.id
+  const supportDocumentCount = set.members.length + set.ephemeralAttachments.length
   return (
     <article style={{ border: '1px solid var(--border)', borderRadius: 11, background: 'var(--card)', padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
@@ -228,9 +294,9 @@ function RegistrationSetCard({
             />
           )}
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, color: 'var(--ink)', fontWeight: 800 }}>{set.mainDocument.documentCode} · {set.members.length} เอกสารสนับสนุน</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)', fontWeight: 800 }}>{set.mainDocument.documentCode} · {supportDocumentCount} เอกสารสนับสนุน</div>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-              ไฟล์แนบชั่วคราว {set.ephemeralAttachmentCount} ไฟล์
+              เอกสารสนับสนุนไม่ขึ้นทะเบียน {set.ephemeralAttachments.length} ไฟล์
             </div>
           </div>
         </div>
@@ -299,6 +365,15 @@ function RegistrationSetCard({
             disabled={controlsBusy}
             interactive={canManage}
             onClick={canManage ? () => onOpenMember(member) : undefined}
+          />
+        ))}
+        {set.ephemeralAttachments.map((attachment) => (
+          <SetAttachmentRow
+            key={attachment.id}
+            attachment={attachment}
+            disabled={controlsBusy}
+            onPreview={() => onPreviewAttachment(attachment)}
+            onDownload={() => onDownloadAttachment(attachment)}
           />
         ))}
       </div>
@@ -622,6 +697,20 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     } catch { /* ignore */ }
   }
 
+  async function handlePreviewAttachment(attachment: RegistrationSetAttachment) {
+    try {
+      const res = await fetch(`/api/admin/documents/download?path=${encodeURIComponent(attachment.fileUrl)}&variant=preview`)
+      const json = await res.json().catch(() => ({} as { url?: string })) as { url?: string }
+      if (res.ok && json.url) {
+        setPdfViewer({
+          url: json.url,
+          pdfJsUrl: documentPdfProxyUrl(attachment.fileUrl),
+          title: attachment.fileName,
+        })
+      }
+    } catch { /* ignore */ }
+  }
+
   async function handleDccSourceDownload() {
     if (sourceBulkBusy) return
     const draftIds = sourceDocs
@@ -852,8 +941,8 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
     const canDeleteThisSet = canDeletePendingDocuments || set.mainDocument.ownerId === userId
     if (setProgress || !canDeleteThisSet) return
     const mainId = set.mainDocument.id
-    const memberCount = set.members.length
-    if (!confirm(`ยืนยันลบชุดเอกสาร ${set.mainDocument.documentCode} และเอกสารสนับสนุน ${memberCount} ฉบับ?\nการลบนี้ไม่สามารถย้อนกลับได้`)) return
+    const supportCount = set.members.length + set.ephemeralAttachments.length
+    if (!confirm(`ยืนยันลบชุดเอกสาร ${set.mainDocument.documentCode} และเอกสารสนับสนุน ${supportCount} รายการ?\nการลบนี้ไม่สามารถย้อนกลับได้`)) return
 
     setSetResults((prev) => {
       const next = { ...prev }
@@ -874,7 +963,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
       })
       setSetResults((prev) => ({
         ...prev,
-        [mainId]: `ลบทั้งชุดสำเร็จ · เอกสารสนับสนุน ${json.deletedMemberCodes?.length ?? memberCount} ฉบับ`,
+        [mainId]: `ลบทั้งชุดสำเร็จ · เอกสารสนับสนุน ${json.deletedMemberCodes?.length ?? supportCount} รายการ`,
       }))
       router.refresh()
     } catch (error) {
@@ -978,7 +1067,8 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
       }))
       return
     }
-    if (!confirm(`ยืนยัน ${plan.actionLabel} สำหรับ ${set.mainDocument.documentCode} และเอกสารสนับสนุน ${set.members.length} ฉบับ?`)) return
+    const supportCount = set.members.length + set.ephemeralAttachments.length
+    if (!confirm(`ยืนยัน ${plan.actionLabel} สำหรับ ${set.mainDocument.documentCode} และเอกสารสนับสนุน ${supportCount} รายการ?`)) return
 
     const totalItems = plan.targets.length
     setSetResults((prev) => {
@@ -1330,6 +1420,8 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
               onToggleSelect={() => toggleSetSelection(set.mainDocument.id)}
               onOpenMain={() => openActionPanel(set.mainDocument.id)}
               onOpenMember={(member) => openSetMember(member)}
+              onPreviewAttachment={(attachment) => void handlePreviewAttachment(attachment)}
+              onDownloadAttachment={(attachment) => void handleDownload(attachment.fileUrl)}
               onDownload={() => handleSetZip(set)}
               onAdvance={(next) => handleSetStatusChange(set, next)}
               onDelete={() => handleDeleteSet(set)}

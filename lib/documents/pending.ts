@@ -163,10 +163,21 @@ export interface RegistrationSetMember {
   activeDraft: RegistrationSetActiveDraft | null
 }
 
+export interface RegistrationSetAttachment {
+  id: string
+  fileUrl: string
+  fileName: string
+  fileSize: number | null
+  mimeType: string | null
+  uploadedBy: string | null
+  createdAt: string | null
+}
+
 export interface RegistrationSet {
   mainDocument: RegistrationSetDocument
   members: RegistrationSetMember[]
   memberIds: string[]
+  ephemeralAttachments: RegistrationSetAttachment[]
   ephemeralAttachmentCount: number
 }
 
@@ -186,6 +197,17 @@ type RegistrationSetDocumentRow = {
   word_url: string | null
   set_last_downloaded_at: string | null
   set_last_downloaded_by_name: string | null
+}
+
+type RegistrationSetAttachmentRow = {
+  id: string
+  document_id: string
+  file_url: string
+  file_name: string
+  file_size: number | null
+  mime_type: string | null
+  uploaded_by: string | null
+  created_at: string | null
 }
 
 function toRegistrationSetDocument(row: RegistrationSetDocumentRow): RegistrationSetDocument {
@@ -212,27 +234,53 @@ function toRegistrationSetDocument(row: RegistrationSetDocumentRow): Registratio
   }
 }
 
+function toRegistrationSetAttachment(row: RegistrationSetAttachmentRow): RegistrationSetAttachment {
+  return {
+    id: row.id,
+    fileUrl: row.file_url,
+    fileName: row.file_name,
+    fileSize: row.file_size,
+    mimeType: row.mime_type,
+    uploadedBy: row.uploaded_by,
+    createdAt: row.created_at,
+  }
+}
+
 // Registration sets are assembled with batched table queries so the pending page can
 // render them and route member actions without making a query per set or member.
 export async function getRegistrationSets(): Promise<RegistrationSet[]> {
-  const linksResult = await supabaseAdmin
-    .from('document_links')
-    .select('id, document_id, linked_doc_id, link_kind, set_mode, set_draft_id, created_at')
-    .eq('link_kind', 'set')
-    .order('created_at', { ascending: true })
+  const [linksResult, attachmentsResult] = await Promise.all([
+    supabaseAdmin
+      .from('document_links')
+      .select('id, document_id, linked_doc_id, link_kind, set_mode, set_draft_id, created_at')
+      .eq('link_kind', 'set')
+      .order('created_at', { ascending: true }),
+    // An unregistered supporting file has no document_links row. Its ephemeral
+    // attachment is therefore also a valid signal that the parent is a set main.
+    supabaseAdmin
+      .from('document_attachments')
+      .select('id, document_id, file_url, file_name, file_size, mime_type, uploaded_by, created_at')
+      .eq('ephemeral', true)
+      .order('created_at', { ascending: true }),
+  ])
 
   if (linksResult.error) throw new Error(`โหลดลิงก์ชุดเอกสารไม่สำเร็จ: ${linksResult.error.message}`)
+  if (attachmentsResult.error) throw new Error(`นับไฟล์แนบชุดเอกสารไม่สำเร็จ: ${attachmentsResult.error.message}`)
   const links = linksResult.data ?? []
-  if (links.length === 0) return []
+  const ephemeralAttachments = (attachmentsResult.data ?? []) as RegistrationSetAttachmentRow[]
+  if (links.length === 0 && ephemeralAttachments.length === 0) return []
 
-  const mainIds = Array.from(new Set(links.map((link) => link.document_id)))
+  const mainIds = Array.from(new Set([
+    ...links.map((link) => link.document_id),
+    ...ephemeralAttachments.map((attachment) => attachment.document_id),
+  ]))
   const memberIds = Array.from(new Set(links.map((link) => link.linked_doc_id)))
   const allDocumentIds = Array.from(new Set([...mainIds, ...memberIds]))
   const ownedDraftIds = Array.from(new Set(
     links.filter((link) => link.set_mode === 'revision' && link.set_draft_id).map((link) => link.set_draft_id as string),
   ))
 
-  const [documentsResult, draftsResult, attachmentsResult] = await Promise.all([
+  const [documentsResult, draftsResult] = await Promise.all([
     supabaseAdmin
       .from('documents')
       .select('id, owner_id, document_code, title, type, department, revision, status, updated_at, file_url, source_pdf_url, pending_file_url, word_url, deleted_at, set_last_downloaded_at, set_last_downloaded_by_name')
@@ -243,16 +291,10 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
           .select('id, document_id, revision, type, status, updated_at, file_url, file_name, source_pdf_url, source_pdf_name, word_url, word_name')
           .in('id', ownedDraftIds)
       : Promise.resolve({ data: [], error: null }),
-    supabaseAdmin
-      .from('document_attachments')
-      .select('document_id')
-      .in('document_id', mainIds)
-      .eq('ephemeral', true),
   ])
 
   if (documentsResult.error) throw new Error(`โหลดเอกสารในชุดไม่สำเร็จ: ${documentsResult.error.message}`)
   if (draftsResult.error) throw new Error(`โหลด working revision ในชุดไม่สำเร็จ: ${draftsResult.error.message}`)
-  if (attachmentsResult.error) throw new Error(`นับไฟล์แนบชุดเอกสารไม่สำเร็จ: ${attachmentsResult.error.message}`)
 
   const documentById = new Map(
     (documentsResult.data ?? []).map((document) => [document.id, document] as const),
@@ -260,12 +302,11 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
   const ownedDraftById = new Map(
     (draftsResult.data ?? []).map((draft) => [draft.id, draft] as const),
   )
-  const attachmentCountByDocumentId = new Map<string, number>()
-  for (const attachment of attachmentsResult.data ?? []) {
-    attachmentCountByDocumentId.set(
-      attachment.document_id,
-      (attachmentCountByDocumentId.get(attachment.document_id) ?? 0) + 1,
-    )
+  const attachmentsByDocumentId = new Map<string, RegistrationSetAttachment[]>()
+  for (const attachment of ephemeralAttachments) {
+    const grouped = attachmentsByDocumentId.get(attachment.document_id) ?? []
+    grouped.push(toRegistrationSetAttachment(attachment))
+    attachmentsByDocumentId.set(attachment.document_id, grouped)
   }
 
   const linksByMainId = new Map<string, typeof links>()
@@ -320,11 +361,13 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
       })
     }
 
+    const setAttachments = attachmentsByDocumentId.get(mainId) ?? []
     sets.push({
       mainDocument: toRegistrationSetDocument(main),
       members,
       memberIds: members.map((member) => member.document.id),
-      ephemeralAttachmentCount: attachmentCountByDocumentId.get(mainId) ?? 0,
+      ephemeralAttachments: setAttachments,
+      ephemeralAttachmentCount: setAttachments.length,
     })
   }
 

@@ -364,16 +364,28 @@ async function findActiveRegistrationSet(documentId: string) {
 // documentId is the MAIN document of a still-active set (status Draft/Review/Approved) —
 // returns its set links so DELETE can cascade: drop 'registered' members, cancel 'revision'
 // members' owned draft, and merely unlink 'linked' members (they're independent Published
-// documents referenced by the set, not owned by it).
+// documents referenced by the set, not owned by it). An attachment-only set has no links,
+// so an ephemeral attachment also counts as evidence that this is a set main.
 async function findActiveSetAsMain(documentId: string) {
-  const linksResult = await supabaseAdmin
-    .from('document_links')
-    .select('id, linked_doc_id, set_mode, set_draft_id')
-    .eq('document_id', documentId)
-    .eq('link_kind', 'set')
+  const [linksResult, attachmentsResult] = await Promise.all([
+    supabaseAdmin
+      .from('document_links')
+      .select('id, linked_doc_id, set_mode, set_draft_id')
+      .eq('document_id', documentId)
+      .eq('link_kind', 'set'),
+    supabaseAdmin
+      .from('document_attachments')
+      .select('id')
+      .eq('document_id', documentId)
+      .eq('ephemeral', true)
+      .limit(1),
+  ])
   if (linksResult.error) throw linksResult.error
+  if (attachmentsResult.error) throw attachmentsResult.error
   const links = linksResult.data ?? []
-  if (links.length === 0) return null
+  // Unregistered supporting files are stored as ephemeral attachments and do not
+  // create a document_links row, but they still make this document a set main.
+  if (links.length === 0 && (attachmentsResult.data ?? []).length === 0) return null
   const mainResult = await supabaseAdmin
     .from('documents')
     .select('id, document_code, status')
@@ -1068,6 +1080,7 @@ export async function DELETE(
     const now = new Date().toISOString()
     const activeSetAsMain = ownerActiveSetAsMain ?? await findActiveSetAsMain(id)
     const deletedMemberCodes: string[] = []
+    let ephemeralCleanupWarningCount = 0
 
     // A creator may remove only their own new Draft. This is a real cancellation of
     // an unapproved upload, so remove the row (and its dependent workflow rows) rather
@@ -1177,6 +1190,17 @@ export async function DELETE(
         .eq('document_id', id)
         .eq('link_kind', 'set')).error
       if (linksDeleteErr) return NextResponse.json({ error: linksDeleteErr.message }, { status: 500 })
+
+      try {
+        await purgeEphemeralAttachments(id)
+      } catch (error) {
+        ephemeralCleanupWarningCount = 1
+        console.error('Deleted registration set ephemeral attachment cleanup failed', {
+          documentId: id,
+          documentCode: current.document_code,
+          error: toMsg(error),
+        })
+      }
     }
 
     const { data: deletedDoc, error: dbErr } = await supabaseAdmin
@@ -1201,7 +1225,12 @@ export async function DELETE(
         : (deletedDoc ? `${deletedDoc.document_code} · ${deletedDoc.title}` : id),
     }).then(undefined, () => {})
 
-    return NextResponse.json({ ok: true, deletedSet: Boolean(activeSetAsMain), deletedMemberCodes })
+    return NextResponse.json({
+      ok: true,
+      deletedSet: Boolean(activeSetAsMain),
+      deletedMemberCodes,
+      cleanupWarningCount: ephemeralCleanupWarningCount,
+    })
   } catch (err) {
     return NextResponse.json({ error: toMsg(err) }, { status: 500 })
   }

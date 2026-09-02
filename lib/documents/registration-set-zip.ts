@@ -126,15 +126,14 @@ export async function gatherRegistrationSetZipTargets(mainId: string): Promise<R
   const ownedDraftIds = (linksResult.data ?? [])
     .filter((link) => link.set_mode === 'revision' && link.set_draft_id)
     .map((link) => link.set_draft_id as string)
-  if (memberIds.length === 0) {
-    return { ok: false, error: 'ไม่พบเอกสารสนับสนุนในชุด', status: 404 }
-  }
 
   const [membersResult, draftsResult, attachmentsResult] = await Promise.all([
-    supabaseAdmin
-      .from('documents')
-      .select('id, document_code, file_url, file_name, pending_file_url, pending_file_name, word_url, word_name')
-      .in('id', memberIds),
+    memberIds.length > 0
+      ? supabaseAdmin
+          .from('documents')
+          .select('id, document_code, file_url, file_name, pending_file_url, pending_file_name, word_url, word_name')
+          .in('id', memberIds)
+      : Promise.resolve({ data: [], error: null }),
     ownedDraftIds.length > 0
       ? supabaseAdmin
           .from('document_revision_drafts')
@@ -151,6 +150,12 @@ export async function gatherRegistrationSetZipTargets(mainId: string): Promise<R
 
   for (const result of [membersResult, draftsResult, attachmentsResult]) {
     if (result.error) return { ok: false, error: result.error.message, status: 500 }
+  }
+
+  // A set may contain only unregistered supporting files. Those files are stored as
+  // ephemeral attachments and intentionally have no document_links rows.
+  if (memberIds.length === 0 && (attachmentsResult.data ?? []).length === 0) {
+    return { ok: false, error: 'ไม่พบเอกสารสนับสนุนในชุด', status: 404 }
   }
 
   const activeDraftIds = (draftsResult.data ?? []).map((draft) => draft.id)
