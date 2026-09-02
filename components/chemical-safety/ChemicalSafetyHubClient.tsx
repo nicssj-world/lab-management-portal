@@ -609,9 +609,10 @@ export function ChemicalSafetyHubClient({
         .chemical-hub .chemical-unit-select select:hover{border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
         .chemical-hub .chemical-unit-select select:focus-visible{border-color:var(--primary);outline:3px solid color-mix(in srgb,var(--primary) 22%,transparent)}
         .chemical-hub .chemical-registry-table-scroll{overflow-x:auto;scrollbar-gutter:stable;overscroll-behavior-x:contain}
-        .chemical-hub .chemical-registry-actions{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap}
-        .chemical-hub .chemical-registry-action-label-short{display:none}
-        @media(max-width:1200px){.chemical-hub .chemical-registry-actions{gap:3px}.chemical-hub .chemical-registry-action-label-long{display:none}.chemical-hub .chemical-registry-action-label-short{display:inline}}
+        .chemical-hub .chemical-registry-actions{display:inline-flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap}
+        .chemical-hub .chemical-registry-actions>button{touch-action:manipulation}
+        .chemical-hub .chemical-registry-actions>button:last-child{margin-left:4px}
+        @media(pointer:coarse){.chemical-hub .chemical-registry-actions>button{min-width:44px;min-height:44px}}
         .chemical-hub .chemical-registry-floating-scroll{position:fixed;z-index:900;bottom:max(0px,env(safe-area-inset-bottom));height:18px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;background:var(--card);border-top:1px solid var(--border);box-shadow:0 -4px 14px rgba(15,23,42,.12)}
         .chemical-hub .chemical-registry-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:11px 14px;border-top:1px solid var(--border);background:var(--surface-2)}
         .chemical-hub .chemical-registry-pagination-info{color:var(--muted);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -832,6 +833,7 @@ export function ChemicalSafetyHubClient({
                       const isInactive = product?.lifecycleStatus === 'retired'
                       const isNewChemical = newChemicalHoldingIds.has(row.holdingId)
                       const busy = busyProductId === row.productId
+                      const rowBusy = busy || busyHoldingId === row.holdingId
                       const canEditRow = canManageChemicals || canProposeUnitIds.includes(row.unitId)
                       return (
                         <tr
@@ -920,43 +922,41 @@ export function ChemicalSafetyHubClient({
                           </td>
                           {canPropose && (
                             <td style={cellStyle}>
-                              <div className="chemical-registry-actions">
+                              <div className="chemical-registry-actions" role="group" aria-label={`การจัดการ ${row.canonicalName}`}>
                                 {canEditRow && (
                                   <>
                                     <Button
-                                      variant="ghost" size="sm" icon="edit" title="แก้ไขคลัง: ตำแหน่งและปริมาณ"
+                                      variant="ghost" size="md" icon="edit" style={registryActionIconButtonStyle}
+                                      title={`แก้ไขคลัง ${row.canonicalName}: ตำแหน่งและปริมาณ`}
+                                      aria-label={`แก้ไขคลัง ${row.canonicalName}`}
+                                      disabled={rowBusy}
                                       onClick={() => setModal({ mode: 'edit-holding', registryRow: row })}
                                     />
                                     <Button
-                                      variant="ghost" size="sm" icon="doc" title="เปิดรายละเอียดสาร: ข้อมูลทะเบียนและเอกสาร SDS"
-                                      disabled={!product}
+                                      variant="ghost" size="md" icon="doc" style={registryActionIconButtonStyle}
+                                      title={`เปิดรายละเอียดสาร ${row.canonicalName}: ข้อมูลทะเบียนและเอกสาร SDS`}
+                                      aria-label={`เปิดรายละเอียดสาร ${row.canonicalName}`}
+                                      disabled={rowBusy || !product}
                                       onClick={() => product && openChemicalDetails(row)}
-                                    >
-                                      <span className="chemical-registry-action-label-long">รายละเอียดสาร</span>
-                                      <span className="chemical-registry-action-label-short">รายละเอียด</span>
-                                    </Button>
+                                    />
                                   </>
                                 )}
                                 {canEditRow && (
                                   <Button
-                                    variant="ghost" size="sm" icon={isInactive ? 'eye' : 'eyeOff'}
-                                    title={isInactive ? 'ตั้งสถานะเป็น Active' : 'ตั้งสถานะเป็น Inactive'}
-                                    disabled={busy || !product}
+                                    variant="ghost" size="md" icon={isInactive ? 'eye' : 'eyeOff'} style={registryActionIconButtonStyle}
+                                    title={`${isInactive ? 'ตั้งสถานะเป็น Active' : 'ตั้งสถานะเป็น Inactive'}: ${row.canonicalName}`}
+                                    aria-label={`${isInactive ? 'ตั้งสถานะเป็น Active' : 'ตั้งสถานะเป็น Inactive'} สำหรับ ${row.canonicalName}`}
+                                    aria-busy={rowBusy}
+                                    disabled={rowBusy || !product}
                                     onClick={() => void toggleLifecycle(row)}
-                                  >
-                                    <span className="chemical-registry-action-label-long">
-                                      {isInactive ? 'ตั้งเป็น Active' : 'ตั้งเป็น Inactive'}
-                                    </span>
-                                    <span className="chemical-registry-action-label-short">
-                                      {isInactive ? 'เปิดใช้งาน' : 'พักใช้งาน'}
-                                    </span>
-                                  </Button>
+                                  />
                                 )}
                                 {canEditRow && (
                                   <Button
-                                    variant="danger" size="sm" icon="x"
-                                    title="ลบรายการนี้ออกจากทะเบียน"
-                                    disabled={busyHoldingId === row.holdingId}
+                                    variant="danger" size="md" icon="x" style={registryActionIconButtonStyle}
+                                    title={`ลบรายการ ${row.canonicalName} ออกจากทะเบียน`}
+                                    aria-label={`ลบรายการ ${row.canonicalName} ออกจากทะเบียน`}
+                                    disabled={rowBusy}
                                     onClick={() => void deleteHolding(row)}
                                   />
                                 )}
@@ -1070,6 +1070,14 @@ const cellStyle = {
   verticalAlign: 'top' as const,
   fontSize: FONT.base,
   color: 'var(--ink)',
+}
+
+const registryActionIconButtonStyle: CSSProperties = {
+  width: 40,
+  minWidth: 40,
+  height: 40,
+  padding: 0,
+  flex: '0 0 40px',
 }
 
 function StorageLayoutPanel({
