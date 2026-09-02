@@ -47,6 +47,8 @@ export interface Profile {
   // group org-chart placement (scripts/personnel-dept-role.sql + personnel-section-head.sql)
   dept_role?: DeptRole | null
   is_section_head?: boolean
+  // Whether the person should be shown in the public team organization chart.
+  team_org_visible?: boolean
 }
 
 // Group-level placement in the org chart. null = not a group lead/deputy.

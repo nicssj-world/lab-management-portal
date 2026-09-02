@@ -11,6 +11,7 @@ export type TeamOrgAssignmentPerson = {
   position_title: string | null
   dept_role: string | null
   is_section_head: boolean
+  team_org_visible: boolean
 }
 
 export type TeamOrgAssignmentSection = {
@@ -83,15 +84,19 @@ function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const targetSection = sections.find((section) => section.id === targetSectionId) ?? null
   const selectedPerson = people.find((person) => person.id === personId) ?? null
+  const targetSection = sections.find((section) => section.id === targetSectionId) ?? null
   const filteredPeople = useMemo(() => {
     const query = search.trim().toLocaleLowerCase()
     if (!query) return people
     return people.filter((person) => [person.name, person.dept ?? '', person.position_title ?? '']
       .some((value) => value.toLocaleLowerCase().includes(query)))
   }, [people, search])
-  const currentSection = selectedPerson?.dept
+  const visiblePeople = useMemo(() => {
+    if (selectedPerson && !filteredPeople.some((person) => person.id === selectedPerson.id)) return [selectedPerson, ...filteredPeople]
+    return filteredPeople
+  }, [filteredPeople, selectedPerson])
+  const currentSection = selectedPerson?.team_org_visible && selectedPerson.dept
     ? sections.find((section) => section.depts.includes(selectedPerson.dept!))
     : null
 
@@ -128,13 +133,34 @@ function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved
       const response = await fetch('/api/admin/personnel/manage/dept-role', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profileId: personId, dept: savedDept }),
+        body: JSON.stringify({ profileId: personId, dept: savedDept, teamOrgVisible: true }),
       })
       const json = await response.json()
       if (!response.ok) throw new Error(json?.error ?? 'บันทึกการจัดคนไม่สำเร็จ')
       onSaved()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'บันทึกการจัดคนไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function removeFromChart() {
+    if (!selectedPerson || !selectedPerson.team_org_visible) return
+    if (!window.confirm(`นำ ${selectedPerson.name} ออกจากผังกลุ่มงานหรือไม่?`)) return
+    setSaving(true)
+    setError('')
+    try {
+      const response = await fetch('/api/admin/personnel/manage/dept-role', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: selectedPerson.id, teamOrgVisible: false }),
+      })
+      const json = await response.json()
+      if (!response.ok) throw new Error(json?.error ?? 'นำบุคลากรออกจากผังไม่สำเร็จ')
+      onSaved()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'นำบุคลากรออกจากผังไม่สำเร็จ')
     } finally {
       setSaving(false)
     }
@@ -167,7 +193,7 @@ function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved
             <label htmlFor={`${titleId}-person`} style={fieldLabel}>บุคลากร</label>
             <select ref={firstFieldRef} id={`${titleId}-person`} value={personId} onChange={(event) => selectPerson(event.target.value)} style={inputStyle}>
               <option value="">— เลือกบุคลากร —</option>
-              {filteredPeople.map((person) => <option key={person.id} value={person.id}>{person.name}{person.dept ? ` · ${person.dept}` : ''}</option>)}
+              {visiblePeople.map((person) => <option key={person.id} value={person.id}>{person.name}{person.dept ? ` · ${person.dept}` : ''}{!person.team_org_visible ? ' · ไม่แสดงในผัง' : ''}</option>)}
             </select>
             {filteredPeople.length === 0 && <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 12 }}>ไม่พบรายชื่อที่ค้นหา</div>}
           </div>
@@ -175,7 +201,9 @@ function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved
           {selectedPerson && (
             <div style={{ padding: '9px 11px', borderRadius: 9, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: 12, lineHeight: 1.5 }}>
               <strong style={{ color: 'var(--ink)' }}>{selectedPerson.name}</strong>
-              <br />อยู่ในขณะนี้: {currentSection?.title ?? selectedPerson.dept ?? 'ยังไม่ได้ระบุหน่วยงาน'}
+              {selectedPerson.team_org_visible
+                ? <><br />อยู่ในขณะนี้: {currentSection?.title ?? selectedPerson.dept ?? 'ยังไม่ได้ระบุหน่วยงาน'}</>
+                : <><br />สถานะผัง: <strong style={{ color: 'var(--danger)' }}>ไม่แสดงในผัง</strong>{selectedPerson.dept ? ` · หน่วยงานเดิม: ${selectedPerson.dept}` : ''}</>}
             </div>
           )}
 
@@ -205,9 +233,12 @@ function AssignmentDialog({ people, sections, initialSectionId, onClose, onSaved
         </div>
 
         <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 9, padding: '14px 20px', borderTop: '1px solid var(--border)' }}>
+          {selectedPerson?.team_org_visible && <button type="button" onClick={removeFromChart} disabled={saving} style={{ ...buttonStyle, marginRight: 'auto', color: 'var(--danger)', borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))', opacity: saving ? .7 : 1 }}>
+            <Icon name="eyeOff" size={14} /> นำออกจากผัง
+          </button>}
           <button type="button" onClick={onClose} style={{ ...buttonStyle, color: 'var(--ink)', borderColor: 'var(--border)' }}>ยกเลิก</button>
           <button type="button" onClick={save} disabled={saving} style={{ ...buttonStyle, borderColor: 'var(--primary)', background: 'var(--primary)', color: '#fff', opacity: saving ? .7 : 1 }}>
-            <Icon name="check" size={14} /> {saving ? 'กำลังบันทึก…' : 'บันทึกการจัดคน'}
+            <Icon name="check" size={14} /> {saving ? 'กำลังบันทึก…' : selectedPerson?.team_org_visible ? 'บันทึกการจัดคน' : 'นำกลับเข้าผัง'}
           </button>
         </footer>
       </section>

@@ -19,7 +19,7 @@ export const metadata = {
   description: 'รายชื่อเจ้าหน้าที่กลุ่มงานเทคนิคการแพทย์ โรงพยาบาลชลบุรี แยกตามหัวหน้างานและงานที่รับผิดชอบ',
 }
 
-type Person = { id: string; name: string; dept: string | null; dept_role: DeptRole | null; is_section_head: boolean; position_title: string | null; role: string | null; photo: string | null }
+type Person = { id: string; name: string; dept: string | null; dept_role: DeptRole | null; is_section_head: boolean; team_org_visible: boolean; position_title: string | null; role: string | null; photo: string | null }
 type WorkGroup = { id: string; name: string | null; depts: string[] }
 
 const ROLE_LABEL: Record<DeptRole, string> = {
@@ -71,25 +71,26 @@ async function canManageTeamOrg() {
 export default async function TeamOrgPage() {
   const canManage = await canManageTeamOrg()
   const [{ data: profileData }, { data: groupData }] = await Promise.all([
-    supabaseAdmin.from('profiles').select('id, name, name_prefix, dept, dept_role, is_section_head, position_title, role, avatar_url, official_photo_url').eq('status', 'active').is('deleted_at', null).order('name'),
+    supabaseAdmin.from('profiles').select('id, name, name_prefix, dept, dept_role, is_section_head, team_org_visible, position_title, role, avatar_url, official_photo_url').eq('status', 'active').is('deleted_at', null).order('name'),
     supabaseAdmin.from('personnel_work_groups').select('id, name, depts').order('created_at', { ascending: true }),
   ])
   const raw = profileData ?? []
   const photos = await Promise.all(raw.map((p) => (p.official_photo_url ? createStaffSignedUrl(p.official_photo_url) : Promise.resolve(null))))
   const people: Person[] = raw.map((p, i) => ({
-    id: p.id, name: formatProfileName(p.name, p.name_prefix), dept: p.dept, dept_role: p.dept_role, is_section_head: p.is_section_head ?? false,
+    id: p.id, name: formatProfileName(p.name, p.name_prefix), dept: p.dept, dept_role: p.dept_role, is_section_head: p.is_section_head ?? false, team_org_visible: p.team_org_visible !== false,
     position_title: p.position_title, role: p.role, photo: photos[i] ?? p.avatar_url ?? null,
   }))
   const groups = (groupData ?? []) as WorkGroup[]
 
-  const groupLeads = people.filter((p) => p.dept_role === 'group_lead')
-  const groupDeputies = people.filter((p) => p.dept_role === 'group_deputy')
+  const chartPeople = people.filter((p) => p.team_org_visible && p.dept)
+  const groupLeads = chartPeople.filter((p) => p.dept_role === 'group_lead')
+  const groupDeputies = chartPeople.filter((p) => p.dept_role === 'group_deputy')
 
   // A section = one or more งาน displayed together. heads = anyone flagged หัวหน้างาน
   // (incl. a รองหัวหน้ากลุ่มงาน who also leads their งาน); members = the rest of the งาน.
   const sectionFrom = (depts: string[]) => ({
-    heads: people.filter((p) => p.dept && depts.includes(p.dept) && p.is_section_head),
-    members: people.filter((p) => p.dept && depts.includes(p.dept) && !p.is_section_head && p.dept_role == null),
+    heads: chartPeople.filter((p) => p.dept && depts.includes(p.dept) && p.is_section_head),
+    members: chartPeople.filter((p) => p.dept && depts.includes(p.dept) && !p.is_section_head && p.dept_role == null),
   })
   const inGroup = new Set(groups.flatMap((g) => g.depts))
   const groupSections = groups.map((g) => ({ id: `group:${g.id}`, title: g.name ?? g.depts.join(' และ '), depts: g.depts, ...sectionFrom(g.depts) }))
@@ -97,8 +98,8 @@ export default async function TeamOrgPage() {
   const allSections = [...groupSections, ...standaloneSections]
   const sections = allSections.filter((s) => s.heads.length > 0 || s.members.length > 0)
   const displaySections = canManage ? allSections : sections
-  const assignmentPeople: TeamOrgAssignmentPerson[] = people.map(({ id, name, dept, position_title, dept_role, is_section_head }) => ({
-    id, name, dept, position_title, dept_role, is_section_head,
+  const assignmentPeople: TeamOrgAssignmentPerson[] = people.map(({ id, name, dept, position_title, dept_role, is_section_head, team_org_visible }) => ({
+    id, name, dept, position_title, dept_role, is_section_head, team_org_visible,
   }))
   const assignmentSections: TeamOrgAssignmentSection[] = allSections.map(({ id, title, depts }) => ({ id, title, depts }))
 
