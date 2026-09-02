@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic'
 
 const LAB_CODE_SCOPES = [
   { prefix: 'LAB-BM-', departmentCode: 'BIOMOLECULAR' },
+  // The current Outlab equipment registry uses LAB-OL codes.
+  { prefix: 'LAB-OL-', departmentCode: 'OUTLAB' },
+  // Keep the previous Outlab prefix readable for already-issued codes.
   { prefix: 'LAB-SR-', departmentCode: 'OUTLAB' },
 ] as const
 
