@@ -1,9 +1,11 @@
 import type { ItDepartmentCode } from './domain'
+import { resolveLegacyAssignees, type LegacyAssigneeProfile, type LegacyAssigneeMatch, type LegacyResponsible } from './legacy-assignee'
 import type { LegacyFormSample, LegacyFormSheetResult } from './legacy-form'
 
 export type LegacyImportSource = {
   sourceFileId: string
   sourceFileName: string
+  responsibleName?: string | null
   quarters: LegacyFormSheetResult[]
 }
 
@@ -15,6 +17,7 @@ export type LegacyImportPlanItem = {
   departmentCode: ItDepartmentCode
   sourceFileId: string
   sourceFileName: string
+  responsibleName: string | null
   samples: LegacyFormSample[]
   sampleCount: number
   roundStatus: 'draft'
@@ -39,8 +42,67 @@ export type LegacySampleRow = {
   remark: string
 }
 
+export type LegacyPlanAssigneeMatch = LegacyAssigneeMatch & { year: number }
+
+export type LegacyPlanAssigneeResolution = {
+  assignments: Array<{ runKey: string; year: number; departmentCode: ItDepartmentCode; profileId: string; profileName: string }>
+  matches: LegacyPlanAssigneeMatch[]
+  warnings: string[]
+  issues: string[]
+}
+
 export function legacyRunKey(year: number, quarter: number, departmentCode: ItDepartmentCode): string {
   return `${year}:${quarter}:${departmentCode}`
+}
+
+export function resolveLegacyPlanAssignees(
+  plan: ReadonlyArray<LegacyImportPlanItem>,
+  profiles: ReadonlyArray<LegacyAssigneeProfile>,
+): LegacyPlanAssigneeResolution {
+  const responsibleByYearDepartment = new Map<string, LegacyResponsible>()
+  const issues: string[] = []
+
+  for (const item of plan) {
+    const key = `${item.year}:${item.departmentCode}`
+    if (!item.responsibleName) {
+      if (!responsibleByYearDepartment.has(key)) issues.push(`${item.year} ${item.departmentCode}: ไม่พบผู้รับผิดชอบในชีท`)
+      continue
+    }
+    const current = responsibleByYearDepartment.get(key)
+    if (current && current.displayName !== item.responsibleName) {
+      issues.push(`${item.year} ${item.departmentCode}: พบชื่อผู้รับผิดชอบไม่ตรงกันในปีเดียวกัน`)
+      continue
+    }
+    responsibleByYearDepartment.set(key, {
+      departmentCode: item.departmentCode,
+      departmentLabel: '',
+      displayName: item.responsibleName,
+      position: '',
+    })
+  }
+
+  const matches: LegacyPlanAssigneeMatch[] = []
+  for (const [key, responsible] of responsibleByYearDepartment) {
+    const year = Number(key.split(':', 1)[0])
+    const resolved = resolveLegacyAssignees([responsible], profiles)
+    issues.push(...resolved.issues.map((issue) => `${year} ${issue}`))
+    matches.push(...resolved.matches.map((match) => ({ ...match, year })))
+  }
+
+  const profileIdByYearDepartment = new Map(matches.map((match) => [`${match.year}:${match.departmentCode}`, match.profileId]))
+  const assignments = plan.flatMap((item) => {
+    const profileId = profileIdByYearDepartment.get(`${item.year}:${item.departmentCode}`)
+    return profileId
+      ? [{ runKey: item.runKey, year: item.year, departmentCode: item.departmentCode, profileId, profileName: matches.find((match) => match.year === item.year && match.departmentCode === item.departmentCode)?.profileName ?? '' }]
+      : []
+  })
+
+  return {
+    assignments,
+    matches,
+    warnings: [],
+    issues: [...new Set(issues)],
+  }
 }
 
 export function buildLegacyImportPlan(
@@ -59,6 +121,7 @@ export function buildLegacyImportPlan(
         departmentCode: quarter.departmentCode,
         sourceFileId: source.sourceFileId,
         sourceFileName: quarter.sourceFileName,
+        responsibleName: source.responsibleName ?? null,
         samples: quarter.samples,
         sampleCount: quarter.samples.length,
         roundStatus: 'draft' as const,

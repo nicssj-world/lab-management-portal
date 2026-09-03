@@ -4,15 +4,19 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import {
   buddhistYearToCalendarYear,
+  DRIVE_LEGACY_RESPONSIBLE_SOURCES,
   DRIVE_LEGACY_SOURCES,
+  parseDriveResponsibleWorkbook,
   parseDriveWorkbook,
   type DriveLegacySource,
 } from '../lib/it-verification/drive-sources'
 import {
   buildLegacyImportPlan,
+  resolveLegacyPlanAssignees,
   type LegacyImportPlanItem,
   type LegacyImportSource,
 } from '../lib/it-verification/legacy-import'
+import type { LegacyAssigneeProfile } from '../lib/it-verification/legacy-assignee'
 import { IT_DEPARTMENTS, type ItDepartmentCode } from '../lib/it-verification/domain'
 import type { LegacyFormSheetResult } from '../lib/it-verification/legacy-form'
 
@@ -111,15 +115,23 @@ export async function loadDriveLegacySources(
   const sources: LegacyImportSource[] = []
   for (const buddhistYear of buddhistYears) {
     const folderYear = buddhistYearToCalendarYear(buddhistYear)
+    const responsibleSource = DRIVE_LEGACY_RESPONSIBLE_SOURCES[buddhistYear as keyof typeof DRIVE_LEGACY_RESPONSIBLE_SOURCES]
+    const responsibleResult = parseDriveResponsibleWorkbook(await downloadDriveSpreadsheet(responsibleSource.spreadsheetId, fetcher))
+    if (responsibleResult.issues.length > 0) {
+      throw new Error(`${buddhistYear} ผู้รับผิดชอบใน Drive ไม่ผ่าน validation: ${responsibleResult.issues.join(' · ')}`)
+    }
+    const responsibleByCode = new Map(responsibleResult.responsibles.map((item) => [item.departmentCode, item.displayName]))
     for (const source of DRIVE_LEGACY_SOURCES[buddhistYear as keyof typeof DRIVE_LEGACY_SOURCES]) {
       const fileName = sourceFileName(source)
+      const responsibleName = responsibleByCode.get(source.departmentCode)
+      if (!responsibleName) throw new Error(`${buddhistYear} ไม่พบผู้รับผิดชอบสำหรับ ${source.departmentCode} ในชีท Drive`)
       const workbook = parseDriveWorkbook(await downloadDriveSpreadsheet(source.spreadsheetId, fetcher), {
         folderYear,
         departmentCode: source.departmentCode,
         sourceFileId: source.spreadsheetId,
         sourceFileName: fileName,
       })
-      sources.push({ sourceFileId: source.spreadsheetId, sourceFileName: fileName, quarters: workbook })
+      sources.push({ sourceFileId: source.spreadsheetId, sourceFileName: fileName, responsibleName, quarters: workbook })
     }
   }
   return sources
@@ -135,6 +147,23 @@ async function getDepartmentRows(db: SupabaseClient): Promise<DepartmentRow[]> {
   const rows = (data ?? []) as DepartmentRow[]
   if (rows.length !== DEPARTMENT_CODES.length) throw new Error('Verification departments are incomplete; apply the IT verification migration first')
   return rows
+}
+
+async function getLegacyAssigneeProfiles(db: SupabaseClient): Promise<LegacyAssigneeProfile[]> {
+  const { data, error } = await db
+    .from('profiles')
+    .select('id, name, role, dept, status, deleted_at')
+    .eq('status', 'active')
+    .is('deleted_at', null)
+  if (error) throw new Error(`Unable to read historical verification assignees: ${error.message}`)
+  return (data ?? []).map((profile) => ({
+    id: String(profile.id),
+    name: String(profile.name ?? ''),
+    role: String(profile.role ?? ''),
+    dept: profile.dept ? String(profile.dept) : null,
+    status: profile.status ? String(profile.status) : null,
+    deletedAt: profile.deleted_at ? String(profile.deleted_at) : null,
+  }))
 }
 
 async function getExistingLegacyRunKeys(
@@ -169,7 +198,7 @@ async function getExistingLegacyRunKeys(
   }))
 }
 
-function summarizePlan(plan: LegacyImportPlanItem[]) {
+function summarizePlan(plan: LegacyImportPlanItem[], assigneeResolution: ReturnType<typeof resolveLegacyPlanAssignees>) {
   return {
     rounds: plan.length,
     pendingRounds: plan.filter((item) => item.action === 'import').length,
@@ -177,7 +206,18 @@ function summarizePlan(plan: LegacyImportPlanItem[]) {
     pendingSamples: plan.filter((item) => item.action === 'import').reduce((total, item) => total + item.sampleCount, 0),
     noEvidenceDrafts: plan.filter((item) => item.action === 'import' && item.sampleCount === 0).length,
     warnings: plan.flatMap((item) => item.warning ? [`${item.departmentCode} Q${item.quarter} ${item.year}: ${item.warning}`] : []),
-    issues: plan.flatMap((item) => item.issues.map((issue) => `${item.departmentCode} Q${item.quarter} ${item.year}: ${issue}`)),
+    assignees: assigneeResolution.matches.map((match) => ({
+      year: match.year,
+      departmentCode: match.departmentCode,
+      sourceName: match.sourceName,
+      profileName: match.profileName,
+      profileId: match.profileId,
+      profileDepartment: match.profileDepartment,
+    })),
+    issues: [
+      ...plan.flatMap((item) => item.issues.map((issue) => `${item.departmentCode} Q${item.quarter} ${item.year}: ${issue}`)),
+      ...assigneeResolution.issues,
+    ],
   }
 }
 
@@ -185,12 +225,13 @@ async function applyPlan(
   db: SupabaseClient,
   plan: LegacyImportPlanItem[],
   departments: DepartmentRow[],
+  assigneeResolution: ReturnType<typeof resolveLegacyPlanAssignees>,
   actorId: string,
 ) {
   const departmentByCode = new Map(departments.map((department) => [department.code, department]))
+  const assignmentByRunKey = new Map(assigneeResolution.assignments.map((assignment) => [assignment.runKey, assignment]))
   const applied: Array<{ year: number; quarter: number; departmentCode: ItDepartmentCode; status: string; sampled: number }> = []
   for (const item of plan) {
-    if (item.action === 'skip') continue
     const department = departmentByCode.get(item.departmentCode)
     if (!department) throw new Error(`Unknown verification department ${item.departmentCode}`)
     const payload = buildLegacyRpcPayload({
@@ -204,6 +245,34 @@ async function applyPlan(
     const { data, error } = await db.rpc('import_it_verification_legacy_form', payload)
     if (error) throw new Error(`Legacy import failed for ${item.departmentCode} Q${item.quarter} ${item.year}: ${error.message}`)
     const result = data as { status?: string; sampled?: number } | null
+    const roundId = typeof (result as { roundId?: unknown } | null)?.roundId === 'string'
+      ? (result as { roundId: string }).roundId
+      : null
+    const assignment = assignmentByRunKey.get(item.runKey)
+    if (!roundId || !assignment) throw new Error(`Legacy import did not return an assignee target for ${item.departmentCode} Q${item.quarter} ${item.year}`)
+    const { data: existingAssignee, error: existingAssigneeError } = await db
+      .from('it_verification_assignees')
+      .select('id, profile_id')
+      .eq('round_id', roundId)
+      .eq('department_id', department.id)
+      .maybeSingle()
+    if (existingAssigneeError) throw new Error(`Unable to read historical assignee for ${item.departmentCode} Q${item.quarter} ${item.year}: ${existingAssigneeError.message}`)
+    if (existingAssignee?.profile_id !== assignment.profileId) {
+      const { data: assignee, error: assigneeError } = await db.from('it_verification_assignees').upsert({
+        round_id: roundId,
+        department_id: department.id,
+        profile_id: assignment.profileId,
+        assigned_by: actorId,
+      }, { onConflict: 'round_id,department_id' }).select('id').single()
+      if (assigneeError) throw new Error(`Unable to assign historical verification owner for ${item.departmentCode} Q${item.quarter} ${item.year}: ${assigneeError.message}`)
+      const { error: auditError } = await db.from('audit_log').insert({
+        action: 'it_verification.assignee.update',
+        user_id: actorId,
+        target: assignee.id,
+        detail: `source=drive; round=${roundId}; year=${item.year}; quarter=${item.quarter}; department=${item.departmentCode}; responsible=${assignment.profileName}`.slice(0, 1000),
+      })
+      if (auditError) console.warn(`Historical assignee audit failed for ${item.departmentCode} Q${item.quarter} ${item.year}: ${auditError.message}`)
+    }
     applied.push({
       year: item.year,
       quarter: item.quarter,
@@ -224,7 +293,7 @@ async function main() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl) throw new Error('Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL')
   if (!serviceRoleKey) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
-  if (shouldApply && !isUuid(actorId)) throw new Error('--apply requires a valid --actor-id UUID (or IT_VERIFICATION_IMPORT_ACTOR_ID)')
+  if (shouldApply && !isUuid(actorId)) throw new Error('--apply requires a valid --actor-id UUID for the person running the import (or IT_VERIFICATION_IMPORT_ACTOR_ID); this is separate from the Drive assignee')
 
   const sources = await loadDriveLegacySources(years)
   const db = createClient(
@@ -233,9 +302,11 @@ async function main() {
     { auth: { persistSession: false } },
   )
   const departments = await getDepartmentRows(db)
+  const profiles = await getLegacyAssigneeProfiles(db)
   const existingRunKeys = await getExistingLegacyRunKeys(db, years.map(buddhistYearToCalendarYear), departments)
   const plan = buildLegacyImportPlan(sources, existingRunKeys)
-  const summary = summarizePlan(plan)
+  const assigneeResolution = resolveLegacyPlanAssignees(plan, profiles)
+  const summary = summarizePlan(plan, assigneeResolution)
 
   if (summary.issues.length > 0) {
     console.error(JSON.stringify({ mode: shouldApply ? 'apply-blocked' : 'dry-run', ...summary }, null, 2))
@@ -245,9 +316,9 @@ async function main() {
     console.log(JSON.stringify({ mode: 'dry-run', folderYears: years, ...summary }, null, 2))
     return
   }
-  if (!isUuid(actorId)) throw new Error('--apply requires a valid --actor-id UUID (or IT_VERIFICATION_IMPORT_ACTOR_ID)')
+  if (!isUuid(actorId)) throw new Error('--apply requires a valid --actor-id UUID for the person running the import (or IT_VERIFICATION_IMPORT_ACTOR_ID); this is separate from the Drive assignee')
 
-  const applied = await applyPlan(db, plan, departments, actorId)
+  const applied = await applyPlan(db, plan, departments, assigneeResolution, actorId)
   console.log(JSON.stringify({ mode: 'apply', folderYears: years, ...summary, applied }, null, 2))
 }
 

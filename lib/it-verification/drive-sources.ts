@@ -1,9 +1,14 @@
 import * as XLSX from 'xlsx'
 import type { ItDepartmentCode } from './domain'
+import { parseLegacyResponsibleRows, type LegacyResponsibleSheetResult } from './legacy-assignee'
 import { parseLegacyFormWorkbook, type LegacyFormSheetResult } from './legacy-form'
 
 export type DriveLegacySource = {
   departmentCode: ItDepartmentCode
+  spreadsheetId: string
+}
+
+export type DriveLegacyResponsibleSource = {
   spreadsheetId: string
 }
 
@@ -12,6 +17,12 @@ export type DriveWorkbookOptions = {
   departmentCode: ItDepartmentCode
   sourceFileId: string
   sourceFileName: string
+}
+
+export const DRIVE_LEGACY_RESPONSIBLE_SOURCES: Record<2567 | 2568 | 2569, DriveLegacyResponsibleSource> = {
+  2567: { spreadsheetId: '1QKiyLh-S9ORhsxC2LOrkXFY1w4XKdWxwLBX9I92qTj8' },
+  2568: { spreadsheetId: '1ntBVPO-TYe66ePmrB_PsvZwvgUy1_z3sdGoJCz_cTio' },
+  2569: { spreadsheetId: '1ZpLY9tP6i3EImzGmalxW_i0jP2r9jpQ89vnv0yumsiQ' },
 }
 
 // These are the read-only source workbooks in the shared historical folder.
@@ -78,3 +89,18 @@ export function parseDriveWorkbook(
   })
 }
 
+export function parseDriveResponsibleWorkbook(
+  buffer: Uint8Array | ArrayBuffer,
+): LegacyResponsibleSheetResult {
+  const workbook = XLSX.read(buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer), {
+    type: 'array',
+    cellDates: false,
+  })
+  const worksheet = workbook.Sheets.Sheet1
+  if (!worksheet) throw new Error('00 ผู้รับผิดชอบ IT: missing required tab Sheet1')
+  return parseLegacyResponsibleRows(XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+    header: 1,
+    defval: null,
+    raw: true,
+  }))
+}

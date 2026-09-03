@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { parseLegacyFormSheet, type LegacyFormSheetResult } from './legacy-form'
-import { buildLegacyImportPlan, legacyRunKey, toLegacySampleRow } from './legacy-import'
+import { buildLegacyImportPlan, legacyRunKey, resolveLegacyPlanAssignees, toLegacySampleRow } from './legacy-import'
 
 const sourceRows = [
   ['', 'งาน เคมีคลินิก', '', 'มกราคม-มีนาคม 2569'],
@@ -25,6 +25,7 @@ test('legacy import plan creates one draft round per quarter, including blank fo
   const plan = buildLegacyImportPlan([{
     sourceFileId: 'drive-che',
     sourceFileName: '[CHE] Fm-QP-LAB-24-02',
+    responsibleName: 'สุธีมนต์',
     quarters: [parsed(1), parsed(2), parsed(3), parsed(4)],
   }])
 
@@ -32,6 +33,7 @@ test('legacy import plan creates one draft round per quarter, including blank fo
   assert.deepEqual(plan.map((item) => item.action), ['import', 'import', 'import', 'import'])
   assert.deepEqual(plan.map((item) => item.sampleCount), [1, 0, 0, 0])
   assert.ok(plan.every((item) => item.roundStatus === 'draft'))
+  assert.ok(plan.every((item) => item.responsibleName === 'สุธีมนต์'))
   assert.match(plan[1].warning ?? '', /ไม่พบรายการ LAB ID/)
 })
 
@@ -68,3 +70,21 @@ test('legacy sample rows preserve only approved verification fields', () => {
   })
 })
 
+test('legacy import assignments repeat the sheet owner across all quarters without enforcing profile department', () => {
+  const plan = buildLegacyImportPlan([{
+    sourceFileId: 'drive-che',
+    sourceFileName: '[CHE] Fm-QP-LAB-24-02',
+    responsibleName: 'วรวุฒิ',
+    quarters: [parsed(1), parsed(2), parsed(3), parsed(4)],
+  }])
+  const result = resolveLegacyPlanAssignees(plan, [{
+    id: 'outlab-admin',
+    name: 'วรวุฒิ วงษ์เจริญผล',
+    dept: 'งานตรวจพิเศษและห้องปฏิบัติการตรวจต่อ',
+    role: 'Admin',
+  }])
+
+  assert.deepEqual(result.issues, [])
+  assert.equal(result.assignments.length, 4)
+  assert.ok(result.assignments.every((item) => item.profileId === 'outlab-admin'))
+})

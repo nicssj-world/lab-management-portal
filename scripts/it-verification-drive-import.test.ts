@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import * as XLSX from 'xlsx'
 import { readFileSync, readdirSync } from 'node:fs'
-import { DRIVE_LEGACY_SOURCES, parseDriveWorkbook } from '../lib/it-verification/drive-sources'
-import { buildLegacyRpcPayload, parseRequestedYears } from './it-verification-drive-import'
+import { DRIVE_LEGACY_RESPONSIBLE_SOURCES, DRIVE_LEGACY_SOURCES, parseDriveResponsibleWorkbook, parseDriveWorkbook } from '../lib/it-verification/drive-sources'
+import { buildLegacyRpcPayload, loadDriveLegacySources, parseRequestedYears } from './it-verification-drive-import'
 
 const root = process.cwd()
 
@@ -22,12 +22,55 @@ function workbookBuffer() {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
 }
 
+function responsibleWorkbookBuffer() {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['งาน', 'ชื่อ-นามสกุล', 'ตำแหน่ง'],
+    ['เคมีคลินิก', 'สุธีมนต์', 'นักเทคนิคการแพทย์'],
+    ['ภูมิคุ้มกัน', 'วรรษชล', 'นักเทคนิคการแพทย์'],
+    ['โลหิต', 'สิริมา', 'นักเทคนิคการแพทย์'],
+    ['จุลทรรศน์', 'วรวุฒิ', 'นักเทคนิคการแพทย์'],
+    ['จุลชีววิทยา', 'นาคพรรดิ', 'นักเทคนิคการแพทย์'],
+    ['อณูชีววิทยา', 'ศิริวัฒน์', 'นักเทคนิคการแพทย์'],
+    ['คลังเลือด', 'ธนาวุฒิ', 'นักเทคนิคการแพทย์'],
+  ]), 'Sheet1')
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+}
+
 test('Drive source manifest covers all selected years, departments and quarter tabs', () => {
   assert.deepEqual(Object.keys(DRIVE_LEGACY_SOURCES).map(Number), [2567, 2568, 2569])
   for (const sources of Object.values(DRIVE_LEGACY_SOURCES)) {
     assert.deepEqual(sources.map((source) => source.departmentCode).sort(), ['BLB', 'CHE', 'HEM', 'MIC', 'MIS', 'MOL', 'IMM'].sort())
     assert.ok(sources.every((source) => source.spreadsheetId.length > 20))
   }
+})
+
+test('Drive responsible source manifest and parser preserve the sheet department labels', () => {
+  assert.deepEqual(Object.keys(DRIVE_LEGACY_RESPONSIBLE_SOURCES).map(Number), [2567, 2568, 2569])
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['งาน', 'ชื่อ-นามสกุล', 'ตำแหน่ง'],
+    ['จุลทรรศน์', 'วรวุฒิ', 'นักเทคนิคการแพทย์'],
+  ]), 'Sheet1')
+  const result = parseDriveResponsibleWorkbook(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
+  assert.equal(result.responsibles[0]?.departmentCode, 'MIS')
+  assert.equal(result.responsibles[0]?.displayName, 'วรวุฒิ')
+})
+
+test('Drive source loader carries the responsible name into every department source', async () => {
+  const responsibleId = DRIVE_LEGACY_RESPONSIBLE_SOURCES[2569].spreadsheetId
+  const responsibleBuffer = responsibleWorkbookBuffer()
+  const formBuffer = workbookBuffer()
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input)
+    const body = url.includes(`/d/${responsibleId}/`) ? responsibleBuffer : formBuffer
+    return new Response(body, { status: 200, headers: { 'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' } })
+  }
+  const sources = await loadDriveLegacySources([2569], fetcher)
+
+  assert.equal(sources.length, 7)
+  assert.equal(sources.find((source) => source.sourceFileName.startsWith('[MIS]'))?.responsibleName, 'วรวุฒิ')
+  assert.equal(sources.find((source) => source.sourceFileName.startsWith('[CHE]'))?.responsibleName, 'สุธีมนต์')
 })
 
 test('Drive workbook parser uses the folder year and preserves all four quarters', () => {
