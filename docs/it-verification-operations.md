@@ -31,6 +31,7 @@
 - หาก sampler ใช้งานไม่ได้ การอัปโหลด TAT ยังสำเร็จ และ response จะแจ้ง `sampling.warning`; ให้เปิดหน้า Verification แล้วกดสร้างตัวอย่างใหม่หลังแก้สาเหตุ
 - ระบบสุ่ม distinct LN ที่ trim แล้วด้วย `md5(seed || '|' || ln)` (`ln-hash-v1`) และเก็บเฉพาะ LN กับ metadata ที่จำเป็น ไม่เก็บชื่อผู้ป่วยหรือ HN
 - การอัปโหลดเดือนเดิมซ้ำจะ reuse upload row และคง active sample เดิมไว้; sampling run ที่สำเร็จจะตอบ `skipped_existing`
+- `row_count` เป็น snapshot ของ upload เท่านั้น; หาก raw `tat_records` ถูก cleanup แล้ว ไฟล์เดิมจะสุ่มซ้ำไม่ได้ ต้องอัปโหลดไฟล์ใหม่
 - การสุ่มใหม่ต้องมีเหตุผล ระบบจะ void run/sample เดิมและเก็บหลักฐานเดิมไว้เสมอ
 
 ## Cleanup raw

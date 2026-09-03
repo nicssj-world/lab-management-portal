@@ -28,6 +28,7 @@ test('verification migration creates the complete protected schema and seeds the
   assert.match(sql, /generate_it_verification_samples_from_tat/i)
   assert.match(sql, /upload_id uuid references public\.tat_uploads\(id\) on delete set null/i)
   assert.match(sql, /resample_it_verification_samples_from_tat/i)
+  assert.match(sql, /ไม่พบข้อมูล raw TAT ของไฟล์นี้/i)
   assert.match(sql, /grant execute on function public\.generate_it_verification_samples_from_tat[\s\S]*?to service_role/i)
   assert.match(sql, /grant execute on function public\.resample_it_verification_samples_from_tat[\s\S]*?to service_role/i)
   assert.match(sql, /grant execute on function public\.update_it_verification_sample[\s\S]*?to service_role/i)
@@ -93,5 +94,7 @@ test('UI uses the established clinical control-room language and accessible feed
   }
   assert.match(page, /ตัวอย่างทั้งหมด/)
   assert.match(page, /สถานะหน่วยงาน/)
+  assert.match(page, /it-verification-desktop-table \{ display:block; \}/)
+  assert.match(page, /warningGroups/)
   assert.match(detail, /LIS.*HIS|HIS.*LIS/)
 })

@@ -109,7 +109,14 @@ export async function getVerificationSummary(year: number, quarter: number, acto
     openFindings: total.openFindings + department.openFindings,
     readyDepartments: total.readyDepartments + (department.ready ? 1 : 0),
   }), base.totals)
-  base.warnings = departments.flatMap((department) => department.warning ? [`${department.code}: ${department.warning}`] : [])
+  const warningGroups = new Map<string, string[]>()
+  for (const department of departments) {
+    if (!department.warning) continue
+    const codes = warningGroups.get(department.warning) ?? []
+    codes.push(department.code)
+    warningGroups.set(department.warning, codes)
+  }
+  base.warnings = [...warningGroups].map(([warning, codes]) => `${codes.join(', ')}: ${warning}`)
   return base
 }
 
@@ -156,7 +163,7 @@ export async function getVerificationRoundDetail(roundId: string): Promise<Verif
     },
     samples: sampleRows.map((sample) => ({ ...sample, findings: findings.filter((finding) => finding.sample_id === sample.id) })),
     assigneeName: profile?.name ?? null,
-    warnings: (runsRes.data ?? []).flatMap((run) => [run.warning, run.status === 'no_population' ? 'ไม่มีข้อมูล TAT สำหรับหน่วยงานนี้' : null].filter((value): value is string => Boolean(value))),
+    warnings: [...new Set((runsRes.data ?? []).flatMap((run) => [run.warning, run.status === 'no_population' ? 'ไม่มีข้อมูล TAT สำหรับหน่วยงานนี้' : null].filter((value): value is string => Boolean(value))))],
   }
 }
 

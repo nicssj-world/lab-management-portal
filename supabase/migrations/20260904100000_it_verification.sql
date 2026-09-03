@@ -256,6 +256,7 @@ declare
   v_quarter integer;
   v_quota integer;
   v_population integer;
+  v_raw_count integer;
   v_sampled integer;
   v_active integer;
   v_attempt integer;
@@ -288,6 +289,10 @@ begin
   perform pg_advisory_xact_lock(hashtextextended(
     format('it-verification:%s:%s', v_upload.year, v_quarter), 0
   ));
+
+  select count(*) into v_raw_count
+  from public.tat_records
+  where upload_id = p_upload_id;
 
   for v_department in
     select d.id, d.code
@@ -377,6 +382,7 @@ begin
     ) sections;
 
     v_warning := case
+      when v_population = 0 and v_raw_count = 0 then 'ไม่พบข้อมูล raw TAT ของไฟล์นี้ (อาจถูกล้างข้อมูลแล้ว) กรุณาอัปโหลดไฟล์ใหม่'
       when v_population = 0 then 'ไม่พบประชากร LN ที่มี mapping สำหรับหน่วยงานนี้'
       when v_population < v_quota then format('ประชากรมีเพียง %s LN จึงสุ่มได้เท่าที่มี', v_population)
       else null
@@ -454,6 +460,7 @@ begin
       'runId', v_run_id,
       'status', case when v_sampled = 0 and v_population > 0 then 'completed' else v_run_status end,
       'population', v_population,
+      'rawRecords', v_raw_count,
       'quota', v_quota,
       'sampled', v_sampled,
       'unmappedSections', v_unmapped_sections,

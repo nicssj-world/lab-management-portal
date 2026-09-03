@@ -16,6 +16,8 @@ import type { VerificationSummary } from '@/lib/it-verification/types'
 
 type UploadOption = { id: string; year: number; month: number; file_name: string; row_count: number }
 
+type ToastTone = 'success' | 'warning' | 'danger'
+
 type Props = {
   initialSummary: VerificationSummary
   initialYear: number
@@ -25,11 +27,11 @@ type Props = {
 }
 
 function useToast() {
-  const [toasts, setToasts] = useState<Array<{ id: number; message: string; ok: boolean }>>([])
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; tone: ToastTone }>>([])
   const nextId = useRef(0)
-  const add = useCallback((message: string, ok = true) => {
+  const add = useCallback((message: string, tone: ToastTone = 'success') => {
     const id = ++nextId.current
-    setToasts((current) => [...current, { id, message, ok }])
+    setToasts((current) => [...current, { id, message, tone }])
     window.setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== id)), 3500)
   }, [])
   return { toasts, add }
@@ -85,7 +87,7 @@ export function VerificationOverviewClient({ initialSummary, initialYear, initia
   }, [initialQuarter, initialYear, loadSummary, quarter, year])
 
   async function generateSamples() {
-    if (!selectedUpload) { add('กรุณาเลือกไฟล์ TAT ต้นทาง', false); return }
+    if (!selectedUpload) { add('กรุณาเลือกไฟล์ TAT ต้นทาง', 'danger'); return }
     setSampling(true)
     try {
       const response = await fetch('/api/staff/it/verification/sampling/generate', {
@@ -94,11 +96,19 @@ export function VerificationOverviewClient({ initialSummary, initialYear, initia
       })
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.error ?? 'ดึงตัวอย่างไม่สำเร็จ')
-      const warnings = (body.items ?? []).map((item: { warning?: string }) => item.warning).filter(Boolean)
-      add(warnings.length ? `สร้างตัวอย่างแล้ว แต่มีคำเตือน: ${warnings.join(' · ')}` : 'สร้างชุดตัวอย่างจาก TAT แล้ว', !warnings.length)
+      const warningGroups = new Map<string, string[]>()
+      for (const item of (body.items ?? []) as Array<{ departmentCode?: string; warning?: string }>) {
+        if (!item.warning) continue
+        const codes = warningGroups.get(item.warning) ?? []
+        if (item.departmentCode) codes.push(item.departmentCode)
+        warningGroups.set(item.warning, codes)
+      }
+      const warningSummary = [...warningGroups].slice(0, 3).map(([warning, codes]) => `${codes.length ? `${codes.join(', ')}: ` : ''}${warning}`).join(' · ')
+      const moreWarnings = Math.max(0, warningGroups.size - 3)
+      add(warningGroups.size ? `สร้างตัวอย่างแล้ว แต่มีคำเตือน: ${warningSummary}${moreWarnings ? ` · และอีก ${moreWarnings} รายการ` : ''}` : 'สร้างชุดตัวอย่างจาก TAT แล้ว', warningGroups.size ? 'warning' : 'success')
       await loadSummary()
     } catch (cause) {
-      add(cause instanceof Error ? cause.message : 'ดึงตัวอย่างไม่สำเร็จ', false)
+      add(cause instanceof Error ? cause.message : 'ดึงตัวอย่างไม่สำเร็จ', 'danger')
     } finally {
       setSampling(false)
     }
@@ -113,7 +123,7 @@ export function VerificationOverviewClient({ initialSummary, initialYear, initia
         .it-verification-period { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
         .it-verification-period-controls { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; }
         .it-verification-table-wrap { overflow-x:auto; }
-        .it-verification-desktop-table { display:table; }
+        .it-verification-desktop-table { display:block; }
         .it-verification-mobile-list { display:none; }
         .it-verification-row-link { color:inherit; text-decoration:none; }
         .it-verification-row-link:hover .it-verification-dept-name { color:var(--primary); }
@@ -132,8 +142,8 @@ export function VerificationOverviewClient({ initialSummary, initialYear, initia
 
       <div aria-live="polite" style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 'min(380px, calc(100vw - 32px))' }}>
         {toasts.map((toast) => (
-          <div key={toast.id} role="status" style={{ padding: '11px 14px', borderRadius: 10, background: toast.ok ? 'var(--success)' : 'var(--danger)', color: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.18)', fontSize: 13, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            <Icon name={toast.ok ? 'check' : 'alert'} size={15} />
+          <div key={toast.id} role="status" style={{ padding: '11px 14px', borderRadius: 10, background: toast.tone === 'warning' ? 'rgba(217,119,6,.14)' : toast.tone === 'success' ? 'var(--success)' : 'var(--danger)', color: toast.tone === 'warning' ? 'var(--ink)' : '#fff', border: toast.tone === 'warning' ? '1px solid rgba(217,119,6,.30)' : undefined, boxShadow: '0 8px 24px rgba(15,23,42,.18)', fontSize: 13, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <Icon name={toast.tone === 'success' ? 'check' : 'alert'} size={15} style={{ color: toast.tone === 'warning' ? 'var(--warning)' : undefined }} />
             <span>{toast.message}</span>
           </div>
         ))}
@@ -192,7 +202,7 @@ export function VerificationOverviewClient({ initialSummary, initialYear, initia
             <Button size="lg" icon="beaker" onClick={generateSamples} disabled={sampling || !selectedUpload} aria-busy={sampling}>{sampling ? 'กำลังสุ่ม...' : 'เริ่มสร้างตัวอย่าง'}</Button>
           </div>
           <div style={{ marginTop: 12, padding: '9px 11px', borderRadius: 8, background: 'var(--surface-2)', color: 'var(--muted)', fontSize: 12, lineHeight: 1.6 }}>
-            <Icon name="lock" size={13} style={{ verticalAlign: '-2px', marginRight: 5 }} />เก็บเฉพาะ LN และ metadata ที่จำเป็นต่อการทวนสอบ ไม่มีชื่อผู้ป่วยหรือ HN
+            <Icon name="lock" size={13} style={{ verticalAlign: '-2px', marginRight: 5 }} />เก็บเฉพาะ LN และ metadata ที่จำเป็นต่อการทวนสอบ ไม่มีชื่อผู้ป่วยหรือ HN · ไฟล์ที่ถูกล้าง raw แล้วต้องอัปโหลดใหม่ก่อนสุ่ม
           </div>
         </Card>
       )}
