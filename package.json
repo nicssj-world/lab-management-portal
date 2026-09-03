@@ -31,6 +31,8 @@
     "chemical-safety:cleanup-sds": "tsx scripts/chemical-safety-sds-cleanup.ts",
     "test:contracts-cutover": "tsx scripts/contracts-cutover.test.ts",
     "test:security": "tsx scripts/rate-limit.test.ts && tsx scripts/security-hardening.test.ts && tsx scripts/satisfaction-public-flow.test.ts && tsx scripts/it-visitor-log.test.ts && tsx scripts/it-visitor-form-options.test.ts && tsx lib/it-visitor/pagination.test.ts && tsx scripts/it-visitor-pagination-ui.test.ts && tsx scripts/it-visitor-detail-ui.test.ts && tsx scripts/head-contact-module.test.ts",
+    "test:it-verification": "tsx lib/it-verification/domain.test.ts && tsx scripts/it-verification-contract.test.ts",
+    "it-verification:legacy": "node scripts/it-verification-legacy.mjs",
     "tat:local": "node scripts/tat-local-analyze.mjs",
     "tat:clean-raw": "node scripts/tat-clean-raw.mjs"
   },

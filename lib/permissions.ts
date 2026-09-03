@@ -72,7 +72,7 @@ export async function getPermissionsWithSatisfactionOverride(
 }
 
 // Grants a designated "คณะทำงาน IT" member admin-equivalent edit access to the whole
-// งาน IT module (access register + downtime log + backup log), regardless of role.
+// งาน IT module, including data-transfer verification, regardless of role.
 export async function getPermissionsWithItOverride(
   role: string,
   userId: string,
@@ -88,6 +88,9 @@ export async function getPermissionsWithItOverride(
 
   // Keep existing role-based behaviour if the SQL has not been run yet.
   if (error) return perms
-  if (data?.user_id) perms['ระบบสารสนเทศ (IT)'] = 'edit'
+  if (data?.user_id) {
+    perms['ระบบสารสนเทศ (IT)'] = 'edit'
+    perms['ทวนสอบการส่งผ่านข้อมูล HIS & LIS'] = 'edit'
+  }
   return perms
 }

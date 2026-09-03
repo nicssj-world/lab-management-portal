@@ -5,7 +5,7 @@
 // สแกน source จริงหา action string ทุกตัวที่ถูก insert เข้า audit_log (ทั้งใน app/lib และ SQL,
 // แบบ literal ตรงๆ,
 // ternary, และผ่าน audit-helper wrapper อย่าง auditRisk/auditIt/auditSafety/auditExternalQuality/
-// auditChild) แล้วเทียบกับ ACTION_LABELS ทั้ง 2 ไฟล์ + CATEGORY_ACTIONS ฝั่ง API + ปุ่มกรองหมวดหมู่
+// auditChild/auditVerification) แล้วเทียบกับ ACTION_LABELS ทั้ง 2 ไฟล์ + CATEGORY_ACTIONS ฝั่ง API + ปุ่มกรองหมวดหมู่
 //
 // นี่เป็นการสแกนด้วย regex ไม่ใช่ parser จริง — ครอบคลุมแพทเทิร์นที่มีอยู่จริงใน repo นี้เท่านั้น
 // ถ้าเพิ่ม audit-helper function ใหม่ที่ไม่ตรงกับแพทเทิร์นด้านล่าง ต้องเพิ่มการสแกนให้ครอบคลุมด้วย
@@ -47,7 +47,7 @@ function walkSql(dir: string): string[] {
 
 const SQL_SOURCE_FILES = [walkSql(join(process.cwd(), 'supabase')), walkSql(join(process.cwd(), 'scripts'))].flat()
 
-const AUDIT_HELPER_NAMES = /\baudit(?:Risk|It|HeadContact|Safety|MapRelease|ExternalQuality|Child|PurgeRetry|SatisfactionChange)\b|\bwritePmCalAudit\b/
+const AUDIT_HELPER_NAMES = /\baudit(?:Risk|It|HeadContact|Safety|MapRelease|ExternalQuality|Child|PurgeRetry|SatisfactionChange|Verification)\b|\bwritePmCalAudit\b/
 
 // action code เข้ารูป "word.word" / "word_word.word" (มี separator อย่างน้อยหนึ่งจุด) หรือคำเดี่ยวที่รู้จัก
 const ACTION_SHAPE = /^[a-z][a-z0-9]*(?:[_.][a-z0-9]+)+$/
@@ -93,6 +93,11 @@ for (const file of SOURCE_FILES) {
   // 5) auditExternalQuality('module', 'action', ...) → module.action
   for (const m of src.matchAll(/auditExternalQuality\(\s*['"](\w+)['"]\s*,\s*['"]([\w.\-]+)['"]/g)) {
     record(`${m[1]}.${m[2]}`, file)
+  }
+
+  // IT data-transfer verification helper prefixes its action with it_verification.
+  for (const m of src.matchAll(/auditVerification\(\s*['"]([\w.\-]+)['"]/g)) {
+    record(`it_verification.${m[1]}`, file)
   }
 
   // 6) personnel child tables ผ่าน auditChild (lib/personnel/crud.ts) — table name มาจาก call site จริง

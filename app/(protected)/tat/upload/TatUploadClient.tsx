@@ -94,7 +94,7 @@ interface UploadPanelProps {
   chunkUrl: string
   detectYearMonth: (rows: Record<string, string>[]) => { year: number; month: number } | null
   fileLabel: string
-  onDone: (ym: { year: number; month: number }, needsRejoin: boolean) => void
+  onDone: (ym: { year: number; month: number }, needsRejoin: boolean, samplingWarning?: string) => void
 }
 
 function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel, onDone }: UploadPanelProps) {
@@ -173,6 +173,7 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
       const totalChunks = Math.ceil(rows.length / CHUNK_SIZE)
       setChunkStatus({ current: 0, total: totalChunks })
       let needsRejoin = false
+      let samplingWarning = ''
 
       for (let i = 0; i < totalChunks; i++) {
         if (abortRef.current) break
@@ -191,13 +192,17 @@ function UploadPanel({ workerSrc, initUrl, chunkUrl, detectYearMonth, fileLabel,
           setStats(s => s ? { ...s, skipped: s.skipped + chunkJson.skipped } : s)
         }
         if (chunkJson.needs_rejoin) needsRejoin = true
+        if (chunkJson.sampling?.warning) {
+          samplingWarning = String(chunkJson.sampling.warning)
+          setWarningMsg(samplingWarning)
+        }
         setChunkStatus({ current: i + 1, total: totalChunks })
         setUploadProgress(Math.round(((i + 1) / totalChunks) * 100))
       }
 
       if (!abortRef.current) {
         setPhase('done')
-        onDone(ym, needsRejoin)
+        onDone(ym, needsRejoin, samplingWarning || undefined)
       } else {
         setPhase('idle')
       }
@@ -418,8 +423,9 @@ export function TatUploadClient() {
 
   useEffect(() => { loadHistory() }, [loadHistory])
 
-  async function handleDone(ym: { year: number; month: number }, needsRejoin: boolean, type: TabType) {
+  async function handleDone(ym: { year: number; month: number }, needsRejoin: boolean, type: TabType, samplingWarning?: string) {
     addToast(`บันทึกไฟล์${type === 'lab' ? 'ผลตรวจ' : 'การเจาะเลือด'} เดือน ${getThaiMonthLabel(ym.month)} ${ym.year + 543} สำเร็จ`)
+    if (samplingWarning && type === 'lab') addToast(`TAT สำเร็จ แต่การสุ่มตัวอย่างมีคำเตือน: ${samplingWarning}`, false)
     loadHistory()
     if (needsRejoin) {
       addToast(`กำลังเชื่อมข้อมูลเดือน ${getThaiMonthLabel(ym.month)}...`)
@@ -566,7 +572,7 @@ export function TatUploadClient() {
               chunkUrl="/api/admin/tat/upload/chunk"
               detectYearMonth={(rows) => detectYearMonthFromSpcm(rows as { spcm_at: string }[])}
               fileLabel="ผลตรวจ Lab"
-              onDone={(ym, needsRejoin) => handleDone(ym, needsRejoin, 'lab')}
+              onDone={(ym, needsRejoin, samplingWarning) => handleDone(ym, needsRejoin, 'lab', samplingWarning)}
             />
           )}
           {activeTab === 'phleb' && (

@@ -115,6 +115,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/it/access', th: 'ระบบสารสนเทศ', en: 'IT Systems', icon: 'lock', color: '#0369A1',
     children: [
       { href: '/staff/it/access',   th: 'สิทธิ์เข้าถึง HIS & LIS', en: 'Access Rights', icon: 'lock',     color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
+      { href: '/staff/it/verification', th: 'ทวนสอบการส่งผ่านข้อมูล', en: 'Data Transfer Verification', icon: 'shieldCheck', color: '#0369A1', resource: 'ทวนสอบการส่งผ่านข้อมูล HIS & LIS' },
       { href: '/staff/it/downtime', th: 'บันทึกระบบล่ม',          en: 'Downtime Log',  icon: 'alert',    color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
       { href: '/staff/it/backup',   th: 'การสำรองข้อมูล',         en: 'Backup Log',    icon: 'download', color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
       { href: '/staff/it/visitors', th: 'บันทึกการเข้า-ออก',      en: 'Visitor Log',   icon: 'users',    color: '#0369A1', resource: 'บันทึกการเข้า-ออก' },

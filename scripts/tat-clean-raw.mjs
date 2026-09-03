@@ -10,6 +10,8 @@ const TAT_CACHE_VERSION = 'v2'
 const WORKLOAD_ENDPOINT = 'lab-workload-summary'
 const URGENT_PRIORITY = 'ด่วน'
 const DELETE_BATCH_SIZE = 500
+const VERIFICATION_SAMPLING_GO_LIVE = process.env.VERIFICATION_SAMPLING_GO_LIVE || '2026-09-01'
+const VERIFICATION_DEPARTMENT_CODES = ['CHE', 'IMM', 'HEM', 'MIS', 'MIC', 'MOL', 'BLB']
 
 function usage() {
   console.log(`
@@ -22,6 +24,12 @@ Options:
   --dry-run       Check cache and row counts without deleting
   --yes           Required for actual deletion
   --force         Skip cache checks
+
+Verification guard:
+  From ${VERIFICATION_SAMPLING_GO_LIVE}, every target department must have a
+  successful/empty-population sampling run before raw rows can be deleted.
+  --force bypasses this guard and writes a force-cleanup audit entry.
+  VERIFICATION_SAMPLING_GO_LIVE may override the go-live date for controlled tests.
 
 Keeps:
   analysis_summary_cache, tat_uploads, phleb_uploads
@@ -130,6 +138,64 @@ async function validateCaches(supabase, year, month) {
   return { ok: missing.length === 0, missing, tatMain, tatUrgent, workload }
 }
 
+function isVerificationGoLiveMonth(year, month) {
+  return `${year}-${String(month).padStart(2, '0')}-01` >= VERIFICATION_SAMPLING_GO_LIVE
+}
+
+async function requireVerificationSampling(supabase, year, month) {
+  const { data: upload, error: uploadError } = await supabase
+    .from('tat_uploads')
+    .select('id, year, month')
+    .eq('year', year)
+    .eq('month', month)
+    .maybeSingle()
+  if (uploadError) throw new Error(`verification upload check ${monthKey(year, month)}: ${uploadError.message}`)
+  if (!upload) return { ok: true, reason: 'no-upload' }
+
+  const quarter = Math.ceil(month / 3)
+  const [{ data: departments, error: departmentError }, { data: rounds, error: roundError }] = await Promise.all([
+    supabase.from('departments').select('id, code').in('code', VERIFICATION_DEPARTMENT_CODES),
+    supabase.from('it_verification_rounds').select('id, department_id').eq('year', year).eq('quarter', quarter),
+  ])
+  if (departmentError) throw new Error(`verification department check: ${departmentError.message}`)
+  if (roundError) throw new Error(`verification round check: ${roundError.message}`)
+  const roundIds = (rounds || []).map(row => row.id)
+  const { data: runs, error: runError } = roundIds.length === 0
+    ? { data: [], error: null }
+    : await supabase.from('it_verification_sampling_runs').select('round_id, status, attempt, warning').eq('upload_id', upload.id).in('round_id', roundIds)
+  if (runError) throw new Error(`verification sampling check: ${runError.message}`)
+
+  const departmentById = new Map((departments || []).map(row => [row.id, row.code]))
+  const roundByDepartment = new Map((rounds || []).map(row => [row.department_id, row.id]))
+  const latestRunByRound = new Map()
+  for (const run of runs || []) {
+    const previous = latestRunByRound.get(run.round_id)
+    if (!previous || (run.attempt || 1) > (previous.attempt || 1)) latestRunByRound.set(run.round_id, run)
+  }
+  const missing = []
+  for (const code of VERIFICATION_DEPARTMENT_CODES) {
+    const departmentId = [...departmentById.entries()].find(([, value]) => value === code)?.[0]
+    const roundId = departmentId == null ? null : roundByDepartment.get(departmentId)
+    const run = roundId ? latestRunByRound.get(roundId) : null
+    const hasUnmappedWarning = typeof run?.warning === 'string' && run.warning.includes('ยังไม่ map')
+    if (!run || !['completed', 'skipped_existing', 'no_population'].includes(run.status) || hasUnmappedWarning) missing.push(code)
+  }
+  if (missing.length > 0) {
+    throw new Error(`ยัง clean raw ไม่ได้: sampling ของ ${monthKey(year, month)} ยังไม่ครบ (${missing.join(', ')}) — ตรวจสอบหน้า IT Verification หรือใช้ --force อย่างระมัดระวัง`)
+  }
+  return { ok: true, reason: 'sampling-complete' }
+}
+
+async function recordForcedVerificationCleanup(supabase, year, month) {
+  const { error } = await supabase.from('audit_log').insert({
+    action: 'it_verification.raw_cleanup.force',
+    user_id: null,
+    target: monthKey(year, month),
+    detail: `raw cleanup bypassed verification guard with --force after ${VERIFICATION_SAMPLING_GO_LIVE}`,
+  })
+  if (error) console.warn(`Could not write force-cleanup audit for ${monthKey(year, month)}: ${error.message}`)
+}
+
 async function countRows(supabase, table, year, month) {
   const { count, error } = await supabase
     .from(table)
@@ -213,6 +279,16 @@ async function main() {
       console.log('  cache: OK')
     } else {
       console.log('  cache: skipped (--force)')
+    }
+
+    if (isVerificationGoLiveMonth(year, month)) {
+      if (force) {
+        console.warn(`  WARNING: verification sampling guard bypassed for ${monthKey(year, month)} with --force`)
+        await recordForcedVerificationCleanup(supabase, year, month)
+      } else {
+        await requireVerificationSampling(supabase, year, month)
+        console.log('  verification sampling: OK')
+      }
     }
 
     const [tatCount, phlebCount] = await Promise.all([

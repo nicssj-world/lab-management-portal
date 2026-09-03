@@ -237,6 +237,7 @@ export async function POST(req: NextRequest) {
   }
 
   let needs_rejoin = false
+  let sampling: { status: 'completed' | 'warning'; items: unknown[]; warning?: string } | undefined
 
   if (is_last_chunk) {
     const { count } = await supabaseAdmin
@@ -262,7 +263,65 @@ export async function POST(req: NextRequest) {
       console.warn('refreshLabWorkloadSummary failed after TAT upload', err)
     }
     await invalidateAnalysisCache(upload.year, upload.month)
+
+    // Sampling is deliberately synchronous with the final upload chunk so the
+    // verification evidence is created while TAT rows are still available. A
+    // sampler failure must never turn a successful TAT upload into a failed upload.
+    try {
+      const { data: samplingItems, error: samplingError } = await supabaseAdmin.rpc(
+        'generate_it_verification_samples_from_tat',
+        {
+          p_upload_id: upload_id,
+          p_actor_id: actor.id,
+          p_trigger: 'auto_upload',
+          p_department_id: null,
+        },
+      )
+      if (samplingError) {
+        console.warn('IT verification sampling failed after TAT upload', samplingError.message)
+        sampling = { status: 'warning', items: [], warning: 'อัปโหลด TAT สำเร็จ แต่สร้างตัวอย่างทวนสอบไม่สำเร็จ กรุณาลองสร้างตัวอย่างใหม่' }
+        await supabaseAdmin.from('audit_log').insert({
+          action: 'it_verification.sampling.generate',
+          user_id: actor.id,
+          target: upload_id,
+          detail: `trigger=auto_upload; status=failed; error=${samplingError.message}`.slice(0, 1000),
+        })
+      } else {
+        const items = Array.isArray(samplingItems) ? samplingItems : []
+        const warnings = items
+          .map((item) => (item && typeof item === 'object' && 'warning' in item ? String((item as { warning?: unknown }).warning ?? '') : ''))
+          .filter(Boolean)
+        sampling = {
+          status: warnings.length > 0 ? 'warning' : 'completed',
+          items,
+          ...(warnings.length > 0 ? { warning: warnings.join(' · ') } : {}),
+        }
+        const { error: samplingAuditError } = await supabaseAdmin.from('audit_log').insert({
+          action: 'it_verification.sampling.generate',
+          user_id: actor.id,
+          target: upload_id,
+          detail: 'trigger=auto_upload',
+        })
+        if (samplingAuditError) {
+          console.warn('IT verification sampling audit failed after TAT upload', samplingAuditError.message)
+          sampling = {
+            ...sampling,
+            status: 'warning',
+            warning: [sampling.warning, 'สร้างตัวอย่างแล้ว แต่บันทึก audit ไม่สำเร็จ'].filter(Boolean).join(' · '),
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('IT verification sampling unavailable after TAT upload', error)
+      sampling = { status: 'warning', items: [], warning: 'อัปโหลด TAT สำเร็จ แต่ระบบทวนสอบยังไม่พร้อม กรุณาตรวจ migration หรือ retry' }
+      await supabaseAdmin.from('audit_log').insert({
+        action: 'it_verification.sampling.generate',
+        user_id: actor.id,
+        target: upload_id,
+        detail: `trigger=auto_upload; status=unavailable; error=${error instanceof Error ? error.message : 'unknown error'}`.slice(0, 1000),
+      })
+    }
   }
 
-  return NextResponse.json({ inserted: insertedCount, skipped, joined: false, needs_rejoin })
+  return NextResponse.json({ inserted: insertedCount, skipped, joined: false, needs_rejoin, ...(sampling ? { sampling } : {}) })
 }

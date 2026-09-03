@@ -54,6 +54,8 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/personnel/workforce':  { th: 'Dashboard อัตรากำลัง',     en: 'Workforce Dashboard' },
   '/staff/personnel/org':        { th: 'ผังองค์กร',               en: 'Organization Chart' },
   '/staff/it/access':            { th: 'ทะเบียนสิทธิ์การเข้าถึงระบบสารสนเทศ HIS & LIS', en: 'IT System Access Rights' },
+  '/staff/it/verification/settings': { th: 'ตั้งค่าการทวนสอบข้อมูล', en: 'Verification Settings' },
+  '/staff/it/verification':      { th: 'ทวนสอบการส่งผ่านข้อมูล HIS & LIS', en: 'HIS & LIS Data Transfer Verification' },
   '/staff/it/downtime':          { th: 'บันทึกระบบล่ม',             en: 'System Downtime Log' },
   '/staff/it/backup':            { th: 'ทะเบียนการสำรองข้อมูล',      en: 'Backup Log' },
   '/staff/it/visitors':          { th: 'บันทึกการเข้า-ออก',          en: 'Visitor Log' },

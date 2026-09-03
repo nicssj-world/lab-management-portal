@@ -38,6 +38,11 @@ const ACTION_LABELS: Record<string, string> = {
   'lab_map.assembly_verification.create':         'ยืนยันจุดรวมพลหน้างาน',
   'lab_map.safety_editor.grant':                  'แต่งตั้งผู้แก้ไขข้อมูลความปลอดภัย',
   'lab_map.safety_editor.revoke':                 'ถอนผู้แก้ไขข้อมูลความปลอดภัย',
+  'lab_map.evacuation.plan.create':               'สร้างแผนอพยพฉุกเฉิน',
+  'lab_map.evacuation.plan.update':               'แก้ไขแผนอพยพฉุกเฉิน',
+  'lab_map.evacuation.drill_cycle.create':        'สร้างรอบซ้อมอพยพ',
+  'lab_map.evacuation.drill_session.create':     'บันทึกผลการซ้อมอพยพ',
+  'lab_map.evacuation.drill_session.update':     'แก้ไขผลการซ้อมอพยพ',
   // รายการตรวจ
   'test.create':                                  'เพิ่มรายการตรวจ',
   'test.update':                                  'แก้ไขรายการตรวจ',
@@ -191,6 +196,7 @@ const ACTION_LABELS: Record<string, string> = {
   'quality_task.template.update':                 'แก้ไขกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   'quality_task.template.delete':                  'ลบกิจกรรมคุณภาพ (ทะเบียนกิจกรรม)',
   'quality_task.check_in':                        'เช็คอินกิจกรรมคุณภาพ',
+  'quality_task.check_in.open':                   'เปิดรับเช็คอินกิจกรรมคุณภาพ',
   'quality_task.check_in.close':                  'ปิดรับเช็คอินกิจกรรมคุณภาพ',
   'quality_task.holiday.create':                  'เพิ่มวันหยุด (งานคุณภาพ)',
   'quality_task.holiday.update':                  'แก้ไขวันหยุด (งานคุณภาพ)',
@@ -244,6 +250,17 @@ const ACTION_LABELS: Record<string, string> = {
   'it_backup.create':                             'บันทึกการสำรองข้อมูล',
   'it_backup.update':                             'แก้ไขบันทึกการสำรองข้อมูล',
   'it_backup.delete':                             'ลบบันทึกการสำรองข้อมูล',
+  'it_verification.sampling.generate':            'สร้างชุดตัวอย่างการทวนสอบจาก TAT',
+  'it_verification.sampling.resample':            'สุ่มชุดตัวอย่างการทวนสอบใหม่',
+  'it_verification.sample.update':                'บันทึกผลตัวอย่างการทวนสอบ',
+  'it_verification.finding.update':               'อัปเดต finding การทวนสอบ',
+  'it_verification.round.submit':                 'ส่งรอบการทวนสอบให้ตรวจสอบ',
+  'it_verification.round.review':                 'ตรวจสอบรอบการทวนสอบ',
+  'it_verification.round.reopen':                 'เปิดรอบการทวนสอบที่ล็อกแล้ว',
+  'it_verification.mapping.update':               'แก้ไข mapping lab section การทวนสอบ',
+  'it_verification.assignee.update':              'มอบหมายผู้รับผิดชอบการทวนสอบ',
+  'it_verification.export.pdf':                   'ส่งออกแบบฟอร์มการทวนสอบ PDF',
+  'it_verification.raw_cleanup.force':            'ล้างข้อมูลดิบ TAT แบบ force',
   // บันทึกการเข้า-ออก
   'it_visitor.update':                            'แก้ไขบันทึกการเข้า-ออก',
   'it_visitor.delete':                            'ลบบันทึกการเข้า-ออก',
@@ -334,6 +351,7 @@ const ACTION_LABELS: Record<string, string> = {
   'public_section_items':                         'จัดการรายการในหมวดเอกสารที่เกี่ยวข้อง',
   'public_section_upload':                        'อัปโหลดไฟล์เอกสารที่เกี่ยวข้อง',
   'public_section_upload_delete':                 'ลบไฟล์เอกสารที่เกี่ยวข้อง',
+  'requisition.receipt_signature_drawn':          'ลงลายมือชื่อรับวัสดุ/สิ่งของ',
 }
 
 const CATEGORIES = [
@@ -352,6 +370,7 @@ const CATEGORIES = [
   { key: 'outlab', label: 'OUTLAB' },
   { key: 'it', label: 'งาน IT' },
   { key: 'it_visitor', label: 'บันทึกการเข้า-ออก' },
+  { key: 'requisition', label: 'เบิกจ่ายวัสดุ' },
   { key: 'personnel', label: 'บุคลากร' },
   { key: 'head_contact', label: 'สื่อสารถึงหัวหน้า' },
 ]
