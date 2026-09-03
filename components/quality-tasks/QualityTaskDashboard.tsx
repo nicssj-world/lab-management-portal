@@ -27,6 +27,7 @@ import {
   buildReadAudiencePickerState,
 } from "@/lib/documents/read-audience";
 import { QUALITY_TASK_CATEGORIES } from "@/lib/quality-tasks/categories";
+import { addLogoToQrDataUrl } from "@/lib/qr-logo";
 import {
   isWeekendDate,
   occurrenceCalendarRange,
@@ -1158,12 +1159,12 @@ export function QualityTaskDashboard({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       const url = `${window.location.origin}/checkin/${json.token}`;
-      const dataUrl = await QRCode.toDataURL(url, {
+      const dataUrl = await addLogoToQrDataUrl(await QRCode.toDataURL(url, {
         width: 480,
         margin: 2,
-        errorCorrectionLevel: "M",
+        errorCorrectionLevel: "H",
         color: { dark: "#0F172A", light: "#FFFFFF" },
-      });
+      }));
       const checkInWindow = getCheckInWindow(
         o.plannedDate,
         o.plannedStartTime,

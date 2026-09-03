@@ -22,6 +22,7 @@ import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
 import { EQUIPMENT_WORK_GROUPS, isEquipmentAreaSelectable } from '@/lib/equipment-map/walk-groups'
 import { compressEquipmentPhoto } from '@/lib/equipment/photo-compression'
+import { addLogoToQrDataUrl } from '@/lib/qr-logo'
 import type { Equipment, EquipmentSummaryCounts } from '@/lib/queries/equipment'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 
@@ -1414,7 +1415,7 @@ function EquipmentQrTab({ classifications, departments }: { classifications: str
     const missing = filtered.filter(eq => !qrMap[eq.id])
     if (missing.length === 0) return
     Promise.all(missing.map(async eq => {
-      const dataUrl = await QRCode.toDataURL(`${origin}/e/${eq.id}`, { width: 240, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#0F172A', light: '#FFFFFF' } })
+      const dataUrl = await addLogoToQrDataUrl(await QRCode.toDataURL(`${origin}/e/${eq.id}`, { width: 240, margin: 1, errorCorrectionLevel: 'H', color: { dark: '#0F172A', light: '#FFFFFF' } }))
       return [eq.id, dataUrl] as const
     })).then(pairs => {
       if (cancelled) return

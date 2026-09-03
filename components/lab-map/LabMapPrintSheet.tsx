@@ -5,6 +5,7 @@ import QRCode from 'qrcode'
 import { LabMapCanvas } from './LabMapCanvas'
 import { LabMapPrintStyles } from './LabMapPrintStyles'
 import { LabMapStyles } from './LabMapStyles'
+import { addLogoToQrDataUrl } from '@/lib/qr-logo'
 import type { MapPrintDTO } from '@/lib/lab-map/print'
 
 export function LabMapPrintSheet({ dto }: { dto: MapPrintDTO }) {
@@ -15,6 +16,7 @@ export function LabMapPrintSheet({ dto }: { dto: MapPrintDTO }) {
     let cancelled = false
     setQr({ webUrl: dto.webUrl, dataUrl: '', state: 'loading' })
     void QRCode.toDataURL(dto.webUrl, { width: 512, margin: 2, errorCorrectionLevel: 'H' })
+      .then(addLogoToQrDataUrl)
       .then((dataUrl) => { if (!cancelled) setQr({ webUrl: dto.webUrl, dataUrl, state: 'ready' }) })
       .catch(() => { if (!cancelled) setQr({ webUrl: dto.webUrl, dataUrl: '', state: 'failed' }) })
     return () => { cancelled = true }

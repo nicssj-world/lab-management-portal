@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Icon } from '@/components/ui/Icon'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { addLogoToQrDataUrl } from '@/lib/qr-logo'
 import {
   HEAD_CONTACT_CATEGORIES,
   HEAD_CONTACT_CATEGORY_LABEL,
@@ -107,7 +108,7 @@ export function HeadContactClient({ initialRows, initialTotal, initialSummary, i
 
   async function makeQr(token: string) {
     const url = `${window.location.origin}/h/${token}`
-    setQrData(await QRCode.toDataURL(url, { width: 720, margin: 2, color: { dark: '#123F3D', light: '#FFFFFF' } }))
+    setQrData(await addLogoToQrDataUrl(await QRCode.toDataURL(url, { width: 720, margin: 2, errorCorrectionLevel: 'H', color: { dark: '#123F3D', light: '#FFFFFF' } })))
   }
 
   async function patchSettings(body: { is_open?: boolean; rotateToken?: true }) {

@@ -7,6 +7,7 @@ import QRCode from 'qrcode'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
+import { addLogoToQrDataUrl } from '@/lib/qr-logo'
 import type { Department, SatisfactionCampaignListItem, SatisfactionSurveyListItem } from '@/lib/supabase/types'
 import { SatisfactionDialog } from './SatisfactionDialog'
 import { SatisfactionInlineError, SatisfactionStatusBadge } from './SatisfactionPrimitives'
@@ -174,7 +175,7 @@ export function CampaignManager({ campaigns, surveys }: { campaigns: Satisfactio
     setQrLoadingId(campaign.id); setQrError(''); setCopyState('idle')
     try {
       const url = `${window.location.origin}/s/${campaign.publicToken}`
-      const dataUrl = await QRCode.toDataURL(url, { width: 720, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#0F172A', light: '#FFFFFF' } })
+      const dataUrl = await addLogoToQrDataUrl(await QRCode.toDataURL(url, { width: 720, margin: 2, errorCorrectionLevel: 'H', color: { dark: '#0F172A', light: '#FFFFFF' } }))
       setQr({ name: campaign.name, url, dataUrl })
     } catch (caught) { setQrError(caught instanceof Error ? caught.message : 'สร้าง QR Code ไม่สำเร็จ') } finally { setQrLoadingId('') }
   }

@@ -12,6 +12,7 @@ import { Stat } from '@/components/ui/Stat'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { VisitorFormOptionsEditor } from '@/components/it-visitor/VisitorFormOptionsEditor'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
+import { addLogoToQrDataUrl } from '@/lib/qr-logo'
 import {
   ACTIVITY_LABEL, ACTIVITY_TYPES, APPOINTMENT_LABEL, APPOINTMENTS,
   BADGE_LABEL, BADGE_STATES, ORG_TYPE_LABEL, ORG_TYPES, SAFETY_LABEL,
@@ -269,10 +270,10 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
   async function showQr() {
     if (!settings) { add('ยังไม่ได้ตั้งค่าฟอร์ม — กรุณารัน scripts/it-visitor-log.sql', false); return }
     const url = `${window.location.origin}/v/${settings.public_token}`
-    const dataUrl = await QRCode.toDataURL(url, {
-      width: 720, margin: 2, errorCorrectionLevel: 'M',
+    const dataUrl = await addLogoToQrDataUrl(await QRCode.toDataURL(url, {
+      width: 720, margin: 2, errorCorrectionLevel: 'H',
       color: { dark: '#0F172A', light: '#FFFFFF' },
-    })
+    }))
     setQrDataUrl(dataUrl)
     setQrOpen(true)
   }
