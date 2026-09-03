@@ -627,17 +627,177 @@ begin
 end;
 $$;
 
+create or replace function public.import_it_verification_legacy_form(
+  p_year integer,
+  p_quarter integer,
+  p_department_id integer,
+  p_source_file_name text,
+  p_source_file_id text,
+  p_actor_id uuid,
+  p_samples jsonb,
+  p_warning text default null
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_round_id uuid;
+  v_round_status text;
+  v_run_id uuid;
+  v_existing_run record;
+  v_department_code text;
+  v_sample_count integer;
+begin
+  if p_year not between 2000 and 2200 or p_quarter not between 1 and 4 then
+    raise exception 'legacy form year or quarter is invalid';
+  end if;
+  if nullif(btrim(coalesce(p_source_file_name, '')), '') is null then
+    raise exception 'legacy form source file name is required';
+  end if;
+  if jsonb_typeof(coalesce(p_samples, '[]'::jsonb)) <> 'array' then
+    raise exception 'legacy form samples must be a JSON array';
+  end if;
+
+  select d.code into v_department_code
+  from public.departments d
+  where d.id = p_department_id;
+  if not found or v_department_code not in ('CHE', 'IMM', 'HEM', 'MIS', 'MIC', 'MOL', 'BLB') then
+    raise exception 'department is outside the IT verification scope';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(
+    format('it-verification-legacy:%s:%s:%s', p_year, p_quarter, p_department_id), 0
+  ));
+
+  insert into public.it_verification_rounds (year, quarter, department_id, created_by)
+  values (p_year, p_quarter, p_department_id, p_actor_id)
+  on conflict (year, quarter, department_id) do update set updated_at = now()
+  returning id, status into v_round_id, v_round_status;
+
+  select sr.id, sr.status, sr.sampled_count
+  into v_existing_run
+  from public.it_verification_sampling_runs sr
+  where sr.round_id = v_round_id
+    and sr.sampling_method = 'legacy_manual'
+    and sr.algorithm = 'legacy-form-v1'
+    and sr.status <> 'void'
+  order by sr.created_at desc
+  limit 1;
+  if found then
+    return jsonb_build_object(
+      'status', 'skipped_existing',
+      'roundId', v_round_id,
+      'runId', v_existing_run.id,
+      'sampled', coalesce(v_existing_run.sampled_count, 0)
+    );
+  end if;
+  if v_round_status <> 'draft' then
+    raise exception 'verification round is not editable';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(coalesce(p_samples, '[]'::jsonb)) as item,
+         jsonb_object_keys(item) as key
+    where lower(key) in ('hn', 'patient_name', 'patientname', 'name')
+  ) then
+    raise exception 'legacy verification import cannot contain patient identifiers';
+  end if;
+
+  select count(*) into v_sample_count
+  from jsonb_array_elements(coalesce(p_samples, '[]'::jsonb));
+  if v_sample_count > 10 then
+    raise exception 'a legacy verification form cannot contain more than 10 samples';
+  end if;
+  if exists (
+    select 1
+    from jsonb_to_recordset(coalesce(p_samples, '[]'::jsonb)) as incoming(ln text, lis_to_his text, source_to_lis text, remark text)
+    where nullif(btrim(incoming.ln), '') is null
+       or incoming.lis_to_his is not null and incoming.lis_to_his not in ('pass', 'fail', 'na')
+       or incoming.source_to_lis is not null and incoming.source_to_lis not in ('pass', 'fail', 'na')
+       or incoming.lis_to_his in ('fail', 'na')
+       or incoming.source_to_lis in ('fail', 'na')
+  ) then
+    raise exception 'legacy form samples must contain only pass or draft results';
+  end if;
+  if exists (
+    select 1
+    from jsonb_to_recordset(coalesce(p_samples, '[]'::jsonb)) as incoming(ln text, lis_to_his text, source_to_lis text, remark text)
+    group by btrim(incoming.ln)
+    having count(*) > 1
+  ) then
+    raise exception 'legacy form contains duplicate LN values';
+  end if;
+  if exists (
+    select 1
+    from public.it_verification_samples existing
+    join jsonb_to_recordset(coalesce(p_samples, '[]'::jsonb)) as incoming(ln text, lis_to_his text, source_to_lis text, remark text)
+      on existing.ln = btrim(incoming.ln)
+    where existing.round_id = v_round_id and existing.department_id = p_department_id and existing.sample_state = 'active'
+  ) then
+    raise exception 'legacy form would duplicate an active LN in this round';
+  end if;
+
+  insert into public.it_verification_sampling_runs (
+    round_id, source_year, source_month, source_file_name, source_row_count,
+    trigger, sampling_method, algorithm, quota, population_count, sampled_count,
+    status, warning, created_by
+  ) values (
+    v_round_id, p_year, null, left(btrim(p_source_file_name), 500), null,
+    'legacy_import', 'legacy_manual', 'legacy-form-v1', v_sample_count, v_sample_count, v_sample_count,
+    'completed', nullif(btrim(p_warning), ''), p_actor_id
+  ) returning id into v_run_id;
+
+  insert into public.it_verification_samples (
+    round_id, sampling_run_id, department_id, ln, source_month, source_lab_section,
+    test_name, first_spcm_at, last_result_at, source_record_count, sampling_method,
+    lis_to_his, source_to_lis, remark
+  )
+  select
+    v_round_id, v_run_id, p_department_id, btrim(incoming.ln), null, null,
+    null, null, null, 0, 'legacy_manual', incoming.lis_to_his, incoming.source_to_lis,
+    coalesce(incoming.remark, '')
+  from jsonb_to_recordset(coalesce(p_samples, '[]'::jsonb)) as incoming(ln text, lis_to_his text, source_to_lis text, remark text);
+
+  insert into public.audit_log (action, user_id, target, detail)
+  values (
+    'it_verification.sampling.generate',
+    p_actor_id,
+    v_round_id::text,
+    left(format(
+      'trigger=legacy_import; source=drive:%s; file=%s; year=%s; quarter=%s; department=%s; samples=%s',
+      coalesce(nullif(btrim(p_source_file_id), ''), 'unknown'),
+      left(btrim(p_source_file_name), 200), p_year, p_quarter, v_department_code, v_sample_count
+    ), 2000)
+  );
+
+  return jsonb_build_object(
+    'status', 'completed',
+    'roundId', v_round_id,
+    'runId', v_run_id,
+    'sampled', v_sample_count,
+    'warning', nullif(btrim(p_warning), '')
+  );
+end;
+$$;
+
 revoke all on function public.generate_it_verification_samples_from_tat(uuid, uuid, text, integer)
   from public, anon, authenticated;
 revoke all on function public.resample_it_verification_samples_from_tat(uuid, uuid, integer, text)
   from public, anon, authenticated;
 revoke all on function public.update_it_verification_sample(uuid, uuid, text, text, text, jsonb)
   from public, anon, authenticated;
+revoke all on function public.import_it_verification_legacy_form(integer, integer, integer, text, text, uuid, jsonb, text)
+  from public, anon, authenticated;
 grant execute on function public.generate_it_verification_samples_from_tat(uuid, uuid, text, integer)
   to service_role;
 grant execute on function public.resample_it_verification_samples_from_tat(uuid, uuid, integer, text)
   to service_role;
 grant execute on function public.update_it_verification_sample(uuid, uuid, text, text, text, jsonb)
+  to service_role;
+grant execute on function public.import_it_verification_legacy_form(integer, integer, integer, text, text, uuid, jsonb, text)
   to service_role;
 
 notify pgrst, 'reload schema';

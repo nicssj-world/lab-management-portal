@@ -36,7 +36,7 @@ test('verification migration creates the complete protected schema and seeds the
   assert.match(sql, /before delete on public\.it_verification_(sampling_runs|samples|findings|rounds)/i)
   assert.match(sql, /revoke delete, truncate[\s\S]*?from service_role/i)
   assert.match(sql, /fail' and not exists[\s\S]*?status <> 'closed'/i)
-  assert.doesNotMatch(sql, /patient_name|patient_name|hn\s+text/i)
+  assert.doesNotMatch(sql, /(?:patient_name|patientname|hn)\s+(?:text|varchar|char|citext)/i)
 })
 
 test('verification navigation and permission resource are wired to the existing shell', () => {

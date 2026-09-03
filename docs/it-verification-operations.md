@@ -21,6 +21,7 @@
    - `generate_it_verification_samples_from_tat(...)`
    - `resample_it_verification_samples_from_tat(...)`
    - `update_it_verification_sample(...)`
+   - `import_it_verification_legacy_form(...)` (service-role only)
 
 4. ตรวจ mapping seed 7 รายการจาก TAT และเติม mapping ของ `POCT2` หรือ `ตรวจพิเศษและปฏิบัติการตรวจต่อ` เมื่อเจ้าของงานยืนยันหน่วยงานปลายทางแล้ว
 5. กำหนดสมาชิกคณะทำงาน IT ใน `it_editors` และมอบหมายผู้รับผิดชอบแต่ละหน่วยงานจากหน้าตั้งค่า
@@ -44,7 +45,33 @@
 
 ## Legacy evidence
 
-ไม่มีการ backfill Q1 อัตโนมัติ ใช้ importer เฉพาะเมื่อมีข้อมูลที่ยืนยันแล้ว:
+แบบฟอร์มย้อนหลังจาก Google Drive ใช้โหมด `legacy_manual` ไม่ใช่การสุ่มจาก TAT โดยตรง
+ตัวนำเข้าจะอ่านไฟล์แบบ read-only ผ่าน XLSX export, ใช้ปี พ.ศ. จากโฟลเดอร์เป็นหลัก,
+อ่านแท็บ Q1–Q4 ทุกแท็บ, แปลง `LAB ID` เป็น `LN` และ `P` เป็น `pass` แล้วคงรอบเป็น `draft`
+เพื่อให้ผู้รับผิดชอบตรวจสอบก่อนส่ง แบบฟอร์มว่างจะสร้างเฉพาะรอบ draft และไม่สร้าง sample ปลอม
+
+ตรวจ preview ก่อนเสมอ (คำสั่งนี้ไม่เขียนฐานข้อมูล):
+
+```text
+npm run it-verification:drive-import
+```
+
+เลือกปีได้ด้วย `--years`:
+
+```text
+npm run it-verification:drive-import -- --years 2567,2568,2569
+```
+
+เมื่อตรวจ preview แล้ว ให้ apply ด้วย actor UUID ของผู้ดำเนินการเท่านั้น:
+
+```text
+npm run it-verification:drive-import -- --years 2567,2568,2569 --apply --actor-id <uuid>
+```
+
+ตัวนำเข้า idempotent ต่อรอบ/หน่วยงาน/ปี และจะ skip รอบที่มี `legacy-form-v1` อยู่แล้ว
+ไม่แก้ไขไฟล์หรือสิทธิ์ใน Google Drive และไม่ใส่ `source_month`, test name, เวลา หรือข้อมูลผู้ป่วยที่ไม่มีในแบบฟอร์ม
+
+สำหรับข้อมูล legacy ที่เตรียมเป็น CSV/TSV เอง ยังใช้ importer เดิมได้:
 
 ```text
 npm run it-verification:legacy -- --file evidence.tsv --round-id <uuid> --department-id 11 --actor-id <uuid>
