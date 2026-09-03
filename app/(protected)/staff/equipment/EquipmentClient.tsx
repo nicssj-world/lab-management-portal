@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, useId } from 'react'
 import Link from 'next/link'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/Button'
@@ -17,7 +17,14 @@ import { EquipmentDetailModal } from '@/components/equipment/EquipmentDetailModa
 import { EquipmentPmCalModal } from '@/components/equipment/EquipmentPmCalModal'
 import { PmCalPlanWorkspace } from '@/components/equipment/PmCalPlanWorkspace'
 import { equipmentDepartmentsInUse, mergeEquipmentDepartments } from '@/lib/equipment/departments'
-import { getLabCodeInfo, LAB_CODE_CLASSIFICATIONS } from '@/lib/equipment-lab-code'
+import {
+  getLabCodeInfo,
+  LAB_CODE_CLASSIFICATIONS,
+  LAB_CODE_FORMAT,
+  normalizeLabCode,
+  parseLabCode,
+  parseLabDepartmentCode,
+} from '@/lib/equipment-lab-code'
 import { getCurrentThaiFiscalYear } from '@/lib/kpi-utils'
 import { isPdfLike, viewerFileNameFromPath } from '@/lib/pdf-viewer-utils'
 import { EQUIPMENT_WORK_GROUPS, isEquipmentAreaSelectable } from '@/lib/equipment-map/walk-groups'
@@ -220,6 +227,27 @@ const labelStyle: React.CSSProperties = {
 
 const CLASSIFICATION_OPTIONS = Object.values(LAB_CODE_CLASSIFICATIONS)
 
+function FieldHint({ label, children, align = 'start' }: { label: string; children: React.ReactNode; align?: 'start' | 'end' }) {
+  const tooltipId = useId()
+
+  return (
+    <span className="eq-risk-hint">
+      <button
+        type="button"
+        className="eq-risk-hint-btn"
+        aria-label={label}
+        aria-describedby={tooltipId}
+        aria-haspopup="true"
+      >
+        ?
+      </button>
+      <span id={tooltipId} className={`eq-risk-hint-popover${align === 'end' ? ' is-end' : ''}`} role="tooltip">
+        <span className="eq-risk-hint-popover-content">{children}</span>
+      </span>
+    </span>
+  )
+}
+
 function RiskHint() {
   const term = (text: string, color: string, bg: string) => (
     <strong style={{ color, background: bg, padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap' }}>
@@ -228,20 +256,76 @@ function RiskHint() {
   )
 
   return (
-    <span className="eq-risk-hint">
-      <button type="button" className="eq-risk-hint-btn" aria-label="รายละเอียดระดับความเสี่ยง">?</button>
-      <span className="eq-risk-hint-popover" role="tooltip">
-        <span>
-          {term('High Risk', '#B91C1C', 'rgba(220,38,38,.10)')} หมายถึงเครื่องมือที่ใช้ในการช่วยชีวิต เครื่องมือที่ใช้ในการติดตามสัญญาณชีพ และเครื่องมืออื่น ๆ ที่ชำรุดหรือใช้งานผิดพลาด ซึ่งอาจเป็นเหตุให้เกิดอันตรายขั้นร้ายแรงต่อผู้ป่วยหรือผู้ใช้งาน เช่น ตู้ Biosafety cabinet และ Autoclave
-        </span>
-        <span>
-          {term('Medium Risk', '#B45309', 'rgba(217,119,6,.13)')} หมายถึงเครื่องมือที่ใช้ในการวินิจฉัย ซึ่งอาจเกิดความผิดพลาดจากการใช้งาน ชำรุด ไม่สามารถใช้งานได้ หรือไม่เพียงพอต่อการใช้งาน ทำให้มีผลกระทบต่อความปลอดภัยของผู้ป่วยแต่ไม่ถึงขั้นอันตรายร้ายแรง เช่น Blood bank refrigerators, Blood Gas / pH Analyzers, Centrifuges and Clinical lab equipment, Bio-safety Cabinet Class II และ Microscope
-        </span>
-        <span>
-          {term('Low Risk', '#0E7490', 'rgba(8,145,178,.10)')} หมายถึงเครื่องมือที่ชำรุดไม่สามารถใช้งานได้หรือเกิดความผิดพลาดในการใช้งาน ซึ่งทำให้เกิดผลกระทบต่อผู้ป่วยที่ไม่ร้ายแรง เช่น Electronic Thermometer, Temperature Monitors
-        </span>
+    <FieldHint label="รายละเอียดระดับความเสี่ยง">
+      <span>
+        {term('High Risk', '#B91C1C', 'rgba(220,38,38,.10)')} หมายถึงเครื่องมือที่ใช้ในการช่วยชีวิต เครื่องมือที่ใช้ในการติดตามสัญญาณชีพ และเครื่องมืออื่น ๆ ที่ชำรุดหรือใช้งานผิดพลาด ซึ่งอาจเป็นเหตุให้เกิดอันตรายขั้นร้ายแรงต่อผู้ป่วยหรือผู้ใช้งาน เช่น ตู้ Biosafety cabinet และ Autoclave
       </span>
-    </span>
+      <span>
+        {term('Medium Risk', '#B45309', 'rgba(217,119,6,.13)')} หมายถึงเครื่องมือที่ใช้ในการวินิจฉัย ซึ่งอาจเกิดความผิดพลาดจากการใช้งาน ชำรุด ไม่สามารถใช้งานได้ หรือไม่เพียงพอต่อการใช้งาน ทำให้มีผลกระทบต่อความปลอดภัยของผู้ป่วยแต่ไม่ถึงขั้นอันตรายร้ายแรง เช่น Blood bank refrigerators, Blood Gas / pH Analyzers, Centrifuges and Clinical lab equipment, Bio-safety Cabinet Class II และ Microscope
+      </span>
+      <span>
+        {term('Low Risk', '#0E7490', 'rgba(8,145,178,.10)')} หมายถึงเครื่องมือที่ชำรุดไม่สามารถใช้งานได้หรือเกิดความผิดพลาดในการใช้งาน ซึ่งทำให้เกิดผลกระทบต่อผู้ป่วยที่ไม่ร้ายแรง เช่น Electronic Thermometer, Temperature Monitors
+      </span>
+    </FieldHint>
+  )
+}
+
+function LabCodeHint() {
+  return (
+    <FieldHint label="กติกาการอ่านรหัส LAB">
+      <span>รูปแบบรหัส: <code style={{ color: 'var(--primary)', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }}>{LAB_CODE_FORMAT}</code></span>
+      <span><strong>XX</strong> = รหัสหน่วยงาน · <strong>NN</strong> = รหัส Classification · <strong>XXX</strong> = เลขลำดับเครื่องมือ</span>
+      <span>ตัวอย่าง <code style={{ color: 'var(--primary)', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }}>LAB-CC-02-001</code> → งานเคมีคลินิก · Centrifuge</span>
+      <span>เมื่อเป็นรหัสที่ระบบรู้จัก หน่วยงานและ Classification จะถูกเติมให้อัตโนมัติ</span>
+    </FieldHint>
+  )
+}
+
+function ClassificationHint() {
+  return (
+    <FieldHint label="รายละเอียด Classification" align="end">
+      <span>Classification คือประเภทของเครื่องมือ ระบบจะอ่านจากส่วน <strong>NN</strong> ของรหัส LAB และเติมค่าให้โดยอัตโนมัติ</span>
+      <span style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '4px 12px' }}>
+        {Object.entries(LAB_CODE_CLASSIFICATIONS).map(([code, name]) => (
+          <span key={code}><code style={{ color: 'var(--primary)', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }}>{code}</code> {name}</span>
+        ))}
+      </span>
+      <span>ถ้ายังไม่มีรหัส LAB สามารถเลือก Classification เองได้</span>
+    </FieldHint>
+  )
+}
+
+function LabCodeRuleHint({ code, pending }: { code: string | null | undefined; pending: boolean }) {
+  if (pending) return null
+
+  const value = String(code ?? '').trim()
+  const normalized = normalizeLabCode(value)
+  const departmentCode = parseLabDepartmentCode(normalized)
+  const parsed = parseLabCode(normalized)
+  const info = getLabCodeInfo(normalized)
+
+  return (
+    <div
+      id="equipment-lab-code-rule"
+      aria-live="polite"
+      style={{ marginTop: 6, padding: '7px 9px', borderRadius: 7, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 11, lineHeight: 1.5, color: 'var(--muted)' }}
+    >
+      <div>
+        กติกา <code style={{ color: 'var(--primary)', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }}>{LAB_CODE_FORMAT}</code>
+        <span> · XX = หน่วยงาน · NN = Classification · XXX = ลำดับ</span>
+      </div>
+      {info.department ? (
+        <div style={{ marginTop: 2, color: 'var(--primary)', fontWeight: 700 }}>
+          ✓ LAB-{departmentCode} → {info.department}
+          {info.classification && parsed ? ` · ${parsed.classificationCode} → ${info.classification}` : ''}
+          <span style={{ color: 'var(--muted)', fontWeight: 500 }}> · หน่วยงานจะถูกผูกอัตโนมัติ</span>
+        </div>
+      ) : value ? (
+        <div style={{ marginTop: 2, color: 'var(--warning)', fontWeight: 600 }}>
+          ยังไม่พบกฎของ {departmentCode ? `LAB-${departmentCode}` : 'รหัสนี้'} · กรุณาตรวจสอบรหัสหรือเลือกหน่วยงานเอง
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -296,7 +380,7 @@ function EquipmentModal({
   }
 
   function setLabCode(value: string) {
-    const cbhCode = value || null
+    const cbhCode = normalizeLabCode(value)
     const labInfo = getLabCodeInfo(cbhCode)
     setForm(f => ({
       ...f,
@@ -305,6 +389,9 @@ function EquipmentModal({
       ...(labInfo.classification ? { classification: labInfo.classification } : {}),
     }))
   }
+
+  const labInfo = getLabCodeInfo(form.cbh_code)
+  const labDepartmentLocked = Boolean(labInfo.department)
 
   async function handlePhotoSelect(file: File) {
     if (!file.type.startsWith('image/')) { setErr('รองรับเฉพาะไฟล์รูปภาพ'); return }
@@ -438,13 +525,14 @@ function EquipmentModal({
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <label style={{ ...labelStyle, marginBottom: 0 }}>รหัส LAB</label>
+                <label style={{ ...labelStyle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 6 }}>รหัส LAB <LabCodeHint /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: 'var(--warning)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={!!form.cbh_code_pending} onChange={e => { set('cbh_code_pending', e.target.checked); if (e.target.checked) set('cbh_code', null) }} style={{ accentColor: 'var(--warning)', width: 13, height: 13, cursor: 'pointer' }} />
                   รอขึ้นทะเบียน
                 </label>
               </div>
-              <input style={{ ...inputStyle, opacity: form.cbh_code_pending ? 0.6 : 1 }} disabled={!!form.cbh_code_pending} value={form.cbh_code_pending ? 'รอขึ้นทะเบียน' : (form.cbh_code ?? '')} onChange={e => setLabCode(e.target.value)} placeholder="LAB-CC-XX-XXX" />
+              <input style={{ ...inputStyle, opacity: form.cbh_code_pending ? 0.6 : 1 }} disabled={!!form.cbh_code_pending} value={form.cbh_code_pending ? 'รอขึ้นทะเบียน' : (form.cbh_code ?? '')} onChange={e => setLabCode(e.target.value)} placeholder="LAB-CC-02-001" aria-describedby="equipment-lab-code-rule" />
+              <LabCodeRuleHint code={form.cbh_code} pending={!!form.cbh_code_pending} />
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -457,8 +545,8 @@ function EquipmentModal({
               <input style={{ ...inputStyle, opacity: form.hospital_asset_no_pending ? 0.6 : 1 }} disabled={!!form.hospital_asset_no_pending} value={form.hospital_asset_no_pending ? 'รอขึ้นทะเบียน' : (form.hospital_asset_no ?? '')} onChange={e => set('hospital_asset_no', e.target.value || null)} placeholder="6515-047-0001/1/36" />
             </div>
             <div>
-              <label style={labelStyle}>แผนก <span style={{ color: 'var(--danger)' }}>*</span></label>
-              <select style={inputStyle} value={form.department ?? ''} onChange={e => set('department', e.target.value)}>
+              <label style={labelStyle}>แผนก <span style={{ color: 'var(--danger)' }}>*</span>{labDepartmentLocked ? <span style={{ marginLeft: 6, color: 'var(--primary)', fontWeight: 500 }}>ผูกจากรหัส LAB</span> : null}</label>
+              <select style={{ ...inputStyle, opacity: labDepartmentLocked ? 0.72 : 1 }} disabled={labDepartmentLocked} value={form.department ?? ''} onChange={e => set('department', e.target.value)}>
                 <option value="">เลือกแผนก</option>
                 {departments.map(d => <option key={d} value={d}>{d}</option>)}
                 <option value="อื่นๆ">อื่นๆ</option>
@@ -496,7 +584,7 @@ function EquipmentModal({
               />
             </div>
             <div>
-              <label style={labelStyle}>Classification</label>
+              <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}>Classification <ClassificationHint /></label>
               <select style={inputStyle} value={form.classification ?? ''} onChange={e => set('classification', e.target.value || null)}>
                 <option value="">ยังไม่ระบุ</option>
                 {CLASSIFICATION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -2398,13 +2486,17 @@ export default function EquipmentClient({
         .eq-qr-meta-label { color: var(--ink); font-weight: 800; }
         .eq-qr-actions { display: flex; gap: 6px; width: 100%; margin-top: auto; padding-top: 12px; }
         .eq-toast { animation: toastIn .22s ease both; }
-        .eq-risk-hint { position: relative; display: inline-flex; align-items: center; }
-        .eq-risk-hint-btn { width: 17px; height: 17px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 800; line-height: 1; cursor: help; font-family: inherit; padding: 0; }
-        .eq-risk-hint-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-        .eq-risk-hint-popover { position: absolute; left: 50%; bottom: calc(100% + 9px); transform: translateX(-50%) translateY(4px); width: min(440px, calc(100vw - 48px)); display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); box-shadow: 0 14px 40px rgba(15,23,42,.18); color: var(--ink); font-size: 12px; font-weight: 500; line-height: 1.55; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .14s ease, transform .14s ease, visibility .14s ease; z-index: 1200; text-transform: none; letter-spacing: 0; }
-        .eq-risk-hint-popover::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; transform: translateX(-50%) rotate(45deg); background: var(--card); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+        .eq-risk-hint { position: relative; z-index: 2; display: inline-flex; align-items: center; }
+        .eq-risk-hint-btn { width: 18px; height: 18px; flex: 0 0 18px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 800; line-height: 1; cursor: help; font-family: inherit; padding: 0; transition: background .15s ease, border-color .15s ease, color .15s ease, transform .15s ease; }
+        .eq-risk-hint-btn:hover { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); transform: translateY(-1px); }
+        .eq-risk-hint-btn:focus-visible { outline: 3px solid var(--primary-soft); outline-offset: 2px; border-color: var(--primary); color: var(--primary); }
+        .eq-risk-hint-popover { position: absolute; left: 0; bottom: calc(100% + 10px); transform: translateY(4px); width: min(360px, calc(100vw - 32px)); padding: 13px 14px; box-sizing: border-box; border-radius: 12px; border: 1px solid var(--border); background: var(--card); box-shadow: 0 14px 40px rgba(15,23,42,.18); color: var(--ink); font-size: 12px; font-weight: 500; line-height: 1.55; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .14s ease, transform .14s ease, visibility .14s ease; z-index: 1200; text-transform: none; letter-spacing: 0; }
+        .eq-risk-hint-popover-content { display: flex; flex-direction: column; gap: 9px; max-height: min(52vh, 334px); overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+        .eq-risk-hint-popover.is-end { left: auto; right: 0; }
+        .eq-risk-hint-popover::after { content: ''; position: absolute; left: 10px; bottom: -6px; width: 10px; height: 10px; transform: rotate(45deg); background: var(--card); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+        .eq-risk-hint-popover.is-end::after { left: auto; right: 10px; }
         .eq-risk-hint:hover .eq-risk-hint-popover,
-        .eq-risk-hint:focus-within .eq-risk-hint-popover { opacity: 1; pointer-events: auto; visibility: visible; transform: translateX(-50%) translateY(0); }
+        .eq-risk-hint:focus-within .eq-risk-hint-popover { opacity: 1; pointer-events: auto; visibility: visible; transform: translateY(0); }
         .eq-page-header { width: 100%; min-width: 0; }
         .eq-page-header > div { min-width: 0; max-width: 100%; }
         .eq-page-header > div > div:first-child,

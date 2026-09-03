@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
-import { getLabCodeInfo } from '@/lib/equipment-lab-code'
+import { getLabCodeInfo, normalizeLabCode } from '@/lib/equipment-lab-code'
 import { canonicalEquipmentDepartment, equipmentDepartmentVariants } from '@/lib/equipment/departments'
 import { resolveEquipmentAreaAssignment } from '@/lib/equipment-map/area-assignment'
 import { areaAndDescendantCodes } from '@/lib/equipment-map/manifest'
@@ -63,7 +63,7 @@ function normalizePendingRegistration(body: Record<string, any>) {
     body.cbh_code_pending = true
     body.cbh_code = null
   } else if (body.cbh_code !== undefined) {
-    body.cbh_code = labCode || null
+    body.cbh_code = normalizeLabCode(labCode)
     if (body.cbh_code) body.cbh_code_pending = false
   }
 

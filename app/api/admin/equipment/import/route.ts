@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
-import { getLabCodeInfo } from '@/lib/equipment-lab-code'
+import { getLabCodeInfo, normalizeLabCode } from '@/lib/equipment-lab-code'
 import { canonicalEquipmentDepartment } from '@/lib/equipment/departments'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
@@ -572,7 +572,7 @@ function toUpdateRecord(record: ImportRecord, existingAreaCode: string | null | 
     Object.entries(updateable).filter(([, value]) => value !== null && value !== undefined && value !== ''),
   )
   if (record.cbh_code_pending === true) cleaned.cbh_code = null
-  else cleaned.cbh_code = String(record.cbh_code ?? '').trim() || null
+  else cleaned.cbh_code = normalizeLabCode(String(record.cbh_code ?? ''))
   if (record.hospital_asset_no_pending === true) cleaned.hospital_asset_no = null
   if (typeof record.area_code === 'string' && record.area_code) {
     cleaned.area_code = record.area_code
@@ -657,7 +657,7 @@ export async function POST(req: NextRequest) {
     const eqType = String(row[colIdx['equipment_type'] ?? -1] ?? '').trim()
     if (!eqType || eqType.toLowerCase() === 'total' || eqType.toLowerCase() === 'grand total') continue
 
-    const labCode = String(row[colIdx['cbh_code'] ?? -1] ?? '').trim()
+    const labCode = normalizeLabCode(String(row[colIdx['cbh_code'] ?? -1] ?? '')) ?? ''
     const dept = String(row[colIdx['department'] ?? -1] ?? '').trim()
     const labInfo = getLabCodeInfo(labCode)
     const importedArea = resolveImportArea(
@@ -705,7 +705,10 @@ export async function POST(req: NextRequest) {
       record['hospital_asset_no'] = null
     }
     if (record['cbh_code_pending'] === true) record['cbh_code'] = null
-    else if (record['cbh_code']) record['cbh_code_pending'] = false
+    else if (record['cbh_code']) {
+      record['cbh_code'] = normalizeLabCode(String(record['cbh_code']))
+      record['cbh_code_pending'] = false
+    }
     if (record['hospital_asset_no_pending'] === true) record['hospital_asset_no'] = null
     else if (record['hospital_asset_no']) record['hospital_asset_no_pending'] = false
     const responsibleUser = findResponsibleUser(record['responsible_person'], responsibleUsers)
