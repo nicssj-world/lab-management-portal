@@ -11,7 +11,7 @@
     "prepare": "node scripts/install-git-hooks.mjs",
     "test:secrets": "node scripts/secret-scan.test.mjs",
     "test:share-metadata": "tsx scripts/share-metadata.test.ts",
-    "test:kpi-compliance": "tsx lib/kpi/compliance.test.ts && tsx scripts/kpi-submission-compliance-schema.test.ts && tsx scripts/kpi-compliance-api.test.ts && tsx scripts/kpi-compliance-ui.test.ts && tsx scripts/kpi-dashboard-view-access.test.ts && tsx scripts/kpi-baseline-backfill.test.ts && tsx scripts/kpi-untracked-history-cleanup.test.ts && tsx scripts/kpi-july-missed-workflow.test.ts && tsx scripts/kpi-untracked-history-guard.test.ts && tsx scripts/kpi-compliance-performance.test.ts",
+    "test:kpi-compliance": "tsx lib/kpi/compliance.test.ts && tsx scripts/kpi-submission-compliance-schema.test.ts && tsx scripts/kpi-compliance-api.test.ts && tsx scripts/kpi-compliance-ui.test.ts && tsx scripts/kpi-dashboard-view-access.test.ts && tsx scripts/kpi-baseline-backfill.test.ts && tsx scripts/kpi-untracked-history-cleanup.test.ts && tsx scripts/kpi-july-missed-workflow.test.ts && tsx scripts/kpi-untracked-history-guard.test.ts && tsx scripts/kpi-compliance-performance.test.ts && tsx scripts/staff-dashboard-kpi-deadline.test.ts",
     "security:secrets": "node scripts/secret-scan.mjs",
     "test:lab-map": "tsx scripts/lab-map-domain.test.ts",
     "test:sql-safety": "tsx scripts/plpgsql-ambiguity-regression.test.ts",

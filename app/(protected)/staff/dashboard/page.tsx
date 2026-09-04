@@ -167,7 +167,7 @@ export default async function StaffDashboardPage() {
   const kpiDeadline = `${qualityYear}-${String(qualityMonth).padStart(2, '0')}-15`
   const kpiDaysRemaining = Math.round((Date.parse(`${kpiDeadline}T00:00:00+07:00`) - Date.parse(`${qualityToday}T00:00:00+07:00`)) / 86_400_000)
   const kpiPeriodLabel = new Date(kpiPeriod.year, kpiPeriod.month - 1, 1).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
-  const kpiDeadlineLabel = new Date(`${kpiDeadline}T00:00:00+07:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
+  const kpiDeadlineLabel = new Date(`${kpiDeadline}T00:00:00+07:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Bangkok' })
 
   let staffLicenseExpired = 0
   let staffLicenseExpiring = 0
