@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import * as XLSX from 'xlsx'
 import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
 import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
@@ -112,7 +111,8 @@ function exportCSV(history: ContractUsage[], vendor: string, product: string) {
   URL.revokeObjectURL(url)
 }
 
-function exportExcel(contract: ContractWithUsage, history: ContractUsage[]) {
+async function exportExcel(contract: ContractWithUsage, history: ContractUsage[]) {
+  const XLSX = await import('xlsx')
   const sorted = [...history].sort((a, b) =>
     (usageMonthKey(a) || '').localeCompare(usageMonthKey(b) || '') ||
     (a.usage_date ?? '').localeCompare(b.usage_date ?? '')

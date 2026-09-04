@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/Button'
 import { usePermission } from '@/context/PermissionContext'
 import type { SatisfactionCampaignListItem } from '@/lib/supabase/types'
@@ -27,7 +26,9 @@ export function SatisfactionExportActions({ campaigns, actorRole }: { campaigns:
   const excel = async () => {
     setBusy('excel'); setError(''); setStatusMessage('')
     try {
-      const report = await fetchReport()
+      const reportPromise = fetchReport()
+      const XLSX = await import('xlsx')
+      const report = await reportPromise
       const workbook = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
         { รายการ: 'แบบสำรวจ', ค่า: `${report.formCode} ${report.formTitle}` },
@@ -60,7 +61,9 @@ export function SatisfactionExportActions({ campaigns, actorRole }: { campaigns:
   const exportComments = async () => {
     setBusy('comments'); setError(''); setStatusMessage('')
     try {
-      const response = await fetch(`/api/admin/satisfaction/comments/export?campaignId=${encodeURIComponent(campaignId)}`)
+      const responsePromise = fetch(`/api/admin/satisfaction/comments/export?campaignId=${encodeURIComponent(campaignId)}`)
+      const XLSX = await import('xlsx')
+      const response = await responsePromise
       const result = await response.json(); if (!response.ok) throw new Error(result.error ?? 'ส่งออกความคิดเห็นไม่สำเร็จ')
       const workbook = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(result.comments.map((comment: any) => ({ วันที่: comment.created_at, คำถาม: comment.survey_questions?.prompt ?? '', ความคิดเห็น: comment.text_value, สถานะ: comment.comment_read_at ? 'อ่านแล้ว' : 'ยังไม่อ่าน' }))), 'ความคิดเห็น')

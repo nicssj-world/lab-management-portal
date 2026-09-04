@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/Button'
@@ -12,10 +13,22 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/Select'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { FilterChips } from '@/components/ui/FilterChips'
-import { PdfViewerModal } from '@/components/documents/PdfViewerModal'
-import { EquipmentDetailModal } from '@/components/equipment/EquipmentDetailModal'
-import { EquipmentPmCalModal } from '@/components/equipment/EquipmentPmCalModal'
-import { PmCalPlanWorkspace } from '@/components/equipment/PmCalPlanWorkspace'
+const PdfViewerModal = dynamic(
+  () => import('@/components/documents/PdfViewerModal').then((module) => module.PdfViewerModal),
+  { ssr: false },
+)
+const EquipmentDetailModal = dynamic(
+  () => import('@/components/equipment/EquipmentDetailModal').then((module) => module.EquipmentDetailModal),
+  { ssr: false },
+)
+const EquipmentPmCalModal = dynamic(
+  () => import('@/components/equipment/EquipmentPmCalModal').then((module) => module.EquipmentPmCalModal),
+  { ssr: false },
+)
+const PmCalPlanWorkspace = dynamic(
+  () => import('@/components/equipment/PmCalPlanWorkspace').then((module) => module.PmCalPlanWorkspace),
+  { ssr: false },
+)
 import { equipmentDepartmentsInUse, mergeEquipmentDepartments } from '@/lib/equipment/departments'
 import {
   getLabCodeInfo,
@@ -1940,6 +1953,7 @@ export default function EquipmentClient({
   const [availableDepartments, setAvailableDepartments] = useState<string[]>(departments)
   const [loading, setLoading] = useState(false)
   const equipmentListRequestRef = useRef<AbortController | null>(null)
+  const initialListFetchPendingRef = useRef(true)
   const [reloadKey, setReloadKey] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({ '': initialTotal, ...statusCounts })
   const [summaryCounts, setSummaryCounts] = useState<EquipmentSummaryCounts>(initialSummaryCounts)
@@ -2029,6 +2043,10 @@ export default function EquipmentClient({
   }, [debouncedSearch, statusTab, department, classification, riskLevel, needsCal, pendingReg, duplicateSN, area, unpositioned, sortKey, nameSort])
 
   useEffect(() => {
+    if (initialListFetchPendingRef.current) {
+      initialListFetchPendingRef.current = false
+      if (reloadKey === 0 && !initialArea && !initialUnpositioned) return () => equipmentListRequestRef.current?.abort()
+    }
     void loadEquipmentList()
     return () => equipmentListRequestRef.current?.abort()
   }, [loadEquipmentList, reloadKey])

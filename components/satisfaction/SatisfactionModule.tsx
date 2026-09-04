@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/Badge'
@@ -15,13 +16,34 @@ import type {
   SatisfactionCampaignListItem,
   SatisfactionSurveyListItem,
 } from '@/lib/supabase/types'
-import { CampaignManager } from './CampaignManager'
-import { SatisfactionDashboard } from './SatisfactionDashboard'
-import { SurveyComments } from './SurveyComments'
-import { SatisfactionExportActions } from './SatisfactionExportActions'
-import { SatisfactionEditors } from './SatisfactionEditors'
 import { SatisfactionDialog } from './SatisfactionDialog'
-import { SatisfactionSectionHeading, SatisfactionStatusBadge, SatisfactionSummaryCard } from './SatisfactionPrimitives'
+import {
+  SatisfactionLoadingState,
+  SatisfactionSectionHeading,
+  SatisfactionStatusBadge,
+  SatisfactionSummaryCard,
+} from './SatisfactionPrimitives'
+
+const SatisfactionDashboard = dynamic(
+  () => import('./SatisfactionDashboard').then((module) => module.SatisfactionDashboard),
+  { loading: () => <SatisfactionLoadingState label="กำลังโหลดภาพรวม…" rows={4} /> },
+)
+const SatisfactionExportActions = dynamic(
+  () => import('./SatisfactionExportActions').then((module) => module.SatisfactionExportActions),
+  { loading: () => <SatisfactionLoadingState label="กำลังเตรียมเครื่องมือรายงาน…" rows={1} /> },
+)
+const CampaignManager = dynamic(
+  () => import('./CampaignManager').then((module) => module.CampaignManager),
+  { loading: () => <SatisfactionLoadingState label="กำลังโหลดรอบเก็บข้อมูล…" rows={4} /> },
+)
+const SurveyComments = dynamic(
+  () => import('./SurveyComments').then((module) => module.SurveyComments),
+  { loading: () => <SatisfactionLoadingState label="กำลังโหลดความคิดเห็น…" rows={5} /> },
+)
+const SatisfactionEditors = dynamic(
+  () => import('./SatisfactionEditors').then((module) => module.SatisfactionEditors),
+  { loading: () => <SatisfactionLoadingState label="กำลังโหลดผู้ดูแล…" rows={3} /> },
+)
 
 export type SatisfactionSection = 'overview' | 'surveys' | 'campaigns' | 'comments' | 'settings'
 
