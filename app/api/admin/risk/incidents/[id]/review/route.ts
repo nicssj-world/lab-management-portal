@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { auditRisk, canReviewRisk, getRiskActor } from '@/lib/risk/access'
+import { auditRisk, canManageIncident, getIncidentActor } from '@/lib/risk/access'
 import { incidentReviewSchema } from '@/lib/validations/incident'
 
 /**
@@ -9,9 +9,9 @@ import { incidentReviewSchema } from '@/lib/validations/incident'
  * ขั้นนี้คือจุดที่ระดับความรุนแรงถูกกำหนด — ผู้รายงานกำหนดเองไม่ได้ เพราะเป็นการตัดสินใจเชิงคุณภาพ
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const actor = await getRiskActor()
+  const actor = await getIncidentActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canReviewRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManageIncident(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const parsed = incidentReviewSchema.safeParse(await req.json())
@@ -45,6 +45,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       updated_at: new Date().toISOString(),
     })
     .eq('id', Number(id))
+    .is('deleted_at', null)
+    .neq('status', 'closed')
     .select()
     .single()
 

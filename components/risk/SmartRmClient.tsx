@@ -11,11 +11,11 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { ModuleSubnav } from '@/components/ui/ModuleSubnav'
 import { RISK_NAVIGATION } from '@/lib/navigation'
 import { SmartRmImportModal } from './SmartRmImportModal'
-import { FilterBar, FiscalYearFilter, MonthFilter, Pagination, SearchFilter, SelectFilter } from './shared/FilterBar'
+import { ActiveFilterBar, FilterBar, FiscalYearFilter, MonthFilter, Pagination, SearchFilter, SelectFilter, type ActiveFilterItem } from './shared/FilterBar'
 import { ErrorBanner, Kpi, Panel, SeverityBadge, TableSkeleton } from './shared/ui'
 import { useUrlFilters } from './shared/useUrlFilters'
 import {
-  FONT, LAB_DEPARTMENTS, SEVERITY_LETTERS, SPACE, formatThaiDate, tabularNums,
+  FONT, LAB_DEPARTMENTS, SEVERITY_DESCRIPTIONS, SEVERITY_LETTERS, SPACE, THAI_MONTHS, formatThaiDate, tabularNums,
 } from './shared/tokens'
 
 type SmartRmEvent = {
@@ -61,7 +61,7 @@ function truncate(text: string, max: number) {
 }
 
 export function SmartRmClient({ canEdit }: { canEdit: boolean }) {
-  const { filters, setFilters } = useUrlFilters(DEFAULTS)
+  const { filters, setFilters, clearFilters } = useUrlFilters(DEFAULTS)
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [rows, setRows] = useState<SmartRmEvent[]>([])
   const [count, setCount] = useState(0)
@@ -85,14 +85,14 @@ export function SmartRmClient({ canEdit }: { canEdit: boolean }) {
   params.set('pageSize', String(PAGE_SIZE))
   const queryString = params.toString()
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     setError('')
     const params = new URLSearchParams(queryString)
     try {
       const [analyticsRes, listRes] = await Promise.all([
-        fetch(`/api/admin/risk/smart-rm?view=analytics&${params}`),
-        fetch(`/api/admin/risk/smart-rm?${params}`),
+        fetch(`/api/admin/risk/smart-rm?view=analytics&${params}`, { signal }),
+        fetch(`/api/admin/risk/smart-rm?${params}`, { signal }),
       ])
       const [analyticsJson, listJson] = await Promise.all([analyticsRes.json(), listRes.json()])
       if (!analyticsRes.ok) throw new Error(analyticsJson.error ?? 'โหลดข้อมูลสรุปไม่สำเร็จ')
@@ -101,22 +101,43 @@ export function SmartRmClient({ canEdit }: { canEdit: boolean }) {
       setRows(listJson.data ?? [])
       setCount(Number(listJson.count ?? 0))
     } catch (err) {
+      if (signal?.aborted) return
       setError((err as Error).message)
       setAnalytics(null)
       setRows([])
       setCount(0)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryString])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
+  }, [load])
+
+  // เดือนเป็นช่วงย่อยของปีงบประมาณ — กัน URL เก่าหรือการเลือกที่ไม่ครบคู่
+  // ไม่ให้ผู้ใช้เห็นเดือนถูกเลือกแต่ผลลัพธ์ไม่ได้เปลี่ยนจริง
+  useEffect(() => {
+    if (!filters.year && filters.month) setFilters({ month: '' })
+  }, [filters.month, filters.year, setFilters])
 
   const avgPerMonth = analytics && analytics.monthCount > 0
     ? Math.round(analytics.total / analytics.monthCount)
     : analytics?.total ?? 0
   const topBarCount = narrow ? 5 : 10
+  const activeFilterItems: ActiveFilterItem[] = []
+  if (filters.q) activeFilterItems.push({ key: 'q', label: `คำค้น: ${filters.q}`, onRemove: () => setFilters({ q: '' }) })
+  if (filters.year) activeFilterItems.push({ key: 'year', label: `ปีงบประมาณ ${filters.year}`, onRemove: () => setFilters({ year: '' }) })
+  if (filters.month) {
+    const monthLabel = THAI_MONTHS.find(month => month.value === filters.month.padStart(2, '0'))?.label ?? filters.month
+    activeFilterItems.push({ key: 'month', label: `เดือน ${monthLabel}`, onRemove: () => setFilters({ month: '' }) })
+  }
+  if (filters.severity) activeFilterItems.push({ key: 'severity', label: `ระดับ ${filters.severity}`, onRemove: () => setFilters({ severity: '' }) })
+  if (filters.riskType) activeFilterItems.push({ key: 'riskType', label: `ประเภท: ${filters.riskType}`, onRemove: () => setFilters({ riskType: '' }) })
+  if (filters.department) activeFilterItems.push({ key: 'department', label: `หน่วยงาน: ${filters.department}`, onRemove: () => setFilters({ department: '' }) })
 
   return (
     <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: SPACE.md }}>
@@ -146,13 +167,16 @@ export function SmartRmClient({ canEdit }: { canEdit: boolean }) {
             placeholder="ค้นหาหมายเลข / เหตุการณ์ / หน่วยงาน"
             onCommit={q => setFilters({ q })}
           />
-          <FiscalYearFilter value={filters.year} onChange={year => setFilters({ year })} />
-          <MonthFilter value={filters.month} onChange={month => setFilters({ month })} />
+          <FiscalYearFilter
+            value={filters.year}
+            onChange={year => setFilters(year ? { year } : { year: '', month: '' })}
+          />
+          <MonthFilter value={filters.month} disabled={!filters.year} onChange={month => setFilters({ month })} />
           <SelectFilter
             label="ระดับความรุนแรง"
             value={filters.severity}
             allLabel="ทุกระดับ"
-            options={SEVERITY_LETTERS.map(s => ({ value: s, label: s }))}
+            options={SEVERITY_LETTERS.map(s => ({ value: s, label: `${s} — ${SEVERITY_DESCRIPTIONS[s]}` }))}
             onChange={severity => setFilters({ severity })}
           />
           <SelectFilter
@@ -170,6 +194,10 @@ export function SmartRmClient({ canEdit }: { canEdit: boolean }) {
             onChange={department => setFilters({ department })}
           />
         </FilterBar>
+        <ActiveFilterBar
+          items={activeFilterItems}
+          onClear={() => clearFilters()}
+        />
       </Panel>
 
       {loading && !analytics ? (
@@ -179,7 +207,7 @@ export function SmartRmClient({ canEdit }: { canEdit: boolean }) {
           <EmptyState
             icon="chart"
             title="ยังไม่มีข้อมูลในช่วงที่เลือก"
-            hint={canEdit ? 'ลองเปลี่ยนตัวกรอง หรือนำเข้าข้อมูลจากไฟล์ Smart-RM' : 'ลองเปลี่ยนตัวกรองเพื่อดูช่วงเวลาอื่น'}
+            hint={activeFilterItems.length > 0 ? 'ลองล้างตัวกรองหรือปรับเงื่อนไขให้กว้างขึ้น' : canEdit ? 'ลองเปลี่ยนตัวกรอง หรือนำเข้าข้อมูลจากไฟล์ Smart-RM' : 'ลองเปลี่ยนตัวกรองเพื่อดูช่วงเวลาอื่น'}
           />
         </Panel>
       ) : analytics && (
@@ -243,7 +271,7 @@ export function SmartRmClient({ canEdit }: { canEdit: boolean }) {
             onChange={page => setFilters({ page: String(page) }, { resetPage: false })}
           />
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div aria-busy={loading} style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900, fontSize: FONT.base }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)' }}>
@@ -271,7 +299,11 @@ export function SmartRmClient({ canEdit }: { canEdit: boolean }) {
               {!loading && rows.length === 0 && (
                 <tr>
                   <td colSpan={TABLE_COLUMNS.length}>
-                    <EmptyState icon="search" title="ไม่พบรายการที่ตรงกับตัวกรอง" hint="ลองล้างคำค้นหรือเลือกช่วงเวลาที่กว้างขึ้น" />
+                    <EmptyState
+                      icon="search"
+                      title="ไม่พบรายการที่ตรงกับตัวกรอง"
+                      hint="ลองล้างตัวกรองหรือเลือกช่วงเวลาที่กว้างขึ้น"
+                    />
                   </td>
                 </tr>
               )}

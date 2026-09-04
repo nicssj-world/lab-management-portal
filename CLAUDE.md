@@ -596,19 +596,24 @@ Core invariants:
 
 Recording on behalf of someone (phone call, paper form): the report form shows a "ผู้รายงาน" field only when the user has `edit`, and the route accepts that name only after re-checking `canEditRisk`. `reported_by` still records who submitted it — never trust the client for that.
 
-Permissions — three distinct levels, do not conflate:
+Permissions — distinct gates, do not conflate:
 
 | Action | Gate |
 |---|---|
-| Report an incident (`/staff/risk/report`) | Signed in. **No permission check** — gating reporting is what kills incident-reporting culture |
-| Edit factual fields, record on behalf of another reporter | `canEditRisk` (permission matrix, `ความเสี่ยง / Rejection`) |
-| Review, set severity, RCA, actions, residual, close | `canReviewRisk` (Admin/Manager — quality judgement, not data entry) |
+| Report an incident (`/staff/risk/report`) | Signed in with a provisioned personnel profile. **No permission check** — gating reporting is what kills incident-reporting culture |
+| Edit factual fields, record on behalf of another reporter | `canEditRisk` (permission matrix, `ความเสี่ยง`) |
+| Review, set severity, RCA, actions, follow-up (IOR) | `canManageIncident` (any provisioned personnel profile; status is not a gate) |
+| Review, add measures, assess residual, confirm/close a risk-register item | `canReviewRisk` / `canCloseRegister` (assigned risk team member, Manager, or Admin) |
+| Close an IOR | `canCloseIncident` (Manager/Admin only) |
+| Confirm review / close a risk-register item | `canCloseRegister` (assigned risk team member, Manager, or Admin) |
+
+Risk working-group membership is assigned per person in `risk_team_members` by a real Admin. IOR workflow permissions are intentionally available to every provisioned personnel profile; membership is used for risk-register workflow and IOR escalation, without changing the person's role-based factual-edit permission. Members can manage risk-register measures, assess residual risk, and confirm/close register items; they cannot close IORs.
 
 `stripReviewOnlyFields` in `lib/risk/fields.ts` enforces the second/third split server-side and returns `warnings` listing what it dropped. It lives apart from `lib/risk/access.ts` so it stays testable without Supabase.
 
-Sidebar: the risk group is a submenu whose **parent carries no `resource`** — each child carries its own instead, and the report child carries none. `isEntryVisible` in `StaffSidebar.tsx` checks the parent's `resource` and returns `false` *before* looking at children, so putting the gate on the parent would hide incident reporting from exactly the users it exists for. Keep the report child first in the list: `parentHref` falls back to the first visible child, so a user who can only report still gets a working group link. `scripts/navigation-routes.test.ts` guards both facts.
+Sidebar: the risk group is a submenu whose **parent carries no `resource`** — the IOR report and registry children carry none because every provisioned personnel profile can use the IOR workflow; overview/register/map/Smart-RM retain `RISK_RESOURCE`. `isEntryVisible` in `StaffSidebar.tsx` checks the parent's `resource` and returns `false` *before* looking at children, so putting the gate on the parent would hide IOR from exactly the users it exists for. Keep report first in the list: `parentHref` falls back to the first visible child. `scripts/navigation-routes.test.ts` guards the navigation contract.
 
-Why the guarantee must be structural rather than configured: the permission matrix is editable at runtime, so an admin setting `Assistant → none` on `ความเสี่ยง / Rejection` (a reasonable call — assistants don't need to browse the register) would otherwise silently remove their ability to report incidents, and nobody would connect the two. Separately, roles outside `PERMISSION_ROLES` (e.g. a `profiles.role` of `Document Controller`) never get rows written by `/api/admin/permissions`, so they resolve to `none` everywhere.
+Why the guarantee must be structural rather than configured: the permission matrix is editable at runtime, so an admin setting `Assistant → none` on `ความเสี่ยง` or `Rejection` (a reasonable call — assistants don't need to browse either module) must not remove the separate IOR reporting path. Reporting is therefore gated only by a signed-in, provisioned personnel profile; the resource matrix gates browsing and management. Separately, roles outside `PERMISSION_ROLES` (e.g. a `profiles.role` of `Document Controller`) never get rows written by `/api/admin/permissions`, so without a risk-team assignment or another explicit override they resolve to `none` everywhere.
 
 UI rules specific to this module (`components/risk/shared/tokens.ts` is the single source for meaning → visual):
 
@@ -791,8 +796,8 @@ Tests: `npm run test:chemical-safety` runs schema, domain, GHS parsing, departme
 | Documents | `เอกสารคุณภาพ` | `/staff/documents`, `/staff/documents/dashboard`, `/staff/documents/categories`, `/staff/documents/pending`, `/staff/documents/read-report` | `/api/admin/documents/`, `/api/admin/documents/[id]/`, `/api/admin/documents/[id]/revisions/`, `/api/admin/documents/[id]/read`, `/api/admin/documents/[id]/confirm-review`, `/api/admin/documents/bulk-annual-review`, `/api/admin/documents/bulk-read-audience`, `/api/admin/documents/purge-deleted` |
 | Master List | `Master List` | `/staff/documents/master-list` | — |
 | News | `ข่าวสาร` | `/staff/news` | — |
-| Rejection Log | `ความเสี่ยง / Rejection` | `/staff/rejection?view=<report-view-id>` | — |
-| Risk Management | `ความเสี่ยง / Rejection` | `/staff/risk`, `/staff/risk/ior`, `/staff/risk/register`, `/staff/risk/smart-rm`; `/staff/risk/report` is open to **any signed-in user** | `/api/admin/risk/{incidents,register,smart-rm,overview,attachments,export}` |
+| Rejection Log | `Rejection` | `/staff/rejection?view=<report-view-id>` | — |
+| Risk Management | `ความเสี่ยง` | `/staff/risk`, `/staff/risk/ior`, `/staff/risk/register`, `/staff/risk/smart-rm`; `/staff/risk/report` is open to **any signed-in, provisioned personnel** | `/api/admin/risk/{incidents,register,smart-rm,overview,attachments,export}` |
 | EQA / PT | `EQA / PT` (editor list overrides to edit) | `/staff/eqa`, `/staff/eqa/programs`, `/staff/eqa/rounds`, `/staff/eqa/coverage`, `/staff/eqa/capa`, Admin `/staff/eqa/settings` | `/api/admin/eqa/*` |
 | OUTLAB | `OUTLAB` (editor list overrides to edit) | `/staff/outlab`, `/staff/outlab/laboratories`, `/staff/outlab/services`, `/staff/outlab/certificates`, Admin `/staff/outlab/settings` | `/api/admin/outlab/*` |
 | Contracts | `สัญญา` | `/staff/contracts` | — |

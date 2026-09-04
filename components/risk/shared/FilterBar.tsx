@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { useId } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Icon } from '@/components/ui/Icon'
 import { FONT, SPACE, THAI_MONTHS, fiscalYearOptions, inputStyle } from './tokens'
 import { useDebouncedSearch } from './useUrlFilters'
 
@@ -51,17 +52,19 @@ export function SearchFilter({ value, placeholder, onCommit }: {
   )
 }
 
-export function SelectFilter({ label, value, options, allLabel, onChange }: {
+export function SelectFilter({ label, value, options, allLabel, onChange, disabled = false, hint }: {
   label: string
   value: string
   options: readonly { value: string; label: string }[]
   allLabel: string
   onChange: (value: string) => void
+  disabled?: boolean
+  hint?: string
 }) {
   return (
-    <LabelledControl label={label}>
+    <LabelledControl label={hint ? `${label} (${hint})` : label}>
       {id => (
-        <select id={id} value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
+        <select id={id} value={value} disabled={disabled} onChange={e => onChange(e.target.value)} style={{ ...inputStyle, opacity: disabled ? 0.65 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}>
           <option value="">{allLabel}</option>
           {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
@@ -82,39 +85,87 @@ export function FiscalYearFilter({ value, onChange }: { value: string; onChange:
   )
 }
 
-export function MonthFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+export function MonthFilter({ value, onChange, disabled = false }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
   return (
     <SelectFilter
       label="เดือน"
       value={value}
-      allLabel="ทุกเดือน"
+      allLabel={disabled ? 'เลือกปีงบประมาณก่อน' : 'ทุกเดือน'}
       options={THAI_MONTHS.map(m => ({ value: m.value, label: m.label }))}
       onChange={onChange}
+      disabled={disabled}
+      hint={disabled ? 'เลือกปีงบประมาณก่อน' : undefined}
     />
   )
 }
 
+export interface ActiveFilterItem {
+  key: string
+  label: string
+  onRemove: () => void
+}
+
 /**
- * แถบบอกว่ากำลังกรองอะไรอยู่ พร้อมปุ่มล้าง
+ * สรุปตัวกรองที่ใช้อยู่ พร้อมทางล้างทีละรายการหรือทั้งหมด
  *
- * จำเป็นเพราะตัวกรองบางตัวตั้งมาจากลิงก์หรือการกดช่องในตารางความเสี่ยง โดยไม่มีช่องควบคุม
- * บนหน้าจอให้ตั้งกลับ ถ้าไม่มีปุ่มนี้ผู้ใช้จะติดอยู่กับผลลัพธ์ที่แคบลงโดยไม่รู้สาเหตุ
+ * ต้องแสดงทั้งตัวกรองจากช่องบนหน้าและตัวกรองที่ติดมากับลิงก์ (เช่น กดจาก KPI
+ * หรือกดช่องใน Risk Matrix) เพื่อให้ผู้ใช้รู้ว่ารายการถูกจำกัดด้วยอะไร
  */
-export function ActiveFilterBar({ count, detail, onClear }: {
-  count: number
-  detail?: string
+export function ActiveFilterBar({ items, onClear }: {
+  items: readonly ActiveFilterItem[]
   onClear: () => void
 }) {
-  if (count === 0) return null
+  if (items.length === 0) return null
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap' }}>
-      <p style={{ margin: 0, fontSize: FONT.base, color: 'var(--muted)' }}>
-        {detail
-          ? <>กรองอยู่: <strong style={{ color: 'var(--ink)' }}>{detail}</strong></>
-          : `ใช้ตัวกรองอยู่ ${count} รายการ`}
-      </p>
-      <Button variant="secondary" size="sm" icon="x" onClick={onClear}>ล้างตัวกรองทั้งหมด</Button>
-    </div>
+    <>
+      <style>{`
+        .risk-active-filter-bar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border)}
+        .risk-active-filter-heading{display:flex;align-items:center;gap:8px;min-height:36px;color:var(--ink);font-size:12.5px;font-weight:700}
+        .risk-active-filter-count{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:11px;font-variant-numeric:tabular-nums}
+        .risk-active-filter-list{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px}
+        .risk-active-filter-chip{display:inline-flex;align-items:center;gap:7px;max-width:100%;min-height:44px;padding:5px 11px;border:1px solid color-mix(in srgb,var(--primary) 28%,var(--border));border-radius:999px;background:var(--primary-soft);color:var(--ink);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+        .risk-active-filter-chip:hover{border-color:color-mix(in srgb,var(--primary) 55%,var(--border));background:color-mix(in srgb,var(--primary-soft) 75%,var(--card))}
+        .risk-active-filter-chip:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 32%,transparent);outline-offset:2px}
+        .risk-active-filter-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        @media(max-width:640px){.risk-active-filter-bar{flex-direction:column;align-items:stretch}}
+        @media(prefers-reduced-motion:reduce){.risk-active-filter-chip{transition:none}}
+      `}</style>
+      <div className="risk-active-filter-bar" aria-label="ตัวกรองที่ใช้อยู่">
+        <div style={{ minWidth: 0, flex: '1 1 320px' }}>
+          <div className="risk-active-filter-heading" aria-live="polite">
+            ตัวกรองที่ใช้อยู่
+            <span className="risk-active-filter-count">
+              {items.length} ตัวกรอง
+            </span>
+          </div>
+          <div className="risk-active-filter-list">
+            {items.map(item => (
+              <button
+                key={item.key}
+                type="button"
+                className="risk-active-filter-chip"
+                title={`ล้างตัวกรอง ${item.label}`}
+                aria-label={`ล้างตัวกรอง ${item.label}`}
+                onClick={item.onRemove}
+              >
+                <span>{item.label}</span>
+                <Icon name="x" size={13} />
+              </button>
+            ))}
+          </div>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="x"
+          style={{ minHeight: 44, height: 'auto' }}
+          onClick={onClear}
+        >
+          ล้างตัวกรองทั้งหมด
+        </Button>
+      </div>
+    </>
   )
 }
 
@@ -140,7 +191,7 @@ export function Pagination({ page, pageSize, count, onChange }: {
         @media(prefers-reduced-motion:reduce){.risk-page-btn{transition:none}}
       `}</style>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.xs, flexWrap: 'wrap' }}>
-        <p style={{ margin: 0, color: 'var(--muted)', fontSize: FONT.base, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+        <p aria-live="polite" style={{ margin: 0, color: 'var(--muted)', fontSize: FONT.base, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
           แสดง {start.toLocaleString('th-TH')}–{end.toLocaleString('th-TH')} จาก {count.toLocaleString('th-TH')} รายการ
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.xs }}>

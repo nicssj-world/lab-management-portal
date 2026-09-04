@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { auditRisk, canReviewRisk, getRiskActor } from '@/lib/risk/access'
+import { closedRegisterResponse } from '@/lib/risk/register-guards'
 import { registerActionPatchSchema, registerActionSchema } from '@/lib/validations/risk-register'
 
 type Params = { params: Promise<{ id: string }> }
@@ -37,6 +38,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { id } = await params
   const registerId = Number(id)
+  const closed = await closedRegisterResponse(registerId)
+  if (closed) return closed
   const parsed = registerActionSchema.safeParse(await req.json())
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
@@ -61,6 +64,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id } = await params
   const registerId = Number(id)
+  const closed = await closedRegisterResponse(registerId)
+  if (closed) return closed
   const parsed = registerActionPatchSchema.safeParse(await req.json())
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
@@ -90,6 +95,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (!canReviewRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
+  const closed = await closedRegisterResponse(Number(id))
+  if (closed) return closed
   const actionId = Number(req.nextUrl.searchParams.get('actionId'))
   if (!actionId) return NextResponse.json({ error: 'ไม่ได้ระบุมาตรการที่ต้องการลบ' }, { status: 422 })
 

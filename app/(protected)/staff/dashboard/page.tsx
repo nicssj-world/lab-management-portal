@@ -874,6 +874,8 @@ const ACTION_LABELS: Record<string, string> = {
   'it_backup.create':                             'บันทึกการสำรองข้อมูล',
   'it_backup.update':                             'แก้ไขบันทึกการสำรองข้อมูล',
   'it_backup.delete':                             'ลบบันทึกการสำรองข้อมูล',
+  'it_backup.attachment.upload':                  'แนบไฟล์หลักฐานการสำรองข้อมูล',
+  'it_backup.attachment.delete':                  'ลบไฟล์หลักฐานการสำรองข้อมูล',
   'it_verification.sampling.generate':            'สร้างชุดตัวอย่างการทวนสอบจาก TAT',
   'it_verification.sampling.resample':            'สุ่มชุดตัวอย่างการทวนสอบใหม่',
   'it_verification.sample.update':                'บันทึกผลตัวอย่างการทวนสอบ',

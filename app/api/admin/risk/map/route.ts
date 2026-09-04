@@ -14,7 +14,7 @@ function fromDateForMonths(months: number) {
 export async function GET(req: NextRequest) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if ((await getRiskPermission(actor.role)) === 'none') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if ((await getRiskPermission(actor)) === 'none') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const layer = req.nextUrl.searchParams.get('layer') === 'register' ? 'register' : 'incidents'
   const requestedMonths = Number(req.nextUrl.searchParams.get('months') ?? 12)
   const months = Number.isInteger(requestedMonths) && requestedMonths >= 1 && requestedMonths <= 60 ? requestedMonths : 12

@@ -100,7 +100,7 @@ const CATEGORY_ACTIONS: Record<string, string[]> = {
     'it_access.create', 'it_access.update', 'it_access.delete', 'it_access.review', 'it_access.review_approve',
     'it_system.create', 'it_system.update', 'it_editors.grant', 'it_editors.revoke',
     'it_downtime.create', 'it_downtime.update', 'it_downtime.delete',
-    'it_backup.create', 'it_backup.update', 'it_backup.delete',
+    'it_backup.create', 'it_backup.update', 'it_backup.delete', 'it_backup.attachment.upload', 'it_backup.attachment.delete',
     'it_verification.sampling.generate', 'it_verification.sampling.resample',
     'it_verification.sample.update', 'it_verification.finding.update',
     'it_verification.round.submit', 'it_verification.round.review', 'it_verification.round.reopen',

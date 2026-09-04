@@ -182,7 +182,7 @@ export function IncidentReportForm({ reporterName, canSeeQueue, canRecordOnBehal
               เลขที่เรื่อง <strong style={{ color: 'var(--ink)' }}>{submitted.report_no ?? `#${submitted.id}`}</strong>
             </p>
             <p style={{ margin: 0, maxWidth: 460, fontSize: FONT.md, color: 'var(--muted)', lineHeight: 1.7 }}>
-              ผู้มีสิทธิ์ทบทวนจะกำหนดระดับความรุนแรงและมาตรการแก้ไขต่อไป
+              บุคลากรสามารถทบทวน กำหนดระดับความรุนแรง และจัดการมาตรการแก้ไขต่อได้
               ไม่ต้องกรอกซ้ำแม้เพื่อนร่วมงานจะรายงานเรื่องเดียวกัน
             </p>
             <div style={{ display: 'flex', gap: SPACE.xs, flexWrap: 'wrap', justifyContent: 'center' }}>

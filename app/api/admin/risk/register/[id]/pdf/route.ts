@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> }
 export async function GET(_req: NextRequest, { params }: Params) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if ((await getRiskPermission(actor.role)) === 'none') {
+  if ((await getRiskPermission(actor)) === 'none') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

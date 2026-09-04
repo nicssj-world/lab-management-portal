@@ -9,6 +9,7 @@ import { useLang } from '@/context/LangContext'
 import { useSettings } from '@/context/SettingsContext'
 import { useSidebar } from '@/context/SidebarContext'
 import { createClient } from '@/lib/supabase/client'
+import { REJECTION_RESOURCE, RISK_RESOURCE } from '@/lib/permission-resources'
 
 interface NavChild {
   href: string
@@ -69,7 +70,7 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/staff/equipment',     th: 'ทะเบียนเครื่องมือ', en: 'Registry', icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
       { href: '/staff/equipment/map', th: 'แผนผังเครื่องมือ',   en: 'Equipment Map', icon: 'building',    color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
     ] },
-  { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
+  { href: '/staff/contracts',  th: 'งานคลังและพัสดุ',      en: 'Inventory & Supplies', icon: 'building', color: '#7C3AED', resource: 'สัญญา' },
   { href: '/staff/outlab', th: 'ห้องปฏิบัติการภายนอก', en: 'OUTLAB Registry', icon: 'building', color: '#C2410C', resource: 'OUTLAB' },
   { href: '/staff/personnel/workforce', th: 'บุคลากร',       en: 'MT-CBH Staff',   icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร',
     children: [
@@ -84,13 +85,14 @@ const NAV_ITEMS: NavEntry[] = [
   // ซึ่งรวมถึง Document Controller ที่ไม่มีแถวใน role_permissions โดยโครงสร้าง
   { href: '/staff/risk',       th: 'ความเสี่ยง',          en: 'Risk Management', icon: 'shield',    color: '#DC2626',
     children: [
-      // ไม่มี resource โดยตั้งใจ — เจ้าหน้าที่ทุกคนต้องรายงานอุบัติการณ์ได้เสมอ
+      // ไม่มี resource โดยตั้งใจ — บุคลากรทุกคนต้องเข้าถึง workflow IOR ได้เสมอ
       // และอยู่ลำดับแรกเพื่อให้ลิงก์ของกลุ่มตกมาที่นี่เมื่อผู้ใช้เห็นได้เพียงรายการเดียว
       { href: '/staff/risk/report',   th: 'รายงานอุบัติการณ์',   en: 'Report an Incident', icon: 'alert',     color: '#DC2626' },
-      { href: '/staff/risk',          th: 'ภาพรวมความเสี่ยง',    en: 'Risk Overview',      icon: 'chart',     color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
-      { href: '/staff/risk/ior',      th: 'ทะเบียนอุบัติการณ์',  en: 'Incident Reports',   icon: 'shield',    color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
-      { href: '/staff/risk/register', th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',      icon: 'clipboard', color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
-      { href: '/staff/risk/smart-rm', th: 'วิเคราะห์ Smart-RM',  en: 'Smart-RM Analytics', icon: 'trending',  color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+      { href: '/staff/risk',          th: 'ภาพรวมความเสี่ยง',    en: 'Risk Overview',      icon: 'chart',     color: '#DC2626', resource: RISK_RESOURCE },
+      // IOR ใช้ policy บุคลากรทุกคน ไม่ผูกกับ resource ของ Risk Register
+      { href: '/staff/risk/ior',      th: 'ทะเบียนอุบัติการณ์',  en: 'Incident Reports',   icon: 'shield',    color: '#DC2626' },
+      { href: '/staff/risk/register', th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',      icon: 'clipboard', color: '#DC2626', resource: RISK_RESOURCE },
+      { href: '/staff/risk/smart-rm', th: 'วิเคราะห์ Smart-RM',  en: 'Smart-RM Analytics', icon: 'trending',  color: '#DC2626', resource: RISK_RESOURCE },
     ] },
   // กลุ่ม "ความปลอดภัย" — แม่ไม่ถือ resource ตามรูปแบบเดียวกับกลุ่มความเสี่ยงและกลุ่ม IT
   // แผนที่หนีไฟและจุดสแกนต้องเข้าถึงได้ทุกคนที่ล็อกอิน
@@ -126,7 +128,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',  color: '#16A34A', resource: 'KPI' },
   { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker', color: '#0EA5E9', resource: 'Workload' },
   { href: '/tat',              th: 'Turnaround Time',     en: 'TAT',            icon: 'clock',  color: '#8B5CF6', resource: 'TAT' },
-  { href: '/staff/rejection',  th: 'Rejection Log',       en: 'Rejection',      icon: 'alert',  color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+  { href: '/staff/rejection',  th: 'Rejection Log',       en: 'Rejection',      icon: 'alert',  color: '#DC2626', resource: REJECTION_RESOURCE },
   { section: 'ระบบ' },
   { href: '/staff/admin',      th: 'จัดการผู้ใช้',         en: 'Users & Roles',  icon: 'users',    color: '#475569', resource: 'User Management' },
   { href: '/staff/settings',   th: 'ตั้งค่าระบบ',          en: 'Settings',       icon: 'settings', color: '#475569', role: 'Admin' },

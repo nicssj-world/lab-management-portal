@@ -24,7 +24,6 @@ export const riskRegisterSchema = z.object({
   likelihood: scale.nullish(),
   impact: scale.nullish(),
   owner: optionalText,
-  status: z.enum(REGISTER_STATUS_VALUES).optional(),
   next_review_date: isoDate.nullish(),
 })
 

@@ -10,6 +10,8 @@ import { listQualityTaskHolidays } from './holidays'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import { canApproveTask, nextRollingDueDate, templateRemovalMode } from './safety'
 import { meetingSlotsOverlap, normalizeMeetingTime } from './meeting-time'
+import { meetingLocationsConflict, normalizeMeetingLocation } from './meeting-location'
+import { htmlToPlainText, MEETING_SUMMARY_MAX_HTML_LENGTH, MEETING_SUMMARY_MAX_TEXT_LENGTH, normalizeMeetingSummaryHtml, sanitizeMeetingSummaryHtml } from '@/lib/html-sanitize'
 import { isMonthlySafetySourceKey } from './monthly-safety'
 import type {
   AssigneeEntry, OccurrenceActionPayload, OccurrenceCreatePayload, QualityTaskActionItem, QualityTaskAttachment, QualityTaskCheckIn,
@@ -26,6 +28,17 @@ function fail(error: { message: string } | null, fallback = 'Quality task operat
 }
 function str(value: unknown) { return typeof value === 'string' ? value : '' }
 function nullable(value: unknown) { return typeof value === 'string' ? value : null }
+function normalizeQualityMeetingSummary(value: string | null | undefined) {
+  if (value == null) return null
+  if (value.length > MEETING_SUMMARY_MAX_HTML_LENGTH) {
+    throw new Error(`รูปแบบสรุปมติยาวเกิน ${MEETING_SUMMARY_MAX_HTML_LENGTH} ตัวอักษร`)
+  }
+  const safe = normalizeMeetingSummaryHtml(value)
+  if (htmlToPlainText(safe).length > MEETING_SUMMARY_MAX_TEXT_LENGTH) {
+    throw new Error(`สรุปมติยาวเกิน ${MEETING_SUMMARY_MAX_TEXT_LENGTH} ตัวอักษร`)
+  }
+  return safe || null
+}
 function nullableTime(value: unknown) {
   const text = nullable(value)
   return text ? text.slice(0, 5) : null
@@ -114,10 +127,11 @@ async function assertNoMeetingConflict(input: {
   endDate: string
   startTime: string | null
   endTime: string | null
+  location: string | null
 }) {
   const { data, error } = await supabaseAdmin
     .from('quality_task_instances')
-    .select('id, schedule_id, period_start, period_end, planned_date, planned_start_time, planned_end_time, note, quality_task_templates!inner(task_kind,workstream)')
+    .select('id, schedule_id, period_start, period_end, planned_date, planned_start_time, planned_end_time, meeting_location, note, quality_task_templates!inner(task_kind,workstream)')
     .eq('quality_task_templates.task_kind', 'meeting')
     .eq('quality_task_templates.workstream', 'quality')
   fail(error)
@@ -128,6 +142,8 @@ async function assertNoMeetingConflict(input: {
     // Cancelled scheduled occurrences stay in the database for audit history but
     // no longer occupy a meeting slot.
     if (nullable(row.note) === CANCELLED_NOTE) return false
+
+    if (!meetingLocationsConflict(input.location, nullable(row.meeting_location))) return false
 
     const plannedDate = nullable(row.planned_date)
     if (!plannedDate) return false
@@ -251,7 +267,7 @@ export async function getQualityTaskOccurrences(
           periodLabel: row ? str(row.period_label) : periodLabel(period.start, period.end), ownerTextOverride: nullable(row?.owner_text_override), plannedDate: nullable(row?.planned_date),
           plannedStartTime: nullableTime(row?.planned_start_time), plannedEndTime: nullableTime(row?.planned_end_time),
           meetingLocation: nullable(row?.meeting_location), meetingAgenda: nullable(row?.meeting_agenda),
-          status, note: nullable(row?.note), completionNote: nullable(row?.completion_note),
+          status, note: nullable(row?.note), completionNote: workstream === 'quality' && template.taskKind === 'meeting' ? sanitizeMeetingSummaryHtml(nullable(row?.completion_note)) || null : nullable(row?.completion_note),
           completionNoteUpdatedBy: nullable(row?.completion_note_updated_by), completionNoteUpdatedAt: nullable(row?.completion_note_updated_at),
           completedBy: nullable(row?.completed_by), completedAt: nullable(row?.completed_at), assignees: assigned,
           submittedBy: nullable(row?.submitted_by), submittedAt: nullable(row?.submitted_at), reviewedBy: nullable(row?.reviewed_by),
@@ -282,7 +298,7 @@ export async function getQualityTaskOccurrences(
       periodStart: str(row.period_start), periodEnd: str(row.period_end), periodLabel: str(row.period_label), ownerTextOverride: nullable(row.owner_text_override), plannedDate: nullable(row.planned_date),
       plannedStartTime: nullableTime(row.planned_start_time), plannedEndTime: nullableTime(row.planned_end_time),
       meetingLocation: nullable(row.meeting_location), meetingAgenda: nullable(row.meeting_agenda),
-      status, note: nullable(row.note), completionNote: nullable(row.completion_note),
+      status, note: nullable(row.note), completionNote: workstream === 'quality' && template.taskKind === 'meeting' ? sanitizeMeetingSummaryHtml(nullable(row.completion_note)) || null : nullable(row.completion_note),
       completionNoteUpdatedBy: nullable(row.completion_note_updated_by), completionNoteUpdatedAt: nullable(row.completion_note_updated_at),
       completedBy: nullable(row.completed_by), completedAt: nullable(row.completed_at), assignees: assigned,
       submittedBy: nullable(row.submitted_by), submittedAt: nullable(row.submitted_at), reviewedBy: nullable(row.reviewed_by),
@@ -326,17 +342,21 @@ export async function materializeOccurrence(payload: OccurrenceCreatePayload, ac
       (payload.startTime != null || payload.endTime != null || hasMeetingDetails)) {
       throw new Error('รายละเอียดการประชุมใช้ได้เฉพาะงานประชุม')
     }
+    const isQualityMeeting = workstream === 'quality' && template.taskKind === 'meeting'
     const meetingTime = template.taskKind === 'meeting' ? normalizeMeetingTime(payload.startTime, payload.endTime) : { startTime: null, endTime: null }
-    if (template.taskKind === 'meeting') {
+    const meetingLocation = isQualityMeeting ? normalizeMeetingLocation(payload.location) : null
+    if (isQualityMeeting && !meetingLocation) throw new Error('กรุณาระบุสถานที่ประชุม')
+    if (isQualityMeeting) {
       await assertNoMeetingConflict({
         startDate: payload.startDate,
         endDate: payload.endDate,
         startTime: meetingTime.startTime,
         endTime: meetingTime.endTime,
+        location: meetingLocation,
       })
     }
     const meetingDetails = template.taskKind === 'meeting'
-      ? { meeting_location: payload.location?.trim() || null, meeting_agenda: payload.agenda?.trim() || null }
+      ? { meeting_location: meetingLocation, meeting_agenda: payload.agenda?.trim() || null }
       : { meeting_location: null, meeting_agenda: null }
     const { data, error } = await supabaseAdmin.from('quality_task_instances').insert({ template_id: payload.templateId, period_start: payload.startDate, period_end: payload.endDate, period_label: payload.label.trim(), owner_text_override: payload.ownerText?.trim() || null, planned_date: payload.startDate, planned_start_time: meetingTime.startTime, planned_end_time: meetingTime.endTime, ...meetingDetails, participant_depts: template.taskKind === 'meeting' ? payload.participantDepts ?? [] : [], participant_user_ids: template.taskKind === 'meeting' ? payload.participantUserIds ?? [] : [], created_by: actor.id, updated_by: actor.id }).select('*').single()
     fail(error); await replaceAssignees(str(data.id), payload.assignees); audit(actor, 'quality_task.instance.create', str(data.id), payload); return data
@@ -407,6 +427,16 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
       }
     }
     const isMeeting = str(access.template.task_kind) === 'meeting'
+    const isQualityMeeting = workstream === 'quality' && isMeeting
+    if (!isMeeting && payload.location !== undefined && normalizeMeetingLocation(payload.location)) {
+      throw new Error('สถานที่ประชุมใช้ได้เฉพาะงานประชุม')
+    }
+    const meetingLocation = isQualityMeeting
+      ? normalizeMeetingLocation(payload.location === undefined ? nullable(access.instance.meeting_location) : payload.location)
+      : null
+    if (isQualityMeeting && payload.plannedDate && !meetingLocation) {
+      throw new Error('กรุณาระบุสถานที่ประชุมก่อนกำหนดวันประชุม')
+    }
     const hasTimePatch = payload.startTime !== undefined || payload.endTime !== undefined
     const timePatch: { startTime: string | null; endTime: string | null } | null = hasTimePatch
       ? (() => {
@@ -420,7 +450,7 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
           )
         })()
       : null
-    if (isMeeting && payload.plannedDate) {
+    if (isQualityMeeting && payload.plannedDate) {
       const meetingTime = timePatch ?? {
         startTime: nullableTime(access.instance.planned_start_time),
         endTime: nullableTime(access.instance.planned_end_time),
@@ -437,11 +467,13 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
         endDate: meetingRange.end,
         startTime: meetingTime.startTime,
         endTime: meetingTime.endTime,
+        location: meetingLocation,
       })
     }
     const { error } = await supabaseAdmin.from('quality_task_instances').update({
       planned_date: payload.plannedDate || null, note: payload.note?.trim() || null,
       ...(timePatch ? { planned_start_time: timePatch.startTime, planned_end_time: timePatch.endTime } : {}),
+      ...(isQualityMeeting && payload.location !== undefined ? { meeting_location: meetingLocation } : {}),
       updated_by: actor.id, updated_at: new Date().toISOString(),
       ...(payload.participantDepts ? { participant_depts: payload.participantDepts } : {}),
       ...(payload.participantUserIds ? { participant_user_ids: payload.participantUserIds } : {}),
@@ -452,10 +484,10 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
       fail((await supabaseAdmin.from('quality_task_instances').update({ status: 'in_progress', updated_by: actor.id, updated_at: new Date().toISOString() }).eq('id', instanceId)).error)
     }
   } else if (payload.action === 'save_completion_note') {
-    if (str(access.template.task_kind) !== 'meeting') throw new Error('สรุปมติใช้ได้เฉพาะงานประชุม')
+    if (workstream !== 'quality' || str(access.template.task_kind) !== 'meeting') throw new Error('สรุปมติใช้ได้เฉพาะงานประชุม')
     const currentStatus = taskStatus(access.instance.status)
     if (currentStatus === 'completed' || currentStatus === 'pending_review') throw new Error('ไม่สามารถแก้ไขสรุปมติหลังส่งงานแล้ว')
-    const completionNote = payload.completionNote?.trim() || null
+    const completionNote = normalizeQualityMeetingSummary(payload.completionNote)
     const now = new Date().toISOString()
     fail((await supabaseAdmin.from('quality_task_instances').update({
       completion_note: completionNote,
@@ -469,12 +501,18 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
     const now = new Date().toISOString()
     const requiresReview = payload.action === 'submit' && str(access.template.approval_mode) === 'required'
     const nextStatus: TaskStatus = requiresReview ? 'pending_review' : 'completed'
-    const completionNote = payload.completionNote === undefined
-      ? nullable(access.instance.completion_note)
-      : payload.completionNote?.trim() || null
+    const isQualityMeeting = workstream === 'quality' && str(access.template.task_kind) === 'meeting'
+    if (!isQualityMeeting && payload.completionNote !== undefined && payload.completionNote !== null && payload.completionNote.length > MEETING_SUMMARY_MAX_TEXT_LENGTH) {
+      throw new Error(`หมายเหตุการทำเสร็จยาวเกิน ${MEETING_SUMMARY_MAX_TEXT_LENGTH} ตัวอักษร`)
+    }
+    const completionNote = isQualityMeeting
+      ? normalizeQualityMeetingSummary(nullable(access.instance.completion_note))
+      : payload.completionNote === undefined
+        ? nullable(access.instance.completion_note)
+        : payload.completionNote?.trim() || null
     fail((await supabaseAdmin.from('quality_task_instances').update({
       status: nextStatus, completion_note: completionNote,
-      ...(payload.completionNote !== undefined ? { completion_note_updated_by: actor.id, completion_note_updated_at: now } : {}),
+      ...(payload.completionNote !== undefined && !isQualityMeeting ? { completion_note_updated_by: actor.id, completion_note_updated_at: now } : {}),
       submitted_by: actor.id, submitted_at: now,
       completed_by: nextStatus === 'completed' ? actor.id : null, completed_at: nextStatus === 'completed' ? now : null,
       reviewed_by: null, reviewed_at: null, review_note: null,

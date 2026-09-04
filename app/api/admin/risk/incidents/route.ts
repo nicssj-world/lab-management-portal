@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { auditRisk, canEditRisk, getRiskActor, getRiskPermission } from '@/lib/risk/access'
+import { auditRisk, canEditRisk, getIncidentActor, getRiskActor } from '@/lib/risk/access'
 
 // ไม่มี POST ที่นี่โดยตั้งใจ — การสร้างอุบัติการณ์มีทางเดียวคือ POST /incidents/report
 // ซึ่งบังคับ reported_by จาก session เสมอ ทำให้ทุกเรื่องตามรอยผู้รายงานได้ตาม ISO 15189 8.7
@@ -67,11 +67,8 @@ export function applyIncidentFilters(query: any, sp: URLSearchParams) {
 }
 
 export async function GET(req: NextRequest) {
-  const actor = await getRiskActor()
+  const actor = await getIncidentActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if ((await getRiskPermission(actor.role)) === 'none') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const sp = req.nextUrl.searchParams
   const page = parsePositiveInt(sp.get('page'), 1)

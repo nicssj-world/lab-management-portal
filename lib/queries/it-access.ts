@@ -4,6 +4,7 @@ import type {
   ItAccessRecordWithProfile,
   ItAccessReview,
   ItDowntimeLogWithSystem,
+  ItBackupAttachment,
   ItBackupLogWithRefs,
   ItVisitorLogWithRefs,
 } from '@/lib/supabase/types'
@@ -82,7 +83,25 @@ export async function getItBackupLogs(supabase: SupabaseClient): Promise<ItBacku
     .from('it_backup_logs')
     .select('*, system:it_systems(id, name), performer:profiles!it_backup_logs_performed_by_fkey(id, name)')
     .order('log_date', { ascending: false })
-  return (data ?? []) as ItBackupLogWithRefs[]
+  const logs = (data ?? []) as Omit<ItBackupLogWithRefs, 'attachments'>[]
+  if (logs.length === 0) return []
+
+  // Keep the list endpoint usable while an existing deployment is waiting for
+  // the attachment migration to be applied.
+  const { data: attachmentData } = await supabase
+    .from('it_backup_attachments')
+    .select('id, backup_log_id, file_name, content_type, size_bytes, uploaded_by, uploaded_at')
+    .in('backup_log_id', logs.map((log) => log.id))
+    .order('uploaded_at', { ascending: true })
+  const attachments = (attachmentData ?? []) as ItBackupAttachment[]
+  const byLog = new Map<string, ItBackupAttachment[]>()
+  for (const attachment of attachments) {
+    const list = byLog.get(attachment.backup_log_id) ?? []
+    list.push(attachment)
+    byLog.set(attachment.backup_log_id, list)
+  }
+
+  return logs.map((log) => ({ ...log, attachments: byLog.get(log.id) ?? [] }))
 }
 
 // บันทึกการเข้า-ออก — จำกัดจำนวนแถวเพราะทะเบียนนี้โตเร็วกว่าตารางอื่นในโมดูล

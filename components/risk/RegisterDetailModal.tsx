@@ -68,10 +68,11 @@ function useToast() {
   return { toasts, add }
 }
 
-export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, onClose, onChanged }: {
+export function RegisterDetailModal({ entryId, canEdit, canReview, canClose, actorName, onClose, onChanged }: {
   entryId: number
   canEdit: boolean
   canReview: boolean
+  canClose: boolean
   actorName: string | null
   onClose: () => void
   onChanged: () => void
@@ -171,7 +172,7 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
                 ยืนยันทบทวนแล้ว
               </Button>
             )}
-            {canReview && entry.status !== 'closed' && (
+            {canClose && entry.status !== 'closed' && (
               <Button
                 variant="primary" icon="shieldCheck" disabled={busy}
                 onClick={() => void send('/close', 'POST', undefined, 'ปิดรายการเรียบร้อย')}
@@ -216,7 +217,7 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
                 <dd style={{ margin: '2px 0 0', fontSize: FONT.md, color: 'var(--ink)' }}>{value || '—'}</dd>
               </div>
             ))}
-            <LocationField entry={entry} canEdit={canEdit} busy={busy} onSave={body => send('', 'PATCH', body)} />
+            <LocationField entry={entry} canEdit={canEdit && entry.status !== 'closed'} busy={busy} onSave={body => send('', 'PATCH', body)} />
           </dl>
           {sourceIncidents.length > 0 && (
             <p style={{ margin: 0, fontSize: FONT.base, color: 'var(--muted)' }}>
@@ -225,9 +226,9 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
           )}
         </section>
 
-        <AssessmentSection entry={entry} canEdit={canEdit} busy={busy} onSave={body => send('', 'PATCH', body)} />
+        <AssessmentSection entry={entry} canEdit={canEdit && entry.status !== 'closed'} busy={busy} onSave={body => send('', 'PATCH', body)} />
 
-        <ControlsSection entry={entry} canEdit={canEdit} busy={busy} onSave={body => send('', 'PATCH', body)} />
+        <ControlsSection entry={entry} canEdit={canEdit && entry.status !== 'closed'} busy={busy} onSave={body => send('', 'PATCH', body)} />
 
         <section style={{ border: '1px solid var(--border)', borderRadius: 12, padding: SPACE.sm }}>
           <h3 style={{ margin: `0 0 ${SPACE.sm}px`, display: 'flex', alignItems: 'center', gap: 7, fontSize: FONT.md, fontWeight: 700, color: 'var(--ink)' }}>
@@ -236,13 +237,13 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
           <RiskActionsPanel
             actions={actions}
             endpoint={`/api/admin/risk/register/${entryId}/actions`}
-            canManage={canReview}
+            canManage={canReview && entry.status !== 'closed'}
             actorName={actorName}
             onChanged={() => { void load(); onChanged() }}
           />
         </section>
 
-        <ResidualSection entry={entry} canReview={canReview} busy={busy} onSave={body => send('/residual', 'POST', body)} />
+        <ResidualSection entry={entry} canReview={canReview && entry.status !== 'closed'} busy={busy} onSave={body => send('/residual', 'POST', body)} />
 
         <section style={{ border: '1px solid var(--border)', borderRadius: 12, padding: SPACE.sm }}>
           <h3 style={{ margin: `0 0 ${SPACE.sm}px`, display: 'flex', alignItems: 'center', gap: 7, fontSize: FONT.md, fontWeight: 700, color: 'var(--ink)' }}>
@@ -251,7 +252,7 @@ export function RegisterDetailModal({ entryId, canEdit, canReview, actorName, on
           <AttachmentPanel
             attachments={attachments}
             target={{ registerId: entryId }}
-            canManage={canReview}
+            canManage={canReview && entry.status !== 'closed'}
             onChanged={() => void load()}
           />
         </section>

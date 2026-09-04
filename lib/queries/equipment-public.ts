@@ -6,12 +6,13 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import type { Equipment } from '@/lib/queries/equipment'
 import { canonicalEquipmentDepartment } from '@/lib/equipment/departments'
+import { createStaffSignedUrl } from '@/lib/personnel/storage'
 import { computeEquipmentPmCalState, fiscalYearForDate, type EquipmentPmCalState, type PmCalPlanRecord, type PmCalResultRecord } from '@/lib/equipment/pm-cal-domain'
 
 // คอลัมน์ที่ยอมให้ปรากฏบนหน้า public — แหล่งความจริงเดียวของ "อะไรเปิดเผยได้"
 const PUBLIC_COLUMNS = [
   'id', 'cbh_code', 'equipment_type', 'department', 'hospital_asset_no',
-  'classification', 'responsible_person', 'owner', 'owner_status',
+  'classification', 'responsible_user_id', 'responsible_person', 'owner', 'owner_status',
   'manufacturer', 'model', 'serial_number', 'vendor',
   'purchase_date', 'warranty_exp', 'status', 'risk_level',
   'needs_calibration', 'purpose', 'remark', 'photo_url', 'manual_url',
@@ -48,6 +49,10 @@ export interface PublicEquipment {
   pmCalState: EquipmentPmCalState
   photoSignedUrl: string | null
   manualSignedUrl: string | null
+  responsiblePersonProfile: {
+    name: string
+    photoSignedUrl: string | null
+  } | null
 }
 
 async function signR2(key: string | null): Promise<string | null> {
@@ -56,6 +61,58 @@ async function signR2(key: string | null): Promise<string | null> {
     return await getSignedUrl(r2, new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }), { expiresIn: 3600 })
   } catch {
     return null
+  }
+}
+
+type ResponsibleProfileRow = {
+  name: string | null
+  official_photo_url: string | null
+  avatar_url: string | null
+}
+
+async function getResponsiblePersonProfile(
+  row: Pick<Equipment, 'responsible_user_id' | 'responsible_person'>,
+): Promise<PublicEquipment['responsiblePersonProfile']> {
+  const responsibleName = row.responsible_person?.trim() ?? ''
+  if (!row.responsible_user_id && !responsibleName) return null
+
+  let profile: ResponsibleProfileRow | null = null
+
+  // Newer equipment records keep the profile ID, so prefer the relationship
+  // over the display-name snapshot. The status guard keeps the QR page from
+  // surfacing a soft-deleted personnel record.
+  if (row.responsible_user_id) {
+    const { data } = await supabaseAdmin
+      .from('profiles')
+      .select('name, official_photo_url, avatar_url')
+      .eq('id', row.responsible_user_id)
+      .eq('status', 'active')
+      .is('deleted_at', null)
+      .maybeSingle()
+    profile = (data as ResponsibleProfileRow | null) ?? null
+  }
+
+  // Keep older manually-entered/imported records working even when they do
+  // not have responsible_user_id populated yet.
+  if (!profile && responsibleName) {
+    const { data } = await supabaseAdmin
+      .from('profiles')
+      .select('name, official_photo_url, avatar_url')
+      .eq('name', responsibleName)
+      .eq('status', 'active')
+      .is('deleted_at', null)
+      .maybeSingle()
+    profile = (data as ResponsibleProfileRow | null) ?? null
+  }
+
+  if (!profile) return null
+
+  return {
+    name: profile.name?.trim() || responsibleName,
+    // Official photos are private staff files. Only expose a short-lived URL;
+    // retain the normal avatar as a graceful fallback if no official photo is
+    // available for this profile.
+    photoSignedUrl: (await createStaffSignedUrl(profile.official_photo_url)) ?? profile.avatar_url ?? null,
   }
 }
 
@@ -73,11 +130,12 @@ export async function getPublicEquipment(id: string): Promise<PublicEquipment | 
   }
 
   const fiscalYear = fiscalYearForDate(new Date())
-  const [{ data: plans }, { data: results }, photoSignedUrl, manualSignedUrl] = await Promise.all([
+  const [{ data: plans }, { data: results }, photoSignedUrl, manualSignedUrl, responsiblePersonProfile] = await Promise.all([
     supabaseAdmin.from('equipment_pm_cal_plans').select('id, equipment_id, fiscal_year, calendar_month, cal_type, due_date, record_status, version').eq('equipment_id', id).eq('fiscal_year', fiscalYear).eq('record_status', 'active'),
     supabaseAdmin.from('equipment_calibrations').select('id, plan_id, equipment_id, cal_type, completed_date, result, certificate_no, created_at').eq('equipment_id', id).order('completed_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }),
     signR2(row.photo_url),
     signR2(row.manual_url),
+    getResponsiblePersonProfile(row),
   ])
   const history = (results ?? []) as Array<PmCalResultRecord & { certificate_no?: string | null }>
   const latestPm = history.find(entry => entry.cal_type === 'PM')
@@ -115,5 +173,6 @@ export async function getPublicEquipment(id: string): Promise<PublicEquipment | 
     pmCalState: computeEquipmentPmCalState(row.status !== 'Inactive' && row.needs_calibration, (plans ?? []) as PmCalPlanRecord[], history),
     photoSignedUrl,
     manualSignedUrl,
+    responsiblePersonProfile,
   }
 }

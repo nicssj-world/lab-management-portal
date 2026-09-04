@@ -10,12 +10,12 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { RISK_NAVIGATION } from '@/lib/navigation'
 import { IncidentDetailModal } from './IncidentDetailModal'
 import { ExportMenu } from './shared/ExportMenu'
-import { ActiveFilterBar, FilterBar, FiscalYearFilter, MonthFilter, Pagination, SearchFilter, SelectFilter } from './shared/FilterBar'
+import { ActiveFilterBar, FilterBar, FiscalYearFilter, MonthFilter, Pagination, SearchFilter, SelectFilter, type ActiveFilterItem } from './shared/FilterBar'
 import { ErrorBanner, Panel, SeverityBadge, StatusBadge, TableSkeleton } from './shared/ui'
 import { useUrlFilters } from './shared/useUrlFilters'
 import {
-  FONT, INCIDENT_STATUSES, LAB_DEPARTMENTS, SEVERITY_LETTERS, SPACE,
-  formatThaiDate, tabularNums,
+  FONT, INCIDENT_STATUSES, LAB_DEPARTMENTS, SEVERITY_DESCRIPTIONS, SEVERITY_LETTERS, SPACE,
+  THAI_MONTHS, formatThaiDate, tabularNums,
 } from './shared/tokens'
 
 type IncidentRow = {
@@ -39,12 +39,15 @@ const DEFAULTS = {
 const PAGE_SIZE = 20
 const COLUMNS = ['เลขที่', 'วันที่', 'เหตุการณ์', 'หน่วยงาน', 'ระดับ', 'ผู้รายงาน', 'สถานะ']
 
-export function IncidentClient({ canEdit, canReview, actorName }: {
+export function IncidentClient({ canEdit, canReview, canEscalate, canClose, canAccessRiskModule, actorName }: {
   canEdit: boolean
   canReview: boolean
+  canEscalate: boolean
+  canClose: boolean
+  canAccessRiskModule: boolean
   actorName: string | null
 }) {
-  const { filters, setFilters } = useUrlFilters(DEFAULTS)
+  const { filters, setFilters, clearFilters } = useUrlFilters(DEFAULTS)
   const [rows, setRows] = useState<IncidentRow[]>([])
   const [count, setCount] = useState(0)
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
@@ -59,37 +62,54 @@ export function IncidentClient({ canEdit, canReview, actorName }: {
   params.set('pageSize', String(PAGE_SIZE))
   const queryString = params.toString()
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`/api/admin/risk/incidents?${queryString}`)
+      const res = await fetch(`/api/admin/risk/incidents?${queryString}`, { signal })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'โหลดรายการไม่สำเร็จ')
       setRows(json.data ?? [])
       setCount(Number(json.count ?? 0))
       setStatusCounts(json.statusCounts ?? {})
     } catch (err) {
+      if (signal?.aborted) return
       setError((err as Error).message)
       setRows([])
       setCount(0)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [queryString])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
+  }, [load])
 
-  const activeFilters = (Object.keys(DEFAULTS) as (keyof typeof DEFAULTS)[])
-    .filter(key => key !== 'page')
-    .filter(key => filters[key] !== DEFAULTS[key])
+  // เดือนเป็นช่วงย่อยของปีงบประมาณ — กัน URL เก่าหรือการเลือกที่ไม่ครบคู่
+  // ไม่ให้ผู้ใช้เห็นเดือนถูกเลือกแต่ผลลัพธ์ไม่ได้เปลี่ยนจริง
+  useEffect(() => {
+    if (!filters.year && filters.month) setFilters({ month: '' })
+  }, [filters.month, filters.year, setFilters])
 
-  // overdueRca ตั้งมาจากลิงก์บนหน้าภาพรวม และไม่มีช่องควบคุมบนหน้าจอให้ตั้งกลับ
-  const linkFilter = [
-    filters.overdueRca === '1' ? 'เฉพาะเรื่องที่ค้างการวิเคราะห์รากของปัญหา' : '',
-    filters.spaceCode ? `พื้นที่ ${filters.spaceCode}` : '',
-    filters.fromDate ? `ตั้งแต่ ${formatThaiDate(filters.fromDate)}` : '',
-  ].filter(Boolean).join(' · ')
+  const activeFilterItems: ActiveFilterItem[] = []
+  if (filters.q) activeFilterItems.push({ key: 'q', label: `คำค้น: ${filters.q}`, onRemove: () => setFilters({ q: '' }) })
+  if (filters.year) activeFilterItems.push({ key: 'year', label: `ปีงบประมาณ ${filters.year}`, onRemove: () => setFilters({ year: '' }) })
+  if (filters.month) {
+    const monthLabel = THAI_MONTHS.find(month => month.value === filters.month.padStart(2, '0'))?.label ?? filters.month
+    activeFilterItems.push({ key: 'month', label: `เดือน ${monthLabel}`, onRemove: () => setFilters({ month: '' }) })
+  }
+  if (filters.status) {
+    const statusLabel = INCIDENT_STATUSES.find(status => status.value === filters.status)?.label ?? filters.status
+    activeFilterItems.push({ key: 'status', label: `สถานะ: ${statusLabel}`, onRemove: () => setFilters({ status: '' }) })
+  }
+  if (filters.severity) activeFilterItems.push({ key: 'severity', label: `ระดับ ${filters.severity}`, onRemove: () => setFilters({ severity: '' }) })
+  if (filters.department) activeFilterItems.push({ key: 'department', label: `หน่วยงาน: ${filters.department}`, onRemove: () => setFilters({ department: '' }) })
+  if (filters.overdueRca) activeFilterItems.push({ key: 'overdueRca', label: 'เฉพาะเรื่องที่ค้าง RCA', onRemove: () => setFilters({ overdueRca: '' }) })
+  if (filters.spaceCode) activeFilterItems.push({ key: 'spaceCode', label: `พื้นที่: ${filters.spaceCode}`, onRemove: () => setFilters({ spaceCode: '' }) })
+  if (filters.fromDate) activeFilterItems.push({ key: 'fromDate', label: `ตั้งแต่ ${formatThaiDate(filters.fromDate)}`, onRemove: () => setFilters({ fromDate: '' }) })
 
   const chips = [
     { value: '', label: 'ทั้งหมด', count: Object.values(statusCounts).reduce((a, b) => a + b, 0) },
@@ -113,16 +133,17 @@ export function IncidentClient({ canEdit, canReview, actorName }: {
         actions={
           <>
             <ExportMenu target="incidents" query={queryString} />
-            {canEdit && (
-              <Link href="/staff/risk/report" className="risk-report-cta">
-                <Icon name="plus" size={16} />บันทึกอุบัติการณ์
-              </Link>
-            )}
+            <Link href="/staff/risk/report" className="risk-report-cta">
+              <Icon name="plus" size={16} />บันทึกอุบัติการณ์
+            </Link>
           </>
         }
       />
 
-      <ModuleSubnav items={RISK_NAVIGATION} label="เมนูทะเบียนความเสี่ยง" />
+      <ModuleSubnav
+        items={canAccessRiskModule ? RISK_NAVIGATION : RISK_NAVIGATION.filter(item => item.id === 'ior')}
+        label="เมนูทะเบียนความเสี่ยง"
+      />
 
       <ErrorBanner message={error} />
 
@@ -140,13 +161,16 @@ export function IncidentClient({ canEdit, canReview, actorName }: {
               placeholder="ค้นหาเลขที่ / เหตุการณ์ / ผู้รายงาน"
               onCommit={q => setFilters({ q })}
             />
-            <FiscalYearFilter value={filters.year} onChange={year => setFilters({ year })} />
-            <MonthFilter value={filters.month} onChange={month => setFilters({ month })} />
+            <FiscalYearFilter
+              value={filters.year}
+              onChange={year => setFilters(year ? { year } : { year: '', month: '' })}
+            />
+            <MonthFilter value={filters.month} disabled={!filters.year} onChange={month => setFilters({ month })} />
             <SelectFilter
               label="ระดับความรุนแรง"
               value={filters.severity}
               allLabel="ทุกระดับ"
-              options={SEVERITY_LETTERS.map(s => ({ value: s, label: s }))}
+              options={SEVERITY_LETTERS.map(s => ({ value: s, label: `${s} — ${SEVERITY_DESCRIPTIONS[s]}` }))}
               onChange={severity => setFilters({ severity })}
             />
             <SelectFilter
@@ -159,9 +183,8 @@ export function IncidentClient({ canEdit, canReview, actorName }: {
           </FilterBar>
 
           <ActiveFilterBar
-            count={activeFilters.length}
-            detail={linkFilter || undefined}
-            onClear={() => setFilters(DEFAULTS)}
+            items={activeFilterItems}
+            onClear={() => clearFilters()}
           />
         </div>
       </Panel>
@@ -175,7 +198,7 @@ export function IncidentClient({ canEdit, canReview, actorName }: {
             onChange={page => setFilters({ page: String(page) }, { resetPage: false })}
           />
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div aria-busy={loading} style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 940, fontSize: FONT.base }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)' }}>
@@ -220,7 +243,7 @@ export function IncidentClient({ canEdit, canReview, actorName }: {
                     <EmptyState
                       icon="shield"
                       title="ไม่พบรายงานอุบัติการณ์"
-                      hint={filters.q || filters.status ? 'ลองล้างตัวกรองเพื่อดูรายการทั้งหมด' : 'ยังไม่มีการรายงานอุบัติการณ์ในระบบ'}
+                      hint={activeFilterItems.length > 0 ? 'ลองล้างตัวกรองหรือปรับเงื่อนไขให้กว้างขึ้น' : 'ยังไม่มีการรายงานอุบัติการณ์ในระบบ'}
                     />
                   </td>
                 </tr>
@@ -235,6 +258,8 @@ export function IncidentClient({ canEdit, canReview, actorName }: {
           incidentId={openId}
           canEdit={canEdit}
           canReview={canReview}
+          canEscalate={canEscalate}
+          canClose={canClose}
           actorName={actorName}
           onClose={() => setOpenId(null)}
           onChanged={() => void load()}

@@ -45,11 +45,24 @@ const reportPage = read('app/(protected)/staff/risk/report/page.tsx')
 assert.ok(!reportPage.includes("=== 'none'"), 'incident reporting stays open to every signed-in staff member')
 
 const sidebar = read('components/layout/StaffSidebar.tsx')
+const permissionResources = read('lib/permission-resources.ts')
+
+assert.ok(permissionResources.includes("export const RISK_RESOURCE = 'ความเสี่ยง'"), 'risk has its own resource key')
+assert.ok(permissionResources.includes("export const REJECTION_RESOURCE = 'Rejection'"), 'rejection has its own resource key')
+assert.ok(!permissionResources.includes('ความเสี่ยง / Rejection'), 'risk and rejection are not combined in the resource registry')
+assert.ok(sidebar.includes('resource: RISK_RESOURCE'), 'risk navigation uses the risk resource')
+assert.ok(sidebar.includes('resource: REJECTION_RESOURCE'), 'rejection navigation uses the rejection resource')
 
 // ลูกที่ชี้ไปหน้ารายงานต้องไม่มี resource
 assert.ok(
   /\{ href: '\/staff\/risk\/report'[^}]*\}/.test(sidebar) && !/\{ href: '\/staff\/risk\/report'[^}]*resource:/.test(sidebar),
   'sidebar exposes incident reporting without a resource gate',
+)
+
+// IOR workflow เปิดให้บุคลากรทุกคนที่มี profile ไม่ผูกกับ resource ของ Risk Register
+assert.ok(
+  /\{ href: '\/staff\/risk\/ior'[^}]*\}/.test(sidebar) && !/\{ href: '\/staff\/risk\/ior'[^}]*resource:/.test(sidebar),
+  'sidebar exposes the IOR workflow without a risk-register resource gate',
 )
 
 // แม่ของกลุ่มก็ต้องไม่มี resource — isEntryVisible เช็คของแม่ก่อนแล้ว return false

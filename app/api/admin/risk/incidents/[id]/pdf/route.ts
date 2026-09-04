@@ -2,17 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { exportResponse } from '@/lib/external-quality/export'
 import { buildIncidentDetailPdf } from '@/lib/risk/detail-pdf'
-import { getRiskActor, getRiskPermission } from '@/lib/risk/access'
+import { getIncidentActor } from '@/lib/risk/access'
 
 type Params = { params: Promise<{ id: string }> }
 
 /** ดาวน์โหลด PDF สรุปอุบัติการณ์รายการเดียว — สิทธิ์เท่ากับการเปิดดูรายละเอียด (view ขึ้นไป) */
 export async function GET(_req: NextRequest, { params }: Params) {
-  const actor = await getRiskActor()
+  const actor = await getIncidentActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if ((await getRiskPermission(actor.role)) === 'none') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const { id } = await params
   const incidentId = Number(id)

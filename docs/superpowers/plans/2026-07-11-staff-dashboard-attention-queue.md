@@ -12,7 +12,7 @@
 
 - Styling is inline styles + CSS variables only (`var(--primary)`, etc.) — no Tailwind, no CSS modules, per `CLAUDE.md`.
 - Icon names must come from the `ICONS` map in `components/ui/Icon.tsx` — do not invent new icon names.
-- Every new query must respect the existing permission system (`lib/permission-resources.ts` resource keys: `'เอกสารคุณภาพ'`, `'สัญญา'`, `'ความเสี่ยง / Rejection'`) — do not hardcode role checks.
+- Every new query must respect the existing permission system (`lib/permission-resources.ts` resource keys: `'เอกสารคุณภาพ'`, `'สัญญา'`, `'ความเสี่ยง'`, `'Rejection'`) — do not hardcode role checks.
 - `npx tsc --noEmit` must stay clean after every task (this project's only automated verification per `CLAUDE.md`).
 - Don't touch `app/(protected)/staff/documents/pending/page.tsx`, `PendingClient.tsx`, or any other file already showing as modified in `git status` from unrelated in-flight work — only add new code, never edit those files.
 
@@ -668,7 +668,7 @@ export function AttentionQueue({
 }: AttentionQueueProps) {
   const canSeeDocs = (permissions['เอกสารคุณภาพ'] ?? 'none') !== 'none'
   const canSeeContracts = (permissions['สัญญา'] ?? 'none') !== 'none'
-  const canSeeRisk = (permissions['ความเสี่ยง / Rejection'] ?? 'none') !== 'none'
+  const canSeeRisk = (permissions['ความเสี่ยง'] ?? 'none') !== 'none'
 
   if (!canSeeDocs && !canSeeContracts && !canSeeRisk) return null
 

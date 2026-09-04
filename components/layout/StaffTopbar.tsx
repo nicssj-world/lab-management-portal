@@ -7,6 +7,7 @@ import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
 import { useSidebar } from '@/context/SidebarContext'
 import { resolvePageTitle } from '@/lib/navigation'
+import { isAdminRole } from '@/lib/roles'
 
 const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/dashboard':        { th: 'แดชบอร์ดภาพรวม',              en: 'Dashboard Overview' },
@@ -38,7 +39,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/documents/pending':     { th: 'เอกสารรออนุมัติ',          en: 'Pending Approval' },
   '/staff/documents/read-report': { th: 'รายงานการอ่านเอกสาร',      en: 'Read Compliance' },
   '/staff/documents/master-list': { th: 'จัดการทะเบียนเอกสารคุณภาพ', en: 'Documents Master List' },
-  '/staff/contracts':        { th: 'บริหารสัญญา',                en: 'Contracts Management' },
+  '/staff/contracts':        { th: 'งานคลังและพัสดุ',             en: 'Inventory & Supplies Management' },
   '/staff/equipment':        { th: 'ทะเบียนเครื่องมือ',           en: 'Equipment Registry' },
   '/staff/equipment/map':    { th: 'แผนผังเครื่องมือ',            en: 'Equipment Map' },
   '/staff/lab-map':          { th: 'แผนที่ห้องปฏิบัติการ',        en: 'Laboratory Map' },
@@ -90,11 +91,16 @@ const BTN: React.CSSProperties = {
   flexShrink: 0, textDecoration: 'none',
 }
 
-export function StaffTopbar() {
+interface StaffTopbarProps {
+  userRole?: string
+}
+
+export function StaffTopbar({ userRole }: StaffTopbarProps) {
   const pathname = usePathname()
   const { lang, setLang } = useLang()
   const { toggle, toggleMobile } = useSidebar()
   const [dark, setDark] = useState(false)
+  const canAccessShift = isAdminRole(userRole)
 
   useEffect(() => {
     const saved = localStorage.getItem('theme') === 'dark'
@@ -133,6 +139,29 @@ export function StaffTopbar() {
           {lang === 'th' ? title.th : title.en}
         </div>
       </div>
+
+      {canAccessShift && (
+        <Link
+          href="/auth/shift"
+          aria-label="เปิดตารางเวร"
+          title="ตารางเวร"
+          style={{
+            ...BTN,
+            width: 'auto',
+            minWidth: 86,
+            gap: 7,
+            padding: '0 11px',
+            background: 'var(--primary-soft)',
+            color: 'var(--primary)',
+            fontSize: 12.5,
+            fontWeight: 700,
+            fontFamily: 'inherit',
+          }}
+        >
+          <Icon name="calendar" size={15} />
+          <span>ตารางเวร</span>
+        </Link>
+      )}
 
       {/* Lang toggle */}
       <button
