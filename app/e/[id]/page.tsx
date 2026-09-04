@@ -95,7 +95,8 @@ export default async function PublicEquipmentPage({ params }: { params: Promise<
     .eqp-tile-v{font-size:13px;font-weight:700;color:var(--ink);line-height:1.3;word-break:break-word}
     .eqp-tile-l{font-size:10.5px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.5px}
     .eqp-person{display:flex;align-items:center;gap:12px;padding:14px}
-    .eqp-person-av{width:42px;height:42px;border-radius:999px;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0}
+    .eqp-person-av{width:42px;height:42px;border-radius:999px;overflow:hidden;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0}
+    .eqp-person-av img{width:100%;height:100%;object-fit:cover;object-position:center 22%;display:block}
     .eqp-person-name{font-size:14px;font-weight:700;color:var(--ink)}
     .eqp-person-sub{font-size:12px;color:var(--muted);margin-top:1px}
     details.eqp-sec{border-top:1px solid var(--border)}
@@ -133,7 +134,7 @@ export default async function PublicEquipmentPage({ params }: { params: Promise<
   const cal = getPublicPmCalStatus(eq)
   const st = STATUS_COLOR[eq.status] ?? STATUS_COLOR.Inactive
   const rk = eq.risk_level ? RISK_COLOR[eq.risk_level] : null
-  const person = (eq.responsible_person ?? '').trim()
+  const person = (eq.responsiblePersonProfile?.name ?? eq.responsible_person ?? '').trim()
 
   return (
     <main className="eqp">
@@ -171,7 +172,11 @@ export default async function PublicEquipmentPage({ params }: { params: Promise<
           {/* 5. Responsible person */}
           {person && (
             <div className="eqp-person" style={{ borderTop: '1px solid var(--border)' }}>
-              <div className="eqp-person-av">{person.charAt(0)}</div>
+              <div className="eqp-person-av">
+                {eq.responsiblePersonProfile?.photoSignedUrl
+                  ? <img src={eq.responsiblePersonProfile.photoSignedUrl} alt={`รูปโปรไฟล์ ${person}`} />
+                  : person.charAt(0)}
+              </div>
               <div>
                 <div className="eqp-person-name">{person}</div>
                 <div className="eqp-person-sub">ผู้รับผิดชอบ · {eq.department}</div>

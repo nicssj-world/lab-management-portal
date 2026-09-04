@@ -34,11 +34,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     patch.closed_by = actor.id
     patch.closed_at = new Date().toISOString()
     patch.checkout_method = 'staff'
+    patch.checkout_note = null
     patch.checkout_secret_hash = null
   } else if (!exited && before.exited_at) {
     patch.closed_by = null
     patch.closed_at = null
     patch.checkout_method = null
+    patch.checkout_note = null
   }
 
   let { data, error } = await supabaseAdmin
@@ -46,6 +48,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (error && isMissingVisitorOptionalColumn(error)) {
     const legacyPatch = { ...patch }
     delete legacyPatch.safety_ack_other
+    delete legacyPatch.checkout_note
     const legacy = await supabaseAdmin
       .from('it_visitor_logs').update(legacyPatch).eq('id', id).select(IT_VISITOR_LOG_SELECT_LEGACY).single()
     data = legacy.data

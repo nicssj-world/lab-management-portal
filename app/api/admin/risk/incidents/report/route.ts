@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { auditRisk, canEditRisk, getRiskActor } from '@/lib/risk/access'
+import { auditRisk, canEditRisk, getIncidentReporter } from '@/lib/risk/access'
 import { nextReportNo } from '@/lib/risk/incident'
 import { incidentReportSchema } from '@/lib/validations/incident'
 
@@ -10,11 +10,11 @@ import { incidentReportSchema } from '@/lib/validations/incident'
  * ตรวจแค่ว่าล็อกอินอยู่ ไม่ตรวจ permission matrix โดยตั้งใจ — การกั้นไม่ให้คนที่เห็นเหตุการณ์
  * รายงานเข้ามาคือสาเหตุที่ระบบรายงานอุบัติการณ์ล้มเหลว
  *
- * สิ่งที่ตัดสินคุณภาพ (ระดับความรุนแรง สถานะ การวิเคราะห์) ผู้ทบทวนเป็นคนใส่ทีหลัง
+ * สิ่งที่ตัดสินคุณภาพ (ระดับความรุนแรง สถานะ การวิเคราะห์) จะใส่ใน workflow IOR ทีหลัง
  * schema นี้จึงไม่มีฟิลด์เหล่านั้นเลย ส่งมาก็ถูก zod ตัดทิ้ง
  */
 export async function POST(req: NextRequest) {
-  const actor = await getRiskActor()
+  const actor = await getIncidentReporter()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const parsed = incidentReportSchema.safeParse(await req.json())

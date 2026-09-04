@@ -27,6 +27,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     .single()
 
   if (!incident) return NextResponse.json({ error: 'ไม่พบรายการนี้' }, { status: 404 })
+  if (incident.status === 'closed') return NextResponse.json({ error: 'เรื่องที่ปิดแล้วไม่สามารถยกระดับได้' }, { status: 409 })
   if (incident.escalated_register_id) {
     return NextResponse.json({ error: 'เรื่องนี้ถูกยกระดับเข้าทะเบียนไปแล้ว' }, { status: 409 })
   }

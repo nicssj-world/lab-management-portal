@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { auditRisk, canReviewRisk, getRiskActor } from '@/lib/risk/access'
 import { nextReviewDate, todayBangkok } from '@/lib/risk/register'
+import { closedRegisterResponse } from '@/lib/risk/register-guards'
 
 /**
  * ยืนยันการทบทวนความเสี่ยงประจำปี (ISO 15189 8.5)
@@ -15,6 +16,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!canReviewRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
+  const closed = await closedRegisterResponse(Number(id))
+  if (closed) return closed
   const today = todayBangkok()
 
   const { data, error } = await supabaseAdmin
@@ -28,6 +31,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     })
     .eq('id', Number(id))
     .is('deleted_at', null)
+    .neq('status', 'closed')
     .select()
     .single()
 

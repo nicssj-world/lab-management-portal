@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import autoTable from 'jspdf-autotable'
 import { buildExcel, buildThaiPdf, createThaiPdfDoc, exportResponse } from '@/lib/external-quality/export'
 import { drawMovementSummary, drawRiskMatrix } from '@/lib/risk/matrix-pdf'
-import { getRiskActor, getRiskPermission } from '@/lib/risk/access'
+import { getIncidentActor, getRiskActor, getRiskPermission } from '@/lib/risk/access'
 import { applyIncidentFilters } from '../incidents/route'
 import { applyRegisterFilters } from '../register/route'
 
@@ -34,14 +34,14 @@ const LEVEL_LABELS: Record<string, string> = { low: 'ต่ำ', medium: 'กล
  * เพื่อให้จำนวนแถวในไฟล์ตรงกับที่ผู้ใช้เห็นบนจอเสมอ
  */
 export async function GET(req: NextRequest) {
-  const actor = await getRiskActor()
+  const sp = req.nextUrl.searchParams
+  const target = sp.get('target') ?? 'incidents'
+  const actor = target === 'incidents' ? await getIncidentActor() : await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if ((await getRiskPermission(actor.role)) === 'none') {
+  if (target !== 'incidents' && (await getRiskPermission(actor)) === 'none') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const sp = req.nextUrl.searchParams
-  const target = sp.get('target') ?? 'incidents'
   const format = sp.get('format') === 'pdf' ? 'pdf' : 'xlsx'
   const stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 

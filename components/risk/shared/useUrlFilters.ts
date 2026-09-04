@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 /**
@@ -15,6 +15,7 @@ export function useUrlFilters<T extends Record<string, string>>(defaults: T) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const latestQueryRef = useRef(searchParams.toString())
 
   const filters = useMemo(() => {
     const result = { ...defaults }
@@ -26,8 +27,12 @@ export function useUrlFilters<T extends Record<string, string>>(defaults: T) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
+  useEffect(() => {
+    latestQueryRef.current = searchParams.toString()
+  }, [pathname, searchParams])
+
   const setFilters = useCallback((patch: Partial<T>, options?: { resetPage?: boolean }) => {
-    const params = new URLSearchParams(searchParams.toString())
+    const params = new URLSearchParams(latestQueryRef.current)
     for (const [key, value] of Object.entries(patch)) {
       if (!value || value === defaults[key]) params.delete(key)
       else params.set(key, String(value))
@@ -36,11 +41,26 @@ export function useUrlFilters<T extends Record<string, string>>(defaults: T) {
     if (options?.resetPage !== false && !('page' in patch)) params.delete('page')
 
     const query = params.toString()
+    latestQueryRef.current = query
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, router, searchParams])
 
-  return { filters, setFilters }
+  /** ล้างตัวกรองทั้งหมดในครั้งเดียว โดยเลือกเก็บพารามิเตอร์ที่เป็นแค่มุมมองได้ */
+  const clearFilters = useCallback((preserveKeys: readonly string[] = []) => {
+    const currentParams = new URLSearchParams(latestQueryRef.current)
+    const params = new URLSearchParams()
+    for (const key of preserveKeys) {
+      const value = currentParams.get(key)
+      if (value) params.set(key, value)
+    }
+
+    const query = params.toString()
+    latestQueryRef.current = query
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }, [pathname, router, searchParams])
+
+  return { filters, setFilters, clearFilters }
 }
 
 /**
@@ -51,16 +71,23 @@ export function useUrlFilters<T extends Record<string, string>>(defaults: T) {
  */
 export function useDebouncedSearch(initial: string, onCommit: (value: string) => void) {
   const [text, setText] = useState(initial)
+  const onCommitRef = useRef(onCommit)
+  const lastInitialRef = useRef(initial)
 
-  // ค่าจาก URL เปลี่ยนจากทางอื่น (กดย้อนกลับ, กดลิงก์ KPI) ต้องตามให้ทัน
-  useEffect(() => { setText(initial) }, [initial])
+  useEffect(() => { onCommitRef.current = onCommit }, [onCommit])
 
   useEffect(() => {
+    // ค่าจาก URL เปลี่ยนจากทางอื่น (กดย้อนกลับ, กดลิงก์ KPI หรือกดล้างทั้งหมด)
+    // ต้อง sync ช่องค้นหาก่อน และห้ามนำค่าค้างเดิมกลับไปเขียน URL ซ้ำ
+    if (lastInitialRef.current !== initial) {
+      lastInitialRef.current = initial
+      setText(initial)
+      return
+    }
     if (text === initial) return
-    const timer = setTimeout(() => onCommit(text), text ? 350 : 0)
+    const timer = setTimeout(() => onCommitRef.current(text), text ? 350 : 0)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text])
+  }, [initial, text])
 
   return [text, setText] as const
 }

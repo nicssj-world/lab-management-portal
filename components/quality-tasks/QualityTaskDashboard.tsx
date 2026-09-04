@@ -20,6 +20,7 @@ import { PdfViewerModal } from "@/components/documents/PdfViewerModal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Icon } from "@/components/ui/Icon";
 import { QualityTaskDialog } from "@/components/quality-tasks/QualityTaskDialog";
+import { MeetingSummaryEditor } from "@/components/quality-tasks/MeetingSummaryEditor";
 import { DEPARTMENTS } from "@/lib/validations/user-schema";
 import { buildParticipantSignInHtml } from "@/lib/quality-tasks/participant-sign-in-pdf";
 import {
@@ -29,6 +30,7 @@ import {
 import { QUALITY_TASK_CATEGORIES } from "@/lib/quality-tasks/categories";
 import { addLogoToQrDataUrl } from "@/lib/qr-logo";
 import {
+  canManageQualityTaskOccurrence,
   isWeekendDate,
   occurrenceCalendarRange,
   occurrenceDisplayOwner,
@@ -43,11 +45,25 @@ import {
   shouldShowAdHocTimePicker,
   type MeetingTimePreset,
 } from "@/lib/quality-tasks/meeting-time";
+import {
+  isStandardMeetingLocation,
+  meetingLocationLabel,
+  meetingLocationOptionValue,
+  meetingLocationsConflict,
+  normalizeMeetingLocation,
+  OTHER_MEETING_LOCATION_VALUE,
+  QUALITY_MEETING_LOCATIONS,
+} from "@/lib/quality-tasks/meeting-location";
 import { getCheckInWindow } from "@/lib/quality-tasks/check-in-window";
 import {
   QUALITY_TASK_POLL_INTERVAL_MS,
   shouldPollQualityTaskDashboard,
 } from "@/lib/quality-tasks/polling";
+import {
+  htmlToPlainText,
+  normalizeMeetingSummaryHtml,
+  sanitizeMeetingSummaryHtml,
+} from "@/lib/html-sanitize";
 
 type Person = {
   id: string;
@@ -81,6 +97,22 @@ type HolidayDraft = {
   name: string;
   kind: QualityTaskHolidayKind;
 };
+type ScheduleActionPayload = Extract<OccurrenceActionPayload, { action: "schedule" }>;
+type MutateOptions = {
+  showInlineError?: boolean;
+  onError?: (message: string) => void;
+};
+type DragFailure = {
+  meetingTitle: string;
+  targetDate: string;
+  reason: string;
+};
+
+function dragFailureReason(message: string) {
+  const normalized = message.trim();
+  if (normalized === "Forbidden") return "คุณไม่มีสิทธิ์ย้ายประชุมรายการนี้";
+  return normalized || "ระบบไม่สามารถบันทึกวันที่ใหม่ได้";
+}
 const DAY_NAMES = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 const urgencyColor = {
   normal: "#64748B",
@@ -306,7 +338,7 @@ export function QualityTaskDashboard({
     participantUserIds: string[];
     assignees: AssigneeEntry[];
   } | null>(() =>
-    initialAdHoc && level === "edit"
+    initialAdHoc && level !== "none"
       ? {
           templateId: "",
           label: "",
@@ -350,6 +382,7 @@ export function QualityTaskDashboard({
   const [adHocParticipantModalOpen, setAdHocParticipantModalOpen] =
     useState(false);
   const [completeNote, setCompleteNote] = useState("");
+  const [summaryEditorOpen, setSummaryEditorOpen] = useState(false);
   const [actionItems, setActionItems] = useState<QualityTaskActionItem[]>([]);
   const [newActionItem, setNewActionItem] = useState<{
     userId: string | null;
@@ -366,6 +399,7 @@ export function QualityTaskDashboard({
     startTime: "",
     endTime: "",
   });
+  const [meetingLocationDraft, setMeetingLocationDraft] = useState("");
   const [expandedCalendarDate, setExpandedCalendarDate] = useState<
     string | null
   >(null);
@@ -374,6 +408,7 @@ export function QualityTaskDashboard({
     null,
   );
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  const [dragFailure, setDragFailure] = useState<DragFailure | null>(null);
   const draggedOccurrenceRef = useRef<QualityTaskOccurrence | null>(null);
   const adHocDateLabel =
     adHoc &&
@@ -420,6 +455,14 @@ export function QualityTaskDashboard({
     selected?.plannedEndTime,
     selected?.template.taskKind,
   ]);
+
+  useEffect(() => {
+    setMeetingLocationDraft(
+      selected?.template.taskKind === "meeting"
+        ? selected.meetingLocation ?? ""
+        : "",
+    );
+  }, [selected?.key, selected?.meetingLocation, selected?.template.taskKind]);
 
   useEffect(() => {
     if (!qr?.notOpenYet || !qr.opensAt) return;
@@ -542,7 +585,7 @@ export function QualityTaskDashboard({
           (!owner || occurrenceDisplayOwner(o) === owner) &&
           (!assignee || o.assignees.some((e) => e.userId === assignee)) &&
           (!search ||
-            `${occurrenceDisplayTitle(o)} ${occurrenceDisplayOwner(o)} ${o.completionNote ?? ""} ${o.note ?? ""} ${o.meetingLocation ?? ""} ${o.meetingAgenda ?? ""} ${o.assignees.map((entry) => assigneeName(entry, people)).join(" ")}`
+            `${occurrenceDisplayTitle(o)} ${occurrenceDisplayOwner(o)} ${htmlToPlainText(o.completionNote)} ${o.note ?? ""} ${o.meetingLocation ?? ""} ${o.meetingAgenda ?? ""} ${o.assignees.map((entry) => assigneeName(entry, people)).join(" ")}`
               .toLowerCase()
               .includes(search.toLowerCase())),
       ),
@@ -646,6 +689,8 @@ export function QualityTaskDashboard({
     if (!selected || selected.template.taskKind !== "meeting" || !selected.plannedDate) {
       return false;
     }
+    const selectedLocation = normalizeMeetingLocation(meetingLocationDraft);
+    if (!selectedLocation) return false;
     // Let the server return the precise validation message for an incomplete
     // custom range instead of treating a half-filled range as all-day.
     if ((startTime === null) !== (endTime === null)) return false;
@@ -656,6 +701,9 @@ export function QualityTaskDashboard({
         candidate.template.taskKind !== "meeting" ||
         !candidate.plannedDate
       ) {
+        return false;
+      }
+      if (!meetingLocationsConflict(selectedLocation, candidate.meetingLocation)) {
         return false;
       }
       const candidateRange = occurrenceCalendarRange(candidate);
@@ -697,19 +745,34 @@ export function QualityTaskDashboard({
     if (!res.ok) throw new Error(json.error);
     return json.instance.id as string;
   }
+  function withMeetingLocation(
+    o: QualityTaskOccurrence,
+    payload: ScheduleActionPayload,
+  ): ScheduleActionPayload {
+    if (o.template.taskKind !== "meeting" || payload.location !== undefined) {
+      return payload;
+    }
+    const location = o.key === selected?.key ? meetingLocationDraft : o.meetingLocation;
+    return { ...payload, location: normalizeMeetingLocation(location) };
+  }
   async function mutate(
     o: QualityTaskOccurrence,
     payload: OccurrenceActionPayload,
+    options: MutateOptions = {},
   ): Promise<QualityTaskOccurrence | null> {
+    const outgoingPayload =
+      payload.action === "schedule"
+        ? withMeetingLocation(o, payload)
+        : payload;
     setBusy(true);
-    setBusyLabel(actionBusyLabel(payload.action));
+    setBusyLabel(actionBusyLabel(outgoingPayload.action));
     setError("");
     try {
       const id = await ensureInstance(o);
       const res = await fetch(`/api/admin/quality-tasks/occurrences/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(outgoingPayload),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
@@ -718,29 +781,53 @@ export function QualityTaskDashboard({
       setSelected(next);
       return next;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "ดำเนินการไม่สำเร็จ");
+      const message = e instanceof Error ? e.message : "ดำเนินการไม่สำเร็จ";
+      if (options.showInlineError !== false) setError(message);
+      options.onError?.(message);
       return null;
     } finally {
       setBusy(false);
       setBusyLabel("");
     }
   }
-  async function saveCompletionNote(o: QualityTaskOccurrence) {
+  async function saveCompletionNote(o: QualityTaskOccurrence, value = completeNote) {
     const saved = await mutate(o, {
       action: "save_completion_note",
-      completionNote: completeNote.trim() || null,
+      completionNote: normalizeMeetingSummaryHtml(value) || null,
     });
-    if (saved) setCompleteNote(saved.completionNote ?? "");
+    if (saved) {
+      setCompleteNote(saved.completionNote ?? "");
+      return saved;
+    }
+    return null;
   }
   async function rescheduleMeeting(o: QualityTaskOccurrence, date: string) {
     if (busy || (o.plannedDate ?? o.periodStart) === date) return;
-    await mutate(o, { action: "schedule", plannedDate: date });
+    setDragFailure(null);
+    await mutate(
+      o,
+      { action: "schedule", plannedDate: date },
+      {
+        showInlineError: false,
+        onError: (message) => {
+          setDragFailure({
+            meetingTitle: occurrenceDisplayTitle(o),
+            targetDate: fmt(date),
+            reason: dragFailureReason(message),
+          });
+        },
+      },
+    );
   }
   async function saveSelectedMeetingTime(
     startTime: string | null,
     endTime: string | null,
   ) {
     if (!selected || selected.template.taskKind !== "meeting") return;
+    if (!normalizeMeetingLocation(meetingLocationDraft)) {
+      setError("กรุณาเลือกสถานที่ประชุมก่อนระบุช่วงเวลา");
+      return;
+    }
     if (!selected.plannedDate) {
       setError("กรุณาเลือกวันนัดก่อนระบุช่วงเวลา");
       return;
@@ -761,7 +848,25 @@ export function QualityTaskDashboard({
       );
     }
   }
+  async function saveSelectedMeetingLocation() {
+    if (!selected || selected.template.taskKind !== "meeting") return;
+    const location = normalizeMeetingLocation(meetingLocationDraft);
+    if (!location) {
+      setError("กรุณาเลือกหรือระบุสถานที่ประชุม");
+      return;
+    }
+    const saved = await mutate(selected, {
+      action: "schedule",
+      plannedDate: selected.plannedDate,
+      location,
+    });
+    if (saved) setMeetingLocationDraft(saved.meetingLocation ?? location);
+  }
   async function applySelectedMeetingPreset(preset: MeetingTimePreset) {
+    if (!normalizeMeetingLocation(meetingLocationDraft)) {
+      setError("กรุณาเลือกสถานที่ประชุมก่อนระบุช่วงเวลา");
+      return;
+    }
     if (preset !== "custom") {
       const times = meetingPresetTimes(preset);
       if (selectedMeetingSlotConflicts(times.startTime, times.endTime)) {
@@ -840,7 +945,15 @@ export function QualityTaskDashboard({
   }
   const canAct =
     selected &&
-    (level === "edit" || selected.assignees.some((e) => e.userId === actorId));
+    canManageQualityTaskOccurrence(
+      level,
+      selected.createdBy === actorId,
+      selected.assignees.some((e) => e.userId === actorId),
+      isAdmin,
+    );
+  const hasSelectedMeetingLocation = Boolean(
+    normalizeMeetingLocation(meetingLocationDraft),
+  );
   const selectedCanComplete =
     selected && (selected.status === "open" || selected.status === "in_progress");
   // จำนวนแถวในใบลงนาม = ผู้เข้าร่วมที่มีบัญชี + ผู้เช็คอินที่ไม่มีบัญชี (แขก)
@@ -870,6 +983,9 @@ export function QualityTaskDashboard({
   }, [selected?.instanceId]);
   useEffect(() => {
     setCompleteNote(selected?.completionNote ?? "");
+  }, [selected?.key]);
+  useEffect(() => {
+    setSummaryEditorOpen(false);
   }, [selected?.key]);
   async function refreshActionItems(instanceId: string) {
     const res = await fetch(
@@ -1042,6 +1158,13 @@ export function QualityTaskDashboard({
       !adHoc.endDate
     )
       return;
+    const adHocLocation = adHocIsMeeting
+      ? normalizeMeetingLocation(adHoc.meetingLocation)
+      : null;
+    if (adHocIsMeeting && !adHocLocation) {
+      setError("กรุณาเลือกหรือระบุสถานที่ประชุม");
+      return;
+    }
     setBusy(true);
     setBusyLabel("กำลังสร้างงาน…");
     setError("");
@@ -1058,7 +1181,7 @@ export function QualityTaskDashboard({
           endDate: adHoc.isMultiDay ? adHoc.endDate : adHoc.startDate,
           startTime: adHocIsMeeting ? adHoc.startTime || null : null,
           endTime: adHocIsMeeting ? adHoc.endTime || null : null,
-          location: adHocIsMeeting ? adHoc.meetingLocation.trim() || null : null,
+          location: adHocIsMeeting ? adHocLocation : null,
           agenda: adHocIsMeeting ? adHoc.meetingAgenda.trim() || null : null,
           participantDepts: adHocIsMeeting ? adHoc.participantDepts : [],
           participantUserIds: adHocIsMeeting ? adHoc.participantUserIds : [],
@@ -1399,6 +1522,82 @@ export function QualityTaskDashboard({
       {/* แยก "การประชุม" ออกจาก "กิจกรรม" ด้วย 3 ช่องทางพร้อมกัน: พื้นการ์ด (ทึบ/โปร่ง), สไตล์แถบซ้าย (ทึบ/ประ) และไอคอนนำ
           สีแถบซ้ายถูกใช้สื่อความเร่งด่วน (urgencyColor) อยู่แล้ว จึงห้ามนำสีมาสื่อชนิดงานซ้ำ */}
       <style>{`.qt-card-meeting{background:color-mix(in srgb,var(--primary-soft) 78%,var(--card))}.qt-card-meeting:hover,.qt-card-meeting.qt-range-hover{background:var(--primary-soft)}.qt-card-activity{background:var(--card);border-color:var(--border);border-left-style:dashed}.qt-card-activity:hover,.qt-card-activity.qt-range-hover{background:var(--surface-2)}.qt-card-activity .qt-range-continuation::after{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--ink) 26%,transparent) 0 5px,transparent 5px 9px)}.qt-card-activity.qt-range-hover .qt-range-continuation::after{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--ink) 46%,transparent) 0 5px,transparent 5px 9px)}.qt-legend-swatch{display:inline-flex;align-items:center;justify-content:center;width:34px;min-width:34px;padding:4px;cursor:default;box-shadow:none}.qt-kind-legend{display:flex;flex-wrap:wrap;align-items:center;gap:5px 14px;margin:9px 2px 0;color:var(--muted);font-size:11.5px}.qt-kind-legend b{color:var(--ink);font-weight:750}.qt-kind-legend span.qt-kind-item{display:inline-flex;align-items:center;gap:6px}.qt-sort{display:inline-flex;align-items:center;gap:5px;border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;border-radius:5px;transition:color .15s}.qt-sort span{color:var(--muted);font-size:9px}.qt-sort:hover{color:var(--primary)}.qt-row-btn{display:block;width:100%;border:0;background:none;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:6px}.qt-sort:focus-visible,.qt-row-btn:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 40%,transparent);outline-offset:2px}@media(prefers-reduced-motion:reduce){.qt-sort{transition:none}}`}</style>
+      {dragFailure && (
+        <QualityTaskDialog
+          labelledBy="quality-task-drag-failure-title"
+          describedBy="quality-task-drag-failure-description"
+          closeLabel="ปิดข้อความย้ายประชุม"
+          onClose={() => setDragFailure(null)}
+          panelStyle={{ ...modal, width: "100%", maxWidth: 460 }}
+        >
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 11, paddingRight: 28 }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 34,
+                  height: 34,
+                  flex: "0 0 auto",
+                  borderRadius: "50%",
+                  background: "#FEF2F2",
+                  color: "#B91C1C",
+                }}
+              >
+                <Icon name="alert" size={18} />
+              </span>
+              <div>
+                <div style={{ color: "#B91C1C", fontSize: 11, fontWeight: 800 }}>
+                  บันทึกการย้ายประชุมไม่สำเร็จ
+                </div>
+                <h2 id="quality-task-drag-failure-title" style={{ margin: "4px 0 0", fontSize: 18 }}>
+                  ไม่สามารถย้ายวันที่ประชุมได้
+                </h2>
+              </div>
+            </div>
+            <div
+              id="quality-task-drag-failure-description"
+              style={{
+                display: "grid",
+                gap: 6,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "var(--surface-2)",
+                color: "var(--ink)",
+                fontSize: 12.5,
+                lineHeight: 1.55,
+              }}
+            >
+              <strong style={{ overflowWrap: "anywhere" }}>{dragFailure.meetingTitle}</strong>
+              <span style={{ color: "var(--muted)" }}>วันที่ที่เลือก: {dragFailure.targetDate}</span>
+            </div>
+            <div
+              role="alert"
+              style={{
+                display: "grid",
+                gap: 4,
+                padding: "10px 12px",
+                border: "1px solid color-mix(in srgb, var(--danger) 28%, var(--border))",
+                borderRadius: 10,
+                background: "color-mix(in srgb, var(--danger) 7%, var(--card))",
+                color: "#991B1B",
+                fontSize: 12.5,
+                lineHeight: 1.55,
+              }}
+            >
+              <strong>สาเหตุ</strong>
+              <span style={{ overflowWrap: "anywhere" }}>{dragFailure.reason}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button variant="secondary" onClick={() => setDragFailure(null)}>
+                รับทราบ
+              </Button>
+            </div>
+          </div>
+        </QualityTaskDialog>
+      )}
       <div
         style={{
           padding: 18,
@@ -1415,7 +1614,7 @@ export function QualityTaskDashboard({
           subtitle="ปฏิทินประชุม กำหนดส่ง และหลักฐานการดำเนินงาน"
           marginBottom={0}
           actions={
-            level === "edit" ? (
+            level !== "none" ? (
               <>
                 <Button
                   variant="secondary"
@@ -1442,11 +1641,13 @@ export function QualityTaskDashboard({
                 >
                   สร้างงานเฉพาะกิจ
                 </Button>
-                <Link href="/staff/quality-tasks/registry">
-                  <Button variant="primary" icon="inbox">
-                    ทะเบียนกิจกรรม
-                  </Button>
-                </Link>
+                {level === "edit" && (
+                  <Link href="/staff/quality-tasks/registry">
+                    <Button variant="primary" icon="inbox">
+                      ทะเบียนกิจกรรม
+                    </Button>
+                  </Link>
+                )}
               </>
             ) : undefined
           }
@@ -1715,8 +1916,12 @@ export function QualityTaskDashboard({
             const canDragMeeting =
               o.template.taskKind === "meeting" &&
               !isMultiDay &&
-              (level === "edit" ||
-                o.assignees.some((e) => e.userId === actorId));
+              canManageQualityTaskOccurrence(
+                level,
+                o.createdBy === actorId,
+                o.assignees.some((e) => e.userId === actorId),
+                isAdmin,
+              );
             return (
               <button
                 key={o.key}
@@ -1727,9 +1932,10 @@ export function QualityTaskDashboard({
                 draggable={canDragMeeting}
                 onDragStart={
                   canDragMeeting
-                    ? (e) => {
-                        draggedOccurrenceRef.current = o;
-                        setDraggedMeetingKey(o.key);
+                      ? (e) => {
+                          draggedOccurrenceRef.current = o;
+                          setDragFailure(null);
+                          setDraggedMeetingKey(o.key);
                         e.dataTransfer.effectAllowed = "move";
                       }
                     : undefined
@@ -2199,7 +2405,10 @@ export function QualityTaskDashboard({
         <QualityTaskDialog
           labelledBy="quality-task-selected-title"
           closeLabel="ปิดรายละเอียดงาน"
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            setSummaryEditorOpen(false);
+            setSelected(null);
+          }}
           panelStyle={{
             ...modal,
             borderTop: `3px solid ${CATEGORY_COLOR[selected.template.categoryCode] ?? "var(--primary)"}`,
@@ -2285,10 +2494,12 @@ export function QualityTaskDashboard({
                   }
                 />
               )}
-              {selected.template.taskKind === "meeting" &&
-                selected.meetingLocation && (
-                  <Info label="สถานที่/ช่องทาง" value={selected.meetingLocation} />
-                )}
+              {selected.template.taskKind === "meeting" && (
+                <Info
+                  label="สถานที่/ช่องทาง"
+                  value={meetingLocationLabel(selected.meetingLocation) || "ยังไม่ระบุ"}
+                />
+              )}
               {selected.template.taskKind === "meeting" &&
                 selected.meetingAgenda && (
                   <div style={{ gridColumn: "1 / -1" }}>
@@ -2317,14 +2528,25 @@ export function QualityTaskDashboard({
               </div>
               {selected.completionNote && (
                 <div style={{ gridColumn: "1 / -1" }}>
-                  <Info
-                    label={
-                      selected.template.taskKind === "meeting"
-                        ? "สรุปมติที่ประชุม"
-                        : "หมายเหตุการทำเสร็จ"
-                    }
-                    value={selected.completionNote}
-                  />
+                  {selected.template.taskKind === "meeting" ? (
+                    <Info label="สรุปมติที่ประชุม">
+                      <div
+                        className="qt-meeting-summary-preview"
+                        dangerouslySetInnerHTML={{
+                          __html: sanitizeMeetingSummaryHtml(selected.completionNote),
+                        }}
+                      />
+                    </Info>
+                  ) : (
+                    <Info
+                      label="หมายเหตุการทำเสร็จ"
+                      value={selected.completionNote}
+                      valueStyle={{
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere",
+                      }}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -2442,6 +2664,26 @@ export function QualityTaskDashboard({
                   borderTop: "1px solid var(--border)",
                 }}
               >
+                {selected.template.taskKind === "meeting" && (
+                  <>
+                    <MeetingLocationField
+                      id="quality-task-selected-location"
+                      value={meetingLocationDraft}
+                      onChange={setMeetingLocationDraft}
+                      disabled={busy}
+                    />
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={busy || !hasSelectedMeetingLocation}
+                        onClick={() => void saveSelectedMeetingLocation()}
+                      >
+                        บันทึกสถานที่
+                      </Button>
+                    </div>
+                  </>
+                )}
                 <label style={labelStyle}>
                   กำหนดวัน
                   <input
@@ -2459,7 +2701,11 @@ export function QualityTaskDashboard({
                           : { startTime: null, endTime: null }),
                       })
                     }
-                    disabled={busy}
+                    disabled={
+                      busy ||
+                      (selected.template.taskKind === "meeting" &&
+                        !hasSelectedMeetingLocation)
+                    }
                     style={inputStyle}
                   />
                   <span
@@ -2498,7 +2744,11 @@ export function QualityTaskDashboard({
                             e.target.value as MeetingTimePreset,
                           )
                         }
-                        disabled={busy || !selected.plannedDate}
+                        disabled={
+                          busy ||
+                          !selected.plannedDate ||
+                          !hasSelectedMeetingLocation
+                        }
                         style={inputStyle}
                       >
                         <option
@@ -2539,7 +2789,7 @@ export function QualityTaskDashboard({
                         </option>
                         <option value="custom">กำหนดเวลาเอง</option>
                       </select>
-                      {!selected.plannedDate && (
+                      {!hasSelectedMeetingLocation || !selected.plannedDate ? (
                         <span
                           style={{
                             marginTop: 4,
@@ -2548,9 +2798,11 @@ export function QualityTaskDashboard({
                             fontWeight: 500,
                           }}
                         >
-                          เลือกวันนัดก่อนระบุช่วงเวลา
+                          {!hasSelectedMeetingLocation
+                            ? "เลือกสถานที่ประชุมก่อนระบุช่วงเวลา"
+                            : "เลือกวันนัดก่อนระบุช่วงเวลา"}
                         </span>
-                      )}
+                      ) : null}
                     </label>
                     {meetingTimePresetDraft === "custom" && (
                       <>
@@ -2573,7 +2825,11 @@ export function QualityTaskDashboard({
                                   startTime: e.target.value,
                                 }))
                               }
-                              disabled={busy || !selected.plannedDate}
+                              disabled={
+                                busy ||
+                                !selected.plannedDate ||
+                                !hasSelectedMeetingLocation
+                              }
                               style={inputStyle}
                             />
                           </label>
@@ -2588,7 +2844,11 @@ export function QualityTaskDashboard({
                                   endTime: e.target.value,
                                 }))
                               }
-                              disabled={busy || !selected.plannedDate}
+                              disabled={
+                                busy ||
+                                !selected.plannedDate ||
+                                !hasSelectedMeetingLocation
+                              }
                               style={inputStyle}
                             />
                           </label>
@@ -2597,7 +2857,11 @@ export function QualityTaskDashboard({
                           <Button
                             variant="secondary"
                             size="sm"
-                            disabled={busy || !selected.plannedDate}
+                            disabled={
+                              busy ||
+                              !selected.plannedDate ||
+                              !hasSelectedMeetingLocation
+                            }
                             onClick={() =>
                               void saveSelectedMeetingTime(
                                 meetingTimeDraft.startTime,
@@ -2624,7 +2888,7 @@ export function QualityTaskDashboard({
                             fontWeight: 700,
                           }}
                         >
-                          ช่วงเวลานี้มีประชุมอื่นจองแล้ว กรุณาเลือกช่วงเวลาใหม่
+                          สถานที่และช่วงเวลานี้มีประชุมอื่นจองแล้ว กรุณาเลือกสถานที่หรือช่วงเวลาใหม่
                         </span>
                       )}
                   </div>
@@ -2644,7 +2908,7 @@ export function QualityTaskDashboard({
                 >
                   บันทึกหมายเหตุ
                 </Button>
-                {level === "edit" && (
+                {canAct && (
                   <label style={labelStyle}>
                     ผู้รับผิดชอบรอบนี้
                     <AssigneeListEditor
@@ -2669,7 +2933,7 @@ export function QualityTaskDashboard({
                     />
                   </label>
                 )}
-                {level === "edit" && (
+                {canAct && (
                   <label style={labelStyle}>
                     ผู้เข้าร่วมประชุม (เฉพาะรอบนี้)
                     <div
@@ -2790,28 +3054,36 @@ export function QualityTaskDashboard({
                       lineHeight: 1.45,
                     }}
                   >
-                    ต้องแนบ PDF หลักฐานก่อนกด “ทำแล้ว”
+                    ต้องแนบ PDF หลักฐานก่อนกด “ปิดงาน”
                   </div>
                 )}
                 {selectedCanComplete ? (
                   <div style={{ display: "grid", gap: 8 }}>
                     {selected.template.taskKind === "meeting" && (
                       <div style={{ display: "grid", gap: 8 }}>
-                        <label style={labelStyle}>
-                          สรุปมติที่ประชุม
-                          <textarea
-                            value={completeNote}
-                            onChange={(e) => setCompleteNote(e.target.value)}
-                            placeholder="พิมพ์สรุปมติ/ประเด็นสำคัญของการประชุมครั้งนี้"
-                            disabled={busy}
-                            style={{
-                              ...inputStyle,
-                              height: 80,
-                              padding: 9,
-                              resize: "vertical",
-                            }}
-                          />
-                        </label>
+                        <button
+                          type="button"
+                          className="qt-meeting-summary-launch"
+                          disabled={busy}
+                          aria-label={selected.completionNote ? "แก้ไขสรุปมติ" : "เพิ่มสรุปมติ"}
+                          onClick={() => {
+                            setError("");
+                            setSummaryEditorOpen(true);
+                          }}
+                        >
+                          <span className="qt-meeting-summary-launch-icon" aria-hidden="true">
+                            <Icon name={selected.completionNote ? "edit" : "plus"} size={17} />
+                          </span>
+                          <span className="qt-meeting-summary-launch-copy">
+                            <strong>{selected.completionNote ? "แก้ไขสรุปมติ" : "เพิ่มสรุปมติ"}</strong>
+                            <span>
+                              {selected.completionNote
+                                ? "เปิดตัวแก้ไขเพื่อปรับปรุงข้อความและการจัดรูปแบบ"
+                                : "เพิ่มข้อสรุป ประเด็นสำคัญ และมติของการประชุมครั้งนี้"}
+                            </span>
+                          </span>
+                          <span className="qt-meeting-summary-launch-arrow" aria-hidden="true">›</span>
+                        </button>
                         <div
                           style={{
                             display: "flex",
@@ -2834,20 +3106,6 @@ export function QualityTaskDashboard({
                               ? `บันทึกเมื่อ ${fmtSavedAt(selected.completionNoteUpdatedAt)} น. โดย ${personName(selected.completionNoteUpdatedBy, people)}`
                               : "ยังไม่ได้บันทึกสรุปมติ"}
                           </span>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            icon="save"
-                            disabled={
-                              busy ||
-                              completeNote.trim() ===
-                                (selected.completionNote ?? "").trim()
-                            }
-                            aria-busy={busy}
-                            onClick={() => void saveCompletionNote(selected)}
-                          >
-                            บันทึกสรุปมติ
-                          </Button>
                         </div>
                       </div>
                     )}
@@ -2858,13 +3116,15 @@ export function QualityTaskDashboard({
                         variant="primary"
                         disabled={busy}
                         onClick={() =>
-                          mutate(selected, {
-                            action: "complete",
-                            completionNote: completeNote.trim() || null,
-                          })
+                          selected.template.taskKind === "meeting"
+                            ? mutate(selected, { action: "complete" })
+                            : mutate(selected, {
+                                action: "complete",
+                                completionNote: completeNote.trim() || null,
+                              })
                         }
                       >
-                        {busy && busyLabel === "กำลังปิดงาน…" ? "กำลังปิดงาน…" : "ทำแล้ว"}
+                        {busy && busyLabel === "กำลังปิดงาน…" ? "กำลังปิดงาน…" : "ปิดงาน"}
                       </Button>
                     </div>
                   </div>
@@ -3173,6 +3433,19 @@ export function QualityTaskDashboard({
             </div>
         </QualityTaskDialog>
       )}
+      {summaryEditorOpen && selected && selected.template.taskKind === "meeting" && canAct && selectedCanComplete && (
+        <MeetingSummaryEditor
+          title={occurrenceDisplayTitle(selected)}
+          dateLabel={selected.plannedDate ? fmt(selected.plannedDate) : fmtDateRange(selected.periodStart, selected.periodEnd)}
+          initialValue={selected.completionNote ?? ""}
+          savedAt={selected.completionNoteUpdatedAt ? fmtSavedAt(selected.completionNoteUpdatedAt) : null}
+          savedBy={personName(selected.completionNoteUpdatedBy, people)}
+          busy={busy}
+          error={error}
+          onSave={async (value) => (await saveCompletionNote(selected, value)) !== null}
+          onClose={() => setSummaryEditorOpen(false)}
+        />
+      )}
       {participantModalOpen && selected && (
         <ParticipantAudienceModal
           depts={selected.participantDepts}
@@ -3438,21 +3711,14 @@ export function QualityTaskDashboard({
                     background: "var(--surface-2)",
                   }}
                 >
-                  <label style={labelStyle}>
-                    สถานที่/ช่องทาง
-                    <input
-                      value={adHoc.meetingLocation}
-                      onChange={(e) =>
-                        setAdHoc({
-                          ...adHoc,
-                          meetingLocation: e.target.value,
-                        })
-                      }
-                      placeholder="เช่น ห้องประชุม 1 / Zoom"
-                      maxLength={240}
-                      style={inputStyle}
-                    />
-                  </label>
+                  <MeetingLocationField
+                    id="quality-task-adhoc-location"
+                    value={adHoc.meetingLocation}
+                    onChange={(value) =>
+                      setAdHoc({ ...adHoc, meetingLocation: value })
+                    }
+                    disabled={busy}
+                  />
                   <label style={labelStyle}>
                     วัตถุประสงค์/วาระ
                     <textarea
@@ -3521,7 +3787,11 @@ export function QualityTaskDashboard({
                 />
               </label>
               {error && (
-                <div role="alert" style={{ color: "#DC2626", fontSize: 12 }}>
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  style={{ color: "#DC2626", fontSize: 12 }}
+                >
                   {error}
                 </div>
               )}
@@ -3543,7 +3813,9 @@ export function QualityTaskDashboard({
                     !adHoc.templateId ||
                     !adHoc.label.trim() ||
                     !adHoc.startDate ||
-                    !adHoc.endDate
+                    !adHoc.endDate ||
+                    (adHocIsMeeting &&
+                      !normalizeMeetingLocation(adHoc.meetingLocation))
                   }
                   onClick={createAdHoc}
                 >
@@ -4272,7 +4544,114 @@ function Status({ o }: { o: QualityTaskOccurrence }) {
     </span>
   );
 }
-function Info({ label, value }: { label: string; value: string }) {
+function MeetingLocationField({
+  id,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const [otherSelected, setOtherSelected] = useState(
+    () => meetingLocationOptionValue(value) === OTHER_MEETING_LOCATION_VALUE,
+  );
+  const preserveOtherOnEmptyRef = useRef(false);
+  useEffect(() => {
+    const normalized = normalizeMeetingLocation(value);
+    if (isStandardMeetingLocation(value) || normalized) {
+      setOtherSelected(!isStandardMeetingLocation(value));
+      preserveOtherOnEmptyRef.current = false;
+      return;
+    }
+    if (!preserveOtherOnEmptyRef.current) setOtherSelected(false);
+    preserveOtherOnEmptyRef.current = false;
+  }, [value]);
+  const inferredOptionValue = meetingLocationOptionValue(value);
+  const isOther =
+    !isStandardMeetingLocation(value) &&
+    (otherSelected || inferredOptionValue === OTHER_MEETING_LOCATION_VALUE);
+  const optionValue = isOther ? OTHER_MEETING_LOCATION_VALUE : inferredOptionValue;
+  const hasLocation = Boolean(normalizeMeetingLocation(value));
+
+  return (
+    <div className="qt-meeting-location-field" style={{ display: "grid", gap: 8 }}>
+      <label style={labelStyle} htmlFor={id}>
+        สถานที่ประชุม
+        <select
+          id={id}
+          value={optionValue}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            if (nextValue === OTHER_MEETING_LOCATION_VALUE) {
+              preserveOtherOnEmptyRef.current = true;
+              setOtherSelected(true);
+              onChange(isStandardMeetingLocation(value) ? "" : value);
+              return;
+            }
+            preserveOtherOnEmptyRef.current = false;
+            setOtherSelected(false);
+            onChange(nextValue);
+          }}
+          disabled={disabled}
+          aria-required="true"
+          aria-invalid={!hasLocation}
+          style={inputStyle}
+        >
+          <option value="">เลือกสถานที่ประชุม</option>
+          {QUALITY_MEETING_LOCATIONS.map((location) => (
+            <option key={location} value={location}>
+              {meetingLocationLabel(location)}
+            </option>
+          ))}
+          <option value={OTHER_MEETING_LOCATION_VALUE}>อื่นๆ</option>
+        </select>
+      </label>
+      {isOther && (
+        <label style={labelStyle} htmlFor={`${id}-other`}>
+          ชื่อสถานที่อื่นๆ
+          <input
+            id={`${id}-other`}
+            value={value}
+            onChange={(event) => {
+              preserveOtherOnEmptyRef.current = true;
+              onChange(event.target.value);
+            }}
+            placeholder="ระบุชื่อสถานที่ประชุม"
+            maxLength={240}
+            disabled={disabled}
+            aria-required="true"
+            aria-invalid={!hasLocation}
+            required
+            style={inputStyle}
+          />
+        </label>
+      )}
+      {!hasLocation && (
+        <span
+          style={{ color: "var(--warning)", fontSize: 11 }}
+          role="status"
+          aria-live="polite"
+        >
+          ต้องระบุสถานที่ประชุมก่อนบันทึก
+        </span>
+      )}
+    </div>
+  );
+}
+function Info({
+  label,
+  value,
+  valueStyle,
+  children,
+}: {
+  label: string;
+  value?: string;
+  valueStyle?: React.CSSProperties;
+  children?: React.ReactNode;
+}) {
   return (
     <div
       style={{ background: "var(--surface-2)", borderRadius: 9, padding: 10 }}
@@ -4280,7 +4659,16 @@ function Info({ label, value }: { label: string; value: string }) {
       <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>
         {label}
       </div>
-      <div style={{ fontSize: 12, fontWeight: 600, marginTop: 3 }}>{value}</div>
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          marginTop: 3,
+          ...valueStyle,
+        }}
+      >
+        {children ?? value}
+      </div>
     </div>
   );
 }

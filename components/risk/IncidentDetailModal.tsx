@@ -58,10 +58,12 @@ function currentStep(incident: Incident) {
   return 1
 }
 
-export function IncidentDetailModal({ incidentId, canEdit, canReview, actorName, onClose, onChanged }: {
+export function IncidentDetailModal({ incidentId, canEdit, canReview, canEscalate, canClose, actorName, onClose, onChanged }: {
   incidentId: number
   canEdit: boolean
   canReview: boolean
+  canEscalate: boolean
+  canClose: boolean
   actorName: string | null
   onClose: () => void
   onChanged: () => void
@@ -174,15 +176,20 @@ export function IncidentDetailModal({ incidentId, canEdit, canReview, actorName,
               }}>ลบรายการ</Button>
             : <span />}
           <div style={{ display: 'flex', gap: SPACE.xs, flexWrap: 'wrap' }}>
-            {canReview && !closed && incident.reviewed_at && !incident.escalated_register_id && (
+            {canEscalate && !closed && incident.reviewed_at && !incident.escalated_register_id && (
               <Button variant="secondary" icon="trending" disabled={busy} onClick={() => void post('/escalate')}>
                 ยกระดับเข้าทะเบียน
               </Button>
             )}
-            {canReview && !closed && step >= 3 && (
+            {canClose && !closed && step >= 3 && (
               <Button variant="primary" icon="shieldCheck" disabled={busy} onClick={() => void post('/close')}>
                 ปิดเรื่อง
               </Button>
+            )}
+            {canReview && !canClose && !closed && step >= 3 && (
+              <span style={{ alignSelf: 'center', color: 'var(--muted)', fontSize: FONT.sm }}>
+                รอ Manager/Admin ปิดเรื่อง
+              </span>
             )}
           </div>
         </>
@@ -222,7 +229,7 @@ export function IncidentDetailModal({ incidentId, canEdit, canReview, actorName,
           ) : canReview ? (
             <ReviewForm busy={busy} onSubmit={body => post('/review', body)} />
           ) : (
-            <p style={{ margin: 0, color: 'var(--muted)', fontSize: FONT.md }}>รอผู้มีสิทธิ์ทบทวนกำหนดระดับความรุนแรง</p>
+            <p style={{ margin: 0, color: 'var(--muted)', fontSize: FONT.md }}>ยังไม่ได้ทบทวนและกำหนดระดับความรุนแรง</p>
           )}
         </Section>
 

@@ -11,7 +11,10 @@ interface Props {
   onCategoryChange: (v: string) => void
   tube: string
   onTubeChange: (v: string) => void
+  department?: string
+  onDepartmentChange?: (v: string) => void
   categories: Category[]
+  departments?: string[]
   total: number
   filtered: number
 }
@@ -34,9 +37,9 @@ const TUBE_OPTIONS = [
   'อื่นๆ',
 ]
 
-export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tube, onTubeChange, categories, total, filtered }: Props) {
+export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tube, onTubeChange, department = '', onDepartmentChange = () => {}, categories, departments = [], total, filtered }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const isFiltered = filtered !== total || !!search || !!categoryId || !!tube
+  const isFiltered = filtered !== total || !!search || !!categoryId || !!tube || !!department
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -54,14 +57,23 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
             min-width: 0 !important;
             width: 100%;
           }
+          .test-filter-department {
+            grid-column: 1 / -1;
+            grid-row: 2;
+          }
           .test-category-scroll {
             margin-inline: -4px;
             padding-inline: 4px;
           }
         }
+        .test-filter-select:focus-visible {
+          outline: 3px solid var(--primary-soft);
+          outline-offset: 1px;
+          border-color: var(--primary) !important;
+        }
       `}</style>
 
-      {/* Row 1: Search + Specimen + Count badge */}
+      {/* Row 1: Search + filters + Count badge */}
       <div className="test-filter-row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <div className="test-filter-search" style={{ flex: 1, minWidth: 0 }}>
           <Input
@@ -77,6 +89,7 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
           className="test-filter-select"
           value={tube}
           onChange={e => onTubeChange(e.target.value)}
+          aria-label="กรองตามชนิด Specimen"
           style={{
             height: 44, padding: '0 36px 0 12px', borderRadius: 10,
             border: `1.5px solid ${tube ? 'var(--primary)' : 'var(--border)'}`,
@@ -94,6 +107,31 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
           <option value="">ทุก specimen</option>
           {TUBE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
         </select>
+
+        {(departments.length > 0 || department) && (
+          <select
+            className="test-filter-select test-filter-department"
+            value={department}
+            onChange={e => onDepartmentChange(e.target.value)}
+            aria-label="กรองตามหน่วยงาน"
+            style={{
+              height: 44, padding: '0 36px 0 12px', borderRadius: 10,
+              border: `1.5px solid ${department ? 'var(--primary)' : 'var(--border)'}`,
+              fontSize: 13, fontFamily: 'inherit',
+              color: department ? 'var(--primary)' : 'var(--muted)',
+              backgroundColor: department ? 'var(--primary-soft)' : 'var(--card)',
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 12px center',
+              cursor: 'pointer', outline: 'none',
+              minWidth: 190, fontWeight: department ? 600 : 400,
+              appearance: 'none',
+            }}
+          >
+            <option value="">ทุกหน่วยงาน</option>
+            {departments.map(option => <option key={option} value={option}>{option}</option>)}
+          </select>
+        )}
 
         {/* Result count chip */}
         <div style={{
@@ -126,6 +164,8 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
         >
           {/* "ทั้งหมด" pill */}
           <button
+            type="button"
+            aria-pressed={!categoryId}
             onClick={() => onCategoryChange('')}
             style={{
               flexShrink: 0, padding: '5px 16px', borderRadius: 20, cursor: 'pointer',
@@ -147,6 +187,8 @@ export function TestFilters({ search, onSearch, categoryId, onCategoryChange, tu
             return (
               <button
                 key={cat.id}
+                type="button"
+                aria-pressed={active}
                 onClick={() => onCategoryChange(active ? '' : cat.id)}
                 style={{
                   flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6,

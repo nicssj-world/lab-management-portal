@@ -372,9 +372,20 @@ export interface ItBackupLog {
   created_by: string | null
 }
 
+export interface ItBackupAttachment {
+  id: string
+  backup_log_id: string
+  file_name: string
+  content_type: string
+  size_bytes: number
+  uploaded_by: string
+  uploaded_at: string
+}
+
 export interface ItBackupLogWithRefs extends ItBackupLog {
   system: { id: string; name: string } | null
   performer: { id: string; name: string } | null
+  attachments: ItBackupAttachment[]
 }
 
 // บันทึกการเข้า-ออก — see scripts/it-visitor-log.sql
@@ -411,7 +422,8 @@ export interface ItVisitorLog {
   created_at: string
   closed_by: string | null
   closed_at: string | null
-  checkout_method: 'self' | 'staff' | null
+  checkout_method: 'self' | 'staff' | 'auto' | null
+  checkout_note: string | null
 }
 
 export interface ItVisitorLogWithRefs extends ItVisitorLog {

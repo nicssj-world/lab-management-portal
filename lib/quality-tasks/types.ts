@@ -123,6 +123,7 @@ export interface QualityTaskOccurrence {
   completionNote: string | null
   completionNoteUpdatedBy: string | null
   completionNoteUpdatedAt: string | null
+  createdBy: string | null
   completedBy: string | null
   completedAt: string | null
   submittedBy: string | null
@@ -179,7 +180,7 @@ export type OccurrenceCreatePayload =
   | { mode: 'adHoc'; templateId: string; label: string; ownerText?: string; startDate: string; endDate: string; startTime?: string | null; endTime?: string | null; location?: string | null; agenda?: string | null; participantDepts?: string[]; participantUserIds?: string[]; assignees: AssigneeEntry[] }
 
 export type OccurrenceActionPayload =
-  | { action: 'schedule'; plannedDate: string | null; note?: string | null; startTime?: string | null; endTime?: string | null; assignees?: AssigneeEntry[]; participantDepts?: string[]; participantUserIds?: string[] }
+  | { action: 'schedule'; plannedDate: string | null; note?: string | null; startTime?: string | null; endTime?: string | null; location?: string | null; assignees?: AssigneeEntry[]; participantDepts?: string[]; participantUserIds?: string[] }
   | { action: 'start' }
   | { action: 'save_completion_note'; completionNote: string | null }
   | { action: 'submit'; completionNote?: string | null }

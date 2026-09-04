@@ -10,6 +10,7 @@ export interface TestFilters {
   popular?: boolean
   active?: boolean
   tube?: string
+  department?: string
   page?: number
   pageSize?: number
   sortBy?: string
@@ -58,7 +59,7 @@ export async function getTests(
   supabase: SupabaseClient,
   filters: TestFilters = {}
 ): Promise<{ data: Test[]; count: number }> {
-  const { category, search, popular, active, tube, page = 0, pageSize = 50, sortBy = 'code', sortDir = 'asc' } = filters
+  const { category, search, popular, active, tube, department, page = 0, pageSize = 50, sortBy = 'code', sortDir = 'asc' } = filters
   const customSort = CUSTOM_SORT.includes(sortBy)
 
   const col = ALLOWED_SORT.includes(sortBy) ? sortBy : 'code'
@@ -76,6 +77,7 @@ export async function getTests(
   if (active !== undefined) query = query.eq('active', active)
   if (category) query = query.eq('category_id', category)
   if (tube) query = query.eq('tube', tube)
+  if (department) query = query.eq('department', department)
   if (popular !== undefined) query = query.eq('popular', popular)
   const searchFilter = buildTestSearchFilter(search ?? '')
   if (searchFilter) query = query.or(searchFilter)

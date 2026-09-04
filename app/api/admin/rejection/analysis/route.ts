@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRolePermissions } from '@/lib/permissions'
+import { REJECTION_RESOURCE } from '@/lib/permission-resources'
 import {
   analyzeRejectionData,
   getRejectionAnalysisSummary,
@@ -57,6 +58,10 @@ function errorResponse(error: unknown) {
 export async function GET(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const perms = await getRolePermissions(actor.role)
+  if ((perms[REJECTION_RESOURCE] ?? 'none') === 'none') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   try {
     const options = optionsFromSearchParams(req.nextUrl.searchParams)
@@ -70,6 +75,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const perms = await getRolePermissions(actor.role)
+  if ((perms[REJECTION_RESOURCE] ?? 'none') === 'none') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   try {
     const rawBody = await req.json().catch(() => ({}))
@@ -84,9 +93,9 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const perms = await getRolePermissions(actor.role)
-  if (perms['ความเสี่ยง / Rejection'] !== 'edit') {
+
+  if (perms[REJECTION_RESOURCE] !== 'edit') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

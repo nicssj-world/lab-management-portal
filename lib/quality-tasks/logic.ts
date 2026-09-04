@@ -88,6 +88,20 @@ export function canMutateOccurrence(level: PermLevel, isAssigned: boolean, _isUn
   return level === 'edit' || (level === 'view' && isAssigned)
 }
 
+// Quality activity/meeting mutations belong to the person who created the
+// occurrence or one of its linked responsible users for the current round.
+// Module-level edit permission is intentionally not enough here: it is used
+// for managing templates and defaults, not for taking over another person's
+// work record.
+export function canManageQualityTaskOccurrence(
+  level: PermLevel,
+  isCreator: boolean,
+  isAssigned: boolean,
+  isAdmin = false,
+) {
+  return canViewOccurrence(level) && (isAdmin || isCreator || isAssigned)
+}
+
 export function canViewOccurrence(level: PermLevel) {
   return level === 'view' || level === 'edit'
 }

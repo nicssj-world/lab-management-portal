@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { auditRisk, canReviewRisk, getRiskActor } from '@/lib/risk/access'
+import { auditRisk, canCloseRegister, getRiskActor } from '@/lib/risk/access'
 
 /**
  * ปิดรายการในทะเบียนความเสี่ยง (ISO 15189 8.5)
@@ -12,7 +12,7 @@ import { auditRisk, canReviewRisk, getRiskActor } from '@/lib/risk/access'
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canReviewRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canCloseRegister(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const registerId = Number(id)
@@ -38,6 +38,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     .from('risk_register')
     .update({ status: 'closed', updated_at: new Date().toISOString() })
     .eq('id', registerId)
+    .is('deleted_at', null)
+    .neq('status', 'closed')
     .select()
     .single()
 

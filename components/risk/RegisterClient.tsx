@@ -13,7 +13,7 @@ import { RegisterFormModal } from './RegisterFormModal'
 import { RiskMatrix } from './RiskMatrix'
 import { isMatrixView, type MatrixRisk } from '@/lib/risk/matrix'
 import { ExportMenu } from './shared/ExportMenu'
-import { ActiveFilterBar, FilterBar, Pagination, SearchFilter, SelectFilter } from './shared/FilterBar'
+import { ActiveFilterBar, FilterBar, Pagination, SearchFilter, SelectFilter, type ActiveFilterItem } from './shared/FilterBar'
 import { ErrorBanner, LevelBadge, Panel, StatusBadge, TableSkeleton } from './shared/ui'
 import { useUrlFilters } from './shared/useUrlFilters'
 import {
@@ -29,12 +29,13 @@ const PAGE_SIZE = 20
 const COLUMNS = ['รหัส', 'ความเสี่ยง', 'หน่วยงาน', 'ก่อนมาตรการ', 'หลังมาตรการ', 'ผู้รับผิดชอบ', 'ทบทวนครั้งถัดไป', 'สถานะ']
 const LEVEL_OPTIONS = (['high', 'medium', 'low'] as const).map(l => ({ value: l, label: LEVEL_LABEL[l] }))
 
-export function RegisterClient({ canEdit, canReview, actorName }: {
+export function RegisterClient({ canEdit, canReview, canClose, actorName }: {
   canEdit: boolean
   canReview: boolean
+  canClose: boolean
   actorName: string | null
 }) {
-  const { filters, setFilters } = useUrlFilters(DEFAULTS)
+  const { filters, setFilters, clearFilters } = useUrlFilters(DEFAULTS)
   const [rows, setRows] = useState<RegisterEntry[]>([])
   const [count, setCount] = useState(0)
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
@@ -53,14 +54,14 @@ export function RegisterClient({ canEdit, canReview, actorName }: {
   params.set('pageSize', String(PAGE_SIZE))
   const queryString = params.toString()
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     setError('')
     try {
       // ตารางความเสี่ยงใช้ตัวกรองชุดเดียวกับรายการ ตัวเลขสองส่วนจึงตรงกันเสมอ
       const [listRes, matrixRes] = await Promise.all([
-        fetch(`/api/admin/risk/register?${queryString}`),
-        fetch(`/api/admin/risk/register?view=matrix&${queryString}`),
+        fetch(`/api/admin/risk/register?${queryString}`, { signal }),
+        fetch(`/api/admin/risk/register?view=matrix&${queryString}`, { signal }),
       ])
       const [json, matrixJson] = await Promise.all([listRes.json(), matrixRes.json()])
       if (!listRes.ok) throw new Error(json.error ?? 'โหลดทะเบียนไม่สำเร็จ')
@@ -70,32 +71,40 @@ export function RegisterClient({ canEdit, canReview, actorName }: {
       setStatusCounts(json.statusCounts ?? {})
       setMatrix(matrixJson.matrix ?? [])
     } catch (err) {
+      if (signal?.aborted) return
       setError((err as Error).message)
       setRows([])
       setCount(0)
       setMatrix([])
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [queryString])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
+  }, [load])
 
-  // page กับ matrix ไม่ใช่ตัวกรอง จึงไม่นับว่าทำให้ผลลัพธ์แคบลง
-  const activeFilters = (Object.keys(DEFAULTS) as (keyof typeof DEFAULTS)[])
-    .filter(key => key !== 'page' && key !== 'matrix')
-    .filter(key => filters[key] !== DEFAULTS[key])
-
-  // L/S ตั้งได้จากการกดช่องในตารางเท่านั้น ไม่มีช่องควบคุมบนหน้าจอ
-  // ถ้าไม่บอกว่ากรองอยู่ ผู้ใช้จะงงว่าทำไมรายการหายไปและหาทางเอากลับไม่เจอ
-  const cellFilter = [
-    filters.likelihood && `โอกาสเกิด ${filters.likelihood}`,
-    filters.impact && `ผลกระทบ ${filters.impact}`,
-    filters.residualLikelihood && `โอกาสเกิดหลังมาตรการ ${filters.residualLikelihood}`,
-    filters.residualImpact && `ผลกระทบหลังมาตรการ ${filters.residualImpact}`,
-    filters.spaceCode && `พื้นที่ ${filters.spaceCode}`,
-    filters.active === '1' && 'เฉพาะรายการที่ยังไม่ปิด',
-  ].filter(Boolean).join(' · ')
+  // รวมตัวกรองจากช่องบนหน้าและตัวกรองที่ติดมากับลิงก์/การกดช่องใน Matrix
+  // ไว้ในรายการเดียว เพื่อให้ผู้ใช้รู้ว่าผลลัพธ์ถูกจำกัดด้วยอะไรและเอาออกทีละตัวได้
+  const activeFilterItems: ActiveFilterItem[] = []
+  if (filters.q) activeFilterItems.push({ key: 'q', label: `คำค้น: ${filters.q}`, onRemove: () => setFilters({ q: '' }) })
+  if (filters.status) {
+    const statusLabel = REGISTER_STATUSES.find(status => status.value === filters.status)?.label ?? filters.status
+    activeFilterItems.push({ key: 'status', label: `สถานะ: ${statusLabel}`, onRemove: () => setFilters({ status: '' }) })
+  }
+  if (filters.level) activeFilterItems.push({ key: 'level', label: `ก่อนมาตรการ: ${LEVEL_LABEL[filters.level as keyof typeof LEVEL_LABEL] ?? filters.level}`, onRemove: () => setFilters({ level: '' }) })
+  if (filters.residualLevel) activeFilterItems.push({ key: 'residualLevel', label: `หลังมาตรการ: ${LEVEL_LABEL[filters.residualLevel as keyof typeof LEVEL_LABEL] ?? filters.residualLevel}`, onRemove: () => setFilters({ residualLevel: '' }) })
+  if (filters.department) activeFilterItems.push({ key: 'department', label: `หน่วยงาน: ${filters.department}`, onRemove: () => setFilters({ department: '' }) })
+  if (filters.reviewDue) activeFilterItems.push({ key: 'reviewDue', label: 'รอบทบทวน: ใกล้ครบหรือเลยกำหนด', onRemove: () => setFilters({ reviewDue: '' }) })
+  if (filters.likelihood) activeFilterItems.push({ key: 'likelihood', label: `ก่อนมาตรการ: โอกาสเกิด ${filters.likelihood}`, onRemove: () => setFilters({ likelihood: '' }) })
+  if (filters.impact) activeFilterItems.push({ key: 'impact', label: `ก่อนมาตรการ: ผลกระทบ ${filters.impact}`, onRemove: () => setFilters({ impact: '' }) })
+  if (filters.residualLikelihood) activeFilterItems.push({ key: 'residualLikelihood', label: `หลังมาตรการ: โอกาสเกิด ${filters.residualLikelihood}`, onRemove: () => setFilters({ residualLikelihood: '' }) })
+  if (filters.residualImpact) activeFilterItems.push({ key: 'residualImpact', label: `หลังมาตรการ: ผลกระทบ ${filters.residualImpact}`, onRemove: () => setFilters({ residualImpact: '' }) })
+  if (filters.spaceCode) activeFilterItems.push({ key: 'spaceCode', label: `พื้นที่: ${filters.spaceCode}`, onRemove: () => setFilters({ spaceCode: '' }) })
+  if (filters.active) activeFilterItems.push({ key: 'active', label: 'เฉพาะรายการที่ยังไม่ปิด', onRemove: () => setFilters({ active: '' }) })
 
   const chips = [
     { value: '', label: 'ทั้งหมด', count: Object.values(statusCounts).reduce((a, b) => a + b, 0) },
@@ -166,10 +175,9 @@ export function RegisterClient({ canEdit, canReview, actorName }: {
           </FilterBar>
 
           <ActiveFilterBar
-            count={activeFilters.length}
-            detail={cellFilter || undefined}
-            // มุมมองตารางไม่ใช่ตัวกรอง จึงต้องคงไว้ตอนล้าง
-            onClear={() => setFilters({ ...DEFAULTS, matrix: filters.matrix })}
+            items={activeFilterItems}
+            // มุมมอง matrix ไม่ใช่ตัวกรอง จึงคงมุมมองเดิมไว้ตอนล้าง
+            onClear={() => clearFilters(['matrix'])}
           />
         </div>
       </Panel>
@@ -195,7 +203,7 @@ export function RegisterClient({ canEdit, canReview, actorName }: {
             onChange={page => setFilters({ page: String(page) }, { resetPage: false })}
           />
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div aria-busy={loading} style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1040, fontSize: FONT.base }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)' }}>
@@ -244,7 +252,7 @@ export function RegisterClient({ canEdit, canReview, actorName }: {
                     <EmptyState
                       icon="clipboard"
                       title="ยังไม่มีรายการในทะเบียน"
-                      hint={canEdit ? 'เพิ่มความเสี่ยงที่ประเมินไว้ เพื่อเริ่มติดตามมาตรการและรอบทบทวน' : 'ลองล้างตัวกรองเพื่อดูรายการทั้งหมด'}
+                      hint={activeFilterItems.length > 0 ? 'ลองล้างตัวกรองหรือปรับเงื่อนไขให้กว้างขึ้น' : canEdit ? 'เพิ่มความเสี่ยงที่ประเมินไว้ เพื่อเริ่มติดตามมาตรการและรอบทบทวน' : 'ยังไม่มีรายการความเสี่ยงในระบบ'}
                     />
                   </td>
                 </tr>
@@ -262,6 +270,7 @@ export function RegisterClient({ canEdit, canReview, actorName }: {
           entryId={openId}
           canEdit={canEdit}
           canReview={canReview}
+          canClose={canClose}
           actorName={actorName}
           onClose={() => setOpenId(null)}
           onChanged={() => void load()}

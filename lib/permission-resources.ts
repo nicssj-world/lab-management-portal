@@ -2,12 +2,16 @@
 // Import from here in both server and client code.
 // When adding a new module: add its resource name here → it auto-appears in PermissionsMatrix.
 
+export const RISK_RESOURCE = 'ความเสี่ยง'
+export const REJECTION_RESOURCE = 'Rejection'
+
 export const RESOURCES = [
   'รายการตรวจ',
   'เอกสารคุณภาพ',
   'Master List',
   'ข่าวสาร',
-  'ความเสี่ยง / Rejection',
+  RISK_RESOURCE,
+  REJECTION_RESOURCE,
   'สัญญา',
   'ทะเบียนเครื่องมือ',
   'บันทึกการแก้ไข',

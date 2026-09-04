@@ -15,13 +15,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'หน่วยงานนี้ไม่อยู่ในขอบเขตการทวนสอบ IT' }, { status: 422 })
   }
 
-  const { data, error } = await supabaseAdmin.rpc('generate_it_verification_samples_from_tat', {
-    p_upload_id: parsed.data.uploadId,
-    p_actor_id: guard.actor.id,
-    p_trigger: 'manual_generate',
-    p_department_id: parsed.data.departmentId ?? null,
-  })
-  if (error) return jsonDatabaseError(error)
+  // Keep all-department generation within one request while using one RPC per
+  // department. Large TAT exports can exceed the database statement timeout
+  // when the sampler scans every department in one transaction.
+  const departments = parsed.data.departmentId == null
+    ? IT_DEPARTMENTS
+    : IT_DEPARTMENTS.filter((department) => department.id === parsed.data.departmentId)
+  const items: unknown[] = []
+  for (const department of departments) {
+    const { data, error } = await supabaseAdmin.rpc('generate_it_verification_samples_from_tat', {
+      p_upload_id: parsed.data.uploadId,
+      p_actor_id: guard.actor.id,
+      p_trigger: 'manual_generate',
+      p_department_id: department.id,
+    })
+    if (error) return jsonDatabaseError(error)
+    if (Array.isArray(data)) items.push(...data)
+  }
   await auditVerification('sampling.generate', guard.actor.id, parsed.data.uploadId, `department=${parsed.data.departmentId ?? 'all'}`)
-  return NextResponse.json({ items: data ?? [] })
+  return NextResponse.json({ items })
 }

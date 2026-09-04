@@ -86,7 +86,7 @@ test('Drive workbook parser uses the folder year and preserves all four quarters
   assert.equal(result[0].samples[0].ln, 'LN-IMM-001')
   assert.equal(result[0].samples[0].sourceToLis, 'pass')
   assert.equal(result[0].samples[0].lisToHis, 'pass')
-  assert.match(result[0].warnings.join(' '), /2568/)
+  assert.equal(result[0].warnings.some((warning) => warning.includes('2568')), false)
 })
 
 test('legacy form migration exposes a service-only transactional import RPC', () => {

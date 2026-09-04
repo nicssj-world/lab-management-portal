@@ -9,6 +9,7 @@ import { useLang } from '@/context/LangContext'
 import { useSettings } from '@/context/SettingsContext'
 import { useSidebar } from '@/context/SidebarContext'
 import { createClient } from '@/lib/supabase/client'
+import { REJECTION_RESOURCE, RISK_RESOURCE } from '@/lib/permission-resources'
 
 interface NavChild {
   href: string
@@ -20,6 +21,7 @@ interface NavChild {
   docRole?: string | string[]
   deptRole?: string | string[]
   resource?: string
+  anyResource?: string[]
   safetyEditor?: boolean
 }
 
@@ -31,6 +33,7 @@ interface NavItem {
   color: string
   badge?: string
   role?: string | string[]
+  deptRole?: string | string[]
   resource?: string
   requireEdit?: boolean
   children?: NavChild[]
@@ -62,6 +65,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/tests',      th: 'รายการตรวจ',         en: 'Tests',          icon: 'flask',  color: '#1E5FAD', resource: 'รายการตรวจ' },
   { href: '/staff/eqa', th: 'การควบคุมคุณภาพภายนอก', en: 'EQA / PT', icon: 'shieldCheck', color: '#0F766E', resource: 'EQA / PT' },
   { href: '/staff/news',       th: 'จัดการข่าวสาร',        en: 'News',           icon: 'bell',       color: '#D97706', resource: 'ข่าวสาร' },
+  { href: '/staff/it/head-contact', th: 'สื่อสารถึงหัวหน้า', en: 'Contact Group Lead', icon: 'mail', color: '#BE185D', role: 'Admin', deptRole: 'group_lead' },
   // กลุ่มเครื่องมือ — ลูกทั้งสองถือ resource เดียวกัน ('ทะเบียนเครื่องมือ') ไม่ใช่กรณีที่สิทธิ์ต่างกันแบบกลุ่มความเสี่ยง/IT
   // แต่คงรูปแบบ "แม่ไม่ถือ resource" ไว้เหมือนกันทั้งไฟล์เพื่อไม่ให้พฤติกรรม isEntryVisible ต่างกันโดยไม่จำเป็น
   { href: '/staff/equipment', th: 'ทะเบียนเครื่องมือ', en: 'Equipment', icon: 'microscope', color: '#EA580C',
@@ -69,7 +73,7 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/staff/equipment',     th: 'ทะเบียนเครื่องมือ', en: 'Registry', icon: 'microscope', color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
       { href: '/staff/equipment/map', th: 'แผนผังเครื่องมือ',   en: 'Equipment Map', icon: 'building',    color: '#EA580C', resource: 'ทะเบียนเครื่องมือ' },
     ] },
-  { href: '/staff/contracts',  th: 'บริหารสัญญา',         en: 'Contracts',      icon: 'building',   color: '#7C3AED', resource: 'สัญญา' },
+  { href: '/staff/contracts',  th: 'งานคลังและพัสดุ',      en: 'Inventory & Supplies', icon: 'building', color: '#7C3AED', resource: 'สัญญา' },
   { href: '/staff/outlab', th: 'ห้องปฏิบัติการภายนอก', en: 'OUTLAB Registry', icon: 'building', color: '#C2410C', resource: 'OUTLAB' },
   { href: '/staff/personnel/workforce', th: 'บุคลากร',       en: 'MT-CBH Staff',   icon: 'shieldCheck', color: '#4338CA', resource: 'บุคลากร',
     children: [
@@ -84,13 +88,14 @@ const NAV_ITEMS: NavEntry[] = [
   // ซึ่งรวมถึง Document Controller ที่ไม่มีแถวใน role_permissions โดยโครงสร้าง
   { href: '/staff/risk',       th: 'ความเสี่ยง',          en: 'Risk Management', icon: 'shield',    color: '#DC2626',
     children: [
-      // ไม่มี resource โดยตั้งใจ — เจ้าหน้าที่ทุกคนต้องรายงานอุบัติการณ์ได้เสมอ
+      // ไม่มี resource โดยตั้งใจ — บุคลากรทุกคนต้องเข้าถึง workflow IOR ได้เสมอ
       // และอยู่ลำดับแรกเพื่อให้ลิงก์ของกลุ่มตกมาที่นี่เมื่อผู้ใช้เห็นได้เพียงรายการเดียว
       { href: '/staff/risk/report',   th: 'รายงานอุบัติการณ์',   en: 'Report an Incident', icon: 'alert',     color: '#DC2626' },
-      { href: '/staff/risk',          th: 'ภาพรวมความเสี่ยง',    en: 'Risk Overview',      icon: 'chart',     color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
-      { href: '/staff/risk/ior',      th: 'ทะเบียนอุบัติการณ์',  en: 'Incident Reports',   icon: 'shield',    color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
-      { href: '/staff/risk/register', th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',      icon: 'clipboard', color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
-      { href: '/staff/risk/smart-rm', th: 'วิเคราะห์ Smart-RM',  en: 'Smart-RM Analytics', icon: 'trending',  color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+      { href: '/staff/risk',          th: 'ภาพรวมความเสี่ยง',    en: 'Risk Overview',      icon: 'chart',     color: '#DC2626', resource: RISK_RESOURCE },
+      // IOR ใช้ policy บุคลากรทุกคน ไม่ผูกกับ resource ของ Risk Register
+      { href: '/staff/risk/ior',      th: 'ทะเบียนอุบัติการณ์',  en: 'Incident Reports',   icon: 'shield',    color: '#DC2626' },
+      { href: '/staff/risk/register', th: 'ทะเบียนความเสี่ยง',   en: 'Risk Register',      icon: 'clipboard', color: '#DC2626', resource: RISK_RESOURCE },
+      { href: '/staff/risk/smart-rm', th: 'วิเคราะห์ Smart-RM',  en: 'Smart-RM Analytics', icon: 'trending',  color: '#DC2626', resource: RISK_RESOURCE },
     ] },
   // กลุ่ม "ความปลอดภัย" — แม่ไม่ถือ resource ตามรูปแบบเดียวกับกลุ่มความเสี่ยงและกลุ่ม IT
   // แผนที่หนีไฟและจุดสแกนต้องเข้าถึงได้ทุกคนที่ล็อกอิน
@@ -104,29 +109,25 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/staff/lab-map/safety-assets', th: 'อุปกรณ์ความปลอดภัย', en: 'Safety Equipment', icon: 'shieldCheck', color: '#0E7490' },
       { href: '/staff/lab-map/evacuation', th: 'จุดรวมพล / แผนอพยพ', en: 'Assembly Points / Evacuation Plan', icon: 'route', color: '#0E7490' },
       { href: '/staff/lab-map/chemicals', th: 'สารเคมีและ SDS', en: 'Chemicals & SDS', icon: 'flask', color: '#0E7490', safetyEditor: true },
+      { href: '/staff/it/visitors', th: 'บันทึกการเข้า-ออก', en: 'Visitor Log', icon: 'users', color: '#0E7490', resource: 'บันทึกการเข้า-ออก' },
     ] },
   { section: 'งาน IT' },
-  // ตัวแม่ของกลุ่มนี้ **ต้องไม่ถือ `resource`** — isEntryVisible เช็ค resource ของแม่แล้ว
-  // return false ก่อนจะไปดูลูก ถ้าใส่ 'ระบบสารสนเทศ (IT)' ไว้ที่แม่ คนที่มีสิทธิ์เฉพาะ
-  // 'บันทึกการเข้า-ออก' (นักเทคนิคการแพทย์ส่วนใหญ่) จะไม่เห็นกลุ่มนี้เลย
-  // parentHref fallback ไปลูกตัวแรกที่มองเห็นอยู่แล้ว จึงไม่ต้องแก้อย่างอื่น
-  // ชื่อกลุ่มต้องเป็นชื่อรวมเหมือนกลุ่มความเสี่ยง/บุคลากร ไม่ใช่ชื่อลูกตัวแรก —
-  // ลูกในกลุ่มนี้มีทั้งสิทธิ์เข้าถึง ระบบล่ม สำรองข้อมูล และบันทึกการเข้า-ออก
-  { href: '/staff/it/access', th: 'ระบบสารสนเทศ', en: 'IT Systems', icon: 'lock', color: '#0369A1',
+  // The parent stays un-gated because the four child routes use separate permissions.
+  // The overview is visible when either the IT module or verification permission is granted.
+  { href: '/staff/it', th: 'ระบบสารสนเทศ', en: 'IT Systems', icon: 'lock', color: '#0369A1',
     children: [
+      { href: '/staff/it', th: 'ภาพรวม', en: 'Overview', icon: 'dash', color: '#0369A1', anyResource: ['ระบบสารสนเทศ (IT)', 'ทวนสอบการส่งผ่านข้อมูล HIS & LIS'] },
       { href: '/staff/it/access',   th: 'สิทธิ์เข้าถึง HIS & LIS', en: 'Access Rights', icon: 'lock',     color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
       { href: '/staff/it/verification', th: 'ทวนสอบการส่งผ่านข้อมูล', en: 'Data Transfer Verification', icon: 'shieldCheck', color: '#0369A1', resource: 'ทวนสอบการส่งผ่านข้อมูล HIS & LIS' },
       { href: '/staff/it/downtime', th: 'บันทึกระบบล่ม',          en: 'Downtime Log',  icon: 'alert',    color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
       { href: '/staff/it/backup',   th: 'การสำรองข้อมูล',         en: 'Backup Log',    icon: 'download', color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
-      { href: '/staff/it/visitors', th: 'บันทึกการเข้า-ออก',      en: 'Visitor Log',   icon: 'users',    color: '#0369A1', resource: 'บันทึกการเข้า-ออก' },
-      { href: '/staff/it/head-contact', th: 'สื่อสารถึงหัวหน้า', en: 'Contact Group Lead', icon: 'mail', color: '#0369A1', role: 'Admin', deptRole: 'group_lead' },
     ] },
   { section: 'Analytics' },
   { href: '/staff/satisfaction', th: 'แบบสำรวจความพึงพอใจ', en: 'Satisfaction', icon: 'clipboard', color: '#0F766E', resource: 'แบบสำรวจความพึงพอใจ' },
   { href: '/kpi/dashboard',    th: 'KPI Dashboard',       en: 'KPI Dashboard',  icon: 'chart',  color: '#16A34A', resource: 'KPI' },
   { href: '/lab-workload/dashboard', th: 'Lab Workload', en: 'Lab Workload',   icon: 'beaker', color: '#0EA5E9', resource: 'Workload' },
   { href: '/tat',              th: 'Turnaround Time',     en: 'TAT',            icon: 'clock',  color: '#8B5CF6', resource: 'TAT' },
-  { href: '/staff/rejection',  th: 'Rejection Log',       en: 'Rejection',      icon: 'alert',  color: '#DC2626', resource: 'ความเสี่ยง / Rejection' },
+  { href: '/staff/rejection',  th: 'Rejection Log',       en: 'Rejection',      icon: 'alert',  color: '#DC2626', resource: REJECTION_RESOURCE },
   { section: 'ระบบ' },
   { href: '/staff/admin',      th: 'จัดการผู้ใช้',         en: 'Users & Roles',  icon: 'users',    color: '#475569', resource: 'User Management' },
   { href: '/staff/settings',   th: 'ตั้งค่าระบบ',          en: 'Settings',       icon: 'settings', color: '#475569', role: 'Admin' },
@@ -189,17 +190,22 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
 
   const initial = userName?.charAt(0) ?? 'U'
 
-  // A child is visible when its resource permission allows it, OR (for role/docRole
-  // gated items) when either the user's role or doc_role matches.
+  const identityGateMatches = (entry: Pick<NavChild, 'role' | 'docRole' | 'deptRole'>) => {
+    const roles = entry.role ? (Array.isArray(entry.role) ? entry.role : [entry.role]) : []
+    const docRoles = entry.docRole ? (Array.isArray(entry.docRole) ? entry.docRole : [entry.docRole]) : []
+    const deptRoles = entry.deptRole ? (Array.isArray(entry.deptRole) ? entry.deptRole : [entry.deptRole]) : []
+    if (roles.length === 0 && docRoles.length === 0 && deptRoles.length === 0) return true
+    return roles.includes(userRole ?? '') || docRoles.includes(userDocRole ?? '') || deptRoles.includes(userDeptRole ?? '')
+  }
+
+  // A child is visible when its resource permission allows it, OR when an identity
+  // gate matches, OR when any resource in an overview's permission set is available.
   const childVisible = (child: NavChild) => {
     if (child.safetyEditor && !isChemicalSafetyEditor) return false
-    if (child.role || child.docRole || child.deptRole) {
-      const roles = child.role ? (Array.isArray(child.role) ? child.role : [child.role]) : []
-      const docRoles = child.docRole ? (Array.isArray(child.docRole) ? child.docRole : [child.docRole]) : []
-      const deptRoles = child.deptRole ? (Array.isArray(child.deptRole) ? child.deptRole : [child.deptRole]) : []
-      if (roles.includes(userRole ?? '') || docRoles.includes(userDocRole ?? '') || deptRoles.includes(userDeptRole ?? '')) return true
-      if (!child.resource) return false
-    }
+    const hasIdentityGate = Boolean(child.role || child.docRole || child.deptRole)
+    if (hasIdentityGate && identityGateMatches(child)) return true
+    if (hasIdentityGate && !child.resource && !child.anyResource) return false
+    if (child.anyResource) return child.anyResource.some(resource => (userPermissions?.[resource] ?? 'none') !== 'none')
     if (child.resource) {
       return (userPermissions?.[child.resource] ?? 'none') !== 'none'
     }
@@ -207,10 +213,7 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
   }
 
   function isEntryVisible(item: NavItem): boolean {
-    if (item.role) {
-      const allowed = Array.isArray(item.role) ? item.role : [item.role]
-      if (!allowed.includes(userRole ?? '')) return false
-    }
+    if (!identityGateMatches(item)) return false
     if (item.resource) {
       const level = userPermissions?.[item.resource] ?? 'none'
       const managerDocumentProfileAccess = item.href === '/staff/admin' && userRole === 'Manager'

@@ -8,7 +8,7 @@ type Params = { params: Promise<{ id: string }> }
 export async function GET(_req: NextRequest, { params }: Params) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if ((await getRiskPermission(actor.role)) === 'none') {
+  if ((await getRiskPermission(actor)) === 'none') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -39,9 +39,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!(await canEditRisk(actor))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
-  const parsed = riskRegisterPatchSchema.safeParse(await req.json())
+  const rawBody = await req.json().catch(() => null)
+  if (rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody) && 'status' in rawBody) {
+    return NextResponse.json({ error: 'สถานะต้องเปลี่ยนผ่านขั้นตอนทบทวน/ปิดรายการเท่านั้น' }, { status: 403 })
+  }
+  const parsed = riskRegisterPatchSchema.safeParse(rawBody)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
+  }
+
+  const { data: current } = await supabaseAdmin
+    .from('risk_register')
+    .select('status')
+    .eq('id', Number(id))
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (!current) return NextResponse.json({ error: 'ไม่พบรายการนี้' }, { status: 404 })
+  if (current.status === 'closed') {
+    return NextResponse.json({ error: 'รายการที่ปิดแล้วแก้ไขไม่ได้' }, { status: 409 })
   }
 
   const { data, error } = await supabaseAdmin
@@ -49,6 +65,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .update({ ...parsed.data, updated_at: new Date().toISOString() })
     .eq('id', Number(id))
     .is('deleted_at', null)
+    .neq('status', 'closed')
     .select()
     .single()
 
@@ -65,11 +82,23 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!(await canEditRisk(actor))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
+  const { data: current } = await supabaseAdmin
+    .from('risk_register')
+    .select('status')
+    .eq('id', Number(id))
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (!current) return NextResponse.json({ error: 'ไม่พบรายการนี้' }, { status: 404 })
+  if (current.status === 'closed') {
+    return NextResponse.json({ error: 'รายการที่ปิดแล้วลบไม่ได้' }, { status: 409 })
+  }
   const { data, error } = await supabaseAdmin
     .from('risk_register')
     .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', Number(id))
     .is('deleted_at', null)
+    .neq('status', 'closed')
     .select('risk_no')
     .single()
 

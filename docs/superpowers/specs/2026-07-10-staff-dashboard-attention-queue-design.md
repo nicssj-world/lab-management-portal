@@ -42,14 +42,14 @@ A group is entirely omitted (not even as an empty state) when the viewing user's
 - Sort: severity desc (alphabetical descending on the letter grade — `I` is most severe, `A` least, matching the existing severity-badge convention in `RiskClient.tsx`), then days-overdue desc within the same severity
 - Row content: risk no./title, severity badge, days overdue (if applicable)
 - Link: `/staff/risk`
-- Visibility gate: resource `ความเสี่ยง / Rejection` != `none`
+- Visibility gate: resource `ความเสี่ยง` != `none`
 
 ### Rejection
 - Single-row alert, not a list — reuses the existing `rejRate` calculation already in the dashboard
 - Only appears when `rejRate >= 3` (the existing `warn` threshold); the whole card is omitted (not shown with an empty state) when below target, since "no alert" is the normal healthy state and doesn't need its own reassurance row like the other three groups
 - Row content: current rate vs. target, month-over-month change
 - Link: `/staff/rejection`
-- Visibility gate: resource `ความเสี่ยง / Rejection` != `none`
+- Visibility gate: resource `Rejection` != `none`
 
 ## Analytics tabs
 

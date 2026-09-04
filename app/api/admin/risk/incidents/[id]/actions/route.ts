@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { auditRisk, canReviewRisk, getRiskActor } from '@/lib/risk/access'
+import { auditRisk, canManageIncident, getIncidentActor } from '@/lib/risk/access'
 import { syncIncidentStatus } from '@/lib/risk/incident'
 import { incidentActionPatchSchema, incidentActionSchema } from '@/lib/validations/incident'
 
@@ -21,9 +21,9 @@ async function ensureOpen(incidentId: number) {
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const actor = await getRiskActor()
+  const actor = await getIncidentActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canReviewRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManageIncident(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const incidentId = Number(id)
@@ -48,9 +48,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const actor = await getRiskActor()
+  const actor = await getIncidentActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canReviewRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManageIncident(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const incidentId = Number(id)
@@ -82,9 +82,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
-  const actor = await getRiskActor()
+  const actor = await getIncidentActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canReviewRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManageIncident(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const incidentId = Number(id)

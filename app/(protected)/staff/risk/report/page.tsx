@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { IncidentReportForm } from '@/components/risk/IncidentReportForm'
-import { getRiskActor, getRiskPermission } from '@/lib/risk/access'
+import { getIncidentActor, getRiskPermission } from '@/lib/risk/access'
 
 /**
  * หน้ารายงานอุบัติการณ์สำหรับเจ้าหน้าที่ทุกคน
@@ -9,15 +9,15 @@ import { getRiskActor, getRiskPermission } from '@/lib/risk/access'
  * ต้องรายงานได้เสมอ แม้จะไม่มีสิทธิ์เข้าถึงทะเบียนความเสี่ยง
  */
 export default async function IncidentReportPage() {
-  const actor = await getRiskActor()
+  const actor = await getIncidentActor()
   if (!actor) redirect('/login')
 
-  const permission = await getRiskPermission(actor.role)
+  const permission = await getRiskPermission(actor)
   return (
     <IncidentReportForm
       reporterName={actor.name}
-      canSeeQueue={permission !== 'none'}
-      canRecordOnBehalf={permission === 'edit'}
+      canSeeQueue
+      canRecordOnBehalf={actor.isActive === true && permission === 'edit'}
     />
   )
 }

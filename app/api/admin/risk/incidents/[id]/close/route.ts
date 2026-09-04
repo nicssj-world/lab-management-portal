@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { auditRisk, canReviewRisk, getRiskActor } from '@/lib/risk/access'
+import { auditRisk, canCloseIncident, getRiskActor } from '@/lib/risk/access'
 
 /**
  * ปิดเรื่อง — ตรวจว่ากระบวนการครบตาม ISO 15189 8.7 ก่อน
@@ -11,7 +11,7 @@ import { auditRisk, canReviewRisk, getRiskActor } from '@/lib/risk/access'
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const actor = await getRiskActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canReviewRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canCloseIncident(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const incidentId = Number(id)
@@ -56,6 +56,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       updated_at: new Date().toISOString(),
     })
     .eq('id', incidentId)
+    .is('deleted_at', null)
+    .neq('status', 'closed')
     .select()
     .single()
 

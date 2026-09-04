@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { auditRisk, canEditRisk, canReviewRisk, getRiskActor, getRiskPermission, stripReviewOnlyFields } from '@/lib/risk/access'
+import { auditRisk, canEditRisk, canManageIncident, getIncidentActor, getRiskActor, pickReviewWorkflowFields, stripReviewOnlyFields } from '@/lib/risk/access'
 import { incidentPatchSchema } from '@/lib/validations/incident'
 
 type Params = { params: Promise<{ id: string }> }
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const actor = await getRiskActor()
+  const actor = await getIncidentActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if ((await getRiskPermission(actor.role)) === 'none') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const { id } = await params
   const incidentId = Number(id)
@@ -27,10 +24,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const actor = await getRiskActor()
+  const actor = await getIncidentActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  // แก้ไขข้อมูลใช้ permission matrix ไม่ใช่การผูกกับตำแหน่งแบบเดิม
-  if (!(await canEditRisk(actor))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // บุคลากรทุกคนจัดการ RCA/ติดตามผลได้ ส่วนข้อมูลเหตุการณ์หลักยังใช้ permission matrix
+  const canEdit = await canEditRisk(actor)
+  const canReview = canManageIncident(actor)
+  if (!canEdit && !canReview) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const parsed = incidentPatchSchema.safeParse(await req.json())
@@ -50,7 +49,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'เรื่องที่ปิดแล้วแก้ไขไม่ได้ ต้องเปิดเรื่องใหม่ก่อน' }, { status: 409 })
   }
 
-  const { payload, warnings } = stripReviewOnlyFields(parsed.data, canReviewRisk(actor))
+  const selected = canEdit
+    ? stripReviewOnlyFields(parsed.data, canReview)
+    : pickReviewWorkflowFields(parsed.data as Record<string, unknown>)
+  const payload: Record<string, unknown> = { ...selected.payload }
+  const warnings = [...selected.warnings]
+  // Status transitions must go through /review or /close so their workflow
+  // checks cannot be bypassed with the generic PATCH endpoint.
+  if ('status' in payload) {
+    delete payload.status
+    warnings.push('สถานะต้องเปลี่ยนผ่านขั้นตอนทบทวนหรือปิดเรื่องเท่านั้น')
+  }
   if (Object.keys(payload).length === 0) {
     return NextResponse.json({ error: warnings[0] ?? 'ไม่มีข้อมูลที่ต้องบันทึก' }, { status: 403 })
   }
@@ -59,6 +68,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .from('incident_reports')
     .update({ ...payload, updated_at: new Date().toISOString() })
     .eq('id', Number(id))
+    .is('deleted_at', null)
+    .neq('status', 'closed')
     .select()
     .single()
 
@@ -78,6 +89,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', Number(id))
     .is('deleted_at', null)
+    .neq('status', 'closed')
     .select('report_no')
     .single()
 

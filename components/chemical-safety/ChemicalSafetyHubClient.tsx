@@ -29,6 +29,7 @@ import type {
 import { RegistryChangeModal, type RegistryChangeMode } from './RegistryChangeModal'
 import { ChemicalDetailsModal, type ChemicalDetailsTab } from './ChemicalDetailsModal'
 import { HoldingDeleteImpactDialog } from './HoldingDeleteImpactDialog'
+import { BulkHoldingDeleteImpactDialog } from './BulkHoldingDeleteImpactDialog'
 import { SdsManagementClient, type SdsProductInfo } from './SdsManagementClient'
 import type { DepartmentSdsGroupDTO } from '@/lib/chemical-safety/department-repository'
 import { roomPublicationLabel } from '@/lib/chemical-safety/publication-summary'
@@ -224,10 +225,18 @@ export function ChemicalSafetyHubClient({
   const [busyProductId, setBusyProductId] = useState<string | null>(null)
   const [busyHoldingId, setBusyHoldingId] = useState<string | null>(null)
   const [holdingDeleteImpact, setHoldingDeleteImpact] = useState<ChemicalHoldingDeleteImpact | null>(null)
+  const [bulkSelectionMode, setBulkSelectionMode] = useState(false)
+  const [selectedHoldingIds, setSelectedHoldingIds] = useState<Set<string>>(new Set())
+  const [bulkHoldingDeleteRows, setBulkHoldingDeleteRows] = useState<ChemicalRegistryRow[] | null>(null)
+  const [bulkHoldingDeleteBusy, setBulkHoldingDeleteBusy] = useState(false)
   const [departmentPublicationBusyCode, setDepartmentPublicationBusyCode] = useState<string | null>(null)
 
   const canPropose = canManageChemicals || canProposeUnitIds.length > 0
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products])
+  const canEditChemicalRow = useCallback(
+    (row: ChemicalRegistryRow) => canManageChemicals || canProposeUnitIds.includes(row.unitId),
+    [canManageChemicals, canProposeUnitIds],
+  )
   const selectedUnitId = scopeFilter.startsWith('unit:') ? scopeFilter.slice('unit:'.length) : ''
   const selectedRoomId = scopeFilter.startsWith('room:') ? scopeFilter.slice('room:'.length) : ''
   const selectedDepartment = useMemo(
@@ -354,6 +363,7 @@ export function ChemicalSafetyHubClient({
   // เพื่อให้กดย้อนกลับได้เหมือนการกดแท็บ
   function openCabinet(code: string) {
     const next = resetRegistryFiltersForStorageNavigation(code)
+    setSelectedHoldingIds(new Set())
     setPosition(next.position)
     setScopeFilter(next.scopeFilter)
     setLifecycleFilter(next.lifecycleFilter)
@@ -389,6 +399,24 @@ export function ChemicalSafetyHubClient({
     () => paginateRegistryItems(visible, registryPage),
     [visible, registryPage],
   )
+  const selectablePageRows = useMemo(
+    () => registryPagination.items.filter(canEditChemicalRow),
+    [canEditChemicalRow, registryPagination.items],
+  )
+  const selectedHoldingRows = useMemo(
+    () => registry.filter(row => selectedHoldingIds.has(row.holdingId) && canEditChemicalRow(row)),
+    [canEditChemicalRow, registry, selectedHoldingIds],
+  )
+  useEffect(() => {
+    const availableHoldingIds = new Set(registry.filter(canEditChemicalRow).map(row => row.holdingId))
+    setSelectedHoldingIds(previous => {
+      const next = new Set([...previous].filter(holdingId => availableHoldingIds.has(holdingId)))
+      return next.size === previous.size ? previous : next
+    })
+  }, [canEditChemicalRow, registry])
+  const allSelectablePageRowsSelected = selectablePageRows.length > 0
+    && selectablePageRows.every(row => selectedHoldingIds.has(row.holdingId))
+  const someSelectablePageRowsSelected = selectablePageRows.some(row => selectedHoldingIds.has(row.holdingId))
 
   const atPosition = useMemo(() => {
     const map = new Map<string, ChemicalRegistryRow[]>()
@@ -451,6 +479,44 @@ export function ChemicalSafetyHubClient({
       else next.add(holdingId)
       return next
     })
+  }
+
+  function toggleBulkSelectionMode() {
+    if (bulkSelectionMode) {
+      setBulkSelectionMode(false)
+      setSelectedHoldingIds(new Set())
+      return
+    }
+    setBulkSelectionMode(true)
+  }
+
+  function toggleHoldingSelection(holdingId: string) {
+    setSelectedHoldingIds(previous => {
+      const next = new Set(previous)
+      if (next.has(holdingId)) next.delete(holdingId)
+      else next.add(holdingId)
+      return next
+    })
+  }
+
+  function toggleSelectablePageRows() {
+    setSelectedHoldingIds(previous => {
+      const next = new Set(previous)
+      if (allSelectablePageRowsSelected) {
+        selectablePageRows.forEach(row => next.delete(row.holdingId))
+      } else {
+        selectablePageRows.forEach(row => next.add(row.holdingId))
+      }
+      return next
+    })
+  }
+
+  function openBulkHoldingDelete() {
+    if (selectedHoldingRows.length === 0) {
+      notify('กรุณาเลือกรายการที่มีสิทธิ์จัดการก่อนลบ', false)
+      return
+    }
+    setBulkHoldingDeleteRows(selectedHoldingRows)
   }
 
   async function exportRegistry(format: 'pdf' | 'xlsx') {
@@ -544,6 +610,7 @@ export function ChemicalSafetyHubClient({
   }
 
   async function deleteHolding(row: ChemicalRegistryRow) {
+    if (bulkHoldingDeleteBusy) return
     setBusyHoldingId(row.holdingId)
     try {
       const response = await fetch(`/api/admin/chemical-safety/registry/${row.holdingId}/delete`, {
@@ -580,6 +647,12 @@ export function ChemicalSafetyHubClient({
       }
 
       setHoldingDeleteImpact(null)
+      setSelectedHoldingIds(previous => {
+        if (!previous.has(impact.holdingId)) return previous
+        const next = new Set(previous)
+        next.delete(impact.holdingId)
+        return next
+      })
       notify(payload.cleanup?.ok === false
         ? 'ลบรายการและ SDS แล้ว แต่มีไฟล์บางส่วนรอการล้างจากระบบ'
         : 'ลบรายการและ SDS ที่เกี่ยวข้องแล้ว')
@@ -588,6 +661,59 @@ export function ChemicalSafetyHubClient({
     } finally {
       setBusyHoldingId(null)
     }
+  }
+
+  async function confirmBulkHoldingDelete() {
+    const rows = bulkHoldingDeleteRows
+    if (!rows || rows.length === 0 || bulkHoldingDeleteBusy) return
+
+    setBulkHoldingDeleteBusy(true)
+    const deletedIds: string[] = []
+    const failed: string[] = []
+    let cleanupWarnings = 0
+
+    try {
+      // Keep the requests sequential: every request uses the same hard-delete
+      // endpoint as the single-row action, and shared SDS rows may overlap.
+      for (const row of rows) {
+        try {
+          const response = await fetch(`/api/admin/chemical-safety/registry/${row.holdingId}/delete`, {
+            method: 'DELETE',
+          })
+          const payload = await response.json().catch(() => ({})) as {
+            cleanup?: { ok?: boolean }
+            error?: string
+          }
+          if (!response.ok) throw new Error(payload.error || 'ลบรายการไม่สำเร็จ')
+          deletedIds.push(row.holdingId)
+          if (payload.cleanup?.ok === false) cleanupWarnings += 1
+        } catch (caught) {
+          failed.push(`${row.canonicalName}: ${caught instanceof Error ? caught.message : 'ลบรายการไม่สำเร็จ'}`)
+        }
+      }
+    } finally {
+      setBulkHoldingDeleteBusy(false)
+      setBulkHoldingDeleteRows(null)
+      setSelectedHoldingIds(previous => {
+        if (deletedIds.length === 0) return previous
+        const next = new Set(previous)
+        deletedIds.forEach(id => next.delete(id))
+        return next
+      })
+    }
+
+    if (deletedIds.length > 0) router.refresh()
+
+    if (failed.length > 0) {
+      const failedSummary = failed.slice(0, 2).join(' · ')
+      const more = failed.length > 2 ? ` · และอีก ${failed.length - 2} รายการ` : ''
+      add(`ลบสำเร็จ ${deletedIds.length} รายการ แต่ลบไม่สำเร็จ ${failed.length} รายการ: ${failedSummary}${more}`, false)
+      return
+    }
+
+    add(cleanupWarnings > 0
+      ? `ลบ ${deletedIds.length} รายการและ SDS แล้ว แต่มีไฟล์บางส่วนรอการล้างจากระบบ`
+      : `ลบ ${deletedIds.length} รายการและ SDS ที่เกี่ยวข้องแล้ว`)
   }
 
   return (
@@ -602,6 +728,9 @@ export function ChemicalSafetyHubClient({
         .chemical-hub .chemical-section-lead p{margin:4px 0 0;color:var(--muted);font-size:13px}
         .chemical-hub .chemical-registry-tools{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:12px;background:var(--card);box-shadow:0 4px 16px rgba(15,23,42,.035)}
         .chemical-hub .chemical-registry-tools .input-wrap{margin:0}
+        .chemical-hub .chemical-registry-selection-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--danger) 24%,var(--border));border-radius:10px;background:color-mix(in srgb,var(--danger) 5%,var(--card))}
+        .chemical-hub .chemical-registry-selection-toolbar strong{color:var(--danger);font-size:13px}
+        .chemical-hub .chemical-registry-selection-toolbar span{color:var(--muted);font-size:12px}
         .chemical-hub .chemical-filter-panel{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--card)}
         .chemical-hub .chemical-filter-label{display:flex;align-items:center;gap:6px;margin:0;color:var(--muted);font-size:12px;font-weight:700}
         .chemical-hub .chemical-unit-select{position:relative;display:block;min-width:min(320px,100%);flex:0 1 340px}
@@ -727,13 +856,24 @@ export function ChemicalSafetyHubClient({
               icon="search"
               size="lg"
               value={search}
-              onChange={(value) => { setSearch(value); setRegistryPage(1) }}
+              onChange={(value) => { setSearch(value); setRegistryPage(1); setSelectedHoldingIds(new Set()) }}
               placeholder="ค้นหาชื่อสาร ชื่อพ้อง หรือเลข CAS"
               style={{ flex: '1 1 280px', minWidth: 240 }}
             />
             {canPropose && (
               <Button icon="plus" size="lg" onClick={() => setModal({ mode: 'create' })}>
                 เพิ่มสารเคมีใหม่
+              </Button>
+            )}
+            {canPropose && (
+              <Button
+                icon={bulkSelectionMode ? 'x' : 'check'}
+                variant={bulkSelectionMode ? 'secondary' : 'soft'}
+                size="lg"
+                aria-pressed={bulkSelectionMode}
+                onClick={toggleBulkSelectionMode}
+              >
+                {bulkSelectionMode ? 'ยกเลิกเลือกหลายรายการ' : 'เลือกเพื่อลบหลายรายการ'}
               </Button>
             )}
             <Button icon="download" variant="secondary" size="lg" disabled={exporting} onClick={() => void exportRegistry('xlsx')}>
@@ -743,6 +883,20 @@ export function ChemicalSafetyHubClient({
               {exporting ? 'กำลังสร้าง…' : 'Export PDF'}
             </Button>
           </Card>
+
+          {bulkSelectionMode && (
+            <Card className="chemical-registry-selection-toolbar" padding={0} style={{ padding: '10px 12px' }}>
+              <Icon name="check" size={15} style={{ color: 'var(--danger)' }} />
+              <strong>เลือกแล้ว {selectedHoldingRows.length.toLocaleString()} รายการ</strong>
+              <span>เลือกได้เฉพาะรายการที่คุณมีสิทธิ์จัดการ · เลือกได้ข้ามหน้า</span>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedHoldingIds(new Set())} disabled={selectedHoldingRows.length === 0}>
+                ล้างการเลือก
+              </Button>
+              <Button variant="danger" size="sm" icon="trash" onClick={openBulkHoldingDelete} disabled={selectedHoldingRows.length === 0 || bulkHoldingDeleteBusy}>
+                ลบรายการที่เลือก
+              </Button>
+            </Card>
+          )}
 
           {selectedDepartment && (
             <Card padding={SPACE.sm} style={{ marginBottom: SPACE.md, borderLeft: '4px solid var(--primary)' }}>
@@ -784,7 +938,7 @@ export function ChemicalSafetyHubClient({
           <Card className="chemical-filter-panel" padding={0}>
             <div className="chemical-filter-label"><Icon name="filter" size={13} /> หน่วยงาน</div>
             <label className="chemical-unit-select">
-              <select value={scopeFilter} onChange={(event) => { setScopeFilter(event.target.value); setRegistryPage(1) }} aria-label="กรองตามหน่วยงาน">
+              <select value={scopeFilter} onChange={(event) => { setScopeFilter(event.target.value); setRegistryPage(1); setSelectedHoldingIds(new Set()) }} aria-label="กรองตามหน่วยงาน">
                 <option value="">ทุกหน่วยงาน / ห้องสารเคมี ({registry.length} รายการ)</option>
                 <optgroup label="หน่วยงาน">
                   {unitOptions.map(option => <option key={option.value} value={`unit:${option.value}`}>{option.label}</option>)}
@@ -795,7 +949,7 @@ export function ChemicalSafetyHubClient({
               </select>
             </label>
             <label className="chemical-unit-select">
-              <select value={lifecycleFilter} onChange={(event) => { setLifecycleFilter(event.target.value as typeof lifecycleFilter); setRegistryPage(1) }} aria-label="กรองตามสถานะการใช้งาน">
+              <select value={lifecycleFilter} onChange={(event) => { setLifecycleFilter(event.target.value as typeof lifecycleFilter); setRegistryPage(1); setSelectedHoldingIds(new Set()) }} aria-label="กรองตามสถานะการใช้งาน">
                 <option value="all">ทุกสถานะการใช้งาน</option>
                 <option value="active">Active</option>
                 <option value="retired">Inactive</option>
@@ -811,6 +965,25 @@ export function ChemicalSafetyHubClient({
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1080 }}>
                   <thead>
                     <tr>
+                      {bulkSelectionMode && (
+                        <th style={{
+                          width: 58, padding: '11px 10px', textAlign: 'center', fontSize: FONT.xs, fontWeight: 700,
+                          color: 'var(--muted)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={allSelectablePageRowsSelected}
+                            ref={element => {
+                              if (element) element.indeterminate = someSelectablePageRowsSelected && !allSelectablePageRowsSelected
+                            }}
+                            disabled={selectablePageRows.length === 0}
+                            onChange={toggleSelectablePageRows}
+                            aria-label="เลือกทุกรายการที่ลบได้ในหน้านี้"
+                            title="เลือกทุกรายการที่ลบได้ในหน้านี้"
+                            style={{ width: 16, height: 16, accentColor: 'var(--danger)', cursor: selectablePageRows.length > 0 ? 'pointer' : 'not-allowed' }}
+                          />
+                        </th>
+                      )}
                       {['สารเคมีหลัก', 'งาน / รายการของงาน/คลัง', 'ปริมาณ', 'สถานะการใช้งาน', 'สถานะ SDS', 'GHS', 'สารเคมีนำเข้าใหม่', ...(canPropose ? ['จัดการ'] : [])].map(heading => (
                         <th key={heading} style={{
                           padding: '11px 14px', textAlign: 'left', fontSize: FONT.xs, fontWeight: 700,
@@ -833,7 +1006,7 @@ export function ChemicalSafetyHubClient({
                       const isInactive = product?.lifecycleStatus === 'retired'
                       const isNewChemical = newChemicalHoldingIds.has(row.holdingId)
                       const busy = busyProductId === row.productId
-                      const rowBusy = busy || busyHoldingId === row.holdingId
+                      const rowBusy = busy || busyHoldingId === row.holdingId || bulkHoldingDeleteBusy
                       const canEditRow = canManageChemicals || canProposeUnitIds.includes(row.unitId)
                       return (
                         <tr
@@ -846,6 +1019,19 @@ export function ChemicalSafetyHubClient({
                           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = isNewChemical ? 'color-mix(in srgb,var(--primary) 10%,var(--card))' : 'transparent')}
                         >
+                          {bulkSelectionMode && (
+                            <td style={{ ...cellStyle, width: 58, padding: '12px 10px', textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedHoldingIds.has(row.holdingId)}
+                                disabled={!canEditRow || rowBusy}
+                                onChange={() => toggleHoldingSelection(row.holdingId)}
+                                aria-label={`เลือกรายการ ${row.canonicalName} สำหรับลบ`}
+                                title={canEditRow ? `เลือกรายการ ${row.canonicalName} สำหรับลบ` : 'ไม่มีสิทธิ์จัดการรายการนี้'}
+                                style={{ width: 16, height: 16, accentColor: 'var(--danger)', cursor: canEditRow && !rowBusy ? 'pointer' : 'not-allowed' }}
+                              />
+                            </td>
+                          )}
                           <td style={cellStyle}>
                             <b style={{ fontSize: FONT.md }}>{row.canonicalName}</b>
                             {isInactive && <span style={{ marginLeft: 6, fontSize: FONT.xs, fontWeight: 700, color: 'var(--muted)' }}>(Inactive)</span>}
@@ -1042,6 +1228,15 @@ export function ChemicalSafetyHubClient({
           busy={busyHoldingId === holdingDeleteImpact.holdingId}
           onCancel={() => setHoldingDeleteImpact(null)}
           onConfirm={() => void confirmHoldingDelete()}
+        />
+      )}
+
+      {bulkHoldingDeleteRows && (
+        <BulkHoldingDeleteImpactDialog
+          rows={bulkHoldingDeleteRows}
+          busy={bulkHoldingDeleteBusy}
+          onCancel={() => { if (!bulkHoldingDeleteBusy) setBulkHoldingDeleteRows(null) }}
+          onConfirm={() => void confirmBulkHoldingDelete()}
         />
       )}
 

@@ -6,6 +6,7 @@ import { r2ObjectResponse } from '@/lib/r2/stream-response'
 import { contentDispositionForInline } from '@/lib/documents/download-filename'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { qualityTaskContext, qualityTaskError } from '@/lib/quality-tasks/api'
+import { getOccurrenceAccess } from '@/lib/quality-tasks/server'
 
 async function attachment(id: string) {
   const { data, error } = await supabaseAdmin.from('quality_task_attachments').select('*, quality_task_instances!inner(status, quality_task_templates!inner(evidence_required,workstream))').eq('id', id).eq('quality_task_instances.quality_task_templates.workstream', 'quality').single()
@@ -38,6 +39,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const ctx = await qualityTaskContext('edit'); if (ctx.response) return ctx.response
   try {
     const id = (await params).id; const row = await attachment(id)
+    await getOccurrenceAccess(row.instance_id, ctx.actor, ctx.level)
     const instance = row.quality_task_instances; const required = Boolean(instance?.quality_task_templates?.evidence_required)
     if (required && instance?.status === 'completed') {
       const { count } = await supabaseAdmin.from('quality_task_attachments').select('*', { count: 'exact', head: true }).eq('instance_id', row.instance_id)

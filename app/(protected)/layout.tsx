@@ -5,7 +5,8 @@ import { StaffTopbar } from '@/components/layout/StaffTopbar'
 import { RouteBreadcrumbs } from '@/components/layout/RouteBreadcrumbs'
 import { PermissionProvider } from '@/context/PermissionContext'
 import { SidebarProvider } from '@/context/SidebarContext'
-import { getPermissionsWithEquipmentOverride } from '@/lib/permissions'
+import { getPermissionsWithEquipmentOverride, getPermissionsWithRiskTeamOverride } from '@/lib/permissions'
+import { RISK_RESOURCE } from '@/lib/permission-resources'
 import { normalizeRole } from '@/lib/roles'
 import { ensureOwnProfile, isProfileNotProvisionedError } from '@/lib/auth/profile'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -39,6 +40,12 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   ])
   const isChemicalSafetyEditor = isSafetyMapEditor || Boolean(chemicalScope.data)
   const permissions = role ? await getPermissionsWithEquipmentOverride(role, user.id) : {}
+  if (role) {
+    const riskPermissions = await getPermissionsWithRiskTeamOverride(role, user.id)
+    if ((permissions[RISK_RESOURCE] ?? 'none') === 'none') {
+      permissions[RISK_RESOURCE] = riskPermissions[RISK_RESOURCE] ?? 'none'
+    }
+  }
   // คณะทำงาน IT override: admin-equivalent edit on the งาน IT module regardless of role.
   if (role && normalizeRole(role) !== 'Admin') {
     const { data: itEditor } = await supabaseAdmin

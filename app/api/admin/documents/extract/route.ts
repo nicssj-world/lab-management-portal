@@ -7,11 +7,11 @@ import { getActor, canAccessDocuments } from '@/lib/auth/guards'
 import { consumeRateLimit } from '@/lib/security/rate-limit'
 import { privateRequestKey } from '@/lib/security/request-protection'
 
-const EXTRACT_MAX_BYTES = 20 * 1024 * 1024
+const EXTRACT_MAX_BYTES = 30 * 1024 * 1024
 
 function fileTooLargeResponse() {
   return NextResponse.json(
-    { error: 'ดึงข้อมูลจากไฟล์รองรับไฟล์ไม่เกิน 20 MB กรุณาลดขนาดไฟล์หรือกรอกข้อมูลเอง' },
+    { error: 'ดึงข้อมูลจากไฟล์รองรับไฟล์ไม่เกิน 30 MB กรุณาลดขนาดไฟล์หรือกรอกข้อมูลเอง' },
     { status: 413 },
   )
 }
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
   if (contentType.includes('application/json')) {
     // File was already uploaded directly to R2 via presigned URL — fetch it server-side.
-    // This path has no Vercel request-body size limit, so it can use the app's own 20 MB cap.
+    // This path has no Vercel request-body size limit, so it can use the app's own 30 MB cap.
     const body = await req.json() as { file_key?: string; file_name?: string }
     const fileKey = (body.file_key ?? '').trim()
     fileName = (body.file_name ?? '').trim()

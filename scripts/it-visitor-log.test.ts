@@ -88,6 +88,14 @@ assert.ok(publicRoute.includes("secure: process.env.NODE_ENV === 'production'"),
 assert.ok(publicServer.includes('checkout_secret_hash'), 'stores only the checkout secret hash')
 assert.ok(selfCheckoutSql.includes('checkout_method'), 'migration tracks checkout method')
 assert.ok(selfCheckoutSql.includes('checkout_secret_hash'), 'migration stores checkout secret hash')
+assert.ok(selfCheckoutSql.includes('checkout_note'), 'migration stores an automatic checkout note')
+assert.ok(selfCheckoutSql.includes('ระบบปิดเวลาออกอัตโนมัติเมื่อพ้น 00:00 ของวันถัดไป'), 'automatic checkout writes an explanatory note')
+assert.ok(selfCheckoutSql.includes("checkout_method IN ('self', 'staff', 'auto')"), 'migration permits automatic checkout')
+assert.ok(selfCheckoutSql.includes('auto_checkout_it_visitor_logs'), 'migration creates the automatic checkout function')
+assert.ok(selfCheckoutSql.includes('cron.schedule'), 'migration schedules automatic checkout')
+assert.ok(selfCheckoutSql.includes("'5 17 * * *'"), 'automatic checkout is scheduled once daily after midnight Bangkok time')
+assert.ok(publicServer.includes('runVisitorAutoCheckout'), 'public visitor flows run the automatic checkout safety net')
+assert.ok(itQueries.includes('runVisitorAutoCheckout'), 'staff visitor list runs the automatic checkout safety net')
 assert.ok(publicPage.includes('await cookies()'), 'page restores the same-device active visit')
 assert.ok(publicPage.includes('initialActiveVisit'), 'page passes a minimal active visit DTO')
 
@@ -99,6 +107,7 @@ assert.ok(publicRoute.includes('visitor-checkout-ip:'), 'rate limits checkout by
 assert.ok(publicRoute.includes('visitor-checkout-form:'), 'rate limits checkout by form')
 assert.ok(publicServer.includes('selfCheckoutVisitor'), 'server exposes one-time self checkout')
 assert.ok(publicServer.includes("checkout_method: 'self'"), 'marks self checkout method')
+assert.ok(publicServer.includes('checkout_note: null'), 'self checkout clears an automatic checkout note')
 assert.ok(publicServer.includes('checkout_secret_hash: null'), 'invalidates checkout secret after use')
 assert.ok(publicServer.includes("action: 'it_visitor.self_checkout'"), 'audits self checkout')
 
@@ -113,11 +122,18 @@ assert.ok(itemRoute.includes("checkout_method = 'staff'") || itemRoute.includes(
   'staff checkout records its method')
 assert.ok(itemRoute.includes('checkout_secret_hash = null') || itemRoute.includes('checkout_secret_hash: null'),
   'staff checkout invalidates the visitor credential')
+assert.ok(itemRoute.includes('checkout_note = null') || itemRoute.includes('checkout_note: null'),
+  'staff checkout clears an automatic checkout note')
 assert.ok(staffClient.includes('ผู้มาติดต่อบันทึกเอง'), 'staff detail labels self checkout')
 assert.ok(staffClient.includes('เจ้าหน้าที่บันทึกให้'), 'staff detail labels assisted checkout')
+assert.ok(staffClient.includes('ระบบปิดอัตโนมัติหลังเที่ยงคืน'), 'staff detail labels automatic checkout')
+assert.ok(staffClient.includes('detail.checkout_note'), 'staff detail displays the checkout note')
 assert.ok(activityClient.includes("'it_visitor.self_checkout'"), 'activity page labels self checkout')
+assert.ok(activityClient.includes("'it_visitor.auto_checkout'"), 'activity page labels automatic checkout')
 assert.ok(dashboardPage.includes("'it_visitor.self_checkout'"), 'dashboard labels self checkout')
+assert.ok(dashboardPage.includes("'it_visitor.auto_checkout'"), 'dashboard labels automatic checkout')
 assert.ok(supabaseTypes.includes('checkout_method:'), 'visitor row type includes checkout method')
+assert.ok(supabaseTypes.includes('checkout_note:'), 'visitor row type includes checkout note')
 assert.ok(itQueries.includes('IT_VISITOR_LOG_SELECT'), 'staff list uses an explicit visitor projection')
 assert.ok(!itQueries.includes(".select('*, closer:profiles!it_visitor_logs"),
   'staff list must not serialize the checkout credential hash')
@@ -146,24 +162,34 @@ for (const role of ['Manager', 'Medical Technologist', 'Medical Science Technici
 }
 assert.ok(!/\('Assistant',\s*'บันทึกการเข้า-ออก/.test(sql), 'Assistant must not be granted')
 
-// ── 5. กับดัก sidebar: ตัวแม่ของกลุ่ม IT ต้องไม่ถือ resource ──
-// isEntryVisible เช็ค resource ของแม่แล้ว return false ก่อนดูลูก ถ้าใส่คืนเมื่อไหร่
-// คนที่มีสิทธิ์เฉพาะบันทึกการเข้า-ออกจะไม่เห็นกลุ่มนี้เลย
-// แยกแม่จากลูกด้วยระดับ indent (แม่อยู่ระดับบนสุดของ NAV_ITEMS = 2 ช่อง, ลูก = 6 ช่อง)
-// ไม่ใช้ "ไม่มี resource" เป็นตัวแยก เพราะนั่นคือสิ่งที่กำลังจะตรวจ
+// ── 5. กับดัก sidebar: IT hub ต้องไม่ดึง visitor log กลับเข้ากลุ่ม IT ──
+// ตัวแม่ของกลุ่ม IT ไม่มี resource และ overview ใช้ anyResource เพื่อรองรับ
+// ผู้ที่มีสิทธิ์เฉพาะ verification ส่วน visitor log อยู่ใต้ความปลอดภัยแทน
 const itParent = codeOnly(sidebar).split('\n')
-  .find((line) => /^ {2}\{ href: '\/staff\/it\/access'/.test(line))
+  .find((line) => /^ {2}\{ href: '\/staff\/it',/.test(line))
 assert.ok(itParent, 'found the IT group parent line')
 assert.ok(!itParent!.includes('resource:'), 'IT group parent must NOT carry a resource')
-for (const child of ['/staff/it/access', '/staff/it/downtime', '/staff/it/backup']) {
+for (const child of ['/staff/it/access', '/staff/it/verification', '/staff/it/downtime', '/staff/it/backup']) {
   assert.ok(
-    new RegExp(`href: '${child}',[^\\n]*resource: 'ระบบสารสนเทศ \\(IT\\)'`).test(sidebar),
+    new RegExp(`href: '${child}',[^\\n]*resource:`).test(sidebar),
     `${child} child carries the IT resource`,
   )
 }
 assert.ok(
-  /href: '\/staff\/it\/visitors',[^\n]*resource: 'บันทึกการเข้า-ออก'/.test(sidebar),
-  'visitor child carries its own resource',
+  /href: '\/staff\/it',[^\n]*anyResource: \['ระบบสารสนเทศ \(IT\)', 'ทวนสอบการส่งผ่านข้อมูล HIS & LIS'\]/.test(sidebar),
+  'IT overview uses anyResource for the two hub entry permissions',
+)
+const itSectionStart = sidebar.indexOf("{ section: 'งาน IT' }")
+const analyticsSectionStart = sidebar.indexOf("{ section: 'Analytics' }")
+assert.ok(itSectionStart >= 0 && analyticsSectionStart > itSectionStart, 'found the IT navigation section')
+const itBlock = sidebar.slice(itSectionStart, analyticsSectionStart)
+assert.ok(!itBlock.includes("'/staff/it/visitors'"), 'visitor log is no longer an IT child')
+assert.ok(!itBlock.includes("'/staff/it/head-contact'"), 'head contact is no longer an IT child')
+const safetyBlock = sidebar.slice(sidebar.indexOf("{ href: '/staff/safety'"), itSectionStart)
+assert.ok(safetyBlock.includes("href: '/staff/it/visitors'"), 'visitor log is nested under Safety')
+assert.ok(
+  safetyBlock.indexOf("href: '/staff/it/visitors'") > safetyBlock.indexOf("href: '/staff/lab-map/chemicals'"),
+  'visitor log appears below Chemicals & SDS',
 )
 
 // ── 6. ลบได้เฉพาะ Admin — ต้องบังคับที่ route ไม่ใช่แค่ซ่อนปุ่ม ──

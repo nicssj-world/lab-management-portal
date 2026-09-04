@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { auditRisk, canReviewRisk, getRiskActor } from '@/lib/risk/access'
+import { closedRegisterResponse } from '@/lib/risk/register-guards'
 import { residualSchema } from '@/lib/validations/risk-register'
 
 /**
@@ -15,6 +16,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!canReviewRisk(actor)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
+  const closed = await closedRegisterResponse(Number(id))
+  if (closed) return closed
   const parsed = residualSchema.safeParse(await req.json())
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }, { status: 422 })
@@ -39,6 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     })
     .eq('id', Number(id))
     .is('deleted_at', null)
+    .neq('status', 'closed')
     .select()
     .single()
 

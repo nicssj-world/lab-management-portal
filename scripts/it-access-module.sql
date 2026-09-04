@@ -67,10 +67,28 @@ CREATE TABLE IF NOT EXISTS it_backup_logs (
   created_by   uuid REFERENCES profiles(id)
 );
 
+-- Evidence files are stored in the shared R2 bucket; this table keeps the
+-- metadata and the guarded object key for each backup/restore-test log.
+CREATE TABLE IF NOT EXISTS it_backup_attachments (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  backup_log_id uuid NOT NULL REFERENCES it_backup_logs(id) ON DELETE CASCADE,
+  r2_key        text NOT NULL UNIQUE,
+  file_name     text NOT NULL,
+  content_type  text NOT NULL CHECK (content_type IN (
+    'application/pdf', 'image/jpeg', 'image/png', 'image/webp',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  )),
+  size_bytes    bigint NOT NULL CHECK (size_bytes BETWEEN 1 AND 20971520),
+  uploaded_by   uuid NOT NULL REFERENCES profiles(id),
+  uploaded_at   timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS it_downtime_system_idx ON it_downtime_logs(system_id);
 CREATE INDEX IF NOT EXISTS it_downtime_started_idx ON it_downtime_logs(started_at);
 CREATE INDEX IF NOT EXISTS it_backup_system_idx ON it_backup_logs(system_id);
 CREATE INDEX IF NOT EXISTS it_backup_date_idx ON it_backup_logs(log_date);
+CREATE INDEX IF NOT EXISTS it_backup_attachments_log_idx ON it_backup_attachments(backup_log_id, uploaded_at);
 
 -- ── RLS: read for authenticated, write via service role only ──
 ALTER TABLE it_systems ENABLE ROW LEVEL SECURITY;
@@ -78,12 +96,14 @@ ALTER TABLE it_access_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE it_access_reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE it_downtime_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE it_backup_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE it_backup_attachments ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "it_systems_select"        ON it_systems        FOR SELECT TO authenticated USING (true);
 CREATE POLICY "it_access_records_select" ON it_access_records FOR SELECT TO authenticated USING (true);
 CREATE POLICY "it_access_reviews_select" ON it_access_reviews FOR SELECT TO authenticated USING (true);
 CREATE POLICY "it_downtime_logs_select"  ON it_downtime_logs  FOR SELECT TO authenticated USING (true);
 CREATE POLICY "it_backup_logs_select"    ON it_backup_logs    FOR SELECT TO authenticated USING (true);
+CREATE POLICY "it_backup_attachments_select" ON it_backup_attachments FOR SELECT TO authenticated USING (true);
 
 -- ── Seed the five information systems ──
 INSERT INTO it_systems (name, display_order) VALUES

@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { AdminUserClient } from './AdminUserClient'
 import { PermissionsMatrix } from './PermissionsMatrix'
+import { RiskTeamMembers } from './RiskTeamMembers'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -47,6 +48,14 @@ export default async function AdminPage() {
   }
 
   const auditLog = await getAuditLog(supabaseAdmin, 30).catch(() => [])
+  const { data: riskTeamProfiles } = isAdmin && role === 'Admin'
+    ? await supabaseAdmin
+      .from('profiles')
+      .select('id, name, role, dept, ephis_id')
+      .eq('status', 'active')
+      .is('deleted_at', null)
+      .order('name')
+    : { data: [] }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -96,6 +105,9 @@ export default async function AdminPage() {
 
       {/* Permissions matrix — editable by Admin */}
       {isAdmin && <PermissionsMatrix isAdmin={isAdmin} />}
+
+      {/* Risk working group — managed by a real Admin only */}
+      {isAdmin && role === 'Admin' && <RiskTeamMembers profiles={riskTeamProfiles ?? []} />}
 
       {/* Audit log */}
       <Card padding={0}>

@@ -690,7 +690,7 @@ export function ContractsClient({ contracts: initial, canEdit, lastUpdated, depa
             {contracts.length} สัญญา
             {lastUpdated && ` · อัปเดตล่าสุด ${fmtDate(lastUpdated)}`}
           </div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.2 }}>บริหารสัญญา</h1>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.2 }}>งานคลังและพัสดุ</h1>
           <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--muted)' }}>บันทึกการใช้จ่ายรายเดือน · เตือนเมื่อใกล้หมดอายุหรือมูลค่าเหลือต่ำ</p>
         </div>
         {canEdit && (

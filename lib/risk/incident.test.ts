@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { REVIEW_ONLY_FIELDS, stripReviewOnlyFields } from './fields'
+import { REVIEW_ONLY_FIELDS, pickReviewWorkflowFields, stripReviewOnlyFields } from './fields'
 import { incidentPatchSchema, incidentReportSchema, incidentSchema } from '@/lib/validations/incident'
 
 // ── schema ต้องตัด key ที่ไม่รู้จักทิ้ง ──────────────────────────────────────
@@ -104,5 +104,16 @@ assert.equal(original.severity_level, 'D', 'ต้องไม่กลายพ
 // ทุกฟิลด์ในรายการต้องถูกตัดจริงเมื่อไม่มีสิทธิ์
 const everything = Object.fromEntries(REVIEW_ONLY_FIELDS.map(f => [f, 'x']))
 assert.deepEqual(stripReviewOnlyFields(everything, false).payload, {})
+
+// reviewer ที่ไม่มีสิทธิ์แก้ข้อมูลเหตุการณ์หลัก เก็บได้เฉพาะ RCA/ผลติดตาม
+const workflowOnly = pickReviewWorkflowFields({
+  event_detail: 'ห้ามแก้',
+  status: 'closed',
+  root_cause: 'สาเหตุเชิงระบบ',
+  effectiveness_result: 'ได้ผล',
+})
+assert.deepEqual(workflowOnly.payload, { root_cause: 'สาเหตุเชิงระบบ', effectiveness_result: 'ได้ผล' })
+assert.equal(workflowOnly.warnings.length, 1)
+assert.match(workflowOnly.warnings[0], /event_detail/)
 
 console.log('incident tests passed')

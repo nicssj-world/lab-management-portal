@@ -7,7 +7,7 @@ import { r2ObjectResponse } from '@/lib/r2/stream-response'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { contentDispositionForExternalQualityAttachment } from '@/lib/external-quality/content-disposition'
 import { isAllowedFileSignature, safeExternalQualityFileName, validateExternalQualityFile } from '@/lib/external-quality/files'
-import { auditRisk, canReviewRisk, getRiskActor, getRiskPermission, type RiskActor } from './access'
+import { auditRisk, canReviewRisk, getIncidentActor, getRiskPermission, type RiskActor } from './access'
 
 // นำตัวตรวจไฟล์ของโมดูล EQA/OUTLAB มาใช้ซ้ำ (ชนิดไฟล์ ขนาด และ magic byte)
 // ไม่ใช้ attachment-api.ts ทั้งก้อนเพราะมันผูกกับตาราง eqa/outlab โดยเฉพาะ
@@ -29,17 +29,60 @@ export function attachmentPrefix(target: AttachmentTarget) {
   return target.incidentId ? `risk/incident/${target.incidentId}/` : `risk/register/${target.registerId}/`
 }
 
-export async function requireAttachmentWriter() {
-  const actor = await getRiskActor()
+type AttachmentAccessInput = {
+  body?: unknown
+  attachmentId?: string
+}
+
+function bodyHasIncidentTarget(body: unknown) {
+  if (!body || typeof body !== 'object') return false
+  const incidentId = (body as { incidentId?: unknown }).incidentId
+  return typeof incidentId === 'number' ? incidentId > 0 : Boolean(incidentId)
+}
+
+async function attachmentHasIncidentTarget(attachmentId?: string) {
+  if (!attachmentId) return false
+  const { data } = await supabaseAdmin
+    .from('risk_attachments')
+    .select('incident_id')
+    .eq('id', attachmentId)
+    .maybeSingle()
+  return Boolean(data?.incident_id)
+}
+
+async function isIncidentAttachment(input: AttachmentAccessInput) {
+  return bodyHasIncidentTarget(input.body) || await attachmentHasIncidentTarget(input.attachmentId)
+}
+
+async function closedParentResponse(target: AttachmentTarget): Promise<NextResponse | null> {
+  const table = target.incidentId ? 'incident_reports' : 'risk_register'
+  const id = target.incidentId ?? target.registerId
+  const { data, error } = await supabaseAdmin
+    .from(table)
+    .select('status')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'ไม่พบรายการนี้' }, { status: 404 })
+  if (data.status === 'closed') return NextResponse.json({ error: 'รายการที่ปิดแล้วแก้ไขไม่ได้' }, { status: 409 })
+  return null
+}
+
+export async function requireAttachmentWriter(input: AttachmentAccessInput = {}) {
+  const actor = await getIncidentActor()
   if (!actor) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  if (await isIncidentAttachment(input)) return { actor }
   if (!canReviewRisk(actor)) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   return { actor }
 }
 
-export async function requireAttachmentReader() {
-  const actor = await getRiskActor()
+export async function requireAttachmentReader(input: AttachmentAccessInput = {}) {
+  const actor = await getIncidentActor()
   if (!actor) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  if ((await getRiskPermission(actor.role)) === 'none') {
+  if (await isIncidentAttachment(input)) return { actor }
+  if ((await getRiskPermission(actor)) === 'none') {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
   return { actor }
@@ -52,6 +95,8 @@ export async function presignUpload(body: unknown) {
     sizeBytes: z.number().int().positive(),
   }).parse(body)
   const target = attachmentTarget.parse(body)
+  const closed = await closedParentResponse(target)
+  if (closed) return closed
 
   const check = validateExternalQualityFile(meta.fileName, meta.contentType, meta.sizeBytes)
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: 422 })
@@ -75,6 +120,8 @@ export async function finalizeUpload(actor: RiskActor, body: unknown) {
   const parsed = z.object({ key: z.string().min(1), fileName: z.string().min(1) }).parse(body)
   const target = attachmentTarget.parse(body)
   const key = parsed.key
+  const closed = await closedParentResponse(target)
+  if (closed) return closed
 
   try {
     if (!key.startsWith(attachmentPrefix(target))) throw new Error('เส้นทางไฟล์ไม่ตรงกับรายการที่ระบุ')
@@ -134,6 +181,16 @@ export async function streamAttachment(id: string, range: string | null) {
 }
 
 export async function removeAttachment(actor: RiskActor, id: string) {
+  const { data: attachment } = await supabaseAdmin.from('risk_attachments').select('*').eq('id', id).maybeSingle()
+  if (!attachment) return NextResponse.json({ error: 'ไม่พบไฟล์นี้' }, { status: 404 })
+
+  const closed = await closedParentResponse({
+    incidentId: attachment.incident_id,
+    registerId: attachment.register_id,
+    actionId: attachment.action_id,
+  })
+  if (closed) return closed
+
   const { data } = await supabaseAdmin.from('risk_attachments').delete().eq('id', id).select('*').single()
   if (!data) return NextResponse.json({ error: 'ไม่พบไฟล์นี้' }, { status: 404 })
 

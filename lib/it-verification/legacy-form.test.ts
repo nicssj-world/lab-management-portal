@@ -42,7 +42,7 @@ test('legacy form parser uses folder year, maps LAB ID to LN and P to pass', () 
   })
 })
 
-test('legacy form parser warns on a sheet year mismatch without overriding the folder year', () => {
+test('legacy form parser ignores the sheet year and uses the folder year without a warning', () => {
   const mismatchedSheet = completedSheet.map((row, index) => index === 2
     ? ['', 'งาน ภูมิคุ้มกันวิทยาคลินิก', '', 'มกราคม-มีนาคม 2568']
     : [...row])
@@ -53,8 +53,7 @@ test('legacy form parser warns on a sheet year mismatch without overriding the f
     sourceFileName: '[IMM] Fm-QP-LAB-24-02',
   })
 
-  const mismatch = result.warnings.find((warning) => warning.includes('2568'))
-  assert.ok(mismatch)
+  assert.equal(result.warnings.some((warning) => warning.includes('2568')), false)
   assert.equal(result.year, 2026)
 })
 

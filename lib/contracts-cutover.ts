@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-// The contract-management module ("บริหารสัญญา") lives in LABCBH Stock. Keep a
+// The inventory and contract module ("งานคลังและพัสดุ") lives in LABCBH Stock. Keep a
 // safe production destination in source so a missing Vercel environment value
 // cannot accidentally reactivate the retired portal module.
 
@@ -47,7 +47,7 @@ export function legacyContractRedirect(env: Env = process.env): string | null {
 export function contractsGoneResponse(target: string | null): NextResponse {
   return NextResponse.json(
     {
-      error: 'โมดูลบริหารสัญญาย้ายไปที่ระบบ LABCBH Stock แล้ว การแก้ไขข้อมูลต้องทำที่ระบบใหม่',
+      error: 'โมดูลงานคลังและพัสดุย้ายไปที่ระบบ LABCBH Stock แล้ว การแก้ไขข้อมูลต้องทำที่ระบบใหม่',
       movedTo: target ? `${target}/contracts` : null,
     },
     { status: 410 },

@@ -55,7 +55,7 @@ If the test needs a specific section regardless of which lab_section/ward it arr
 
 Run `scripts/quality-task-module.sql` in Supabase Dashboard → SQL Editor before opening `/staff/quality-tasks`. The script creates the task registry, recurring schedules, per-period work records, assignees, R2 attachment metadata, permission defaults, and the 44 ISO/QMS activities from `Quality_Task_List_CBH.xlsx`. Runtime reminders are calculated in the portal; v1 does not require cron, email, or LINE configuration.
 
-Meeting evidence is PDF-only (maximum 20 MB) and is uploaded directly to the existing Cloudflare R2 bucket. Managers administer templates and assignments through the `งานคุณภาพ:edit` permission; assigned staff with `งานคุณภาพ:view` can schedule, attach evidence, and complete their work.
+Meeting evidence is PDF-only (maximum 20 MB) and is uploaded directly to the existing Cloudflare R2 bucket. Users with `งานคุณภาพ:view` or `งานคุณภาพ:edit` can create ad-hoc activities/meetings. For an existing occurrence, only its creator or a linked responsible user for the current round can edit details, complete the work, save the meeting summary, or manage ACTION ITEMS. The `งานคุณภาพ:edit` permission remains the module-level permission for managing templates and default assignments.
 
 The `วันหยุดเดือนนี้` card on `/staff/quality-tasks` lets Admin sync official Thai holidays from Google's public Thailand holiday calendar. It uses `th.th#holiday@group.v.calendar.google.com` by default; set `GOOGLE_HOLIDAY_CALENDAR_ID` or `GOOGLE_HOLIDAY_CALENDAR_ICS_URL` in the server environment only when a different public calendar is needed. Run `supabase/migrations/202608310002_quality_task_holiday_google_sync.sql` before using the Sync button. Imported rows are tagged as Google holidays, while manually entered rows are preserved.
 
@@ -243,7 +243,7 @@ Before deploying the visitor same-link checkout flow, apply the visitor migratio
 2. `scripts/it-visitor-form-options.sql`
 3. `scripts/it-visitor-self-checkout.sql`
 
-The third migration adds the one-time hashed checkout credential and records whether the visitor or a staff member closed the visit. Application builds do not apply these migrations automatically.
+The third migration adds the one-time hashed checkout credential, records whether the visitor, a staff member, or the system closed the visit, and registers the `it-visitor-auto-checkout` Supabase Cron job. The job runs once daily at 00:05 Bangkok time; open visits are closed at the first midnight after the Bangkok calendar date of check-in. Application builds do not apply these migrations automatically.
 
 Staff/personnel rollout order:
 

@@ -103,7 +103,7 @@ export function TestTable({
   const allIds = tests.map(t => t.id)
   const allSelected = allIds.length > 0 && allIds.every(id => selected.has(id))
   const someSelected = selected.size > 0
-  const colCount = 8 + (canDelete ? 1 : 0) + (canEdit ? 1 : 0)
+  const colCount = 9 + (canDelete ? 1 : 0) + (canEdit ? 1 : 0)
 
   function toggleAll() {
     setSelected(allSelected ? new Set() : new Set(allIds))
@@ -225,6 +225,7 @@ export function TestTable({
                 [null,       'รหัสกรมบัญชีกลาง', 'center'],
                 [nameSortKey, 'ชื่อรายการตรวจ',   'left'],
                 ['category', 'หมวดหมู่',          'center'],
+                [null,       'หน่วยงาน',          'left'],
                 ['tube',     'Specimen',          'left'],
                 [null,       'วัน-เวลาที่ตรวจ',  'center'],
                 [null,       'TAT',               'center'],
@@ -345,6 +346,11 @@ export function TestTable({
                         ) : (
                           <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
                         )}
+                      </td>
+
+                      {/* Department */}
+                      <td style={{ ...TD, fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                        {t.department ?? '—'}
                       </td>
 
                       {/* Specimen / Tube */}
@@ -502,6 +508,12 @@ export function TestTable({
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--ink)', fontSize: 12.5 }}>
                         <span style={{ width: 9, height: 9, borderRadius: 3, background: tubeColor, flexShrink: 0 }} />
                         {t.tube}
+                      </span>
+                    )}
+                    {t.department && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--muted)', fontSize: 12.5 }}>
+                        <Icon name="building" size={13} />
+                        {t.department}
                       </span>
                     )}
                   </div>

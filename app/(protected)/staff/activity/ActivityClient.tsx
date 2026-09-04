@@ -20,6 +20,7 @@ const ACTION_LABELS: Record<string, string> = {
   // ผู้มาติดต่อ
   'it_visitor.checkout':                         'เจ้าหน้าที่บันทึกเวลาออกของผู้มาติดต่อ',
   'it_visitor.self_checkout':                    'ผู้มาติดต่อบันทึกเวลาออกด้วยตนเอง',
+  'it_visitor.auto_checkout':                    'ระบบปิดเวลาออกของผู้มาติดต่ออัตโนมัติ',
   'lab_map.person_assignment.create':             'กำหนดพื้นที่บุคลากรบนแผนที่',
   'lab_map.person_assignment.update':             'แก้ไขพื้นที่บุคลากรบนแผนที่',
   'lab_map.person_assignment.delete':             'ยกเลิกพื้นที่บุคลากรบนแผนที่',
@@ -250,6 +251,8 @@ const ACTION_LABELS: Record<string, string> = {
   'it_backup.create':                             'บันทึกการสำรองข้อมูล',
   'it_backup.update':                             'แก้ไขบันทึกการสำรองข้อมูล',
   'it_backup.delete':                             'ลบบันทึกการสำรองข้อมูล',
+  'it_backup.attachment.upload':                  'แนบไฟล์หลักฐานการสำรองข้อมูล',
+  'it_backup.attachment.delete':                  'ลบไฟล์หลักฐานการสำรองข้อมูล',
   'it_verification.sampling.generate':            'สร้างชุดตัวอย่างการทวนสอบจาก TAT',
   'it_verification.sampling.resample':            'สุ่มชุดตัวอย่างการทวนสอบใหม่',
   'it_verification.sample.update':                'บันทึกผลตัวอย่างการทวนสอบ',

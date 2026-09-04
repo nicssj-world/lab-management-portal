@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { RESOURCES } from '@/lib/permission-resources'
+import { RESOURCES, RISK_RESOURCE } from '@/lib/permission-resources'
 import { normalizeRole } from '@/lib/roles'
 
 export type { ResourceKey } from '@/lib/permission-resources'
@@ -47,6 +47,29 @@ export async function getPermissionsWithEquipmentOverride(
   // Keep existing role-based behaviour if the readiness SQL has not been run yet.
   if (error) return perms
   if (data?.user_id) perms['ทะเบียนเครื่องมือ'] = 'edit'
+  return perms
+}
+
+// A risk-team assignment grants module visibility without changing the person's
+// role-based factual-edit permission. Workflow permissions are checked separately
+// by lib/risk/access.ts.
+export async function getPermissionsWithRiskTeamOverride(
+  role: string,
+  userId: string,
+): Promise<Permissions> {
+  const perms = await getRolePermissions(role)
+  if (normalizeRole(role) === 'Admin') return perms
+
+  const { data, error } = await supabaseAdmin
+    .from('risk_team_members')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  // The feature remains backward-compatible until its migration is installed.
+  if (!error && data?.user_id && (perms[RISK_RESOURCE] ?? 'none') === 'none') {
+    perms[RISK_RESOURCE] = 'view'
+  }
   return perms
 }
 

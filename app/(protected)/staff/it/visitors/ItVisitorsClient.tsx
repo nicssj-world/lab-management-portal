@@ -56,6 +56,7 @@ function toLocalInput(iso: string | null): string {
 function checkoutMethodLabel(method: ItVisitorLogWithRefs['checkout_method']) {
   if (method === 'self') return 'ผู้มาติดต่อบันทึกเอง'
   if (method === 'staff') return 'เจ้าหน้าที่บันทึกให้'
+  if (method === 'auto') return 'ระบบปิดอัตโนมัติหลังเที่ยงคืน'
   return 'ไม่ระบุ (ข้อมูลเดิม)'
 }
 function fmtDateTime(iso: string | null): string {
@@ -573,6 +574,7 @@ export function ItVisitorsClient({ initialLogs, initialSettings, canEdit, isAdmi
                 <DetailSectionHeading id="visitor-detail-audit" title="การบันทึกเวลาออก" />
                 <dl style={detailGridStyle}>
                   <DetailField label="วิธีบันทึกเวลาออก" value={checkoutMethodLabel(detail.checkout_method)} />
+                  {detail.checkout_note && <DetailField label="หมายเหตุ" value={detail.checkout_note} wide />}
                   {detail.closer?.name && <DetailField label="ผู้บันทึกเวลาออก" value={detail.closer.name} />}
                 </dl>
               </section>

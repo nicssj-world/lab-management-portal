@@ -49,6 +49,12 @@ assert.ok(staffItemRoute.includes('status: 403'))
 
 assert.ok(sidebar.includes("href: '/staff/it/head-contact'"))
 assert.ok(sidebar.includes("deptRole: 'group_lead'"))
+const mainSectionStart = sidebar.indexOf("{ section: 'งานหลัก' }")
+const safetySectionStart = sidebar.indexOf("{ section: 'งานความเสี่ยงและความปลอดภัย' }")
+const itSectionStart = sidebar.indexOf("{ section: 'งาน IT' }")
+assert.ok(mainSectionStart >= 0 && safetySectionStart > mainSectionStart)
+assert.match(sidebar.slice(mainSectionStart, safetySectionStart), /^  \{ href: '\/staff\/it\/head-contact'/m)
+assert.ok(!sidebar.slice(itSectionStart, sidebar.indexOf("{ section: 'Analytics' }")).includes("'/staff/it/head-contact'"))
 assert.ok(topbar.includes("'/staff/it/head-contact'"))
 assert.ok(authProfile.includes('dept_role'), 'protected layout profile carries the department role')
 
