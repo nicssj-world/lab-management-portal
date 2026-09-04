@@ -72,6 +72,8 @@ test('TAT integration is synchronous and preserves successful upload semantics o
   assert.match(route, /sampling.*warning|samplingWarning/i)
   assert.match(route, /is_last_chunk/)
   assert.match(route, /await supabaseAdmin\.rpc/)
+  assert.match(route, /IT_DEPARTMENTS/)
+  assert.match(route, /p_department_id: department\.id/)
 })
 
 test('cleanup guard is scoped to tat-clean-raw and has an explicit September 2026 go-live', () => {

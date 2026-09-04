@@ -123,6 +123,7 @@ export interface QualityTaskOccurrence {
   completionNote: string | null
   completionNoteUpdatedBy: string | null
   completionNoteUpdatedAt: string | null
+  createdBy: string | null
   completedBy: string | null
   completedAt: string | null
   submittedBy: string | null

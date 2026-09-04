@@ -30,6 +30,7 @@ import {
 import { QUALITY_TASK_CATEGORIES } from "@/lib/quality-tasks/categories";
 import { addLogoToQrDataUrl } from "@/lib/qr-logo";
 import {
+  canManageQualityTaskOccurrence,
   isWeekendDate,
   occurrenceCalendarRange,
   occurrenceDisplayOwner,
@@ -321,7 +322,7 @@ export function QualityTaskDashboard({
     participantUserIds: string[];
     assignees: AssigneeEntry[];
   } | null>(() =>
-    initialAdHoc && level === "edit"
+    initialAdHoc && level !== "none"
       ? {
           templateId: "",
           label: "",
@@ -910,7 +911,11 @@ export function QualityTaskDashboard({
   }
   const canAct =
     selected &&
-    (level === "edit" || selected.assignees.some((e) => e.userId === actorId));
+    canManageQualityTaskOccurrence(
+      level,
+      selected.createdBy === actorId,
+      selected.assignees.some((e) => e.userId === actorId),
+    );
   const hasSelectedMeetingLocation = Boolean(
     normalizeMeetingLocation(meetingLocationDraft),
   );
@@ -1498,7 +1503,7 @@ export function QualityTaskDashboard({
           subtitle="ปฏิทินประชุม กำหนดส่ง และหลักฐานการดำเนินงาน"
           marginBottom={0}
           actions={
-            level === "edit" ? (
+            level !== "none" ? (
               <>
                 <Button
                   variant="secondary"
@@ -1525,11 +1530,13 @@ export function QualityTaskDashboard({
                 >
                   สร้างงานเฉพาะกิจ
                 </Button>
-                <Link href="/staff/quality-tasks/registry">
-                  <Button variant="primary" icon="inbox">
-                    ทะเบียนกิจกรรม
-                  </Button>
-                </Link>
+                {level === "edit" && (
+                  <Link href="/staff/quality-tasks/registry">
+                    <Button variant="primary" icon="inbox">
+                      ทะเบียนกิจกรรม
+                    </Button>
+                  </Link>
+                )}
               </>
             ) : undefined
           }
@@ -1798,8 +1805,11 @@ export function QualityTaskDashboard({
             const canDragMeeting =
               o.template.taskKind === "meeting" &&
               !isMultiDay &&
-              (level === "edit" ||
-                o.assignees.some((e) => e.userId === actorId));
+              canManageQualityTaskOccurrence(
+                level,
+                o.createdBy === actorId,
+                o.assignees.some((e) => e.userId === actorId),
+              );
             return (
               <button
                 key={o.key}
@@ -2785,7 +2795,7 @@ export function QualityTaskDashboard({
                 >
                   บันทึกหมายเหตุ
                 </Button>
-                {level === "edit" && (
+                {canAct && (
                   <label style={labelStyle}>
                     ผู้รับผิดชอบรอบนี้
                     <AssigneeListEditor
@@ -2810,7 +2820,7 @@ export function QualityTaskDashboard({
                     />
                   </label>
                 )}
-                {level === "edit" && (
+                {canAct && (
                   <label style={labelStyle}>
                     ผู้เข้าร่วมประชุม (เฉพาะรอบนี้)
                     <div

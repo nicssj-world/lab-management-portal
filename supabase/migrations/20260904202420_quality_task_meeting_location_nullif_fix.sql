@@ -1,6 +1,7 @@
--- Allow overlapping Quality meetings when they use different locations.
--- Run once in Supabase SQL Editor for databases created from the manual scripts.
-
+-- Fix the Quality meeting overlap trigger after the location-aware version
+-- used a schema-qualified NULLIF expression. NULLIF is a SQL expression, not
+-- a callable catalog function, so qualification makes PostgreSQL look for a
+-- function signature that does not exist.
 CREATE OR REPLACE FUNCTION public.guard_quality_task_meeting_slot()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -34,6 +35,8 @@ BEGIN
     new_end_date := NEW.planned_date;
   END IF;
 
+  -- Serialize all Quality meeting slot writes so the conflict query cannot
+  -- pass concurrently for two transactions that target the same slot.
   PERFORM pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('quality-task:meeting-slot', 0)
   );

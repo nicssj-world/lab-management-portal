@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
-import { QUALITY_TASK_TRACKING_START, bangkokToday, canMutateOccurrence, canViewOccurrence, completionBlockReason, deriveTaskState, generatePeriods, isWeekendDate, occurrenceCalendarRange, occurrenceKey, resolveAssigneeEntries } from './logic'
+import { QUALITY_TASK_TRACKING_START, bangkokToday, canManageQualityTaskOccurrence, canMutateOccurrence, canViewOccurrence, completionBlockReason, deriveTaskState, generatePeriods, isWeekendDate, occurrenceCalendarRange, occurrenceKey, resolveAssigneeEntries } from './logic'
 import { listQualityTaskHolidays } from './holidays'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
 import { canApproveTask, nextRollingDueDate, templateRemovalMode } from './safety'
@@ -269,6 +269,7 @@ export async function getQualityTaskOccurrences(
           meetingLocation: nullable(row?.meeting_location), meetingAgenda: nullable(row?.meeting_agenda),
           status, note: nullable(row?.note), completionNote: workstream === 'quality' && template.taskKind === 'meeting' ? sanitizeMeetingSummaryHtml(nullable(row?.completion_note)) || null : nullable(row?.completion_note),
           completionNoteUpdatedBy: nullable(row?.completion_note_updated_by), completionNoteUpdatedAt: nullable(row?.completion_note_updated_at),
+          createdBy: nullable(row?.created_by),
           completedBy: nullable(row?.completed_by), completedAt: nullable(row?.completed_at), assignees: assigned,
           submittedBy: nullable(row?.submitted_by), submittedAt: nullable(row?.submitted_at), reviewedBy: nullable(row?.reviewed_by),
           reviewedAt: nullable(row?.reviewed_at), reviewNote: nullable(row?.review_note),
@@ -300,6 +301,7 @@ export async function getQualityTaskOccurrences(
       meetingLocation: nullable(row.meeting_location), meetingAgenda: nullable(row.meeting_agenda),
       status, note: nullable(row.note), completionNote: workstream === 'quality' && template.taskKind === 'meeting' ? sanitizeMeetingSummaryHtml(nullable(row.completion_note)) || null : nullable(row.completion_note),
       completionNoteUpdatedBy: nullable(row.completion_note_updated_by), completionNoteUpdatedAt: nullable(row.completion_note_updated_at),
+      createdBy: nullable(row.created_by),
       completedBy: nullable(row.completed_by), completedAt: nullable(row.completed_at), assignees: assigned,
       submittedBy: nullable(row.submitted_by), submittedAt: nullable(row.submitted_at), reviewedBy: nullable(row.reviewed_by),
       reviewedAt: nullable(row.reviewed_at), reviewNote: nullable(row.review_note),
@@ -310,7 +312,9 @@ export async function getQualityTaskOccurrences(
       checkInOpenedAt: nullable(row.check_in_opened_at), checkInOpenedBy: nullable(row.check_in_opened_by),
       checkIns: checkIns.get(instanceId) ?? [], ...state })
   }
-  const scoped = input.scope === 'mine' && input.level !== 'edit' ? result.filter(o => o.assignees.some(e => e.userId === input.actorId)) : result
+  const scoped = input.scope === 'mine' && input.level !== 'edit'
+    ? result.filter(o => o.createdBy === input.actorId || o.assignees.some(e => e.userId === input.actorId))
+    : result
   const bounded = workstream === 'safety' ? scoped.filter(item => item.effectiveDueDate >= input.from && item.effectiveDueDate <= input.to) : scoped
   return bounded.sort((a, b) => a.effectiveDueDate.localeCompare(b.effectiveDueDate) || a.template.title.localeCompare(b.template.title, 'th'))
 }
@@ -329,8 +333,8 @@ async function assertTemplateWorkstream(templateId: string, workstream: TaskWork
 }
 
 export async function materializeOccurrence(payload: OccurrenceCreatePayload, actor: Actor, level: PermLevel, workstream: TaskWorkstream = 'quality') {
+  if (!canViewOccurrence(level)) throw new Error('Forbidden')
   if (payload.mode === 'adHoc') {
-    if (level !== 'edit') throw new Error('Forbidden')
     const template = await assertTemplateWorkstream(payload.templateId, workstream)
     const hasMeetingDetails = Boolean(
       payload.location?.trim() ||
@@ -372,8 +376,25 @@ export async function materializeOccurrence(payload: OccurrenceCreatePayload, ac
   }
   const period = generatePeriods(schedule, payload.periodStart, payload.periodStart).find(p => p.start === payload.periodStart)
   if (!period) throw new Error('Invalid schedule period')
-  const { data, error: upsertError } = await supabaseAdmin.from('quality_task_instances').upsert({ template_id: schedule.templateId, schedule_id: schedule.id, period_start: period.start, period_end: period.end, period_label: periodLabel(period.start, period.end), created_by: actor.id, updated_by: actor.id }, { onConflict: 'schedule_id,period_start' }).select('*').single()
-  fail(upsertError); audit(actor, 'quality_task.instance.materialize', str(data.id), payload); return data
+  const { data: existing, error: existingError } = await supabaseAdmin.from('quality_task_instances')
+    .select('*').eq('schedule_id', schedule.id).eq('period_start', period.start).maybeSingle()
+  fail(existingError)
+  if (existing) {
+    audit(actor, 'quality_task.instance.materialize', str(existing.id), payload)
+    return existing
+  }
+  const { data, error: insertError } = await supabaseAdmin.from('quality_task_instances').insert({
+    template_id: schedule.templateId, schedule_id: schedule.id, period_start: period.start,
+    period_end: period.end, period_label: periodLabel(period.start, period.end), created_by: actor.id, updated_by: actor.id,
+  }).select('*').single()
+  if (insertError?.code === '23505') {
+    const { data: committed, error: committedError } = await supabaseAdmin.from('quality_task_instances')
+      .select('*').eq('schedule_id', schedule.id).eq('period_start', period.start).single()
+    fail(committedError)
+    audit(actor, 'quality_task.instance.materialize', str(committed.id), payload)
+    return committed
+  }
+  fail(insertError); audit(actor, 'quality_task.instance.materialize', str(data.id), payload); return data
 }
 
 export async function getOccurrenceAccess(instanceId: string, actor: Actor, level: PermLevel, workstream: TaskWorkstream = 'quality', allowApprover = false) {
@@ -387,8 +408,13 @@ export async function getOccurrenceAccess(instanceId: string, actor: Actor, leve
   const ids = entries.map(e => e.userId).filter((id): id is string => id != null)
   const template = instance.quality_task_templates as Row
   const isDesignatedApprover = canApproveTask(level, actor.id, nullable(template?.approver_id))
-  if (!canMutateOccurrence(level, ids.includes(actor.id), entries.length === 0) && !(allowApprover && isDesignatedApprover)) throw new Error('Forbidden')
-  return { instance, template, evidenceRequired: Boolean(template?.evidence_required), assignees: entries }
+  const isCreator = nullable(instance.created_by) === actor.id
+  const isAssigned = ids.includes(actor.id)
+  const canMutate = workstream === 'quality'
+    ? canManageQualityTaskOccurrence(level, isCreator, isAssigned)
+    : canMutateOccurrence(level, isAssigned, entries.length === 0)
+  if (!canMutate && !(allowApprover && isDesignatedApprover)) throw new Error('Forbidden')
+  return { instance, template, evidenceRequired: Boolean(template?.evidence_required), assignees: entries, isCreator, isAssigned }
 }
 
 export async function getOccurrenceReadAccess(instanceId: string, level: PermLevel, workstream: TaskWorkstream = 'quality') {
@@ -411,7 +437,6 @@ export async function updateOccurrence(instanceId: string, payload: OccurrenceAc
       : 'งานตรวจอุปกรณ์จะปิดอัตโนมัติเมื่อปิด Inspection Round ครบทุกอุปกรณ์')
   }
   if (payload.action === 'schedule') {
-    if ((payload.assignees || payload.participantDepts || payload.participantUserIds) && level !== 'edit') throw new Error('Forbidden')
     if (payload.plannedDate) {
       if (isWeekendDate(payload.plannedDate)) throw new Error('ไม่สามารถเลือกวันเสาร์-อาทิตย์ได้')
       const { data: holiday, error: holidayError } = await supabaseAdmin.from('quality_task_holidays').select('name').eq('holiday_date', payload.plannedDate).maybeSingle()
@@ -581,7 +606,8 @@ async function materializeNextRollingOccurrence(instance: Row, actorId: string, 
 }
 
 export async function removeOccurrence(instanceId: string, reason: string | null, actor: Actor, level: PermLevel, workstream: TaskWorkstream = 'quality') {
-  if (level !== 'edit') throw new Error('Forbidden')
+  if (workstream === 'quality') await getOccurrenceAccess(instanceId, actor, level, workstream)
+  else if (level !== 'edit') throw new Error('Forbidden')
   const { data: instance, error } = await supabaseAdmin.from('quality_task_instances').select('*, quality_task_templates!inner(workstream)').eq('id', instanceId).eq('quality_task_templates.workstream', workstream).single()
   fail(error)
   if (instance.schedule_id) {

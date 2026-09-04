@@ -77,8 +77,8 @@ BEGIN
         )
       )
       AND (
-        pg_catalog.nullif(pg_catalog.btrim(NEW.meeting_location), '') IS NULL
-        OR pg_catalog.nullif(pg_catalog.btrim(existing.meeting_location), '') IS NULL
+        NULLIF(pg_catalog.btrim(NEW.meeting_location), ''::text) IS NULL
+        OR NULLIF(pg_catalog.btrim(existing.meeting_location), ''::text) IS NULL
         OR pg_catalog.lower(pg_catalog.btrim(NEW.meeting_location)) =
           pg_catalog.lower(pg_catalog.btrim(existing.meeting_location))
       )

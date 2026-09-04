@@ -4,6 +4,7 @@ import { getRolePermissions } from '@/lib/permissions'
 import { isPanelBloodDraw } from '@/lib/tat/tube-classify'
 import { refreshLabWorkloadSummary } from '@/lib/workload/refresh-summary'
 import { invalidateAnalysisCache } from '@/lib/analysis-cache'
+import { IT_DEPARTMENTS } from '@/lib/it-verification/domain'
 import { NextRequest, NextResponse } from 'next/server'
 
 // Module-scope caches — populated once per function instance lifetime
@@ -268,26 +269,40 @@ export async function POST(req: NextRequest) {
     // verification evidence is created while TAT rows are still available. A
     // sampler failure must never turn a successful TAT upload into a failed upload.
     try {
-      const { data: samplingItems, error: samplingError } = await supabaseAdmin.rpc(
-        'generate_it_verification_samples_from_tat',
-        {
-          p_upload_id: upload_id,
-          p_actor_id: actor.id,
-          p_trigger: 'auto_upload',
-          p_department_id: null,
-        },
-      )
-      if (samplingError) {
-        console.warn('IT verification sampling failed after TAT upload', samplingError.message)
-        sampling = { status: 'warning', items: [], warning: 'อัปโหลด TAT สำเร็จ แต่สร้างตัวอย่างทวนสอบไม่สำเร็จ กรุณาลองสร้างตัวอย่างใหม่' }
+      // Large TAT exports can exceed the database statement timeout when all
+      // departments are sampled in one RPC. Keep the transaction boundary per
+      // department so a successful upload can still create the complete set.
+      const samplingItems: unknown[] = []
+      const samplingErrors: string[] = []
+      for (const department of IT_DEPARTMENTS) {
+        const { data, error } = await supabaseAdmin.rpc(
+          'generate_it_verification_samples_from_tat',
+          {
+            p_upload_id: upload_id,
+            p_actor_id: actor.id,
+            p_trigger: 'auto_upload',
+            p_department_id: department.id,
+          },
+        )
+        if (error) {
+          console.warn(`IT verification sampling failed for ${department.code} after TAT upload`, error.message)
+          samplingErrors.push(`${department.code}: ${error.message}`)
+          continue
+        }
+        if (Array.isArray(data)) samplingItems.push(...data)
+      }
+
+      if (samplingErrors.length > 0) {
+        const errorDetail = samplingErrors.join('; ')
+        sampling = { status: 'warning', items: samplingItems, warning: 'อัปโหลด TAT สำเร็จ แต่สร้างตัวอย่างทวนสอบบางหน่วยงานไม่สำเร็จ กรุณาตรวจสอบแล้วลองใหม่' }
         await supabaseAdmin.from('audit_log').insert({
           action: 'it_verification.sampling.generate',
           user_id: actor.id,
           target: upload_id,
-          detail: `trigger=auto_upload; status=failed; error=${samplingError.message}`.slice(0, 1000),
+          detail: `trigger=auto_upload; status=partial; errors=${errorDetail}`.slice(0, 1000),
         })
       } else {
-        const items = Array.isArray(samplingItems) ? samplingItems : []
+        const items = samplingItems
         const warnings = items
           .map((item) => (item && typeof item === 'object' && 'warning' in item ? String((item as { warning?: unknown }).warning ?? '') : ''))
           .filter(Boolean)

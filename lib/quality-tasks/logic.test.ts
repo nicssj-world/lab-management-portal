@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   canViewOccurrence,
   canMutateOccurrence,
+  canManageQualityTaskOccurrence,
   completionBlockReason,
   deriveTaskState,
   generatePeriods,
@@ -82,6 +83,10 @@ assert.equal(canMutateOccurrence('edit', false, false), true, 'edit permission c
 assert.equal(canMutateOccurrence('view', true, false), true, 'assigned viewer can perform work')
 assert.equal(canMutateOccurrence('view', false, false), false)
 assert.equal(canMutateOccurrence('none', true, false), false)
+assert.equal(canManageQualityTaskOccurrence('view', true, false), true, 'creator with view permission can manage the occurrence')
+assert.equal(canManageQualityTaskOccurrence('view', false, true), true, 'current responsible viewer can manage the occurrence')
+assert.equal(canManageQualityTaskOccurrence('edit', false, false), false, 'module edit permission alone cannot take over another occurrence')
+assert.equal(canManageQualityTaskOccurrence('view', false, false), false, 'unrelated calendar viewer cannot mutate the occurrence')
 assert.equal(canViewOccurrence('edit'), true, 'edit permission can view every occurrence')
 assert.equal(canViewOccurrence('view'), true, 'view permission can view every occurrence')
 assert.equal(canViewOccurrence('none'), false)

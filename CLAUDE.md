@@ -156,6 +156,8 @@ Module-level access is controlled by a **permission matrix** stored in the `role
 - `edit` → module visible + all mutation buttons shown
 - `Admin` role always gets `edit` on every resource (hardcoded in `getRolePermissions`)
 
+Quality Tasks is an occurrence-level exception: users with `งานคุณภาพ:view` can create ad-hoc activities/meetings, but editing an occurrence, completing it, saving its meeting summary, and managing ACTION ITEMS require the occurrence creator or a linked responsible user for the current round.
+
 **Key files — never duplicate these constants:**
 
 | File | Purpose |
