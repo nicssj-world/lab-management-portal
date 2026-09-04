@@ -8,6 +8,7 @@ import type {
   ItBackupLogWithRefs,
   ItVisitorLogWithRefs,
 } from '@/lib/supabase/types'
+import { runVisitorAutoCheckout } from '@/lib/it-visitor/auto-checkout-server'
 
 const RECORD_SELECT =
   '*, profile:profiles!it_access_records_profile_id_fkey(id, name, position_title, ephis_id, status, deleted_at)'
@@ -18,7 +19,7 @@ export const IT_VISITOR_LOG_SELECT = [
   'party_size', 'phone', 'email', 'org_type', 'org_name', 'contact_dept',
   'entered_at', 'exited_at', 'activity_type', 'activity_other', 'appointment',
   'badge_exchanged', 'safety_ack', 'safety_ack_other', 'submission_key', 'created_at', 'closed_by',
-  'closed_at', 'checkout_method',
+  'closed_at', 'checkout_method', 'checkout_note',
   'closer:profiles!it_visitor_logs_closed_by_fkey(id, name)',
 ].join(', ')
 
@@ -109,6 +110,7 @@ export async function getItVisitorLogs(
   supabase: SupabaseClient,
   options: { limit?: number } = {},
 ): Promise<ItVisitorLogWithRefs[]> {
+  await runVisitorAutoCheckout()
   const primary = await supabase
     .from('it_visitor_logs')
     .select(IT_VISITOR_LOG_SELECT)
@@ -122,5 +124,9 @@ export async function getItVisitorLogs(
     .select(IT_VISITOR_LOG_SELECT_LEGACY)
     .order('entered_at', { ascending: false })
     .limit(options.limit ?? 1000)
-  return (legacy.data ?? []).map((row) => ({ ...(row as unknown as Record<string, unknown>), safety_ack_other: null })) as unknown as ItVisitorLogWithRefs[]
+  return (legacy.data ?? []).map((row) => ({
+    ...(row as unknown as Record<string, unknown>),
+    safety_ack_other: null,
+    checkout_note: null,
+  })) as unknown as ItVisitorLogWithRefs[]
 }

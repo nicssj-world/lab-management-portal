@@ -111,7 +111,7 @@ const CRUD_ACTIONS = [
   'it_verification.round.submit', 'it_verification.round.review', 'it_verification.round.reopen',
   'it_verification.mapping.update', 'it_verification.assignee.update', 'it_verification.export.pdf',
   'it_verification.raw_cleanup.force',
-  'it_visitor.checkout', 'it_visitor.self_checkout', 'it_visitor.update', 'it_visitor.delete',
+  'it_visitor.checkout', 'it_visitor.self_checkout', 'it_visitor.auto_checkout', 'it_visitor.update', 'it_visitor.delete',
   'it_visitor.settings', 'it_visitor.rotate_token',
   'personnel.profile.update', 'personnel.org.create', 'personnel.org.delete',
   'personnel.jd.create', 'personnel.jd.update',

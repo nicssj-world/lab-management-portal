@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
       search:   sp.get('search') ?? undefined,
       category: sp.get('category') ?? undefined,
       tube:     sp.get('tube') ?? undefined,
+      department: sp.get('department') ?? undefined,
       ...(activeParam !== null ? { active: activeParam === 'true' } : {}),
       page:     Number(sp.get('page') ?? 0),
       pageSize: Number(sp.get('pageSize') ?? 20),

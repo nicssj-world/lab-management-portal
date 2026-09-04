@@ -21,6 +21,7 @@ interface NavChild {
   docRole?: string | string[]
   deptRole?: string | string[]
   resource?: string
+  anyResource?: string[]
   safetyEditor?: boolean
 }
 
@@ -32,6 +33,7 @@ interface NavItem {
   color: string
   badge?: string
   role?: string | string[]
+  deptRole?: string | string[]
   resource?: string
   requireEdit?: boolean
   children?: NavChild[]
@@ -63,6 +65,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/staff/tests',      th: 'รายการตรวจ',         en: 'Tests',          icon: 'flask',  color: '#1E5FAD', resource: 'รายการตรวจ' },
   { href: '/staff/eqa', th: 'การควบคุมคุณภาพภายนอก', en: 'EQA / PT', icon: 'shieldCheck', color: '#0F766E', resource: 'EQA / PT' },
   { href: '/staff/news',       th: 'จัดการข่าวสาร',        en: 'News',           icon: 'bell',       color: '#D97706', resource: 'ข่าวสาร' },
+  { href: '/staff/it/head-contact', th: 'สื่อสารถึงหัวหน้า', en: 'Contact Group Lead', icon: 'mail', color: '#BE185D', role: 'Admin', deptRole: 'group_lead' },
   // กลุ่มเครื่องมือ — ลูกทั้งสองถือ resource เดียวกัน ('ทะเบียนเครื่องมือ') ไม่ใช่กรณีที่สิทธิ์ต่างกันแบบกลุ่มความเสี่ยง/IT
   // แต่คงรูปแบบ "แม่ไม่ถือ resource" ไว้เหมือนกันทั้งไฟล์เพื่อไม่ให้พฤติกรรม isEntryVisible ต่างกันโดยไม่จำเป็น
   { href: '/staff/equipment', th: 'ทะเบียนเครื่องมือ', en: 'Equipment', icon: 'microscope', color: '#EA580C',
@@ -106,22 +109,18 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/staff/lab-map/safety-assets', th: 'อุปกรณ์ความปลอดภัย', en: 'Safety Equipment', icon: 'shieldCheck', color: '#0E7490' },
       { href: '/staff/lab-map/evacuation', th: 'จุดรวมพล / แผนอพยพ', en: 'Assembly Points / Evacuation Plan', icon: 'route', color: '#0E7490' },
       { href: '/staff/lab-map/chemicals', th: 'สารเคมีและ SDS', en: 'Chemicals & SDS', icon: 'flask', color: '#0E7490', safetyEditor: true },
+      { href: '/staff/it/visitors', th: 'บันทึกการเข้า-ออก', en: 'Visitor Log', icon: 'users', color: '#0E7490', resource: 'บันทึกการเข้า-ออก' },
     ] },
   { section: 'งาน IT' },
-  // ตัวแม่ของกลุ่มนี้ **ต้องไม่ถือ `resource`** — isEntryVisible เช็ค resource ของแม่แล้ว
-  // return false ก่อนจะไปดูลูก ถ้าใส่ 'ระบบสารสนเทศ (IT)' ไว้ที่แม่ คนที่มีสิทธิ์เฉพาะ
-  // 'บันทึกการเข้า-ออก' (นักเทคนิคการแพทย์ส่วนใหญ่) จะไม่เห็นกลุ่มนี้เลย
-  // parentHref fallback ไปลูกตัวแรกที่มองเห็นอยู่แล้ว จึงไม่ต้องแก้อย่างอื่น
-  // ชื่อกลุ่มต้องเป็นชื่อรวมเหมือนกลุ่มความเสี่ยง/บุคลากร ไม่ใช่ชื่อลูกตัวแรก —
-  // ลูกในกลุ่มนี้มีทั้งสิทธิ์เข้าถึง ระบบล่ม สำรองข้อมูล และบันทึกการเข้า-ออก
-  { href: '/staff/it/access', th: 'ระบบสารสนเทศ', en: 'IT Systems', icon: 'lock', color: '#0369A1',
+  // The parent stays un-gated because the four child routes use separate permissions.
+  // The overview is visible when either the IT module or verification permission is granted.
+  { href: '/staff/it', th: 'ระบบสารสนเทศ', en: 'IT Systems', icon: 'lock', color: '#0369A1',
     children: [
+      { href: '/staff/it', th: 'ภาพรวม', en: 'Overview', icon: 'dash', color: '#0369A1', anyResource: ['ระบบสารสนเทศ (IT)', 'ทวนสอบการส่งผ่านข้อมูล HIS & LIS'] },
       { href: '/staff/it/access',   th: 'สิทธิ์เข้าถึง HIS & LIS', en: 'Access Rights', icon: 'lock',     color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
       { href: '/staff/it/verification', th: 'ทวนสอบการส่งผ่านข้อมูล', en: 'Data Transfer Verification', icon: 'shieldCheck', color: '#0369A1', resource: 'ทวนสอบการส่งผ่านข้อมูล HIS & LIS' },
       { href: '/staff/it/downtime', th: 'บันทึกระบบล่ม',          en: 'Downtime Log',  icon: 'alert',    color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
       { href: '/staff/it/backup',   th: 'การสำรองข้อมูล',         en: 'Backup Log',    icon: 'download', color: '#0369A1', resource: 'ระบบสารสนเทศ (IT)' },
-      { href: '/staff/it/visitors', th: 'บันทึกการเข้า-ออก',      en: 'Visitor Log',   icon: 'users',    color: '#0369A1', resource: 'บันทึกการเข้า-ออก' },
-      { href: '/staff/it/head-contact', th: 'สื่อสารถึงหัวหน้า', en: 'Contact Group Lead', icon: 'mail', color: '#0369A1', role: 'Admin', deptRole: 'group_lead' },
     ] },
   { section: 'Analytics' },
   { href: '/staff/satisfaction', th: 'แบบสำรวจความพึงพอใจ', en: 'Satisfaction', icon: 'clipboard', color: '#0F766E', resource: 'แบบสำรวจความพึงพอใจ' },
@@ -191,17 +190,22 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
 
   const initial = userName?.charAt(0) ?? 'U'
 
-  // A child is visible when its resource permission allows it, OR (for role/docRole
-  // gated items) when either the user's role or doc_role matches.
+  const identityGateMatches = (entry: Pick<NavChild, 'role' | 'docRole' | 'deptRole'>) => {
+    const roles = entry.role ? (Array.isArray(entry.role) ? entry.role : [entry.role]) : []
+    const docRoles = entry.docRole ? (Array.isArray(entry.docRole) ? entry.docRole : [entry.docRole]) : []
+    const deptRoles = entry.deptRole ? (Array.isArray(entry.deptRole) ? entry.deptRole : [entry.deptRole]) : []
+    if (roles.length === 0 && docRoles.length === 0 && deptRoles.length === 0) return true
+    return roles.includes(userRole ?? '') || docRoles.includes(userDocRole ?? '') || deptRoles.includes(userDeptRole ?? '')
+  }
+
+  // A child is visible when its resource permission allows it, OR when an identity
+  // gate matches, OR when any resource in an overview's permission set is available.
   const childVisible = (child: NavChild) => {
     if (child.safetyEditor && !isChemicalSafetyEditor) return false
-    if (child.role || child.docRole || child.deptRole) {
-      const roles = child.role ? (Array.isArray(child.role) ? child.role : [child.role]) : []
-      const docRoles = child.docRole ? (Array.isArray(child.docRole) ? child.docRole : [child.docRole]) : []
-      const deptRoles = child.deptRole ? (Array.isArray(child.deptRole) ? child.deptRole : [child.deptRole]) : []
-      if (roles.includes(userRole ?? '') || docRoles.includes(userDocRole ?? '') || deptRoles.includes(userDeptRole ?? '')) return true
-      if (!child.resource) return false
-    }
+    const hasIdentityGate = Boolean(child.role || child.docRole || child.deptRole)
+    if (hasIdentityGate && identityGateMatches(child)) return true
+    if (hasIdentityGate && !child.resource && !child.anyResource) return false
+    if (child.anyResource) return child.anyResource.some(resource => (userPermissions?.[resource] ?? 'none') !== 'none')
     if (child.resource) {
       return (userPermissions?.[child.resource] ?? 'none') !== 'none'
     }
@@ -209,10 +213,7 @@ export function StaffSidebar({ userRole, userName, userAvatar, userDocRole, user
   }
 
   function isEntryVisible(item: NavItem): boolean {
-    if (item.role) {
-      const allowed = Array.isArray(item.role) ? item.role : [item.role]
-      if (!allowed.includes(userRole ?? '')) return false
-    }
+    if (!identityGateMatches(item)) return false
     if (item.resource) {
       const level = userPermissions?.[item.resource] ?? 'none'
       const managerDocumentProfileAccess = item.href === '/staff/admin' && userRole === 'Manager'

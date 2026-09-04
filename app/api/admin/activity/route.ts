@@ -109,7 +109,7 @@ const CATEGORY_ACTIONS: Record<string, string[]> = {
   ],
   requisition: ['requisition.receipt_signature_drawn'],
   it_visitor: [
-    'it_visitor.checkout', 'it_visitor.self_checkout', 'it_visitor.update', 'it_visitor.delete',
+    'it_visitor.checkout', 'it_visitor.self_checkout', 'it_visitor.auto_checkout', 'it_visitor.update', 'it_visitor.delete',
     'it_visitor.settings', 'it_visitor.rotate_token',
   ],
   personnel: [

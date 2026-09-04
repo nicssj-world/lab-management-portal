@@ -890,6 +890,7 @@ const ACTION_LABELS: Record<string, string> = {
   'requisition.receipt_signature_drawn':          'ลงลายมือชื่อรับวัสดุ/สิ่งของ',
   'it_visitor.checkout':                          'บันทึกเวลาออกของผู้มาติดต่อ',
   'it_visitor.self_checkout':                     'ผู้มาติดต่อบันทึกเวลาออกด้วยตนเอง',
+  'it_visitor.auto_checkout':                     'ระบบปิดเวลาออกของผู้มาติดต่ออัตโนมัติ',
   'it_visitor.update':                            'แก้ไขบันทึกการเข้า-ออก',
   'it_visitor.delete':                            'ลบบันทึกการเข้า-ออก',
   'it_visitor.settings':                          'ตั้งค่าแบบฟอร์มบันทึกการเข้า-ออก',

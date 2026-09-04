@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
+import { TestExportButton } from '@/components/tests/TestExportButton'
 import { TestFilters } from '@/components/tests/TestFilters'
 import { TestTable } from '@/components/tests/TestTable'
 import { createClient } from '@/lib/supabase/client'
@@ -22,6 +23,8 @@ export default function TestsPage() {
   const [search, setSearch] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [tube, setTube] = useState('')
+  const [department, setDepartment] = useState('')
+  const [departments, setDepartments] = useState<string[]>([])
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
   const [allTotal, setAllTotal] = useState(0)
@@ -33,6 +36,7 @@ export default function TestsPage() {
   const timer = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
   const testPerm = usePermission('รายการตรวจ')
+  const canViewTests = testPerm.level !== 'none'
   const canModifyTests = canEditTests(actor, testPerm.level)
   const canRemoveTests = canDeleteTests(actor, testPerm.level)
 
@@ -53,23 +57,28 @@ export default function TestsPage() {
         .then(r => r.json())
         .then(d => { if (d.data?.[0]?.updated_at) setLastUpdated(d.data[0].updated_at) })
         .catch(() => {})
+      fetch('/api/admin/tests/departments')
+        .then(r => r.ok ? r.json() : [])
+        .then(values => setDepartments(Array.isArray(values) ? values : []))
+        .catch(() => setDepartments([]))
       getCategories(supabase, false).then(setCategories)
     }
     init()
   }, [canRemoveTests]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const doLoad = useCallback(async (s: string, cat: string, tb: string, pg: number, sb: string, sd: 'asc' | 'desc') => {
+  const doLoad = useCallback(async (s: string, cat: string, tb: string, dept: string, pg: number, sb: string, sd: 'asc' | 'desc') => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ page: String(pg), pageSize: String(PAGE_SIZE), active: 'true', sortBy: sb, sortDir: sd })
       if (s) params.set('search', s)
       if (cat) params.set('category', cat)
       if (tb) params.set('tube', tb)
+      if (dept) params.set('department', dept)
       const j = await fetch(`/api/admin/tests?${params}`).then(r => r.json())
       setTests(j.data ?? [])
       const cnt = j.count ?? 0
       setTotal(cnt)
-      if (pg === 0 && !s && !cat && !tb) setAllTotal(cnt)
+      if (pg === 0 && !s && !cat && !tb && !dept) setAllTotal(cnt)
     } finally {
       setLoading(false)
     }
@@ -77,13 +86,13 @@ export default function TestsPage() {
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => doLoad(search, categoryId, tube, 0, sortBy, sortDir), search ? 350 : 0)
+    timer.current = setTimeout(() => doLoad(search, categoryId, tube, department, 0, sortBy, sortDir), search ? 350 : 0)
     return () => { if (timer.current) clearTimeout(timer.current) }
-  }, [search, categoryId, tube, sortBy, sortDir, doLoad])
+  }, [search, categoryId, tube, department, sortBy, sortDir, doLoad])
 
   function handlePageChange(p: number) {
     setPage(p)
-    doLoad(search, categoryId, tube, p, sortBy, sortDir)
+    doLoad(search, categoryId, tube, department, p, sortBy, sortDir)
   }
 
   function handleSort(col: string, dir: 'asc' | 'desc') {
@@ -122,7 +131,7 @@ export default function TestsPage() {
           ? `ทั้งหมด ${allTotal} รายการ · อัปเดตล่าสุด ${new Date(lastUpdated).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}`
           : `ทั้งหมด ${allTotal} รายการ`}
         title="รายการตรวจวิเคราะห์"
-        actions={canModifyTests
+        actions={canViewTests
           ? <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {canRemoveTests && deletedCount > 0 && (
                 <button
@@ -139,12 +148,24 @@ export default function TestsPage() {
                   {purging ? 'กำลังลบ...' : `ล้างรายการที่ถูกลบ (${deletedCount})`}
                 </button>
               )}
-              <Link href="/staff/tests/import" style={{ textDecoration: 'none' }}>
-                <Button variant="secondary" size="sm" icon="download">นำเข้า Excel</Button>
-              </Link>
-              <Link href="/staff/tests/new" style={{ textDecoration: 'none' }}>
-                <Button variant="primary" size="sm" icon="plus">เพิ่มรายการตรวจ</Button>
-              </Link>
+              <TestExportButton
+                search={search}
+                categoryId={categoryId}
+                tube={tube}
+                department={department}
+                sortBy={sortBy}
+                sortDir={sortDir}
+              />
+              {canModifyTests && (
+                <>
+                  <Link href="/staff/tests/import" style={{ textDecoration: 'none' }}>
+                    <Button variant="secondary" size="sm" icon="upload">นำเข้า Excel</Button>
+                  </Link>
+                  <Link href="/staff/tests/new" style={{ textDecoration: 'none' }}>
+                    <Button variant="primary" size="sm" icon="plus">เพิ่มรายการตรวจ</Button>
+                  </Link>
+                </>
+              )}
             </div>
           : undefined}
       />
@@ -156,7 +177,10 @@ export default function TestsPage() {
         onCategoryChange={(v) => { setCategoryId(v); setPage(0) }}
         tube={tube}
         onTubeChange={(v) => { setTube(v); setPage(0) }}
+        department={department}
+        onDepartmentChange={(v) => { setDepartment(v); setPage(0) }}
         categories={categories}
+        departments={departments}
         total={allTotal || total}
         filtered={total}
       />

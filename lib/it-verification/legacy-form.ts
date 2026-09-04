@@ -62,22 +62,6 @@ function assertNoPatientIdentifiers(rows: LegacyFormWorkbook[string]): void {
   }
 }
 
-function findYear(rows: LegacyFormWorkbook[string]): number | null {
-  for (const row of rows) {
-    for (const value of row ?? []) {
-      const match = text(value).match(/(?:^|[^\d])(25\d{2}|20\d{2})(?:$|[^\d])/)
-      if (!match) continue
-      const year = Number(match[1])
-      return year >= 2400 ? year - 543 : year
-    }
-  }
-  return null
-}
-
-function thaiYear(year: number): string {
-  return String(year + 543)
-}
-
 function resultFromCell(value: unknown, rowNumber: number, columnNumber: number): LegacyFormResult {
   const normalized = text(value).toUpperCase().replace(/[\s.]/g, '')
   if (!normalized) return null
@@ -125,10 +109,6 @@ export function parseLegacyFormSheet(
 
   const warnings: string[] = []
   const issues: string[] = []
-  const sourceYear = findYear(rows)
-  if (sourceYear !== null && sourceYear !== options.folderYear) {
-    warnings.push(`แบบฟอร์มระบุปี พ.ศ. ${thaiYear(sourceYear)} แต่ใช้ปี พ.ศ. ${thaiYear(options.folderYear)} ตามโฟลเดอร์ต้นทาง`)
-  }
 
   const sampleRowIndex = rows.findIndex((row) => labIdColumn(row) >= 0)
   if (sampleRowIndex < 0) {

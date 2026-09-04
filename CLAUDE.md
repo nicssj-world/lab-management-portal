@@ -407,7 +407,7 @@ supabaseAdmin.from('audit_log').insert({ action, user_id, target, detail })
 
 SQL scripts are in `scripts/`. Run them manually via **Supabase Dashboard → SQL Editor**. There is no automated migration runner for schema changes.
 
-`audit_log` has no automatic retention and grows indefinitely. `scripts/archive-audit-log.sql` moves rows older than 1 year into `audit_log_archive` (cold storage, not deleted — it's the QMS audit trail). There is no cron in this project; it has to be re-run manually/periodically (see README "Maintenance").
+`audit_log` has no automatic retention and grows indefinitely. `scripts/archive-audit-log.sql` moves rows older than 1 year into `audit_log_archive` (cold storage, not deleted — it's the QMS audit trail). There is no general application cron; the visitor-log self-checkout migration is the exception and registers one narrowly scoped daily Supabase Cron job for midnight auto-checkout.
 
 
 ### Soft Delete Pattern

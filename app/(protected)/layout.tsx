@@ -123,7 +123,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           isChemicalSafetyEditor={isChemicalSafetyEditor}
         />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          <StaffTopbar userRole={role} />
+          <StaffTopbar />
           <PermissionProvider permissions={permissions}>
             <main id="main-content" tabIndex={-1} className="protected-main">
               <RouteBreadcrumbs />

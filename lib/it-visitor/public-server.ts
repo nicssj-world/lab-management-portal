@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createPublicChallenge, verifyPublicChallenge } from '@/lib/security/public-challenge'
 import { createCheckoutSecret, hashCheckoutSecret } from './checkout'
+import { runVisitorAutoCheckout } from './auto-checkout-server'
 import {
   DEFAULT_VISITOR_FORM_CONFIG,
   normalizeVisitorFormConfig,
@@ -95,6 +96,7 @@ function toActiveVisitorDTO(row: { entered_at: string; contact_dept: string }): 
 }
 
 export async function existingVisitorSubmission(submissionKey: string): Promise<ExistingVisitorSubmission | null> {
+  await runVisitorAutoCheckout()
   const { data, error } = await supabaseAdmin
     .from('it_visitor_logs')
     .select('id, entered_at, contact_dept')
@@ -112,6 +114,7 @@ export async function insertVisitorLog(
   row: NormalizedVisitorLog,
   submissionKey: string,
 ): Promise<VisitorCheckInResult> {
+  await runVisitorAutoCheckout()
   const checkoutSecret = createCheckoutSecret()
   const { data, error } = await supabaseAdmin
     .from('it_visitor_logs')
@@ -133,6 +136,7 @@ export async function insertVisitorLog(
 export async function getActiveVisitorBySecret(secret: string): Promise<ActiveVisitorDTO | null> {
   if (!/^[A-Za-z0-9_-]{40,128}$/.test(secret)) return null
 
+  await runVisitorAutoCheckout()
   const { data, error } = await supabaseAdmin
     .from('it_visitor_logs')
     .select('entered_at, exited_at, contact_dept')
@@ -152,6 +156,7 @@ export type SelfCheckoutResult =
 export async function selfCheckoutVisitor(secret: string): Promise<SelfCheckoutResult> {
   if (!/^[A-Za-z0-9_-]{40,128}$/.test(secret)) return { status: 'invalid' }
 
+  await runVisitorAutoCheckout()
   const secretHash = hashCheckoutSecret(secret)
   const { data: current, error: lookupError } = await supabaseAdmin
     .from('it_visitor_logs')
@@ -169,6 +174,7 @@ export async function selfCheckoutVisitor(secret: string): Promise<SelfCheckoutR
       exited_at: exitedAt,
       closed_at: exitedAt,
       checkout_method: 'self',
+      checkout_note: null,
       checkout_secret_hash: null,
     })
     .eq('id', current.id)

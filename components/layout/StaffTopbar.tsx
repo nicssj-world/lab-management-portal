@@ -7,7 +7,6 @@ import { Icon } from '@/components/ui/Icon'
 import { useLang } from '@/context/LangContext'
 import { useSidebar } from '@/context/SidebarContext'
 import { resolvePageTitle } from '@/lib/navigation'
-import { isAdminRole } from '@/lib/roles'
 
 const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/dashboard':        { th: 'แดชบอร์ดภาพรวม',              en: 'Dashboard Overview' },
@@ -54,6 +53,7 @@ const PAGE_TITLES: Record<string, { th: string; en: string }> = {
   '/staff/personnel/compliance': { th: 'รายงานคุณภาพบุคลากร',     en: 'Personnel Quality Report' },
   '/staff/personnel/workforce':  { th: 'Dashboard อัตรากำลัง',     en: 'Workforce Dashboard' },
   '/staff/personnel/org':        { th: 'ผังองค์กร',               en: 'Organization Chart' },
+  '/staff/it':                   { th: 'ภาพรวมระบบสารสนเทศ (IT)', en: 'IT Systems Overview' },
   '/staff/it/access':            { th: 'ทะเบียนสิทธิ์การเข้าถึงระบบสารสนเทศ HIS & LIS', en: 'IT System Access Rights' },
   '/staff/it/verification/settings': { th: 'ตั้งค่าการทวนสอบข้อมูล', en: 'Verification Settings' },
   '/staff/it/verification':      { th: 'ทวนสอบการส่งผ่านข้อมูล HIS & LIS', en: 'HIS & LIS Data Transfer Verification' },
@@ -91,16 +91,11 @@ const BTN: React.CSSProperties = {
   flexShrink: 0, textDecoration: 'none',
 }
 
-interface StaffTopbarProps {
-  userRole?: string
-}
-
-export function StaffTopbar({ userRole }: StaffTopbarProps) {
+export function StaffTopbar() {
   const pathname = usePathname()
   const { lang, setLang } = useLang()
   const { toggle, toggleMobile } = useSidebar()
   const [dark, setDark] = useState(false)
-  const canAccessShift = isAdminRole(userRole)
 
   useEffect(() => {
     const saved = localStorage.getItem('theme') === 'dark'
@@ -140,28 +135,26 @@ export function StaffTopbar({ userRole }: StaffTopbarProps) {
         </div>
       </div>
 
-      {canAccessShift && (
-        <Link
-          href="/auth/shift"
-          aria-label="เปิดตารางเวร"
-          title="ตารางเวร"
-          style={{
-            ...BTN,
-            width: 'auto',
-            minWidth: 86,
-            gap: 7,
-            padding: '0 11px',
-            background: 'var(--primary-soft)',
-            color: 'var(--primary)',
-            fontSize: 12.5,
-            fontWeight: 700,
-            fontFamily: 'inherit',
-          }}
-        >
-          <Icon name="calendar" size={15} />
-          <span>ตารางเวร</span>
-        </Link>
-      )}
+      <Link
+        href="/auth/shift"
+        aria-label="เปิดตารางเวร"
+        title="ตารางเวร"
+        style={{
+          ...BTN,
+          width: 'auto',
+          minWidth: 86,
+          gap: 7,
+          padding: '0 11px',
+          background: 'var(--primary-soft)',
+          color: 'var(--primary)',
+          fontSize: 12.5,
+          fontWeight: 700,
+          fontFamily: 'inherit',
+        }}
+      >
+        <Icon name="calendar" size={15} />
+        <span>ตารางเวร</span>
+      </Link>
 
       {/* Lang toggle */}
       <button

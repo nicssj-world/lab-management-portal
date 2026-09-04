@@ -243,7 +243,7 @@ Before deploying the visitor same-link checkout flow, apply the visitor migratio
 2. `scripts/it-visitor-form-options.sql`
 3. `scripts/it-visitor-self-checkout.sql`
 
-The third migration adds the one-time hashed checkout credential and records whether the visitor or a staff member closed the visit. Application builds do not apply these migrations automatically.
+The third migration adds the one-time hashed checkout credential, records whether the visitor, a staff member, or the system closed the visit, and registers the `it-visitor-auto-checkout` Supabase Cron job. The job runs once daily at 00:05 Bangkok time; open visits are closed at the first midnight after the Bangkok calendar date of check-in. Application builds do not apply these migrations automatically.
 
 Staff/personnel rollout order:
 
