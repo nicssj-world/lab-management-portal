@@ -94,7 +94,7 @@ const BTN: React.CSSProperties = {
 export function StaffTopbar() {
   const pathname = usePathname()
   const { lang, setLang } = useLang()
-  const { toggle, toggleMobile } = useSidebar()
+  const { collapsed, toggle, toggleMobile } = useSidebar()
   const [dark, setDark] = useState(false)
 
   useEffect(() => {
@@ -118,11 +118,11 @@ export function StaffTopbar() {
 
   return (
     <header
-      className="staff-topbar"
+      className={`staff-topbar ${collapsed ? 'is-sidebar-collapsed' : ''}`}
       style={{
         height: 56, borderBottom: '1px solid var(--border)', background: 'var(--card)',
         padding: '0 24px', display: 'flex', alignItems: 'center', gap: 10,
-        position: 'sticky', top: 0, zIndex: 30,
+        position: 'fixed', top: 0, right: 0, zIndex: 30,
       }}
     >
       {/* Hamburger + title */}

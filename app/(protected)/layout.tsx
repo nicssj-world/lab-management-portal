@@ -90,6 +90,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       <style>{`
         .protected-shell { display: flex; min-height: 100vh; background: var(--bg); }
         .protected-main { flex: 1; padding: 28px; min-width: 0; overflow-x: auto; }
+        .staff-topbar { left: 248px; right: 0; transition: left .2s; }
+        .staff-topbar.is-sidebar-collapsed { left: 64px; }
+        .staff-topbar-spacer { height: 56px; flex: 0 0 56px; }
         .staff-sidebar-overlay { display: none !important; }
         .skip-to-content { position: fixed; top: 8px; left: 8px; z-index: 100; padding: 10px 14px; border-radius: 8px; background: var(--primary); color: #fff; font-weight: 700; text-decoration: none; transform: translateY(-160%); transition: transform .18s ease; }
         .skip-to-content:focus { transform: translateY(0); }
@@ -97,6 +100,8 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         @media (max-width: 767px) {
           .protected-shell { min-height: 100svh; width: 100%; }
           .protected-main { padding: 16px 12px 28px; width: 100%; }
+          .staff-topbar { left: 0; right: 0; }
+          .staff-topbar.is-sidebar-collapsed { left: 0; }
           .staff-topbar { padding-inline: 12px !important; }
           .staff-sidebar-spacer { display: none !important; }
           .staff-sidebar {
@@ -108,6 +113,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           }
           .staff-sidebar.is-mobile-open { transform: translateX(0); }
           .staff-sidebar-overlay.is-mobile-open { display: block !important; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .staff-topbar { transition: none; }
         }
       `}</style>
 
@@ -124,6 +132,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <StaffTopbar />
+          <div className="staff-topbar-spacer" aria-hidden="true" />
           <PermissionProvider permissions={permissions}>
             <main id="main-content" tabIndex={-1} className="protected-main">
               <RouteBreadcrumbs />
