@@ -140,6 +140,18 @@ assert.ok(detailsModalSource.includes('role="tab"'), 'แท็บรายล�
 assert.ok(detailsModalSource.includes('aria-selected'), 'แท็บรายละเอียดสารต้องประกาศแท็บที่เลือกสำหรับ screen reader')
 assert.ok(detailsModalSource.includes('embedded'), 'ฟอร์มเดิมต้องฝังอยู่ใน modal เดียวได้โดยไม่ซ้อน overlay')
 assert.ok(detailsModalSource.includes('icon="upload"'), 'รายละเอียดสารต้องมีทางไปแนบไฟล์ SDS')
+assert.doesNotMatch(detailsModalSource, /ชื่อที่งานใช้/, 'รายละเอียดสารต้องไม่แสดงชื่อที่งานใช้แยกจากชื่อสารหลัก')
+
+const chemicalRepositorySource = readFileSync(join(process.cwd(), 'lib', 'chemical-safety', 'repository.ts'), 'utf8')
+assert.ok(
+  chemicalRepositorySource.includes('canonicalName: String(product.canonical_name)'),
+  'ทะเบียนสารเคมีต้องใช้ชื่อสารหลักจาก chemical_products',
+)
+assert.doesNotMatch(
+  chemicalRepositorySource,
+  /unitProduct\.preferred_name/,
+  'ทะเบียนสารเคมีต้องไม่ใช้ชื่อที่งานใช้เป็นชื่อแสดงผล',
+)
 
 const submitChangeRequestSource = readFileSync(join(process.cwd(), 'app', 'api', 'admin', 'chemical-safety', 'change-requests', '[id]', 'submit', 'route.ts'), 'utf8')
 assert.ok(submitChangeRequestSource.includes('holdingId'), 'submit registry entry ต้องส่ง holdingId กลับเพื่อแนบ SDS ต่อใน flow เดียวกัน')

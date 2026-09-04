@@ -329,7 +329,7 @@ export async function listChemicalRegistryWithSource(
       productId: String(product.id),
       holdingId: String(holding.id),
       publicId: String(product.public_id),
-      canonicalName: String(unitProduct.preferred_name || product.canonical_name),
+      canonicalName: String(product.canonical_name),
       aliases: aliasesByProduct.get(product.id) ?? [],
       casNumber: text(product.cas_number),
       concentration: text(product.concentration),

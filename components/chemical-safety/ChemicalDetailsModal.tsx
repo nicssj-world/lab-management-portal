@@ -82,7 +82,6 @@ export function ChemicalDetailsModal({
             </p>
             <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: FONT.xs }}>
               รายการคลังของงาน/ห้องนี้: {row.storageScope === 'room' ? 'ห้องเก็บสารเคมี' : row.unitName}
-              {row.canonicalName !== (product?.canonicalName ?? row.canonicalName) ? ` · ชื่อที่งานใช้: ${row.canonicalName}` : ''}
             </p>
           </div>
           <div className="chemical-details-header-actions">
