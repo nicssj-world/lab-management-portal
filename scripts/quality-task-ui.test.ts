@@ -75,8 +75,10 @@ assert.match(dashboard, /method:\s*["']DELETE["']/, 'edit users can delete eligi
 assert.match(dashboard, /mode:\s*["']adHoc["']/, 'edit users can create occurrences from manual templates')
 assert.ok(dashboard.includes('สถานที่/ช่องทาง'), 'ad-hoc meeting form captures the location or meeting channel')
 assert.ok(meetingLocation.includes('QUALITY_MEETING_LOCATIONS') && meetingLocation.includes('OTHER_MEETING_LOCATION_VALUE'), 'meeting locations have a shared standard list and Other sentinel')
-assert.equal((meetingLocation.match(/\n  '[^']+'/g) ?? []).length, 10, 'shared meeting location list contains ten standard options')
+const standardMeetingLocations = meetingLocation.match(/export const QUALITY_MEETING_LOCATIONS = \[[\s\S]*?\] as const/)?.[0] ?? ''
+assert.equal((standardMeetingLocations.match(/\n  '[^']+'/g) ?? []).length, 10, 'shared meeting location list contains ten standard options')
 assert.ok(dashboard.includes('MeetingLocationField') && dashboard.includes('quality-task-adhoc-location') && dashboard.includes('quality-task-selected-location'), 'ad-hoc and scheduled meeting editors use the location dropdown')
+assert.ok(dashboard.includes('meetingLocationLabel(location)') && dashboard.includes('meetingLocationLabel(selected.meetingLocation)'), 'meeting locations use the cleaned display label')
 assert.ok(dashboard.includes('อื่นๆ') && dashboard.includes('ชื่อสถานที่อื่นๆ') && dashboard.includes('maxLength={240}'), 'Other reveals a required bounded custom location field')
 assert.ok(dashboard.includes('setOtherSelected(true)') && dashboard.includes('preserveOtherOnEmptyRef'), 'Other stays open while a custom location is being entered')
 assert.ok(dashboard.includes('กรุณาเลือกหรือระบุสถานที่ประชุม') && dashboard.includes('บันทึกสถานที่'), 'meeting location validation and save action are visible')

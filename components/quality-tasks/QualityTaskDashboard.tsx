@@ -47,6 +47,7 @@ import {
 } from "@/lib/quality-tasks/meeting-time";
 import {
   isStandardMeetingLocation,
+  meetingLocationLabel,
   meetingLocationOptionValue,
   meetingLocationsConflict,
   normalizeMeetingLocation,
@@ -2496,7 +2497,7 @@ export function QualityTaskDashboard({
               {selected.template.taskKind === "meeting" && (
                 <Info
                   label="สถานที่/ช่องทาง"
-                  value={selected.meetingLocation ?? "ยังไม่ระบุ"}
+                  value={meetingLocationLabel(selected.meetingLocation) || "ยังไม่ระบุ"}
                 />
               )}
               {selected.template.taskKind === "meeting" &&
@@ -3053,7 +3054,7 @@ export function QualityTaskDashboard({
                       lineHeight: 1.45,
                     }}
                   >
-                    ต้องแนบ PDF หลักฐานก่อนกด “ทำแล้ว”
+                    ต้องแนบ PDF หลักฐานก่อนกด “ปิดงาน”
                   </div>
                 )}
                 {selectedCanComplete ? (
@@ -3123,7 +3124,7 @@ export function QualityTaskDashboard({
                               })
                         }
                       >
-                        {busy && busyLabel === "กำลังปิดงาน…" ? "กำลังปิดงาน…" : "ทำแล้ว"}
+                        {busy && busyLabel === "กำลังปิดงาน…" ? "กำลังปิดงาน…" : "ปิดงาน"}
                       </Button>
                     </div>
                   </div>
@@ -4602,7 +4603,7 @@ function MeetingLocationField({
           <option value="">เลือกสถานที่ประชุม</option>
           {QUALITY_MEETING_LOCATIONS.map((location) => (
             <option key={location} value={location}>
-              {location}
+              {meetingLocationLabel(location)}
             </option>
           ))}
           <option value={OTHER_MEETING_LOCATION_VALUE}>อื่นๆ</option>
