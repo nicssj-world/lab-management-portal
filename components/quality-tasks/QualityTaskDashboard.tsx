@@ -97,6 +97,21 @@ type HolidayDraft = {
   kind: QualityTaskHolidayKind;
 };
 type ScheduleActionPayload = Extract<OccurrenceActionPayload, { action: "schedule" }>;
+type MutateOptions = {
+  showInlineError?: boolean;
+  onError?: (message: string) => void;
+};
+type DragFailure = {
+  meetingTitle: string;
+  targetDate: string;
+  reason: string;
+};
+
+function dragFailureReason(message: string) {
+  const normalized = message.trim();
+  if (normalized === "Forbidden") return "คุณไม่มีสิทธิ์ย้ายประชุมรายการนี้";
+  return normalized || "ระบบไม่สามารถบันทึกวันที่ใหม่ได้";
+}
 const DAY_NAMES = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 const urgencyColor = {
   normal: "#64748B",
@@ -392,6 +407,7 @@ export function QualityTaskDashboard({
     null,
   );
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  const [dragFailure, setDragFailure] = useState<DragFailure | null>(null);
   const draggedOccurrenceRef = useRef<QualityTaskOccurrence | null>(null);
   const adHocDateLabel =
     adHoc &&
@@ -741,6 +757,7 @@ export function QualityTaskDashboard({
   async function mutate(
     o: QualityTaskOccurrence,
     payload: OccurrenceActionPayload,
+    options: MutateOptions = {},
   ): Promise<QualityTaskOccurrence | null> {
     const outgoingPayload =
       payload.action === "schedule"
@@ -763,7 +780,9 @@ export function QualityTaskDashboard({
       setSelected(next);
       return next;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "ดำเนินการไม่สำเร็จ");
+      const message = e instanceof Error ? e.message : "ดำเนินการไม่สำเร็จ";
+      if (options.showInlineError !== false) setError(message);
+      options.onError?.(message);
       return null;
     } finally {
       setBusy(false);
@@ -783,7 +802,21 @@ export function QualityTaskDashboard({
   }
   async function rescheduleMeeting(o: QualityTaskOccurrence, date: string) {
     if (busy || (o.plannedDate ?? o.periodStart) === date) return;
-    await mutate(o, { action: "schedule", plannedDate: date });
+    setDragFailure(null);
+    await mutate(
+      o,
+      { action: "schedule", plannedDate: date },
+      {
+        showInlineError: false,
+        onError: (message) => {
+          setDragFailure({
+            meetingTitle: occurrenceDisplayTitle(o),
+            targetDate: fmt(date),
+            reason: dragFailureReason(message),
+          });
+        },
+      },
+    );
   }
   async function saveSelectedMeetingTime(
     startTime: string | null,
@@ -915,6 +948,7 @@ export function QualityTaskDashboard({
       level,
       selected.createdBy === actorId,
       selected.assignees.some((e) => e.userId === actorId),
+      isAdmin,
     );
   const hasSelectedMeetingLocation = Boolean(
     normalizeMeetingLocation(meetingLocationDraft),
@@ -1487,6 +1521,82 @@ export function QualityTaskDashboard({
       {/* แยก "การประชุม" ออกจาก "กิจกรรม" ด้วย 3 ช่องทางพร้อมกัน: พื้นการ์ด (ทึบ/โปร่ง), สไตล์แถบซ้าย (ทึบ/ประ) และไอคอนนำ
           สีแถบซ้ายถูกใช้สื่อความเร่งด่วน (urgencyColor) อยู่แล้ว จึงห้ามนำสีมาสื่อชนิดงานซ้ำ */}
       <style>{`.qt-card-meeting{background:color-mix(in srgb,var(--primary-soft) 78%,var(--card))}.qt-card-meeting:hover,.qt-card-meeting.qt-range-hover{background:var(--primary-soft)}.qt-card-activity{background:var(--card);border-color:var(--border);border-left-style:dashed}.qt-card-activity:hover,.qt-card-activity.qt-range-hover{background:var(--surface-2)}.qt-card-activity .qt-range-continuation::after{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--ink) 26%,transparent) 0 5px,transparent 5px 9px)}.qt-card-activity.qt-range-hover .qt-range-continuation::after{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--ink) 46%,transparent) 0 5px,transparent 5px 9px)}.qt-legend-swatch{display:inline-flex;align-items:center;justify-content:center;width:34px;min-width:34px;padding:4px;cursor:default;box-shadow:none}.qt-kind-legend{display:flex;flex-wrap:wrap;align-items:center;gap:5px 14px;margin:9px 2px 0;color:var(--muted);font-size:11.5px}.qt-kind-legend b{color:var(--ink);font-weight:750}.qt-kind-legend span.qt-kind-item{display:inline-flex;align-items:center;gap:6px}.qt-sort{display:inline-flex;align-items:center;gap:5px;border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;border-radius:5px;transition:color .15s}.qt-sort span{color:var(--muted);font-size:9px}.qt-sort:hover{color:var(--primary)}.qt-row-btn{display:block;width:100%;border:0;background:none;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:6px}.qt-sort:focus-visible,.qt-row-btn:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 40%,transparent);outline-offset:2px}@media(prefers-reduced-motion:reduce){.qt-sort{transition:none}}`}</style>
+      {dragFailure && (
+        <QualityTaskDialog
+          labelledBy="quality-task-drag-failure-title"
+          describedBy="quality-task-drag-failure-description"
+          closeLabel="ปิดข้อความย้ายประชุม"
+          onClose={() => setDragFailure(null)}
+          panelStyle={{ ...modal, width: "100%", maxWidth: 460 }}
+        >
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 11, paddingRight: 28 }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 34,
+                  height: 34,
+                  flex: "0 0 auto",
+                  borderRadius: "50%",
+                  background: "#FEF2F2",
+                  color: "#B91C1C",
+                }}
+              >
+                <Icon name="alert" size={18} />
+              </span>
+              <div>
+                <div style={{ color: "#B91C1C", fontSize: 11, fontWeight: 800 }}>
+                  บันทึกการย้ายประชุมไม่สำเร็จ
+                </div>
+                <h2 id="quality-task-drag-failure-title" style={{ margin: "4px 0 0", fontSize: 18 }}>
+                  ไม่สามารถย้ายวันที่ประชุมได้
+                </h2>
+              </div>
+            </div>
+            <div
+              id="quality-task-drag-failure-description"
+              style={{
+                display: "grid",
+                gap: 6,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "var(--surface-2)",
+                color: "var(--ink)",
+                fontSize: 12.5,
+                lineHeight: 1.55,
+              }}
+            >
+              <strong style={{ overflowWrap: "anywhere" }}>{dragFailure.meetingTitle}</strong>
+              <span style={{ color: "var(--muted)" }}>วันที่ที่เลือก: {dragFailure.targetDate}</span>
+            </div>
+            <div
+              role="alert"
+              style={{
+                display: "grid",
+                gap: 4,
+                padding: "10px 12px",
+                border: "1px solid color-mix(in srgb, var(--danger) 28%, var(--border))",
+                borderRadius: 10,
+                background: "color-mix(in srgb, var(--danger) 7%, var(--card))",
+                color: "#991B1B",
+                fontSize: 12.5,
+                lineHeight: 1.55,
+              }}
+            >
+              <strong>สาเหตุ</strong>
+              <span style={{ overflowWrap: "anywhere" }}>{dragFailure.reason}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button variant="secondary" onClick={() => setDragFailure(null)}>
+                รับทราบ
+              </Button>
+            </div>
+          </div>
+        </QualityTaskDialog>
+      )}
       <div
         style={{
           padding: 18,
@@ -1809,6 +1919,7 @@ export function QualityTaskDashboard({
                 level,
                 o.createdBy === actorId,
                 o.assignees.some((e) => e.userId === actorId),
+                isAdmin,
               );
             return (
               <button
@@ -1820,9 +1931,10 @@ export function QualityTaskDashboard({
                 draggable={canDragMeeting}
                 onDragStart={
                   canDragMeeting
-                    ? (e) => {
-                        draggedOccurrenceRef.current = o;
-                        setDraggedMeetingKey(o.key);
+                      ? (e) => {
+                          draggedOccurrenceRef.current = o;
+                          setDragFailure(null);
+                          setDraggedMeetingKey(o.key);
                         e.dataTransfer.effectAllowed = "move";
                       }
                     : undefined

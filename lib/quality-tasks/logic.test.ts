@@ -87,6 +87,7 @@ assert.equal(canManageQualityTaskOccurrence('view', true, false), true, 'creator
 assert.equal(canManageQualityTaskOccurrence('view', false, true), true, 'current responsible viewer can manage the occurrence')
 assert.equal(canManageQualityTaskOccurrence('edit', false, false), false, 'module edit permission alone cannot take over another occurrence')
 assert.equal(canManageQualityTaskOccurrence('view', false, false), false, 'unrelated calendar viewer cannot mutate the occurrence')
+assert.equal(canManageQualityTaskOccurrence('edit', false, false, true), true, 'Admin can manage every occurrence')
 assert.equal(canViewOccurrence('edit'), true, 'edit permission can view every occurrence')
 assert.equal(canViewOccurrence('view'), true, 'view permission can view every occurrence')
 assert.equal(canViewOccurrence('none'), false)

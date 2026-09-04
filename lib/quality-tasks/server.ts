@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
 import type { Actor } from '@/lib/auth/guards'
 import type { PermLevel } from '@/lib/permissions'
+import { isAdminRole } from '@/lib/roles'
 import { QUALITY_TASK_TRACKING_START, bangkokToday, canManageQualityTaskOccurrence, canMutateOccurrence, canViewOccurrence, completionBlockReason, deriveTaskState, generatePeriods, isWeekendDate, occurrenceCalendarRange, occurrenceKey, resolveAssigneeEntries } from './logic'
 import { listQualityTaskHolidays } from './holidays'
 import { resolveParticipantSelection, resolveParticipants } from './participants'
@@ -172,7 +173,7 @@ async function assertNoMeetingConflict(input: {
     )
   })
 
-  if (conflict) throw new Error('ช่วงเวลาดังกล่าวมีประชุมแล้ว')
+  if (conflict) throw new Error('สถานที่และช่วงเวลาดังกล่าวมีประชุมแล้ว')
 }
 
 export async function getQualityTaskOccurrences(
@@ -411,7 +412,7 @@ export async function getOccurrenceAccess(instanceId: string, actor: Actor, leve
   const isCreator = nullable(instance.created_by) === actor.id
   const isAssigned = ids.includes(actor.id)
   const canMutate = workstream === 'quality'
-    ? canManageQualityTaskOccurrence(level, isCreator, isAssigned)
+    ? canManageQualityTaskOccurrence(level, isCreator, isAssigned, isAdminRole(actor.role))
     : canMutateOccurrence(level, isAssigned, entries.length === 0)
   if (!canMutate && !(allowApprover && isDesignatedApprover)) throw new Error('Forbidden')
   return { instance, template, evidenceRequired: Boolean(template?.evidence_required), assignees: entries, isCreator, isAssigned }

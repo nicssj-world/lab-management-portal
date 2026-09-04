@@ -40,6 +40,7 @@ assert.ok(qualityServer.includes('assertNoMeetingConflict') && qualityServer.inc
 assert.ok(qualityServer.includes('meetingLocationsConflict') && qualityServer.includes('meeting_location'), 'server overlap checks include the meeting location')
 assert.ok(qualityServer.includes("workstream === 'quality' && template.taskKind === 'meeting'") && qualityServer.includes("workstream === 'quality' && isMeeting"), 'location rules stay scoped to Quality Tasks and do not alter Safety')
 assert.ok(qualityServer.includes('excludeInstanceId') && qualityServer.includes('occurrenceCalendarRange'), 'rescheduling meetings checks conflicts without colliding with itself')
+assert.ok(dashboard.includes('dragFailure') && dashboard.includes('dragFailureReason') && dashboard.includes('showInlineError: false'), 'failed calendar moves show a reason in a dedicated popup')
 assert.ok(dashboard.includes('meetingSlotsOverlap') && dashboard.includes('isSelectedMeetingPresetOccupied') && dashboard.includes('มีประชุมแล้ว'), 'meeting time presets show occupied slots and prevent accidental selection')
 assert.ok(meetingOverlapMigration.includes('pg_advisory_xact_lock') && meetingOverlapMigration.includes('guard_quality_task_meeting_slot'), 'database serializes and rejects concurrent overlapping meeting saves')
 assert.ok(staffDashboard.includes('qualityUrgent') && staffDashboard.includes('/staff/quality-tasks'), 'staff dashboard links urgent quality tasks')
@@ -113,7 +114,7 @@ assert.ok(!dashboard.includes('#0E7490'), 'list cells use design tokens instead 
 
 // Shared dialog guardrails: every Quality Tasks modal gets one close affordance
 // and the same keyboard semantics, including the nested participant picker.
-assert.equal((dashboard.match(/<QualityTaskDialog/g) ?? []).length, 5, 'dashboard modals use the shared dialog')
+assert.equal((dashboard.match(/<QualityTaskDialog/g) ?? []).length, 6, 'dashboard modals use the shared dialog')
 assert.equal((registry.match(/<QualityTaskDialog/g) ?? []).length, 2, 'registry modals use the shared dialog')
 assert.ok(dialog.includes('role="dialog"') && dialog.includes('aria-modal="true"'), 'shared dialog exposes modal semantics')
 assert.ok(dialog.includes('quality-task-dialog-body') && dialog.includes('overflow: "hidden"'), 'dialog keeps the close control outside the scrolling body')

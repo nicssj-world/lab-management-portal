@@ -93,8 +93,13 @@ export function canMutateOccurrence(level: PermLevel, isAssigned: boolean, _isUn
 // Module-level edit permission is intentionally not enough here: it is used
 // for managing templates and defaults, not for taking over another person's
 // work record.
-export function canManageQualityTaskOccurrence(level: PermLevel, isCreator: boolean, isAssigned: boolean) {
-  return canViewOccurrence(level) && (isCreator || isAssigned)
+export function canManageQualityTaskOccurrence(
+  level: PermLevel,
+  isCreator: boolean,
+  isAssigned: boolean,
+  isAdmin = false,
+) {
+  return canViewOccurrence(level) && (isAdmin || isCreator || isAssigned)
 }
 
 export function canViewOccurrence(level: PermLevel) {
