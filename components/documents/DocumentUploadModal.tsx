@@ -760,12 +760,30 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)',
       }}>
         {/* Header */}
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 10, background: 'var(--card)',
+          padding: '20px 24px 16px', borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>
             {isEdit ? 'แก้ไขเอกสาร' : (isImportCurrent ? 'นำเข้าเอกสารเดิม Rev.>0' : 'สร้าง Draft เอกสาร')}
           </div>
-          <button type="button" aria-label="ปิดหน้าต่างสร้างเอกสาร" onClick={onClose} disabled={saving} style={{ background: 'none', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', color: 'var(--muted)', padding: 4, display: 'flex', opacity: saving ? .5 : 1 }}>
-            <Icon name="x" size={16} />
+          <button
+            type="button"
+            aria-label="ปิดหน้าต่างสร้างเอกสาร"
+            title="ปิดหน้าต่าง"
+            onClick={onClose}
+            disabled={saving}
+            style={{
+              width: 44, height: 44, padding: 0, borderRadius: 8,
+              border: `1px solid ${saving ? 'var(--border)' : 'var(--danger)'}`,
+              background: saving ? 'var(--surface-2)' : 'var(--danger)',
+              cursor: saving ? 'not-allowed' : 'pointer', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              opacity: saving ? .55 : 1, transition: 'all .15s',
+            }}
+          >
+            <Icon name="x" size={18} />
           </button>
         </div>
 
@@ -783,18 +801,6 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                   เปิดเอกสารเดิม
                 </button>
               )}
-            </div>
-          )}
-
-          {uploadProgress !== null && (
-            <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface-2)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
-                <span>กำลังอัปโหลดไฟล์</span>
-                <span>{uploadProgress}%</span>
-              </div>
-              <div style={{ height: 7, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
-                <div style={{ width: `${uploadProgress}%`, height: '100%', borderRadius: 999, background: 'var(--primary)', transition: 'width .15s ease' }} />
-              </div>
             </div>
           )}
 
@@ -1221,6 +1227,18 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                 style={inputStyle}
                 placeholder="เช่น นำเข้า Rev ปัจจุบันจาก Google Drive / ระบบเดิม"
               />
+            </div>
+          )}
+
+          {uploadProgress !== null && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface-2)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
+                <span>กำลังอัปโหลดไฟล์</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div style={{ height: 7, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
+                <div style={{ width: `${uploadProgress}%`, height: '100%', borderRadius: 999, background: 'var(--primary)', transition: 'width .15s ease' }} />
+              </div>
             </div>
           )}
         </div>

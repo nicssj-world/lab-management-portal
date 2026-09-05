@@ -867,7 +867,7 @@ export function ChemicalSafetyHubClient({
               <span>รายการของงาน/คลัง</span>
             </div>
           </Card>
-          <Card className="chemical-registry-tools" padding={0}>
+          <Card className="chemical-registry-tools" padding={SPACE.sm}>
             <Input
               icon="search"
               size="lg"
