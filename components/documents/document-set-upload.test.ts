@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   createUploadEntry,
+  entryLabel,
   failedEntryIds,
   mapBatchUploadFailureOutcomes,
   mapRegisterSetOutcomes,
@@ -53,6 +54,16 @@ const mainDoc = {
 } as Document
 const entry = createUploadEntry(new File(['x'], 'Fm-BB-01.pdf', { type: 'application/pdf' }), mainDoc)
 assert.equal(entry.department, 'Main department', 'member department must default to the main document before code-derived fallback')
+
+const codedEntry = createUploadEntry(
+  new File(['x'], 'RF-WI-T-BM02-15 เอกสารกำกับน้ำยา CD5 FITC.pdf', { type: 'application/pdf' }),
+  mainDoc,
+)
+assert.equal(
+  entryLabel(codedEntry),
+  'RF-WI-T-BM02-15 เอกสารกำกับน้ำยา CD5 FITC.pdf',
+  'the confirmation label must not repeat a document code already present at the start of the filename',
+)
 
 const validEntry = { ...entry, code: 'FM-BB-01', title: 'Form title', duplicate: { status: 'none' as const } }
 assert.equal(registrationError(validEntry), '', 'a separated code and title must remain valid')

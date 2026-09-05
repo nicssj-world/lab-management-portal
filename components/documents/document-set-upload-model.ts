@@ -113,9 +113,11 @@ export function createUploadEntry(file: File, mainDoc: Document): UploadEntry {
 }
 
 export function entryLabel(entry: UploadEntry) {
-  return entry.group === 'register' && entry.code.trim()
-    ? `${entry.code.trim().toUpperCase()} · ${entry.file.name}`
-    : entry.file.name
+  if (entry.group !== 'register' || !entry.code.trim()) return entry.file.name
+
+  const code = entry.code.trim().toUpperCase()
+  const filenameCode = extractFormDocumentCode(entry.file.name)
+  return filenameCode === code ? entry.file.name : `${code} · ${entry.file.name}`
 }
 
 export function documentCodeTooLongMessage() {
