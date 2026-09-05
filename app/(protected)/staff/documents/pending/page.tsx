@@ -7,8 +7,8 @@ import { PendingClient, type PendingDoc, type AnnualReviewDoc } from './PendingC
 
 export const dynamic = 'force-dynamic'
 
-const DOC_SELECT = 'id, document_code, title, type, department, revision, updated_at'
-interface DocRow { id: string; document_code: string; title: string; type: string; department: string | null; revision: string | null; updated_at: string }
+const DOC_SELECT = 'id, document_code, title, type, department, revision, description, updated_at'
+interface DocRow { id: string; document_code: string; title: string; type: string; department: string | null; revision: string | null; description: string | null; updated_at: string }
 
 export default async function PendingApprovalPage() {
   const supabase = await createClient()
@@ -77,6 +77,7 @@ export default async function PendingApprovalPage() {
           type: parent.type,
           department: parent.department,
           revision: d.revision,
+          description: d.description,
           updated_at: d.updatedAt,
           hasOfficialPdf: d.hasOfficialPdf,
           kind: 'draft',
@@ -110,6 +111,7 @@ export default async function PendingApprovalPage() {
       type: d.type,
       department: d.department,
       revision: d.revision,
+      description: d.description,
       owner_id: d.owner_id,
       updated_at: d.updated_at,
       hasOfficialPdf: d.hasOfficialPdf,

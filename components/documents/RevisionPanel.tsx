@@ -9,6 +9,7 @@ import { canMoveToStatus, COVER_GENERATION_ENABLED } from '@/lib/documents/workf
 import { STATUS_COLOR, STATUS_LABEL, fmtDate } from '@/lib/documents/ui-constants'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import { uploadFileWithProgress } from '@/lib/documents/upload-with-progress'
+import { getPublicationDescriptionError, hasChangeDescription } from '@/lib/documents/change-description'
 import type { DocStatus } from '@/lib/documents/transitions'
 import type { Document, DocumentRevisionDraft } from '@/lib/supabase/types'
 
@@ -30,7 +31,7 @@ interface RevisionRow {
 }
 
 // ── Revision History Panel ─────────────────────────────────────
-export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftStatusChange, onDraftCancelled, userRole, docRole, canAdd, variant = 'drawer' }: {
+export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftStatusChange, onDraftUpdated, onDraftCancelled, userRole, docRole, canAdd, variant = 'drawer' }: {
   doc: Document
   onClose: () => void
   onDownload: (path: string) => void
@@ -39,6 +40,8 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
    *  (Draft↔Review↔Approved) — lets a caller re-bucket the draft in a pending-work list
    *  without a full page refresh. `onPromoted` still covers the Published transition. */
   onDraftStatusChange?: (draft: DocumentRevisionDraft) => void
+  /** Fires after a working-revision draft's editable detail is saved. */
+  onDraftUpdated?: (draft: DocumentRevisionDraft) => void
   /** Fires when the active working-revision draft is cancelled (deleted, never published) —
    *  lets a caller drop it from a pending-work list without a full page refresh. */
   onDraftCancelled?: (draftId: string, documentId: string) => void
@@ -456,7 +459,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
   }
 
   async function handleSaveDraftDescription() {
-    if (!activeDraft || !activeDraft.word_url) return
+    if (!activeDraft || (!activeDraft.word_url && !activeDraft.file_url)) return
     setDraftBusy(true)
     try {
       const res = await fetch(`/api/admin/documents/${doc.id}/revision-drafts/${activeDraft.id}`, {
@@ -473,6 +476,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
       }
       setActiveDraft(json)
       setDraftDescriptionEditing(false)
+      onDraftUpdated?.(json as DocumentRevisionDraft)
     } catch {
       alert('บันทึกรายละเอียดที่แก้ไขไม่สำเร็จ')
     } finally {
@@ -482,6 +486,12 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
 
   async function handleDraftStatus(next: DocStatus) {
     if (!activeDraft) return
+    const descriptionError = getPublicationDescriptionError(activeDraft.type, next, activeDraft.description)
+    if (descriptionError) {
+      setDraftDescriptionEditing(true)
+      alert(descriptionError)
+      return
+    }
     const isQpWiPublish = next === 'Published' && (activeDraft.type === 'QP' || activeDraft.type === 'WI')
     const shouldSkipSystemCover = skipSystemCover && isQpWiPublish
     if (shouldSkipSystemCover && !confirm('ยืนยันว่า PDF ทางการนี้มีหน้าปกเดิมครบถ้วนแล้ว และต้องการใช้เป็นไฟล์ทางการโดยไม่สร้างหน้าปกระบบ?')) {
@@ -974,9 +984,11 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
                   </div>
                 )}
 
-                {activeDraft.word_url && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, background: 'var(--card)', border: '1px solid rgba(180,83,9,.18)' }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#92400E' }}>รายละเอียดที่แก้ไข</div>
+                {(activeDraft.word_url || activeDraft.file_url) && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, background: 'var(--card)', border: `1px solid ${hasChangeDescription(activeDraft.description) ? 'rgba(180,83,9,.18)' : 'rgba(217,119,6,.45)'}` }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#92400E' }}>
+                      รายละเอียดที่แก้ไข{activeDraft.type === 'QP' || activeDraft.type === 'WI' ? <span style={{ color: '#DC2626' }}> *</span> : null}
+                    </div>
                     <textarea
                       value={draftDescription}
                       onChange={(e) => setDraftDescription(e.target.value)}
@@ -987,7 +999,7 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                       <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
-                        กล่องนี้จะแสดงหลังอัปโหลด Word/Excel และใช้เป็นรายละเอียดในประวัติการแก้ไข
+                        กล่องนี้ใช้เป็นรายละเอียดในประวัติการแก้ไขของ working revision นี้
                       </div>
                       <button
                         onClick={() => draftDescriptionEditing ? handleSaveDraftDescription() : setDraftDescriptionEditing(true)}
@@ -997,6 +1009,11 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
                         {draftDescriptionEditing ? 'บันทึก' : 'แก้ไข'}
                       </button>
                     </div>
+                    {(activeDraft.type === 'QP' || activeDraft.type === 'WI') && !hasChangeDescription(activeDraft.description) ? (
+                      <div role="status" style={{ fontSize: 11, color: '#B45309', lineHeight: 1.4 }}>
+                        ยังไม่ได้ระบุรายละเอียดการแก้ไข ต้องบันทึกก่อนเผยแพร่
+                      </div>
+                    ) : null}
                   </div>
                 )}
 
@@ -1165,7 +1182,13 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
                     word_url: activeDraft.word_url,
                   }, next)
                   const transitionStates = transitions.map((next) => ({ next, check: transitionCheck(next) }))
-                  const blockedReason = transitionStates.find(({ check }) => !check.ok)?.check.error
+                  const transitionStatesWithDescription = transitionStates.map(({ next, check }) => ({
+                    next,
+                    check,
+                    descriptionError: getPublicationDescriptionError(activeDraft.type, next, activeDraft.description),
+                  }))
+                  const blockedReason = transitionStatesWithDescription.find(({ check, descriptionError }) => !check.ok || descriptionError)?.descriptionError
+                    ?? transitionStatesWithDescription.find(({ check }) => !check.ok)?.check.error
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
                       {blockedReason && (
@@ -1174,14 +1197,14 @@ export function RevisionPanel({ doc, onClose, onDownload, onPromoted, onDraftSta
                         </div>
                       )}
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {transitionStates.map(({ next, check }) => {
-                        const disabled = draftBusy || !check.ok
+                      {transitionStatesWithDescription.map(({ next, check, descriptionError }) => {
+                        const disabled = draftBusy || !check.ok || Boolean(descriptionError)
                         return (
                         <button
                           key={next}
-                          onClick={() => check.ok && handleDraftStatus(next)}
+                          onClick={() => check.ok && !descriptionError && handleDraftStatus(next)}
                           disabled={disabled}
-                          title={!check.ok ? check.error : undefined}
+                          title={descriptionError ?? (!check.ok ? check.error : undefined)}
                           style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--ink)', fontFamily: 'inherit', opacity: disabled ? 0.55 : 1 }}
                         >
                           → {next}

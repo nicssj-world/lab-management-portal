@@ -10,6 +10,7 @@ import { STATUS_COLOR, STATUS_LABEL, TYPE_ICON_BG, TYPE_ICON_FG, fmtSize } from 
 import { uploadFileWithProgress } from '@/lib/documents/upload-with-progress'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import type { Document } from '@/lib/supabase/types'
+import { getPublicationDescriptionError, hasChangeDescription } from '@/lib/documents/change-description'
 
 // A focused DCC action panel for a single `documents` row on the pending-approval page:
 // preview/download the current files, upload/replace the official content PDF, and advance
@@ -24,6 +25,7 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
   onDeleted?: (id: string) => void
 }) {
   const [doc, setDoc] = useState<Document>(initialDoc)
+  const [description, setDescription] = useState(initialDoc.description ?? '')
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
@@ -164,6 +166,32 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
       onClose()
     } catch {
       setActionError('ลบไม่สำเร็จ กรุณาลองใหม่')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleSaveDescription() {
+    if (busy || !isQpWi) return
+    setBusy(true)
+    setActionError('')
+    try {
+      const res = await fetch(`/api/admin/documents/${doc.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: description.trim() }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setActionError(json.error ?? 'บันทึกรายละเอียดการแก้ไขไม่สำเร็จ')
+        return
+      }
+      const updated = json as Document
+      setDoc(updated)
+      setDescription(updated.description ?? '')
+      onUpdated(updated)
+    } catch {
+      setActionError('บันทึกรายละเอียดการแก้ไขไม่สำเร็จ')
     } finally {
       setBusy(false)
     }
@@ -424,6 +452,36 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
             </div>
           )}
 
+          {isQpWi && doc.status !== 'Published' && doc.status !== 'Obsolete' && (
+            <div style={{ padding: '14px 22px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                รายละเอียดการแก้ไข <span style={{ color: '#DC2626' }}>*</span>
+              </div>
+              <textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                rows={3}
+                placeholder="ระบุรายละเอียดการแก้ไข หรือประกาศใช้ครั้งแรกทั้งฉบับ"
+                style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '9px 10px', borderRadius: 9, border: `1px solid ${hasChangeDescription(doc.description) ? 'var(--border)' : 'rgba(217,119,6,.45)'}`, background: 'var(--surface-2)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 12.5, lineHeight: 1.45 }}
+              />
+              {!hasChangeDescription(doc.description) ? (
+                <div role="status" style={{ fontSize: 11.5, lineHeight: 1.4, color: '#B45309' }}>
+                  ยังไม่ได้ระบุรายละเอียดการแก้ไข ต้องบันทึกก่อนเผยแพร่
+                </div>
+              ) : null}
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={handleSaveDescription}
+                  disabled={busy}
+                  style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--primary)', background: busy ? 'var(--surface-2)' : 'var(--primary)', color: busy ? 'var(--muted)' : '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700 }}
+                >
+                  {busy ? 'กำลังบันทึก…' : 'บันทึกรายละเอียด'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Status transitions */}
           <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>เลื่อนสถานะ</div>
@@ -439,13 +497,14 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
                     source_pdf_url: doc.source_pdf_url,
                     word_url: doc.word_url,
                   }, next)
-                  const disabled = busy || !check.ok
+                  const descriptionError = getPublicationDescriptionError(doc.type, next, doc.description)
+                  const disabled = busy || !check.ok || Boolean(descriptionError)
                   return (
                     <button
                       key={next}
                       disabled={disabled}
-                      title={!check.ok ? check.error : undefined}
-                      onClick={() => check.ok && handleStatusChange(next)}
+                      title={descriptionError ?? (!check.ok ? check.error : undefined)}
+                      onClick={() => check.ok && !descriptionError && handleStatusChange(next)}
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'all .12s', opacity: disabled ? 0.55 : 1 }}
                       onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.borderColor = 'var(--primary)' }}
                       onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)' }}
@@ -455,6 +514,11 @@ export function DocumentActionPanel({ doc: initialDoc, userRole, docRole, onClos
                     </button>
                   )
                 })}
+                {transitions.some((next) => Boolean(getPublicationDescriptionError(doc.type, next, doc.description))) ? (
+                  <div role="status" style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(217,119,6,.08)', border: '1px solid rgba(217,119,6,.24)', color: '#B45309', fontSize: 11.5, lineHeight: 1.4 }}>
+                    QP/WI ต้องระบุและบันทึกรายละเอียดการแก้ไขก่อนเผยแพร่
+                  </div>
+                ) : null}
               </>
             )}
           </div>

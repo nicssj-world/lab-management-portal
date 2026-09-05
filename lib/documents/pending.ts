@@ -38,6 +38,7 @@ export interface NewDraftDocRow {
   type: string
   department: string | null
   revision: string | null
+  description: string | null
   owner_id: string | null
   updated_at: string
   hasOfficialPdf: boolean
@@ -54,7 +55,7 @@ export interface NewDraftDocRow {
 export async function getNewDraftDocuments(): Promise<NewDraftDocRow[]> {
   const { data, error } = await supabaseAdmin
     .from('documents')
-    .select('id, document_code, title, type, department, revision, owner_id, updated_at, file_url, source_pdf_url, pending_file_url')
+    .select('id, document_code, title, type, department, revision, description, owner_id, updated_at, file_url, source_pdf_url, pending_file_url')
     .eq('status', 'Draft')
     .or('word_url.not.is.null,pending_file_url.not.is.null,file_url.not.is.null,source_pdf_url.not.is.null')
     .is('deleted_at', null)
@@ -67,6 +68,7 @@ export async function getNewDraftDocuments(): Promise<NewDraftDocRow[]> {
     type: d.type,
     department: d.department,
     revision: d.revision,
+    description: d.description,
     owner_id: d.owner_id,
     updated_at: d.updated_at,
     hasOfficialPdf: d.type === 'QP' || d.type === 'WI'
@@ -82,6 +84,7 @@ export interface ActiveDraftRow {
   revision: string
   status: 'Draft' | 'Review' | 'Approved'
   updatedAt: string
+  description: string | null
   hasWordUrl: boolean
   hasOfficialPdf: boolean
 }
@@ -94,7 +97,7 @@ export interface ActiveDraftRow {
 export async function getActiveRevisionDrafts(): Promise<ActiveDraftRow[]> {
   const { data, error } = await supabaseAdmin
     .from('document_revision_drafts')
-    .select('id, document_id, revision, status, updated_at, type, word_url, file_url, source_pdf_url')
+    .select('id, document_id, revision, status, updated_at, type, description, word_url, file_url, source_pdf_url')
     .is('cancelled_at', null)
     .neq('status', 'Published')
   if (error) throw new Error(error.message)
@@ -104,6 +107,7 @@ export async function getActiveRevisionDrafts(): Promise<ActiveDraftRow[]> {
     revision: d.revision,
     status: d.status as 'Draft' | 'Review' | 'Approved',
     updatedAt: d.updated_at,
+    description: d.description,
     hasWordUrl: Boolean(d.word_url),
     hasOfficialPdf: d.type === 'QP' || d.type === 'WI'
       ? Boolean(d.source_pdf_url || d.file_url)
@@ -126,6 +130,7 @@ export interface RegistrationSetDocument {
   type: string
   department: string | null
   revision: string | null
+  description: string | null
   status: string
   updatedAt: string
   fileUrl: string | null
@@ -145,6 +150,7 @@ export interface RegistrationSetActiveDraft {
   type: string
   status: string
   updatedAt: string
+  description: string | null
   fileUrl: string | null
   fileName: string | null
   sourcePdfUrl: string | null
@@ -189,6 +195,7 @@ type RegistrationSetDocumentRow = {
   type: string
   department: string | null
   revision: string | null
+  description: string | null
   status: string
   updated_at: string
   file_url: string | null
@@ -219,6 +226,7 @@ function toRegistrationSetDocument(row: RegistrationSetDocumentRow): Registratio
     type: row.type,
     department: row.department,
     revision: row.revision,
+    description: row.description,
     status: row.status,
     updatedAt: row.updated_at,
     fileUrl: row.file_url,
@@ -283,12 +291,12 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
   const [documentsResult, draftsResult] = await Promise.all([
     supabaseAdmin
       .from('documents')
-      .select('id, owner_id, document_code, title, type, department, revision, status, updated_at, file_url, source_pdf_url, pending_file_url, word_url, deleted_at, set_last_downloaded_at, set_last_downloaded_by_name')
+      .select('id, owner_id, document_code, title, type, department, revision, description, status, updated_at, file_url, source_pdf_url, pending_file_url, word_url, deleted_at, set_last_downloaded_at, set_last_downloaded_by_name')
       .in('id', allDocumentIds),
     ownedDraftIds.length > 0
       ? supabaseAdmin
           .from('document_revision_drafts')
-          .select('id, document_id, revision, type, status, updated_at, file_url, file_name, source_pdf_url, source_pdf_name, word_url, word_name')
+          .select('id, document_id, revision, type, status, updated_at, description, file_url, file_name, source_pdf_url, source_pdf_name, word_url, word_name')
           .in('id', ownedDraftIds)
       : Promise.resolve({ data: [], error: null }),
   ])
@@ -350,6 +358,7 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
               type: draft.type,
               status: draft.status,
               updatedAt: draft.updated_at,
+              description: draft.description,
               fileUrl: draft.file_url,
               fileName: draft.file_name,
               sourcePdfUrl: draft.source_pdf_url,

@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
 import { nextRevisionValue } from '@/lib/documents/workflow'
 import type { Document } from '@/lib/supabase/types'
+import { shouldDisplayChangeDescription } from '@/lib/documents/change-description'
 
 // Direct-to-R2 upload with progress (mirrors the helper in RevisionPanel.tsx — kept local so
 // this modal has no dependency on that component).
@@ -48,6 +49,7 @@ export function QuickUpdateModal({ doc, canPublish, onClose, onDone }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const nextRev = nextRevisionValue(doc.revision)
+  const publishDescriptionRequired = canPublish && shouldDisplayChangeDescription(doc.type)
 
   function pickFile(f: File | null) {
     setError('')
@@ -59,6 +61,10 @@ export function QuickUpdateModal({ doc, canPublish, onClose, onDone }: Props) {
 
   async function handleSubmit() {
     if (!file) { setError('กรุณาเลือกไฟล์'); return }
+    if (publishDescriptionRequired && !note.trim()) {
+      setError('QP/WI ต้องระบุรายละเอียดการแก้ไขก่อนเผยแพร่')
+      return
+    }
     setBusy(true)
     setError('')
     const base = `/api/admin/documents/${doc.id}/revision-drafts`
@@ -88,12 +94,22 @@ export function QuickUpdateModal({ doc, canPublish, onClose, onDone }: Props) {
       })
       const confirmed = await confirmRes.json()
       if (!confirmRes.ok) { setError(confirmed.error ?? 'บันทึกไฟล์ไม่สำเร็จ'); return }
+      draftId = null // preserve the confirmed draft for detail recovery
 
       // 3. finalize by role: Admin/DCC publish immediately, Reviewer queues at Approved
       const targetStatus = canPublish ? 'Published' : 'Approved'
+      const changeDescription = note.trim()
+      if (changeDescription) {
+        const descriptionRes = await fetch(endpoint, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: changeDescription }),
+        })
+        const descriptionJson = await descriptionRes.json()
+        if (!descriptionRes.ok) { setError(descriptionJson.error ?? 'บันทึกรายละเอียดการแก้ไขไม่สำเร็จ'); return }
+      }
       const finalizeRes = await fetch(endpoint, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: targetStatus, description: note.trim() || undefined }),
+        body: JSON.stringify({ status: targetStatus }),
       })
       const finalized = await finalizeRes.json()
       if (!finalizeRes.ok) { setError(finalized.error ?? 'ดำเนินการไม่สำเร็จ'); return }
@@ -158,7 +174,9 @@ export function QuickUpdateModal({ doc, canPublish, onClose, onDone }: Props) {
         </div>
 
         {/* Note */}
-        <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 5 }}>รายละเอียดการแก้ไข (ไม่บังคับ)</label>
+        <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 5 }}>
+          รายละเอียดการแก้ไข {publishDescriptionRequired ? <span style={{ color: '#DC2626' }}>*</span> : <span>(ไม่บังคับ)</span>}
+        </label>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -167,6 +185,11 @@ export function QuickUpdateModal({ doc, canPublish, onClose, onDone }: Props) {
           placeholder="สรุปสิ่งที่เปลี่ยนแปลง..."
           style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12.5, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', resize: 'vertical', outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
         />
+        {publishDescriptionRequired && !note.trim() ? (
+          <div role="status" style={{ marginTop: -7, marginBottom: 12, fontSize: 11.5, lineHeight: 1.4, color: '#B45309' }}>
+            QP/WI ต้องระบุรายละเอียดการแก้ไขก่อนเผยแพร่
+          </div>
+        ) : null}
 
         {progress !== null && (
           <div style={{ height: 6, borderRadius: 99, background: 'var(--surface-2)', overflow: 'hidden', marginBottom: 12 }}>

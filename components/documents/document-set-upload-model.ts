@@ -75,9 +75,23 @@ export type RegisterSetValidationIssue = {
 }
 
 export type SubmissionOutcome = { status: 'success' | 'failed'; reason: string }
+export type DocumentSetUploadSummary = { successfulCount: number; failedCount: number }
 
 export const MAX_FILES = 30
 export const MAX_FILE_SIZE = 50 * 1024 * 1024
+
+export function formatDocumentSetUploadCompletion(summary: DocumentSetUploadSummary) {
+  if (summary.failedCount === 0) {
+    return {
+      message: `อัปโหลดและบันทึกชุดเอกสารสำเร็จแล้ว ${summary.successfulCount} รายการ`,
+      ok: true,
+    }
+  }
+  return {
+    message: `ดำเนินการชุดเอกสารแล้ว: สำเร็จ ${summary.successfulCount} รายการ · ไม่สำเร็จ ${summary.failedCount} รายการ`,
+    ok: false,
+  }
+}
 
 export function fileSizeLabel(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`

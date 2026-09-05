@@ -19,6 +19,7 @@ function document(overrides: Partial<RegistrationSetWorkflowDocument> = {}): Reg
     fileUrl: 'documents/fm-01.pdf',
     sourcePdfUrl: null,
     wordUrl: null,
+    description: null,
     ...overrides,
   }
 }
@@ -74,6 +75,95 @@ test('QP/WI preflight mirrors canMoveToStatus source and PDF requirements', () =
   assert.equal(readyPlan.blocker, null)
 })
 
+test('publishing a set blocks a QP/WI document with a missing change description before mutation', async () => {
+  const missingDescription = Object.assign(document({
+    id: 'main-1',
+    documentCode: 'QP-MAIN',
+    type: 'QP',
+    status: 'Approved',
+    fileUrl: 'content.pdf',
+    sourcePdfUrl: 'content.pdf',
+    wordUrl: 'source.docx',
+  }), { description: '   ' })
+  const plan = planRegistrationSetTransition(registrationSet({ mainDocument: missingDescription }))
+  const calls: string[] = []
+
+  const result = await executeRegistrationSetPlan(plan, async (target) => {
+    calls.push(target.documentCode)
+  })
+
+  assert.equal(plan.nextStatus, 'Published')
+  assert.equal(plan.blocker?.documentCode, 'QP-MAIN')
+  assert.equal(plan.blocker?.reason, 'QP/WI ต้องระบุรายละเอียดการแก้ไขก่อนเผยแพร่')
+  assert.deepEqual(calls, [])
+  assert.equal(result.failed?.documentCode, 'QP-MAIN')
+})
+
+test('publishing a set ignores missing change descriptions for Reference members', () => {
+  const referenceMember = Object.assign(document({
+    id: 'reference-1',
+    documentCode: 'RF-01',
+    type: 'Reference',
+    status: 'Approved',
+    fileUrl: 'reference.pdf',
+  }), { description: null })
+  const main = Object.assign(document({
+    id: 'main-1',
+    documentCode: 'QP-MAIN',
+    type: 'QP',
+    status: 'Approved',
+    fileUrl: 'content.pdf',
+    sourcePdfUrl: 'content.pdf',
+    wordUrl: 'source.docx',
+  }), { description: 'ประกาศใช้ครั้งแรกทั้งฉบับ' })
+
+  const plan = planRegistrationSetTransition(registrationSet({
+    mainDocument: main,
+    members: [{ document: referenceMember, activeDraft: null }],
+  }))
+
+  assert.equal(plan.blocker, null)
+  assert.deepEqual(plan.targets.map((target) => target.documentCode), ['RF-01', 'QP-MAIN'])
+})
+
+test('publishing a set checks the working revision description instead of the Published parent', () => {
+  const parent = document({
+    id: 'published-1',
+    documentCode: 'QP-REV',
+    type: 'QP',
+    status: 'Published',
+    fileUrl: 'parent.pdf',
+    sourcePdfUrl: 'parent.pdf',
+    wordUrl: 'parent.docx',
+    description: 'รายละเอียดของ Rev.เดิม',
+  })
+  const plan = planRegistrationSetTransition(registrationSet({
+    members: [{
+      setMode: 'revision',
+      document: parent,
+      activeDraft: {
+        id: 'draft-1',
+        documentId: parent.id,
+        type: 'QP',
+        status: 'Approved',
+        fileUrl: 'revision.pdf',
+        sourcePdfUrl: 'revision.pdf',
+        wordUrl: 'revision.docx',
+        description: null,
+      },
+    }],
+    mainDocument: document({
+      id: 'main-1',
+      documentCode: 'FM-MAIN',
+      status: 'Approved',
+      fileUrl: 'main.pdf',
+    }),
+  }))
+
+  assert.equal(plan.blocker?.documentCode, 'QP-REV')
+  assert.equal(plan.blocker?.reason, 'QP/WI ต้องระบุรายละเอียดการแก้ไขก่อนเผยแพร่')
+})
+
 test('linked Published and already-target members are skipped', () => {
   const plan = planRegistrationSetTransition(registrationSet({
     members: [
@@ -99,6 +189,7 @@ test('active draft target uses the server-returned revision-draft route', () => 
         fileUrl: null,
         sourcePdfUrl: 'revision-content.pdf',
         wordUrl: 'revision-source.docx',
+        description: null,
       },
     }],
   }))
@@ -116,6 +207,7 @@ test('linked mode skips a target even when an unrelated active draft exists', ()
       activeDraft: {
         id: 'unrelated-draft', documentId: 'linked-1', type: 'Reference', status: 'Draft',
         fileUrl: 'unrelated.pdf', sourcePdfUrl: null, wordUrl: null,
+        description: null,
       },
     }],
   }))
@@ -132,6 +224,7 @@ test('registered mode follows the document row and ignores unrelated drafts', ()
       activeDraft: {
         id: 'unrelated-draft', documentId: 'registered-1', type: 'Form', status: 'Approved',
         fileUrl: 'unrelated.pdf', sourcePdfUrl: null, wordUrl: null,
+        description: null,
       },
     }],
   }))

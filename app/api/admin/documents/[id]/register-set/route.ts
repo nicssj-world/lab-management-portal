@@ -21,6 +21,7 @@ import {
 } from '@/lib/documents/registration-set-contracts'
 import { SetMutationJournal } from '@/lib/documents/set-upload-transaction'
 import { r2, R2_BUCKET } from '@/lib/r2/client'
+import { getInitialChangeDescription } from '@/lib/documents/change-description'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -346,6 +347,7 @@ async function registerDocument(
       title: item.title,
       type: item.type,
       department: item.department,
+      description: getInitialChangeDescription({ type: item.type, isNewDocument: true, isImportCurrent: false }),
       revision: item.revision,
       status: 'Draft',
       owner_id: actor.id,

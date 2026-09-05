@@ -12,6 +12,7 @@ import { buildDocxHeaderMetadata } from '@/lib/documents/metadata'
 import { resolveDocumentSortColumn } from '@/lib/documents/sort'
 import { getSourceUploadedDocumentIds } from '@/lib/documents/pending'
 import { stampPublishedPdfFooter } from '@/lib/documents/date-inject'
+import { resolveInitialChangeDescription } from '@/lib/documents/change-description'
 
 function toMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err)
@@ -287,8 +288,15 @@ export async function POST(req: NextRequest) {
     // Prefer the "วันที่แก้ไข/ทบทวน" value from the form; only default to today's date
     // when the form didn't supply one and a source file is being uploaded.
     const editReviewDate = meta.edit_date || meta.expiry_date || (hasWordFile && !isImportCurrent ? todayIsoDate() : undefined)
+    const description = resolveInitialChangeDescription({
+      type: meta.type,
+      isNewDocument: true,
+      isImportCurrent,
+      description: meta.description,
+    })
     const resolvedMeta = {
       ...meta,
+      description,
       owner_name: meta.owner_name || (hasWordFile ? actor.name ?? undefined : meta.owner_name),
       edit_date: editReviewDate,
       expiry_date: editReviewDate,

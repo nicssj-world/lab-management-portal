@@ -30,6 +30,7 @@ import {
   type RegistrationSetMode,
 } from '@/lib/documents/registration-set-contracts'
 import { getActiveIncomingDocumentSetMemberships } from '@/lib/documents/active-registration-sets'
+import { getPublicationDescriptionError } from '@/lib/documents/change-description'
 
 async function getActor() {
   const supabase = await createClient()
@@ -505,6 +506,14 @@ export async function PATCH(
       const allowed = allowedTransitions(current.status as DocStatus, actor.role, actor.doc_role ?? undefined)
       if (!allowed.includes(requestedStatus as DocStatus)) {
         return NextResponse.json({ error: 'สถานะที่เปลี่ยนไม่ได้รับอนุญาต' }, { status: 403 })
+      }
+      const descriptionError = getPublicationDescriptionError(
+        current.type,
+        requestedStatus,
+        updates.description ?? current.description,
+      )
+      if (descriptionError) {
+        return NextResponse.json({ error: descriptionError, code: 'CHANGE_DESCRIPTION_REQUIRED' }, { status: 422 })
       }
       const incomingMemberships = await getActiveIncomingDocumentSetMemberships(id)
       const incomingBlocker = validateIncomingSetTransition(

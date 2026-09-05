@@ -3,6 +3,7 @@ import {
   createUploadEntry,
   entryLabel,
   failedEntryIds,
+  formatDocumentSetUploadCompletion,
   mapBatchUploadFailureOutcomes,
   mapRegisterSetOutcomes,
   mapRegisterSetValidationOutcomes,
@@ -77,3 +78,14 @@ const validationOutcomes = mapRegisterSetValidationOutcomes(['entry-valid', 'ent
 }])
 assert.match(validationOutcomes.get('entry-invalid')?.reason ?? '', /รหัสเอกสารยาวเกิน 50/, 'the invalid row must receive the field-specific error')
 assert.match(validationOutcomes.get('entry-valid')?.reason ?? '', /รายการอื่นในชุดไม่ผ่าน/, 'valid rows must explain that the batch was not saved')
+
+assert.deepEqual(
+  formatDocumentSetUploadCompletion({ successfulCount: 3, failedCount: 0 }),
+  { message: 'อัปโหลดและบันทึกชุดเอกสารสำเร็จแล้ว 3 รายการ', ok: true },
+  'an all-success batch must produce a clear success toast',
+)
+assert.deepEqual(
+  formatDocumentSetUploadCompletion({ successfulCount: 1, failedCount: 2 }),
+  { message: 'ดำเนินการชุดเอกสารแล้ว: สำเร็จ 1 รายการ · ไม่สำเร็จ 2 รายการ', ok: false },
+  'a partial batch must report both successful and failed counts without claiming success',
+)

@@ -15,6 +15,7 @@ import { archiveCurrentRevision } from '@/lib/documents/revisions'
 import type { Document } from '@/lib/supabase/types'
 import { validateIncomingSetTransition } from '@/lib/documents/registration-set-contracts'
 import { getActiveOwnedRevisionSetMemberships } from '@/lib/documents/active-registration-sets'
+import { getPublicationDescriptionError } from '@/lib/documents/change-description'
 
 type Params = { params: Promise<{ id: string; draftId: string }> }
 const STATUS_CHANGE_INPUT_FIELDS = new Set(['status', 'obsolete_reason'])
@@ -382,6 +383,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const targetType = ((updates.type as string | undefined) ?? draft.type) as string
+    const descriptionError = nextStatus && nextStatus !== draft.status
+      ? getPublicationDescriptionError(targetType, nextStatus, updates.description ?? draft.description)
+      : null
+    if (descriptionError) {
+      return NextResponse.json({ error: descriptionError, code: 'CHANGE_DESCRIPTION_REQUIRED' }, { status: 422 })
+    }
     const sourceUploadDate = sourceFile || uploadedFile?.kind === 'source' ? todayIsoDate() : undefined
     if (sourceUploadDate) {
       if (updates.edit_date === undefined && !draft.edit_date) updates.edit_date = sourceUploadDate

@@ -17,6 +17,7 @@ import { TYPE_LABEL } from '@/lib/documents/type-labels'
 import { REVIEW_TRACKED_TYPES } from '@/lib/documents/review'
 import { DEPARTMENTS } from '@/lib/validations/user-schema'
 import type { Document } from '@/lib/supabase/types'
+import { getInitialChangeDescription, shouldDisplayChangeDescription } from '@/lib/documents/change-description'
 import {
   canOfferRegistrationSet,
   completeSuccessfulDocumentSave,
@@ -292,11 +293,22 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
   const [audienceDepts, setAudienceDepts] = useState<string[]>(doc?.read_audience_depts ?? [])
   const [obsoleteDate, setObsoleteDate] = useState(doc?.obsolete_date ?? '')
   const [obsoleteReason, setObsoleteReason] = useState(doc?.obsolete_reason ?? '')
-  const [description, setDescription]   = useState(doc?.description ?? '')
+  const [description, setDescription]   = useState(() => doc?.description ?? getInitialChangeDescription({ type: doc?.type ?? 'QP', isNewDocument: !isEdit, isImportCurrent: false }) ?? '')
+  const [descriptionTouched, setDescriptionTouched] = useState(Boolean(doc?.description))
 
   function updateDocumentType(nextType: string) {
     setType(nextType)
+    if (!descriptionTouched && !isEdit) {
+      setDescription(getInitialChangeDescription({ type: nextType, isNewDocument: true, isImportCurrent }) ?? '')
+    }
     setRegisterSetAfterSave((checked) => normalizeRegisterSetSelection(nextType, checked))
+  }
+
+  function updateCreateMode(nextMode: 'draft' | 'import-current') {
+    setCreateMode(nextMode)
+    if (!descriptionTouched && !isEdit) {
+      setDescription(getInitialChangeDescription({ type, isNewDocument: true, isImportCurrent: nextMode === 'import-current' }) ?? '')
+    }
   }
 
   const isObsolete = status === 'Obsolete'
@@ -649,7 +661,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         reviewer_name:  reviewerName.trim()  || undefined,
         approver_name:  approverName.trim()  || undefined,
         department:     department.trim()    || undefined,
-        description:    description.trim() || undefined,
+        description:    description.trim(),
         read_audience_depts: (REVIEW_TRACKED_TYPES as readonly string[]).includes(type) && audienceMode === 'depts' && audienceDepts.length > 0 ? audienceDepts : null,
       }
       const meta: Record<string, string | boolean | string[] | null | undefined> = isPublishedCorrection
@@ -810,14 +822,14 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <button
                   type="button"
-                  onClick={() => setCreateMode('draft')}
+                  onClick={() => updateCreateMode('draft')}
                   style={{ padding: '9px 10px', borderRadius: 8, border: `1px solid ${!isImportCurrent ? 'var(--primary)' : 'var(--border)'}`, background: !isImportCurrent ? 'var(--primary-soft)' : 'var(--card)', color: !isImportCurrent ? 'var(--primary)' : 'var(--ink)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700 }}
                 >
                   สร้าง Draft ตาม workflow ปกติ
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCreateMode('import-current')}
+                  onClick={() => updateCreateMode('import-current')}
                   style={{ padding: '9px 10px', borderRadius: 8, border: `1px solid ${isImportCurrent ? '#D97706' : 'var(--border)'}`, background: isImportCurrent ? 'rgba(217,119,6,.10)' : 'var(--card)', color: isImportCurrent ? '#B45309' : 'var(--ink)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700 }}
                 >
                   นำเข้าเอกสารเดิม Rev.&gt;0
@@ -1012,14 +1024,22 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
 
           {/* รายละเอียดการแก้ไข */}
           <div>
-            <label style={labelStyle}>รายละเอียดการแก้ไข</label>
+            <label style={labelStyle}>
+              รายละเอียดการแก้ไข
+              {!isImportCurrent && shouldDisplayChangeDescription(type) ? <RequiredMark /> : null}
+            </label>
             <textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => { setDescriptionTouched(true); setDescription(e.target.value) }}
               rows={3}
-              placeholder="สรุปสิ่งที่เปลี่ยนแปลงในฉบับนี้ (ไม่บังคับ)"
+              placeholder={shouldDisplayChangeDescription(type) && !isImportCurrent ? 'เช่น ประกาศใช้ครั้งแรกทั้งฉบับ' : 'สรุปสิ่งที่เปลี่ยนแปลงในฉบับนี้ (ไม่บังคับ)'}
               style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
             />
+            {!isImportCurrent && shouldDisplayChangeDescription(type) ? (
+              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
+                ระบบจะใช้ข้อมูลนี้ในหน้าประวัติการแก้ไขเมื่อเผยแพร่
+              </div>
+            ) : null}
           </div>
 
           {/* Cover metadata */}

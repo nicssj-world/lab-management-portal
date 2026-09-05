@@ -1,5 +1,10 @@
 import { canMoveToStatus } from './workflow'
 import type { RegistrationSetMode } from './registration-set-contracts'
+import {
+  CHANGE_DESCRIPTION_REQUIRED_ERROR,
+  hasChangeDescription,
+  requiresPublicationDescription,
+} from './change-description'
 
 export type RegistrationSetNextStatus = 'Review' | 'Approved' | 'Published'
 
@@ -11,6 +16,7 @@ export interface RegistrationSetWorkflowDocument {
   fileUrl: string | null
   sourcePdfUrl: string | null
   wordUrl: string | null
+  description: string | null
 }
 
 export interface RegistrationSetWorkflowDraft {
@@ -21,6 +27,7 @@ export interface RegistrationSetWorkflowDraft {
   fileUrl: string | null
   sourcePdfUrl: string | null
   wordUrl: string | null
+  description: string | null
 }
 
 export interface RegistrationSetWorkflowMember {
@@ -80,6 +87,17 @@ function readinessBlocker(
     word_url: item.wordUrl,
   }, nextStatus)
   return readiness.ok ? null : { documentCode, reason: readiness.error }
+}
+
+function publicationDescriptionBlocker(
+  documentCode: string,
+  item: RegistrationSetWorkflowDocument | RegistrationSetWorkflowDraft,
+  nextStatus: RegistrationSetNextStatus,
+): RegistrationSetBlocker | null {
+  if (requiresPublicationDescription(item.type, nextStatus) && !hasChangeDescription(item.description)) {
+    return { documentCode, reason: CHANGE_DESCRIPTION_REQUIRED_ERROR }
+  }
+  return null
 }
 
 function mutationTarget(
@@ -147,12 +165,14 @@ export function planRegistrationSetTransition(set: RegistrationSetWorkflowInput)
         },
       }
     }
-    const blocker = readinessBlocker(member.document.documentCode, routed, action.nextStatus)
+    const blocker = publicationDescriptionBlocker(member.document.documentCode, routed, action.nextStatus)
+      ?? readinessBlocker(member.document.documentCode, routed, action.nextStatus)
     if (blocker) return { nextStatus: action.nextStatus, actionLabel: action.label, targets, blocker }
     targets.push(mutationTarget(member.document, activeDraft, action.nextStatus, false))
   }
 
-  const mainBlocker = readinessBlocker(set.mainDocument.documentCode, set.mainDocument, action.nextStatus)
+  const mainBlocker = publicationDescriptionBlocker(set.mainDocument.documentCode, set.mainDocument, action.nextStatus)
+    ?? readinessBlocker(set.mainDocument.documentCode, set.mainDocument, action.nextStatus)
   if (mainBlocker) return { nextStatus: action.nextStatus, actionLabel: action.label, targets, blocker: mainBlocker }
   targets.push(mutationTarget(set.mainDocument, null, action.nextStatus, true))
 

@@ -5,13 +5,13 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import type { Document } from '@/lib/supabase/types'
 import { DocumentSetUploadPhases } from './DocumentSetUploadPhases'
-import { MAX_FILES } from './document-set-upload-model'
+import { MAX_FILES, type DocumentSetUploadSummary } from './document-set-upload-model'
 import { useDocumentSetUpload } from './useDocumentSetUpload'
 
 interface Props {
   mainDoc: Document
   onClose: () => void
-  onDone: () => void
+  onDone: (summary: DocumentSetUploadSummary) => void
 }
 
 const FOCUSABLE_SELECTOR = [
@@ -80,9 +80,13 @@ export function DocumentSetUploadModal({ mainDoc, onClose, onDone }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const initialFocusRef = useRef<HTMLButtonElement>(null)
 
+  function handleDone() {
+    onDone({ successfulCount: controller.successfulCount, failedCount: controller.failedCount })
+  }
+
   function handleClose() {
     if (controller.submitting) return
-    if (controller.phase === 'results') onDone()
+    if (controller.phase === 'results') handleDone()
     else onClose()
   }
 
@@ -156,7 +160,7 @@ export function DocumentSetUploadModal({ mainDoc, onClose, onDone }: Props) {
             {controller.phase === 'results' ? (
               <>
                 {controller.failedCount > 0 ? <Button variant="secondary" onClick={controller.retryFailed}>ลองใหม่ทั้งชุด</Button> : null}
-                <Button variant="primary" onClick={onDone}>ปิด</Button>
+                <Button variant="primary" onClick={handleDone}>ปิด</Button>
               </>
             ) : null}
           </div>

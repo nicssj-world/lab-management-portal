@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input'
 import { StickyScroll } from '@/components/ui/StickyScroll'
 import { DocumentUploadModal } from '@/components/documents/DocumentUploadModal'
 import { DocumentSetUploadModal } from '@/components/documents/DocumentSetUploadModal'
+import { formatDocumentSetUploadCompletion, type DocumentSetUploadSummary } from '@/components/documents/document-set-upload-model'
 import { DocumentDetailModal, PdfViewerModal, type Attachment } from '@/components/documents/DocumentDetailModal'
 import { ReadModal } from '@/components/documents/ReadModal'
 import { RevisionPanel } from '@/components/documents/RevisionPanel'
@@ -577,7 +578,9 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
     setEditDoc(null)
   }
 
-  function handleSetUploadDone() {
+  function handleSetUploadDone(summary: DocumentSetUploadSummary) {
+    const feedback = formatDocumentSetUploadCompletion(summary)
+    toast(feedback.message, feedback.ok)
     setSetUploadDoc(null)
     void fetchDocs()
     fetch('/api/admin/documents?pageSize=1000')
@@ -660,12 +663,19 @@ export function DocumentsClient({ userRole, docRole, userName, userId = '', init
       {/* Toasts */}
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {toasts.map((t) => (
-          <div key={t.id} className="fade-in-up" style={{
+          <div
+            key={t.id}
+            role={t.ok ? 'status' : 'alert'}
+            aria-live={t.ok ? 'polite' : 'assertive'}
+            aria-atomic="true"
+            className="fade-in-up"
+            style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
             background: t.ok ? '#166534' : '#B91C1C', color: '#fff',
             boxShadow: '0 4px 16px rgba(0,0,0,.2)',
-          }}>
+            }}
+          >
             <Icon name={t.ok ? 'check' : 'x'} size={14} />
             {t.msg}
           </div>

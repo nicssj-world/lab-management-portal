@@ -11,6 +11,7 @@ import { UserIdentityBadge } from '@/components/documents/UserIdentityBadge'
 import { TYPE_ICON_BG, TYPE_ICON_FG, fmtDate, fmtSize } from '@/lib/documents/ui-constants'
 import { documentPdfProxyUrl } from '@/lib/pdf-viewer-utils'
 import { isReadableDocument } from '@/lib/documents/workflow'
+import { getPublicationDescriptionError, hasChangeDescription, shouldDisplayChangeDescription } from '@/lib/documents/change-description'
 import {
   canInteractWithRegistrationSetRows,
   classifyRegistrationSetDocument,
@@ -35,6 +36,7 @@ export interface PendingDoc {
   type: string
   department: string | null
   revision: string | null
+  description: string | null
   owner_id?: string | null
   updated_at: string
   hasOfficialPdf?: boolean
@@ -146,6 +148,8 @@ function SetDocumentRow({
 }) {
   const status = routedSetStatus(document, activeDraft)
   const fileState = setFileState(document, activeDraft)
+  const descriptionType = activeDraft?.type ?? document.type
+  const description = activeDraft ? activeDraft.description : document.description
   const rowStyle: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 11px',
     border: '1px solid var(--border)', borderRadius: 9, background: 'var(--surface-2)',
@@ -168,6 +172,18 @@ function SetDocumentRow({
           {document.revision ? <span>· Rev.{document.revision}</span> : null}
           {document.department ? <span>· {document.department}</span> : null}
         </span>
+        {shouldDisplayChangeDescription(descriptionType) ? (
+          <span
+            style={{
+              display: 'block', marginTop: 5, fontSize: 11, lineHeight: 1.35,
+              color: hasChangeDescription(description) ? 'var(--muted)' : '#B45309',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            <span style={{ fontWeight: 750 }}>รายละเอียดการแก้ไข:</span>{' '}
+            {hasChangeDescription(description) ? description : 'ยังไม่ได้ระบุรายละเอียดการแก้ไข'}
+          </span>
+        ) : null}
       </span>
       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
         <StatusBadge status={status} />
@@ -405,7 +421,8 @@ function bucketForStatus(status: DocumentRevisionDraft['status'], hasWordUrl: bo
   return null
 }
 
-function DocButton({ doc, loading, onClick }: { doc: PendingDoc; loading: boolean; onClick: () => void }) {
+function DocButton({ doc, loading, onClick, showChangeDescription }: { doc: PendingDoc; loading: boolean; onClick: () => void; showChangeDescription?: boolean }) {
+  const displayChangeDescription = showChangeDescription ?? shouldDisplayChangeDescription(doc.type)
   return (
     <button
       onClick={onClick}
@@ -435,6 +452,18 @@ function DocButton({ doc, loading, onClick }: { doc: PendingDoc; loading: boolea
           {doc.revision && <span>· Rev.{doc.revision}</span>}
           {doc.department && <span>· {doc.department}</span>}
         </div>
+        {displayChangeDescription ? (
+          <div
+            style={{
+              marginTop: 5, fontSize: 11, lineHeight: 1.35,
+              color: hasChangeDescription(doc.description) ? 'var(--muted)' : '#B45309',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            <span style={{ fontWeight: 750 }}>รายละเอียดการแก้ไข:</span>{' '}
+            {hasChangeDescription(doc.description) ? doc.description : 'ยังไม่ได้ระบุรายละเอียดการแก้ไข'}
+          </div>
+        ) : null}
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtDate(doc.updated_at)}</div>
       <Icon name="chevRight" size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
@@ -628,6 +657,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
       type: updated.type,
       department: updated.department,
       revision: updated.revision,
+      description: updated.description,
       owner_id: updated.owner_id,
       updated_at: updated.updated_at,
       hasOfficialPdf: updated.type === 'QP' || updated.type === 'WI'
@@ -1117,6 +1147,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           type: set.mainDocument.type,
           department: set.mainDocument.department,
           revision: set.mainDocument.revision,
+          description: set.mainDocument.description,
           updated_at: new Date().toISOString(),
           hasOfficialPdf: set.mainDocument.hasOfficialFile,
           kind: 'document',
@@ -1169,6 +1200,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
       type: revDoc.type,
       department: revDoc.department,
       revision: draft.revision,
+      description: draft.description,
       updated_at: draft.updated_at,
       hasOfficialPdf: draft.type === 'QP' || draft.type === 'WI'
         ? Boolean(draft.source_pdf_url || draft.file_url)
@@ -1249,6 +1281,12 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
   // full revision panel. Used mainly for the Reviewer-submitted "Upd+" queue.
   async function handleQuickPublishDraft(d: PendingDoc) {
     if (!d.draftId || publishingId) return
+    const descriptionError = getPublicationDescriptionError(d.type, 'Published', d.description)
+    if (descriptionError) {
+      alert(descriptionError)
+      openRevisionPanel(d.id)
+      return
+    }
     if (!confirm(`เผยแพร่ "${d.document_code}" Rev.${d.revision ?? ''} เป็น Published?\nไฟล์เดิมจะถูกเก็บเข้าประวัติการแก้ไข`)) return
     setPublishingId(d.id)
     try {
@@ -1559,8 +1597,8 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
                 </div>
                 <button
                   onClick={() => handleQuickPublishDraft(d)}
-                  disabled={publishingId === d.id}
-                  title="เผยแพร่เป็น Published (Rev+1, เก็บไฟล์เดิมเข้าประวัติ)"
+                  disabled={publishingId === d.id || Boolean(getPublicationDescriptionError(d.type, 'Published', d.description))}
+                  title={getPublicationDescriptionError(d.type, 'Published', d.description) ?? 'เผยแพร่เป็น Published (Rev+1, เก็บไฟล์เดิมเข้าประวัติ)'}
                   style={{
                     flexShrink: 0, padding: '0 16px', borderRadius: 10, border: '1px solid #16A34A',
                     background: 'rgba(22,163,74,.10)', color: '#15803D', fontFamily: 'inherit',
@@ -1630,9 +1668,10 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <DocButton
-                doc={{ id: d.id, document_code: d.document_code, title: d.title, type: d.type, department: d.department, revision: d.revision, updated_at: d.review_confirmed_at, kind: 'document' }}
+                doc={{ id: d.id, document_code: d.document_code, title: d.title, type: d.type, department: d.department, revision: d.revision, updated_at: d.review_confirmed_at, description: null, kind: 'document' }}
                 loading={detailLoadingId === d.id}
                 onClick={() => openDetail(d.id)}
+                showChangeDescription={false}
               />
             </div>
           </div>
@@ -1647,6 +1686,7 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
           onDownload={handleDownload}
           onPromoted={handlePromoted}
           onDraftStatusChange={handleDraftStatusChange}
+          onDraftUpdated={handleDraftStatusChange}
           onDraftCancelled={handleDraftCancelled}
           userRole={userRole ?? ''}
           docRole={docRole}

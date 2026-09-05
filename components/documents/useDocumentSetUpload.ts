@@ -18,6 +18,7 @@ import {
   registrationError,
   retainedUpload,
   type DocType,
+  type DocumentSetUploadSummary,
   type DuplicateChoice,
   type Group,
   type RegisterPayloadItem,
@@ -27,7 +28,7 @@ import {
   type UploadPhase,
 } from './document-set-upload-model'
 
-export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
+export function useDocumentSetUpload(mainDoc: Document, onDone: (summary: DocumentSetUploadSummary) => void) {
   const [entries, setEntries] = useState<UploadEntry[]>([])
   const [phase, setPhase] = useState<UploadPhase>('intake')
   const [dragOver, setDragOver] = useState(false)
@@ -334,7 +335,11 @@ export function useDocumentSetUpload(mainDoc: Document, onDone: () => void) {
     setCurrentLabel('')
     setCurrentProgress(0)
     setOverallProgress(100)
-    if (nextEntries.every((entry) => entry.submitStatus === 'success')) onDone()
+    const completion: DocumentSetUploadSummary = {
+      successfulCount: nextEntries.filter((entry) => entry.submitStatus === 'success').length,
+      failedCount: nextEntries.filter((entry) => entry.submitStatus === 'failed').length,
+    }
+    if (completion.failedCount === 0) onDone(completion)
   }
 
   return {
