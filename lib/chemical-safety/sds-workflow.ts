@@ -14,6 +14,8 @@ export interface SdsVersionContext {
   productId: string
   unitId: string
   sourceHoldingId: string | null
+  /** Holding whose unit granted the current actor access to this shared SDS. */
+  targetHoldingId: string | null
   status: string
   submittedBy: string | null
   createdBy: string | null
@@ -29,12 +31,13 @@ function notFound() {
 }
 
 /**
- * หา unit ของ SDS ฉบับหนึ่งที่ยังไม่มี source_holding_id
+ * หา holding ต่อ unit ของ SDS ฉบับหนึ่งที่ยังไม่มี source_holding_id
  *
  * ข้อมูลเดิมบางฉบับผูกผ่าน department link/publication หรือมีเพียง product-level
- * association อยู่แล้ว จึงต้อง resolve association เดิมโดยไม่ขยายสิทธิ์ข้ามหน่วยงาน
+ * association อยู่แล้ว จึงต้อง resolve association เดิม โดยยังคงจำกัดการแชร์ไว้ใน
+ * holding ระดับ department ของสารตัวเดียวกัน และไม่ขยายสิทธิ์เข้า room
  */
-async function unitIdsForUnscopedVersion(versionId: string, productId: string): Promise<string[]> {
+async function holdingIdsForUnscopedVersion(versionId: string, productId: string): Promise<Map<string, string>> {
   const [linked, publications] = await Promise.all([
     supabaseAdmin
       .from('chemical_department_chemical_links')
@@ -48,27 +51,55 @@ async function unitIdsForUnscopedVersion(versionId: string, productId: string): 
   if (linked.error) throw linked.error
   if (publications.error) throw publications.error
 
-  const holdingIds = [
+  const holdingIds = [...new Set([
     ...(linked.data ?? []).map(row => String(row.holding_id)),
     ...(publications.data ?? []).map(row => String(row.source_holding_id)),
-  ]
+  ])]
 
+  const holdingIdByUnitId = new Map<string, string>()
   if (holdingIds.length > 0) {
     const holdings = await supabaseAdmin
       .from('chemical_inventory_holdings')
-      .select('unit_id')
+      .select('id, unit_id, product_id, storage_scope')
       .in('id', holdingIds)
     if (holdings.error) throw holdings.error
-    return [...new Set((holdings.data ?? []).map(row => String(row.unit_id)))]
+
+    const departmentAssociation = (holdings.data ?? []).some(row => (
+      String(row.product_id) === productId && row.storage_scope === 'department'
+    ))
+    for (const holding of holdings.data ?? []) {
+      if (String(holding.product_id) !== productId) continue
+      holdingIdByUnitId.set(String(holding.unit_id), String(holding.id))
+    }
+
+    // A legacy department SDS can be linked to only the first department that
+    // imported it. Once it is known to be a department document, share it with
+    // the other department holdings for the same product as well.
+    if (departmentAssociation) {
+      const sharedHoldings = await supabaseAdmin
+        .from('chemical_inventory_holdings')
+        .select('id, unit_id')
+        .eq('product_id', productId)
+        .eq('storage_scope', 'department')
+      if (sharedHoldings.error) throw sharedHoldings.error
+      for (const holding of sharedHoldings.data ?? []) {
+        holdingIdByUnitId.set(String(holding.unit_id), String(holding.id))
+      }
+    }
+
+    return holdingIdByUnitId
   }
 
   const holdings = await supabaseAdmin
     .from('chemical_inventory_holdings')
-    .select('unit_id')
+    .select('id, unit_id')
     .eq('product_id', productId)
     .eq('storage_scope', 'room')
   if (holdings.error) throw holdings.error
-  return [...new Set((holdings.data ?? []).map(row => String(row.unit_id)))]
+  for (const holding of holdings.data ?? []) {
+    holdingIdByUnitId.set(String(holding.unit_id), String(holding.id))
+  }
+  return holdingIdByUnitId
 }
 
 async function loadVersion(id: string) {
@@ -88,21 +119,36 @@ async function resolve(
   const version = await loadVersion(id)
   if (!version) return { response: notFound() }
 
-  let sourceHoldingId = version.source_holding_id ? String(version.source_holding_id) : null
+  const sourceHoldingId = version.source_holding_id ? String(version.source_holding_id) : null
+  const holdingIdByUnitId = new Map<string, string>()
   let unitIds: string[]
   if (sourceHoldingId) {
     const holding = await supabaseAdmin
       .from('chemical_inventory_holdings')
-      .select('unit_id, product_id')
+      .select('id, unit_id, product_id, storage_scope')
       .eq('id', sourceHoldingId)
       .maybeSingle()
     if (holding.error) throw holding.error
     if (!holding.data || String(holding.data.product_id) !== String(version.product_id)) {
       return { response: notFound() }
     }
-    unitIds = [String(holding.data.unit_id)]
+    holdingIdByUnitId.set(String(holding.data.unit_id), sourceHoldingId)
+    if (holding.data.storage_scope === 'department') {
+      const sharedHoldings = await supabaseAdmin
+        .from('chemical_inventory_holdings')
+        .select('id, unit_id')
+        .eq('product_id', version.product_id)
+        .eq('storage_scope', 'department')
+      if (sharedHoldings.error) throw sharedHoldings.error
+      for (const sharedHolding of sharedHoldings.data ?? []) {
+        holdingIdByUnitId.set(String(sharedHolding.unit_id), String(sharedHolding.id))
+      }
+    }
+    unitIds = [...holdingIdByUnitId.keys()]
   } else {
-    unitIds = await unitIdsForUnscopedVersion(String(version.id), String(version.product_id))
+    const unscopedHoldingIds = await holdingIdsForUnscopedVersion(String(version.id), String(version.product_id))
+    for (const [unitId, holdingId] of unscopedHoldingIds) holdingIdByUnitId.set(unitId, holdingId)
+    unitIds = [...holdingIdByUnitId.keys()]
   }
   if (unitIds.length === 0) return { response: notFound() }
 
@@ -110,6 +156,9 @@ async function resolve(
   for (const unitId of unitIds) {
     const result = await guard(unitId)
     if (!result.response) {
+      const targetHoldingId = sourceHoldingId
+        ? holdingIdByUnitId.get(unitId) ?? sourceHoldingId
+        : holdingIdByUnitId.get(unitId) ?? null
       return {
         actor: result.actor,
         context: {
@@ -117,6 +166,7 @@ async function resolve(
           productId: String(version.product_id),
           unitId,
           sourceHoldingId,
+          targetHoldingId,
           status: String(version.status),
           submittedBy: version.submitted_by ? String(version.submitted_by) : null,
           createdBy: version.created_by ? String(version.created_by) : null,
@@ -153,13 +203,15 @@ export async function publishSdsForHolding(
   })
   if (published.error) throw published.error
 
-  // ฉบับที่ไม่มี source holding โดยตรงยังไม่มีปลายทาง publication ที่ระบุแน่ชัด
-  if (!context.sourceHoldingId) return
+  // legacy version ที่ไม่มี source holding ยัง publish ต่อได้ถ้า resolve พบ
+  // holding ปลายทางจากลิงก์/publication เดิม
+  const targetHoldingId = context.targetHoldingId ?? context.sourceHoldingId
+  if (!targetHoldingId) return
 
   const holding = await supabaseAdmin
     .from('chemical_inventory_holdings')
     .select('storage_scope')
-    .eq('id', context.sourceHoldingId)
+    .eq('id', targetHoldingId)
     .maybeSingle()
   if (holding.error) throw holding.error
   if (!holding.data) throw new Error('chemical_holding_not_found')
@@ -177,7 +229,7 @@ export async function publishSdsForHolding(
   if (active.data) return
 
   const linked = await supabaseAdmin.rpc('link_chemical_sds_publication', {
-    p_holding_id: context.sourceHoldingId,
+    p_holding_id: targetHoldingId,
     p_sds_version_id: context.id,
     p_actor_id: actorId,
   })

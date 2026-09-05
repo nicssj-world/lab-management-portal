@@ -113,10 +113,10 @@ assert.doesNotMatch(
   'public SDS ต้องไม่ตัด SDS ที่มาจากทะเบียนสารเคมีรุ่นปัจจุบันออก',
 )
 assert.match(publicSource, /linkedDepartmentSdsIds/)
-// เปิด SDS จากทะเบียนต้องหยิบเฉพาะฉบับที่ผูกกับรายการทะเบียนแถวนั้นโดยตรง
-// ถ้าไปหยิบฉบับของหน่วยงานอื่นที่ใช้สารตัวเดียวกัน สิทธิ์แก้ไข (ผูกกับ unit ของ source holding)
-// จะไม่ตรงกัน แล้วผู้ใช้จะเจอ 403 ที่อธิบายไม่ได้
+// เปิด SDS จากทะเบียนต้องหยิบฉบับของ product เดียวกันที่แชร์ใน department ได้
+// แต่ยังต้องมี holding/link ของรายการนั้นอยู่ใน linkedHoldingIds และไม่ข้ามไป room
 assert.match(hubSource, /item\.sourceHoldingId === row\.holdingId/)
+assert.match(hubSource, /item\.linkedHoldingIds\.includes\(row\.holdingId\)/)
 assert.match(hubSource, /item\.status !== 'superseded'/)
 assert.match(pageSource, /listInternalSds\(\{\}, 'room'\)/)
 assert.match(hubSource, /roomSdsItems/)

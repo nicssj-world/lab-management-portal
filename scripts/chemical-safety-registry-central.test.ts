@@ -43,5 +43,8 @@ assert.match(registryUploadRoute, /publishSdsForHolding/, 'registry SDS file upl
 const workflow = read('lib/chemical-safety/sds-workflow.ts')
 assert.match(workflow, /publish_chemical_sds/, 'registry auto-publish must use the database workflow')
 assert.match(workflow, /link_chemical_sds_publication/, 'registry auto-publish must keep the registry publication link in sync')
+assert.match(workflow, /targetHoldingId/, 'shared department SDS edits must publish for the authorized target holding')
+assert.match(workflow, /storage_scope.*department/, 'shared SDS access must stay within department holdings')
+assert.match(workflow, /chemical_inventory_holdings[\s\S]*product_id/, 'shared SDS access must resolve other holdings by product identity')
 
 console.log('chemical-safety registry central workflow contract passed')

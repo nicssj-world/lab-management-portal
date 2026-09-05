@@ -13,6 +13,7 @@ import {
 } from '@/lib/chemical-safety/schemas'
 import { calculateHoldingTotalFromFields, isQuantityUnit } from '@/lib/chemical-safety/domain'
 import { camelProposal, snakeProposal } from '@/lib/chemical-safety/proposal-keys'
+import { hasDepartmentChemicalHolding } from '@/lib/chemical-safety/department-chemical-candidates'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { ZodTypeAny } from 'zod'
 
@@ -76,6 +77,29 @@ function normalizeStoredProposal(
   return withUnit
 }
 
+async function assertExistingDepartmentProductIsAvailable(proposedData: unknown): Promise<void> {
+  if (!proposedData || typeof proposedData !== 'object' || Array.isArray(proposedData)) return
+  const proposal = proposedData as Record<string, unknown>
+  if (proposal.productMode !== 'existing' || proposal.storageScope !== 'department') return
+  if (typeof proposal.productId !== 'string') return
+
+  const holdings = await supabaseAdmin
+    .from('chemical_inventory_holdings')
+    .select('product_id, storage_scope')
+    .eq('product_id', proposal.productId)
+    .eq('storage_scope', 'department')
+  if (holdings.error) throw holdings.error
+
+  const available = hasDepartmentChemicalHolding(
+    proposal.productId,
+    (holdings.data ?? []).map(row => ({
+      productId: String(row.product_id),
+      storageScope: row.storage_scope === 'department' ? 'department' as const : 'room' as const,
+    })),
+  )
+  if (!available) throw new Error('department_product_not_available')
+}
+
 export async function PATCH(request: NextRequest, ctx: RouteContext<'/api/admin/chemical-safety/change-requests/[id]/submit'>) {
   const { id } = await ctx.params
   const input = await parseJson(request, chemicalChangeDraftPatchSchema)
@@ -125,6 +149,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/admin/c
     const proposedData = current.data.entity_type === 'product' || current.data.entity_type === 'holding_delete'
       ? proposal.data
       : normalizeStoredProposal(current.data.entity_type, proposal.data, current.data.unit_id)
+    await assertExistingDepartmentProductIsAvailable(proposedData)
     if (current.data.status === 'draft') {
       const normalized = await supabaseAdmin.from('chemical_change_requests')
         .update({ proposed_data: snakeProposal(proposedData), updated_at: new Date().toISOString() })

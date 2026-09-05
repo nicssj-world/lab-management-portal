@@ -52,6 +52,9 @@ export function transitionError(error: unknown) {
   if (/invalid_registry_entry_snapshot|registry_(room_location_required|department_location_forbidden|product_required|product_name_required)|chemical_location_not_found/i.test(message)) {
     return NextResponse.json({ error: 'ข้อมูลรายการทะเบียนไม่ครบหรือไม่ถูกต้อง กรุณาสร้างคำขอใหม่' }, { status: 422 })
   }
+  if (/department_product_not_available/i.test(message)) {
+    return NextResponse.json({ error: 'สารนี้ยังไม่มีในรายการของหน่วยงาน กรุณาเพิ่มเป็นสารใหม่หรือเลือกสารของหน่วยงาน' }, { status: 422 })
+  }
   if (/sds_product_mismatch/i.test(message)) {
     return NextResponse.json({ error: 'SDS ที่เลือกไม่ใช่ product เดียวกับรายการทะเบียน' }, { status: 422 })
   }

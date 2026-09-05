@@ -7,6 +7,7 @@ import {
   canonicalDepartmentSdsLinkIds,
 } from './department-sds-dedup'
 import { summarizeDepartmentPublication } from './publication-summary'
+import { sharedDepartmentHoldingIdsForVersion } from './sds-visibility'
 
 export interface DepartmentSdsFileDTO {
   id: string
@@ -62,17 +63,20 @@ export interface DepartmentSdsGroupDTO {
  * คืนทุกงานเสมอแม้ยังไม่มีไฟล์ เพื่อให้เห็นว่างานไหนยังไม่ได้นำเข้า
  */
 export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
-  const [departments, entries, publications, links, versions, pendingRequests, units, products] = await Promise.all([
+  const [departments, entries, publications, links, versions, pendingRequests, units, products, holdings] = await Promise.all([
     supabaseAdmin.from('chemical_sds_departments').select('*').order('display_order'),
     supabaseAdmin.from('chemical_department_sds').select('*'),
     supabaseAdmin.from('chemical_sds_publications').select('*').eq('destination', 'department').eq('status', 'active'),
     supabaseAdmin.from('chemical_department_chemical_links').select('id, department_sds_id, product_id, holding_id, sds_version_id, linked_at'),
-    supabaseAdmin.from('chemical_sds_versions').select('id, status, source_holding_id, updated_at'),
+    supabaseAdmin.from('chemical_sds_versions').select('id, product_id, file_id, status, source_holding_id, updated_at'),
     supabaseAdmin.from('chemical_change_requests').select('unit_id, status, proposed_data').eq('entity_type', 'department_chemical').in('status', ['draft', 'in_review']),
     supabaseAdmin.from('chemical_units').select('id, name_th').eq('active', true),
     supabaseAdmin
       .from('chemical_products')
       .select('id, canonical_name, lifecycle_status'),
+    supabaseAdmin
+      .from('chemical_inventory_holdings')
+      .select('id, product_id, unit_id, storage_scope'),
   ])
   if (departments.error) throw new Error(`chemical_sds_departments: ${departments.error.message}`)
   if (entries.error) throw new Error(`chemical_department_sds: ${entries.error.message}`)
@@ -82,6 +86,7 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
   if (pendingRequests.error) throw new Error(`chemical_change_requests: ${pendingRequests.error.message}`)
   if (units.error) throw new Error(`chemical_units: ${units.error.message}`)
   if (products.error) throw new Error(`chemical_products: ${products.error.message}`)
+  if (holdings.error) throw new Error(`chemical_inventory_holdings: ${holdings.error.message}`)
 
   const productNames = new Map((products.data ?? []).map(row => [String(row.id), String(row.canonical_name)]))
   const versionUpdatedAtById = new Map(
@@ -109,6 +114,11 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
       unitByName.get(definition.department) ?? null,
     ]),
   )
+  const departmentCodeByUnitId = new Map(
+    [...unitIdByDepartmentCode.entries()]
+      .filter((entry): entry is [string, string] => entry[1] !== null)
+      .map(([code, unitId]) => [unitId, code]),
+  )
   const dedupPlan = buildDepartmentSdsDedupPlan({
     entries: (entries.data ?? []).map(row => ({
       id: String(row.id),
@@ -124,7 +134,7 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
     })),
     versions: (versions.data ?? []).map(row => ({
       id: String(row.id),
-      fileId: null,
+      fileId: row.file_id ? String(row.file_id) : null,
       status: row.status == null ? null : String(row.status),
       sourceHoldingId: row.source_holding_id ? String(row.source_holding_id) : null,
       updatedAt: row.updated_at ? String(row.updated_at) : null,
@@ -162,6 +172,54 @@ export async function listDepartmentSds(): Promise<DepartmentSdsGroupDTO[]> {
   }
 
   const byDepartment = new Map<string, DepartmentSdsFileDTO[]>()
+  const versionById = new Map((versions.data ?? []).map(row => [String(row.id), row]))
+  const holdingById = new Map((holdings.data ?? []).map(row => [String(row.id), row]))
+  const fileBackedHoldingIds = new Set<string>()
+  for (const link of links.data ?? []) {
+    const version = link.sds_version_id ? versionById.get(String(link.sds_version_id)) : null
+    if (link.holding_id && version?.file_id) fileBackedHoldingIds.add(String(link.holding_id))
+  }
+  for (const publication of publications.data ?? []) {
+    const version = publication.sds_version_id ? versionById.get(String(publication.sds_version_id)) : null
+    if (publication.source_holding_id && version?.file_id) fileBackedHoldingIds.add(String(publication.source_holding_id))
+  }
+  for (const version of versions.data ?? []) {
+    if (!version.file_id || version.status === 'superseded') continue
+    const sharedHoldingIds = sharedDepartmentHoldingIdsForVersion(
+      version,
+      holdings.data ?? [],
+      links.data ?? [],
+      publications.data ?? [],
+    )
+    for (const holdingId of sharedHoldingIds) {
+      if (fileBackedHoldingIds.has(holdingId)) continue
+      const holding = holdingById.get(holdingId)
+      const departmentCode = holding ? departmentCodeByUnitId.get(String(holding.unit_id)) : null
+      if (!departmentCode) continue
+      const list = byDepartment.get(departmentCode) ?? []
+      const productId = version.product_id ? String(version.product_id) : null
+      if (!productId) continue
+      list.push({
+        id: `${version.id}:${holdingId}`,
+        source: 'registry_v2',
+        publicId: String(version.id),
+        displayName: productNames.get(productId) ?? 'สารเคมี',
+        displayNameEdited: false,
+        sourcePath: 'registry-shared',
+        fileUrl: `/api/admin/chemical-safety/sds/${version.id}/file`,
+        registryLink: {
+          status: 'linked',
+          productId,
+          productName: productNames.get(productId) ?? null,
+          holdingId,
+          sdsVersionId: String(version.id),
+          candidates: [],
+        },
+      })
+      byDepartment.set(departmentCode, list)
+    }
+  }
+
   for (const entry of entries.data ?? []) {
     const entryId = String(entry.id)
     // A duplicate linked row is retired from the department view. It must not

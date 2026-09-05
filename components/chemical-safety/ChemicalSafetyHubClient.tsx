@@ -17,6 +17,7 @@ import type { ChemicalHoldingDeleteImpact } from '@/lib/chemical-safety/holding-
 import { paginateRegistryItems } from '@/lib/chemical-safety/registry-pagination'
 import { resetRegistryFiltersForStorageNavigation } from '@/lib/chemical-safety/registry-navigation'
 import { summarizeChemicalRegistry } from '@/lib/chemical-safety/registry-summary'
+import { filterDepartmentChemicalCandidates } from '@/lib/chemical-safety/department-chemical-candidates'
 import { CHEMICAL_GROUP_SUMMARY } from '@/lib/chemical-safety/storage-manifest'
 import type {
   ChemicalProductDTO,
@@ -233,6 +234,13 @@ export function ChemicalSafetyHubClient({
 
   const canPropose = canManageChemicals || canProposeUnitIds.length > 0
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products])
+  const departmentProductIds = useMemo(
+    () => filterDepartmentChemicalCandidates(
+      products,
+      registry.map(row => ({ productId: row.productId, storageScope: row.storageScope })),
+    ).map(product => product.id),
+    [products, registry],
+  )
   const canEditChemicalRow = useCallback(
     (row: ChemicalRegistryRow) => canManageChemicals || canProposeUnitIds.includes(row.unitId),
     [canManageChemicals, canProposeUnitIds],
@@ -303,21 +311,29 @@ export function ChemicalSafetyHubClient({
    * ไม่มีขั้นตอนส่งทบทวน/อนุมัติ/เชื่อมเผยแพร่แล้ว จึงไม่มีหน้าต่างสรุป workflow คั่นอีก
    * บันทึกหรือแนบไฟล์เสร็จเมื่อไหร่ ฝั่ง API จะทำให้ใช้งานได้และเผยแพร่ให้ทันที
    *
-   * เลือกเฉพาะฉบับที่ผูกกับรายการทะเบียนนี้โดยตรง ไม่ไปหยิบฉบับของหน่วยงานอื่นที่ใช้สารตัวเดียวกัน
-   * เพราะสิทธิ์แก้ไขผูกกับหน่วยงานของ source holding — หยิบผิดตัวจะได้ 403 ที่อธิบายไม่ได้
+   * สำหรับงานต่างหน่วยที่ใช้สารเดียวกัน จะใช้ SDS ฉบับเดียวกันร่วมกัน
+   * แต่ยังไม่ข้ามขอบเขตไปหยิบ SDS ของ room holding มาใช้กับงาน
    */
   async function openSds(row: ChemicalRegistryRow) {
     setChemicalDetails(current => current?.row.holdingId === row.holdingId
       ? { ...current, tab: 'sds' }
       : { row, product: productById.get(row.productId), tab: 'sds' })
-    const existing = sdsItems.find(item => (
-      item.productId === row.productId
-      && item.status !== 'superseded'
-      && (
-        item.sourceHoldingId === row.holdingId
-        || item.linkedHoldingIds.includes(row.holdingId)
-      )
-    ))
+    const existing = sdsItems
+      .filter(item => (
+        item.productId === row.productId
+        && item.status !== 'superseded'
+        && (
+          item.sourceHoldingId === row.holdingId
+          || item.linkedHoldingIds.includes(row.holdingId)
+        )
+      ))
+      // A new department holding may still have its empty draft while the
+      // product's shared approved SDS already has a file. Open the file-backed
+      // document instead of creating/editing another empty copy.
+      .sort((a, b) => (
+        Number(Boolean(b.fileId)) - Number(Boolean(a.fileId))
+        || String(b.updatedAt).localeCompare(String(a.updatedAt))
+      ))[0]
     if (existing) {
       setSdsEditor({ sds: existing, row })
       return
@@ -1199,6 +1215,7 @@ export function ChemicalSafetyHubClient({
           locations={locations}
           units={units}
           products={products}
+          departmentProductIds={departmentProductIds}
           product={modal.product}
           registryRow={modal.registryRow}
           onClose={() => setModal(null)}

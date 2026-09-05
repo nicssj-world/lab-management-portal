@@ -43,12 +43,13 @@ interface HazardDraft { classTh: string; classEn: string }
 export type RegistryChangeMode = 'create' | 'edit-product' | 'edit-holding'
 
 export function RegistryChangeModal({
-  mode, locations, units, products, product, registryRow, embedded = false, onClose, onSaved,
+  mode, locations, units, products, departmentProductIds = [], product, registryRow, embedded = false, onClose, onSaved,
 }: {
   mode: RegistryChangeMode
   locations: ChemicalStorageLocationDTO[]
   units: ChemicalUnitDTO[]
   products: ChemicalProductDTO[]
+  departmentProductIds?: string[]
   /** จำเป็นเมื่อ mode = 'edit-product' */
   product?: ChemicalProductDTO
   /** จำเป็นเมื่อ mode = 'edit-holding' หรือใช้เติมหน่วยงานเริ่มต้นตอน 'create' */
@@ -68,6 +69,14 @@ export function RegistryChangeModal({
     ? registryRow?.storageScope === 'department'
     : isCreate && storageScope === 'department'
   const isRoomHolding = !isProduct && !isDepartment
+  const departmentProductIdSet = useMemo(() => new Set(departmentProductIds), [departmentProductIds])
+  const existingProducts = useMemo(
+    () => products.filter(item => (
+      item.lifecycleStatus === 'active'
+      && (storageScope === 'room' || departmentProductIdSet.has(item.id))
+    )),
+    [departmentProductIdSet, products, storageScope],
+  )
   const departmentNames = useMemo(
     () => new Set<string>(CHEMICAL_SDS_DEPARTMENTS.map(department => department.department)),
     [],
@@ -388,7 +397,7 @@ export function RegistryChangeModal({
                     <span style={labelStyle}>สารเคมีเดิม *</span>
                     <select value={selectedProductId} onChange={(event) => setSelectedProductId(event.target.value)} style={inputStyle}>
                       <option value="">เลือกสารเคมี</option>
-                      {products.filter(item => item.lifecycleStatus === 'active').map(item => (
+                      {existingProducts.map(item => (
                         <option key={item.id} value={item.id}>
                           {item.canonicalName}{item.manufacturer ? ` · ${item.manufacturer}` : ''}{item.productCode ? ` · ${item.productCode}` : ''}{item.concentration ? ` · ${item.concentration}` : ''}
                         </option>
@@ -456,6 +465,9 @@ export function RegistryChangeModal({
                   <select value={storageScope} onChange={(event) => {
                     const next = event.target.value as 'room' | 'department'
                     setStorageScope(next)
+                    if (next === 'department' && selectedProductId && !departmentProductIdSet.has(selectedProductId)) {
+                      setSelectedProductId('')
+                    }
                     if (next === 'department') {
                       setLocationId('')
                       const departmentUnits = units.filter(unit => departmentNames.has(unit.nameTh))

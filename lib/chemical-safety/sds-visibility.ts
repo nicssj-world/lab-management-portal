@@ -25,6 +25,53 @@ export interface ChemicalSdsPublicationVisibilityRow {
 }
 
 /**
+ * Department holdings use the product as their shared chemical identity.
+ * Resolve the department holdings that may read one SDS version without
+ * allowing a department document to cross into the room-storage scope.
+ */
+export function sharedDepartmentHoldingIdsForVersion(
+  version: ChemicalSdsVisibilityVersionRow,
+  holdings: ChemicalHoldingSdsVisibilityRow[],
+  departmentLinks: ChemicalDepartmentSdsVisibilityLinkRow[] = [],
+  publications: ChemicalSdsPublicationVisibilityRow[] = [],
+): Set<string> {
+  if (version.id == null || version.product_id == null) return new Set()
+
+  const productId = String(version.product_id)
+  const departmentHoldingIds = new Set(
+    holdings
+      .filter(holding => holding.id != null
+        && holding.product_id != null
+        && String(holding.product_id) === productId
+        && holding.storage_scope === 'department')
+      .map(holding => String(holding.id)),
+  )
+  if (departmentHoldingIds.size === 0) return new Set()
+
+  const versionId = String(version.id)
+  const sourceHoldingIsDepartment = version.source_holding_id != null
+    && departmentHoldingIds.has(String(version.source_holding_id))
+  const linkedToDepartment = departmentLinks.some(link => (
+    link.sds_version_id != null
+      && String(link.sds_version_id) === versionId
+      && link.holding_id != null
+      && departmentHoldingIds.has(String(link.holding_id))
+      && (link.product_id == null || String(link.product_id) === productId)
+  ))
+  const publishedToDepartment = publications.some(publication => (
+    publication.sds_version_id != null
+      && String(publication.sds_version_id) === versionId
+      && publication.destination === 'department'
+      && publication.source_holding_id != null
+      && departmentHoldingIds.has(String(publication.source_holding_id))
+  ))
+
+  return sourceHoldingIsDepartment || linkedToDepartment || publishedToDepartment
+    ? departmentHoldingIds
+    : new Set()
+}
+
+/**
  * Return department SDS files that are backed by a department registry holding.
  *
  * The legacy department file table is still retained for the archive, so its
@@ -57,18 +104,18 @@ export function linkedDepartmentSdsIds(
 /**
  * Resolve the SDS versions owned by one registry holding.
  *
- * New registry rows point directly at the holding. Existing department rows
- * may point through chemical_department_chemical_links. A retained shared
- * version may instead be reachable through an explicit SDS publication after
- * its original source holding is deleted. Deliberately do not fall back to
- * product_id here: one product may be used by both a room and a department,
- * and that fallback is the source of the old cross-scope leak.
+ * New registry rows point directly at the holding. Department holdings for
+ * the same product intentionally share one SDS file, while room holdings stay
+ * isolated so a department document cannot cross the storage-scope boundary.
+ * Existing department rows may also point through links/publications after
+ * their original source holding is deleted.
  */
 export function sdsVersionIdsForHolding(
   versions: ChemicalSdsVisibilityVersionRow[],
   departmentLinks: ChemicalDepartmentSdsVisibilityLinkRow[],
   holdingId: string,
   publications: ChemicalSdsPublicationVisibilityRow[] = [],
+  holdings: ChemicalHoldingSdsVisibilityRow[] = [],
 ): Set<string> {
   const linkedVersionIds = new Set(
     departmentLinks
@@ -83,12 +130,23 @@ export function sdsVersionIdsForHolding(
       .map(publication => String(publication.sds_version_id)),
   )
 
+  const targetHolding = holdings.find(holding => holding.id != null && String(holding.id) === holdingId)
+  const sharedDepartmentVersionIds = targetHolding?.storage_scope === 'department'
+    ? new Set(
+      versions
+        .filter(version => sharedDepartmentHoldingIdsForVersion(version, holdings, departmentLinks, publications).has(holdingId))
+        .filter(version => version.id != null)
+        .map(version => String(version.id)),
+    )
+    : new Set<string>()
+
   return new Set(
     versions
       .filter(version => version.id != null && (
         (version.source_holding_id != null && String(version.source_holding_id) === holdingId)
         || linkedVersionIds.has(String(version.id))
         || publishedVersionIds.has(String(version.id))
+        || sharedDepartmentVersionIds.has(String(version.id))
       ))
       .map(version => String(version.id)),
   )

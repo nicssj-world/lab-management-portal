@@ -19,7 +19,11 @@ import type {
 import type { ImportReviewFilters, InternalSdsFilters } from './schemas'
 import { mapChemicalPlacement } from './registry-row'
 import { camelProposal } from './proposal-keys'
-import { roomChemicalSdsVersionIds, sdsVersionIdsForHolding } from './sds-visibility'
+import {
+  roomChemicalSdsVersionIds,
+  sdsVersionIdsForHolding,
+  sharedDepartmentHoldingIdsForVersion,
+} from './sds-visibility'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type Row = Record<string, any>
@@ -256,16 +260,20 @@ export async function listChemicalRegistryWithSource(
       snapshot.sdsDepartmentLinks,
       String(holding.id),
       snapshot.sdsPublications,
+      snapshot.holdings,
     )
     const holdingVersions = versions.filter(item => holdingVersionIds.has(String(item.id)))
     const approved = holdingVersions
       .filter(item => item.status === 'approved')
       .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0] ?? null
     const selectedVersion = holdingVersions
-      .filter(item => ['draft', 'in_review', 'rejected'].includes(String(item.status)))
-      .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0]
-      ?? approved
-      ?? null
+      .filter(item => ['draft', 'in_review', 'rejected', 'approved'].includes(String(item.status)))
+      .sort((a, b) => (
+        Number(Boolean(b.file_id)) - Number(Boolean(a.file_id))
+        || ({ approved: 4, in_review: 3, draft: 2, rejected: 1 }[String(b.status)] ?? 0)
+          - ({ approved: 4, in_review: 3, draft: 2, rejected: 1 }[String(a.status)] ?? 0)
+        || String(b.updated_at).localeCompare(String(a.updated_at))
+      ))[0] ?? null
     const holdingPublications = snapshot.sdsPublications
       .filter(item => String(item.source_holding_id) === String(holding.id))
       .sort((a, b) => String(b.linked_at).localeCompare(String(a.linked_at)))
@@ -552,6 +560,21 @@ export async function listInternalSds(filters: InternalSdsFilters = {}, scope: '
     const holdingId = String(publication.source_holding_id)
     const relatedHoldingIds = linkedHoldingIdsByVersion.get(versionId) ?? []
     if (!relatedHoldingIds.includes(holdingId)) relatedHoldingIds.push(holdingId)
+    linkedHoldingIdsByVersion.set(versionId, relatedHoldingIds)
+  }
+  for (const version of snapshot.sdsVersions) {
+    const sharedHoldingIds = sharedDepartmentHoldingIdsForVersion(
+      version,
+      snapshot.holdings,
+      snapshot.sdsDepartmentLinks,
+      snapshot.sdsPublications,
+    )
+    if (sharedHoldingIds.size === 0) continue
+    const versionId = String(version.id)
+    const relatedHoldingIds = linkedHoldingIdsByVersion.get(versionId) ?? []
+    for (const holdingId of sharedHoldingIds) {
+      if (!relatedHoldingIds.includes(holdingId)) relatedHoldingIds.push(holdingId)
+    }
     linkedHoldingIdsByVersion.set(versionId, relatedHoldingIds)
   }
   return snapshot.sdsVersions.filter(row => {
