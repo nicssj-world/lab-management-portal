@@ -36,6 +36,8 @@ assert.ok(!externalQualitySql.includes("for select to authenticated using (true)
 
 assert.ok(extractRoute.includes("canAccessDocuments(actor, 'edit')"))
 assert.ok(extractRoute.includes("fileKey.startsWith('documents/')"))
+assert.ok(extractRoute.includes('ชื่อไฟล์มีจุดซ้ำกัน'))
+assert.ok(extractRoute.includes('กรุณาเปลี่ยนชื่อไฟล์'))
 assert.ok(extractRoute.includes('document-extract:'))
 assert.ok(documentRoute.includes('document-proxy:'))
 assert.ok(documentRoute.includes('public-document-download-ip'))

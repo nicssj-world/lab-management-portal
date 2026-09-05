@@ -59,8 +59,17 @@ export async function POST(req: NextRequest) {
     const fileKey = (body.file_key ?? '').trim()
     fileName = (body.file_name ?? '').trim()
     if (!fileKey || !fileName) return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 422 })
-    if (!fileKey.startsWith('documents/') || fileKey.includes('..') || fileKey.length > 1_024) {
-      return NextResponse.json({ error: 'ไม่อนุญาตให้อ่านไฟล์จากตำแหน่งนี้' }, { status: 403 })
+    if (fileKey.includes('..')) {
+      return NextResponse.json(
+        { error: 'ชื่อไฟล์มีจุดซ้ำกัน (..) กรุณาเปลี่ยนชื่อไฟล์ เช่น ชื่อไฟล์.docx แล้วลองใหม่' },
+        { status: 422 },
+      )
+    }
+    if (!fileKey.startsWith('documents/') || fileKey.length > 1_024) {
+      return NextResponse.json(
+        { error: 'ไม่สามารถอ่านไฟล์นี้ได้ กรุณาเลือกไฟล์ใหม่อีกครั้ง' },
+        { status: 403 },
+      )
     }
 
     const size = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: fileKey }))
