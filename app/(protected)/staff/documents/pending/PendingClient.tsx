@@ -414,8 +414,8 @@ function RegistrationSetCard({
   )
 }
 
-function bucketForStatus(status: DocumentRevisionDraft['status'], hasWordUrl: boolean): 'source' | 'review' | 'approved' | null {
-  if (status === 'Draft') return hasWordUrl ? 'source' : null
+function bucketForStatus(status: DocumentRevisionDraft['status'], hasWordUrl: boolean, hasOfficialFile: boolean): 'source' | 'review' | 'approved' | null {
+  if (status === 'Draft') return hasWordUrl || hasOfficialFile ? 'source' : null
   if (status === 'Review') return 'review'
   if (status === 'Approved') return 'approved'
   return null
@@ -1187,7 +1187,10 @@ export function PendingClient({ newDocs: initialNewDocs, sourceDocs: initialSour
       router.refresh()
       return
     }
-    const bucket = bucketForStatus(draft.status, Boolean(draft.word_url))
+    const hasOfficialFile = draft.type === 'QP' || draft.type === 'WI'
+      ? Boolean(draft.source_pdf_url || draft.file_url)
+      : Boolean(draft.file_url)
+    const bucket = bucketForStatus(draft.status, Boolean(draft.word_url), hasOfficialFile)
     setSourceDocs((prev) => prev.filter((d) => !(d.kind === 'draft' && d.id === parentId)))
     setReviewDocs((prev) => prev.filter((d) => !(d.kind === 'draft' && d.id === parentId)))
     setApprovedDocs((prev) => prev.filter((d) => !(d.kind === 'draft' && d.id === parentId)))

@@ -347,7 +347,7 @@ async function registerDocument(
       title: item.title,
       type: item.type,
       department: item.department,
-      description: getInitialChangeDescription({ type: item.type, isNewDocument: true, isImportCurrent: false }),
+      description: getInitialChangeDescription({ type: item.type, revision: item.revision, isNewDocument: true, isImportCurrent: false }),
       revision: item.revision,
       status: 'Draft',
       owner_id: actor.id,

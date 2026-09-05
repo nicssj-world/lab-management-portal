@@ -28,30 +28,39 @@ export function shouldDisplayChangeDescription(type: string | null | undefined) 
   return isCoverRequiredType(type)
 }
 
+export function isInitialRevision(revision: string | null | undefined) {
+  const normalized = revision?.trim().replace(/^rev(?:ision)?\.?\s*/i, '')
+  return Boolean(normalized && /^0+$/.test(normalized))
+}
+
 export function getInitialChangeDescription({
   type,
+  revision,
   isNewDocument,
   isImportCurrent,
 }: {
   type: string | null | undefined
+  revision: string | null | undefined
   isNewDocument: boolean
   isImportCurrent: boolean
 }) {
-  if (!isNewDocument || isImportCurrent || !isCoverRequiredType(type)) return null
+  if (!isNewDocument || isImportCurrent || !isInitialRevision(revision) || !isCoverRequiredType(type)) return null
   return FIRST_PUBLICATION_DESCRIPTION
 }
 
 export function resolveInitialChangeDescription({
   type,
+  revision,
   isNewDocument,
   isImportCurrent,
   description,
 }: {
   type: string | null | undefined
+  revision: string | null | undefined
   isNewDocument: boolean
   isImportCurrent: boolean
   description?: string
 }) {
   if (description !== undefined) return description.trim()
-  return getInitialChangeDescription({ type, isNewDocument, isImportCurrent }) ?? undefined
+  return getInitialChangeDescription({ type, revision, isNewDocument, isImportCurrent }) ?? undefined
 }

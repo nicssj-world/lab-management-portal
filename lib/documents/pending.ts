@@ -386,8 +386,8 @@ export async function getRegistrationSets(): Promise<RegistrationSet[]> {
 // Every document the /staff/documents/pending page treats as needing DCC/reviewer
 // action — reused here for the dashboard's Attention Queue so the two counts match.
 // Covers: docs (or their active working-revision draft) in Review/Approved status,
-// brand-new Rev.00 docs in Draft with a source file uploaded, "Rev+" working-revision
-// drafts still in Draft with a source file uploaded (the "รอทำ PDF (Rev+)" queue), and
+// brand-new Rev.00 docs in Draft with source or official file material, "Rev+" working-revision
+// drafts still in Draft with source or official file material (the "รอทำ PDF (Rev+)" queue), and
 // registration-set main + supporting documents (tracked outside the status queries
 // above). Deduplicated by document id in case a document shows up via more than one path.
 export async function getPendingApprovalDocuments(): Promise<PendingApprovalDoc[]> {
@@ -404,7 +404,7 @@ export async function getPendingApprovalDocuments(): Promise<PendingApprovalDoc[
     getRegistrationSets(),
   ])
 
-  const draftDocs = drafts.filter(d => d.status === 'Review' || d.status === 'Approved' || (d.status === 'Draft' && d.hasWordUrl))
+  const draftDocs = drafts.filter(d => d.status === 'Review' || d.status === 'Approved' || (d.status === 'Draft' && (d.hasWordUrl || d.hasOfficialPdf)))
   const draftDocIds = Array.from(new Set(draftDocs.map(d => d.documentId)))
   const draftParents = draftDocIds.length > 0
     ? await supabaseAdmin.from('documents').select('id, document_code, title').in('id', draftDocIds).is('deleted_at', null)

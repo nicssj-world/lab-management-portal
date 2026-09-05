@@ -293,13 +293,13 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
   const [audienceDepts, setAudienceDepts] = useState<string[]>(doc?.read_audience_depts ?? [])
   const [obsoleteDate, setObsoleteDate] = useState(doc?.obsolete_date ?? '')
   const [obsoleteReason, setObsoleteReason] = useState(doc?.obsolete_reason ?? '')
-  const [description, setDescription]   = useState(() => doc?.description ?? getInitialChangeDescription({ type: doc?.type ?? 'QP', isNewDocument: !isEdit, isImportCurrent: false }) ?? '')
+  const [description, setDescription]   = useState(() => doc?.description ?? getInitialChangeDescription({ type: doc?.type ?? 'QP', revision: doc?.revision ?? '1', isNewDocument: !isEdit, isImportCurrent: false }) ?? '')
   const [descriptionTouched, setDescriptionTouched] = useState(Boolean(doc?.description))
 
   function updateDocumentType(nextType: string) {
     setType(nextType)
     if (!descriptionTouched && !isEdit) {
-      setDescription(getInitialChangeDescription({ type: nextType, isNewDocument: true, isImportCurrent }) ?? '')
+      setDescription(getInitialChangeDescription({ type: nextType, revision, isNewDocument: true, isImportCurrent }) ?? '')
     }
     setRegisterSetAfterSave((checked) => normalizeRegisterSetSelection(nextType, checked))
   }
@@ -307,7 +307,14 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
   function updateCreateMode(nextMode: 'draft' | 'import-current') {
     setCreateMode(nextMode)
     if (!descriptionTouched && !isEdit) {
-      setDescription(getInitialChangeDescription({ type, isNewDocument: true, isImportCurrent: nextMode === 'import-current' }) ?? '')
+      setDescription(getInitialChangeDescription({ type, revision, isNewDocument: true, isImportCurrent: nextMode === 'import-current' }) ?? '')
+    }
+  }
+
+  function updateRevision(nextRevision: string) {
+    setRevision(nextRevision)
+    if (!descriptionTouched && !isEdit) {
+      setDescription(getInitialChangeDescription({ type, revision: nextRevision, isNewDocument: true, isImportCurrent }) ?? '')
     }
   }
 
@@ -498,7 +505,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         if (!res.ok) throw new Error(json.error ?? 'ไม่สามารถดึงข้อมูลได้')
         const parent = (json.data as Document[] | undefined)?.[0]
         if (!parent) throw new Error(`ไม่พบเอกสาร ${parentCode} ในระบบ`)
-        if (parent.revision)       setRevision(parent.revision)
+        if (parent.revision)       updateRevision(parent.revision)
         if (parent.department)     setDepartment(parent.department)
         if (parent.owner_name)     setOwnerName(parent.owner_name)
         if (parent.reviewer_name)  setReviewerName(parent.reviewer_name)
@@ -528,7 +535,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
           if (docType) updateDocumentType(docType)
           checkDuplicateCode(code)
         }
-        if (fields.revision)      setRevision(fields.revision)
+        if (fields.revision)      updateRevision(fields.revision)
         if (fields.ownerName)     setOwnerName(fields.ownerName)
         if (fields.reviewerName)  setReviewerName(fields.reviewerName)
         if (fields.approverName)  setApproverName(fields.approverName)
@@ -570,7 +577,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
         if (docType) updateDocumentType(docType)
         checkDuplicateCode(code)
       }
-      if (fields.revision)     setRevision(fields.revision)
+      if (fields.revision)     updateRevision(fields.revision)
       if (fields.ownerName)    setOwnerName(fields.ownerName)
       if (fields.reviewerName) setReviewerName(fields.reviewerName)
       if (fields.approverName) setApproverName(fields.approverName)
@@ -978,7 +985,7 @@ export function DocumentUploadModal({ doc, userRole, docRole, onClose, onSaved, 
                 value={revision}
                 disabled={isPublishedCorrection}
                 onChange={(e) => {
-                  setRevision(e.target.value)
+                  updateRevision(e.target.value)
                   if (error === revisionWarning) setError('')
                 }}
                 onBlur={() => {

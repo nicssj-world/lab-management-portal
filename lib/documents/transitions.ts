@@ -4,6 +4,20 @@ type WorkflowRole = 'Laboratory Director' | 'Quality Manager' | 'Document Contro
 const WORKFLOW_ROLES: WorkflowRole[] = ['Laboratory Director', 'Quality Manager', 'Document Controller', 'Reviewer', 'Viewer']
 const MANAGER_ROLE = 'Manager'
 
+// The pending-approval page is the shared work queue for people who may prepare,
+// approve, or publish documents. Keep this access list aligned with the transition
+// matrix below: Manager can approve Review, while Quality Manager/Laboratory Director
+// can approve and publish through their document workflow role.
+export const PENDING_APPROVAL_ROLES = ['Admin', 'Manager', 'Document Controller', 'Quality Manager', 'Laboratory Director'] as const
+export const PENDING_APPROVAL_DOC_ROLES = ['Document Controller', 'Reviewer', 'Quality Manager', 'Laboratory Director'] as const
+
+export function canAccessPendingApproval(role: string | null | undefined, docRole?: string | null) {
+  const cleanRole = role?.trim() ?? ''
+  const cleanDocRole = docRole?.trim() ?? ''
+  return (PENDING_APPROVAL_ROLES as readonly string[]).includes(cleanRole)
+    || (PENDING_APPROVAL_DOC_ROLES as readonly string[]).includes(cleanDocRole)
+}
+
 export const FULL_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   Draft:     ['Review'],
   Review:    ['Approved', 'Draft'],

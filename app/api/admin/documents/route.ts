@@ -290,6 +290,7 @@ export async function POST(req: NextRequest) {
     const editReviewDate = meta.edit_date || meta.expiry_date || (hasWordFile && !isImportCurrent ? todayIsoDate() : undefined)
     const description = resolveInitialChangeDescription({
       type: meta.type,
+      revision: meta.revision,
       isNewDocument: true,
       isImportCurrent,
       description: meta.description,

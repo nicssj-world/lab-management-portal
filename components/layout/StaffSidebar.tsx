@@ -57,7 +57,7 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/staff/documents',             th: 'คลังเอกสาร',  en: 'Library',     icon: 'doc',   color: '#0D9488', resource: 'เอกสารคุณภาพ' },
       { href: '/staff/documents/categories',  th: 'หมวดหมู่',    en: 'Categories',  icon: 'inbox', color: '#0D9488', resource: 'เอกสารคุณภาพ' },
       { href: '/staff/documents/pending',     th: 'รออนุมัติ',   en: 'Pending',     icon: 'clock', color: '#0D9488',
-        role: ['Admin', 'Document Controller'], docRole: ['Document Controller', 'Reviewer'] },
+        role: ['Admin', 'Manager', 'Document Controller', 'Quality Manager', 'Laboratory Director'], docRole: ['Document Controller', 'Reviewer', 'Quality Manager', 'Laboratory Director'] },
       { href: '/staff/documents/read-report', th: 'รายงานการอ่าน', en: 'Read Report', icon: 'eye', color: '#0D9488',
         role: ['Admin', 'Document Controller'], docRole: ['Document Controller', 'Quality Manager', 'Laboratory Director'] },
       { href: '/staff/documents/master-list', th: 'Master List', en: 'Master List', icon: 'book', color: '#0D9488', resource: 'Master List' },

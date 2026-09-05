@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getActiveRevisionDrafts, getNewDraftDocuments, getRegistrationSets } from '@/lib/documents/pending'
 import { registrationSetQueueExcludedIds } from '@/lib/documents/registration-set-contracts'
+import { canAccessPendingApproval } from '@/lib/documents/transitions'
 import { PendingClient, type PendingDoc, type AnnualReviewDoc } from './PendingClient'
 
 export const dynamic = 'force-dynamic'
@@ -19,8 +20,7 @@ export default async function PendingApprovalPage() {
 
   const role = actor?.role ?? ''
   const docRole = actor?.doc_role ?? ''
-  const allowed = ['Admin', 'Document Controller'].includes(role) || ['Document Controller', 'Reviewer'].includes(docRole)
-  if (!allowed) redirect('/staff/dashboard')
+  if (!canAccessPendingApproval(role, docRole)) redirect('/staff/dashboard')
 
   // Working revision drafts have their own status (Draft/Review/Approved) independent of
   // their parent document's status (the parent stays "Published" while a draft is worked
@@ -33,9 +33,9 @@ export default async function PendingApprovalPage() {
     // error boundary so DCC can diagnose an incomplete or inconsistent set.
     getRegistrationSets(),
   ])
-  const draftsAwaitingDcc = activeDrafts.filter((d) => d.status === 'Draft' && d.hasWordUrl)
-  // Brand-new Rev.00 documents (not working-revision drafts) still in Draft with a Word/Excel
-  // source uploaded — the "เอกสารใหม่ รอจัดทำ PDF" queue.
+  const draftsAwaitingDcc = activeDrafts.filter((d) => d.status === 'Draft' && (d.hasWordUrl || d.hasOfficialPdf))
+  // Brand-new Rev.00 documents (not working-revision drafts) still in Draft with source or
+  // official file material — the "เอกสารใหม่ รอจัดทำ PDF" queue.
   const draftsInReview = activeDrafts.filter((d) => d.status === 'Review')
   const draftsApproved = activeDrafts.filter((d) => d.status === 'Approved')
   const setQueueExcludedIds = registrationSetQueueExcludedIds(sets.map((set) => ({
